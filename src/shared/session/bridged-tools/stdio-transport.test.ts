@@ -11,7 +11,7 @@ import { Type } from "typebox";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 import { AGY_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "./mcp-bridge.ts";
 import { RUNWIELD_MCP_BRIDGE_TOKEN_ENV, RUNWIELD_MCP_BRIDGE_URL_ENV } from "./stdio-transport.ts";
 

@@ -7,10 +7,10 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import reAnchorExtension from "./index.ts";
 import type { ReAnchorOptions } from "./index.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import type { ReviewLedger } from "../../shared/workflow/review-ledger.ts";
 import { dirname } from "node:path";
-import { getStoredPlanPath } from "../../plan-store.js";
+import { getStoredPlanPath } from "../../plan-store.ts";
 
 type Handler = (event: Record<string, unknown>, ctx: unknown) => unknown;
 

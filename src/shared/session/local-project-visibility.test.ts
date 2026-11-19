@@ -17,7 +17,7 @@ import {
     writeManifest,
 } from "./file-session-storage.ts";
 import { findPlanAssociatedSessions } from "./plan-session-lookup.ts";
-import { classifyRootSessionLocator } from "./root-session.js";
+import { classifyRootSessionLocator } from "./root-session.ts";
 
 const host: RemoteHostIdentity = {
     hostname: "remote.example",

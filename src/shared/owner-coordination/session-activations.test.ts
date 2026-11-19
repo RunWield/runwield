@@ -2,10 +2,11 @@ import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import type { JsonRecord } from "../jsonc.ts";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.ts";
 import type { OwnerCoordinationDatabase } from "./database.ts";
-import { createOrGetOperationReceipt, updateOperationReceipt } from "./session-activations.js";
+import { createOrGetOperationReceipt, updateOperationReceipt } from "./session-activations.ts";
 
 function insertCatalogedSession(database: OwnerCoordinationDatabase, root: string) {
     database.transaction(() => {
@@ -59,7 +60,7 @@ test("plan_action operation receipts preserve bounded results", async () => {
             });
             if (!completed) throw new Error("receipt was not completed");
             assertEquals(completed.resultHttpStatus, 409);
-            assertEquals(completed.resultBody.result.kind, "refresh_required");
+            assertEquals((completed.resultBody!.result as JsonRecord).kind, "refresh_required");
             assertThrows(() =>
                 createOrGetOperationReceipt(database, {
                     deviceId: "device-1",

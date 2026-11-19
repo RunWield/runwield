@@ -1,7 +1,7 @@
 import { equal, ok } from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { extractYaml } from "../../shared/front-matter.ts";
 import { listSkills } from "../../shared/session/skill-catalog.ts";
 import { resolveNamedInvocation } from "../../shared/session/named-invocation.ts";

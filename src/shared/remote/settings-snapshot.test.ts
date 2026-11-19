@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { copyFile, readFile, rename } from "node:fs/promises";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { serveHttp } from "../http-server.ts";
 import process from "node:process";
 import {
@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { __resetSettingsForTests, getCustomSetting, getSettingsManager, setCustomSetting } from "../settings.js";
+import { __resetSettingsForTests, getCustomSetting, getSettingsManager, setCustomSetting } from "../settings.ts";
 import { configureRemotePersonalResources, PersonalResourcePathError } from "./personal-resources.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
 

@@ -10,7 +10,7 @@ import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { AGENTS, SUBAGENTS } from "../constants.js";
+import { AGENTS, SUBAGENTS } from "../constants.ts";
 import { formatProviderModelReference } from "../shared/models/model-validation.ts";
 import {
     DELEGATED_READ_TOOLS,
@@ -21,8 +21,8 @@ import {
     loadSubAgentDefinition,
 } from "../shared/session/subagent-definitions.ts";
 import type { DelegatedAuthority, DelegatedRoleId } from "../shared/session/subagent-definitions.ts";
-import type { HostedSession } from "../shared/session/hosted-session.js";
-import type { AgentDefinition } from "../shared/session/types.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
+import type { AgentDefinition } from "../shared/session/agents.ts";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
 import { extractAssistantOutput } from "../shared/workflow/workflow-results.ts";
 
@@ -156,7 +156,7 @@ export function resolveDelegatedToolNames(parentTools: string[], mode: Delegatio
 
 /**
  * @param {import('../shared/session/subagent-definitions.ts').DelegatedRoleId} [role]
- * @returns {Promise<import('../shared/session/types.js').AgentDefinition>}
+ * @returns {Promise<import('../shared/session/agents.ts').AgentDefinition>}
  */
 export async function loadDelegatedAgentPrompt(
     role: DelegatedRoleId = DELEGATED_ROLE_GENERAL,
@@ -321,7 +321,7 @@ function truncateToolText(text: string): string {
 }
 
 /**
- * @param {import('../shared/session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../shared/session/hosted-session.ts').HostedSession} hostedSession
  * @param {string | undefined} explicitOverride
  * @returns {string | undefined}
  */

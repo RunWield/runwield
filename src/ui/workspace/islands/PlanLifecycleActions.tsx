@@ -8,10 +8,10 @@ import {
     PLAN_UI_TOKEN_QUERY,
 } from "../constants.ts";
 
-import type { PlanFrontMatter, PlanResource } from "../../../plan-store.js";
+import type { PlanFrontMatter, PlanResource } from "../../../plan-store.ts";
 import type { PlanActionRequest } from "../../../shared/workflow/plan-actions.ts";
 import type { getPlanLifecycleActionMetadata } from "../../../shared/workflow/plan-lifecycle.ts";
-import type { ACTION_META, ResumeCheck } from "../server/plan-adapter.js";
+import type { ACTION_META, ResumeCheck } from "../server/plan-adapter.ts";
 
 export interface PlanLifecycleActionIntent
     extends
@@ -74,7 +74,7 @@ export interface PlanLifecycleActionPlan
         Partial<Pick<PlanResource, "revision">>,
         Pick<PlanFrontMatter, "holdReason" | "userVerificationNote" | "closedWithoutVerificationReason"> {
     status: string;
-    actions?: LifecycleActions;
+    actions?: LifecycleActions | null;
 }
 
 export interface PlanLifecycleActionsProps {

@@ -13,7 +13,7 @@ import {
 } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
-import { addEntry, findById } from "../worktree-registry.js";
+import { addEntry, findById } from "../worktree-registry.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
 import { publicationRootForAttempt } from "./publication-machine.ts";
 

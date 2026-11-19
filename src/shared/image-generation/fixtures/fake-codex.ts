@@ -1,6 +1,6 @@
 import { readFile as fsReadFile, utimes as fsUtimes, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 
 interface Request {
     id?: number;

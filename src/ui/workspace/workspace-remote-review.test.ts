@@ -7,9 +7,9 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import "./server/plan-adapter.js";
+import "./server/plan-adapter.ts";
 
-import { createWorkspaceApp } from "./server.js";
+import { createWorkspaceApp } from "./server.ts";
 
 import {
     buildRemoteCommentPayload,

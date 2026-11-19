@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
-import { HostedSession } from "../../hosted-session.js";
+import { HostedSession } from "../../hosted-session.ts";
 import {
     AGY_MCP_ARGS,
     AGY_MCP_PERMISSION,

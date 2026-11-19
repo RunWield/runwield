@@ -3,7 +3,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { ensurePlanIdentity, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, savePlan } from "../../plan-store.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 
 test("a failed review launch does not claim the review was completed", async () => {

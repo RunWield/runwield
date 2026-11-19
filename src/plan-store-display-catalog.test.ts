@@ -6,16 +6,16 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 import { dirname, join } from "node:path";
-import { listPlanResources, listPlans, readPlanResourceCatalog, ensurePlanIdentity } from "./plan-store.js";
+import { listPlanResources, listPlans, readPlanResourceCatalog, ensurePlanIdentity } from "./plan-store.ts";
 import { defineGitFixture, git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
-import { getRunWieldRuntimeDir } from "./constants.js";
-import { addEntry } from "./shared/worktree-registry.js";
+import { getRunWieldRuntimeDir } from "./constants.ts";
+import { addEntry } from "./shared/worktree-registry.ts";
 import {
     findTargetBranchPlansByParent,
     readTargetBranchPlanCatalogByParent,
 } from "./shared/workflow/planning-worktree.ts";
-import { loadBoard, loadPlanSummaries, loadPlanSummaryCatalog } from "./ui/workspace/server/plan-adapter.js";
+import { loadBoard, loadPlanSummaries, loadPlanSummaryCatalog } from "./ui/workspace/server/plan-adapter.ts";
 
 const broken = "---\naffectedPaths: - src/a.ts\n  status: draft\n---\n# Broken\n";
 function document(id: string, extra = "") {

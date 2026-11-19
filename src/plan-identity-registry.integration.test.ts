@@ -11,9 +11,9 @@ import {
     loadPlan,
     mergeFrontMatterText,
     savePlan,
-} from "./plan-store.js";
+} from "./plan-store.ts";
 import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
-import { addEntry, getWorktreeRegistryPath, listEntries } from "./shared/worktree-registry.js";
+import { addEntry, getWorktreeRegistryPath, listEntries } from "./shared/worktree-registry.ts";
 import { findTargetBranchPlansByParent } from "./shared/workflow/planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "./shared/workflow/plan-location.ts";
 import { loadPlanActionEvidence } from "./shared/workflow/plan-actions.ts";

@@ -18,13 +18,13 @@ import {
     runPrompt,
     runIsolatedAgentSession,
     runNonInteractiveAgentPrompt,
-} from "./session.js";
-import { HostedSession } from "./hosted-session.js";
-import { createReplayEvents } from "./session-transcript-projection.js";
+} from "./session.ts";
+import { HostedSession } from "./hosted-session.ts";
+import { createReplayEvents } from "./session-transcript-projection.ts";
 import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
 import type { GuardCustomEntry } from "./runaway-loop-guard.ts";
-import type { AgentDefinition } from "./types.js";
+import type { AgentDefinition } from "./agents.ts";
 
 interface SessionEventKind<Kind extends AgentSessionEvent["type"]> {
     type: Kind;

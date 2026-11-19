@@ -15,7 +15,7 @@ import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { SESSION_RUNTIME_METHOD_POLICY } from "./session-runtime-method-policy.ts";
-import { getRunWieldSessionDir } from "./root-session.js";
+import { getRunWieldSessionDir } from "./root-session.ts";
 
 export interface WritablePiCall {
     name: string;

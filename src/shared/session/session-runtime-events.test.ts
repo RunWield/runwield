@@ -1,14 +1,14 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
-import type { RuntimeAgentChangedEvent } from "./session-runtime-events.js";
+import type { RuntimeAgentChangedEvent } from "./session-runtime-events.ts";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import {
     createSessionRuntimeEvent,
     emitHostedSessionRuntimeEvent,
     normalizeRuntimeToolResult,
     RuntimeEventTypes,
-} from "./session-runtime-events.js";
+} from "./session-runtime-events.ts";
 
 test("Runtime normalizes one complete structured tool result for every consumer", () => {
     assertEquals(

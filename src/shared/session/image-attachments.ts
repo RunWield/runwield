@@ -9,15 +9,21 @@ import { basename, extname, isAbsolute, join, normalize, relative, resolve } fro
 import { discoverProviderModel } from "../models/model-registry.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
-import { getResolvedVisionFallbackModelSetting } from "../settings.js";
-import { getRemoteSessionSaveBridge, getRunWieldSessionDir } from "./root-session.js";
+import { getResolvedVisionFallbackModelSetting } from "../settings.ts";
+import { getRemoteSessionSaveBridge, getRunWieldSessionDir } from "./root-session.ts";
 import { MAX_SESSION_BYTES } from "../remote/session-protocol.ts";
 import { Buffer } from "node:buffer";
 
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import type { ImageAttachment } from "./types.js";
 import type { ModelDiscoveryNetworkPort, RunWieldModel, RunWieldModelRegistry } from "../models/model-registry.ts";
+
+export type ImageAttachment = {
+    base64: string;
+    mimeType: string;
+    ref?: string;
+    path?: string;
+};
 
 export interface ImageInputModel {
     input?: string[];

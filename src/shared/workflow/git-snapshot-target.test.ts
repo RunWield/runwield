@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { prepareTargetBranchRef } from "../worktree.js";
+import { prepareTargetBranchRef } from "../worktree.ts";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     captureWorktreeTree,

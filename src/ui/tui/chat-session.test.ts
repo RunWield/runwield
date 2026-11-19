@@ -1,5 +1,5 @@
 import { getTUI } from "./tui.ts";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 import { readdirSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 
@@ -10,13 +10,13 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.js";
+import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.ts";
 import {
     getCustomSetting,
     getSettingsManager,
     ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY,
     setCustomSetting,
-} from "../../shared/settings.js";
+} from "../../shared/settings.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 
@@ -739,7 +739,7 @@ for (const explicit of [true, false]) {
     test(`multisegment ${explicit ? "explicit resume" : "implicit continue"} checks the current segment root`, async () => {
         await withRuntimeCommandFixture("segment-root-consent-", async ({ homeDir, projectRoot }) => {
             const { openFileSessionStore } = await import("../../shared/session/file-session-store.ts");
-            const { getRunWieldSessionDir } = await import("../../shared/session/root-session.js");
+            const { getRunWieldSessionDir } = await import("../../shared/session/root-session.ts");
             const { join } = await import("node:path");
             const runtime = createSessionRuntime();
             let id = "";
@@ -806,7 +806,7 @@ for (const explicit of [true, false]) {
 test("implicit continuation catalogs and resumes an uncataloged transcript in an ordinary folder", async () => {
     await withRuntimeCommandFixture("uncataloged-chat-continue-", async ({ projectRoot }) => {
         process.chdir(projectRoot);
-        const { getRunWieldSessionDir } = await import("../../shared/session/root-session.js");
+        const { getRunWieldSessionDir } = await import("../../shared/session/root-session.ts");
         const dir = getRunWieldSessionDir(projectRoot);
         mkdirSync(dir, { recursive: true });
         const timestamp = new Date().toISOString();

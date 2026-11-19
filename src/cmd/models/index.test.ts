@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getSettingsManager, setCustomSetting } from "../../shared/settings.js";
+import { getSettingsManager, setCustomSetting } from "../../shared/settings.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { getModelCompletions, runModelsCommand } from "./index.ts";
 
@@ -317,17 +317,32 @@ test("runModelsCommand completes and accepts only supported Agy CLI base models"
             const completions = await getModelCompletions("agy-cli/");
             assertEquals(
                 completions.map((completion) => completion.value),
-                ["agy-cli/gemini-3.1-pro", "agy-cli/gemini-3.8-flash"],
+                [
+                    "agy-cli/gemini-3.1-pro",
+                    "agy-cli/gemini-3.8-flash",
+                    "agy-cli/gemini-4-argon",
+                    "agy-cli/gemini-4-carbon",
+                    "agy-cli/gemini-4-hydrogen",
+                ],
             );
 
-            const logs = await captureLogs(() => runModelsCommand(["agy-cli/gemini-3.8-flash"]));
-            assertEquals(logs, ["Set default model to agy-cli/gemini-3.8-flash"]);
+            for (const model of [
+                "gemini-4-argon",
+                "gemini-4-hydrogen",
+                "gemini-4-carbon",
+                "gemini-3.1-pro",
+                "gemini-3.8-flash",
+            ]) {
+                const logs = await captureLogs(() => runModelsCommand([`agy-cli/${model}`]));
+                assertEquals(logs, [`Set default model to agy-cli/${model}`]);
+                assertEquals(getSettingsManager(alternateRoot).getDefaultModel(), model);
+            }
             assertEquals(getSettingsManager(alternateRoot).getDefaultModel(), "gemini-3.8-flash");
             assertEquals(getSettingsManager(alternateRoot).getDefaultProvider(), "agy-cli");
 
             const rejected = await captureLogs(() => runModelsCommand(["agy-cli/gemini-3.8-flash-high"]));
             assertEquals(rejected, [
-                "Unsupported Antigravity CLI model: agy-cli/gemini-3.8-flash-high. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.",
+                "Unsupported Antigravity CLI model: agy-cli/gemini-3.8-flash-high. Select agy-cli/gemini-4-argon, agy-cli/gemini-4-hydrogen, agy-cli/gemini-4-carbon, agy-cli/gemini-3.8-flash, agy-cli/gemini-3.1-pro.",
             ]);
             assertEquals(getSettingsManager(alternateRoot).getDefaultModel(), "gemini-3.8-flash");
         },
@@ -364,7 +379,7 @@ test("runModelsCommand rejects unsupported Agy CLI model selection for the curre
             });
             assertEquals(ui.messages, [
                 {
-                    text: "Unsupported Antigravity CLI model: agy-cli/fixture-model. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.",
+                    text: "Unsupported Antigravity CLI model: agy-cli/fixture-model. Select agy-cli/gemini-4-argon, agy-cli/gemini-4-hydrogen, agy-cli/gemini-4-carbon, agy-cli/gemini-3.8-flash, agy-cli/gemini-3.1-pro.",
                     isError: true,
                 },
             ]);

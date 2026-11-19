@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { bashFixtureExecutable, bashFixturePath } from "../../../scripts/bash-fixture.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { mkdir, mkdtemp, readdir, writeFile, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";

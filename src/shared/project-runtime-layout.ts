@@ -29,7 +29,7 @@ import {
     RUNWIELD_DIR_NAME,
     WORKTREE_REGISTRY_FILE,
     WORKTREE_REGISTRY_LOCK_FILE,
-} from "../constants.js";
+} from "../constants.ts";
 import {
     type LockFileSnapshot,
     lockFileSnapshotMatches,
@@ -45,7 +45,7 @@ import {
 } from "./git-evidence-cache.ts";
 import { getLockHostname, isLockHolderGone } from "./process-liveness.ts";
 import { resolvePrimaryCheckoutRoot, resolveProjectRoot, prepareProjectCheckout } from "./project-checkout.ts";
-import { inspectWorktreeRegistryAtPath, withWorktreeRegistryLockAtPath } from "./worktree-registry.js";
+import { inspectWorktreeRegistryAtPath, withWorktreeRegistryLockAtPath } from "./worktree-registry.ts";
 import { ensureRunWieldOwnedGitignoreBlock, LEGACY_PROJECT_RUNTIME_HAZARD_PATHS } from "./runwield-owned-paths.ts";
 import { assertPublicationAttempt, type PublicationAttempt } from "./workflow/publication-attempt.ts";
 import {
@@ -440,9 +440,18 @@ const runtimeEntryScope = new AsyncLocalStorage<RuntimeReadScope>();
 // are reused only while their repository evidence is unchanged; see git-evidence-cache.ts.
 const reportedGitignoreWarnings = new Map<string, Set<string>>();
 
+interface ProjectRuntimeReadScopeOptions {
+    /** Start an independent inspection phase, discarding the caller's checks as well. */
+    fresh?: boolean;
+}
+
 /** Verify each checkout once during a bounded read; retain no result across refreshes. */
-export async function withProjectRuntimeReadScope<T>(read: () => Promise<T>): Promise<T> {
-    if (runtimeEntryScope.getStore()?.active) return await read();
+export async function withProjectRuntimeReadScope<T>(
+    read: () => Promise<T>,
+    options: ProjectRuntimeReadScopeOptions = {},
+): Promise<T> {
+    if (runtimeEntryScope.getStore()?.active && !options.fresh) return await read();
+    if (options.fresh) invalidateProjectRuntimeReadScope();
     const scope: RuntimeReadScope = { active: true, inspections: new Map(), symlinkWalks: new Map() };
     try {
         return await runtimeEntryScope.run(scope, read);
@@ -452,6 +461,9 @@ export async function withProjectRuntimeReadScope<T>(read: () => Promise<T>): Pr
         scope.active = false;
         scope.inspections.clear();
         scope.symlinkWalks.clear();
+        // The caller's context is restored here. Do not resurrect checks it
+        // performed before or concurrently with this independent phase.
+        if (options.fresh) invalidateProjectRuntimeReadScope();
     }
 }
 

@@ -1,5 +1,5 @@
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
+import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import { hostname } from "node:os";
 import { test } from "node:test";
 import {
@@ -16,14 +16,14 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { setCustomSetting } from "../settings.js";
-import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
+import { setCustomSetting } from "../settings.ts";
+import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { removeWorktreeGitArtifacts } from "../worktree.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { createTestWorktreeAttempt, makeRepo } from "../worktree-test-helpers.ts";
 import { createEngineValidationArgs } from "./validation.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
@@ -46,7 +46,7 @@ import {
     NO_ISOLATED_AGENT_PORT,
     runValidationLoop,
     runValidationPhase,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 const footerExecutionRepo = defineGitFixture(async (repoPath) => {
     await savePlan(repoPath, "footer-plan", "# footer-plan\n\nvalidation fixture\n", {

@@ -3,14 +3,14 @@ import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 /**
  * @module shared/session/__tests__/agent-model-override
- * Tests for per-agent model override logic in session.js.
+ * Tests for per-agent model override logic in session.ts.
  *
  * Every assertion reads real settings through the production resolver.
  * The fixture isolates HOME and restores process-global state after each read.
  */
 
 import { withRuntimeCommandFixture } from "../../../cmd/testing/runtime-command-fixture.ts";
-import { getConfiguredAgentModel } from "../session.js";
+import { getConfiguredAgentModel } from "../session.ts";
 
 import type { ModelPreset, ModelPresetsMap } from "../../model-presets.ts";
 

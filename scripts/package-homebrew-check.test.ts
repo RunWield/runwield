@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { captureScriptProcess, waitForScriptExit } from "./script-process.ts";
 import { runtimeSourceArgs } from "../src/testing/runtime-source-args.ts";
 import { test } from "node:test";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import {
     chmod as fsChmod,
     mkdir as fsMkdir,

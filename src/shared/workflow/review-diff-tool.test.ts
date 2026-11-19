@@ -9,7 +9,7 @@ import {
 } from "./review-diff-tool.ts";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 
-import "../settings.js";
+import "../settings.ts";
 import { ReviewInspection } from "./review-inspection.ts";
 
 interface FixtureDiffParams {

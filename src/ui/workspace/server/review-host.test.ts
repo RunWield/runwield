@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { PLAN_UI_TOKEN_HEADER } from "../../../constants.js";
+import { PLAN_UI_TOKEN_HEADER } from "../../../constants.ts";
 import { randomBytes } from "node:crypto";
 import { mkdir, rm, stat } from "node:fs/promises";
 import { createServer } from "node:net";

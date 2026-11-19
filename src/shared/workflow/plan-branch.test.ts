@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { defaultPlanBranchName, ensurePlanBranch, shouldAdoptPlanBranch } from "./plan-branch.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 
 const repo = defineCommittedGitFixture();

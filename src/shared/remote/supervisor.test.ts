@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { serveHttp } from "../http-server.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import {
     chmod as fsChmod,
@@ -28,7 +28,7 @@ import { dirname, join } from "node:path";
 
 import { BUILD_ID, REMOTE_PROTOCOL_VERSION } from "../build-identity.js";
 import { startRemoteControlService } from "./control.ts";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { startLaptopSftp } from "./sftp-mount.ts";
 
 // The compiled test entry exercises the production supervisor with a disposable
@@ -40,7 +40,7 @@ import { spawn } from "node:child_process";
 import { runRemoteSupervisor } from "./src/shared/remote/supervisor.ts";
 import { configureRemotePersonalResources } from "./src/shared/remote/personal-resources.ts";
 import { remoteBackgroundTaskLogDirectory } from "./src/shared/remote/background-task-logs.ts";
-import { HostedSession } from "./src/shared/session/hosted-session.js";
+import { HostedSession } from "./src/shared/session/hosted-session.ts";
 if (process.argv.slice(2)[0] === "--remote-supervisor") await runRemoteSupervisor();
 else if (process.argv.slice(2)[0] === "--remote-model-proof") {
     const reader = Readable.toWeb(process.stdin).getReader();

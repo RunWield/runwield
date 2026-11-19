@@ -3,10 +3,10 @@
  * Focused composed Golden TUI presentation and terminal-behavior scenarios.
  */
 
-import type { GoldenScenario, GoldenScenarioResult } from "../testing/scenario-runner.js";
+import type { GoldenScenario, GoldenScenarioResult } from "../testing/scenario-runner.ts";
 
 import { ok as assert } from "node:assert/strict";
-import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
+import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
 /**

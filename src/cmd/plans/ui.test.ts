@@ -1,11 +1,11 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { type BrowserPort, NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { runPlansUiCommand } from "./ui.ts";

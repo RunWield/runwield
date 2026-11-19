@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import schema from "../../../config.schema.json" with { type: "json" };
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { __resetSettingsForTests, getCustomSetting, getSettingsManager, setCustomSetting } from "../settings.js";
+import { __resetSettingsForTests, getCustomSetting, getSettingsManager, setCustomSetting } from "../settings.ts";
 import { git } from "../git-test-fixture.ts";
 import { resolveCodexRoleSettings } from "./codex-role-settings.ts";
 import { ATTACHED_HOST_ROLES, type AttachedJsonObject, type AttachedJsonValue } from "./operations.ts";
@@ -58,7 +58,7 @@ test("settings schema exposes exactly the supported Codex roles and host-native 
     }
 });
 
-test("all seven Codex roles inherit without consulting Core presets", async () => {
+test("all supported Codex roles inherit without consulting Core presets", async () => {
     await withSettings(async (root) => {
         await setCustomSetting(
             "agents",

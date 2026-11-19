@@ -1,7 +1,7 @@
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 /** Read-only identity evidence for repairing a registry that cannot route normal reads. */
 import { join } from "node:path";
-import { getPlansDir, parsePlanFrontMatter, type PlanFrontMatter } from "../../plan-store.js";
+import { getPlansDir, parsePlanFrontMatter, type PlanFrontMatter } from "../../plan-store.ts";
 import { isEpicArtifactPlanName } from "../epic-artifacts.ts";
 
 interface DiagnosticAttempt {

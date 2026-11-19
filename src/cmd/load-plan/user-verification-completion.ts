@@ -1,14 +1,14 @@
-import { getStoredPlanPath, loadPlan, withPlanLock, writePlanMarkdownWithRevision } from "../../plan-store.js";
+import { getStoredPlanPath, loadPlan, withPlanLock, writePlanMarkdownWithRevision } from "../../plan-store.ts";
 import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
-import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.js";
-import { findById, listEntries, pruneEntry, updateEntry } from "../../shared/worktree-registry.js";
+import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.ts";
+import { findById, listEntries, pruneEntry, updateEntry } from "../../shared/worktree-registry.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { runRecoveryTransition } from "../../shared/workflow/state-transition.ts";
 import { hasWorktreeContext, resolveRecoveryWorktree } from "./plan-recovery-worktree.ts";
 import type { HoldablePlan } from "./plan-hold.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 interface CompleteUserVerificationOptions {
     projectRoot: string;

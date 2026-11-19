@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 import { devOwnerSidebar } from "./server/dev-owner-fixtures.ts";
 import { test } from "node:test";
 import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";

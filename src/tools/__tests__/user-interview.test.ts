@@ -1,9 +1,9 @@
 import { assertEquals } from "../../testing/assertions.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { createUserInterviewTool, type InterviewResultDetails } from "../user-interview.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import type { Static } from "typebox";
 import type { RuntimeInteractionOption } from "../../shared/session/session-runtime-interactions.ts";

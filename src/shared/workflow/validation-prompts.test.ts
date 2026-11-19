@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { SUBAGENTS } from "../../constants.js";
+import { SUBAGENTS } from "../../constants.ts";
 import { loadSubAgentDefinition } from "../session/subagent-definitions.ts";
 import { buildSemanticReviewAttempt } from "./validation-semantic.ts";
 import { loadManualQaPrompt, loadReviewerPrompt } from "./validation.ts";

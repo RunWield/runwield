@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { AcceptanceWorld } from "./world.ts";
 import { attachedValidationFixture } from "../../../shared/attached/validation-test-fixture.ts";
-import { getExactProjectCustomSetting } from "../../../shared/settings.js";
+import { getExactProjectCustomSetting } from "../../../shared/settings.ts";
 import { withExternalClaude, CHECKOUT } from "./runtime-test-fixture.ts";
 
 // The external host starts real CI. A shell parent keeps Linux parent-death signals

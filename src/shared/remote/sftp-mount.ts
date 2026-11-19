@@ -21,7 +21,7 @@ import {
 import { join } from "node:path";
 import { parse as parseJsonc } from "../jsonc.ts";
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { assertRemoteMountPrerequisites, parseOsRelease, REMOTE_PYTHON_REQUIRED } from "./host-prerequisites.ts";
 
 export interface LaptopPackageRoot {

@@ -16,7 +16,7 @@ interface ModelActivationResult {
 }
 
 interface InstallUiApiOverridesOptions {
-    uiAPI: import("./types.js").UiAPI;
+    uiAPI: import("./api.ts").UiAPI;
     tui: TUI;
     editor: Editor;
     container: Container;

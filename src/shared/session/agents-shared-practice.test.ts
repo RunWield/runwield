@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { listAgentDefNames, loadAgentDef } from "./agents.js";
+import { listAgentDefNames, loadAgentDef } from "./agents.ts";
 
 const BUNDLED_AGENT_DEFS = join("src", "agent-definitions");
 const SHARED_PRACTICE_DIR = join(BUNDLED_AGENT_DEFS, "shared-practice");
@@ -404,7 +404,7 @@ test("the Slicer receives the show-the-work practice through the subagent regist
     // Slicer is a workflow-only subagent, so it never appears in the agent listing.
     // It shapes the child Plans a person reads, so the practice must reach it too.
     const { loadSubAgentDefinition } = await import("./subagent-definitions.ts");
-    const { SUBAGENTS } = await import("../../constants.js");
+    const { SUBAGENTS } = await import("../../constants.ts");
     const slicer = await loadSubAgentDefinition(SUBAGENTS.SLICER);
 
     assertStringIncludes(slicer.systemPrompt, SHOW_THE_WORK_MARKER);

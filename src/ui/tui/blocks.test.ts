@@ -1,7 +1,7 @@
 import type {
     RuntimeValidationCheckResult,
     RuntimeValidationProgress,
-} from "../../shared/session/session-runtime-events.js";
+} from "../../shared/session/session-runtime-events.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
@@ -28,7 +28,7 @@ import {
     ToolExecutionBlock,
     ToolExecutionGroupBlock,
     ValidationHandoffBlock,
-} from "./blocks.js";
+} from "./blocks.ts";
 import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
 import stripAnsi from "strip-ansi";
 

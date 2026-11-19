@@ -7,8 +7,8 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
  * Fail-closed resolver for Workflow Validation execution context.
  */
 
-import { isPlannedChangeClassification } from "../../constants.js";
-import { ensurePlanIdentity, loadPlan, normalizeExecutionMode, updatePlanFrontMatter } from "../../plan-store.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
+import { ensurePlanIdentity, loadPlan, normalizeExecutionMode, updatePlanFrontMatter } from "../../plan-store.ts";
 import {
     describeRegistryAmbiguity,
     findActiveByPlanName as findWorktreeRegistryEntryByPlanName,
@@ -17,20 +17,20 @@ import {
     reconcileEntryGitLocation,
     restoreEntryFromPlanEvidence,
     updateEntry as updateWorktreeRegistryEntry,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 import { prepareExecutionPlanFile } from "./execution-plan-file.ts";
 import { enterProjectRuntime, withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
-import { resolveTargetBranchName } from "../worktree.js";
+import { resolveTargetBranchName } from "../worktree.ts";
 import { getWorkflowDiff } from "./git-snapshot.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { recordWorkflowMetric } from "./metrics.js";
+import { recordWorkflowMetric } from "./metrics.ts";
 import { isInValidation } from "./plan-lifecycle.ts";
 import { hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
 import type { ValidationRecoveryNotice } from "./validation-user-messages.ts";
 
 const VALIDATION_ELIGIBLE_WORKTREE_STATUSES = new Set(["active", "completed", "validation_failed", "validated"]);
 
-type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store.ts").PlanFrontMatter;
 type ResolutionSource = "explicit" | "active_session" | "durable_recovery";
 type ScalarValue = string | number | boolean | null | undefined;
 export interface ExecutionContextCandidate {

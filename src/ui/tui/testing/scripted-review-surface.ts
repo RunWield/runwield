@@ -5,7 +5,7 @@ import { writeFileSync as fsWriteFileSync } from "node:fs";
  * Protocol-checked Plan Review and Runtime interaction fixtures.
  */
 
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 
 export interface ScriptedReviewDecision {
     approved: boolean;

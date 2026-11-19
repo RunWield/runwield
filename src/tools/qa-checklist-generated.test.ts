@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import { savePlan } from "../plan-store.js";
+import { savePlan } from "../plan-store.ts";
 import { createQaChecklistGeneratedTool } from "./qa-checklist-generated.ts";
 
 const EXTENSION_CONTEXT = {} as ExtensionToolContext;

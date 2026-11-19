@@ -14,12 +14,12 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../../share
  * The browser surface is isolated here so core only requests a review.
  */
 
-import { injectFrontMatter, loadPlanFileStrict, planDocumentMarkdown } from "../../plan-store.js";
+import { injectFrontMatter, loadPlanFileStrict, planDocumentMarkdown } from "../../plan-store.ts";
 import { assertSharedPlanWriteAllowed } from "../../shared/collaboration/lock.ts";
 import { isAnsweredPlanReview } from "../../shared/workflow/plan-review-recovery.ts";
 import { applySharedPlanReviewDecision } from "../../shared/workflow/plan-review-actions.ts";
 import { startPlanReviewSurface } from "./review-launcher.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 

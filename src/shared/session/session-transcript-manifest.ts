@@ -5,7 +5,7 @@ import { stat as fsStat } from "node:fs/promises";
  */
 
 import { dirname, resolve } from "node:path";
-import { readCatalogSafeRootSessionLocator } from "./root-session.js";
+import { readCatalogSafeRootSessionLocator } from "./root-session.ts";
 import type { TutorialContextCandidate } from "./tutorial-context-session.ts";
 import {
     buildProjectedSessionInfo,
@@ -15,17 +15,10 @@ import {
     summarizeProjectedEntries,
     summarizeResumableTranscript,
     toProjectionFailure,
-} from "./session-transcript-projection.js";
-
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-
-type ProjectedRuntimeEvent = {
-    type: string;
-    eventId: string;
-    segmentOrdinal?: number;
-    segmentKind?: string;
-    [key: string]: JsonValue | undefined;
-};
+    type ProjectedRuntimeEvent,
+    type ProjectionFailure,
+    type TranscriptEntry,
+} from "./session-transcript-projection.ts";
 
 type TranscriptSegment = {
     segmentId: string;
@@ -42,8 +35,7 @@ type TranscriptSegment = {
     sealedTerminalEntryId: string | null;
 };
 
-export type TranscriptEntry =
-    import("@earendil-works/pi-coding-agent").SessionEntry | import("@earendil-works/pi-coding-agent").SessionHeader;
+export type { TranscriptEntry };
 
 export type VerifiedTranscriptSegment = {
     segmentId: string;
@@ -93,15 +85,11 @@ type VerifiedSegmentMetadata = {
     current: boolean;
 };
 
-type AggregateProjectionFailure = {
-    ok: false;
-    state: "degraded";
-    code: string;
-    message: string;
+interface AggregateProjectionFailure extends ProjectionFailure {
     events: [];
-};
+}
 
-type ProjectedSessionSnapshot = {
+export type ProjectedSessionSnapshot = {
     activeAgent?: string | null;
     tutorialContext?: TutorialContextCandidate | null;
     [key: string]: unknown;
@@ -311,7 +299,7 @@ export async function projectAggregateTranscript(
         return {
             ok: true,
             generation: options.generation.generation,
-            events: selected.events as ProjectedRuntimeEvent[],
+            events: selected.events,
             nextCursor: selected.nextCursor,
             nextCursorOrdinal: selected.nextCursorOrdinal,
             complete: selected.complete,
@@ -320,6 +308,6 @@ export async function projectAggregateTranscript(
             cursorReset,
         };
     } catch (error) {
-        return { ...toProjectionFailure(error), events: [] } as AggregateProjectionFailure;
+        return { ...toProjectionFailure(error), events: [] };
     }
 }

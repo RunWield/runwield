@@ -1,6 +1,6 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import {
     lstat as fsLstat,
@@ -27,9 +27,9 @@ import {
     type PlanDocumentMetadata,
     savePlan,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { addEntry, getWorktreeRegistryPath, pruneEntry, updateEntry } from "../worktree-registry.js";
+import { addEntry, getWorktreeRegistryPath, pruneEntry, updateEntry } from "../worktree-registry.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { PLAN_RUNTIME_FIELDS } from "./controller-state.ts";

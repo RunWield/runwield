@@ -6,13 +6,13 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { type WorkflowMetricsFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
 import { encodeGuidedReviewMetadata, encodeGuidedReviewUsageEvent } from "../../cmd/guided-review/protocol.ts";
-import { createReviewWorkspaceApp } from "./server.js";
+import { createReviewWorkspaceApp } from "./server.ts";
 import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
     runWldJobCommand,
-} from "./routes/api/review-agent-handlers.js";
+} from "./routes/api/review-agent-handlers.ts";
 
 import type { StandaloneReviewPayload } from "../review/review-launcher.ts";
 import type { AiReviewValue } from "../../shared/standalone-review/ai-review.ts";

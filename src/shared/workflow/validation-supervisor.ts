@@ -6,12 +6,12 @@ import {
     resolvePlanExecutionPolicy,
     StalePlanWriteError,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { StaleControllerWriteError } from "./controller-registry.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
 import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";
 import { getLockHostname } from "../process-liveness.ts";
-import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
+import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.ts";
 import { hostSemanticRepairPrompt, requestHostRepair } from "./validation-host-state.ts";
 import { runValidationLoop } from "./validation-engine.ts";
 import { type ValidationLoopArgs, type WorkflowValidationResult } from "./validation-types.ts";
@@ -84,7 +84,7 @@ type ClaimResult =
     | { kind: "settled_completion"; projectRoot: string };
 
 function checkpointRecord(
-    value: import("../../plan-store.js").PlanFrontMatter["validationCheckpoint"],
+    value: import("../../plan-store.ts").PlanFrontMatter["validationCheckpoint"],
 ): ValidationCheckpoint | undefined {
     if (!value || !isValidationCheckpoint(value)) return undefined;
     return value;

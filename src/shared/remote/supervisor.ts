@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import process from "node:process";
 import type { Socket } from "node:net";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { isStandaloneExecutable } from "../runtime-identity.ts";
 import { listenSocket, readStreamInto, type SocketListener } from "../socket-listener.ts";
 import { type NativeProcess, spawnNativeProcess } from "../foreground-process.ts";
@@ -392,7 +392,7 @@ export async function runRemoteSupervisor(): Promise<void> {
             return;
         }
         // A missing mount or failed fresh read/write must never reach readiness.
-        const accountHome = await fsRealpath((await import("../../constants.js")).getHomeDir());
+        const accountHome = await fsRealpath((await import("../../constants.ts")).getHomeDir());
         if (accountHome !== header.remoteHome) throw new Error("Remote account home changed before mount");
         personalMount = await mountLaptopHome(header.remoteHome, header.mount);
         // Verified roots travel only through the private child header. HOME stays

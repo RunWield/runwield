@@ -9,7 +9,7 @@ import {
     type RuntimeInteractionRequest,
     type RuntimeInteractionResponse,
 } from "../session/session-runtime-interactions.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import type { SequenceReviewDecision } from "./sequence-review.ts";
 
 export const SESSION_COMPLETE_GUIDANCE =

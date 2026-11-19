@@ -1,7 +1,7 @@
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { assertExists } from "./assertions.ts";
 import { join } from "node:path";
-import { HostedSession } from "../shared/session/hosted-session.js";
+import { HostedSession } from "../shared/session/hosted-session.ts";
 import { createGitPort } from "../shared/git-port.ts";
 import { executeWorkflowTestTools, type WorkflowTestToolCall } from "./workflow-agent-tools.ts";
 import { continueWorkflowValidation } from "../shared/workflow/validation.ts";

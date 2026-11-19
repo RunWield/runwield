@@ -115,7 +115,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   handoff, tool rebuilding, continuation, and behavioral tests.
 - `src/shared/git.ts`, `project-checkout.ts`, and worktree/controller registry readers — reuse read-only Git and ownership
   evidence; normalize package paths before checkout-scoped operations.
-- `src/shared/settings.js`, `src/extensions/mnemoteca/tools.ts`, and cwd-bound resource/tool composition — distinguish
+- `src/shared/settings.ts`, `src/extensions/mnemoteca/tools.ts`, and cwd-bound resource/tool composition — distinguish
   working folder from Project or checkout ownership where the current code conflates them.
 - `src/agent-definitions/planner.md`, Router guidance, and shared tool descriptions — explain inspection and movement
   without promising that cwd changes fix Plan storage.
@@ -240,11 +240,10 @@ Reuse `src/cmd/testing/runtime-command-fixture.ts::withRuntimeCommandFixture` an
 Focused commands:
 
 ```sh
-bun scripts/run-tests.js src/tools/session-directory.test.ts src/shared/session/session-directory.test.ts src/shared/session/checkout-context.test.ts
-bun scripts/run-tests.js src/shared/session/session-runtime.test.js src/shared/session/agent-switching.test.ts src/shared/session/session-prompt.test.js src/shared/session/__tests__/session-tools-policy.test.js
-bun scripts/run-tests.js src/shared/workflow/planning-worktree-inspection.test.ts src/shared/workflow/controller-registry.integration.test.ts src/acp/managed-session.integration.test.ts
-bun scripts/run-tests.js src/shared/session/execution-segment-runtime.test.ts src/shared/session/segment-rollover.test.ts src/cmd/load-plan/plan-review-conversation.integration.test.ts src/shared/workflow/plan-execution-runtime-boundaries.integration.test.ts src/shared/workflow/validation-tool-continuation.integration.test.ts
-bun run seams:check
+bun scripts/run-tests.ts src/tools/session-directory.test.ts src/shared/session/session-directory.test.ts src/shared/session/checkout-context.test.ts
+bun scripts/run-tests.ts src/shared/session/session-runtime.test.ts src/shared/session/agent-switching.test.ts src/shared/session/session-prompt.test.ts src/shared/session/__tests__/session-tools-policy.test.ts
+bun scripts/run-tests.ts src/shared/workflow/planning-worktree-inspection.test.ts src/shared/workflow/controller-registry.integration.test.ts src/acp/managed-session.integration.test.ts
+bun scripts/run-tests.ts src/shared/session/execution-segment-runtime.test.ts src/shared/session/segment-rollover.test.ts src/cmd/load-plan/plan-review-conversation.integration.test.ts src/shared/workflow/plan-execution-runtime-boundaries.integration.test.ts src/shared/workflow/validation-tool-continuation.integration.test.ts
 bun run doc-links:check
 ```
 

@@ -1,4 +1,4 @@
-import type { PlanFrontMatter, PlanFrontMatterInput, DeliveryEvidence, ExecutionMode } from "../../plan-store.js";
+import type { PlanFrontMatter, PlanFrontMatterInput, DeliveryEvidence, ExecutionMode } from "../../plan-store.ts";
 import type { TransitionResult, TransitionResource } from "./state-transition.ts";
 import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
 
@@ -134,7 +134,7 @@ export { isEpicPlan, isProjectPlan, isSequencePlan } from "../project-plan.ts";
  * See docs/plan-lifecycle.md for the human-readable workflow.
  */
 
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import {
     getDeclaredPlanStatus,
     getPlanDocumentRoot,
@@ -143,7 +143,7 @@ import {
     normalizeDeliveryEvidence,
     normalizeExecutionMode,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "../collaboration/lock.ts";
 import { runPlanLifecycleEventTransition } from "./state-transition.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";

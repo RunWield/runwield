@@ -10,7 +10,7 @@ import { createChatView } from "./chat-view.ts";
 import { createChatInputController } from "./chat-input-controller.ts";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
@@ -31,7 +31,7 @@ for (const columns of [60, 140]) {
                     "---\nstatus: draft\nclassification: PLANNED_CHANGE\nplanId: next-change\n---\n# Next change\n",
                 );
                 if (choice === "record-retry") {
-                    const { savePlan } = await import("../../plan-store.js");
+                    const { savePlan } = await import("../../plan-store.ts");
                     await savePlan(projectRoot, "record-retry", "# Delivered", {
                         planId: "record-retry",
                         classification: "PLANNED_CHANGE",

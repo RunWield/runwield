@@ -1,5 +1,5 @@
 import { getModelRegistry, getModelRuntime } from "../../shared/models/model-registry.ts";
-import type { CommandCompletionItem } from "../registry.js";
+import type { CommandCompletionItem } from "../registry.ts";
 
 export async function getModelCompletions(argumentPrefix: string): Promise<CommandCompletionItem[]> {
     await getModelRuntime();

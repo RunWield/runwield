@@ -1,6 +1,6 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import {

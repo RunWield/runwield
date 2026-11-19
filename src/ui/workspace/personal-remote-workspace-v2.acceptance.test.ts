@@ -16,17 +16,17 @@ import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
-import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
-import { latestLiveWorkflowInteraction } from "./islands/SessionSurface.jsx";
+import { createOwnerWorkspaceApp } from "./server.ts";
+import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
+import { latestLiveWorkflowInteraction } from "./islands/SessionSurface.tsx";
 import { WorkflowSidebar } from "./react/WorkflowSidebar.tsx";
 import { loadOwnerDashboard } from "./server/owner-dashboard.ts";
-import { createWorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { createWorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 
 function cookiePair(credential: string, csrf = "csrf-secret"): string {

@@ -1,6 +1,6 @@
 import { env as processEnv, execPath } from "node:process";
 import { clearTimeout, setTimeout } from "node:timers";
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 import { type NativeSpawnOptions, spawnNativeProcess } from "../../../shared/foreground-process.ts";
 /**
  * @module ui/tui/testing/subprocess-runner

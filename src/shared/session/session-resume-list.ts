@@ -3,12 +3,12 @@
  * Builds the bounded, newest-first list used by the interactive resume picker.
  */
 
-import { listCatalogSafeRootSessionLocators } from "./root-session.js";
+import { listCatalogSafeRootSessionLocators } from "./root-session.ts";
 import {
     buildProjectedSessionInfo,
     captureTranscriptEvidence,
     summarizeResumableTranscript,
-} from "./session-transcript-projection.js";
+} from "./session-transcript-projection.ts";
 import type { FileSessionStore } from "./file-session-store-types.ts";
 
 export const RECENT_SESSION_LIMIT = 30;

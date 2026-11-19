@@ -2,7 +2,7 @@ import { rm } from "node:fs/promises";
 import { makeTempDirectory } from "../../../../testing/temp-file.ts";
 import { test } from "node:test";
 import { assertEquals } from "../../../../testing/assertions.ts";
-import { cleanupReviewAgentState, createReviewAgentState, reviewAgentApi } from "./review-agent-handlers.js";
+import { cleanupReviewAgentState, createReviewAgentState, reviewAgentApi } from "./review-agent-handlers.ts";
 
 test("Guide uses the current lazy review workspace on each invocation", async () => {
     const original = await makeTempDirectory();

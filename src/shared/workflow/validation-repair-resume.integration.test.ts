@@ -7,15 +7,15 @@ import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts"
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
+import { HostedSession } from "../session/hosted-session.ts";
 import { TASK_COMPLETION_CUSTOM_TYPE } from "../session/task-completion-session.ts";
-import { setExactProjectCustomSetting } from "../settings.js";
+import { setExactProjectCustomSetting } from "../settings.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { type SemanticReviewPort } from "./validation-session-adapter.ts";
 import { continueWorkflowValidation } from "./validation.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
-import { attachRecorder, makeStubGitPort, makeUi, makeValidationProjectRoot } from "./validation-test-helpers.js";
+import { attachRecorder, makeStubGitPort, makeUi, makeValidationProjectRoot } from "./validation-test-helpers.ts";
 import process from "node:process";
 
 type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;

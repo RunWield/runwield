@@ -1,4 +1,4 @@
-import type { WorktreeRegistryEntry } from "./worktree-registry.js";
+import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 import { open as fsOpen } from "node:fs/promises";
 import {
     lstat as fsLstat,
@@ -14,7 +14,7 @@ import { test } from "node:test";
 import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { listPlans, savePlan } from "../plan-store.js";
+import { listPlans, savePlan } from "../plan-store.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
@@ -36,7 +36,7 @@ import {
     withWorktreeRegistryLock,
     withWorktreeRegistryLockAtPath,
     WorktreeRegistryAmbiguityError,
-} from "./worktree-registry.js";
+} from "./worktree-registry.ts";
 
 type MigrationIssue = Pick<WorktreeRegistryEntry, "id"> &
     Pick<NonNullable<WorktreeRegistryEntry["migrationIssue"]>, "reason">;

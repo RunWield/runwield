@@ -12,7 +12,7 @@ import {
     getGuidedReviewMode,
     getSettingsManager,
     setCustomSetting,
-} from "../../shared/settings.js";
+} from "../../shared/settings.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runSettingsCommand } from "./index.ts";
 

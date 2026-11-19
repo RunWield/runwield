@@ -3,7 +3,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import type { EditorAPI, TuiAPI, UiAPI } from "../ui/tui/types.js";
+import type { EditorAPI, TuiAPI, UiAPI } from "../ui/tui/api.ts";
 
 type FocusableEditor = EditorAPI & Component;
 

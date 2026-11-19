@@ -13,7 +13,7 @@ interface ScreenTextTerminal {
 interface StartedTerminal {
     started: boolean;
 }
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 
 export interface InteractiveTuiComposition {
     uiAPI: UiAPI;

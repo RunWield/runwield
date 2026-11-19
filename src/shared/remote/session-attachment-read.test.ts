@@ -2,7 +2,7 @@ import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { open as fsOpen } from "node:fs/promises";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile, stat as fsStat, truncate as fsTruncate } from "node:fs/promises";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { test } from "node:test";
 import { readdirSync } from "node:fs";
@@ -12,7 +12,7 @@ import { assertEquals, assertRejects, assertThrows } from "../../testing/asserti
 import { dirname, join } from "node:path";
 import { makeControlFixture, makeSessionFixture, within } from "./session-save-test-fixture.ts";
 import { MAX_SESSION_BYTES, type RemoteSessionResponse } from "./session-protocol.ts";
-import { type ImageAttachment } from "../session/types.js";
+import type { ImageAttachment } from "../session/image-attachments.ts";
 import process from "node:process";
 
 type Fixture = Awaited<ReturnType<typeof makeControlFixture>>;

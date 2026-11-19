@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { ok as assert, strictEqual as equal } from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { inspectSemantic } from "./delivery-test-fixture.ts";
 import { loadReviewerPrompt } from "../workflow/validation-prompts.ts";

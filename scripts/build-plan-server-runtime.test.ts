@@ -201,7 +201,7 @@ test("findProhibitedRuntimeFiles rejects broad source and state copies", () => {
             "remote-server.js",
             "dist/workspace-runtime/server.mjs",
             "src/ui/workspace/static/styles.css",
-            "src/ui/workspace/server.js",
+            "src/ui/workspace/server.ts",
             "docs/plans/example.md",
             ".wld/collaboration-secrets.json",
             "data/runwield.sqlite",
@@ -209,7 +209,7 @@ test("findProhibitedRuntimeFiles rejects broad source and state copies", () => {
             "src/ui/workspace/workspace.test.js",
         ]),
         [
-            "src/ui/workspace/server.js",
+            "src/ui/workspace/server.ts",
             "docs/plans/example.md",
             ".wld/collaboration-secrets.json",
             "data/runwield.sqlite",

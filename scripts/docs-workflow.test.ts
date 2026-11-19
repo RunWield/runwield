@@ -694,14 +694,23 @@ esac
     }
 });
 
-for (const extension of ["js", "ts"]) {
-    test(`release recovery runs Golden preparation from ${extension} product source`, async () => {
+const goldenReleaseSourceExtensions = [
+    ["js", "js"],
+    ["ts", "js"],
+    ["ts", "ts"],
+];
+
+for (const [versionExtension, runnerExtension] of goldenReleaseSourceExtensions) {
+    test(`release recovery runs Golden preparation with ${versionExtension} version writer and ${runnerExtension} runner`, async () => {
         const root = await fsMkdtemp(join(tmpdir(), "runwield-golden-compat-"));
         try {
             const workflow = await fsReadFile(join(repositoryRoot, ".github/workflows/release.yml"), "utf8");
             const command = stepRun(jobBlock(workflow, "golden-shards"), "Run Golden TUI release gate");
-            await write(join(root, `scripts/write-version.${extension}`), 'console.log("VERSION-PREPARED");\n');
-            await write(join(root, "scripts/run-tests.js"), 'console.log("GOLDEN-RUN", ...process.argv.slice(2));\n');
+            await write(join(root, `scripts/write-version.${versionExtension}`), 'console.log("VERSION-PREPARED");\n');
+            await write(
+                join(root, `scripts/run-tests.${runnerExtension}`),
+                'console.log("GOLDEN-RUN", ...process.argv.slice(2));\n',
+            );
             const result = await runShell(command, {}, root);
             assertEquals(result.code, 0, decoder.decode(result.stderr));
             const output = decoder.decode(result.stdout);
@@ -711,7 +720,9 @@ for (const extension of ["js", "ts"]) {
             await fsRm(root, { recursive: true });
         }
     });
+}
 
+for (const extension of ["js", "ts"]) {
     test(`release recovery builds container bundles from ${extension} product source`, async () => {
         const root = await fsMkdtemp(join(tmpdir(), "runwield-container-compat-"));
         try {

@@ -4,7 +4,7 @@ import { captureForegroundProcess } from "./captured-process.ts";
 import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /** Finalize only the Plan and Work Record documents owned by a sealed delivery. */
 import { join } from "node:path";
-import { mergeFrontMatterText, parsePlanFrontMatter } from "../plan-store.js";
+import { mergeFrontMatterText, parsePlanFrontMatter } from "../plan-store.ts";
 import { listWorkRecords } from "./work-records/store.ts";
 import { syncWorkRecordToIndex } from "./work-records/index-adapter.ts";
 import type { WorkRecordMnemotecaPort } from "./work-records/mnemoteca-port.ts";

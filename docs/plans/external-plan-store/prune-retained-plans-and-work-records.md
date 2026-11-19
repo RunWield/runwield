@@ -7,7 +7,7 @@ affectedPaths:
     - "src/cmd/plans/prune.ts"
     - "src/shared/work-records/"
     - "src/cmd/"
-    - "src/shared/settings.js"
+    - "src/shared/settings.ts"
     - "src/shared/remote/"
     - "docs/domain-language.md"
     - "docs/prd/runwield-core-prd.md"
@@ -61,7 +61,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/cmd/plans/prune.ts` — dry-run and confirmed package pruning
 - `src/shared/work-records/` — record retention, dependency pins and prune operations
 - `src/cmd/` — Work Record prune command and reminders
-- `src/shared/settings.js` — independent retention settings and defaults
+- `src/shared/settings.ts` — independent retention settings and defaults
 - `src/shared/remote/` — owner-side pruning plus execution-host copy cleanup
 - `docs/domain-language.md` — home-owned Plan Archive Retention and record retention relationships
 - `docs/prd/runwield-core-prd.md` — lasting retention and completed proposal requirements
@@ -88,7 +88,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
 
 ```sh
-bun scripts/run-tests.js src/shared/plan-archive-retention.test.ts src/cmd/plans/prune.test.ts src/shared/work-records/work-records.test.js
+bun scripts/run-tests.ts src/shared/plan-archive-retention.test.ts src/cmd/plans/prune.test.ts src/shared/work-records/work-records.test.ts
 ```
 
 New coverage below is proposed, not an existing passing test inventory. Planner must select concrete test files and

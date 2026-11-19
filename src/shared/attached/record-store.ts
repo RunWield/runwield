@@ -10,7 +10,7 @@ import {
     stat as fsStat,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
+import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
 import { getLockHostname, isLockHolderGone, isLockHolderUnattributable } from "../process-liveness.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";

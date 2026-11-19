@@ -55,7 +55,7 @@ async function fixture(fn: (fixture: RuntimeFixture) => Promise<void>) {
         for (const relative of [
             "scripts/build-metadata.ts",
             "runtime-root.ts",
-            "src/constants.js",
+            "src/constants.ts",
             "src/shared/foreground-process.ts",
             "src/shared/linux-process-group.ts",
             "src/shared/captured-process.ts",

@@ -4,7 +4,7 @@ import { rmdir as fsRmdir } from "node:fs/promises";
  * Archive a terminal Epic with its child Plans.
  */
 
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import {
     archivePlan,
     compareChildPlansByOrder,
@@ -12,15 +12,15 @@ import {
     isRecoverableWorktreeStatus,
     isTerminalArchivableStatus,
     loadPlan,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { runArchiveTransition } from "../../shared/workflow/state-transition.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { startBackgroundArchive } from "./archive-background.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 import { relative } from "node:path";
-import type { PlanFrontMatter } from "../../plan-store.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 export interface ArchiveEpicPlanRef {
     planName: string;

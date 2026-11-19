@@ -1,6 +1,6 @@
 /** A bounded view of a running turn. The transcript remains the conversation history. */
 
-import type { SessionRuntimeEvent } from "./session-runtime-events.js";
+import type { SessionRuntimeEvent } from "./session-runtime-events.ts";
 
 export function appendLiveSessionEvent(events: SessionRuntimeEvent[], event: SessionRuntimeEvent) {
     if (event.eventId) return; // Saved history is loaded through transcript pagination.

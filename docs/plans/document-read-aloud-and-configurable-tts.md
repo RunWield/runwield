@@ -3,11 +3,11 @@ classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
 affectedPaths:
-    - "src/shared/settings.js"
-    - "src/shared/session/session.js"
+    - "src/shared/settings.ts"
+    - "src/shared/session/session.ts"
     - "src/tools/registry.ts"
     - "src/ui/review/review-launcher.ts"
-    - "src/ui/workspace/server.js"
+    - "src/ui/workspace/server.ts"
     - "src/ui/workspace/react/PlanReviewSurface.tsx"
     - "src/ui/workspace/react/ArtifactReadSurface.tsx"
     - "docs/prd/runwield-core-prd.md"
@@ -191,11 +191,11 @@ only when discovery changes approved intent — the change reaches another subsy
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
 - New `src/shared/speech/` modules — typed settings, Markdown preparation, asset cache, and endpoint synthesis.
-- `src/shared/settings.js` and `docs/user-documentation/settings.md` — integrate personal settings without bypassing
+- `src/shared/settings.ts` and `docs/user-documentation/settings.md` — integrate personal settings without bypassing
   existing locking or losing other custom keys; document enablement, voices, first-use storage, and endpoint setup.
-- New `src/tools/read-aloud.ts`, `src/tools/registry.ts`, `src/shared/session/session.js`, and shared Agent guidance —
+- New `src/tools/read-aloud.ts`, `src/tools/registry.ts`, `src/shared/session/session.ts`, and shared Agent guidance —
   expose the capability in native and bridged root turns, with correct lifetime and result reporting.
-- `src/ui/review/review-launcher.ts`, `src/ui/workspace/server.js`, relevant owner/review routes, and
+- `src/ui/review/review-launcher.ts`, `src/ui/workspace/server.ts`, relevant owner/review routes, and
   `src/ui/workspace/server/review-host.ts` — deliver authorized speech requests, assets, settings, and acknowledgements
   across standalone, linked-document, and owner Workspace readers without changing review decisions.
 - `src/ui/workspace/react/PlanReviewSurface.tsx`, `ArtifactReadSurface.tsx`, and new shared speech controls/worker —
@@ -211,7 +211,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `reviewHost`, `startArtifactReadSurface`, and `BrowserPort` — browser serving/opening and graceful URL fallback.
 - `readSessionArtifact` and existing contained-file readers — real-path containment principles; do not require a
   registered artifact merely to read a newly produced project Markdown file.
-- `create_image` composition in `session.js` — configured capability exposure and bridged-tool wiring patterns.
+- `create_image` composition in `session.ts` — configured capability exposure and bridged-tool wiring patterns.
 - Existing Markdown tokens, design-system controls, `WorkspaceHeaderActionsPortal`, and loading indicators — avoid
   duplicated parsing and separate toolbar designs.
 
@@ -238,7 +238,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
    registration, and Plan lifecycle unchanged.
 6. Focused tests cover settings, conversion, asset/cache HTTP behavior, endpoint bytes, browser controls, and tool
    composition using real temporary files/servers. Fakes replace only external network/inference/audio/browser
-   capabilities. No owned settings/cache/lifecycle injection seams or seam-baseline changes are introduced.
+   capabilities. No owned settings/cache/lifecycle injection seams are introduced.
 7. The owning Core capability and Workspace scenarios match the delivered settings, tool, browser playback, first-use
    download, and offline behavior. Settings documentation and glossary ship in the same change. Distinguish remaining
    targets such as automatic response narration, native audio, voice cloning, and arbitrary host-plugin exposure from
@@ -252,8 +252,8 @@ the owner's built-in-download choice is already settled.
 ## Verification Plan
 
 - Use Bun 1.4.3 and `bun run install:locked` before checks. Run focused tests with
-  `bun scripts/run-tests.js src/shared/speech src/tools/read-aloud.test.ts` and the relevant modified Workspace/Session
-  test files. Run `bun run workspace:check`, `bun run workspace:build`, `bun run seams:check`, and
+  `bun scripts/run-tests.ts src/shared/speech src/tools/read-aloud.test.ts` and the relevant modified Workspace/Session
+  test files. Run `bun run workspace:check`, `bun run workspace:build`, and
   `bun run fmt:check <changed files>`. RunWield owns the full CI gate after implementation.
 - Conversion fixtures include front matter, headings, tables, callouts, links, inline/fenced code, diagrams, HTML,
   embedded Plan Questions, Unicode, empty content, and a sentence over the model limit. Assert ordered meaningful text

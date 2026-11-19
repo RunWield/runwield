@@ -11,7 +11,7 @@ import {
     ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY,
     PLAN_SERVER_URL_SETTING_KEY,
     setCustomSetting,
-} from "./settings.js";
+} from "./settings.ts";
 
 test("settings read JSONC and merge actual global/project values with project precedence", async () => {
     await withRuntimeCommandFixture("settings-merge-", async ({ homeDir, projectRoot }) => {

@@ -1,5 +1,5 @@
 import type { PlanEventDetails } from "./plan-lifecycle.ts";
-import type { PlanFrontMatterInput, DeliveryEvidence } from "../../plan-store.js";
+import type { PlanFrontMatterInput, DeliveryEvidence } from "../../plan-store.ts";
 import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
 
 import { makeTempDirectory } from "../../testing/temp-file.ts";
@@ -17,7 +17,7 @@ import {
     recordPlanEvent,
     stageValidationPassedInExecutionWorktree,
 } from "./plan-lifecycle.ts";
-import { injectFrontMatter, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { injectFrontMatter, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { COLLABORATION_STATE_REMOTE_CANONICAL, SharedPlanLockError } from "../collaboration/lock.ts";
 
 async function updatePlanFrontMatterForTest(cwd: string, planName: string, updates: PlanFrontMatterInput) {

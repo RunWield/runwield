@@ -6,7 +6,7 @@ affectedPaths:
     - "src/acp/"
     - "src/shared/workflow/"
     - "src/ui/workspace/server/owner-plan-actions.ts"
-    - "src/ui/workspace/server/session-continuation.js"
+    - "src/ui/workspace/server/session-continuation.ts"
     - "src/ui/workspace/components/"
     - "src/ui/workspace/react/PlanReviewSurface.tsx"
     - "src/ui/desktop/"
@@ -48,8 +48,8 @@ Desktop renders the review directly. Launching or embedding the standalone revie
 The boundaries this change is expected to touch. This list is guidance, not an allowlist: verify the real footprint during implementation and change whatever the Implementation Steps need, including files not named here. Stop and report only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
 - `src/acp/`, existing Plan-store and `src/shared/workflow/` owners — scoped Plan reads, revision-checked edits and review decisions.
-- `src/ui/workspace/server/owner-plan-actions.ts`, Plan adapters, and relevant `session-continuation.js` behavior — move reusable authority out of UI server code.
-- `src/ui/workspace/components/Board.tsx`, `PlanDetail.jsx`, Epic/Plan cards, and `react/PlanReviewSurface.tsx` — shared composition and navigation.
+- `src/ui/workspace/server/owner-plan-actions.ts`, Plan adapters, and relevant `session-continuation.ts` behavior — move reusable authority out of UI server code.
+- `src/ui/workspace/components/Board.tsx`, `PlanDetail.tsx`, Epic/Plan cards, and `react/PlanReviewSurface.tsx` — shared composition and navigation.
 - `src/ui/desktop/` and shared client — integrated Plan destinations and resources.
 - Workspace/ACP/Core applicable scenarios, contract inventory, and ADR references — same-change synchronization.
 
@@ -70,7 +70,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/ui/workspace/owner-plan-actions.test.ts src/ui/workspace/workspace-plan-review.integration.test.ts src/ui/workspace/workspace-plan-review-ux.test.tsx src/ui/workspace/plan-review-cross-surface.integration.test.ts` and `bun run seams:check`.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/ui/workspace/owner-plan-actions.test.ts src/ui/workspace/workspace-plan-review.integration.test.ts src/ui/workspace/workspace-plan-review-ux.test.tsx src/ui/workspace/plan-review-cross-surface.integration.test.ts`.
 - Planner names new real-process Plan read/save/review checks. Assert duplicate request, reused request ID with different input, stale generation/revision, wrong Project, competing writer, and approval-for-later behavior against real stores/locks.
 - Headed verification uses desktop Plan/Epic board -> detail -> edit -> review -> approve for later. Discover and record the normal desktop dev command and renderer URL/origin. Exercise annotations, saved conversation, version changes, keyboard access, and a large Plan.
 - Assert no standalone browser page opens for desktop review. Separately verify standalone Plan review remains functional without Electron; changing imports/transport must not delete its behavioral coverage.

@@ -1,4 +1,4 @@
-import { Container, fuzzyFilter, getKeybindings, Input, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, fuzzyFilter, getKeybindings, Input, matchesKey, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Focusable, TUI } from "@earendil-works/pi-tui";
 import type { RunWieldModel, RunWieldModelRegistry } from "../../shared/models/model-registry.ts";
 import { theme } from "../theme/theme.ts";
@@ -60,9 +60,10 @@ export class RunWieldModelSelectorComponent extends Container implements Focusab
     private filteredModels: ModelItem[] = [];
     private selectedIndex = 0;
     private errorMessage = "";
-    private refreshStatusMessage = "Refreshing Pi model catalogs…";
+    private refreshStatusMessage = "";
     private refreshStatusSuccess = false;
     private closed = false;
+    private refreshController?: AbortController;
     private _focused = false;
 
     constructor(options: RunWieldModelSelectorOptions) {
@@ -109,7 +110,6 @@ export class RunWieldModelSelectorComponent extends Container implements Focusab
         this.loadModelsFromRegistry();
         this.filterModels(options.initialSearchInput || "");
         this.tui.requestRender();
-        void this.refreshModels();
     }
 
     get focused(): boolean {
@@ -132,14 +132,27 @@ export class RunWieldModelSelectorComponent extends Container implements Focusab
         );
         this.filteredModels = this.allModels;
         const currentIndex = this.filteredModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
-        this.selectedIndex = currentIndex >= 0
-            ? currentIndex
-            : Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
+        this.selectedIndex =
+            currentIndex >= 0
+                ? currentIndex
+                : Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
     }
 
-    private async refreshModels(): Promise<void> {
+    private async refreshModels(force = false): Promise<void> {
+        if (this.refreshController) return;
+        const controller = new AbortController();
+        this.refreshController = controller;
+        const timeout = setTimeout(() => controller.abort(), 15_000);
+        this.errorMessage = "";
+        this.refreshStatusMessage = "Refreshing Pi model catalogs…";
+        this.refreshStatusSuccess = false;
+        this.updateList();
+        this.tui.requestRender();
         try {
-            await this.modelRegistry.refresh();
+            await this.modelRegistry.refresh({
+                signal: controller.signal,
+                ...(force ? { allowNetwork: true, force: true } : {}),
+            });
             if (this.closed) return;
             this.errorMessage = this.modelRegistry.getError() || "";
             this.refreshStatusMessage = this.errorMessage ? "" : "Pi model catalogs refreshed.";
@@ -154,21 +167,36 @@ export class RunWieldModelSelectorComponent extends Container implements Focusab
             this.refreshStatusMessage = "";
             this.updateList();
             this.tui.requestRender();
+        } finally {
+            clearTimeout(timeout);
+            this.refreshController = undefined;
         }
     }
 
     private close(): void {
         this.closed = true;
+        this.refreshController?.abort();
     }
 
     private filterModels(query: string): void {
         this.filteredModels = query ? fuzzyFilter(this.allModels, query, modelSearchText) : this.allModels;
-        this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
+        this.selectedIndex = Math.min(this.selectedIndex, this.filteredModels.length - 1);
         this.updateList();
     }
 
     private updateList(): void {
         this.listContainer.clear();
+        const refreshSelected = this.selectedIndex === -1;
+        this.listContainer.addChild(
+            new Text(
+                theme.fg(
+                    refreshSelected ? "accent" : "muted",
+                    `${refreshSelected ? "→ " : "  "}Refresh catalog (Ctrl+R)`,
+                ),
+                0,
+                0,
+            ),
+        );
         const maxVisible = 10;
         const startIndex = Math.max(
             0,
@@ -188,7 +216,7 @@ export class RunWieldModelSelectorComponent extends Container implements Focusab
             this.listContainer.addChild(new Text(`${prefix}${reference} ${label}${checkmark}`, 0, 0));
         }
 
-        if (startIndex > 0 || endIndex < this.filteredModels.length) {
+        if (this.selectedIndex >= 0 && (startIndex > 0 || endIndex < this.filteredModels.length)) {
             this.listContainer.addChild(
                 new Text(theme.fg("muted", `  (${this.selectedIndex + 1}/${this.filteredModels.length})`), 0, 0),
             );
@@ -246,14 +274,14 @@ export class RunWieldModelSelectorComponent extends Container implements Focusab
 
     handleInput(keyData: string): void {
         const keybindings = getKeybindings();
-        if (keybindings.matches(keyData, "tui.select.up")) {
-            if (this.filteredModels.length === 0) return;
-            this.selectedIndex = this.selectedIndex === 0 ? this.filteredModels.length - 1 : this.selectedIndex - 1;
+        if (matchesKey(keyData, "ctrl+r")) {
+            void this.refreshModels(true);
+        } else if (keybindings.matches(keyData, "tui.select.up")) {
+            this.selectedIndex = this.selectedIndex === -1 ? this.filteredModels.length - 1 : this.selectedIndex - 1;
             this.updateList();
             this.tui.requestRender();
         } else if (keybindings.matches(keyData, "tui.select.down")) {
-            if (this.filteredModels.length === 0) return;
-            this.selectedIndex = this.selectedIndex === this.filteredModels.length - 1 ? 0 : this.selectedIndex + 1;
+            this.selectedIndex = this.selectedIndex === this.filteredModels.length - 1 ? -1 : this.selectedIndex + 1;
             this.updateList();
             this.tui.requestRender();
         } else if (keybindings.matches(keyData, "tui.select.confirm")) {
@@ -269,6 +297,10 @@ export class RunWieldModelSelectorComponent extends Container implements Focusab
     }
 
     private selectCurrent(): void {
+        if (this.selectedIndex === -1) {
+            void this.refreshModels(true);
+            return;
+        }
         const selected = this.filteredModels[this.selectedIndex];
         if (!selected) return;
         this.close();

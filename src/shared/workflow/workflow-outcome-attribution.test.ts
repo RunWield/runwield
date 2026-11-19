@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { PLAN_ASSOCIATION_CUSTOM_TYPE } from "../session/plan-association.ts";
-import { encodeCwdForSessionDir, getRunWieldSessionsBaseDir } from "../session/root-session.js";
+import { encodeCwdForSessionDir, getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 
 test("outcomes use only the committed Plan association in their observation time scope", async () => {

@@ -4,14 +4,14 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
-import { findPlansByParent, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { findPlansByParent, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { addEntry } from "../worktree-registry.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { addEntry } from "../worktree-registry.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { continueWorkflowValidation } from "./validation.ts";
-import { attachRecorder, makeUi } from "./validation-test-helpers.js";
+import { attachRecorder, makeUi } from "./validation-test-helpers.ts";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// app\n" });
 

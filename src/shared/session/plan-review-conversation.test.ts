@@ -4,9 +4,9 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { strictEqual as assertStrictEquals } from "node:assert/strict";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
+import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.ts";
 
 test("Plan review captures only the selected Architect and keeps the same conversation through dehydration", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));

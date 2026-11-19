@@ -1,6 +1,6 @@
 /** Router command, also used as the default command. */
 
-import { COMMAND_NAMES } from "../registry.js";
+import { COMMAND_NAMES } from "../registry.ts";
 import { printCommandHelp } from "../help/index.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
 

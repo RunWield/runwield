@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { Window } from "happy-dom";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 import { test } from "node:test";
 
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -12,7 +12,7 @@ import { loadOwnerUsage } from "./server/owner-usage.ts";
 import { UsageReport } from "./react/UsageReport.tsx";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.js";
+import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { UsageTrend } from "../design-system/components/react/UsageTrend.tsx";

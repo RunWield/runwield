@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
@@ -8,7 +8,7 @@ import { defineGitFixture } from "../git-test-fixture.ts";
 import { SessionHost } from "../session/session-host.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
-import type { RuntimeValidationProgress } from "../session/session-runtime-events.js";
+import type { RuntimeValidationProgress } from "../session/session-runtime-events.ts";
 import { createTuiInteractionAdapter } from "../../ui/tui/runtime-interaction-adapter.ts";
 import { readDeliveryEvidence } from "./delivery-evidence.ts";
 import {
@@ -19,7 +19,7 @@ import {
     makeValidationProjectRoot,
     NO_ISOLATED_AGENT_PORT,
     runValidationPhase,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 interface ReviewProgressObservation {
     type: string;

@@ -1,6 +1,6 @@
 import { serveHttp } from "../../shared/http-server.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * Internal package smoke checks that must execute inside the packaged CLI.
@@ -8,7 +8,7 @@ import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 
 import { join } from "node:path";
 import process from "node:process";
-import { WORK_RECORDS_DIR_NAME } from "../../constants.js";
+import { WORK_RECORDS_DIR_NAME } from "../../constants.ts";
 import { publishExecutionWorktreeIsolated } from "../../shared/isolated-publication.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../../shared/runwield-owned-paths.ts";
 import { checkPackagedCodemode } from "./codemode.ts";

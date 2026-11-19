@@ -10,7 +10,7 @@ import { stat as fsStat } from "node:fs/promises";
  * missing field would make a destructive action unsafe.
  */
 
-import { loadPlan, resolvePlanExecutionPolicy, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, resolvePlanExecutionPolicy, updatePlanFrontMatter } from "../../plan-store.ts";
 import { buildPlanEventUpdates } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveValidationExecutionContext } from "../../shared/workflow/execution-context.ts";
 import {
@@ -20,21 +20,21 @@ import {
 } from "../../shared/workflow/validation-user-messages.ts";
 import { runPlanFrontMatterTransition, runReviewReopenTransition } from "../../shared/workflow/state-transition.ts";
 import { getWorkflowDiff } from "../../shared/workflow/git-snapshot.ts";
-import { getWorktreeStatus, slugify } from "../../shared/worktree.js";
-import { WORKTREE_BRANCH_PREFIX } from "../../constants.js";
+import { getWorktreeStatus, slugify } from "../../shared/worktree.ts";
+import { WORKTREE_BRANCH_PREFIX } from "../../constants.ts";
 import {
     findActiveByPlanName as findWorktreeByPlanName,
     findById as findWorktreeById,
-} from "../../shared/worktree-registry.js";
+} from "../../shared/worktree-registry.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { PlanStatus } from "../../shared/workflow/plan-lifecycle.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
 
 /**
@@ -173,7 +173,7 @@ export interface ReopenPlanForReviewOptions {
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} plan
  * @returns {Promise<RecoveryWorktreeContext | null>}
  */
 export async function resolveRecoveryWorktree(
@@ -212,9 +212,9 @@ export async function resolveRecoveryWorktree(
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter, revision?: string }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter, revision?: string }} plan
  * @param {RecoveryWorktreeContext | null} context
- * @returns {Promise<import('../../plan-store.js').PlanFrontMatter>}
+ * @returns {Promise<import('../../plan-store.ts').PlanFrontMatter>}
  */
 export async function persistRecoveredWorktreeMetadata(
     projectRoot: string,
@@ -271,7 +271,7 @@ export function assertRecoveryWorktreeIsManaged(
  *
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, path: string, body: string, attrs: import('../../plan-store.js').PlanFrontMatter, revision?: string }} opts.plan
+ * @param {{ planName: string, path: string, body: string, attrs: import('../../plan-store.ts').PlanFrontMatter, revision?: string }} opts.plan
  * @param {import('../../shared/workflow/plan-lifecycle.ts').PlanStatus} opts.currentStatus
  * @param {RecoveryWorktreeContext | null | undefined} [opts.worktreeContext]
  * @param {PlanSessionSurface} opts.session
@@ -362,7 +362,7 @@ export async function pathExists(path: string | undefined): Promise<boolean> {
  * @param {string} action
  * @param {string} planName
  * @param {string} error
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  */
 export function reportInvalidRecoveryPolicy(
     action: string,
@@ -379,10 +379,10 @@ export function reportInvalidRecoveryPolicy(
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} plan
  * @param {RecoveryWorktreeContext | null} context
  * @param {PlanSessionSurface} session
- * @param {import('../../ui/tui/types.js').UiAPI} [uiAPI]
+ * @param {import('../../ui/tui/api.ts').UiAPI} [uiAPI]
  * @param {string} [action]
  * @returns {Promise<RecoveryWorkflowState | null>}
  */
@@ -468,8 +468,8 @@ export async function rehydrateActiveRecoveryWorkflow(
  * Append recovery context for a partially executed Plan.
  *
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter, body: string, markdown: string }} plan
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter, body: string, markdown: string }} plan
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @param {RecoveryWorktreeContext | null} worktreeContext
  * @returns {Promise<void>}
  */
@@ -540,7 +540,7 @@ export async function appendRecoveryReport(
  * Ask for destructive baseline reset confirmation.
  *
  * @param {string} planName
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
 export async function confirmBaselineReset(planName: string, uiAPI: UiAPI): Promise<boolean> {
@@ -556,7 +556,7 @@ export async function confirmBaselineReset(planName: string, uiAPI: UiAPI): Prom
 
 /**
  * @param {string} planName
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
 export async function confirmMetadataOnlyRecoveryCleanup(_planName: string, uiAPI: UiAPI): Promise<boolean> {
@@ -570,7 +570,7 @@ export async function confirmMetadataOnlyRecoveryCleanup(_planName: string, uiAP
 
 /**
  * @param {string} planName
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @param {string} action
  * @returns {Promise<boolean>}
  */
@@ -585,7 +585,7 @@ export async function confirmWorktreeAction(planName: string, uiAPI: UiAPI, acti
 /**
  * @param {string} planName
  * @param {RecoveryWorktreeContext | null} worktreeContext
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
 export async function confirmMissingWorktreeRecreate(
@@ -609,14 +609,14 @@ export async function confirmMissingWorktreeRecreate(
 /**
  * @param {string} planName
  * @param {RecoveryWorktreeContext | null} worktreeContext
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
 /**
  * @param {string} projectRoot
  * @param {string} planName
  * @param {RecoveryWorktreeContext | null} worktreeContext
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
 export async function confirmRecoveryWorktreeAvailable(

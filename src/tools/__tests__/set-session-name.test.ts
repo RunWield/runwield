@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { HostedSession } from "../../shared/session/hosted-session.js";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { createSetSessionNameTool } from "../set-session-name.ts";
 
 interface CapturedRuntimeEvent {

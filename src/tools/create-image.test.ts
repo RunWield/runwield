@@ -30,16 +30,16 @@ import { PhotonImage } from "@silvia-odwyer/photon-node";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
-import { getCwd, getHomeDir, SUBAGENTS } from "../constants.js";
+import { getCwd, getHomeDir, SUBAGENTS } from "../constants.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
-import { __resetSettingsForTests } from "../shared/settings.js";
+import { __resetSettingsForTests } from "../shared/settings.ts";
 import { createImage } from "../shared/image-generation.ts";
 import { persistImageAttachment } from "../shared/session/image-attachments.ts";
-import { buildAgentSession, composeClaudeCliBridgedTools } from "../shared/session/session.js";
+import { buildAgentSession, composeClaudeCliBridgedTools } from "../shared/session/session.ts";
 import { CLAUDE_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "../shared/session/backends/claude-cli/mcp-bridge.ts";
 import { resolveImageGenerationSettings } from "../shared/image-generation-settings.ts";
 import type { ImageGenerationSettings } from "../shared/image-generation-settings.ts";
-import { loadAgentDef } from "../shared/session/agents.js";
+import { loadAgentDef } from "../shared/session/agents.ts";
 import { loadSubAgentDefinition } from "../shared/session/subagent-definitions.ts";
 import { resolveDelegatedToolNames } from "./delegate-agent.ts";
 
@@ -338,6 +338,31 @@ test("create_image routes agy-cli to a real subprocess with matching model/effor
         assertEquals(result.model, "agy-cli/gemini-3.8-flash");
         assertEquals(result.width, 4);
         assertEquals(f.requests.length, 0);
+    }));
+
+test("create_image uses concrete new family IDs and the shared effort mapping", () =>
+    withFixture(async (f) => {
+        const argsPath = join(f.cwd, "args.json");
+        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
+        for (const [family, thinking, effort] of [
+            ["gemini-4-argon", "medium", "medium"],
+            ["gemini-4-carbon", "low", "low"],
+            ["gemini-4-carbon", "medium", "medium"],
+            ["gemini-4-carbon", "max", "high"],
+            ["gemini-4-hydrogen", "xhigh", "xhigh"],
+        ]) {
+            await f.settings({ model: `agy-cli/${family}`, thinkingLevel: thinking });
+            const result = await createImage({
+                cwd: f.cwd,
+                prompt: "red mug",
+                outputPath: `${family}-${thinking}.png`,
+            });
+            const args: string[] = JSON.parse(await fsReadFile(argsPath, "utf8"));
+            assertEquals(args[args.indexOf("--model") + 1], `${family}-${effort}`);
+            assertEquals(args[args.indexOf("--effort") + 1], effort);
+            assertEquals(result.model, `agy-cli/${family}`);
+            assertEquals(result.width, 4);
+        }
     }));
 
 test("create_image does not trust Agy final SUCCESS or paths from other runs", () =>

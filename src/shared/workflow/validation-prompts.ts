@@ -5,11 +5,11 @@
  * the Reviewer-Feedback Engineer, and the manual QA checklist.
  */
 
-import { SUBAGENTS } from "../../constants.js";
+import { SUBAGENTS } from "../../constants.ts";
 import { loadSubAgentDefinition } from "../session/subagent-definitions.ts";
 
 // Validation prompts use the same layered role names in every runtime.
-export { getAgentDisplayName } from "../session/agents.js";
+export { getAgentDisplayName } from "../session/agents.ts";
 
 /**
  * Load reviewer as a bare workflow prompt instead of a normal agent definition.
@@ -28,7 +28,7 @@ export { getAgentDisplayName } from "../session/agents.js";
  *
  * @param {"discovery" | "verify"} [mode]
  * @param {string} [projectRoot]
- * @returns {Promise<import('../session/types.js').AgentDefinition>}
+ * @returns {Promise<import('../session/agents.ts').AgentDefinition>}
  */
 export async function loadReviewerPrompt(mode: "discovery" | "verify" = "discovery", projectRoot?: string) {
     return await loadSubAgentDefinition(SUBAGENTS.REVIEWER, {
@@ -45,7 +45,7 @@ export async function loadReviewerPrompt(mode: "discovery" | "verify" = "discove
  * dispatches it — a user never selects it, so it must stay out of `/agent`
  * listings and hidden subagent targets.
  *
- * @returns {Promise<import('../session/types.js').AgentDefinition>}
+ * @returns {Promise<import('../session/agents.ts').AgentDefinition>}
  */
 export async function loadReviewerFeedbackEngineerDef() {
     return await loadSubAgentDefinition(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
@@ -54,7 +54,7 @@ export async function loadReviewerFeedbackEngineerDef() {
 /**
  * Load the post-verification Manual QA generator as a bare, tool-free prompt.
  *
- * @returns {Promise<import('../session/types.js').AgentDefinition>}
+ * @returns {Promise<import('../session/agents.ts').AgentDefinition>}
  */
 export async function loadManualQaPrompt() {
     return await loadSubAgentDefinition(SUBAGENTS.MANUAL_QA);

@@ -1,6 +1,6 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -16,13 +16,13 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { addEntry, findById } from "../../shared/worktree-registry.js";
+import { addEntry, findById } from "../../shared/worktree-registry.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
-import type { EditorAPI, UiAPI } from "../../ui/tui/types.js";
+import type { EditorAPI, UiAPI } from "../../ui/tui/api.ts";
 
 const seed = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "README.md": "Project\n" });
 const driver = fromFileUrl(new URL("../../shared/workflow/testing/publication-process-driver.ts", import.meta.url));

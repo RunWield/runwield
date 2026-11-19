@@ -110,9 +110,11 @@ test("recovery qualifies immutable tagged product with current workflow tooling"
     }
     assertEquals(checkout(jobs["ci-shards"]).with?.ref, "${{ github.sha }}");
     assertStringIncludes(script(jobs["ci-shards"]), 'git checkout -B main "$GITHUB_SHA"');
+    assertStringIncludes(script(jobs["golden-shards"]), "runner=scripts/run-tests.ts");
+    assertStringIncludes(script(jobs["golden-shards"]), "runner=scripts/run-tests.js");
     assertStringIncludes(
         script(jobs["golden-shards"]),
-        "bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios",
+        'bun "$runner" --isolated src/ui/tui/testing src/ui/tui/golden-scenarios',
     );
     assertStringIncludes(script(jobs["release-check"]), "--runtime bun --binary-only");
     assertStringIncludes(

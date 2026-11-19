@@ -2,7 +2,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 // @ts-nocheck: Astro workspace check uses browser tsconfig without Deno/JSR test globals.
 // @ts-nocheck: Astro workspace check uses browser tsconfig without Deno/JSR test globals.
 import { test } from "node:test";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { loadPlanActionEvidence, type PlanActionRequest } from "../../shared/workflow/plan-actions.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { runOwnerPlanAction } from "./server/owner-plan-actions.ts";

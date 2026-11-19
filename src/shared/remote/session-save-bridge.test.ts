@@ -1,7 +1,7 @@
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { serveHttp } from "../http-server.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { readdirSync } from "node:fs";
 import { stat as fsStat, readFile as fsReadFile } from "node:fs/promises";

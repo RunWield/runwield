@@ -7,20 +7,20 @@ import {
     buildWorkflowOnlyAgentMessage,
     isWorkflowOnlyAgent,
     listAvailableAgents,
-} from "../../shared/session/agents.js";
+} from "../../shared/session/agents.ts";
 import { applyUserAgentSelection, listUserAgentOptions } from "../../shared/session/user-selection.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { AGENTS, getCwd } from "../../constants.js";
-import { COMMAND_NAMES } from "../registry.js";
+import { AGENTS, getCwd } from "../../constants.ts";
+import { COMMAND_NAMES } from "../registry.ts";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
 
 export { getAgentCompletions } from "./getArgumentCompletions.ts";
 
 interface AgentsCommandOptions {
-    tui?: import("../../ui/tui/types.js").TuiAPI;
-    uiAPI?: import("../../ui/tui/types.js").UiAPI;
-    editor?: import("../../ui/tui/types.js").EditorAPI;
+    tui?: import("../../ui/tui/api.ts").TuiAPI;
+    uiAPI?: import("../../ui/tui/api.ts").UiAPI;
+    editor?: import("../../ui/tui/api.ts").EditorAPI;
     sessionId?: string;
     sessionRuntime?: SessionRuntime;
     sessionPort: InteractiveSessionPort;
@@ -28,9 +28,9 @@ interface AgentsCommandOptions {
 }
 
 interface AgentsTuiOptions {
-    tui?: import("../../ui/tui/types.js").TuiAPI;
-    uiAPI: import("../../ui/tui/types.js").UiAPI;
-    editor?: import("../../ui/tui/types.js").EditorAPI;
+    tui?: import("../../ui/tui/api.ts").TuiAPI;
+    uiAPI: import("../../ui/tui/api.ts").UiAPI;
+    editor?: import("../../ui/tui/api.ts").EditorAPI;
     sessionId?: string;
     sessionRuntime?: SessionRuntime;
 }
@@ -106,12 +106,12 @@ async function runAgentsCommandTUI(
             `Could not switch to Agent "${chosenAgent}": ${switchResult.error}. The active Agent did not change. Use /model or /settings to choose an available model, then try /agent again.`,
             true,
         );
-        if (tui && editor) tui.setFocus(editor as import("../../ui/tui/types.js").EditorAPI & Component);
+        if (tui && editor) tui.setFocus(editor as import("../../ui/tui/api.ts").EditorAPI & Component);
         return "failed";
     }
     if (!sessionRuntime.getSessionSnapshot(sessionId)?.name) setTerminalTitleForName(undefined);
 
-    if (tui && editor) tui.setFocus(editor as import("../../ui/tui/types.js").EditorAPI & Component);
+    if (tui && editor) tui.setFocus(editor as import("../../ui/tui/api.ts").EditorAPI & Component);
     return "succeeded";
 }
 

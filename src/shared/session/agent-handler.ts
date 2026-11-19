@@ -17,7 +17,7 @@ import { systemLocalCIPort } from "../workflow/validation-local-ci.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "../workflow/decisions.ts";
-import { recordWorkflowMetric } from "../workflow/metrics.js";
+import { recordWorkflowMetric } from "../workflow/metrics.ts";
 import {
     runMechanicalValidation,
     shouldRunWorkflowValidation,
@@ -26,8 +26,8 @@ import {
 } from "../workflow/validation.ts";
 import { runWorkflowValidationToStableBoundary } from "../workflow/validation.ts";
 import { switchActiveAgent } from "./agent-switching.ts";
-import { getAgentDisplayName } from "./agents.js";
-import { emitHostedSessionRuntimeEvent, emitSystemStatus, RuntimeEventTypes } from "./session-runtime-events.js";
+import { getAgentDisplayName } from "./agents.ts";
+import { emitHostedSessionRuntimeEvent, emitSystemStatus, RuntimeEventTypes } from "./session-runtime-events.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import {
     acknowledgeTaskCompletion,
@@ -40,24 +40,74 @@ import {
     type TriageReportEventPayload,
     type WorkflowToolEvent,
 } from "../workflow/workflow-tool-events.ts";
-import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
-import { AGENTS } from "../../constants.js";
+import { getStoredPlanPath, loadPlan } from "../../plan-store.ts";
+import { AGENTS } from "../../constants.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { isValidationCheckpoint, validationCheckpointCanResume } from "../workflow/validation-checkpoint.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ImageAttachment } from "./image-attachments.ts";
 
-type ActiveExecutionWorkflow = import("./hosted-session.js").ActiveExecutionWorkflow;
-type HostedSession = import("./hosted-session.js").HostedSession;
-type ImageAttachment = import("./types.js").ImageAttachment;
+type ActiveExecutionWorkflow = import("./hosted-session.ts").ActiveExecutionWorkflow;
+type HostedSession = import("./hosted-session.ts").HostedSession;
 type SessionManager = import("@earendil-works/pi-coding-agent").SessionManager;
 type TriageMeta = import("../../tools/plan-written.ts").TriageMeta;
 type PlanExecutionResult = import("../workflow/workflow.ts").PlanExecutionResult;
 type WorkflowMetric = Parameters<typeof recordWorkflowMetric>[0];
 
-interface AgentHandlerCompleteResult {
+export type SessionContentBlock = {
+    type?: string;
+    text?: string;
+    // JavaScript Session Manager adapters can carry provider-specific content fields.
+    [key: string]: unknown;
+};
+
+export type SessionMessageLike = {
+    role: string;
+    content: SessionContentBlock[];
+    stopReason?: string;
+    errorMessage?: string;
+};
+
+export type BashExecutionMessageLike = {
+    role: "bashExecution";
+    command: string;
+    output: string;
+    exitCode: number | undefined;
+    cancelled: boolean;
+    truncated: boolean;
+    fullOutputPath?: string;
+    timestamp: number;
+    excludeFromContext?: boolean;
+};
+
+type SessionHeaderLike = {
+    timestamp?: string;
+};
+
+type SessionManagerExtensions = {
+    addMessage?: (message: SessionMessageLike | BashExecutionMessageLike) => void;
+    appendMessage?: (message: SessionMessageLike | BashExecutionMessageLike) => string;
+    appendCustomMessageEntry?: (role: string, text: string, visible: boolean, persisted?: string) => void;
+    getHeader?: () => SessionHeaderLike | null;
+};
+
+export type SessionManagerLike = SessionManager & SessionManagerExtensions;
+
+export type AgentTurnCompleteResult = {
     kind: "complete";
+};
+
+export type AgentTurnResult = AgentTurnCompleteResult;
+
+export type AgentMessageHandler = (
+    userRequest: string,
+    images: ImageAttachment[],
+    sessionManager: SessionManager,
+) => Promise<AgentTurnResult>;
+
+interface AgentHandlerCompleteResult extends AgentTurnCompleteResult {
     validationResult?: WorkflowValidationResult;
     executionToStart?: import("./runtime/workflow-options.ts").RuntimeExecutePlanOptions;
 }
@@ -78,7 +128,7 @@ export type AgentHandler = (
 
 /**
  * @param {string} agentName
- * @param {import('./hosted-session.js').ActiveExecutionWorkflow} workflow
+ * @param {import('./hosted-session.ts').ActiveExecutionWorkflow} workflow
  * @returns {boolean}
  */
 function canCompleteActiveExecutionWorkflow(agentName: string, workflow: ActiveExecutionWorkflow): boolean {
@@ -107,7 +157,7 @@ function refreshedQuickFixWorkflow(workflow: ActiveExecutionWorkflow): ActiveExe
  * Ask the user to restore a newly-created Plan that was stashed out of the
  * primary checkout while its execution worktree was active.
  *
- * @param {import('./hosted-session.js').HostedSession} hostedSession
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
  * @param {string} planName
  * @returns {Promise<boolean>}
  */

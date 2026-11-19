@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { checkBashCommand, intersectBashAllowedCommands } from "../bash-command-policy.ts";
 import { join } from "node:path";
-import { AGENTS, SUBAGENTS } from "../../constants.js";
+import { AGENTS, SUBAGENTS } from "../../constants.ts";
 import {
     DELEGATED_ROLE_IDS,
     DELEGATED_ROLES,

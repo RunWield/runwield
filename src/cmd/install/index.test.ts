@@ -4,7 +4,7 @@ import { readFileSync, chmodSync } from "node:fs";
 import { stat as fsStat, chmod as fsChmod, readFile as fsReadFile, rename as fsRename } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -27,7 +27,7 @@ import {
     resolveConfiguredUserPackageSource,
     resolveInstalledPackagePromptResources,
 } from "../../shared/package-resources.ts";
-import { __resetSettingsForTests, getSettingsDir, getSettingsManager } from "../../shared/settings.js";
+import { __resetSettingsForTests, getSettingsDir, getSettingsManager } from "../../shared/settings.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { discoverAndRegisterThemes, getAvailableThemes, initRunWieldTheme } from "../../ui/theme/theme.ts";
 import { runInstallCommand } from "./index.ts";

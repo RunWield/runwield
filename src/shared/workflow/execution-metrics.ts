@@ -8,7 +8,7 @@
  */
 
 import { estimateContextTextTokens } from "../session/session-context-report.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { planAssociationAtTime, type AssociationTimeScope } from "../session/plan-association.ts";
 import {
@@ -17,9 +17,9 @@ import {
     getWorkflowMetricsFilePath,
     normalizeObservedTime,
     recordWorkflowMetric,
-} from "./metrics.js";
+} from "./metrics.ts";
 
-import { getCustomSetting, getMergedCustomSetting } from "../settings.js";
+import { getCustomSetting, getMergedCustomSetting } from "../settings.ts";
 import {
     hasWorkflowMetricsEnablementOverride,
     isWorkflowMetricsEnabled,

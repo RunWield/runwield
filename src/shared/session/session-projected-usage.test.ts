@@ -1,7 +1,7 @@
 import type { Usage } from "@earendil-works/pi-ai";
 import { test } from "node:test";
 import { assertEquals } from "../../testing/assertions.ts";
-import { buildProjectedSessionInfo, createReplayEvents } from "./session-transcript-projection.js";
+import { buildProjectedSessionInfo, createReplayEvents } from "./session-transcript-projection.ts";
 
 type AssistantUsageFixture = Partial<Pick<Usage, "input" | "output">>;
 

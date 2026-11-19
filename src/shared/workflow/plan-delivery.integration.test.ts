@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
@@ -8,12 +8,12 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { archivePlan, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { archivePlan, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { setCustomSetting } from "../settings.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { setCustomSetting } from "../settings.ts";
 import { createGitPort } from "../git-port.ts";
-import { listEntries } from "../worktree-registry.js";
+import { listEntries } from "../worktree-registry.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { loadPublishedWorkRecordSource } from "../work-records/published-source.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";

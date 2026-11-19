@@ -5,7 +5,7 @@
 
 import { createAgentHandler } from "./agent-handler.ts";
 import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.ts";
-import { getAgentBusyLines, normalizeAgentInternalName } from "./agents.js";
+import { getAgentBusyLines, normalizeAgentInternalName } from "./agents.ts";
 import {
     appendDebugLog,
     ensureRootAgentSession,
@@ -14,13 +14,13 @@ import {
     markRootAgentSwitch,
     runRootTurn,
     shouldReuseExistingRootSession,
-} from "./session.js";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
+} from "./session.ts";
+import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.ts";
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { HostedSession, ThinkingLevel } from "./hosted-session.js";
-import type { ImageAttachment } from "./types.js";
+import type { HostedSession, ThinkingLevel } from "./hosted-session.ts";
+import type { ImageAttachment } from "./image-attachments.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 import type { McpIntegration } from "../mcp/integration.ts";
 import type { McpServerDefinition } from "../mcp/config.ts";

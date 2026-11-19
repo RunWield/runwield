@@ -15,7 +15,7 @@ import {
     loadPlan,
     updatePlanFrontMatter,
     resolveSiblingChildPlanDependencyStates,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 
 import {
     buildBoardGroups,
@@ -23,7 +23,7 @@ import {
     loadPlanSummaries,
     loadWorkspaceDetail,
     serializePlanSummary,
-} from "./server/plan-adapter.js";
+} from "./server/plan-adapter.ts";
 import { PlanBoard, buildPlanBoardSearchIndex } from "./components/Board.tsx";
 
 import { renderMarkdown } from "./components/MarkdownView.tsx";

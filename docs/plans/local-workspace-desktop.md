@@ -75,13 +75,13 @@ Source inspected on 2026-11-01:
 1. `src/ui/workspace/static/workspace-shell.ts`, React surfaces, and Astro pages use HTTP APIs and server-provided
    data. `components/OwnerDashboard.astro` streams dashboard updates directly. A shared React library alone will not
    remove host coupling; composition, data access, and subscriptions need a common client boundary.
-2. `src/ui/workspace/routes/owner-session-api.js` reaches `WorkspaceSessionContinuationService` in
-   `server/session-continuation.js`. Its constructor calls `createSessionRuntime` with the coordination store and owns
+2. `src/ui/workspace/routes/owner-session-api.ts` reaches `WorkspaceSessionContinuationService` in
+   `server/session-continuation.ts`. Its constructor calls `createSessionRuntime` with the coordination store and owns
    live operations, retained Sessions, listeners, and background work. That runtime ownership moves into `wld`.
 3. `server/owner-plan-actions.ts` calls Core Plan actions and manages operation receipts, generation checks, and writer
    admission. Those semantics must move behind ACP with the authoritative service; an Electron wrapper must not
    reproduce them or discard them while converting HTTP to RPC.
-4. `src/acp/server.js` already owns a real runtime and advertises new/load/prompt/cancel/close/delete, configuration,
+4. `src/acp/server.ts` already owns a real runtime and advertises new/load/prompt/cancel/close/delete, configuration,
    image prompts, and steering. `session/list` is not advertised by the inspected implementation. Current upstream v1
    has a Session-list capability; check the pinned SDK before choosing its implementation path.
 5. ACP authentication currently refers to provider/default-model setup and advertises terminal login when supported.
@@ -94,7 +94,7 @@ Source inspected on 2026-11-01:
 Additional retirement findings, checked during this review:
 
 - `src/ui/review/review-launcher.ts` calls `startReviewWorkspaceServer`, which creates `createReviewWorkspaceApp`
-  in `src/ui/workspace/server.js`. This is a token-scoped review host, not the full owner workbench. TUI, Connect,
+  in `src/ui/workspace/server.ts`. This is a token-scoped review host, not the full owner workbench. TUI, Connect,
   standalone Code Review, and external ACP review links use this path. Review-only support can survive workbench removal.
 - Shared Plan links use `/p/<spaceId>` URLs from `src/shared/collaboration/urls.ts` and a separate remote collaboration
   host. They are not owner-workbench routes. Their removal or migration is a separate product decision.
@@ -253,7 +253,7 @@ justify shipping speculative services, mock authentication, remote transport imp
 ## Reuse Opportunities
 
 - Existing Workspace components and `src/ui/design-system/` for workbench UX, themes, documents, editors, and diffs.
-- `src/acp/server.js`, `event-mapper.ts`, `interaction-mapper.ts`, and `session-map.ts` for standard protocol behavior.
+- `src/acp/server.ts`, `event-mapper.ts`, `interaction-mapper.ts`, and `session-map.ts` for standard protocol behavior.
 - `src/shared/session/session-runtime.ts` and file Session stores for turns, writer ownership, persistence, and recovery.
 - `src/shared/workflow/plan-actions.ts` and current Plan-store services for revision-checked workflow operations.
 - Existing Workspace receipt/generation checks, moved behind their authoritative boundary rather than duplicated.
@@ -267,11 +267,10 @@ Prerequisite: Bun 1.4.3 and `bun run install:locked`. Child Plans add focused ca
 `scripts/bun-test-files.json` when required. Existing relevant commands include:
 
 ```sh
-bun scripts/run-tests.js src/acp/server.test.js src/acp/managed-session.integration.test.ts
-bun scripts/run-tests.js src/ui/workspace/workspace-session-ux.test.tsx src/ui/workspace/workspace-plan-review.integration.test.ts src/ui/workspace/workspace-code-review.integration.test.ts
-bun scripts/run-tests.js src/ui/workspace/workspace-renderer-lifecycle.test.ts src/ui/workspace/workspace-operation-memory.test.ts
+bun scripts/run-tests.ts src/acp/server.test.ts src/acp/managed-session.integration.test.ts
+bun scripts/run-tests.ts src/ui/workspace/workspace-session-ux.test.tsx src/ui/workspace/workspace-plan-review.integration.test.ts src/ui/workspace/workspace-code-review.integration.test.ts
+bun scripts/run-tests.ts src/ui/workspace/workspace-renderer-lifecycle.test.ts src/ui/workspace/workspace-operation-memory.test.ts
 bun run workspace:check
-bun run seams:check
 bun run doc-links:check
 ```
 

@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {

@@ -1,4 +1,4 @@
-import { assertEquals } from "../../../testing/assertions.ts";
+import { assertEquals, assertExists } from "../../../testing/assertions.ts";
 import { test } from "node:test";
 import process from "node:process";
 import { assertValidationEvidenceRejectsCounterfeits } from "../testing/validation-workflow-coverage.ts";
@@ -26,12 +26,13 @@ export function registerValidationWorkflowTests(
         test(`${prefix}golden validation workflow: ${testCase.scenario.name}`, {
             skip: Boolean(testCase.todo) && !runTodoGoldens,
         }, async () => {
-            const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+            const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
             const result = await runGoldenScenarioChildProcess({
                 scenarioModule,
                 exportName: testCase.exportName,
                 timeoutMs: testCase.scenario.timeoutMs || 180000,
             });
+            assertExists(result.result);
             assertEquals(result.result.actor.remaining, []);
             for (const id of testCase.scenario.validationBranches || []) {
                 assertValidationEvidenceRejectsCounterfeits(id, result.result);

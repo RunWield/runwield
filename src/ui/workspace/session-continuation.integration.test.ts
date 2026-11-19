@@ -5,8 +5,8 @@ import { createServer as createSocketServer } from "node:net";
 import { setImmediate as nextEventLoop } from "node:timers/promises";
 import { install as installClock } from "@sinonjs/fake-timers";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
-// @ts-nocheck: Workspace service is JavaScript and returns projected event records.
-// @ts-nocheck: Workspace service is JavaScript and returns projected event records.
+// @ts-nocheck: Owner-service result records have implicit types.
+// @ts-nocheck: Owner-service result records have implicit types.
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../../shared/foreground-process.ts";
@@ -25,13 +25,13 @@ import {
     ownerSessionContinuationStartApi,
     ownerSessionCreateApi,
     ownerSessionUnarchiveApi,
-} from "./routes/owner-session-api.js";
-import { associatedPlanSession } from "./routes/owner-api.js";
+} from "./routes/owner-session-api.ts";
+import { associatedPlanSession } from "./routes/owner-api.ts";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
-import { AGENTS, getHomeDir } from "../../constants.js";
+import { AGENTS, getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { lockPath, manifestPath } from "../../shared/session/file-session-storage.ts";
 import {
     appendTranscriptEntry,
@@ -42,8 +42,8 @@ import {
     disposeOperationBrowserNotifications,
     observeOperationBrowserNotifications,
     syncOperationBrowserNotificationLifecycle,
-} from "./islands/SessionSurface.jsx";
-import { readSessionName, WorkspaceSessionContinuationService } from "./server/session-continuation.js";
+} from "./islands/SessionSurface.tsx";
+import { readSessionName, WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 
 class BrowserNotification {
     static permission = "granted";
@@ -489,6 +489,9 @@ test("Workspace Session options and timeline expose supported Agy model facts", 
                     .filter((model) => model.provider === "agy-cli")
                     .map((model) => ({ id: model.id, backend: model.executionBackend })),
                 [
+                    { id: "gemini-4-argon", backend: "agy-cli" },
+                    { id: "gemini-4-hydrogen", backend: "agy-cli" },
+                    { id: "gemini-4-carbon", backend: "agy-cli" },
                     { id: "gemini-3.8-flash", backend: "agy-cli" },
                     { id: "gemini-3.1-pro", backend: "agy-cli" },
                 ],

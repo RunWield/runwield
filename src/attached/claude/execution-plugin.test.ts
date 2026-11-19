@@ -96,3 +96,27 @@ test("validation instructions preserve the Core text and selection answer contra
     assertStringIncludes(text, 'outcome: "selected"');
     assertStringIncludes(text, "already supplied");
 });
+
+test("Claude dedicated commands and Router handoffs use the packaged stateless conversation procedure", async () => {
+    const procedure = await fsReadFile(new URL("./plugin/references/conversation.md", import.meta.url), "utf8");
+    for (const role of ["ideator", "guide"]) {
+        const command = await fsReadFile(new URL(`./plugin/commands/${role}.md`, import.meta.url), "utf8");
+        assertStringIncludes(command, "disable-model-invocation: true");
+        assertStringIncludes(command, `Select \`${role}\``);
+        assertStringIncludes(command, "${CLAUDE_PLUGIN_ROOT}/references/conversation.md");
+        assertStringIncludes(command, "Do not activate a workflow, inspect status, or run Router");
+    }
+    const request = await fsReadFile(new URL("./plugin/commands/request.md", import.meta.url), "utf8");
+    assertStringIncludes(request, 'workflow.nextAction.kind: "role_handoff"');
+    assertStringIncludes(request, "${CLAUDE_PLUGIN_ROOT}/references/conversation.md");
+    for (const contract of [
+        "get_role_instructions",
+        "runwield.attached.conversation/1",
+        "matching `instructions.role`",
+        "Continue the role's questions",
+        "no completion report",
+        "update local RunWield Core",
+        "Only an explicit user request to plan",
+    ])
+        assertStringIncludes(procedure, contract);
+});

@@ -5,7 +5,7 @@ import { spawnNativeProcess } from "../foreground-process.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { type AttachedReadResult, type AttachedCarrierResult, runAttachedOperation } from "./coordinator.ts";
 import {
     type AttachedJsonObject,

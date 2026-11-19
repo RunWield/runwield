@@ -8,7 +8,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
 import { makeToolProjectFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import {
     acknowledgeTaskCompletion,
     claimPendingTaskCompletion,
@@ -24,7 +24,7 @@ function hostedSessionManager(sessionManager: SessionManager): HostedSessionMana
     return sessionManager as HostedSessionManager;
 }
 
-function executionWorkflow(planName: string): import("../types.js").ActiveExecutionWorkflow {
+function executionWorkflow(planName: string): import("./execution-workflow-session.ts").ActiveExecutionWorkflow {
     return {
         planName,
         triageMeta: { classification: "PLANNED_CHANGE" },

@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix, win32 } from "node:path";
-import { prepareGoldenFixtures } from "./run-tests.js";
+import { prepareGoldenFixtures } from "./run-tests.ts";
 
 for (const paths of [posix, win32]) {
     test(`Golden suites receive prepared repository templates with ${JSON.stringify(paths.sep)} paths`, async () => {

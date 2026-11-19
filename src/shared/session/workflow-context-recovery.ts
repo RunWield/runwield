@@ -25,7 +25,7 @@ export async function reconcileRemoteWorkflow(
     const { withProjectRuntimeReadScope } = await import("../project-runtime-layout.ts");
     return await withProjectRuntimeReadScope(async () => {
         const { healSettledTransitionRecords } = await import("../workflow/transition-recovery.ts");
-        const { listEntries } = await import("../worktree-registry.js");
+        const { listEntries } = await import("../worktree-registry.ts");
         const { reconcileStoredPublication } = await import("../workflow/publication-machine.ts");
         let verified = false;
         let status = context.status;

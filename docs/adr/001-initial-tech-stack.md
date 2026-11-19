@@ -29,11 +29,12 @@ We have selected the following foundational stack for RunWield:
       checks; the Candidate channel must pass these gates before publication. See
       [Releasing](../releasing.md).
 
-2. **Language: runtime-native JavaScript/TypeScript mix**
-    - **Why:** Superseded by [ADR-012](012-deno-native-typescript-ratchet.md).
-      Existing JavaScript with JSDoc remains valid, but new production source
-      under `src/` is ratcheted toward native TypeScript (`.ts`/`.tsx`) while
-      preserving direct Bun execution and avoiding a TypeScript emit pipeline.
+2. **Language: runtime-native TypeScript**
+    - **Why:** Source and tests use TypeScript (`.ts`/`.tsx`) executed directly
+      by Bun with real source extensions in imports. TypeScript compiler
+      validation runs in no-emit mode through `bun run check`. Workspace
+      TypeScript and TSX are checked through Astro via `bun run workspace:check`.
+      Normal source execution uses Bun's TypeScript support.
 
 3. **Agent Foundation: `pi.dev` Ecosystem**
     - **Why:** Instead of building an LLM orchestration layer from scratch,
@@ -57,8 +58,7 @@ We have selected the following foundational stack for RunWield:
 - **Agent Synergy:** Using `pi-mono` allows RunWield to inherit battle-tested
   LLM abstractions and focus purely on the "Gatekeeper" and planning logic.
 - **Type Safety without Friction:** TypeScript no-emit checking provides a
-  safety net without a separate runtime compilation tax; see ADR-013 for the
-  current language ratchet.
+  safety net while development source runs directly under Bun.
 
 ### Negative
 
@@ -67,3 +67,29 @@ We have selected the following foundational stack for RunWield:
   developer checkouts. Remote containers and legacy documentation publication
   remain transition work; they must not install Deno dependencies into the Bun
   checkout.
+
+## Runtime process boundaries
+
+### Owned command cancellation
+
+Foreground commands own a separate process group on POSIX systems. On macOS, cancellation stops the group and checks
+that its members are stopped before sending SIGKILL. A single group kill can miss a child that is still being created,
+leaving output pipes open after the shell exits. The check is bounded; probe failure still forces termination so a
+command cannot remain suspended. Explicit cancellation also terminates lingering descendants after their shell exits.
+Windows keeps its process-tree termination through `taskkill /T`.
+
+### CLI runtime supervision
+
+The CLI entrypoint starts a small supervisor before command imports and initialization. The working Bun runtime runs
+in a child process with inherited stdin and stdout. The supervisor forwards stderr, retains bounded diagnostics,
+forwards termination signals, and restores terminal modes after failure. This boundary applies to private entries and
+protocol commands as well as interactive commands. Source-run and compiled invocations use the same boundary.
+
+The supervisor observes runtime exit rather than closure of a shared stderr pipe. It allows a short drain window for
+final diagnostics. A blocked output destination does not consume that window. Detached services can retain stderr
+without holding the CLI open; the supervisor does not terminate those services.
+
+This process boundary is required because native runtime aborts, including image-worker event-loop creation under
+file-descriptor exhaustion, bypass runtime exception handlers. A shared error classifier gives interactive handlers
+and the supervisor consistent OS-resource guidance. Supervision does not retry a command because its external effects
+may be uncertain. It does not replace Session or workflow recovery and does not mark a workflow complete or abandoned.

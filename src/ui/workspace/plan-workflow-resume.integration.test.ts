@@ -12,13 +12,13 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
-import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
+import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
 
 type FixtureSettings = ReturnType<SettingsManager["getGlobalSettings"]>;
 type ResumeResponse = Pick<ReturnType<WorkspaceSessionContinuationService["getOperation"]>, "operationId">;

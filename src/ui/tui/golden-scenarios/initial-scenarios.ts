@@ -4,7 +4,7 @@
  */
 
 import { ok as assert } from "node:assert/strict";
-import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
+import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 
 import type {
     ConsumedScriptedInteraction,
@@ -428,6 +428,7 @@ export const diagnosticArtifactFailureScenario = {
     composedTui: true,
     terminal: { columns: 80, rows: 20 },
     script: [{ id: "unused-router-turn", agent: "router", phase: "triage", text: "unused" }],
+    // @ts-expect-error Exercise diagnostic artifacts for an unsupported runtime action.
     actions: [{ type: "unknown-composed-action" }],
 } satisfies GoldenScenario;
 

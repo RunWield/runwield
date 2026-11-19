@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { test } from "node:test";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";

@@ -22,7 +22,7 @@ import process from "node:process";
 import { promisify } from "node:util";
 import { Terminal } from "@xterm/headless";
 import { buildValidationUserMessage } from "../workflow/validation-user-messages.ts";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { extractReleaseRuntime, releaseRuntimeCacheDirectory, releaseRuntimeName } from "./release-artifact.ts";
 import { sha256Bytes } from "../../../scripts/build-metadata.ts";
 import { deliveryPlan } from "./remote-runtime-workflows-fixture.ts";

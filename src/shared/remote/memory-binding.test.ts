@@ -8,7 +8,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { bindRemoteMemory, remoteMemoryIdentity } from "./memory-binding.ts";
 import type { ResolvedRemoteTarget } from "./target.ts";
 import { ensureProject } from "../session/file-session-storage.ts";
-import { getRunWieldSessionsBaseDir } from "../session/root-session.js";
+import { getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import { createMnemotecaTools } from "../../extensions/mnemoteca/tools.ts";
 import { denoHelperBinaryExec } from "../../extensions/helper-binary-exec.ts";
 import { installMemoryProcessFixture } from "./memory-process-fixture.ts";

@@ -13,7 +13,7 @@ import {
 import { throws as assertThrows, ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { WORK_KINDS } from "../../constants.js";
+import { WORK_KINDS } from "../../constants.ts";
 import { git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { ATTACHED_OPERATIONS, type AttachedJsonObject } from "./operations.ts";
@@ -56,7 +56,7 @@ for (const workKind of WORK_KINDS) {
     });
 }
 
-for (const routingIntent of ["INQUIRY", "QUICK_FIX", "PROJECT"]) {
+for (const routingIntent of ["QUICK_FIX", "PROJECT"]) {
     test(`a ${routingIntent} outcome closes the workflow as unsupported in this Preview`, async () => {
         await withProject(async (projectRoot) => {
             const triage = await activated(projectRoot);

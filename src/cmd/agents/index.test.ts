@@ -11,10 +11,10 @@ import { join } from "node:path";
 import { Container, Editor, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { getEditorTheme } from "../../ui/theme/theme.ts";
-import { createUiApi } from "../../ui/tui/api.js";
-import { SpinnerBlock } from "../../ui/tui/blocks.js";
+import { createUiApi } from "../../ui/tui/api.ts";
+import { SpinnerBlock } from "../../ui/tui/blocks.ts";
 import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.ts";
 import { runAgentsCommand } from "./index.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
@@ -51,7 +51,7 @@ interface AgentTuiHarness {
     editor: Editor;
     terminal: CompatibleVirtualTerminal;
     tui: TUI;
-    uiAPI: import("../../ui/tui/types.js").UiAPI;
+    uiAPI: import("../../ui/tui/api.ts").UiAPI;
 }
 
 async function writeFixtureAgent(projectRoot: string): Promise<void> {

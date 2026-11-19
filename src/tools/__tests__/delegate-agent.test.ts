@@ -1,5 +1,5 @@
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { createDelegateAgentTool } from "../delegate-agent.ts";
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";

@@ -14,8 +14,8 @@ import {
 } from "../workflow/implementation-report.ts";
 import type { CompatibilityAssessment } from "./compatibility.ts";
 import type { CodexRoleDispatch } from "./codex-role-settings.ts";
-import type { ActiveExecutionWorkflow } from "../session/hosted-session.js";
-import { ROUTING_INTENTS, WORK_KINDS } from "../../constants.js";
+import type { ActiveExecutionWorkflow } from "../session/hosted-session.ts";
+import { ROUTING_INTENTS, WORK_KINDS } from "../../constants.ts";
 import { TRIAGE_COMPLEXITIES, type TriageOutcome, type TriageOutcomeInput } from "../workflow/triage-outcome.ts";
 
 export type AttachedJsonValue = string | number | boolean | null | AttachedJsonValue[] | AttachedJsonObject;
@@ -24,6 +24,7 @@ export type AttachedJsonObject = { [key: string]: AttachedJsonValue };
 /** Lifecycle operations keep their Core tool names; `activate`, `status`, and `start_execution` have no Core tool equivalent. */
 export type AttachedOperationName =
     | "activate"
+    | "get_role_instructions"
     | "triage_report"
     | "status"
     | "plan_written"
@@ -39,7 +40,30 @@ export type AttachedOperationName =
     | AttachedReadOperationName;
 
 export type AttachedReadOperationName = "get_instructions" | "get_artifact" | "get_pending_chat";
-export type AttachedLifecycleOperationName = Exclude<AttachedOperationName, AttachedReadOperationName>;
+export type AttachedLifecycleOperationName = Exclude<
+    AttachedOperationName,
+    AttachedReadOperationName | "get_role_instructions"
+>;
+
+export type AttachedConversationalRole = "ideator" | "guide";
+export const ATTACHED_CONVERSATION_CONTRACT_VERSION = "runwield.attached.conversation/1";
+
+export interface AttachedRoleReadEnvelope {
+    role: AttachedConversationalRole;
+    evidence: HostEvidence;
+}
+
+/** Stateless success is distinct from a lifecycle result, which always has a workflow. */
+export type AttachedRoleReadResult =
+    | {
+          ok: true;
+          operation: "get_role_instructions";
+          instructions: AttachedRoleInstructions;
+          compatibility: CompatibilityAssessment;
+          workflow?: never;
+          reviewReply?: never;
+      }
+    | Extract<AttachedOperationResult, { ok: false }>;
 
 export interface AttachedActionReadEnvelope extends StatusEnvelope {
     evidence: HostEvidence;
@@ -238,6 +262,8 @@ export interface AttachedReviewRound {
 /** The RunWield roles a host plays in Attached Mode. */
 export const ATTACHED_HOST_ROLES = [
     "router",
+    "ideator",
+    "guide",
     "planner",
     "engineer",
     "frontend-engineer",
@@ -275,6 +301,7 @@ export interface AttachedValidationProgress {
 export type AttachedNextAction = (
     | ({ kind: "triage" } & PendingHostAction)
     | AttachedPlanningAction
+    | { kind: "role_handoff"; role: AttachedConversationalRole }
     | { kind: "review"; round: number; planName: string; chat?: AttachedChatTurn }
     | { kind: "plan_ready"; planName: string; guidance: string }
     | { kind: "plan_saved"; planName: string; guidance: string }
@@ -330,7 +357,7 @@ export type AttachedNextAction = (
           planName: string;
           guidance: string;
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
-          workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+          workRecord?: import("../../plan-store.ts").PlanFrontMatter["workRecord"];
       }
     | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string }
 ) & { dispatch?: CodexRoleDispatch };
@@ -341,7 +368,7 @@ export interface AttachedPlanReference {
     planName: string;
 }
 
-/** The effective role instructions Core returns with a pending host action. Never saved. */
+/** Effective instructions for a pending action or stateless conversational entry. Never saved. */
 export interface AttachedRoleInstructions {
     role: AttachedHostRole;
     contractVersion: string;
@@ -350,12 +377,13 @@ export interface AttachedRoleInstructions {
 }
 
 export type AttachedWorkflowClosure =
+    | { reason: "role_handoff"; routingIntent: "IDEATION" | "INQUIRY"; role: AttachedConversationalRole }
     | { reason: "unsupported_in_preview"; routingIntent: string }
     | { reason: "plan_advanced_in_core"; message: string }
     | {
           reason: "delivered";
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
-          workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+          workRecord?: import("../../plan-store.ts").PlanFrontMatter["workRecord"];
       };
 
 export interface ProjectMovedRecovery {
@@ -518,6 +546,16 @@ function parse<Envelope>(input: AttachedJsonValue | undefined, read: () => Envel
         if (error instanceof InputRejection) return { ok: false, rejection: error.rejection };
         throw error;
     }
+}
+
+/** Conversational entry accepts no workflow identity or conversation content. */
+export function parseAttachedRoleReadInput(input: AttachedJsonValue | undefined) {
+    return parse(input, (): AttachedRoleReadEnvelope => {
+        const value = readObject(input, "", ["role", "evidence"]);
+        const role = readText(value, "role", "role", MAX_SHORT_TEXT_LENGTH);
+        if (role !== "ideator" && role !== "guide") reject("invalid_input", "role", "Use ideator or guide.");
+        return { role, evidence: readEvidence(value) };
+    });
 }
 
 /** Parse evidence once at the common boundary before dispatching any evidence-carrying operation. */
@@ -790,6 +828,17 @@ const EXISTING_PLANNING_PLAN_SCHEMA = {
 };
 
 export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
+    {
+        name: "get_role_instructions",
+        description:
+            "Read current Ideator or Guide instructions without starting or resuming a workflow. The host owns the conversation.",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["role", "evidence"],
+            properties: { role: { type: "string", enum: ["ideator", "guide"] }, evidence: EVIDENCE_SCHEMA },
+        },
+    },
     {
         name: "start_planning",
         description:

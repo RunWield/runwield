@@ -19,7 +19,7 @@ import {
 } from "../work-records/index-adapter.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { conversation, reviewApi, sendChat } from "./review-chat-test-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import type {
     AttachedJsonObject,
     AttachedOperationName,
@@ -35,8 +35,8 @@ test("whole Attached delivery starts zero Core model sessions and excludes priva
     let transport: StdioClientTransport | undefined;
     try {
         const marker = join(fixture.parent, "core-model-turns");
-        const hosted = fileURLToPath(new URL("../session/hosted-session.js", import.meta.url));
-        const sessions = fileURLToPath(new URL("../session/session.js", import.meta.url));
+        const hosted = fileURLToPath(new URL("../session/hosted-session.ts", import.meta.url));
+        const sessions = fileURLToPath(new URL("../session/session.ts", import.meta.url));
         const monitor = join(fixture.parent, "monitor.ts");
         await writeFile(
             monitor,

@@ -1,3 +1,5 @@
+https://github.com/plannotator/effective-html
+
 | Priority | User journey                    | Current coverage                                                               | Missing proof                                                                                                                       |
 | -------- | ------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
 | 3        | Authentication onboarding       | `/login` only tests cancellation; `/logout` only tests having no credentials.  | Successful login → provider/model selection → first message, persisted credentials, real logout, and failed-auth recovery.          |
@@ -61,7 +63,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 2. [ ] **Needs Plan — Respect browser Pair decisions.** Stop and revision feedback must never become permission to
        continue autonomously. Check the real Workspace checkpoint experience against TUI behavior. Evidence:
        [Pair checkpoint](src/tools/pair-checkpoint.ts),
-       [browser interaction](src/ui/workspace/components/SessionTimeline.jsx).
+       [browser interaction](src/ui/workspace/components/SessionTimeline.tsx).
 
 3. [ ] **Needs Plan — Require consent before enabling package extensions.** Interrupted or failed theme-package
        installation must not leave executable extensions enabled without consent. Evidence:
@@ -76,7 +78,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 
 5. [ ] **Needs Plan — Recover malformed Plan metadata without blocking other Plans.** Preserve the latest user body and
        existing decisions. One damaged Plan must not disable the entire listing or require users to edit internal
-       fields. Evidence: [Plan store](src/plan-store.js), [Plan loading](src/cmd/load-plan/index.ts).
+       fields. Evidence: [Plan store](src/plan-store.ts), [Plan loading](src/cmd/load-plan/index.ts).
 
 6. [ ] **Quick win — Preserve annotation locations.** Matching free-text feedback must not remove an annotation's file
        and line reference. Keep this separate from the larger review work below. Evidence:
@@ -100,7 +102,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 
 10. [ ] **Needs Plan — Keep optional vision settings local to the correct Project.** Broken fallback setup must not
         block text-only conversation. Workspace must use the Session Project's settings, not the server's working
-        directory. Evidence: [vision settings](src/shared/settings.js), [Agent setup](src/shared/session/session.js).
+        directory. Evidence: [vision settings](src/shared/settings.ts), [Agent setup](src/shared/session/session.ts).
 
 11. [ ] **Needs Plan — Isolate malformed Work Records.** Listing, reading, search, backfill, and index rebuild must
         remain useful when an unrelated record is malformed. Report the affected record without treating it as approved
@@ -132,7 +134,6 @@ Check that these work records are accurate and summarize actual delivered work
 2026-07-24-fail-closed-plan-verification-delivered.md
 2026-07-24-parallel-test-runs-enabled-with-shared-state-isolation.md
 2026-08-02-native-terminal-osc-notifications.md
-2026-08-03-migrated-direct-custom-tools-to-typescript.md
 2026-08-11-isolated-runwield-runtime-state-from-worktree-merges.md
 2026-08-16-archived-plan-retention-and-prune.md
 2026-08-16-lost-worktree-user-verification-recovery-added.md

@@ -1,5 +1,5 @@
 import process from "node:process";
-import { loadPlan } from "../../../plan-store.js";
+import { loadPlan } from "../../../plan-store.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../../cmd/load-plan/primary-plan-recovery.ts";
 
 const [root, planName] = process.argv.slice(2);

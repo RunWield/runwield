@@ -5,8 +5,8 @@ import { deliveryReportText } from "./delivery-report-text.ts";
  * Renders one SessionRuntime event stream into the terminal UI.
  */
 
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import { normalizeAgentInternalName } from "../../shared/session/agents.js";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import { normalizeAgentInternalName } from "../../shared/session/agents.ts";
 import { formatImageAttachmentMarker } from "../../shared/session/image-attachments.ts";
 import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.ts";
 import { setTerminalTitleForName } from "./terminal-title.ts";
@@ -18,8 +18,8 @@ import type {
     RuntimeQueuedMessage,
     SessionRuntimeEvent,
     RuntimeSessionReplacedEvent,
-} from "../../shared/session/session-runtime-events.js";
-import type { UiAPI } from "./types.js";
+} from "../../shared/session/session-runtime-events.ts";
+import type { UiAPI } from "./api.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import type { notifyRunWieldEventQuietly } from "./system-notifications.ts";
 

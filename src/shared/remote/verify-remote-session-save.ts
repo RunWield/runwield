@@ -13,7 +13,7 @@ import {
 import { join } from "node:path";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { serveHttp } from "../http-server.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 

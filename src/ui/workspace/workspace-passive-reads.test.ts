@@ -3,7 +3,7 @@ import { deepStrictEqual, strictEqual, ok, rejects } from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import {
     enterProjectRuntime,
@@ -12,9 +12,9 @@ import {
 } from "../../shared/project-runtime-layout.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
-import { addEntry } from "../../shared/worktree-registry.js";
+import { addEntry } from "../../shared/worktree-registry.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 
 function document(id: string, body = "Primary compass", extra = "") {
     return `---\n${id ? `planId: ${id}\n` : ""}classification: FEATURE\nstatus: in_progress\n${extra}---\n# ${body}\n`;
@@ -345,9 +345,9 @@ test("production Workspace reads target-only Plans from local Git objects withou
         await git(root, ["remote", "add", "origin", `${root}-unavailable.git`]);
         const before = await snapshot(root);
         owner = await workspace(root);
-        const { findPlanById } = await import("../../plan-store.js");
+        const { findPlanById } = await import("../../plan-store.ts");
         const { assertAuthorizedPlanPath, assertReadablePlanResource } = await import("./server/project-artifacts.ts");
-        const { loadWorkspaceDetail } = await import("./server/plan-adapter.js");
+        const { loadWorkspaceDetail } = await import("./server/plan-adapter.ts");
         const resource = await findPlanById(root, "target-id");
         await assertReadablePlanResource(root, resource);
         await rejects(() => assertAuthorizedPlanPath(root, resource.path, resource.planName));

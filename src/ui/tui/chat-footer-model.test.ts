@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals } from "../../testing/assertions.ts";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getSettingsManager } from "../../shared/settings.ts";
 import { createChatFooterController } from "./chat-footer.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 

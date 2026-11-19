@@ -1,7 +1,7 @@
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes, assertThrows } from "../testing/assertions.ts";
 import { isMissingExecutableError, spawnForegroundProcess, spawnForegroundShell } from "./foreground-process.ts";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";

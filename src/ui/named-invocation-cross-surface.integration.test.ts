@@ -9,16 +9,16 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../shared/session/session-runtime.ts";
-import { listPersistedRootSessions } from "../shared/session/root-session.js";
+import { listPersistedRootSessions } from "../shared/session/root-session.ts";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
-import { WorkspaceSessionContinuationService } from "./workspace/server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "./workspace/server/session-continuation.ts";
 import { Container, TuiMainScreen } from "@earendil-works/pi-tui";
 import { VirtualTerminal } from "./tui/testing/virtual-terminal.ts";
-import { createUiApi } from "./tui/api.js";
-import { SpinnerBlock } from "./tui/blocks.js";
+import { createUiApi } from "./tui/api.ts";
+import { SpinnerBlock } from "./tui/blocks.ts";
 import { initRunWieldTheme } from "./theme/theme.ts";
 import { runScopedSubmitHandoffLoop } from "./tui/chat-session.ts";
-import { startRunWieldAcpServer } from "../acp/server.js";
+import { startRunWieldAcpServer } from "../acp/server.ts";
 
 interface NamedInvocationProfile {
     agentName?: string;

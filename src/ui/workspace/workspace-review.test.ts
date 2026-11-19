@@ -1,6 +1,6 @@
 import type { GuidedReviewUsage } from "../../cmd/guided-review/protocol.ts";
-import type { GuideCostTotals } from "./routes/api/review-agent-handlers.js";
-import type { ReviewServerOutput } from "./server.js";
+import type { GuideCostTotals } from "./routes/api/review-agent-handlers.ts";
+import type { ReviewServerOutput } from "./server.ts";
 
 import {
     removeExecutableFixtureDirectory,
@@ -11,7 +11,7 @@ import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import process from "node:process";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
@@ -20,16 +20,16 @@ import { join } from "node:path";
 import { encodeGuidedReviewMetadata } from "../../cmd/guided-review/protocol.ts";
 
 import { RUNWIELD_ROOT } from "../../../runtime-root.ts";
-import "./server/plan-adapter.js";
+import "./server/plan-adapter.ts";
 
-import { createReviewWorkspaceApp, createWorkspaceApp, startReviewWorkspaceServer } from "./server.js";
+import { createReviewWorkspaceApp, createWorkspaceApp, startReviewWorkspaceServer } from "./server.ts";
 
 import {
     createReviewAgentState,
     cleanupReviewAgentState,
     reviewAgentApi,
     runWldJobCommand,
-} from "./routes/api/review-agent-handlers.js";
+} from "./routes/api/review-agent-handlers.ts";
 
 import { registerReviewDecisionPromise, unregisterReviewDecision } from "./routes/api/review-handlers.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -165,7 +165,7 @@ test("workspace static assets bypass token checks for tokenized pages", async ()
 test("review request forwarding does not inherit Deno.serve's legacy abort signal", async () => {
     const script = `
         import { serveHttp } from "./src/shared/http-server.ts";
-        import { rebuildRequestWithHeaders } from "./src/ui/workspace/server.js";
+        import { rebuildRequestWithHeaders } from "./src/ui/workspace/server.ts";
         const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, (request) => {
             rebuildRequestWithHeaders(request, new Headers(request.headers));
             return new Response("ok");

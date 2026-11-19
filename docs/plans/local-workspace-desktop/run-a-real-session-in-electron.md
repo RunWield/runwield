@@ -6,7 +6,7 @@ affectedPaths:
     - "src/acp/"
     - "src/cmd/acp/"
     - "src/ui/desktop/"
-    - "src/ui/workspace/components/SessionTimeline.jsx"
+    - "src/ui/workspace/components/SessionTimeline.tsx"
     - "src/ui/workspace/components/SessionQuestionForm.tsx"
     - "package.json"
     - "docs/adr/020-electron-workspace-acp-client.md"
@@ -55,13 +55,13 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 - `src/ui/desktop/` — new main, preload, renderer, and shared-client connection boundary; exact shared-client location belongs to Planner.
 - `src/acp/`, `src/cmd/acp/` — negotiation and any genuine gaps needed for the proof.
-- `src/ui/workspace/components/SessionTimeline.jsx`, `SessionQuestionForm.tsx` — reusable interaction rendering without HTTP/server coupling.
+- `src/ui/workspace/components/SessionTimeline.tsx`, `SessionQuestionForm.tsx` — reusable interaction rendering without HTTP/server coupling.
 - `package.json`, build configuration, focused tests — explicit Electron/Vite development and build commands.
 - ACP/Workspace PRDs, ADR-020, and a contract inventory linked from it — proposed versus proven behavior.
 
 ## Reuse Opportunities
 
-- `src/acp/server.js`, `event-mapper.ts`, `interaction-mapper.js`, and `session-map.ts` — existing Session protocol behavior.
+- `src/acp/server.ts`, `event-mapper.ts`, `interaction-mapper.js`, and `session-map.ts` — existing Session protocol behavior.
 - Existing Session/question components and `src/ui/design-system/` — no parallel desktop component library.
 - Real Git and managed-Session fixtures; provider and subprocess boundaries are valid controlled environments.
 
@@ -76,7 +76,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/acp/server.test.js src/acp/managed-session.integration.test.ts` and `bun run seams:check`.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/acp/server.test.ts src/acp/managed-session.integration.test.ts`.
 - Planner defines the exact new process/desktop test paths and commands. Tests execute the built host boundary and real runtime; a mocked ACP transcript or a bridge that never reaches `wld` must fail.
 - Prove missing capabilities prevent dependent mutation, malformed bridge requests are refused, and an ordinary external ACP client still works without Workspace extensions.
 - Discover and document the new normal desktop dev command and renderer URL/origin. Headed browser verification must exercise input, streamed output, and question/answer in Electron. A plain browser check does not replace Electron preload/process evidence.

@@ -7,15 +7,15 @@ import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan, withPlanCatalogLock } from "../../plan-store.js";
+import { loadPlan, savePlan, withPlanCatalogLock } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
-import { loadWorkspaceDetail } from "./server/plan-adapter.js";
-import { ownerProjectPlanProgressApi } from "./routes/owner-api.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
+import { loadWorkspaceDetail } from "./server/plan-adapter.ts";
+import { ownerProjectPlanProgressApi } from "./routes/owner-api.ts";
 import { loadOwnerPlanProgress } from "./server/owner-plan-progress.ts";
-import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
+import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
 
 type SessionRuntime = ReturnType<typeof createSessionRuntime>;
 type InteractiveSessionOptions = Parameters<SessionRuntime["createInteractiveSession"]>[0];

@@ -2,7 +2,7 @@ import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/
 import { dirname, join } from "node:path";
 import process from "node:process";
 import manifest from "../../../packaging/remote/tested-dependencies.json" with { type: "json" };
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { sha256Bytes } from "../../../scripts/build-metadata.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";

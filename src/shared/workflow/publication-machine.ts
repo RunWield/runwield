@@ -14,18 +14,18 @@ import { rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT, type WorkRecordMnemotecaPort } from "../work-records/mnemoteca-port.ts";
 import { hasFinalizedPublicationLifecycle, indexPublishedWorkRecords } from "../publication-lifecycle.ts";
-import { canonicalizeStoredPlanName, isChildFeaturePlan, parsePlanFrontMatter } from "../../plan-store.js";
+import { canonicalizeStoredPlanName, isChildFeaturePlan, parsePlanFrontMatter } from "../../plan-store.ts";
 import { isTerminalWorkRecordParent } from "../work-records/auto-generation.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { resolveProjectRoot } from "../project-checkout.ts";
-import { findById, pruneEntry, updatePublication } from "../worktree-registry.js";
+import { findById, pruneEntry, updatePublication } from "../worktree-registry.ts";
 import { existingPublicationSavedFiles, preserveUnregisteredPublicationFiles } from "./publication-leftover-files.ts";
 import {
     deleteMergedWorktreeBranch,
     deleteRemotelyPublishedWorktreeBranch,
     removeWorktreeGitArtifacts,
-} from "../worktree.js";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+} from "../worktree.ts";
+import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { type JournalResult, resolveCollectionEpoch } from "./metrics-journal.ts";
 import { recordWorkflowOutcome, workflowOutcomeEventId } from "./outcome-observations.ts";
 import { type ControllerRecord, readControllerRecord, writeControllerState } from "./controller-registry.ts";

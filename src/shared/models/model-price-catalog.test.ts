@@ -25,6 +25,22 @@ test("agy price lookup never replaces a missing exact ID with the priced preview
     assertEquals(getExternalCliPriceModel(model), undefined);
 });
 
+test("new Agy families use only exact Google price evidence", () => {
+    const argon = getModelRegistry().find("agy-cli", "gemini-4-argon");
+    assert(argon);
+    assertEquals(getExternalCliPriceModel(argon)?.cost, { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 0 });
+    for (const id of ["gemini-4-hydrogen", "gemini-4-carbon"]) {
+        const model = getModelRegistry().find("agy-cli", id);
+        assert(model);
+        assertEquals(model.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+        assertEquals(
+            getBuiltinModels("google").find((candidate) => candidate.id === id),
+            undefined,
+        );
+        assertEquals(getExternalCliPriceModel(model), undefined);
+    }
+});
+
 test("models outside a named external CLI price catalog have no CLI price evidence", () => {
     assertEquals(getExternalCliPriceModel({ provider: "claude-cli", id: "sonnet" }), undefined);
     assertEquals(getExternalCliPriceModel({ provider: "google", id: "gemini-3.8-flash" }), undefined);

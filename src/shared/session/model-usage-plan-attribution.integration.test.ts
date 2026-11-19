@@ -10,8 +10,8 @@ import { openFileSessionStore } from "./file-session-store.ts";
 import { SessionHost } from "./session-host.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
-import { setCustomSetting } from "../settings.js";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.js";
+import { setCustomSetting } from "../settings.ts";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
 import { createSessionRuntime, SessionRuntime } from "./session-runtime.ts";
 
 interface UsageRow {

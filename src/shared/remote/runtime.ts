@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { verifyBuildArtifact, type ArtifactMetadata } from "../../../scripts/build-metadata.ts";

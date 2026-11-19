@@ -2,10 +2,10 @@ import { makeTempFile } from "../../testing/temp-file.ts";
 import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "./hosted-session.js";
-import { attachSessionEventSubscribers } from "./session.js";
-import { createSessionRuntimeEvent } from "./session-runtime-events.js";
-import { getCwd } from "../../constants.js";
+import { HostedSession } from "./hosted-session.ts";
+import { attachSessionEventSubscribers } from "./session.ts";
+import { createSessionRuntimeEvent } from "./session-runtime-events.ts";
+import { getCwd } from "../../constants.ts";
 
 import type {
     AgentSession,
@@ -14,14 +14,14 @@ import type {
     CompactionResult,
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, AssistantMessageEvent, TextContent, Usage } from "@earendil-works/pi-ai";
-import type { AgentDefinition } from "./types.js";
+import type { AgentDefinition } from "./agents.ts";
 import type {
     RuntimeAssistantThinkingDeltaEvent,
     RuntimeToolEndEvent,
     RuntimeToolIdentity,
     RuntimeToolResult,
     SessionRuntimeEvent,
-} from "./session-runtime-events.js";
+} from "./session-runtime-events.ts";
 
 interface SubscriberMessageFixture extends Omit<Partial<AssistantMessage>, "usage"> {
     id?: string;

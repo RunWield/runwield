@@ -14,8 +14,8 @@ import {
     SKILLS_DIR,
     SNIP_FILTERS_DIR,
     SYSTEM_PROMPT_TEMPLATE_PATH,
-} from "./constants.js";
-import { getWorkflowMetricsFilePath } from "./shared/workflow/metrics.js";
+} from "./constants.ts";
+import { getWorkflowMetricsFilePath } from "./shared/workflow/metrics.ts";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 
 test("bundled resource constants point to file-readable assets", async () => {

@@ -69,7 +69,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/ui/workspace/owner-dashboard-stream.test.ts src/ui/workspace/owner-dashboard-loading.test.tsx src/ui/workspace/owner-dashboard-zero-projects.test.ts src/ui/workspace/owner-dashboard-ui.test.ts src/ui/workspace/browser/session-tab-notifications.test.ts`.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/ui/workspace/owner-dashboard-stream.test.ts src/ui/workspace/owner-dashboard-loading.test.tsx src/ui/workspace/owner-dashboard-zero-projects.test.ts src/ui/workspace/owner-dashboard-ui.test.ts src/ui/workspace/browser/session-tab-notifications.test.ts`.
 - Planner defines new real-process dashboard observation tests. Exercise two Projects with one delayed/unavailable, state changes during navigation, stale snapshots, large sidebar lists, and reconnect without duplicate attention items.
 - Headed verification uses desktop Dashboard -> each section's destination -> return, plus sidebar pagination and native notification click while the window is closed. Discover and record the desktop dev command and URL/origin.
 - Confirm keyboard/screen-reader orientation, distinct loading/empty/error states, focused-window notification suppression, and private-content policy. Platform-native delivery is qualified on each OS in the final child.

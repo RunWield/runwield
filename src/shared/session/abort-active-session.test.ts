@@ -1,5 +1,5 @@
 import { assertEquals } from "../../testing/assertions.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 /**
  * Regression tests for HostedSession-scoped abort behavior. The root
@@ -7,8 +7,8 @@ import { test } from "node:test";
  * only streaming roots and transient sub-agents owned by the target HostedSession.
  */
 
-import { abortActiveSession } from "./session.js";
-import { HostedSession, type DisposableLike } from "./hosted-session.js";
+import { abortActiveSession } from "./session.ts";
+import { HostedSession, type DisposableLike } from "./hosted-session.ts";
 
 interface FakeSessionOptions {
     isStreaming?: boolean;

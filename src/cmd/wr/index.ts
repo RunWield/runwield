@@ -5,7 +5,7 @@
 
 import { retryWorkRecordForPlan } from "../../shared/work-records/auto-generation.ts";
 import { parseArgs } from "../../shared/cli-args.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import {
     confirmWorkRecordSupersessionProposal,
     formatWorkRecordBackfillOutcomes,
@@ -33,7 +33,7 @@ import {
 import type { WorkRecordSupersessionCandidate } from "../../shared/work-records/schema.ts";
 
 export interface WorkRecordCommandOptions {
-    uiAPI?: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage" | "promptSelect">;
+    uiAPI?: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage" | "promptSelect">;
     mnemotecaPort: WorkRecordMnemotecaPort;
 }
 

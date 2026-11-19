@@ -8,7 +8,7 @@ import process from "node:process";
 
 import { parseArgs } from "../src/shared/cli-args.ts";
 import { dirname, join } from "node:path";
-import { getHomeDir } from "../src/constants.js";
+import { getHomeDir } from "../src/constants.ts";
 import {
     type CsvRow,
     indexRowsByDecisionId,

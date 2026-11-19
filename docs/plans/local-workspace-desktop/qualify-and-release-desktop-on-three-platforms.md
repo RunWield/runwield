@@ -69,7 +69,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run focused desktop/process/package suites using the exact commands established by preceding children, plus `bun run seams:check` and `bun run doc-links:check`. Planner identifies remaining qualification test paths and artifact commands; do not invent commands before packaging exists.
+- Use Bun 1.4.3 and `bun run install:locked`. Run focused desktop/process/package suites using the exact commands established by preceding children, plus `bun run doc-links:check`. Planner identifies remaining qualification test paths and artifact commands; do not invent commands before packaging exists.
 - On each target OS, install the actual artifact into a clean environment. With no account/global CLI/dev tools and blocked Workspace endpoints: register a Project, reuse or configure a provider/default model, stream a Session, answer a question, review/edit a Plan, approve for later, explicitly Run, inspect Code Review, and reach confirmed publication in a controlled destination.
 - Verify discovery/history, configuration, image selection/paste/drop, background work, dashboard/notifications, knowledge/search, usage/settings, cancellation, compatible update, and the same Session continued from idle TUI in both directions.
 - Use headed installed Electron for all UI acceptance. Record platform, architecture, artifact identity, native window evidence, process trace, and results. A plain browser test cannot satisfy these checks. If a dev host is needed for diagnosis, discover its normal command and URL/origin without substituting it for installed acceptance.

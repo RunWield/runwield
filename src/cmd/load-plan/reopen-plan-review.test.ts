@@ -5,7 +5,7 @@ import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
-import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
 

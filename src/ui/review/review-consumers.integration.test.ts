@@ -18,7 +18,7 @@ import {
     makeUi,
     makeValidationProjectRoot,
     runValidationPhase,
-} from "../../shared/workflow/validation-test-helpers.js";
+} from "../../shared/workflow/validation-test-helpers.ts";
 import { startCodeReviewSurface } from "./review-launcher.ts";
 import { reviewFileContentApi } from "../workspace/routes/api/review-file-handlers.ts";
 

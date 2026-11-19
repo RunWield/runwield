@@ -3,7 +3,7 @@ import { ok as assert } from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { getWorktreeRegistryPath } from "../worktree-registry.js";
+import { getWorktreeRegistryPath } from "../worktree-registry.ts";
 import {
     ATTACHED_OPERATIONS,
     type AttachedJsonObject,
@@ -233,7 +233,7 @@ for (const refusal of [
         }
     });
     for (const operation of ATTACHED_OPERATIONS.filter((entry) => entry.inputSchema.required.includes("evidence"))) {
-        if (isAttachedReadOperation(operation.name)) continue;
+        if (isAttachedReadOperation(operation.name) || operation.name === "get_role_instructions") continue;
         const name = operation.name;
         test(`${operation.name} rejects ${refusal.reason} before changing workflow, Plan, worktree, or registry`, async () => {
             const fixture = await attachedValidationFixture();

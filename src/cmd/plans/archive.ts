@@ -7,7 +7,7 @@ import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { relative } from "node:path";
-import { CLI_BIN, getCwd } from "../../constants.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
 import {
     archivePlan,
     getPlanDocumentRoot,
@@ -17,7 +17,7 @@ import {
     loadArchivedPlan,
     loadPlan,
     restoreArchivedPlan,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { formatArchiveRetentionNudge } from "../../shared/plan-archive-retention.ts";
 import { runArchiveTransition, type TransitionResult } from "../../shared/workflow/state-transition.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";

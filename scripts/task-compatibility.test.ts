@@ -8,14 +8,13 @@ import { captureScriptProcess } from "./script-process.ts";
 
 // Public tasks from the final Deno toolchain at 9d4bb0374. Keep this inventory
 // independent of the active package manifest so accidental renames fail CI.
+// Intentionally retired tasks are removed from this inventory.
 const LEGACY_TASKS = [
     "ci",
     "cli",
     "submodules:check",
     "submodules:check:remote",
     "snip:check",
-    "language-policy:check",
-    "seams:check",
     "doc-links:check",
     "docs:stage",
     "docs:dev",
@@ -23,7 +22,6 @@ const LEGACY_TASKS = [
     "docs:check",
     "skills:sync:check",
     "skills:sync:update",
-    "seams:update",
     "test",
     "test:suite",
     "test:all",
@@ -77,7 +75,7 @@ async function packageConfig(): Promise<PackageConfig> {
     return JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 }
 
-test("all 49 public Deno tasks remain available under their original Bun script names", async () => {
+test("retained public tasks remain available under their original Bun script names", async () => {
     const { scripts } = await packageConfig();
     for (const task of LEGACY_TASKS) {
         ok(scripts[task], `Missing original task: ${task}`);
@@ -114,7 +112,7 @@ test("original compound task names preserve argument boundaries and prerequisite
             task: "test",
             args: ["a directory/test.ts", "--filter", "literal [name]"],
             last: {
-                path: "scripts/run-tests.js",
+                path: "scripts/run-tests.ts",
                 args: [
                     "--exclude",
                     "src/ui/tui/golden-scenarios",
@@ -129,7 +127,7 @@ test("original compound task names preserve argument boundaries and prerequisite
         {
             task: "test:all",
             args: ["--fail-fast", "a directory/test.ts"],
-            last: { path: "scripts/run-tests.js", args: ["--fail-fast", "a directory/test.ts"] },
+            last: { path: "scripts/run-tests.ts", args: ["--fail-fast", "a directory/test.ts"] },
         },
         {
             task: "workspace:build",

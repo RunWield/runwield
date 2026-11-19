@@ -13,9 +13,9 @@ import {
 import { test } from "node:test";
 import { setSystemTime } from "bun:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { HostedSession } from "../../hosted-session.js";
-import { setCustomSetting } from "../../../settings.js";
-import { getWorkflowMetricsFilePath } from "../../../workflow/metrics.js";
+import { HostedSession } from "../../hosted-session.ts";
+import { setCustomSetting } from "../../../settings.ts";
+import { getWorkflowMetricsFilePath } from "../../../workflow/metrics.ts";
 import { UsageReporter } from "../../../workflow/usage-reporting.ts";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
@@ -682,7 +682,7 @@ test("Agy CLI supported base models are selectable and executable through backen
             .getSelectable()
             .filter((entry) => entry.provider === "agy-cli")
             .map((entry) => entry.id),
-        ["gemini-3.8-flash", "gemini-3.1-pro"],
+        ["gemini-4-argon", "gemini-4-hydrogen", "gemini-4-carbon", "gemini-3.8-flash", "gemini-3.1-pro"],
     );
     assertEquals(
         registry.getAvailable().some((entry) => entry.provider === "agy-cli"),

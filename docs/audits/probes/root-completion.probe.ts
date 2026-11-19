@@ -6,8 +6,8 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool, SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../../src/cmd/testing/runtime-command-fixture.ts";
 import { type AgentHandler, createAgentHandler } from "../../../src/shared/session/agent-handler.ts";
-import { HostedSession } from "../../../src/shared/session/hosted-session.js";
-import { ensureRootAgentSession } from "../../../src/shared/session/session.js";
+import { HostedSession } from "../../../src/shared/session/hosted-session.ts";
+import { ensureRootAgentSession } from "../../../src/shared/session/session.ts";
 type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;
 
 function hostedSessionManager(sessionManager: SessionManager): HostedSessionManager {

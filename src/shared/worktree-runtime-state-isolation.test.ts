@@ -4,9 +4,9 @@ import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
-import { getWorktreeRegistryPath } from "./worktree-registry.js";
+import { getWorktreeRegistryPath } from "./worktree-registry.ts";
 import { stageGitChangesExcludingRuntime } from "./git-runtime-safety.ts";
-import { checkpointExecutionPreparation, checkpointExecutionWorktree, mergeExecutionWorktree } from "./worktree.js";
+import { checkpointExecutionPreparation, checkpointExecutionWorktree, mergeExecutionWorktree } from "./worktree.ts";
 
 const repo = defineGitFixture(async (repoPath) => {
     await fsWriteFile(join(repoPath, "README.md"), "base\n");

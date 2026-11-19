@@ -1,9 +1,9 @@
 import { retrySessionWorkRecord } from "./work-record-retry.ts";
 import { buildPlanConversationRequest } from "../../workflow/plan-review-conversation.ts";
-import { AGENTS, SUBAGENTS } from "../../../constants.js";
+import { AGENTS, SUBAGENTS } from "../../../constants.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../../workflow/execution-agent.ts";
 import { runActiveAgentTurn } from ".././agent-switching.ts";
-import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.js";
+import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { readPersistedPendingSegmentContinuationEntry } from ".././workflow-context-session.ts";
 import { prepareSessionPlanningWorktree } from "../../workflow/session-planning-worktree.ts";
 import { executePlanAction } from "../../workflow/plan-actions.ts";
@@ -102,7 +102,7 @@ export class RuntimeWorkflows {
     }
 
     async runWorkflowOperation<T>(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         _operationName: string,
         options: RuntimeWorkflowOptions,
         operation: () => Promise<T>,
@@ -312,7 +312,7 @@ export class RuntimeWorkflows {
         return result;
     }
 
-    async restoreDormantManagedInvariant(session: import(".././hosted-session.js").HostedSession) {
+    async restoreDormantManagedInvariant(session: import(".././hosted-session.ts").HostedSession) {
         const managed = session.getManagedMetadata?.();
         if (
             !managed ||
@@ -335,7 +335,7 @@ export class RuntimeWorkflows {
     async reviewSavedPlan(sessionId: string, planId: string): Promise<RuntimeValidationResult> {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("Session not found.");
-        const { findPlanEvidenceById } = await import("../../../plan-store.js");
+        const { findPlanEvidenceById } = await import("../../../plan-store.ts");
         const { loadPlanActionEvidence } = await import("../../workflow/plan-actions.ts");
         const { createPlanWrittenTool } = await import("../../../tools/plan-written.ts");
         const { claimWorkflowToolEvent, settleWorkflowToolEvent } =
@@ -502,7 +502,7 @@ ${outcome.feedback || ""}`,
     }
 
     async resumePendingExecutionSegmentHandoff(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         options: RuntimeExecutePlanOptions,
     ): Promise<RuntimeValidationResult | null> {
         const managed = session.getManagedMetadata?.();
@@ -669,7 +669,7 @@ ${outcome.feedback || ""}`,
             ...validationResult.semanticRepairHandoff.activeWorkflow,
         };
         const { loadPlanActionEvidence } = await import("../../workflow/plan-actions.ts");
-        const { getPlanRevisionForText } = await import("../../../plan-store.js");
+        const { getPlanRevisionForText } = await import("../../../plan-store.ts");
         const { buildSemanticRepairSegmentContinuation } = await import("../../workflow/execution-segment-handoff.ts");
         const planId = workflow.triageMeta?.planId || options.triageMeta?.planId;
         if (!planId) throw new Error("Semantic repair handoff requires Plan identity.");
@@ -720,7 +720,7 @@ ${outcome.feedback || ""}`,
 
     async runSemanticRepairContinuation(
         sessionId: string,
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         options: RuntimeSemanticRepairOptions,
         continuation: SemanticRepairContinuation,
         alreadyManaged: boolean = false,
@@ -824,7 +824,7 @@ ${outcome.feedback || ""}`,
             ? await runRepair()
             : await this.runWorkflowOperation(session, "semanticRepairSegment", options, runRepair);
         if (repairResult?.kind === "semantic_repair_completed") {
-            const { loadPlan } = await import("../../../plan-store.js");
+            const { loadPlan } = await import("../../../plan-store.ts");
             const completedPlan = await loadPlan(executionCwd, continuation.plan.planName || options.planName);
             if (!completedPlan) throw new Error("Completed semantic repair Plan is unavailable.");
             const refreshedWorkflow = {
@@ -851,7 +851,7 @@ ${outcome.feedback || ""}`,
     }
 
     async continueEpicAfterValidation(
-        oldSession: import(".././hosted-session.js").HostedSession,
+        oldSession: import(".././hosted-session.ts").HostedSession,
         validationResult: RuntimeValidationResult | undefined | null,
     ): Promise<{ replaced: boolean; sessionId?: string }> {
         let currentContinuation = validationResult?.epicContinuation || null;

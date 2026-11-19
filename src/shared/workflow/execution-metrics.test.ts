@@ -5,14 +5,14 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { UsageReporter } from "./usage-reporting.ts";
 import { ok as assert } from "node:assert/strict";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.js";
+import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.ts";
 import { rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { parseClaudeCliStream } from "../session/backends/claude-cli/stream-parser.ts";
 import { join } from "node:path";
 import { setWorkflowMetricsRecording } from "./metrics-journal.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { SlashCommandMetricsTracker } from "./command-metrics.ts";
 import { ExecutionMetricsRecorder, SessionContextMetricsRecorder } from "./execution-metrics.ts";
 

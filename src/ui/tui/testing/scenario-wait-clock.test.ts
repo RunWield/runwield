@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { assertEquals } from "../../../testing/assertions.ts";
 
 import { pathToFileURL as toFileUrl } from "node:url";
-import { runGoldenScenarioChildProcess } from "./child-protocol.js";
+import { runGoldenScenarioChildProcess } from "./child-protocol.ts";
 
 const cases = [
     {
@@ -49,7 +49,7 @@ export const scenario = {
                 exportName: "scenario",
                 timeoutMs: 300000,
             });
-            assertEquals(result.result.actor.remaining, []);
+            assertEquals(result.result?.actor.remaining, []);
         } finally {
             await fsRm(root, { recursive: true });
         }

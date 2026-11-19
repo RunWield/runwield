@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -12,8 +12,8 @@ import {
     withRuntimeCommandFixture,
 } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
-import { getSettingsManager } from "../../shared/settings.js";
-import { startRunWieldAcpServer } from "../../acp/server.js";
+import { getSettingsManager } from "../../shared/settings.ts";
+import { startRunWieldAcpServer } from "../../acp/server.ts";
 import { initTUIWithPair, stopTUI } from "./tui.ts";
 import { runTerminalAuthSetup } from "./terminal-auth-setup.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";

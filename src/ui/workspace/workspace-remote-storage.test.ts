@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { DatabaseSync } from "../../shared/sqlite.ts";
 
-import "./server/plan-adapter.js";
+import "./server/plan-adapter.ts";
 
-import { type RemoteWorkspaceApp, createWorkspaceApp } from "./server.js";
+import { type RemoteWorkspaceApp, createWorkspaceApp } from "./server.ts";
 
 import { hashCapability } from "../../shared/collaboration/capabilities.ts";
 import { openRemoteDatabase } from "./server/remote-db.ts";

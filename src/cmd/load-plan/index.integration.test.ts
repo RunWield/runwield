@@ -31,13 +31,13 @@ import {
     resolveSiblingChildPlanDependencies,
     savePlan,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { createPlanSessionSurface } from "./plan-session-surface.ts";
-import { discardWorktreeGitArtifacts } from "../../shared/worktree.js";
-import { addEntry, findById, removeEntry, updateEntry } from "../../shared/worktree-registry.js";
-import { setCustomSetting } from "../../shared/settings.js";
+import { discardWorktreeGitArtifacts } from "../../shared/worktree.ts";
+import { addEntry, findById, removeEntry, updateEntry } from "../../shared/worktree-registry.ts";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { executePlanAction, loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
@@ -47,9 +47,9 @@ import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
-import { getRunWieldRuntimeDir } from "../../constants.js";
-import type { PlanFrontMatterInput } from "../../plan-store.js";
-import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/types.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
+import type { PlanFrontMatterInput } from "../../plan-store.ts";
+import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/api.ts";
 
 interface LoadPlanUiFixture {
     editor: EditorAPI;

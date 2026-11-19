@@ -15,18 +15,18 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 import { Type } from "typebox";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { HostedSession } from "./hosted-session.js";
-import { getRunWieldSessionDir, openPersistedRootSession } from "./root-session.js";
-import { __resetSettingsForTests } from "../settings.js";
+import { HostedSession } from "./hosted-session.ts";
+import { getRunWieldSessionDir, openPersistedRootSession } from "./root-session.ts";
+import { __resetSettingsForTests } from "../settings.ts";
 import {
     abortActiveSession,
     ensureRootAgentSession,
     runIsolatedAgentSession,
     runRootTurn,
     steerActiveSessionWithTarget,
-} from "./session.js";
+} from "./session.ts";
 import { ClaudeCliBackendError } from "./backends/claude-cli/failure.ts";
 import { CLAUDE_CLI_MCP_PROVENANCE } from "./backends/claude-cli/mcp-bridge.ts";
 import { readLatestTaskCompletedOutcome } from "../workflow/workflow-results.ts";

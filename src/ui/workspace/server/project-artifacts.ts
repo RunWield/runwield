@@ -1,4 +1,4 @@
-// @ts-nocheck: server module uses the repository's JSDoc JavaScript style while keeping the TypeScript production extension.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 import { readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
 /** @module ui/workspace/server/project-artifacts */
 

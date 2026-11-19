@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import {
@@ -22,10 +22,10 @@ import {
     loadPlan,
     savePlan,
     updatePlanCollaborationMetadata,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { PlanningNotStartedError } from "../../shared/workflow/plan-location.ts";
-import { listEntries } from "../../shared/worktree-registry.js";
+import { listEntries } from "../../shared/worktree-registry.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { generateBearerCapability, hashCapability, MAINTAINER_SCOPE } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";

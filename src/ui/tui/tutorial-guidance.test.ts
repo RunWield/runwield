@@ -7,15 +7,15 @@ import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { savePlan, type PlanFrontMatter } from "../../plan-store.js";
+import { savePlan, type PlanFrontMatter } from "../../plan-store.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import {
     RuntimeEventTypes,
     type RuntimeValidationCheckResults,
     type SessionRuntimeEvent,
-} from "../../shared/session/session-runtime-events.js";
+} from "../../shared/session/session-runtime-events.ts";
 import { presentTutorialEvent, restoreVerifiedTutorialRecap } from "./tutorial-guidance.ts";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
 
 function tutorialView(messages: string[]) {

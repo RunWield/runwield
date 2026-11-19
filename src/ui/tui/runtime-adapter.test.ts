@@ -7,7 +7,7 @@ import {
     type RuntimeValidationCheckResults,
     type RuntimeValidationProgress,
     type SessionRuntimeEvent,
-} from "../../shared/session/session-runtime-events.js";
+} from "../../shared/session/session-runtime-events.ts";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { WorkflowContext } from "../../shared/session/workflow-context-session.ts";
 import stripAnsi from "strip-ansi";

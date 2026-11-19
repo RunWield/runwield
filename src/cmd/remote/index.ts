@@ -1,6 +1,6 @@
 import process from "node:process";
 import { serveHttp } from "../../shared/http-server.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { type NativeProcess, spawnNativeProcess } from "../../shared/foreground-process.ts";
 import { readableStdin } from "../../shared/stdin-stream.ts";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";

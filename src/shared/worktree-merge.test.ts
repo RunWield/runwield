@@ -1,4 +1,4 @@
-import type { MergeRepairError } from "./worktree.js";
+import type { MergeRepairError } from "./worktree.ts";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -19,7 +19,7 @@ import {
     checkpointExecutionWorktree,
     mergeExecutionWorktree,
     removeWorktreeGitArtifacts,
-} from "./worktree.js";
+} from "./worktree.ts";
 
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 

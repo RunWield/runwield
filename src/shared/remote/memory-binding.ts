@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { link, mkdir, open, readFile, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { resolveMemoryCollection } from "../memory-collection.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { listProjectsFromDisk, remoteProjectRoot } from "../session/file-session-storage.ts";
-import { getRunWieldSessionsBaseDir } from "../session/root-session.js";
+import { getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import type { ResolvedRemoteTarget } from "./target.ts";
 
 export interface RemoteMemoryIdentity {

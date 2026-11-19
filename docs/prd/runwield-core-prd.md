@@ -903,6 +903,8 @@ existing repair Agent behavior.
 
 **Requirement: Execute approved work in isolation.** Executable Plan work starts from `ready_for_work` in an isolated
 worktree. The user's checkout changes stay as they are, and execution keeps a useful recovery point.
+The selected Plan and any materialized Epic family documents appear in the starting baseline and preparation commit
+even if Git ignores them.
 
 **Requirement: Prepare the worktree before Agent work.** RunWield runs the project's `worktree_setup_command`, or a
 command the user confirms, before the first commit that runs the project's Git hooks. When hooks exist and no command
@@ -942,6 +944,8 @@ and implementation commits still run the project's hooks.
   the same rule. Normal commits still run the hooks.
 - Given a dependency-backed Git hook and an approved setup command, setup runs before the first execution preparation
   commit, the hook passes, and one execution preparation commit precedes Agent work.
+- Given a Plan excluded by the repository's local Git rules, starting it from a linked worktree records the Plan in
+  the execution baseline and preparation commit. The source Plan stays untracked and its exclude rule still applies.
 - Given failed setup, the Plan stays ready and the worktree and diagnostics remain; a corrected retry continues that
   attempt.
 - Given a prepared worktree, resuming keeps its baseline without a second setup or preparation commit.
@@ -1025,7 +1029,7 @@ increases; they do not alone prove deadlock. Missing reports after a timeout rem
 guidance, not an additional runtime admission gate; existing validation commands and repair limits remain unchanged.
 
 **Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
-load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
+load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the supported Bun
 runtime and cannot report success without running the Astro checker.
 
 **Requirement: Repair the latest observed CI failure.** After repair exhaustion, Engineer follow-up retains the latest
@@ -2077,14 +2081,19 @@ Trusted-host file access is not confinement; see the [connection notice](#remote
 
 **Requirement: Layered Agent definitions.** Bundled Agents are Router, Guide, Ideator, Operator, Planner, Architect,
 Engineer, Frontend Engineer, Recorder, Tester, the workflow-only Slicer and Reviewer, and the Init pseudo-Agent. Agent
-definitions are Markdown files with YAML front matter, layered in this order:
+definitions are Markdown files, layered in this order:
 
 1. project: `./.wld/agents/<agent>.md`
 2. home: `~/.wld/agents/<agent>.md`
 3. bundled defaults
 
-Scalar front matter follows precedence. Prompt bodies append unless `promptOverride: true` is set. User-facing labels
-use the effective `name`; the filename is the internal ID for selection, routing, and persistence.
+The first definition for an Agent requires YAML front matter. Overrides can use plain Markdown to add prompt
+instructions and inherit metadata. Scalar front matter follows precedence. Prompt bodies append unless
+`promptOverride: true` is set. User-facing labels use the effective `name`. The filename is the internal ID for
+selection, routing, and persistence.
+
+Given plain Markdown overrides for an existing Agent at home and in a project, Agent discovery and activation load
+the inherited metadata and append the home prompt followed by the project prompt.
 
 #### Metrics exporter approval
 
@@ -2319,6 +2328,11 @@ Session and workflow stay the same. The selected model and its requirements are 
 or with `activeModelPreset`. Project presets take precedence over personal presets, and personal over bundled, by
 name; each replaces the whole lower definition. Users can copy a bundled definition into settings to customize it.
 Updates keep personal and project settings, and bundled presets stay selectable when their cache cannot be written.
+The bundled `agy` preset uses `agy-cli/gemini-4-argon` for Router, Slicer, Architect, Planner, Ideator, and Reviewer.
+Other Agents retain Flash, and all configured thinking levels stay unchanged: Router and Reviewer use medium; the
+other Argon Agents use high. The preset requires Argon access. Users without access can explicitly select Pro where
+upstream supports it or use a personal preset; RunWield does not substitute another model or choose a preset by CLI
+version.
 
 **Requirement: Flexible model configuration.**
 
@@ -2330,9 +2344,28 @@ Updates keep personal and project settings, and bundled presets stay selectable 
 - OpenAI subscription sign-in creates one private installation UUID in `~/.wld/device-id` on first use. Later sign-ins
   reuse it across Sessions and launches. API-key login does not create it; existing Codex credentials stay unchanged.
 - Claude CLI is available as `claude-cli/sonnet`, `claude-cli/opus`, `claude-cli/haiku`, and `claude-cli/fable`.
-- Antigravity CLI offers its Flash and Pro families and thinking levels.
+- Antigravity CLI offers exactly five selectable base families: `agy-cli/gemini-4-argon`,
+  `agy-cli/gemini-4-hydrogen`, `agy-cli/gemini-4-carbon`, `agy-cli/gemini-3.8-flash`, and `agy-cli/gemini-3.1-pro`.
+  Users set thinking separately; effort-suffixed public selections and other families are rejected before execution.
+  The bundled catalog includes Carbon regardless of local entitlement. Actual availability depends on the user's CLI
+  version and account; catalog inclusion does not prove a live request or image-generation support. RunWield does not
+  discover this catalog from the installed CLI or filter it by account.
+- Antigravity maps off/minimal/low thinking to low effort. Medium maps to medium for Argon, Hydrogen, Carbon, and
+  Flash, and to high for Pro. High maps to high for all five. Hydrogen maps xhigh/max to xhigh; the other families map
+  them to high. Omitted thinking defaults to off-to-low; invalid thinking remains an error. Session state retains the
+  original thinking level. Chat and image-generation supervising-model commands share this mapping.
+- Saved personal and project Pro selections remain Pro, with the existing effort mapping. Historical execution facts
+  keep their original model names. An unavailable family produces a visible failure without fallback or a silent alias.
 - Vision fallback covers text-only models.
 - Prompt-cache warming stays off; a user-facing warming setting is deferred.
+- The local TUI model picker offers an explicit catalog refresh that enables network access and bypasses Pi's cache.
+  Normal picker opening remains cache-based. Refresh keeps the search text and updates the list in place. Errors and a
+  15-second timeout keep cached models selectable and show the failure. Remote catalogs remain laptop-owned.
+
+**Catalog refresh acceptance scenario:** Given a fresh cached catalog and a newly published model, the user opens
+`/model` and selects **Refresh catalog** or presses Ctrl+R. The model appears without restarting the Session or
+upgrading Pi. If the provider fails
+or the refresh times out, the picker shows the failure, keeps the search text, and retains the cached choices.
 
 **Acceptance scenario:** Given a fresh installation, OpenAI subscription sign-in reaches the browser authorization
 prompt with a valid agent host UUID. Repeating sign-in after a restart uses the same UUID; another installation uses
@@ -2409,8 +2442,33 @@ provider support documented in terms of current configuration.
 - Given a signed-out Antigravity CLI, the turn reports the terminal sign-in action promptly and can be retried after
   sign-in.
 - Given an Antigravity Engineer turn, it runs a test command and creates a file in the execution workspace.
+- Given Argon, Hydrogen, or Carbon selected through the model controls or Agent settings, a turn requests that family
+  with the mapped effort. Verified history and resume retain the selected family, original thinking level, and backend
+  effort without changing the Session or workflow. A returned wrong family or concrete effort is rejected.
+- Given a local account without Carbon access, the catalog still includes Carbon. On a compatible CLI with account
+  access, Carbon maps low, medium, and high thinking to the corresponding effort. An upstream access failure stays
+  visible without substituting another family; catalog inclusion alone does not prove live access.
+- Given Hydrogen with xhigh or max thinking, the request uses xhigh effort and replay keeps the original thinking
+  value. Given Argon, Carbon, or Flash with max thinking, the request uses high effort.
+- Given saved Pro settings or a resumed Pro Session, the next request still uses Pro, including medium thinking mapped
+  to high effort. Existing Pro history remains unchanged; incomplete or inconsistent execution facts stay excluded.
+- Given the bundled `agy` preset, the six named Agents use Argon with their existing thinking levels; all other
+  assignments remain Flash. Router and Reviewer now request medium effort. Personal and project presets stay intact.
+- Given an account or CLI that rejects Argon, the bundled preset reports the failure and makes no fallback request for
+  Flash or Pro. The user can explicitly select an available family or a personal preset.
+- Given an unsupported Antigravity family, an effort-suffixed public model ID, or invalid thinking, the selection fails
+  before an Antigravity process starts and does not overwrite the active model.
 
 ### Installation and updates
+
+**Requirement: Supported development runtime.** Local source, test, build, and release commands accept the Bun
+range in `package.json` (`^1.4.0`: at least 1.4.0 and below 2.0.0). CI and release artifacts use the exact
+`.bun-version` pin for repeatable builds. Release source checks install the real Stable Mnemoteca with
+checksum-verified native dependencies; an unavailable dependency download fails setup rather than skipping
+Work Record integration checks.
+
+- Given Bun 1.4.4 or another stable version in the supported range, the runtime check permits local commands.
+- Given Bun below 1.4.0, Bun 2.x, or another runtime, the check stops with the required range and detected runtime.
 
 **Scope and maturity:** Current Linux/macOS shell installation and Candidate release baseline. The public macOS tap
 provides RunWield and Mnemoteca packages. Windows releases and checks, including WinGet manifest preparation and
@@ -2702,6 +2760,10 @@ Before inspecting a retained execution checkout, including an Epic child's check
 initialized-submodule back-pointers caused by relocation. Working files, staged changes, branches, and commits survive;
 a pointer to another existing checkout is preserved and reported as a conflict.
 
+Doctor shares runtime safety inspections only within each passive scan. Each scan, including verification after
+repairs, starts with fresh evidence even inside an existing read operation. Reuse ends before repairs or external
+validation work; it does not cache Plan contents, admit writers, or replace any required validation before publication.
+
 **Requirement: Reconcile leftovers automatically.** When a Plan is selected, RunWield reconciles files recreated by
 older processes, stale runtime records, and concurrent migrations. Current progress, review decisions, and
 publications stay authoritative, and original files stay recoverable.
@@ -2753,6 +2815,9 @@ Open product questions:
   Plan performs required recovery and preserves current decisions.
 - Given a symlink escape, newer marker, identity conflict, or unreadable registry, passive reads keep the specific
   diagnostic rather than reporting an authoritative empty catalog.
+- Given runtime evidence changes between Doctor scans inside one caller operation, the next scan detects newly
+  introduced symlinks, unsupported markers, or tracked runtime paths without changing files. Post-repair verification
+  reads fresh authority, and interrupted or failed scans leave no reusable inspection results.
 - Given unfinished 0.10 publication, adoption keeps the publication copies and repairs, and publication resumes.
 - Given an unsafe layout, Doctor keeps all named paths and explains the conflict.
 - Given files recreated by an older RunWield process, selecting a Plan reconciles them while current progress and
@@ -2798,6 +2863,14 @@ Required outcomes:
 - saved [Named Invocation](#agent-and-skill-customization) expansions continue through follow-up, compaction, and
   resume;
 - intact local Sessions stay usable through TUI and ACP when Workspace registration or pairing is rebuilt.
+
+**Requirement: Resolve project aliases consistently.** Opening a project through a symlink uses the same Session
+identity and history as opening its canonical directory. An exact canonical project match takes precedence over
+registered ancestor directories; genuinely conflicting project identities remain blocked.
+
+Given a registered project and registered parent directories, starting or resuming through a symlink to the project
+selects that project's Sessions without a locator conflict. An unregistered nested directory does not gain access to
+the parent's Sessions through this rule.
 
 **Requirement: Export or share the complete Session.** `/export` writes every committed Session Transcript Segment in
 order, with Session identity, name, project path, timestamps, artifacts, and Plan Associations. HTML is a self-contained

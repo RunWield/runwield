@@ -5,7 +5,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import type { RemoteSessionSaveBridge } from "./session-save-bridge.ts";
 import type { RemoteSessionConnection } from "./session-protocol.ts";
 import { configureRemotePersonalResources } from "./personal-resources.ts";
-import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../session/root-session.js";
+import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../session/root-session.ts";
 import { persistImageAttachment, readImageRef, resolveImageRef } from "../session/image-attachments.ts";
 import { createSeeImageTool } from "../../tools/see-image.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";

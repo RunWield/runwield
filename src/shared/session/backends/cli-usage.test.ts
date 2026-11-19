@@ -12,11 +12,11 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { getExternalCliPriceModel, getModelRegistry } from "../../models/model-registry.ts";
-import { setCustomSetting } from "../../settings.js";
-import { getWorkflowMetricsFilePath } from "../../workflow/metrics.js";
-import { HostedSession } from "../hosted-session.js";
-import { createRootSessionManager } from "../root-session.js";
-import type { RuntimeUsage, SessionRuntimeEvent } from "../session-runtime-events.js";
+import { setCustomSetting } from "../../settings.ts";
+import { getWorkflowMetricsFilePath } from "../../workflow/metrics.ts";
+import { HostedSession } from "../hosted-session.ts";
+import { createRootSessionManager } from "../root-session.ts";
+import type { RuntimeUsage, SessionRuntimeEvent } from "../session-runtime-events.ts";
 import { ClaudeCliExecutionSession } from "./claude-cli/execution-session.ts";
 import { AgyCliExecutionSession } from "./agy-cli/execution-session.ts";
 

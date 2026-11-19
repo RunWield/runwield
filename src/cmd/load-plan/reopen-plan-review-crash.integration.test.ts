@@ -1,7 +1,7 @@
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../../shared/foreground-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { readFile as fsReadFile } from "node:fs/promises";
 import process from "node:process";
@@ -10,12 +10,12 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
-import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createOwnerWorkspaceApp } from "../../ui/workspace/server.js";
+import { createOwnerWorkspaceApp } from "../../ui/workspace/server.ts";
 
 type OwnerApp = ReturnType<typeof createOwnerWorkspaceApp> & { close(): Promise<void> };
 

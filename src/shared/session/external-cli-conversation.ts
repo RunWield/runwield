@@ -1,5 +1,5 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import { getRootSessionBranchEntries } from "./root-session.js";
+import { getRootSessionBranchEntries } from "./root-session.ts";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | JsonRecord;
 

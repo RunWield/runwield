@@ -8,13 +8,13 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
+import { loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.ts";
 import { runPlansCommand } from "./index.ts";
-import { addEntry } from "../../shared/worktree-registry.js";
+import { addEntry } from "../../shared/worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { join } from "node:path";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-import { getCwd, getRunWieldRuntimeDir } from "../../constants.js";
+import { getCwd, getRunWieldRuntimeDir } from "../../constants.ts";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 
 type PlanSeedAttrs = NonNullable<Parameters<typeof savePlan>[3]>;

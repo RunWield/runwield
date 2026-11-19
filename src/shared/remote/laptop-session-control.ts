@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
 import type { FileSessionManifest, FileSessionProject, FileSessionStore } from "../session/file-session-store-types.ts";
 import { openFileSessionStore, type RemoteSessionOwner } from "../session/file-session-store.ts";
-import { getRunWieldSessionsBaseDir } from "../session/root-session.js";
+import { getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import {
     ensurePrivateDir,
     ensureRemoteProject,
@@ -14,7 +14,7 @@ import {
     sessionDirForProject,
     writeTextAtomically,
 } from "../session/file-session-storage.ts";
-import { buildProjectedSessionInfo, summarizeResumableTranscript } from "../session/session-transcript-projection.js";
+import { buildProjectedSessionInfo, summarizeResumableTranscript } from "../session/session-transcript-projection.ts";
 import {
     REMOTE_SESSION_IDENTITY_ENTRY,
     sessionDigest,

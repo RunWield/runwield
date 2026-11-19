@@ -18,7 +18,7 @@ import type {
 
 interface InitUi {
     messages: Array<{ message: string; error?: boolean }>;
-    uiAPI: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage">;
+    uiAPI: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage">;
 }
 
 const UNEXPECTED_SESSION_PORT: InteractiveSessionPort = {

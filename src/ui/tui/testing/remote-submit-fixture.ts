@@ -5,7 +5,7 @@ import { spawnNativeProcess } from "../../../shared/foreground-process.ts";
 import { assertEquals } from "../../../testing/assertions.ts";
 import { join } from "node:path";
 import { getModelRegistry } from "../../../shared/models/model-registry.ts";
-import { __resetSettingsForTests } from "../../../shared/settings.js";
+import { __resetSettingsForTests } from "../../../shared/settings.ts";
 import { processLines } from "../../../shared/remote/remote-runtime-lines.ts";
 import {
     type RuntimeFixture,

@@ -29,7 +29,7 @@ Build the v1 Plan Management UI as a local-first Workspace shell launched by
 `wld plans ui`.
 
 - Production UI code lives under `src/ui/workspace/`.
-- The CLI launch boundary is `src/cmd/plans/ui.js`, invoked as a subcommand from
+- The CLI launch boundary is `src/cmd/plans/ui.ts`, invoked as a subcommand from
   the existing `wld plans` command.
 - The UI server is scoped to the current checkout and reads/writes only that
   checkout's canonical `docs/plans/` tree.
@@ -90,17 +90,13 @@ Build the v1 Plan Management UI as a local-first Workspace shell launched by
 
 ## 2026-07 Amendment: Plannotator component reuse spike
 
-The original decision selected Fresh 2, Preact islands, UnoCSS, and pure
-JS/JSDoc for the v1 Workspace because that stack was the proven local-first path
-at the time. The next Workspace slice may introduce a scoped exception for React
-and TypeScript under `src/ui/workspace/` to prove direct reuse of upstream
-Plannotator UI modules.
+Workspace uses React and TypeScript under `src/ui/workspace/` for direct reuse
+of upstream Plannotator UI modules.
 
-This exception is intentionally narrow:
+Component reuse follows these boundaries:
 
 - canonical Plan markdown and Plan Lifecycle APIs remain the source of truth;
-- Workspace server and workflow code outside the browser UI continue to follow
-  RunWield's JS/JSDoc conventions unless a separate decision changes them;
+- Workspace server and workflow code use TypeScript;
 - upstream Plannotator source is consumed through a pinned, reviewed checkout
   under `third_party/plannotator/`, not as an unreviewed moving dependency;
 - RunWield imports Plannotator UI from the pinned source checkout
@@ -150,8 +146,7 @@ The new Workspace implementation direction is:
   design-system interactions.
 - Tailwind 4 plus RunWield CSS variables replace UnoCSS as the Workspace styling
   endpoint.
-- Workspace is a scoped `.astro`/`.ts`/`.tsx` exception zone; non-Workspace
-  RunWield code remains JavaScript/JSDoc.
+- Workspace uses `.astro` pages and `.ts`/`.tsx` modules.
 - Plannotator components are reused selectively for
   markdown/document/review/editor/diff surfaces where they fit RunWield
   semantics and theming.

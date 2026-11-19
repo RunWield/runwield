@@ -5,10 +5,10 @@ import process from "node:process";
  */
 
 import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { removeMetricsExporterApprovals } from "../../shared/extensions/metrics-exporter.ts";
 import { resolveConfiguredUserPackageSource } from "../../shared/package-resources.ts";
-import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
+import { getSettingsDir, getSettingsManager } from "../../shared/settings.ts";
 import { discoverAndRegisterThemes, getAvailableThemes, setTheme } from "../../ui/theme/theme.ts";
 
 const DEFAULT_THEME = "catppuccin-mocha";

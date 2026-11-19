@@ -6,18 +6,18 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
-import { type SessionManagerExtensions, HostedSession } from "./hosted-session.js";
-import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.js";
+import { type SessionManagerExtensions, HostedSession } from "./hosted-session.ts";
+import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.ts";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
 import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
-import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.js";
+import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.ts";
 import {
     readPersistedPendingSegmentContinuation,
     recordPendingSegmentContinuation,
     recordSegmentLineageEvidence,
 } from "./workflow-context-session.ts";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { ActiveExecutionWorkflow } from "./execution-workflow-session.ts";
 import { type TutorialContext, readPersistedTutorialContext } from "./tutorial-context-session.ts";
 
 type ManagedFixture = Awaited<ReturnType<typeof createManagedFixture>>;

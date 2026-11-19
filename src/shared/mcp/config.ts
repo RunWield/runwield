@@ -6,7 +6,7 @@ import { parse as parseJsonc } from "../jsonc.ts";
 import { join } from "node:path";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
 import { readRemotePersonalMcpConfig } from "../remote/settings-bridge.ts";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 
 export type McpSourceKind = "global" | "project" | "request";

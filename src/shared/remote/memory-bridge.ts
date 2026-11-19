@@ -1,5 +1,5 @@
 import type { MemoryParams } from "../../extensions/mnemoteca/tools.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { resolveMemoryCollection } from "../memory-collection.ts";
 
 export interface MemoryResult {

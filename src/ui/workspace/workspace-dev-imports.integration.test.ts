@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { makeValidationProjectRoot } from "../../shared/workflow/validation-test-helpers.js";
+import { makeValidationProjectRoot } from "../../shared/workflow/validation-test-helpers.ts";
 
 test("Astro dev serves local and owner Plan Boards with canonical Plan data", async () => {
     const projectRoot = await makeValidationProjectRoot("dev-import-regression", {

@@ -8,7 +8,7 @@ import {
     readTranscriptEvidence,
 } from "../../testing/managed-session-fixture.ts";
 import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
-import { projectCommittedTranscript } from "./session-transcript-projection.js";
+import { projectCommittedTranscript } from "./session-transcript-projection.ts";
 
 async function writeSuccessorTranscript(
     projectRoot: string,

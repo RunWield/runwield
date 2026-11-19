@@ -166,7 +166,7 @@ export function devPlanCatalog(variant: DevPlanCatalogVariant) {
         classification: "PLANNED_CHANGE",
         hierarchyRole: "top-level",
         summary: "Illustrative healthy Plan for parse-warning checks.",
-        attrs: { status: "draft", classification: "PLANNED_CHANGE" },
+        attrs: { status: "draft" as const, classification: "PLANNED_CHANGE" as const },
     };
     const diagnostics = [
         {

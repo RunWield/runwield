@@ -1,5 +1,5 @@
-// @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
-// @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
+// @ts-nocheck: This fixture runs through scripts/run-tests.ts outside Astro check.
+// @ts-nocheck: This fixture runs through scripts/run-tests.ts outside Astro check.
 import {
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
@@ -11,8 +11,8 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { parsePlanFrontMatter, savePlan } from "../../plan-store.js";
-import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.js";
+import { parsePlanFrontMatter, savePlan } from "../../plan-store.ts";
+import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.ts";
 import { createPublicationAttempt, recordPublicationFailure } from "../../shared/workflow/publication-attempt.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
 import { loadOwnerPlanProgress } from "./server/owner-plan-progress.ts";
@@ -365,7 +365,7 @@ test("Workspace progress retains saved publication proof after cleanup and inval
         const execution = await loadProgress(projectRoot, options);
         assertEquals(execution.plan.status, "in_progress");
         assertEquals(execution.overall.settled, false);
-        const { findPlanById } = await import("../../plan-store.js");
+        const { findPlanById } = await import("../../plan-store.ts");
         assertEquals((await findPlanById(projectRoot, "receipt-id")).attrs.publicationReceipt ?? null, null);
     } finally {
         await fsRm(projectRoot, { recursive: true, force: true });

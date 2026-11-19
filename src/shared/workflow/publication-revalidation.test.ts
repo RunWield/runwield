@@ -1,6 +1,6 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -16,10 +16,10 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { basename, dirname, join } from "node:path";
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
-import { findById, retirePublicationForRevalidation, updatePublication } from "../worktree-registry.js";
+import { findById, retirePublicationForRevalidation, updatePublication } from "../worktree-registry.ts";
 import {
     advanceStoredPublication,
     reconcileStoredPublication,
@@ -28,11 +28,11 @@ import {
 import { preparePublicationRevalidation, prepareReviewedCandidateRevalidation } from "./publication-revalidation.ts";
 import { candidateIdentity } from "./validation-scope.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
-import { assertPreMergeCandidateUnchanged } from "../worktree.js";
+import { assertPreMergeCandidateUnchanged } from "../worktree.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
-import { makeRecordedSession, makeUi, NO_ISOLATED_AGENT_PORT, runValidationPhase } from "./validation-test-helpers.js";
+import { makeRecordedSession, makeUi, NO_ISOLATED_AGENT_PORT, runValidationPhase } from "./validation-test-helpers.ts";
 
 const repository = defineGitFixture(async (root) => {
     await savePlan(root, "rewrite", "# Rewrite recovery\n", {

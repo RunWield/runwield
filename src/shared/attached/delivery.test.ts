@@ -7,7 +7,7 @@ import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { approveSemantic, prepareIndexRuntime, toDelivery } from "./delivery-test-fixture.ts";
 import { listWorkRecords } from "../work-records/store.js";
 import { git } from "../git-test-fixture.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import {
     type CliRun,
     CLI_PATH,
@@ -19,7 +19,7 @@ import {
 import { captureForegroundProcess } from "../captured-process.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { findById } from "../worktree-registry.js";
+import { findById } from "../worktree-registry.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import process from "node:process";
 import type { AttachedNextAction, AttachedOperationResult } from "./operations.ts";

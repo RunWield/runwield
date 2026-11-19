@@ -1,4 +1,4 @@
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 /**
@@ -9,7 +9,7 @@ import process from "node:process";
 
 import { basename, join } from "node:path";
 import { parseArgs } from "../src/shared/cli-args.ts";
-import { ROUTING_INTENTS } from "../src/constants.js";
+import { ROUTING_INTENTS } from "../src/constants.ts";
 
 const PLAN_ROUTING_INTENTS = ["FEATURE", "PROJECT"];
 

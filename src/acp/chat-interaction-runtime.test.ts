@@ -1,4 +1,4 @@
-import { savePlan } from "../plan-store.js";
+import { savePlan } from "../plan-store.ts";
 import { test } from "node:test";
 import { assertEquals } from "../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";

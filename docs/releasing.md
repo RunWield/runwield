@@ -55,8 +55,9 @@ bash install.sh vX.Y.Z-rc.N
 Release operators need:
 
 - `git` with push access to this repository.
-- Bun matching `.bun-version` (1.4.3) for source, Golden, executable and package qualification;
-  run `bun run install:locked` first.
+- Bun `^1.4.0` (at least 1.4.0 and below 2.0.0) for local release commands and checks;
+  run `bun run install:locked` first. CI and release builds use the exact version in `.bun-version`
+  for repeatable artifacts. Local commands do not require that exact version.
 - `gh` authenticated to GitHub with permission to read releases before tagging, verify Candidate releases during
   promotion, and edit release notes after CI publishes assets (`gh auth status` should pass for the target account).
 
@@ -281,7 +282,10 @@ Ubuntu source shards are removed rather than repeated in release qualification.
 `release-unix.yml`, `release-windows.yml`, and `release-containers.yml` workflows are reusable and also support manual
 diagnostics at the selected workflow revision. Windows checks are paused.
 Linux and macOS source checks install the latest Stable Mnemoteca with `scripts/install-ci-mnemoteca.sh`.
-The script verifies the platform archive against the release checksum file and runs `mnemoteca setup` before tests.
+The script verifies the platform archive against the release checksum file. It installs ONNX Runtime 1.23.1
+native libraries from Microsoft's PyPI wheels, verifies their SHA-256 hashes against the versioned PyPI metadata,
+and runs `mnemoteca setup` before tests. This avoids the unavailable GitHub runtime archives without replacing
+Mnemoteca or skipping its model setup and integration checks.
 These checks use real Work Record indexing, not a placeholder command.
 Manual diagnostics use a synthetic Candidate identity; release calls pass the real version and resolved product SHA.
 No new mandatory pre-tag check is introduced. Product fixes belong on the Release Branch and are later explicitly

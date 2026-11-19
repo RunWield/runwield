@@ -5,7 +5,7 @@ import { test as registerTest } from "node:test";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { createPlanSessionSurface } from "./plan-session-surface.ts";
-import { recordWorkflowMetric } from "../../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 
 import {
     mkdir as fsMkdir,
@@ -24,7 +24,7 @@ import { resolveRecoveryWorktree, persistRecoveredWorktreeMetadata } from "./pla
 import { dirname } from "node:path";
 import { handlePlanRecovery, SYSTEM_RECOVERY_FLOW_PORTS } from "./plan-recovery-flow.ts";
 import { abandonRecoveryPlan, continueRecoveryPlan } from "./plan-recovery-actions.ts";
-import { getStoredPlanPath, listPlans, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { getStoredPlanPath, listPlans, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { getTransitionJournalDir } from "../../shared/workflow/state-transition.ts";
 import { readControllerRecord, writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { resolvePlanWithPrimaryRecovery } from "./primary-plan-recovery.ts";
@@ -32,11 +32,11 @@ import {
     addEntry as addWorktreeRegistryEntry,
     findById as findWorktreeRegistryEntryById,
     getWorktreeRegistryPath,
-} from "../../shared/worktree-registry.js";
+} from "../../shared/worktree-registry.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
-import type { PlanFrontMatter } from "../../plan-store.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 import type { HandlePlanRecoveryOptions, RecoveryFlowPlan } from "./plan-recovery-flow.ts";
 import type { RecoveryActionContext } from "./plan-recovery-actions.ts";

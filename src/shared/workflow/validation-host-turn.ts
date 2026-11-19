@@ -5,7 +5,7 @@ import type { ValidationLoopArgs } from "./validation-types.ts";
 import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
-import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
+import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.ts";
 /** Session-free composition. Validation policy remains in the shared attempt owner and engine. */
 import { runValidationAttempt, type ValidationAttemptClaim } from "./validation-supervisor.ts";
 import type { ValidationProgressRecord, ValidationSessionPort, ValidationWorkflowState } from "./validation-ports.ts";

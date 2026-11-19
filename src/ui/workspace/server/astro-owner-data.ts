@@ -15,8 +15,8 @@ import { readSessionArtifact } from "../../../shared/session/read-session-artifa
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
 
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
-import type { createWorkspaceSessionContinuationService } from "./session-continuation.js";
-import type { WorkspacePlanDetailOptions } from "./plan-adapter.js";
+import type { createWorkspaceSessionContinuationService } from "./session-continuation.ts";
+import type { WorkspacePlanDetailOptions } from "./plan-adapter.ts";
 
 type OwnerPlanProgressLoader = (
     store: OwnerCoordinationStore,
@@ -39,7 +39,7 @@ const BUNDLED_PLAN_ADAPTER_KEY = Symbol.for("runwield.workspace.plan-adapter-mod
 // Deno import so Vite does not try to resolve Core's JSR imports through Node.
 let bundledProjectArtifacts: Promise<ProjectArtifactsModule> | undefined;
 if (!isAstroDevelopmentMode()) {
-    Reflect.set(globalThis, BUNDLED_PLAN_ADAPTER_KEY, import("./plan-adapter.js"));
+    Reflect.set(globalThis, BUNDLED_PLAN_ADAPTER_KEY, import("./plan-adapter.ts"));
     bundledProjectArtifacts = import("./project-artifacts.ts");
 }
 

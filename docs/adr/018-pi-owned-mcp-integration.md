@@ -65,7 +65,7 @@ RunWield records individual model-attributed usage entries and removes only the 
 The owner approved a narrow build-time exception to the original public-API-only packaging boundary. Pi 1.5.0 exposes
 its worker publicly but no extension option for embedded worker/WASM paths. Source execution succeeded while compiled
 probes failed resolving `quickjs-wasi/quickjs.wasm`, including with passive assets and explicit WASM imports. The build
-adapter checks exact Pi 1.5.0 and the expected source contract, initializes Pi's existing embedded-WASM setter, and
+adapter checks exact Pi 1.5.2 and the expected source contract, initializes Pi's existing embedded-WASM setter, and
 compiles the upstream worker at Pi's expected entrypoint. It changes no installed dependency or sandbox implementation.
 A future Pi upgrade must requalify this adapter and standalone execution. Copying the interpreter or silently relying
 on a development checkout was rejected.

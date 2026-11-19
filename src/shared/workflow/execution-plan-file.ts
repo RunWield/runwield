@@ -13,13 +13,13 @@ import {
     parsePlanFrontMatter,
     planDocumentMarkdown,
     writePlanMarkdownWithRevision,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 
 /**
  * /*
  */
 import type { Stats } from "node:fs";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 
 export interface ReconciledPlanIdentity {
     from: string | undefined;

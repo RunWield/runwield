@@ -2,14 +2,13 @@
 planId: "836cfa2e-3c96-46f8-bae2-9bb4633d2c49"
 classification: "PROJECT"
 complexity: "HIGH"
-summary: "Add an owner-triggered publication workflow that takes a verified Epic branch to the primary branch through a temporary worktree, an integration merge, re-run integrated validation, a compare-and-swap update, and durable Delivery Evidence."
 affectedPaths:
     - "docs/plans/"
-    - "src/shared/worktree.js"
+    - "src/shared/worktree.ts"
     - "src/shared/worktree-registry.js"
     - "src/shared/workflow/"
     - "src/shared/epic-artifacts.ts"
-    - "src/plan-store.js"
+    - "src/plan-store.ts"
     - "src/plan-front-matter.js"
     - "src/cmd/plans/"
     - "src/tools/"
@@ -80,7 +79,7 @@ choosing it.
 
 ## Vertical Slice Findings
 
-Today publication is a child-level concept. `src/shared/worktree.js` owns worktree creation, merge synthesis, and the
+Today publication is a child-level concept. `src/shared/worktree.ts` owns worktree creation, merge synthesis, and the
 target reference update; `src/shared/workflow/validation-merge-repair.ts` owns conflict continuation; and
 `src/shared/workflow/validation-delivery-hierarchy.ts` owns Delivery Evidence. All of it is reached from the validation
 loop of an executing Plan, and an Epic never executes.
@@ -129,13 +128,13 @@ Three existing invariants constrain the design and are not open for renegotiatio
 
 ## Files to Modify
 
-- `src/shared/worktree.js` and `src/shared/worktree-registry.js` — generalize publication worktree synthesis,
+- `src/shared/worktree.ts` and `src/shared/worktree-registry.js` — generalize publication worktree synthesis,
   compare-and-swap target update, retry-on-moved-head, and registry lifecycle so an Epic can use them outside the
   validation loop.
 - `src/shared/workflow/` — add the publication workflow, its resumable stages, bounded conflict repair dispatch,
   integrated re-validation, and Delivery Evidence at Epic level.
 - `src/shared/epic-artifacts.ts` — record the publication result beside the Epic's other artifacts.
-- `src/plan-store.js` and `src/plan-front-matter.js` — add the `published` status, its transition, publication-attempt
+- `src/plan-store.ts` and `src/plan-front-matter.js` — add the `published` status, its transition, publication-attempt
   metadata, and Epic Delivery Evidence fields.
 - `src/cmd/plans/` — the owner-facing publication command, its confirmation, and its resume path.
 - `src/tools/` — a typed publication-conflict completion boundary for the bounded repair role, separate from
@@ -178,7 +177,7 @@ Three existing invariants constrain the design and are not open for renegotiatio
   never leave the primary branch partly updated.
 - Terminal-state children must prove `published` sets Epic Delivery Evidence, is reachable only through this workflow,
   and cannot be produced by board movement or attestation.
-- Automated suites must run through `scripts/run-tests.js`, `deno task seams:check`, and `deno task ci`; Git behavior
+- Automated suites must run through `scripts/run-tests.ts` and `deno task ci`; Git behavior
   must be proven against real repositories through `defineGitFixture` rather than injected seams.
 
 ### Outcome Evidence

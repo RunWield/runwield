@@ -8,7 +8,7 @@ import { getCapabilities, setCapabilities, visibleWidth } from "@earendil-works/
 import stripAnsi from "strip-ansi";
 import { DocumentLinkHost } from "../review/document-link-host.ts";
 import { initRunWieldTheme } from "../theme/theme.ts";
-import { AgentMessageBlock, SystemMessageBlock, ToolExecutionBlock, UserPromptBlock } from "./blocks.js";
+import { AgentMessageBlock, SystemMessageBlock, ToolExecutionBlock, UserPromptBlock } from "./blocks.ts";
 
 initRunWieldTheme();
 

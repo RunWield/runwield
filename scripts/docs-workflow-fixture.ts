@@ -3,7 +3,7 @@ import { bashFixtureExecutable, bashFixturePath, quoteBashFixture } from "./bash
 import { delimiter, dirname, join, resolve } from "node:path";
 import { captureScriptProcess } from "./script-process.ts";
 import { tmpdir } from "node:os";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import {
     chmod as fsChmod,
     cp as fsCp,

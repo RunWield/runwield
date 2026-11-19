@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
-import { listPlans } from "../../plan-store.js";
+import { listPlans } from "../../plan-store.ts";
 import { runPlansDoctor } from "./doctor.ts";
 
 test("Doctor repairs a legacy Plan identity when its lock directory is absent", async () => {

@@ -6,9 +6,9 @@ affectedPaths:
     - "src/acp/"
     - "src/shared/session/"
     - "src/shared/owner-coordination/"
-    - "src/ui/workspace/server/session-continuation.js"
-    - "src/ui/workspace/islands/SessionSurface.jsx"
-    - "src/ui/workspace/components/SessionTimeline.jsx"
+    - "src/ui/workspace/server/session-continuation.ts"
+    - "src/ui/workspace/islands/SessionSurface.tsx"
+    - "src/ui/workspace/components/SessionTimeline.tsx"
     - "src/ui/desktop/"
 executionAgent: "frontend-engineer"
 collaborationRecommendation: "pair"
@@ -46,8 +46,8 @@ Move reusable orchestration from the UI server to its shared Core owner. Preserv
 The boundaries this change is expected to touch. This list is guidance, not an allowlist: verify the real footprint during implementation and change whatever the Implementation Steps need, including files not named here. Stop and report only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
 - `src/acp/`, `src/shared/session/`, `src/shared/owner-coordination/` — discovery, observations, interaction delivery, and authoritative continuation.
-- `src/ui/workspace/server/session-continuation.js`, `routes/owner-session-api.js` — reusable orchestration moves behind ACP while old workbench compatibility remains until cutover.
-- `src/ui/workspace/islands/SessionSurface.jsx`, Session list/timeline/question components, and shared client — host-independent composition.
+- `src/ui/workspace/server/session-continuation.ts`, `routes/owner-session-api.ts` — reusable orchestration moves behind ACP while old workbench compatibility remains until cutover.
+- `src/ui/workspace/islands/SessionSurface.tsx`, Session list/timeline/question components, and shared client — host-independent composition.
 - `src/ui/desktop/` — semantic client wiring and bounded image selection/paste/drop.
 - Core/Workspace/ACP owning capability scenarios and contract inventory — delivered Session evidence.
 
@@ -69,7 +69,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.js src/acp/server.test.js src/acp/managed-session.integration.test.ts src/ui/workspace/workspace-session-ux.test.tsx src/ui/workspace/session-continuation.integration.test.ts src/ui/workspace/background-continuation.integration.test.ts` and `bun run seams:check`.
+- Use Bun 1.4.3 and `bun run install:locked`. Run `bun scripts/run-tests.ts src/acp/server.test.ts src/acp/managed-session.integration.test.ts src/ui/workspace/workspace-session-ux.test.tsx src/ui/workspace/session-continuation.integration.test.ts src/ui/workspace/background-continuation.integration.test.ts`.
 - Planner assigns exact new real-process Session parity tests. Prove wrong-Project, duplicate request, stale generation, oversized image, busy writer, unknown capability, and archived/unarchived outcomes against real Core stores and locks.
 - Existing tests may change transport/import location, but committed history, writer exclusion, configuration hydration, background delivery, and interaction semantics remain protected.
 - Headed verification uses desktop Session discovery/detail and new-Session flows. Discover and record the normal desktop dev command and URL/origin. Exercise long history, keyboard interaction, image preview, a question, steering, cancellation, and a background result after the original prompt returns.

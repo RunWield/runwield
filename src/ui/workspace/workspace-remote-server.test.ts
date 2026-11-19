@@ -1,13 +1,13 @@
 import { serveHttp } from "../../shared/http-server.ts";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { test } from "node:test";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 
-import "./server/plan-adapter.js";
+import "./server/plan-adapter.ts";
 
 import {
     parseMaxRequestBytes,
@@ -19,7 +19,7 @@ import {
 } from "./remote-server.ts";
 import { handleRemoteSpaceApi } from "./server/remote-dev-api.ts";
 
-import { createWorkspaceApp } from "./server.js";
+import { createWorkspaceApp } from "./server.ts";
 
 import { createTestApiContext, createTestEnv } from "./workspace-test-helpers.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

@@ -8,7 +8,7 @@ import { assertModelExecutionBackendSupported, UnsupportedModelExecutionBackendE
 import { discoverProviderModel, RunWieldCredentialStore, RunWieldModelRegistry } from "./model-registry.ts";
 import { resolveTemplateModel } from "./model-validation.ts";
 
-const AGY_MODELS = ["gemini-3.8-flash", "gemini-3.1-pro"];
+const AGY_MODELS = ["gemini-4-argon", "gemini-4-hydrogen", "gemini-4-carbon", "gemini-3.8-flash", "gemini-3.1-pro"];
 
 async function makeRegistry(): Promise<{ registry: RunWieldModelRegistry; tempDir: string }> {
     const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-agy-cli-models-"));
@@ -25,12 +25,21 @@ test("Agy CLI exposes exactly the supported selectable base models", async () =>
     const { registry, tempDir } = await makeRegistry();
     try {
         const selectable = registry.getSelectable().filter((model) => model.provider === "agy-cli");
-        assertEquals(selectable.map((model) => model.id), AGY_MODELS);
         assertEquals(
-            registry.getAll().filter((model) => model.provider === "agy-cli").map((model) => model.id),
+            selectable.map((model) => model.id),
             AGY_MODELS,
         );
-        assertEquals(registry.getAvailable().some((model) => model.provider === "agy-cli"), false);
+        assertEquals(
+            registry
+                .getAll()
+                .filter((model) => model.provider === "agy-cli")
+                .map((model) => model.id),
+            AGY_MODELS,
+        );
+        assertEquals(
+            registry.getAvailable().some((model) => model.provider === "agy-cli"),
+            false,
+        );
         for (const model of selectable) {
             assertObjectMatch(model, {
                 provider: "agy-cli",
@@ -70,19 +79,23 @@ test("Agy CLI lookup accepts only the supported base models", async () => {
                 id: modelId,
             });
         }
-        for (
-            const modelId of [
-                "",
-                "   ",
-                "fixture-model",
-                "gemini-3.8-flash-low",
-                "gemini-3.8-flash-medium",
-                "gemini-3.8-flash-high",
-                "gemini-3.1-pro-low",
-                "gemini-3.1-pro-high",
-                `vendor/path/${crypto.randomUUID()}`,
-            ]
-        ) {
+        for (const modelId of [
+            "",
+            "   ",
+            "fixture-model",
+            "gemini-4-argon-high",
+            "gemini-4-hydrogen-xhigh",
+            "gemini-4-carbon-low",
+            "claude-opus-5-5",
+            "claude-sonnet-5-5",
+            "gpt-oss-120b",
+            "gemini-3.8-flash-low",
+            "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-high",
+            "gemini-3.1-pro-low",
+            "gemini-3.1-pro-high",
+            `vendor/path/${crypto.randomUUID()}`,
+        ]) {
             assertEquals(registry.find("agy-cli", modelId), undefined);
         }
         assertEquals(resolveTemplateModel("agy-cli/gemini-3.8-flash-low", registry), { ok: false });
@@ -136,7 +149,10 @@ test("Agy CLI ignores misleading configured providers and live discovery", async
         assertEquals(registry.getProvider("agy-cli"), undefined);
         assertEquals(registry.getRegisteredProviderConfig("agy-cli"), undefined);
         assertEquals(registry.getRegisteredProviderIds(), ["local"]);
-        assertEquals(registry.getConfiguredModels().some((entry) => entry.provider === "agy-cli"), false);
+        assertEquals(
+            registry.getConfiguredModels().some((entry) => entry.provider === "agy-cli"),
+            false,
+        );
         assertEquals(registry.find("local", "configured")?.provider, "local");
     } finally {
         await fsRm(tempDir, { recursive: true });

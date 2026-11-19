@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile, stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { getExactProjectCustomSetting } from "../settings.js";
+import { getExactProjectCustomSetting } from "../settings.ts";
 import { resolveValidationCommand, runValidationCommand, saveValidationCommand } from "./validation-local-ci.ts";
 
 test("Session-free validation returns command_missing without prompting or starting a command", async () => {

@@ -9,7 +9,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { PhotonImage } from "@silvia-odwyer/photon-node";
@@ -24,7 +24,7 @@ import {
     resolveVisionFallbackModel,
     saveImageAttachment,
 } from "./image-attachments.ts";
-import { __resetSettingsForTests } from "../settings.js";
+import { __resetSettingsForTests } from "../settings.ts";
 
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";

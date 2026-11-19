@@ -14,15 +14,15 @@ import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../src/testing/process-global-lock.ts";
 import { defineGitFixture, git } from "../../src/shared/git-test-fixture.ts";
 import { getModelRegistry } from "../../src/shared/models/model-registry.ts";
-import { setCustomSetting } from "../../src/shared/settings.js";
-import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.js";
+import { setCustomSetting } from "../../src/shared/settings.ts";
+import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.ts";
 import {
     buildMetricsExportObservation,
     isExportableMetric,
     type MetricsJournalRow,
 } from "../../src/shared/workflow/metrics-export-record.ts";
-import { HostedSession } from "../../src/shared/session/hosted-session.js";
-import { createRootSessionManager } from "../../src/shared/session/root-session.js";
+import { HostedSession } from "../../src/shared/session/hosted-session.ts";
+import { createRootSessionManager } from "../../src/shared/session/root-session.ts";
 import { ClaudeCliExecutionSession } from "../../src/shared/session/backends/claude-cli/execution-session.ts";
 import { deliver } from "./exporter.ts";
 import { attributes, metadata, native, span, withServer } from "./test-fixture.ts";

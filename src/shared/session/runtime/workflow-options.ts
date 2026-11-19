@@ -18,7 +18,7 @@ export interface RuntimeTriageFields {
     worktree?: import("../../workflow/plan-actions.ts").PlanWorktreeExpectation;
 }
 export type RuntimePersistedTriageInput = Omit<
-    import("../../../plan-store.js").PlanFrontMatter,
+    import("../../../plan-store.ts").PlanFrontMatter,
     "status" | "executionAgent"
 > & {
     status?: string;
@@ -28,7 +28,7 @@ export type RuntimeTriageInput =
     | RuntimeTriageFields
     | RuntimePersistedTriageInput
     | import("../../../tools/plan-written.ts").TriageMeta
-    | import("../../../plan-store.js").PlanFrontMatter;
+    | import("../../../plan-store.ts").PlanFrontMatter;
 export type RuntimeExecutePlanOptions = Partial<
     Omit<import("../../workflow/plan-executor.ts").ExecutePlanOptions, "hostedSession" | "triageMeta">
 > & {
@@ -88,7 +88,7 @@ export interface SemanticRepairHandoffResult {
 export type SemanticRepairContinuation = Omit<
     import("../../workflow/execution-segment-handoff.ts").SemanticRepairSegmentContinuation,
     "activeWorkflow"
-> & { activeWorkflow: import("../hosted-session.js").ActiveExecutionWorkflow };
+> & { activeWorkflow: import("../hosted-session.ts").ActiveExecutionWorkflow };
 export interface RuntimeSemanticRepairOptions {
     suppressEpicContinuation?: boolean;
     planName: string;
@@ -104,7 +104,7 @@ export interface RuntimeValidationResult {
     projectRoot?: string;
     reason?: string;
     executionComplete?: boolean;
-    executionContext?: import("../hosted-session.js").ActiveExecutionWorkflow;
+    executionContext?: import("../hosted-session.ts").ActiveExecutionWorkflow;
     executionSegmentHandoff?: import("../../workflow/execution-segment-handoff.ts").ExecutionSegmentContinuation;
     epicContinuation?: NonNullable<WorkflowValidationResult["epicContinuation"]>;
     semanticRepairHandoff?: WorkflowValidationResult["semanticRepairHandoff"];

@@ -1,4 +1,4 @@
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
 import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
 import { test } from "node:test";
@@ -9,10 +9,10 @@ import { type ExtensionToolContext, SessionManager, type ToolDefinition } from "
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
 import { type AgentHandler, createAgentHandler } from "./agent-handler.ts";
-import { HostedSession } from "./hosted-session.js";
-import { ensureRootAgentSession } from "./session.js";
-import { RuntimeEventTypes } from "./session-runtime-events.js";
-import { setCustomSetting } from "../settings.js";
+import { HostedSession } from "./hosted-session.ts";
+import { ensureRootAgentSession } from "./session.ts";
+import { RuntimeEventTypes } from "./session-runtime-events.ts";
+import { setCustomSetting } from "../settings.ts";
 import { listPendingWorkflowToolEvents, publishWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
 import { listPendingTaskCompletions } from "./task-completion-session.ts";
 

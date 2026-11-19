@@ -1,4 +1,4 @@
-import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 import process from "node:process";
 import {
     confirmMissingManagedProjectDirectory,
@@ -14,7 +14,7 @@ import { isEpicPlan, projectPlanType } from "../../shared/project-plan.ts";
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { AGENTS, CLI_BIN, getCwd } from "../../constants.js";
+import { AGENTS, CLI_BIN, getCwd } from "../../constants.ts";
 import {
     archivePlan,
     canonicalPlanStatus,
@@ -25,7 +25,7 @@ import {
     onboardExternalPlan,
     resolvePlan,
     resolveSiblingChildPlanDependencies,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { isPlanArchivePending, startBackgroundArchive } from "./archive-background.ts";
 import { decidePostPlanning } from "../../shared/workflow/decisions.ts";
 import { buildPlanningReReviewRequest, buildResumeRequest } from "./plan-presentation.ts";
@@ -74,8 +74,8 @@ import {
     PlanningNotStartedError,
     resolveWorkflowPlanLocation,
 } from "../../shared/workflow/plan-location.ts";
-import type { CommandContext } from "../registry.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { CommandContext } from "../registry.ts";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import {
     buildPlanRecoveryUserMessage,
     buildValidationRecoveryNotice,
@@ -105,7 +105,7 @@ async function finishSavedPublicationCleanup(projectRoot: string, uiAPI: UiAPI, 
  * Handle `load-plan` command.
  *
  * @param {string[]} argv
- * @param {import('../registry.js').CommandContext} [options]
+ * @param {import('../registry.ts').CommandContext} [options]
  */
 export async function runLoadPlanCommand(argv: string[], options: CommandContext = {}): Promise<void> {
     let sessionRuntime = options.sessionRuntime;

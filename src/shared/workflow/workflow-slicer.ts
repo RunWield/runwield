@@ -1,4 +1,4 @@
-// @ts-nocheck: structural TypeScript migration; public shapes are tightened below while legacy tool schemas retain inference.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/workflow/workflow-slicer
@@ -9,7 +9,7 @@ import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.ts";
 import {
     findPlansByParent,
     loadPlan,
@@ -18,8 +18,8 @@ import {
     resolveChildPlanNames,
     withPlanCatalogLock,
     writePlanMarkdownWithRevision,
-} from "../../plan-store.js";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
+} from "../../plan-store.ts";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.ts";
 import { SUBAGENT_DEFINITIONS } from "../session/subagent-definitions.ts";
 import { buildSlicerRequest } from "./workflow-prompts.ts";
@@ -29,7 +29,7 @@ import { runEpicDecompositionFinalizeTransition } from "./state-transition.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 
 export interface RunSlicerAgentOptions {
     planName: string;
@@ -82,7 +82,7 @@ function isActiveSlicerContextBoundary(entry) {
  *
  * @param {Object} opts
  * @param {string} opts.planName
- * @param {import('../session/hosted-session.js').HostedSession} opts.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} opts.hostedSession
  * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} opts.sessionManager
  * @returns {{ manager: import('@earendil-works/pi-coding-agent').SessionManager, previousLeafId: string | null } | null}
  */
@@ -193,9 +193,9 @@ const CHILD_DESCRIPTOR_SCHEMA = Type.Object({
  * @param {Object} opts
  * @param {string} opts.cwd - Project root.
  * @param {string} opts.epicPlanName - Parent Epic plan name.
- * @param {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} opts.children
+ * @param {import('../../plan-store.ts').ChildFeaturePlanDescriptor[]} opts.children
  * @param {string} [opts.parentTargetBranch]
- * @param {import('../../plan-store.js').PlanWriteOptions} [opts.writeOptions]
+ * @param {import('../../plan-store.ts').PlanWriteOptions} [opts.writeOptions]
  * @returns {ReturnType<typeof saveChildFeaturePlans>}
  */
 export async function materializeSlicerDraft({ cwd, epicPlanName, children, parentTargetBranch, writeOptions }) {
@@ -259,7 +259,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                         );
                     }
                     const childDescriptors =
-                        /** @type {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} */
+                        /** @type {import('../../plan-store.ts').ChildFeaturePlanDescriptor[]} */
                         params.children || [];
                     const beforeChildren = await findPlansByParent(cwd, planName);
                     /** @type {Array<{ name: string, path: string, markdown: string, revision: string }>} */
@@ -312,7 +312,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                                     );
                                 }
                             }
-                            /** @param {import('../../plan-store.js').SavedChildFeaturePlan} writeResult */
+                            /** @param {import('../../plan-store.ts').SavedChildFeaturePlan} writeResult */
                             const captureWrittenChild = async (writeResult) => {
                                 writeResults.push(writeResult);
                                 const staged = await loadPlan(cwd, writeResult.name);
@@ -400,7 +400,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                 };
                 const result = /** @type {any} */ await withPlanCatalogLock(cwd, async () => {
                     const childDescriptors =
-                        /** @type {import('../../plan-store.js').ChildFeaturePlanDescriptor[]} */
+                        /** @type {import('../../plan-store.ts').ChildFeaturePlanDescriptor[]} */
                         params.children || [];
                     const plannedChildNames = await resolveChildPlanNames(cwd, planName, childDescriptors);
                     const existingChildNames = (await findPlansByParent(cwd, planName)).map((child) => child.name);
@@ -493,7 +493,7 @@ async function prepareEpicBranchSummary(cwd, planName) {
 }
 
 /**
- * @param {{ name: string, attrs: import('../../plan-store.js').PlanFrontMatter }} child
+ * @param {{ name: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} child
  * @returns {{ name: string, order: number | undefined, status: string | undefined, summary: string | undefined, workKind: string | undefined, dependencies: string[], affectedPaths: string[], tickets?: import('../ticket-references.ts').TicketReference[] }}
  */
 function summarizeChild(child) {
@@ -526,7 +526,7 @@ function createSlicerCustomTools(planName, cwd) {
  * @param {import('../../tools/plan-written.ts').TriageMeta} [opts.triageMeta]
  * @param {string} [opts.reviewFeedback]
  * @param {Array<{base64: string, mimeType: string}>} [opts.reviewImages]
- * @param {import('../session/hosted-session.js').HostedSession} opts.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} opts.hostedSession
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} [opts.sessionManager]
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
@@ -604,7 +604,7 @@ export async function runSlicerAgent({
  * @param {string} opts.planName
  * @param {string} opts.planPath - Absolute path to the plan markdown file.
  * @param {import('../../tools/plan-written.ts').TriageMeta} [opts.triageMeta]
- * @param {import('../session/hosted-session.js').HostedSession} opts.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} opts.hostedSession
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} [opts.sessionManager]
  * @returns {Promise<{ ok: true, slicerInvoked: boolean } | { ok: false, error: string, stage: "slicer" | "validation" }>}
  */

@@ -5,14 +5,14 @@ import {
     writeFile as fsWriteFile,
     symlink as fsSymlink,
 } from "node:fs/promises";
-import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
+import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.js";
+import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.ts";
 
 type OwnerStore = ReturnType<typeof openOwnerCoordinationStore>;
 type RegisterProjectInput = Parameters<OwnerStore["registerProject"]>[0];
@@ -599,7 +599,7 @@ test("owner Workspace keeps read-only Project Plan progress API and removes prog
 });
 
 test("owner add and relink expose redacted confirmation before writes and keep auth", async () => {
-    const { getHomeDir } = await import("../../constants.js");
+    const { getHomeDir } = await import("../../constants.ts");
     const dir = await fsMkdtemp(join(tmpdir(), "owner-consent-"));
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const pairing = store.createPairingRequest({ codeFactory: () => "HOME12", proofFactory: () => "home-proof" });

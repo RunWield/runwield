@@ -6,14 +6,14 @@
  * small custom marker that `/resume` can use for newer sessions.
  */
 
-import { AGENTS } from "../../constants.js";
-import { loadAgentDef, normalizeAgentInternalName } from "./agents.js";
+import { AGENTS } from "../../constants.ts";
+import { loadAgentDef, normalizeAgentInternalName } from "./agents.ts";
 
 export const ACTIVE_AGENT_CUSTOM_TYPE = "runwield.active_agent";
 export const MANUAL_MODEL_CUSTOM_TYPE = "runwield.manual_model";
 
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { MinimalSessionManagerLike } from "./hosted-session.js";
+import type { MinimalSessionManagerLike } from "./hosted-session.ts";
 
 export type SessionEntryReader = Pick<MinimalSessionManagerLike, "getBranch" | "getEntries">;
 

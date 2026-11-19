@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";

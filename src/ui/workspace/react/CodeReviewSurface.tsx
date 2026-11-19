@@ -1,4 +1,4 @@
-// @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+// @ts-nocheck: Component props and event-handler types are implicit.
 import { RunWieldPanelIcon } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { useReviewRevision } from "./use-review-revision.ts";
 import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";

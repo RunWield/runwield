@@ -23,12 +23,12 @@ import {
 } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { SessionHost } from "../session/session-host.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
-import { RuntimeEventTypes } from "../session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../session/session-runtime-events.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";

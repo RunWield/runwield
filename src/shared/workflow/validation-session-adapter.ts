@@ -1,15 +1,15 @@
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { type AgentMessage } from "@earendil-works/pi-agent-core";
-import { type HostedSession } from "../session/hosted-session.js";
-import { runIsolatedAgentSession } from "../session/session.js";
+import { type HostedSession } from "../session/hosted-session.ts";
+import { runIsolatedAgentSession } from "../session/session.ts";
 import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
-import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.js";
+import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.ts";
 import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.ts";
-import { getAgentDisplayName as getSessionAgentDisplayName } from "../session/agents.js";
+import { getAgentDisplayName as getSessionAgentDisplayName } from "../session/agents.ts";
 import { ClaudeCliBackendError } from "../session/backends/claude-cli/failure.ts";
 import { INTEGRATION_REVIEWER_SUBAGENT_TOOLS, REVIEWER_SUBAGENT_TOOLS } from "../session/subagent-definitions.ts";
-import { AGENTS, SUBAGENTS } from "../../constants.js";
+import { AGENTS, SUBAGENTS } from "../../constants.ts";
 import {
     emitRunWieldSystemStatus,
     getCurrentValidationProgress,
@@ -19,7 +19,7 @@ import { clearValidationPosition, rememberValidationPosition } from "./validatio
 import { runFeaturePostVerificationHandoffs } from "./validation-helpers.ts";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
-import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { getLockHostname } from "../process-liveness.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
@@ -66,7 +66,7 @@ import process from "node:process";
  * The options shape the pre-existing isolated-session boundary takes.
  *
  * Kept structurally identical to the shape `runIsolatedAgentSession` in
- * `session.js` consumes, so injected `semanticReviewPort` fixtures and the system
+ * `session.ts` consumes, so injected `semanticReviewPort` fixtures and the system
  * implementation both see exactly what they saw before the split.
  */
 export type IsolatedAgentSessionOptions = {

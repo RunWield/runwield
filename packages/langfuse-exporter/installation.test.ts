@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { getCwd } from "../../src/constants.js";
+import { getCwd } from "../../src/constants.ts";
 import { DefaultPackageManager, DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../src/testing/assertions.ts";
@@ -28,14 +28,14 @@ import {
     getSettingsDir,
     getSettingsManager,
     setCustomSetting,
-} from "../../src/shared/settings.js";
+} from "../../src/shared/settings.ts";
 import {
     grantMetricsExportDestination,
     setMetricsExportCredentials,
 } from "../../src/shared/workflow/metrics-export-grants.ts";
 import { readMetricsExportLedger } from "../../src/shared/workflow/metrics-export-ledger.ts";
 import { readMetricsExportStatus, runMetricsExportCycle } from "../../src/shared/workflow/metrics-export-scheduler.ts";
-import { recordWorkflowMetric } from "../../src/shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../../src/shared/workflow/metrics.ts";
 import { withProcessGlobalTestLock } from "../../src/testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../../src/ui/theme/theme.js";
 import {

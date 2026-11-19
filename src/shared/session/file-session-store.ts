@@ -3,7 +3,7 @@ import type { FileEntry, SessionHeader } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { readSessionImageAttachment, saveImageAttachment } from "./image-attachments.ts";
-import type { ImageAttachment } from "./types.js";
+import type { ImageAttachment } from "./image-attachments.ts";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
 import type {
     FileActivationProof,
@@ -16,7 +16,7 @@ import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
 import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
 import { findProject, sessionDirForProject } from "./file-session-storage.ts";
-import type { ManagedSessionMetadata } from "./hosted-session.js";
+import type { ManagedSessionMetadata } from "./hosted-session.ts";
 import type { RemoteRolloverOptions, RemoteRolloverReceipt } from "../remote/session-protocol.ts";
 import { projectRemoteSessionRecords } from "../remote/session-records.ts";
 import { normalizePlanAssociation } from "./plan-association.ts";

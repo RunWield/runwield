@@ -1,0 +1,3011 @@
+import type { PlanFrontMatter } from "./plan-store.ts";
+import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
+import { makeTempDirectory } from "./testing/temp-file.ts";
+import { hostname } from "node:os";
+import { testWithFsPermissions } from "./testing/file-test.ts";
+import { realpathSync as fsRealpathSync } from "node:fs";
+import {
+    open as fsOpen,
+    lstat as fsLstat,
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    symlink as fsSymlink,
+    utimes as fsUtimes,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "./testing/assertions.ts";
+import { dirname, join } from "node:path";
+import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "./constants.ts";
+import { getWorktreeRegistryPath } from "./shared/worktree-registry.ts";
+import { readControllerRecord } from "./shared/workflow/controller-registry.ts";
+import {
+    archivePlan,
+    archivePlansByStatus,
+    canonicalPlanStatus,
+    clearPlanCollaborationMetadata,
+    createPulledCollaborationPlan,
+    deleteArchivedPlanUnit,
+    ensurePlanIdentity,
+    ensurePlansDir,
+    findPlanById,
+    findPlansByParent,
+    getPlansDir,
+    hashPlanBody,
+    injectFrontMatter,
+    inspectPlanFileStrict,
+    listArchivedPlans,
+    listPlanResources,
+    listPlans,
+    loadArchivedPlan,
+    loadExternalPlan,
+    loadPlan,
+    loadPlanBodyById,
+    loadPlanStrict,
+    onboardExternalPlan,
+    parsePlanFrontMatter,
+    PlanFrontMatterParseError,
+    resolvePlan,
+    resolvePlanExecutionPolicy,
+    resolveSiblingChildPlanDependencyStates,
+    restoreArchivedPlan,
+    saveChildFeaturePlans,
+    savePlan,
+    savePlanBodyById,
+    StalePlanWriteError,
+    updateArchivedPlanFrontMatter,
+    updatePlanCollaborationMetadata,
+    updatePlanFrontMatter,
+    updatePlanStatus,
+    withPlanCatalogLock,
+    withPlanLock,
+} from "./plan-store.ts";
+import {
+    COLLABORATION_LOCK_BYPASS,
+    COLLABORATION_STATE_REMOTE_CANONICAL,
+    SharedPlanLockError,
+} from "./shared/collaboration/lock.ts";
+
+type PlanOrderingFixture = [string, PlanFrontMatter["classification"], PlanFrontMatter["status"]];
+
+function testWithFs(name: string, fn: () => Promise<void>) {
+    testWithFsPermissions(name, fn);
+}
+
+async function assertMissing(path: string) {
+    await assertRejects(() => fsStat(path), Error, "ENOENT");
+}
+
+test("controller-only updates preserve a formatted validated Plan byte for byte", async () => {
+    const cwd = await makeTempDirectory({ prefix: "validated-plan-controller-" });
+    try {
+        const path = join(cwd, "docs/plans/p.md");
+        await fsMkdir(join(cwd, "docs/plans"), { recursive: true });
+        const markdown =
+            '---\nplanId: "controller-only-plan"\nclassification: "PLANNED_CHANGE"\nstatus: "validated"\naffectedPaths:\n    - "src/example.ts"\ndependencies:\n    - "previous-plan"\ntargetBranch: "main"\n---\n# Already formatted\n';
+        await fsWriteFile(path, markdown);
+        const plan = await loadPlan(cwd, "p");
+        assert(plan);
+        await updatePlanFrontMatter(cwd, "p", { validationCiAttempts: 1 }, plan.attrs, {
+            expectedRevision: plan.revision,
+            expectedControllerRevision: plan.controllerRevision,
+        });
+        assertEquals(await fsReadFile(path, "utf8"), markdown);
+        assertEquals((await loadPlan(cwd, "p"))?.attrs.validationCiAttempts, 1);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+async function recordActiveAttempt(cwd: string, planName: string) {
+    const path = join(cwd, "execution");
+    const baseCommit = await git(cwd, ["rev-parse", "HEAD"]);
+    await git(cwd, ["worktree", "add", "-b", "worktree/test", path]);
+    await fsMkdir(join(path, "docs/plans"), { recursive: true });
+    await fsWriteFile(
+        join(path, "docs/plans", `${planName}.md`),
+        await fsReadFile(join(cwd, "docs/plans", `${planName}.md`)),
+    );
+    const registryPath = getWorktreeRegistryPath(cwd);
+    await fsMkdir(dirname(registryPath), { recursive: true });
+    await fsWriteFile(
+        registryPath,
+        JSON.stringify({
+            version: 2,
+            entries: [
+                {
+                    id: "attempt-one",
+                    planName,
+                    path,
+                    branch: "worktree/test",
+                    baseBranch: "main",
+                    baseRef: "refs/heads/main",
+                    baseCommit,
+                    status: "active",
+                    createdAt: "2026-01-01T00:00:00.000Z",
+                    updatedAt: "2026-01-01T00:00:00.000Z",
+                },
+            ],
+        }),
+    );
+}
+
+async function updatePlanFrontMatterForTest(
+    cwd: string,
+    planName: string,
+    updates: Partial<import("./plan-store.ts").PlanFrontMatter>,
+    recoveryAttrs: Partial<import("./plan-store.ts").PlanFrontMatter> = {},
+    options: import("./plan-store.ts").PlanWriteOptions = {},
+) {
+    const plan = await loadPlan(cwd, planName);
+    return await updatePlanFrontMatter(cwd, planName, updates, recoveryAttrs, {
+        ...options,
+        expectedRevision: options.expectedRevision || plan?.revision,
+    });
+}
+
+async function updatePlanStatusForTest(
+    cwd: string,
+    planName: string,
+    status: import("./plan-store.ts").PlanFrontMatter["status"],
+    recoveryAttrs: Partial<import("./plan-store.ts").PlanFrontMatter> = {},
+    options: import("./plan-store.ts").PlanWriteOptions = {},
+) {
+    const plan = await loadPlan(cwd, planName);
+    return await updatePlanStatus(cwd, planName, status, recoveryAttrs, {
+        ...options,
+        expectedRevision: options.expectedRevision || plan?.revision,
+    });
+}
+
+async function savePlanBodyByIdForTest(cwd: string, planId: string, body: string, expectedBodyHash: string) {
+    const resource = await findPlanById(cwd, planId);
+    const plan = await loadPlan(cwd, resource.planName || resource.name);
+    return await savePlanBodyById(cwd, planId, body, expectedBodyHash, { expectedRevision: plan?.revision });
+}
+
+test("Plan storage round-trips escaped YAML values and ANSI output without corrupting the document", async () => {
+    const cwd = await makeTempDirectory({ prefix: "plan-yaml-values-" });
+    try {
+        const summary = 'Handle "Other" and \\slashes';
+        const failure = `CI failed: \u001b[31mFAILED\u001b[0m`;
+        const affectedPaths = ['<|"|src/tools/user-interview.js<|"|'];
+        const path = await savePlan(cwd, "escaped", `# Plan\n\n## Context\n\n${summary}\n`, {
+            classification: "PLANNED_CHANGE",
+            status: "draft",
+            affectedPaths,
+            devServerCommand: failure,
+        });
+        const loaded = await loadPlan(cwd, "escaped");
+        assertEquals(loaded?.attrs.summary, summary);
+        assertEquals(loaded?.attrs.affectedPaths, affectedPaths);
+        assertEquals(loaded?.attrs.devServerCommand, failure);
+        const stored = await fsReadFile(path, "utf8");
+        assertEquals(stored.includes("\u001b"), false);
+        assertStringIncludes(stored, "\\u001b[31mFAILED\\u001b[0m");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("Plan Deviation metadata round trips as Plan-owned definition", () => {
+    const markdown = injectFrontMatter("# Plan\n\nBody", {
+        status: "in_progress",
+        planDeviations: [
+            {
+                id: "call-1",
+                supersededRequirement: "Replace nav.",
+                replacementRequirement: "Keep current nav.",
+                reason: "User decided during Pair Execution.",
+                approvedAt: "2026-09-10T00:00:00.000Z",
+            },
+            {
+                id: "call-2",
+                supersededRequirement: "Use blue.",
+                replacementRequirement: "Use green.",
+                approvedAt: "2026-09-10T00:01:00.000Z",
+            },
+        ],
+    });
+
+    const { attrs } = parsePlanFrontMatter(markdown);
+
+    assertEquals(attrs.status, "in_progress");
+    assertEquals(attrs.planDeviations, [
+        {
+            id: "call-1",
+            supersededRequirement: "Replace nav.",
+            replacementRequirement: "Keep current nav.",
+            reason: "User decided during Pair Execution.",
+            approvedAt: "2026-09-10T00:00:00.000Z",
+        },
+        {
+            id: "call-2",
+            supersededRequirement: "Use blue.",
+            replacementRequirement: "Use green.",
+            approvedAt: "2026-09-10T00:01:00.000Z",
+        },
+    ]);
+    assertStringIncludes(markdown, "planDeviations:\n  - id:");
+    assertStringIncludes(markdown, "replacementRequirement:");
+});
+
+test("malformed Plan Deviation metadata blocks Plan parsing", () => {
+    assertThrows(
+        () =>
+            parsePlanFrontMatter(`---
+classification: PLANNED_CHANGE
+planDeviations:
+  - id: call-1
+    supersededRequirement: "Old requirement."
+    replacementRequirement: " "
+    approvedAt: "2026-09-10T00:00:00.000Z"
+---
+# Plan
+`),
+        Error,
+        "replacementRequirement",
+    );
+});
+
+test("Plan Work Record metadata round trips with nested YAML", () => {
+    const markdown = "## Plan\n\nBody";
+    const withFm = injectFrontMatter(markdown, {
+        status: "closed_without_verification",
+        closedWithoutVerificationReason: "Verified manually in staging.",
+        workRecord: {
+            status: "generated",
+            recordId: "11111111-1111-4111-8111-111111111111",
+            path: "docs/work-records/2026-07-14-example.md",
+            lastAttemptAt: "2026-07-14T08:32:00-04:00",
+        },
+    });
+
+    const { attrs } = parsePlanFrontMatter(withFm);
+
+    assertEquals(attrs.closedWithoutVerificationReason, "Verified manually in staging.");
+    assertEquals(attrs.workRecord, {
+        status: "generated",
+        recordId: "11111111-1111-4111-8111-111111111111",
+        path: "docs/work-records/2026-07-14-example.md",
+        lastAttemptAt: "2026-07-14T08:32:00-04:00",
+    });
+    assertStringIncludes(withFm, "closedWithoutVerificationReason:");
+    assertStringIncludes(withFm, "workRecord:\n  status:");
+});
+
+test("obsolete Objective Check front matter is ignored by active Plan parsing", () => {
+    const parsed = parsePlanFrontMatter(`---
+classification: PLANNED_CHANGE
+objectiveChecks:
+  - id: OC1
+    command: "false"
+objectiveChecksBaseline:
+  recordedAt: now
+objectiveCheckWaivers: []
+validationObjectiveCheckAttempts: 2
+---
+# Legacy Plan
+`);
+    assertEquals("objectiveChecks" in parsed.attrs, false);
+    assertEquals("objectiveChecksBaseline" in parsed.attrs, false);
+    assertEquals("objectiveCheckWaivers" in parsed.attrs, false);
+    assertEquals("validationObjectiveCheckAttempts" in parsed.attrs, false);
+});
+
+test("frontend verification front matter round trips as legacy source metadata", () => {
+    const markdown = "## Plan\n\nBody";
+    const withFm = injectFrontMatter(markdown, {
+        frontend: true,
+        devServerCommand: "npm run dev",
+        devServerUrl: "http://localhost:5173",
+        devServerHmr: true,
+    });
+
+    const { attrs } = parsePlanFrontMatter(withFm);
+
+    assertEquals(attrs.frontend, true);
+    assertEquals(attrs.executionAgent, undefined);
+    assertEquals(resolvePlanExecutionPolicy(attrs), {
+        ok: true,
+        policy: {
+            executionAgent: "frontend-engineer",
+            collaborationRecommendation: "autonomous",
+            source: "legacy_frontend",
+        },
+    });
+    assertEquals(attrs.devServerCommand, "npm run dev");
+    assertEquals(attrs.devServerUrl, "http://localhost:5173");
+    assertEquals(attrs.devServerHmr, true);
+});
+
+test("Plan execution policy preserves invalid raw values for diagnostics", () => {
+    const { attrs } = parsePlanFrontMatter(`---
+classification: FEATURE
+executionAgent: typo-agent
+collaborationRecommendation: buddy
+---
+# Bad
+`);
+
+    assertEquals(attrs.executionAgent, "typo-agent");
+    assertEquals(attrs.collaborationRecommendation, "buddy");
+    assertEquals(resolvePlanExecutionPolicy(attrs), {
+        ok: false,
+        reason: "invalid_execution_agent",
+        error: "Invalid executionAgent: typo-agent. Supported values are engineer and frontend-engineer.",
+    });
+});
+
+test("Plan execution policy preserves invalid non-string raw values for diagnostics", () => {
+    const { attrs } = parsePlanFrontMatter(`---
+classification: FEATURE
+executionAgent: 123
+collaborationRecommendation: false
+---
+# Bad
+`);
+
+    assertEquals(attrs.executionAgent, 123);
+    assertEquals(attrs.collaborationRecommendation, false);
+    assertEquals(resolvePlanExecutionPolicy(attrs), {
+        ok: false,
+        reason: "invalid_execution_agent",
+        error: "Invalid executionAgent: 123. Supported values are engineer and frontend-engineer.",
+    });
+    assertThrows(() => injectFrontMatter("# Bad\n", { executionAgent: 123 }), Error, "Invalid executionAgent: 123");
+    assertThrows(
+        () => injectFrontMatter("# Bad\n", { executionAgent: "frontend-engineer", collaborationRecommendation: false }),
+        Error,
+        "Invalid collaborationRecommendation: false",
+    );
+});
+
+test("Plan execution policy enforces owner and recommendation matrix", () => {
+    assertEquals(resolvePlanExecutionPolicy({ classification: "FEATURE" }), {
+        ok: true,
+        policy: { executionAgent: "engineer", collaborationRecommendation: "autonomous", source: "absent" },
+    });
+    assertEquals(resolvePlanExecutionPolicy({ classification: "FEATURE", frontend: false }), {
+        ok: true,
+        policy: {
+            executionAgent: "engineer",
+            collaborationRecommendation: "autonomous",
+            source: "legacy_frontend_false",
+        },
+    });
+    assertEquals(resolvePlanExecutionPolicy({ classification: "FEATURE", executionAgent: "engineer" }), {
+        ok: true,
+        policy: { executionAgent: "engineer", collaborationRecommendation: "autonomous", source: "canonical" },
+    });
+    assertEquals(
+        resolvePlanExecutionPolicy({
+            classification: "FEATURE",
+            executionAgent: "frontend-engineer",
+            collaborationRecommendation: "pair",
+            frontend: false,
+        }),
+        {
+            ok: true,
+            policy: { executionAgent: "frontend-engineer", collaborationRecommendation: "pair", source: "canonical" },
+        },
+    );
+    // Pair is a collaboration choice, not a browser capability: an Engineer plan can
+    // ask the user to steer between increments just as a Frontend Engineer plan can.
+    assertEquals(
+        resolvePlanExecutionPolicy({
+            classification: "FEATURE",
+            executionAgent: "engineer",
+            collaborationRecommendation: "pair",
+        }),
+        {
+            ok: true,
+            policy: { executionAgent: "engineer", collaborationRecommendation: "pair", source: "canonical" },
+        },
+    );
+    assertEquals(resolvePlanExecutionPolicy({ classification: "PROJECT", frontend: true }), {
+        ok: false,
+        reason: "project_epic",
+        error: "PROJECT Epics are non-executable and do not have an execution owner.",
+    });
+    assertEquals(resolvePlanExecutionPolicy({ classification: "PROJECT", executionAgent: "engineer" }), {
+        ok: false,
+        reason: "project_execution_agent",
+        error: "PROJECT Epics are non-executable and must not define executionAgent.",
+    });
+    assertEquals(
+        resolvePlanExecutionPolicy({
+            classification: "QUICK_FIX",
+            executionAgent: "frontend-engineer",
+            frontend: true,
+        }),
+        {
+            ok: true,
+            policy: { executionAgent: "engineer", collaborationRecommendation: "autonomous", source: "absent" },
+        },
+    );
+});
+
+test("injectFrontMatter preserves human review metadata", () => {
+    const markdown = "## Plan\n\nBody";
+    const withFm = injectFrontMatter(markdown, {
+        classification: "FEATURE",
+        complexity: "MEDIUM",
+        summary: "Reviewed",
+        affectedPaths: [],
+        createdAt: "2026-06-23T00:00:00.000Z",
+        status: "verified",
+        verifiedAt: "2026-06-23T01:30:00.000Z",
+        humanReviewMode: "ask",
+        humanReviewDecision: "approved",
+        humanReviewedAt: "2026-06-23T01:00:00.000Z",
+        executionBaselineTree: "tree123",
+    });
+
+    const { attrs } = parsePlanFrontMatter(withFm);
+
+    assertEquals(attrs.humanReviewMode, "ask");
+    assertEquals(attrs.humanReviewDecision, "approved");
+    assertEquals(attrs.humanReviewedAt, "2026-06-23T01:00:00.000Z");
+});
+
+test("malformed or empty supersedes front matter is omitted", () => {
+    const scalar = parsePlanFrontMatter("---\nsupersedes: record-a\n---\n# Plan\n");
+    const mixed = parsePlanFrontMatter(
+        "---\nsupersedes:\n    - 550e8400-e29b-41d4-a716-446655440000\n    - docs/old-record.md\n---\n# Plan\n",
+    );
+    const nonString = parsePlanFrontMatter(
+        "---\nsupersedes:\n    - 550e8400-e29b-41d4-a716-446655440000\n    - 7\n---\n# Plan\n",
+    );
+    const malformed = injectFrontMatter("# Plan", { supersedes: ["old-record", "plan-123", "docs/record.md"] });
+    const blank = injectFrontMatter("# Plan", { supersedes: [" ", ""] });
+
+    assertEquals(scalar.attrs.supersedes, undefined);
+    assertEquals(mixed.attrs.supersedes, undefined);
+    assertEquals(nonString.attrs.supersedes, undefined);
+    assertEquals(parsePlanFrontMatter(malformed).attrs.supersedes, undefined);
+    assertEquals(malformed.includes("supersedes:"), false);
+    assertEquals(parsePlanFrontMatter(blank).attrs.supersedes, undefined);
+    assertEquals(blank.includes("supersedes:"), false);
+});
+
+test("documentation Work Kind front matter round trips and unknown values normalize away", () => {
+    const withDocumentation = injectFrontMatter("## Plan", {
+        classification: "PLANNED_CHANGE",
+        workKind: "DOCUMENTATION",
+    });
+    assertEquals(parsePlanFrontMatter(withDocumentation).attrs.workKind, "DOCUMENTATION");
+    assertStringIncludes(withDocumentation, 'workKind: "DOCUMENTATION"');
+
+    // @ts-expect-error Older or hand-authored Plans can contain unrecognized work kinds.
+    const unknown = injectFrontMatter("## Plan", { workKind: "DOCS" });
+    assertEquals(parsePlanFrontMatter(unknown).attrs.workKind, undefined);
+    assertEquals(unknown.includes("workKind:"), false);
+});
+
+test("order front matter round trips and numeric strings normalize", () => {
+    const withOrder = injectFrontMatter("## Plan", { parentPlan: "epic-a", order: 3 });
+    assertEquals(parsePlanFrontMatter(withOrder).attrs.order, 3);
+    assertEquals(withOrder.includes("parentPlan:"), true);
+
+    const parsedString = parsePlanFrontMatter(
+        ["---", "classification: FEATURE", "summary: child", "parentPlan: epic-a", 'order: "4"', "---", "# Child"].join(
+            "\n",
+        ),
+    );
+    assertEquals(parsedString.attrs.order, 4);
+});
+
+testWithFs(
+    "listPlanResources preserves existing IDs and hides archived Plans without assigning identities",
+    async () => {
+        const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        try {
+            await savePlan(cwd, "existing", "# Existing", { planId: "existing-id" });
+            await savePlan(cwd, "missing", "# Missing");
+            await savePlan(cwd, "archived/hidden", "# Hidden");
+            const resources = await listPlanResources(cwd);
+
+            assertEquals(
+                resources.map((resource) => resource.planName),
+                ["existing", "missing"],
+            );
+            assertEquals(
+                resources.map((resource) => resource.planId),
+                ["existing-id", ""],
+            );
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    },
+);
+
+testWithFs("findPlanById resolves non-archived plan resources", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "lookup", "# Lookup", { planId: "lookup-id" });
+        await savePlan(cwd, "prefixed", "# Prefixed", { planId: "01-prefixed-id" });
+        const resource = await findPlanById(cwd, "lookup-id");
+        assertEquals(resource.planName, "lookup");
+        assertEquals(resource.relativePath, "docs/plans/lookup.md");
+        const prefixed = await findPlanById(cwd, "prefixed-id");
+        assertEquals(prefixed.planName, "prefixed");
+
+        await assertRejects(() => findPlanById(cwd, "missing-id"), Error, "Plan not found for planId");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("body-only save preserves front matter bytes and markdown body fidelity", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await fsMkdir(join(cwd, `docs/plans`), { recursive: true });
+        const frontMatter = [
+            "---",
+            "# preserve this comment",
+            "planId: body-id",
+            "customNote: |",
+            "  ---",
+            "  This indented marker is metadata.",
+            'unknownKey: "kept"',
+            "classification: FEATURE",
+            "status: in_progress",
+            "dependencies:",
+            "    - sibling",
+            "---\r\n",
+        ].join("\r\n");
+        const body =
+            "# Old\n\n- item\n- [ ] task\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n[RunWield](https://runwield.dev)\n\n```js\nconsole.log(1);\n```\n";
+        await fsWriteFile(join(cwd, `docs/plans/body.md`), frontMatter + body);
+        const loaded = await loadPlanBodyById(cwd, "body-id");
+        const nextBody =
+            "# New\n\n- item\n- [x] task\n\n| A | B |\n| - | - |\n| 3 | 4 |\n\n[RunWield](https://runwield.dev)\n\n```js\nconsole.log(2);\n```\n\n";
+
+        const saved = await savePlanBodyByIdForTest(cwd, "body-id", nextBody, loaded.bodyHash);
+        const after = await fsReadFile(join(cwd, `docs/plans/body.md`), "utf8");
+
+        assertEquals(after, frontMatter + nextBody);
+        assertEquals(saved.body, nextBody);
+        assertEquals(parsePlanFrontMatter(after).attrs.status, "in_progress");
+        assertEquals(parsePlanFrontMatter(after).attrs.worktreeStatus, undefined);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("body-only save rejects stale hashes duplicate IDs and archived plans", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "editable", "# Original", { planId: "editable-id" });
+        const loaded = await loadPlanBodyById(cwd, "editable-id");
+        await savePlanBodyByIdForTest(cwd, "editable-id", "# External", loaded.bodyHash);
+        await assertRejects(
+            () => savePlanBodyByIdForTest(cwd, "editable-id", "# Browser", loaded.bodyHash),
+            Error,
+            "changed on disk",
+        );
+
+        await savePlan(cwd, "dup-a", "# A", { planId: "dup" });
+        await savePlan(cwd, "dup-b", "# B", { planId: "dup" });
+        await assertRejects(() => loadPlanBodyById(cwd, "dup"), Error, "Duplicate planId values found");
+        await fsRm(join(cwd, `docs/plans/dup-a.md`));
+        await fsRm(join(cwd, `docs/plans/dup-b.md`));
+
+        await savePlan(cwd, "archived/hidden", "# Hidden", { planId: "hidden-id" });
+        await assertRejects(() => loadPlanBodyById(cwd, "hidden-id"), Error, "Plan not found for planId");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("updatePlanStatus fails closed on malformed front matter and preserves bytes", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const plansDir = join(cwd, `docs/plans`);
+        await fsMkdir(plansDir, { recursive: true });
+        const planPath = join(plansDir, `broken.md`);
+
+        const malformed = [
+            "---",
+            'classification: "FEATURE"',
+            'summary: "bad "quote"',
+            "affectedPaths:",
+            '    - "<|"|src/tools/user-interview.js<|"|"',
+            'status: "in_review"',
+            "---",
+            "## Objective",
+            "Keep going",
+            "",
+        ].join("\n");
+        await fsWriteFile(planPath, malformed);
+
+        await assertRejects(
+            () =>
+                updatePlanStatusForTest(cwd, "broken", "approved", {
+                    classification: "FEATURE",
+                    complexity: "LOW",
+                    summary: "Recovered summary",
+                    affectedPaths: ["src/tools/user-interview.js"],
+                    origin: "internal",
+                }),
+            PlanFrontMatterParseError,
+            planPath,
+        );
+
+        assertEquals(await fsReadFile(planPath, "utf8"), malformed);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("plan-store saves and reloads on-hold metadata without normalizing to draft", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "held-plan", "## Objective\nPause", {
+            planId: "held-plan-id",
+            classification: "FEATURE",
+            complexity: "MEDIUM",
+            summary: "Paused plan",
+            affectedPaths: ["src/plan-store.js"],
+            status: "on_hold",
+            heldFromStatus: "implemented",
+            heldAt: "2026-06-23T01:00:00.000Z",
+            holdReason: "priority shifted",
+            holdStalenessBaseline: "2026-06-22T00:00:00.000Z",
+            createdAt: "2026-06-23T00:00:00.000Z",
+        });
+
+        const loaded = await loadPlan(cwd, "held-plan");
+        assertEquals(loaded?.attrs.status, "on_hold");
+        assertEquals(loaded?.attrs.heldFromStatus, "implemented");
+        assertEquals(loaded?.attrs.heldAt, "2026-06-23T01:00:00.000Z");
+        assertEquals(loaded?.attrs.holdReason, "priority shifted");
+        assertEquals(loaded?.attrs.holdStalenessBaseline, "2026-06-22T00:00:00.000Z");
+
+        const updated = await updatePlanFrontMatterForTest(cwd, "held-plan", {
+            status: "draft",
+            heldFromStatus: null,
+            heldAt: null,
+            holdReason: null,
+            holdStalenessBaseline: null,
+        });
+        assertEquals(updated.status, "draft");
+        assertEquals(updated.heldFromStatus, null);
+        assertEquals(updated.heldAt, undefined);
+        assertEquals(updated.holdReason, undefined);
+        assertEquals(updated.holdStalenessBaseline, undefined);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("plan-store saves and reloads manual closure status without verified metadata", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "closed-plan", "## Objective\nClose", {
+            classification: "FEATURE",
+            complexity: "MEDIUM",
+            summary: "Closed plan",
+            affectedPaths: [],
+            status: "closed_without_verification",
+            createdAt: "2026-06-23T00:00:00.000Z",
+        });
+
+        const loaded = await loadPlan(cwd, "closed-plan");
+        assertEquals(loaded?.attrs.status, "closed_without_verification");
+        assertEquals(loaded?.attrs.verifiedAt, undefined);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("plan-store saves, loads, lists, and resolves project plans", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const savedPath = await savePlan(
+            cwd,
+            "ship-tests",
+            "## Context\nCoverage push\n\n## Objective\nGrow coverage",
+            {
+                classification: "PROJECT",
+                complexity: "HIGH",
+                summary: "Coverage push",
+                affectedPaths: ["src/plan-store.js"],
+                status: "ready_for_work",
+                createdAt: "2026-06-15T00:00:00.000Z",
+            },
+        );
+
+        assertEquals(savedPath, join(getPlansDir(cwd), "ship-tests.md"));
+
+        const loaded = await loadPlan(cwd, "ship-tests");
+        assertEquals(loaded?.attrs.classification, "PROJECT");
+        assertEquals(loaded?.attrs.status, "ready_for_work");
+        assertEquals(loaded?.body.trim(), "## Context\nCoverage push\n\n## Objective\nGrow coverage");
+
+        const listed = await listPlans(cwd);
+        assertEquals(
+            listed.map((plan) => plan.name),
+            ["ship-tests"],
+        );
+        assertEquals(listed[0].attrs.summary, "Coverage push");
+
+        const resolvedByName = await resolvePlan(cwd, "ship-tests");
+        assertEquals(resolvedByName.planName, "ship-tests");
+        assertEquals(resolvedByName.attrs.complexity, "HIGH");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("savePlan refuses unversioned overwrites of existing canonical Plans", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "requires-cas", "# Original", { status: "draft", planId: "requires-cas-id" });
+        await assertRejects(
+            () => savePlan(cwd, "requires-cas", "# Overwrite", { status: "draft" }),
+            StalePlanWriteError,
+        );
+        const loaded = await loadPlan(cwd, "requires-cas");
+        if (!loaded) throw new Error("Expected Plan to exist");
+        await savePlan(
+            cwd,
+            "requires-cas",
+            "# Overwrite",
+            { status: "draft" },
+            {
+                expectedRevision: loaded.revision,
+            },
+        );
+        assertEquals((await loadPlan(cwd, "requires-cas"))?.body.trim(), "# Overwrite");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("listPlans fails closed with typed parse errors for malformed active Plans", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "valid", "# Valid", { status: "draft" });
+        await fsWriteFile(`${getPlansDir(cwd)}/broken.md`, "---\nstatus: [unterminated\n---\n# Broken\n");
+
+        await assertRejects(() => listPlans(cwd), PlanFrontMatterParseError, "broken.md");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("listPlans sorts by status, classification, then name", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const plans: PlanOrderingFixture[] = [
+            ["z-failed-feature", "FEATURE", "failed"],
+            ["z-failed-project", "PROJECT", "failed"],
+            ["a-failed-project", "PROJECT", "failed"],
+            ["implemented-feature", "FEATURE", "implemented"],
+            ["ready-feature", "FEATURE", "ready_for_work"],
+            ["ready-project", "PROJECT", "ready_for_work"],
+            ["decompose-project", "PROJECT", "ready_for_decomposition"],
+            ["draft-feature", "FEATURE", "draft"],
+            ["feedback-feature", "FEATURE", "draft"],
+            ["approved-feature", "FEATURE", "approved"],
+            ["in-progress-feature", "FEATURE", "in_progress"],
+            ["verified-feature", "FEATURE", "verified"],
+            ["closed-feature", "FEATURE", "closed_without_verification"],
+            ["held-feature", "FEATURE", "on_hold"],
+        ];
+        for (const [name, classification, status] of plans) {
+            await savePlan(cwd, name, `# ${name}`, {
+                classification: classification,
+                status: status,
+                order: 100 - plans.findIndex((plan) => plan[0] === name),
+            });
+        }
+
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            [
+                "a-failed-project",
+                "z-failed-project",
+                "z-failed-feature",
+                "implemented-feature",
+                "ready-project",
+                "ready-feature",
+                "decompose-project",
+                "draft-feature",
+                "feedback-feature",
+                "approved-feature",
+                "in-progress-feature",
+                "verified-feature",
+                "closed-feature",
+                "held-feature",
+            ],
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("plan-store preserves Epic and nested child metadata", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "project-breakdown-epic", "# Epic", {
+            classification: "PROJECT",
+            complexity: "HIGH",
+            summary: "Break down projects",
+            affectedPaths: ["src/plan-store.js"],
+            status: "ready_for_work",
+            createdAt: "2026-06-16T00:00:00.000Z",
+        });
+
+        await savePlan(cwd, "project-breakdown-epic/feature1", "# Child", {
+            classification: "FEATURE",
+            complexity: "MEDIUM",
+            summary: "Child slice",
+            affectedPaths: ["src/plan-store.test.js"],
+            status: "draft",
+            parentPlan: "project-breakdown-epic",
+            dependencies: ["feature0", "project-breakdown-epic/feature0"],
+            createdAt: "2026-06-16T01:00:00.000Z",
+        });
+
+        const epic = await loadPlan(cwd, "project-breakdown-epic");
+        assertEquals(epic?.attrs.classification, "PROJECT");
+
+        const child = await loadPlan(cwd, "project-breakdown-epic/feature1");
+        assertEquals(child?.attrs.parentPlan, "project-breakdown-epic");
+        assertEquals(child?.attrs.dependencies, ["feature0", "project-breakdown-epic/feature0"]);
+
+        const listed = await listPlans(cwd);
+        assertEquals(
+            listed.map((plan) => plan.name),
+            ["project-breakdown-epic", "project-breakdown-epic/feature1"],
+        );
+
+        const resolvedChild = await resolvePlan(cwd, "project-breakdown-epic/feature1");
+        assertEquals(resolvedChild.planName, "project-breakdown-epic/feature1");
+        assertEquals(resolvedChild.attrs.parentPlan, "project-breakdown-epic");
+
+        const resolvedChildWithExtension = await resolvePlan(cwd, "project-breakdown-epic/feature1.md");
+        assertEquals(resolvedChildWithExtension.planName, "project-breakdown-epic/feature1");
+
+        const children = await findPlansByParent(cwd, "project-breakdown-epic");
+        assertEquals(
+            children.map((plan) => plan.name),
+            ["project-breakdown-epic/feature1"],
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("listPlans hides archived plans", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "active-plan", "# Active", {
+            classification: "FEATURE",
+            complexity: "MEDIUM",
+            summary: "Visible plan",
+            affectedPaths: [],
+            status: "draft",
+            createdAt: "2026-06-18T00:00:00.000Z",
+        });
+        await savePlan(cwd, "archived/old-plan", "# Archived\n\n## Context\nHidden plan", {
+            classification: "FEATURE",
+            complexity: "LOW",
+            summary: "Hidden plan",
+            affectedPaths: [],
+            status: "verified",
+            createdAt: "2026-06-17T00:00:00.000Z",
+        });
+
+        const listed = await listPlans(cwd);
+        assertEquals(
+            listed.map((plan) => plan.name),
+            ["active-plan"],
+        );
+
+        const explicitArchived = await loadPlan(cwd, "archived/old-plan");
+        assertEquals(explicitArchived?.attrs.summary, "Hidden plan");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("archivePlan moves verified nested plans with metadata and hides them from active lists", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "epic/01-child", "# Child\n\nBody stays", {
+            planId: "child-id",
+            summary: "Child plan",
+            status: "verified",
+            createdAt: "2026-06-18T00:00:00.000Z",
+        });
+
+        const archived = await archivePlan(cwd, "child-id", {
+            reason: "done",
+            now: "2026-06-19T00:00:00.000Z",
+        });
+
+        assertEquals(archived.name, "epic/01-child");
+        assertEquals(archived.relativePath, "docs/plans/archived/epic/01-child.md");
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            [],
+        );
+        assertEquals(
+            (await listArchivedPlans(cwd)).map((plan) => plan.name),
+            ["epic/01-child"],
+        );
+
+        const loaded = await loadArchivedPlan(cwd, "epic/01-child");
+        assertEquals(loaded?.attrs.status, "verified");
+        assertEquals(loaded?.attrs.archivedAt, "2026-06-19T00:00:00.000Z");
+        assertEquals(loaded?.attrs.archiveReason, "done");
+        assertEquals(loaded?.attrs.archivedFromStatus, "verified");
+        assertEquals(loaded?.attrs.archivedFromPath, "docs/plans/epic/01-child.md");
+        assertEquals(loaded?.body, "# Child\n\nBody stays");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("archivePlan allows terminal closure and requires force for non-terminal statuses", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "closed", "# Closed", { status: "closed_without_verification" });
+        await archivePlan(cwd, "closed", { now: "2026-06-19T00:00:00.000Z" });
+        assertEquals((await loadArchivedPlan(cwd, "closed"))?.attrs.archivedFromStatus, "closed_without_verification");
+
+        await savePlan(cwd, "draft", "# Draft", { status: "draft" });
+        await assertRejects(() => archivePlan(cwd, "draft"), Error, "without --force");
+        await archivePlan(cwd, "draft", { force: true, now: "2026-06-20T00:00:00.000Z" });
+        assertEquals((await loadArchivedPlan(cwd, "draft"))?.attrs.archivedFromStatus, "draft");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+const archiveAttemptFixture = defineCommittedGitFixture({ "README.md": "Archive guards\n" });
+
+testWithFs("archivePlan refuses recoverable worktree states and refuses overwrites", async () => {
+    const cwd = await archiveAttemptFixture.checkout();
+    try {
+        await savePlan(cwd, "busy", "# Busy", { status: "verified", worktreeStatus: "active" });
+        await recordActiveAttempt(cwd, "busy");
+        await assertRejects(() => archivePlan(cwd, "busy"), Error, "worktreeStatus active");
+        await assertRejects(() => archivePlan(cwd, "busy", { force: true }), Error, "--force does not bypass");
+
+        await savePlan(cwd, "dup", "# Dup", { status: "verified" });
+        await savePlan(cwd, "archived/dup", "# Archived Dup", { status: "verified" });
+        await assertRejects(() => archivePlan(cwd, "dup"), Error, "already exists");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("archivePlansByStatus archives matching parents with all children and reports no-op matches", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "epic", "# Epic", {
+            classification: "PROJECT",
+            status: "verified",
+            summary: "Done",
+        });
+        await savePlan(cwd, "epic/01-child", "# Child", {
+            parentPlan: "epic",
+            status: "draft",
+            summary: "Child",
+        });
+        await savePlan(cwd, "standalone", "# Standalone", { status: "verified", summary: "Done" });
+        await savePlan(cwd, "draft", "# Draft", { status: "draft" });
+        await savePlan(cwd, "closed", "# Closed", { status: "closed_without_verification" });
+
+        const result = await archivePlansByStatus(cwd, "verified", {
+            reason: "done",
+            now: "2026-07-04T00:00:00.000Z",
+        });
+
+        assertEquals(
+            result.matched.map((plan) => plan.name),
+            ["epic", "epic/01-child", "standalone"],
+        );
+        assertEquals(
+            result.archived.map((plan) => plan.relativePath),
+            [
+                "docs/plans/archived/epic.md",
+                "docs/plans/archived/epic/01-child.md",
+                "docs/plans/archived/standalone.md",
+            ],
+        );
+        assertEquals(result.failed, []);
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            ["draft", "closed"],
+        );
+        const archivedChild = await loadArchivedPlan(cwd, "epic/01-child");
+        assertEquals(archivedChild?.attrs.archivedAt, "2026-07-04T00:00:00.000Z");
+        assertEquals(archivedChild?.attrs.archiveReason, "done");
+        assertEquals(archivedChild?.attrs.archivedFromStatus, "draft");
+
+        const noOp = await archivePlansByStatus(cwd, "verified", { now: "2026-07-05T00:00:00.000Z" });
+        assertEquals(noOp, { matched: [], archived: [], failed: [] });
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("archivePlansByStatus ignores children when parent status does not match", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "epic", "# Epic", {
+            classification: "PROJECT",
+            status: "draft",
+        });
+        await savePlan(cwd, "epic/01-child", "# Child", { parentPlan: "epic", status: "verified" });
+
+        const result = await archivePlansByStatus(cwd, "verified", { now: "2026-07-04T00:00:00.000Z" });
+
+        assertEquals(result, { matched: [], archived: [], failed: [] });
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            ["epic", "epic/01-child"],
+        );
+        assertEquals(await listArchivedPlans(cwd), []);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("archivePlansByStatus keeps archiving safe matches when other matches fail", async () => {
+    const cwd = await archiveAttemptFixture.checkout();
+    try {
+        await savePlan(cwd, "ok", "# OK", { status: "verified" });
+        await savePlan(cwd, "blocked", "# Blocked", { status: "verified", worktreeStatus: "active" });
+        await recordActiveAttempt(cwd, "blocked");
+        await savePlan(cwd, "dup", "# Dup", { status: "verified" });
+        await savePlan(cwd, "archived/dup", "# Existing", { status: "verified" });
+
+        const result = await archivePlansByStatus(cwd, "verified", { now: "2026-07-04T00:00:00.000Z" });
+
+        assertEquals(
+            result.matched.map((plan) => plan.name),
+            ["blocked", "dup", "ok"],
+        );
+        assertEquals(result.archived, [{ name: "ok", relativePath: "docs/plans/archived/ok.md" }]);
+        assertEquals(
+            result.failed.map((plan) => plan.name),
+            ["blocked", "dup"],
+        );
+        assertStringIncludes(result.failed[0].message, "worktreeStatus active");
+        assertStringIncludes(result.failed[1].message, "already exists");
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            ["blocked", "dup"],
+        );
+        assertEquals(
+            (await listArchivedPlans(cwd)).map((plan) => plan.name),
+            ["dup", "ok"],
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("archivePlansByStatus validates requested lifecycle status", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        // @ts-expect-error CLI input can contain a misspelled status.
+        await assertRejects(() => archivePlansByStatus(cwd, "verfied"), Error, "Unknown Plan status");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("deleteArchivedPlanUnit removes a top-level archived Epic unit", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "verified" });
+        await savePlan(cwd, "epic/01-child", "# Child", {
+            classification: "FEATURE",
+            parentPlan: "epic",
+            status: "verified",
+        });
+        await savePlan(cwd, "solo", "# Solo", { status: "verified" });
+        await archivePlan(cwd, "epic/01-child", { now: "2026-08-01T00:00:00Z" });
+        await archivePlan(cwd, "epic", { now: "2026-08-01T00:00:00Z" });
+        await archivePlan(cwd, "solo", { now: "2026-08-01T00:00:00Z" });
+
+        const removed = await deleteArchivedPlanUnit(cwd, "epic");
+
+        assertEquals(removed, ["docs/plans/archived/epic.md", "docs/plans/archived/epic/01-child.md"]);
+        await assertRejects(() => fsStat(join(cwd, "docs", "plans", "archived", "epic.md")), Error, "ENOENT");
+        await assertRejects(() => fsStat(join(cwd, "docs", "plans", "archived", "epic")), Error, "ENOENT");
+        assertEquals((await loadArchivedPlan(cwd, "solo"))?.body, "# Solo");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("deleteArchivedPlanUnit refuses unsafe or partial deletions", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "o", "# O", { status: "verified" });
+        await archivePlan(cwd, "o", { now: "2026-08-01T00:00:00Z" });
+        await fsMkdir(join(cwd, "docs", "plans", "archived", "o"));
+        await fsWriteFile(join(cwd, "docs", "plans", "archived", "o", "notes.txt"), "keep\n");
+
+        await assertRejects(() => deleteArchivedPlanUnit(cwd, "missing"), Error, "Archived Plan not found");
+        await assertRejects(() => deleteArchivedPlanUnit(cwd, "o/nested"), Error, "top-level");
+        await assertRejects(() => deleteArchivedPlanUnit(cwd, "o"), Error, "non-markdown entry");
+
+        assertEquals((await loadArchivedPlan(cwd, "o"))?.body, "# O");
+        assertEquals(await fsReadFile(join(cwd, "docs", "plans", "archived", "o", "notes.txt"), "utf8"), "keep\n");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs(
+    "restoreArchivedPlan moves archived plans back without changing body and refuses active overwrites",
+    async () => {
+        const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        try {
+            await savePlan(cwd, "done", "# Done\n\nBody", { status: "verified", planId: "done-id" });
+            await archivePlan(cwd, "done", { now: "2026-06-19T00:00:00.000Z" });
+            const restored = await restoreArchivedPlan(cwd, "done-id", { now: "2026-06-20T00:00:00.000Z" });
+
+            assertEquals(restored.relativePath, "docs/plans/done.md");
+            const loaded = await loadPlan(cwd, "done");
+            assertEquals(loaded?.body, "# Done\n\nBody");
+            assertEquals(loaded?.attrs.archivedAt, undefined);
+            assertEquals(loaded?.attrs.archiveReason, undefined);
+            assertEquals(loaded?.attrs.archivedFromStatus, undefined);
+            assertEquals(loaded?.attrs.archivedFromPath, undefined);
+            assertEquals(loaded?.attrs.restoredAt, "2026-06-20T00:00:00.000Z");
+            assertEquals(loaded?.attrs.restoredFromPath, "docs/plans/archived/done.md");
+
+            await savePlan(cwd, "archived/old", "# Old", { status: "verified" });
+            await savePlan(cwd, "old", "# Active", { status: "draft" });
+            await assertRejects(() => restoreArchivedPlan(cwd, "old"), Error, "already exists");
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    },
+);
+
+testWithFs("archived plan store resolves planId and preserves custom front matter text", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const planPath = `${getPlansDir(cwd)}/custom.md`;
+        await fsMkdir(getPlansDir(cwd), { recursive: true });
+        await fsWriteFile(
+            planPath,
+            [
+                "---",
+                "planId: durable-custom-id",
+                "classification: FEATURE",
+                "complexity: MEDIUM",
+                "summary: Custom metadata",
+                "affectedPaths:",
+                "    []",
+                "status: verified",
+                "customObject:",
+                "  nested: true",
+                "# keep this comment with the custom field",
+                "---",
+                "# Custom Body",
+                "",
+            ].join("\n"),
+        );
+
+        await archivePlan(cwd, "custom", { now: "2026-06-21T00:00:00.000Z" });
+        const archived = await loadArchivedPlan(cwd, "durable-custom-id");
+        assertEquals(archived?.name, "custom");
+        assertEquals(archived?.attrs.archivedAt, "2026-06-21T00:00:00.000Z");
+        assertStringIncludes(archived?.markdown || "", "customObject:\n  nested: true");
+        assertStringIncludes(archived?.markdown || "", "# keep this comment with the custom field");
+        assertEquals(archived?.body, "# Custom Body\n");
+
+        await restoreArchivedPlan(cwd, "durable-custom-id", { now: "2026-06-22T00:00:00.000Z" });
+        const restoredMarkdown = await fsReadFile(planPath, "utf8");
+        assertStringIncludes(restoredMarkdown, "customObject:\n  nested: true");
+        assertStringIncludes(restoredMarkdown, "# keep this comment with the custom field");
+        assertStringIncludes(restoredMarkdown, 'restoredAt: "2026-06-22T00:00:00.000Z"');
+        assertStringIncludes(restoredMarkdown, "# Custom Body\n");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("archived listing skips malformed files while direct reads report parse errors", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "archived/good", "# Good", { status: "verified", planId: "good-id" });
+        await fsWriteFile(`${getPlansDir(cwd)}/archived/bad.md`, "---\nsummary: [unterminated\n---\n# Bad\n");
+
+        const listed = await listArchivedPlans(cwd);
+        assertEquals(
+            listed.map((plan) => plan.name),
+            ["good"],
+        );
+        await assertRejects(
+            () => loadArchivedPlan(cwd, "bad"),
+            Error,
+            "Malformed archived Plan docs/plans/archived/bad.md",
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("archive helpers reject traversal and active archive source names", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "archived/old", "# Old", { status: "verified" });
+        await assertRejects(() => archivePlan(cwd, "archived/old"), Error, "active Plan name");
+        await assertRejects(() => loadArchivedPlan(cwd, "../escape"), Error, "cannot escape");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("saveChildFeaturePlans creates draft child FEATURE plans with order and legacy sequence alias", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const results = await saveChildFeaturePlans(cwd, "project-breakdown-epic", [
+            {
+                order: 1,
+                title: "Preserve Epic and child metadata",
+                summary: "Keep parent-child links loadable",
+                affectedPaths: ["src/plan-store.js"],
+                frontend: true,
+                devServerCommand: "deno task workspace:dev",
+                devServerUrl: "http://localhost:5173",
+                devServerHmr: true,
+                worktreeBaseBranch: "feature-base",
+                dependencies: [],
+                content: "# Preserve Epic and child metadata\n\n## Context\nDraft slice",
+            },
+            {
+                sequence: 2,
+                title: "Load child FEATURES",
+                summary: "Let load-plan execute child features",
+                affectedPaths: ["src/cmd/load-plan/index.ts"],
+                dependencies: ["project-breakdown-epic/preserve-epic-and-child-metadata"],
+                workKind: "DOCUMENTATION",
+                content: "# Load child FEATURES\n\n## Context\nDraft slice",
+            },
+        ]);
+
+        assertEquals(
+            results.map((result) => ({ name: result.name, action: result.action })),
+            [
+                { name: "project-breakdown-epic/preserve-epic-and-child-metadata", action: "created" },
+                { name: "project-breakdown-epic/load-child-features", action: "created" },
+            ],
+        );
+        assertEquals(results[0].metadata, {
+            classification: "PLANNED_CHANGE",
+            status: "draft",
+            parentPlan: "project-breakdown-epic",
+            order: 1,
+            affectedPaths: ["src/plan-store.js"],
+            executionAgent: "frontend-engineer",
+            collaborationRecommendation: "autonomous",
+            devServerCommand: "deno task workspace:dev",
+            devServerUrl: "http://localhost:5173",
+            devServerHmr: true,
+            targetBranch: "feature-base",
+        });
+
+        const first = await loadPlan(cwd, "project-breakdown-epic/preserve-epic-and-child-metadata");
+        assertEquals(first?.attrs.classification, "PLANNED_CHANGE");
+        assertEquals(first?.attrs.status, "draft");
+        assertEquals(first?.attrs.parentPlan, "project-breakdown-epic");
+        assertEquals(first?.attrs.summary, "Draft slice");
+        assertEquals(first?.attrs.order, 1);
+        assertEquals(first?.attrs.frontend, undefined);
+        assertEquals(first?.attrs.executionAgent, "frontend-engineer");
+        assertEquals(first?.attrs.collaborationRecommendation, "autonomous");
+        assertEquals(first?.attrs.devServerCommand, "deno task workspace:dev");
+        assertEquals(first?.attrs.devServerUrl, "http://localhost:5173");
+        assertEquals(first?.attrs.devServerHmr, true);
+        assertEquals(first?.attrs.targetBranch, "feature-base");
+
+        const second = await loadPlan(cwd, "project-breakdown-epic/load-child-features");
+        assertEquals(second?.attrs.dependencies, ["project-breakdown-epic/preserve-epic-and-child-metadata"]);
+        assertEquals(second?.attrs.workKind, "DOCUMENTATION");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("saveChildFeaturePlans rejects invalid child policies before writing any files", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await assertRejects(
+            () =>
+                saveChildFeaturePlans(cwd, "project-breakdown-epic", [
+                    {
+                        order: 1,
+                        title: "Valid child",
+                        summary: "This child would be valid",
+                        affectedPaths: ["src/a.js"],
+                        executionAgent: "engineer",
+                        dependencies: [],
+                        content: "# Valid child\n",
+                    },
+                    {
+                        order: 2,
+                        title: "Invalid child",
+                        summary: "Collaboration recommendation is not a supported value",
+                        affectedPaths: ["src/b.js"],
+                        executionAgent: "engineer",
+                        // @ts-expect-error Child descriptors arrive as Slicer tool JSON, so the
+                        // runtime guard must hold for values the descriptor type forbids.
+                        collaborationRecommendation: "sometimes",
+                        dependencies: [],
+                        content: "# Invalid child\n",
+                    },
+                ]),
+            Error,
+            "Invalid collaborationRecommendation: sometimes",
+        );
+        assertEquals(await loadPlan(cwd, "project-breakdown-epic/valid-child"), null);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("findPlansByParent sorts child plans by order before name", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "epic-sort", "# Epic", {
+            classification: "PROJECT",
+            status: "ready_for_work",
+        });
+        await savePlan(cwd, "epic-sort/03-third", "# Third", { parentPlan: "epic-sort", order: 3 });
+        await savePlan(cwd, "epic-sort/01-legacy", "# Legacy", { parentPlan: "epic-sort" });
+        await savePlan(cwd, "epic-sort/02-second", "# Second", { parentPlan: "epic-sort", order: 2 });
+        await savePlan(cwd, "epic-sort/04-also-second", "# Also Second", { parentPlan: "epic-sort", order: 2 });
+
+        const children = await findPlansByParent(cwd, "epic-sort");
+        assertEquals(
+            children.map((child) => child.name),
+            ["epic-sort/02-second", "epic-sort/04-also-second", "epic-sort/03-third", "epic-sort/01-legacy"],
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("saveChildFeaturePlans updates existing drafts at stable child paths", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const descriptor = {
+            sequence: 1,
+            title: "Write Draft Plans",
+            summary: "Initial summary",
+            affectedPaths: ["src/plan-store.js"],
+            dependencies: [],
+            content: "# Write Draft Plans\n\nInitial content",
+        };
+        await saveChildFeaturePlans(cwd, "epic-a", [descriptor]);
+
+        const results = await saveChildFeaturePlans(cwd, "epic-a", [
+            {
+                ...descriptor,
+                summary: "Updated summary",
+                content: "# Write Draft Plans\n\n## Context\nUpdated summary\n\nUpdated content",
+            },
+        ]);
+
+        assertEquals(results[0].action, "updated");
+        const loaded = await loadPlan(cwd, "epic-a/write-draft-plans");
+        assertEquals(loaded?.attrs.summary, "Updated summary");
+        assertEquals(loaded?.body.trim(), "# Write Draft Plans\n\n## Context\nUpdated summary\n\nUpdated content");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("saveChildFeaturePlans rejects invalid child and parent names", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const validChild = {
+            sequence: 1,
+            title: "Draft child",
+            summary: "Draft summary",
+            affectedPaths: [],
+            dependencies: [],
+            content: "# Draft child",
+        };
+
+        await assertRejects(
+            () => saveChildFeaturePlans(cwd, "../outside", []),
+            Error,
+            "Plan name cannot escape docs/plans/",
+        );
+        await assertRejects(
+            () => saveChildFeaturePlans(cwd, "/tmp/outside", []),
+            Error,
+            "Plan name must be relative to docs/plans/",
+        );
+        await assertRejects(
+            () => saveChildFeaturePlans(cwd, "epic-a/nested", [validChild]),
+            Error,
+            "Parent Epic plan name must be a top-level plan",
+        );
+        await assertRejects(
+            () =>
+                saveChildFeaturePlans(cwd, "epic-a", [
+                    {
+                        sequence: 1,
+                        title: "...",
+                        summary: "Bad child",
+                        affectedPaths: [],
+                        dependencies: [],
+                        content: "# Bad",
+                    },
+                ]),
+            Error,
+            "Child plan title must produce a valid plan name",
+        );
+        await assertRejects(
+            () => saveChildFeaturePlans(cwd, "epic-a", [{ ...validChild, sequence: -1 }]),
+            Error,
+            "Child plan order must be a non-negative integer",
+        );
+        await assertRejects(
+            () => saveChildFeaturePlans(cwd, "epic-a", [{ ...validChild, sequence: 1.5 }]),
+            Error,
+            "Child plan order must be a non-negative integer",
+        );
+        await assertRejects(
+            () =>
+                saveChildFeaturePlans(cwd, "epic-a", [
+                    { ...validChild, title: "Same child" },
+                    { ...validChild, title: "Same child" },
+                ]),
+            Error,
+            "Duplicate child plan name: epic-a/same-child",
+        );
+        await assertRejects(
+            // @ts-expect-error Slicer JSON can supply a non-array value.
+            () => saveChildFeaturePlans(cwd, "epic-a", [{ ...validChild, dependencies: "feature-1" }]),
+            Error,
+            "Child plan dependencies must be an array",
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("plan-store updates preserve parent-child metadata and unknown front matter", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const markdown = injectFrontMatter("# Child", {
+            classification: "FEATURE",
+            parentPlan: "project-breakdown-epic",
+            dependencies: ["feature0"],
+            customFlag: true,
+            customOrder: 7,
+            customTags: ["alpha", "beta"],
+        });
+        await fsMkdir(join(cwd, `docs/plans/project-breakdown-epic`), { recursive: true });
+        await fsWriteFile(join(cwd, `docs/plans/project-breakdown-epic/feature2.md`), markdown);
+
+        await updatePlanStatusForTest(cwd, "project-breakdown-epic/feature2", "approved");
+        const afterStatus = await loadPlan(cwd, "project-breakdown-epic/feature2");
+        assertEquals(afterStatus?.attrs.status, "approved");
+        assertEquals(afterStatus?.attrs.parentPlan, "project-breakdown-epic");
+        assertEquals(afterStatus?.attrs.dependencies, ["feature0"]);
+        assert(afterStatus);
+        assertEquals(afterStatus.attrs.customFlag, true);
+        assertEquals(afterStatus.attrs.customOrder, 7);
+        assertEquals(afterStatus.attrs.customTags, ["alpha", "beta"]);
+
+        const attrs = await updatePlanFrontMatterForTest(cwd, "project-breakdown-epic/feature2", {
+            status: "ready_for_work",
+            summary: "Updated child",
+        });
+        assertEquals(attrs.status, "ready_for_work");
+        assertEquals(attrs.parentPlan, "project-breakdown-epic");
+        assertEquals(attrs.dependencies, ["feature0"]);
+        assertEquals(attrs.customFlag, true);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("plan-store rejects stored plan names that escape plans directory", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        for (const name of ["", "/tmp/outside", "epic//child", "epic/./child", "epic/../child", "../outside"]) {
+            await assertRejects(() => savePlan(cwd, name, "# Bad"));
+        }
+        assertEquals(await listPlans(cwd), []);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("plan-store resolves external plans and injects defaults when front matter is missing", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const externalPath = join(cwd, `outside.md`);
+        await fsWriteFile(externalPath, "# External plan\n\nBody");
+
+        const loaded = await loadExternalPlan(externalPath);
+        assertEquals(loaded.attrs.origin, "external");
+        assertEquals(loaded.attrs.status, "draft");
+        assertEquals(loaded.markdown.startsWith("---\n"), true);
+
+        const resolved = await resolvePlan(cwd, "./outside.md");
+        assertEquals(resolved.planName, "outside");
+        assertEquals(resolved.attrs.origin, "external");
+
+        await assertRejects(() => resolvePlan(cwd, "missing"), Error, "Plan not found: missing");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("delivery evidence front matter validates compact shapes and rejects malformed values", () => {
+    const worktreeEvidence: import("./plan-store.ts").DeliveryEvidence = {
+        version: 1,
+        mode: "worktree_merge",
+        executionCommit: "a".repeat(40),
+        targetBranch: "main",
+        targetHeadBeforeMerge: "b".repeat(40),
+    };
+    const markdown = injectFrontMatter("## Body", {
+        executionMode: "worktree",
+        deliveryEvidence: worktreeEvidence,
+    });
+    const parsed = parsePlanFrontMatter(markdown);
+    assertEquals(parsed.attrs.executionMode, "worktree");
+    assertEquals(parsed.attrs.deliveryEvidence, worktreeEvidence);
+
+    const nonGit = parsePlanFrontMatter(
+        injectFrontMatter("## Body", {
+            executionMode: "non_git_in_place",
+            deliveryEvidence: {
+                version: 1,
+                mode: "non_git_in_place",
+                // @ts-expect-error Legacy evidence can include private fields that must be filtered.
+                projectRoot: "/tmp/must-not-survive",
+                validationCwd: "/tmp/must-not-survive",
+                validatedAt: "2026-07-24T00:00:00.000Z",
+            },
+        }),
+    );
+    assertEquals(nonGit.attrs.deliveryEvidence, { version: 1, mode: "non_git_in_place" });
+
+    const malformed = parsePlanFrontMatter(
+        injectFrontMatter("## Body", {
+            // @ts-expect-error Malformed stored evidence can omit required fields.
+            deliveryEvidence: { version: 1, mode: "worktree_merge", executionCommit: "not-a-sha" },
+        }),
+    );
+    assertEquals(malformed.attrs.deliveryEvidence, undefined);
+
+    const partialSha = parsePlanFrontMatter(
+        injectFrontMatter("## Body", {
+            deliveryEvidence: {
+                version: 1,
+                mode: "worktree_merge",
+                executionCommit: "a".repeat(39),
+                targetBranch: "main",
+                targetHeadBeforeMerge: "b".repeat(40),
+            },
+        }),
+    );
+    assertEquals(partialSha.attrs.deliveryEvidence, undefined);
+
+    const cleared = parsePlanFrontMatter(injectFrontMatter(markdown, { deliveryEvidence: null, executionMode: null }));
+    assertEquals(cleared.attrs.deliveryEvidence, undefined);
+    assertEquals(cleared.attrs.executionMode, undefined);
+});
+
+testWithFs("updatePlanFrontMatter preserves body and clears optional fields", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "front-matter", "## Body", {
+            failureReason: "old failure",
+            failedAt: "2026-06-14T00:00:00.000Z",
+            status: "failed",
+        });
+
+        const attrs = await updatePlanFrontMatterForTest(cwd, "front-matter", {
+            status: "implemented",
+            failureReason: null,
+            failedAt: null,
+            implementedAt: "2026-06-15T00:00:00.000Z",
+        });
+
+        assertEquals(attrs.status, "implemented");
+        assertEquals(attrs.failureReason, undefined);
+        assertEquals(attrs.failedAt, undefined);
+        assertEquals(attrs.implementedAt, "2026-06-15T00:00:00.000Z");
+
+        const loaded = await loadPlan(cwd, "front-matter");
+        assertEquals(loaded?.body.trim(), "## Body");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("updatePlanFrontMatter preserves exact body bytes", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await fsMkdir(join(cwd, "docs", "plans"), { recursive: true });
+        const path = join(cwd, "docs", "plans", "byte-preserve.md");
+        const body = "\n  # Body with leading whitespace\n\n\tIndented line\n";
+        await fsWriteFile(path, `---\nstatus: draft\nclassification: FEATURE\ncustomField: keep-me\n---\n${body}`);
+
+        await updatePlanFrontMatterForTest(cwd, "byte-preserve", { status: "approved" });
+        const updated = await fsReadFile(path, "utf8");
+        assertEquals(updated.slice(updated.indexOf("---\n", 4) + "---\n".length), body);
+        assertEquals(parsePlanFrontMatter(updated).attrs.customField, "keep-me");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("updatePlanFrontMatter preserves and clears Delivery Evidence on partial updates", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const deliveryEvidence: import("./plan-store.ts").DeliveryEvidence = {
+        version: 1,
+        mode: "worktree_merge",
+        executionCommit: "a".repeat(40),
+        targetBranch: "main",
+        targetHeadBeforeMerge: "b".repeat(40),
+    };
+    try {
+        await savePlan(cwd, "delivery", "## Body", {
+            classification: "FEATURE",
+            status: "verified",
+            executionMode: "worktree",
+            deliveryEvidence,
+            summary: "Initial summary",
+        });
+
+        const partial = await updatePlanFrontMatterForTest(cwd, "delivery", { complexity: "HIGH" });
+        assertEquals(partial.complexity, "HIGH");
+        assertEquals(partial.executionMode, "worktree");
+        assertEquals(partial.deliveryEvidence, deliveryEvidence);
+
+        const reopened = await updatePlanFrontMatterForTest(cwd, "delivery", {
+            status: "ready_for_work",
+            deliveryEvidence: null,
+            executionMode: null,
+        });
+        assertEquals(reopened.status, "ready_for_work");
+        assertEquals(reopened.deliveryEvidence, undefined);
+        assertEquals(reopened.executionMode, undefined);
+
+        const loaded = await loadPlan(cwd, "delivery");
+        assertEquals(loaded?.body.trim(), "## Body");
+        assertEquals(loaded?.attrs.deliveryEvidence, undefined);
+        assertEquals(loaded?.attrs.executionMode, undefined);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("classification updates reject preserved canonical execution policy on PROJECT Epics", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "feature-policy", "# Body", {
+            classification: "FEATURE",
+            executionAgent: "frontend-engineer",
+            collaborationRecommendation: "pair",
+        });
+
+        await assertRejects(
+            () => updatePlanFrontMatterForTest(cwd, "feature-policy", { classification: "PROJECT" }),
+            Error,
+            "PROJECT Epics are non-executable and must not define executionAgent.",
+        );
+        const loaded = await loadPlan(cwd, "feature-policy");
+        assertEquals(loaded?.attrs.classification, "PLANNED_CHANGE");
+        assertEquals(loaded?.attrs.executionAgent, "frontend-engineer");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("lifecycle front matter updates preserve unchanged invalid raw policy values", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const plansDir = join(cwd, `docs/plans`);
+        await fsMkdir(plansDir, { recursive: true });
+        await fsWriteFile(
+            join(plansDir, `invalid-policy.md`),
+            [
+                "---",
+                "classification: FEATURE",
+                "executionAgent: typo-agent",
+                "collaborationRecommendation: 123",
+                "status: draft",
+                "---",
+                "# Body",
+                "",
+            ].join("\n"),
+        );
+
+        await updatePlanStatusForTest(cwd, "invalid-policy", "approved");
+        let loaded = await loadPlan(cwd, "invalid-policy");
+        assertEquals(loaded?.attrs.status, "approved");
+        assertEquals(loaded?.attrs.executionAgent, "typo-agent");
+        assertEquals(loaded?.attrs.collaborationRecommendation, 123);
+
+        await updatePlanFrontMatterForTest(cwd, "invalid-policy", { complexity: "HIGH" });
+        loaded = await loadPlan(cwd, "invalid-policy");
+        assertEquals(loaded?.attrs.complexity, "HIGH");
+        assertEquals(loaded?.attrs.executionAgent, "typo-agent");
+        assertEquals(loaded?.attrs.collaborationRecommendation, 123);
+
+        await assertRejects(
+            () => updatePlanFrontMatterForTest(cwd, "invalid-policy", { executionAgent: "unknown-owner" }),
+            Error,
+            "Invalid executionAgent: unknown-owner",
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("updatePlanFrontMatter fails closed on malformed front matter", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const plansDir = join(cwd, `docs/plans`);
+        await fsMkdir(plansDir, { recursive: true });
+        await fsWriteFile(join(plansDir, `healed.md`), '---\nstatus: "bad\n---\n# Body');
+
+        const malformed = await fsReadFile(join(plansDir, `healed.md`), "utf8");
+        await assertRejects(
+            () =>
+                updatePlanFrontMatter(
+                    cwd,
+                    "healed",
+                    { status: "approved" },
+                    {
+                        classification: "QUICK_FIX",
+                        complexity: "LOW",
+                        summary: "Recovered",
+                        affectedPaths: ["src/a.js"],
+                    },
+                ),
+            PlanFrontMatterParseError,
+            "healed.md",
+        );
+        assertEquals(await fsReadFile(join(plansDir, `healed.md`), "utf8"), malformed);
+
+        await assertRejects(
+            () => updatePlanFrontMatterForTest(cwd, "missing", { status: "draft" }),
+            Error,
+            "Plan not found: missing",
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("parsePlanFrontMatter normalizes legacy and invalid statuses", () => {
+    const completed = parsePlanFrontMatter(["---", 'status: "completed"', "---", "body"].join("\n"));
+    assertEquals(completed.attrs.status, "verified");
+
+    const inReview = parsePlanFrontMatter(["---", 'status: "in_review"', "---", "body"].join("\n"));
+    assertEquals(inReview.attrs.status, "draft");
+
+    const readyForReview = parsePlanFrontMatter(["---", 'status: "ready_for_review"', "---", "body"].join("\n"));
+    assertEquals(readyForReview.attrs.status, "implemented");
+
+    const invalid = parsePlanFrontMatter(["---", 'status: "whatever"', "---", "body"].join("\n"));
+    assertEquals(invalid.attrs.status, "draft");
+});
+
+for (const legacyStatus of ["feedback", "in_review"]) {
+    test(`legacy ${legacyStatus} hold and archive statuses normalize to draft`, () => {
+        const parsed = parsePlanFrontMatter(
+            [
+                "---",
+                "status: on_hold",
+                `heldFromStatus: ${legacyStatus}`,
+                `archivedFromStatus: ${legacyStatus}`,
+                "---",
+                "# Legacy review",
+            ].join("\n"),
+        );
+        assertEquals(parsed.attrs.heldFromStatus, "draft");
+        assertEquals(parsed.attrs.archivedFromStatus, "draft");
+    });
+
+    testWithFs(`legacy ${legacyStatus} Plans read as draft and save the normalized status`, async () => {
+        const cwd = await makeTempDirectory({ prefix: "legacy-review-status-" });
+        try {
+            await savePlan(cwd, "legacy", "# Legacy review\n", { status: "approved" });
+            const path = join(getPlansDir(cwd), "legacy.md");
+            const legacyMarkdown = (await fsReadFile(path, "utf8")).replace(
+                'status: "approved"',
+                `status: "${legacyStatus}"`,
+            );
+            await fsWriteFile(path, legacyMarkdown);
+
+            assertEquals(canonicalPlanStatus(legacyStatus), "draft");
+            assertEquals(parsePlanFrontMatter(legacyMarkdown).attrs.status, "draft");
+            const loaded = await loadPlan(cwd, "legacy");
+            assertEquals(loaded?.attrs.status, "draft");
+            assertEquals((await listPlans(cwd))[0].attrs.status, "draft");
+            const inspected = await inspectPlanFileStrict(path);
+            assert(inspected.kind === "loaded");
+            assertEquals(inspected.attrs.status, "draft");
+            assertEquals(await fsReadFile(path, "utf8"), legacyMarkdown);
+
+            await updatePlanFrontMatterForTest(cwd, "legacy", { status: loaded?.attrs.status });
+            assertStringIncludes(await fsReadFile(path, "utf8"), 'status: "draft"');
+            assertEquals((await loadPlan(cwd, "legacy"))?.body, loaded?.body);
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    });
+}
+
+test("planId front matter round-trips and blank values normalize away", () => {
+    const markdown = injectFrontMatter("## Body", { planId: "plan-123" });
+    const parsed = parsePlanFrontMatter(markdown);
+    assertEquals(parsed.attrs.planId, "plan-123");
+    assertEquals(markdown.includes('planId: "plan-123"'), true);
+
+    assertEquals(parsePlanFrontMatter('---\nplanId: ""\n---\nBody').attrs.planId, undefined);
+    assertEquals(parsePlanFrontMatter("---\nplanId: 123\n---\nBody").attrs.planId, undefined);
+});
+
+testWithFs("ensurePlanIdentity backfills missing planId while preserving body exactly", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "needs-id", "\n# Title\n\nBody with trailing spaces  \n\n", {
+            summary: "Needs id",
+            createdAt: "2026-06-24T00:00:00.000Z",
+        });
+        const before = await loadPlan(cwd, "needs-id");
+
+        const resource = await ensurePlanIdentity(cwd, "needs-id", { idGenerator: () => "generated-id" });
+        const after = await loadPlan(cwd, "needs-id");
+
+        assertEquals(resource.planId, "generated-id");
+        assertEquals(resource.planName, "needs-id");
+        assertEquals(resource.relativePath, "docs/plans/needs-id.md");
+        assertEquals(after?.attrs.planId, "generated-id");
+        assertEquals(after?.body, before?.body);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("ensurePlanIdentity preserves existing planId", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "has-id", "# Body", { planId: "existing-id" });
+        const before = await fsReadFile(join(cwd, `docs/plans/has-id.md`), "utf8");
+
+        const resource = await ensurePlanIdentity(cwd, "has-id", { idGenerator: () => "new-id" });
+        const after = await fsReadFile(join(cwd, `docs/plans/has-id.md`), "utf8");
+
+        assertEquals(resource.planId, "existing-id");
+        assertEquals(after, before);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("ensurePlanIdentity skips archived plans and does not backfill them", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "archived/old", "# Old");
+        const before = await fsReadFile(join(cwd, `docs/plans/archived/old.md`), "utf8");
+
+        await assertRejects(
+            () => ensurePlanIdentity(cwd, "archived/old", { idGenerator: () => "archived-id" }),
+            Error,
+            "archived or hidden",
+        );
+
+        const after = await fsReadFile(join(cwd, `docs/plans/archived/old.md`), "utf8");
+        assertEquals(after, before);
+        assertEquals((await loadPlan(cwd, "archived/old"))?.attrs.planId, undefined);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("ensurePlanIdentity retries generated collisions and rejects duplicate existing planIds", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "existing", "# Existing", { planId: "existing-id" });
+        await savePlan(cwd, "missing", "# Missing");
+        const generatedIds = ["existing-id", "new-id"];
+
+        const resource = await ensurePlanIdentity(cwd, "missing", {
+            idGenerator: () => generatedIds.shift() || "unused",
+        });
+
+        assertEquals(resource.planId, "new-id");
+
+        await savePlan(cwd, "duplicate", "# Duplicate", { planId: "existing-id" });
+        await assertRejects(
+            () => ensurePlanIdentity(cwd, "another-missing", { idGenerator: () => "another-id" }),
+            Error,
+            "Plan not found",
+        );
+        await assertRejects(
+            () => ensurePlanIdentity(cwd, "missing", { idGenerator: () => "another-id" }),
+            Error,
+            "Duplicate planId",
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("listPlanResources detects duplicate existing planIds before backfilling", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "a", "# A", { planId: "dup" });
+        await savePlan(cwd, "b", "# B", { planId: "dup" });
+        await savePlan(cwd, "missing", "# Missing");
+        const before = await fsReadFile(join(cwd, `docs/plans/missing.md`), "utf8");
+
+        await assertRejects(() => listPlanResources(cwd), Error, "Duplicate planId");
+        const after = await fsReadFile(join(cwd, `docs/plans/missing.md`), "utf8");
+        assertEquals(after, before);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("findPlanById resolves non-archived resources and reports unknown IDs", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "found", "# Found\n\n## Context\nFound plan\n\nBody", { planId: "lookup-id" });
+        await savePlan(cwd, "archived/hidden", "# Hidden", { planId: "hidden-id" });
+
+        const found = await findPlanById(cwd, "lookup-id");
+        assertEquals(found.planName, "found");
+        assertEquals(found.relativePath, "docs/plans/found.md");
+        assertEquals(found.attrs.summary, "Found plan");
+        assertEquals(found.body, "# Found\n\n## Context\nFound plan\n\nBody");
+        assertEquals(found.markdown?.includes("lookup-id"), true);
+
+        await assertRejects(() => findPlanById(cwd, "hidden-id"), Error, "Plan not found for planId");
+        await assertRejects(() => findPlanById(cwd, "missing-id"), Error, "Plan not found for planId");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+function lockedPlanFrontMatter(overrides = {}) {
+    return {
+        collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
+        collaborationServerUrl: "https://plans.example.test/base",
+        collaborationSpaceId: "space-1",
+        collaborationRevision: 7,
+        collaborationBodyHash: "previous-body-hash",
+        collaborationSyncedAt: "2026-07-04T00:00:00.000Z",
+        ...overrides,
+    };
+}
+
+testWithFs("locked shared plans reject normal save/status/front matter/body writes without mutation", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const path = await savePlan(cwd, "locked", "## Plan\n\nOriginal", lockedPlanFrontMatter());
+    const before = await fsReadFile(path, "utf8");
+
+    await assertRejects(() => savePlan(cwd, "locked", "## Plan\n\nChanged"), SharedPlanLockError);
+    await assertRejects(() => updatePlanStatusForTest(cwd, "locked", "approved"), SharedPlanLockError);
+    await assertRejects(() => updatePlanFrontMatterForTest(cwd, "locked", { summary: "Changed" }), SharedPlanLockError);
+
+    await fsWriteFile(path, injectFrontMatter("## Plan\n\nOriginal", { ...lockedPlanFrontMatter(), planId: "plan-1" }));
+    const bodyResource = await loadPlanBodyById(cwd, "plan-1");
+    await assertRejects(
+        () => savePlanBodyByIdForTest(cwd, "plan-1", "## Plan\n\nChanged", bodyResource.bodyHash),
+        SharedPlanLockError,
+    );
+    assertEquals((await fsReadFile(path, "utf8")).includes("Changed"), false);
+    assertEquals(before.includes("collaborationBodyHash:"), false);
+    assertEquals(
+        (await readControllerRecord(cwd, { planName: "locked", planId: "plan-1" }))?.state.collaborationBodyHash,
+        "previous-body-hash",
+    );
+});
+
+testWithFs("locked shared plan writes require exact collaboration bypass", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    await savePlan(cwd, "locked", "## Plan\n\nOriginal", lockedPlanFrontMatter());
+    await assertRejects(
+        // @ts-expect-error A boolean is an invalid bypass token.
+        () => savePlan(cwd, "locked", "## Plan\n\nChanged", {}, { collaborationLockBypass: true }),
+        SharedPlanLockError,
+    );
+    const before = await loadPlan(cwd, "locked");
+    if (!before) throw new Error("Expected locked Plan to exist");
+    await savePlan(
+        cwd,
+        "locked",
+        "## Plan\n\nChanged",
+        {},
+        {
+            collaborationLockBypass: COLLABORATION_LOCK_BYPASS.pull,
+            expectedRevision: before.revision,
+        },
+    );
+    const loaded = await loadPlan(cwd, "locked");
+    if (!loaded) throw new Error("Expected locked Plan to exist");
+    assertStringIncludes(loaded.body, "Changed");
+});
+
+testWithFs("malformed remote-canonical front matter variants reject recovery writes without mutation", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const dir = await ensurePlansDir(cwd);
+    const path = join(dir, `malformed.md`);
+    const malformed = [
+        "---",
+        "collaborationState : remote_canonical # locked on the Plan Server",
+        "classification: [",
+        "---",
+        "## Plan",
+        "",
+        "Original",
+    ].join("\n");
+    await fsWriteFile(path, malformed);
+
+    await assertRejects(() => updatePlanStatusForTest(cwd, "malformed", "approved"), PlanFrontMatterParseError);
+    await assertRejects(
+        () => updatePlanFrontMatterForTest(cwd, "malformed", { summary: "Changed" }),
+        PlanFrontMatterParseError,
+    );
+    assertEquals(await fsReadFile(path, "utf8"), malformed);
+});
+
+testWithFs("saveChildFeaturePlans rejects stale expected child revisions", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await saveChildFeaturePlans(cwd, "epic", [
+            {
+                title: "Child",
+                order: 1,
+                summary: "Original",
+                affectedPaths: [],
+                dependencies: [],
+                content: "# Original",
+            },
+        ]);
+        const child = await loadPlan(cwd, "epic/child");
+        await updatePlanFrontMatterForTest(cwd, "epic/child", { complexity: "HIGH" });
+        await assertRejects(
+            () =>
+                saveChildFeaturePlans(
+                    cwd,
+                    "epic",
+                    [
+                        {
+                            title: "Child",
+                            order: 1,
+                            summary: "Overwrite attempt",
+                            affectedPaths: [],
+                            dependencies: [],
+                            content: "# Overwrite",
+                        },
+                    ],
+                    { expectedRevisions: { "epic/child": child?.revision || "missing" } },
+                ),
+            StalePlanWriteError,
+        );
+        assertEquals((await loadPlan(cwd, "epic/child"))?.attrs.complexity, "HIGH");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("saveChildFeaturePlans rejects overwriting locked child plans", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    await savePlan(cwd, "epic/01-child", "## Child\n\nOriginal", lockedPlanFrontMatter());
+    await assertRejects(
+        () =>
+            saveChildFeaturePlans(cwd, "epic", [
+                {
+                    title: "Child",
+                    summary: "Changed",
+                    affectedPaths: [],
+                    dependencies: [],
+                    content: "## Child\n\nChanged",
+                    order: 1,
+                },
+            ]),
+        SharedPlanLockError,
+    );
+    const loaded = await loadPlan(cwd, "epic/01-child");
+    if (!loaded) throw new Error("Expected child Plan to exist");
+    assertStringIncludes(loaded.body, "Original");
+});
+
+testWithFs(
+    "createPulledCollaborationPlan creates locked plan and auto-suffixes generated name collisions",
+    async () => {
+        const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        await savePlan(cwd, "remote-title", "## Existing\n\nBody", { planId: "other-plan" });
+        const created = await createPulledCollaborationPlan(cwd, {
+            title: "Remote Title",
+            body: "## Remote\n\nBody",
+            attrs: {
+                planId: "plan-remote",
+                classification: "FEATURE",
+                complexity: "MEDIUM",
+                summary: "Remote Title",
+                status: "draft",
+                collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
+                collaborationServerUrl: "https://plans.example",
+                collaborationSpaceId: "space-1",
+                collaborationRevision: 2,
+                collaborationBodyHash: await hashPlanBody("## Remote\n\nBody"),
+            },
+        });
+
+        assertEquals(created.planName, "remote-title-2");
+        assertEquals(created.attrs.planId, "plan-remote");
+        assertEquals(created.attrs.collaborationState, COLLABORATION_STATE_REMOTE_CANONICAL);
+        assertEquals(created.attrs.collaborationRevision, 2);
+    },
+);
+
+testWithFs("createPulledCollaborationPlan rejects explicit destination collisions", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    await savePlan(cwd, "copy/review", "## Existing\n\nBody", { planId: "other-plan" });
+    await assertRejects(
+        () =>
+            createPulledCollaborationPlan(cwd, {
+                preferredName: "copy/review",
+                body: "## Remote\n\nBody",
+                attrs: { planId: "plan-remote" },
+            }),
+        Error,
+        "Plan already exists",
+    );
+});
+
+testWithFs("updatePlanCollaborationMetadata intentionally refreshes controlled body hash", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    await savePlan(cwd, "locked", "## Plan\n\nOriginal", lockedPlanFrontMatter());
+    const attrs = await updatePlanCollaborationMetadata(
+        cwd,
+        "locked",
+        { collaborationRevision: 8 },
+        COLLABORATION_LOCK_BYPASS.pull,
+        { body: "## Plan\n\nChanged" },
+    );
+    assertEquals(attrs.collaborationRevision, 8);
+    assertEquals(attrs.collaborationBodyHash, await hashPlanBody("## Plan\n\nChanged"));
+    const loaded = await loadPlan(cwd, "locked");
+    if (!loaded) throw new Error("Expected locked Plan to exist");
+    assertStringIncludes(loaded.body, "Changed");
+});
+
+testWithFs("updatePlanCollaborationMetadata applies decrypted plan front matter", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    await savePlan(
+        cwd,
+        "locked",
+        "## Plan\n\nOriginal",
+        lockedPlanFrontMatter({ classification: "FEATURE", summary: "Old summary", status: "draft" }),
+    );
+    const attrs = await updatePlanCollaborationMetadata(
+        cwd,
+        "locked",
+        {
+            classification: "PROJECT",
+            summary: "Remote summary",
+            status: "approved",
+            affectedPaths: ["src/remote.js"],
+            collaborationRevision: 8,
+        },
+        COLLABORATION_LOCK_BYPASS.pull,
+        { body: "## Context\n\nRemote summary" },
+    );
+
+    assertEquals(attrs.classification, "PROJECT");
+    assertEquals(attrs.summary, "Remote summary");
+    assertEquals(attrs.status, "approved");
+    assertEquals(attrs.affectedPaths, ["src/remote.js"]);
+    assertEquals(attrs.collaborationRevision, 8);
+});
+
+testWithFs("updatePlanCollaborationMetadata preserves body hash without controlled body write", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    await savePlan(cwd, "locked", "## Plan\n\nOriginal", lockedPlanFrontMatter());
+    const attrs = await updatePlanCollaborationMetadata(
+        cwd,
+        "locked",
+        { collaborationRevision: 8, collaborationBodyHash: "untrusted-new-hash" },
+        COLLABORATION_LOCK_BYPASS.pull,
+    );
+    assertEquals(attrs.collaborationRevision, 8);
+    assertEquals(attrs.collaborationBodyHash, "previous-body-hash");
+});
+
+testWithFs("updatePlanCollaborationMetadata filters non-front-matter collaboration secrets", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    await savePlan(cwd, "locked", "## Plan\n\nOriginal", {
+        ...lockedPlanFrontMatter(),
+        bearerCapability: "bearer-secret",
+        contentKey: "content-key-secret",
+        reviewerUrl: "https://plans.example.test/p/space-1#contentKey=secret",
+    });
+    const attrs = await updatePlanCollaborationMetadata(
+        cwd,
+        "locked",
+        {
+            bearerCapability: "new-bearer-secret",
+            collaborationRevision: 8,
+            collaborationServerUrl: "https://plans.example.test/base#contentKey=secret",
+            contentKey: "new-content-key-secret",
+            reviewerUrl: "https://plans.example.test/p/space-1#contentKey=new-secret",
+        },
+        COLLABORATION_LOCK_BYPASS.pull,
+    );
+    const loaded = await loadPlan(cwd, "locked");
+    if (!loaded) throw new Error("Expected locked Plan to exist");
+    const markdown = await fsReadFile(loaded.path, "utf8");
+
+    assertEquals(attrs.collaborationRevision, 8);
+    assertEquals(attrs.collaborationServerUrl, "https://plans.example.test/base");
+    assertEquals(markdown.includes("bearerCapability"), false);
+    assertEquals(markdown.includes("contentKey"), false);
+    assertEquals(markdown.includes("reviewerUrl"), false);
+    assertEquals(markdown.includes("secret"), false);
+});
+
+testWithFs("clearPlanCollaborationMetadata removes lock metadata and preserves body and normal metadata", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    await savePlan(
+        cwd,
+        "locked",
+        "## Plan\n\n## Context\nKeep me\n\nOriginal body",
+        lockedPlanFrontMatter({ status: "approved", summary: "Keep me", planId: "plan-1" }),
+    );
+
+    const attrs = await clearPlanCollaborationMetadata(cwd, "locked", COLLABORATION_LOCK_BYPASS.unshare, {
+        updatedAt: "2026-07-04T12:00:00.000Z",
+    });
+    const loaded = await loadPlan(cwd, "locked");
+    if (!loaded) throw new Error("Expected locked Plan to exist");
+    const markdown = await fsReadFile(loaded.path, "utf8");
+
+    assertEquals(attrs.planId, "plan-1");
+    assertEquals(attrs.status, "approved");
+    assertEquals(attrs.summary, "Keep me");
+    assertEquals(attrs.updatedAt, "2026-07-04T12:00:00.000Z");
+    assertEquals(attrs.collaborationState, undefined);
+    assertEquals(attrs.collaborationServerUrl, undefined);
+    assertEquals(attrs.collaborationSpaceId, undefined);
+    assertEquals(attrs.collaborationRevision, undefined);
+    assertEquals(attrs.collaborationBodyHash, undefined);
+    assertEquals(attrs.collaborationSyncedAt, undefined);
+    assertStringIncludes(loaded.body, "Original body");
+    assertEquals(markdown.includes("collaborationState"), false);
+});
+
+testWithFs("clearPlanCollaborationMetadata requires exact unshare bypass", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    await savePlan(cwd, "locked", "## Plan\n\nOriginal", lockedPlanFrontMatter());
+
+    await assertRejects(
+        () => clearPlanCollaborationMetadata(cwd, "locked", COLLABORATION_LOCK_BYPASS.pull),
+        Error,
+        "unshare collaboration lock bypass",
+    );
+});
+
+testWithFs("supersedes survives Plan revisions and archival", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const recordA = "550e8400-e29b-41d4-a716-446655440000";
+    const recordB = "550e8400-e29b-41d4-a716-446655440001";
+    try {
+        await savePlan(cwd, "superseding-plan", "# Superseding Plan", {
+            planId: "superseding-plan-id",
+            status: "draft",
+            supersedes: [` ${recordA} `, recordA.toUpperCase(), "", recordB, "   "],
+        });
+
+        const revised = await updatePlanFrontMatterForTest(cwd, "superseding-plan", { status: "verified" });
+        assertEquals(revised.supersedes, [recordA, recordB]);
+
+        await archivePlan(cwd, "superseding-plan", { now: "2026-07-15T00:00:00.000Z" });
+        const archived = await loadArchivedPlan(cwd, "superseding-plan");
+        assertEquals(archived?.attrs.supersedes, [recordA, recordB]);
+        assertEquals(archived?.attrs.archivedAt, "2026-07-15T00:00:00.000Z");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("updateArchivedPlanFrontMatter preserves archive metadata while adding Work Record backlink", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "archived-link", "# Archived Link\n\n## Plan\n\nBody", {
+            planId: "plan-archived-link",
+            classification: "FEATURE",
+            complexity: "LOW",
+            summary: "Archived link.",
+            affectedPaths: [],
+            createdAt: "2026-07-14T00:00:00.000Z",
+            status: "verified",
+        });
+        await archivePlan(cwd, "archived-link", {
+            now: "2026-07-15T00:00:00.000Z",
+            reason: "complete",
+        });
+
+        const attrs = await updateArchivedPlanFrontMatter(cwd, "archived-link", {
+            workRecord: {
+                status: "generated",
+                recordId: "11111111-1111-4111-8111-111111111111",
+                path: "docs/work-records/archived-link.md",
+                lastAttemptAt: "2026-07-16T00:00:00.000Z",
+            },
+            updatedAt: "2026-07-16T00:00:00.000Z",
+        });
+        const loaded = await loadArchivedPlan(cwd, "archived-link");
+
+        assertEquals(attrs.workRecord?.recordId, "11111111-1111-4111-8111-111111111111");
+        assertEquals(loaded?.attrs.archivedAt, "2026-07-15T00:00:00.000Z");
+        assertEquals(loaded?.attrs.archiveReason, "complete");
+        assertEquals(loaded?.attrs.workRecord?.status, "generated");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("Plan front matter normalizes and preserves Ticket References", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        await savePlan(cwd, "ticketed", "# Ticketed", {
+            summary: "Ticketed",
+            tickets: [
+                { url: " https://example.com/tickets/ABC-123 ", label: "ABC", count: 1 },
+                { url: "" },
+                // @ts-expect-error Hand-authored Ticket References can contain non-object entries.
+                "https://example.com/not-an-object",
+            ],
+        });
+        const loaded = await loadPlan(cwd, "ticketed");
+        assertEquals(loaded?.attrs.tickets, [{ url: "https://example.com/tickets/ABC-123", label: "ABC", count: 1 }]);
+        assertStringIncludes(loaded?.markdown || "", 'tickets:\n  - url: "https://example.com/tickets/ABC-123"');
+
+        const updated = await updatePlanFrontMatterForTest(cwd, "ticketed", { status: "approved" });
+        assertEquals(updated.tickets, [{ url: "https://example.com/tickets/ABC-123", label: "ABC", count: 1 }]);
+        const cleared = await updatePlanFrontMatterForTest(cwd, "ticketed", { tickets: [] });
+        assertEquals(cleared.tickets, undefined);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs(
+    "child plan materialization preserves omitted Ticket References and clears explicit empty references",
+    async () => {
+        const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+        try {
+            await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "approved" });
+            await saveChildFeaturePlans(cwd, "epic", [
+                {
+                    title: "Child",
+                    order: 1,
+                    summary: "Child",
+                    affectedPaths: [],
+                    dependencies: [],
+                    tickets: [{ url: "https://example.com/tickets/CHILD-1" }],
+                    content: "# Child",
+                },
+            ]);
+            await saveChildFeaturePlans(cwd, "epic", [
+                {
+                    title: "Child",
+                    order: 1,
+                    summary: "Updated",
+                    affectedPaths: [],
+                    dependencies: [],
+                    content: "# Child updated",
+                },
+            ]);
+            assertEquals((await loadPlan(cwd, "epic/child"))?.attrs.tickets, [
+                {
+                    url: "https://example.com/tickets/CHILD-1",
+                },
+            ]);
+            await saveChildFeaturePlans(cwd, "epic", [
+                {
+                    title: "Child",
+                    order: 1,
+                    summary: "Cleared",
+                    affectedPaths: [],
+                    dependencies: [],
+                    tickets: [],
+                    content: "# Child cleared",
+                },
+            ]);
+            assertEquals((await loadPlan(cwd, "epic/child"))?.attrs.tickets, undefined);
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    },
+);
+
+testWithFs("listPlans fails closed for non-regular markdown Plan paths", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const plansDir = await ensurePlansDir(cwd);
+        await fsMkdir(join(plansDir, "dir-plan.md"));
+        await assertRejects(() => listPlans(cwd), Error, "not a markdown file");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("listPlans fails closed for symlink markdown Plan paths", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const plansDir = await ensurePlansDir(cwd);
+        const target = join(cwd, "external.md");
+        await fsWriteFile(target, "# External");
+        await fsSymlink(target, join(plansDir, "linked.md"));
+        await assertRejects(() => listPlans(cwd), Error, "not a regular markdown file");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("withPlanLock serializes concurrent same-process tasks while allowing nested reentry", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const events: string[] = [];
+        let releaseFirst: () => void = (): void => {};
+        const firstMayFinish = new Promise((resolve) => {
+            releaseFirst = () => resolve(null);
+        });
+        const resolvedCwd = fsRealpathSync(cwd);
+        const lockPath = join(
+            getRunWieldRuntimeDir(resolvedCwd),
+            PROJECT_INTERNAL_RUNTIME_DIR_NAME,
+            "plan-locks",
+            "demo.lock",
+        );
+        const legacyLockPath = join(getRunWieldRuntimeDir(resolvedCwd), "plan-locks", "demo.lock");
+        const catalogPath = join(
+            getRunWieldRuntimeDir(resolvedCwd),
+            PROJECT_INTERNAL_RUNTIME_DIR_NAME,
+            "plan-locks",
+            "catalog.lock",
+        );
+        const firstEntered = new Promise((resolve) => {
+            void withPlanLock(cwd, "demo", async () => {
+                events.push("first-enter");
+                await fsLstat(lockPath);
+                await assertMissing(legacyLockPath);
+                await withPlanCatalogLock(cwd, async () => {
+                    await fsLstat(catalogPath);
+                });
+                await withPlanLock(cwd, "demo", () => {
+                    events.push("nested-enter");
+                    return Promise.resolve();
+                });
+                resolve(null);
+                await firstMayFinish;
+                events.push("first-exit");
+            });
+        });
+        await firstEntered;
+        await assertMissing(catalogPath);
+        const second = withPlanLock(cwd, "demo", () => {
+            events.push("second-enter");
+            return Promise.resolve();
+        });
+        await new Promise((resolve) => setTimeout(resolve, 75));
+        assertEquals(events, ["first-enter", "nested-enter"]);
+        releaseFirst();
+        await second;
+        assertEquals(events, ["first-enter", "nested-enter", "first-exit", "second-enter"]);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("a plain markdown file in docs/plans/ is readable and is never claimed by a passive read", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-external-plan-" });
+    try {
+        const bare = "# Random notes\n\nI wrote this in vim.\n";
+        await fsMkdir(join(cwd, "docs", "plans"), { recursive: true });
+        const path = join(cwd, "docs", "plans", "random.md");
+        await fsWriteFile(path, bare);
+
+        // Reads must tolerate the missing Front Matter rather than panic.
+        const loaded = await loadPlan(cwd, "random");
+        assertEquals(loaded?.attrs.status, "draft", "parsing falls back to defaults");
+        assertEquals(loaded?.hasFrontMatter, false, "but the file's un-onboarded state stays visible");
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            ["random"],
+        );
+
+        // Listing is not consent. Backfilling identity here would let opening a Plan
+        // Board or reading the worktree registry stamp metadata into the user's file.
+        const resources = await listPlanResources(cwd);
+        assertEquals(
+            resources.map((resource) => resource.name),
+            ["random"],
+        );
+        assertEquals(resources[0].planId, "", "no identity is invented for an un-onboarded file");
+        assertEquals(await fsReadFile(path, "utf8"), bare, "the user's file is byte-for-byte untouched");
+    } finally {
+        await fsRm(cwd, { recursive: true }).catch(() => {});
+    }
+});
+
+test("onboardExternalPlan adopts a plain markdown Plan and preserves the body exactly", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-onboard-plan-" });
+    try {
+        const bare = "# Old plan\n\nProse the user wrote, with `---` inside it.\n";
+        await fsMkdir(join(cwd, "docs", "plans"), { recursive: true });
+        const path = join(cwd, "docs", "plans", "old.md");
+        await fsWriteFile(path, bare);
+        // A Plan that has existed for weeks before RunWield saw it.
+        const past = new Date("2026-06-01T12:00:00.000Z");
+        await fsUtimes(path, past, past);
+        const createdBefore = (await fsStat(path)).birthtime;
+
+        const adopted = await onboardExternalPlan(cwd, "old", { now: () => new Date("2026-07-01T00:00:00.000Z") });
+        assertEquals(adopted.onboarded, true);
+
+        const attrs = parsePlanFrontMatter(await fsReadFile(path, "utf8")).attrs;
+        assertEquals(attrs.classification, "PLANNED_CHANGE");
+        assertEquals(attrs.status, "draft");
+        assertEquals(attrs.origin, "external");
+        assertEquals(attrs.complexity, "MEDIUM");
+        assertEquals(attrs.summary, "");
+        assertEquals(attrs.affectedPaths, []);
+        assertEquals(attrs.workKind, undefined, "work kind is unknown until someone decides it");
+        assertEquals(attrs.updatedAt, undefined, "runtime timestamps are not copied into the Plan");
+        assertEquals(adopted.resource.attrs.updatedAt, "2026-07-01T00:00:00.000Z");
+        assertEquals(Boolean(attrs.planId), true, "onboarding gives the Plan a durable identity");
+        // The atomic rename resets the file's birthtime, so the Plan's real age only
+        // survives because it was captured before the write.
+        assertEquals(attrs.createdAt, createdBefore?.toISOString());
+        assertEquals(parsePlanFrontMatter(await fsReadFile(path, "utf8")).body, bare, "the body is untouched");
+
+        // Idempotent: loading a Plan twice must not rewrite metadata the lifecycle set.
+        const onboarded = await loadPlan(cwd, "old");
+        await updatePlanFrontMatter(
+            cwd,
+            "old",
+            { status: "approved" },
+            {},
+            {
+                expectedRevision: onboarded?.revision,
+            },
+        );
+        const again = await onboardExternalPlan(cwd, "old");
+        assertEquals(again.onboarded, false);
+        assertEquals(again.resource.planId, adopted.resource.planId, "identity is stable");
+        assertEquals((await loadPlan(cwd, "old"))?.attrs.status, "approved", "lifecycle state is not reset");
+    } finally {
+        await fsRm(cwd, { recursive: true }).catch(() => {});
+    }
+});
+
+test("a Plan lock left by a dead process is reclaimed immediately", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-dead-lock-" });
+    try {
+        await savePlan(cwd, "demo", "# Demo\n", { status: "draft", classification: "FEATURE" });
+        const resolvedCwd = fsRealpathSync(cwd);
+        const lockDir = join(getRunWieldRuntimeDir(resolvedCwd), PROJECT_INTERNAL_RUNTIME_DIR_NAME, "plan-locks");
+        const lockPath = join(lockDir, "demo.lock");
+        const legacyLockPath = join(getRunWieldRuntimeDir(resolvedCwd), "plan-locks", "demo.lock");
+        await fsMkdir(lockDir, { recursive: true });
+        // A lock naming this host and a pid that is definitely gone. Waiting for it to
+        // look old enough would block every operation on this Plan for the whole stale
+        // window, which is RunWield's bookkeeping locking the user out of their Plan.
+        await fsWriteFile(lockPath, JSON.stringify({ pid: 2147483646, hostname: hostname(), updatedAtMs: Date.now() }));
+
+        const started = Date.now();
+        const held = await withPlanLock(cwd, "demo", () => Promise.resolve("acquired"));
+        assertEquals(held, "acquired");
+        assertEquals(Date.now() - started < 5_000, true, "a dead holder must be reclaimed at once, not waited out");
+        await assertMissing(lockPath);
+        await assertMissing(legacyLockPath);
+    } finally {
+        await fsRm(cwd, { recursive: true }).catch(() => {});
+    }
+});
+
+testWithFs("listPlanResources leaves identity assignment to explicit preparation", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-plan-resources-readonly-" });
+    try {
+        await savePlan(cwd, "no-id", "# No Id\n", {
+            classification: "FEATURE",
+            status: "ready_for_work",
+            summary: "s",
+            affectedPaths: [],
+        });
+        const before = await loadPlan(cwd, "no-id");
+
+        // A read must stay a read: registry reads and Workspace listings run this
+        // from inside lifecycle transactions, and a silent Front Matter write there
+        // rewrites bytes the transaction already snapshotted.
+        const listed = await listPlanResources(cwd);
+        assertEquals(listed.length, 1);
+        assertEquals(listed[0].planId, "");
+        assertEquals((await loadPlan(cwd, "no-id"))?.revision, before?.revision);
+
+        const healed = await ensurePlanIdentity(cwd, "no-id", { idGenerator: () => "minted-id" });
+        assertEquals(healed.planId, "minted-id");
+        assertEquals((await loadPlan(cwd, "no-id"))?.attrs.planId, "minted-id");
+    } finally {
+        await fsRm(cwd, { recursive: true }).catch(() => {});
+    }
+});
+
+test("legacy plans/ files are ignored, not migrated or accepted", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-legacy-plans-ignored-" });
+    try {
+        // A project that only has the old store location. This is the clean-break
+        // contract: the legacy directory is neither scanned nor readable.
+        await fsMkdir(join(cwd, "plans"), { recursive: true });
+        await fsWriteFile(join(cwd, "plans", "legacy.md"), "# Legacy\n");
+        assertEquals(await listPlans(cwd), [], "legacy plans/ files are not listed");
+        assertEquals(await loadPlan(cwd, "legacy"), null, "legacy plans/ files cannot be loaded by name");
+        assertEquals(await resolvePlan(cwd, "legacy").catch(() => null), null, "legacy name resolves to nothing");
+        await assertRejects(
+            () => resolvePlan(cwd, "plans/legacy.md"),
+            Error,
+            "Legacy Plan path is not supported: plans/legacy.md",
+        );
+        await assertRejects(
+            () => resolvePlan(cwd, join(cwd, "plans", "legacy.md")),
+            Error,
+            "Legacy Plan path is not supported: plans/legacy.md",
+        );
+        assertEquals(await listArchivedPlans(cwd), [], "plans/archived/ is not scanned either");
+
+        // The same content under the canonical store is listed and loaded.
+        await fsMkdir(join(cwd, "docs", "plans"), { recursive: true });
+        const currentMarkdown = injectFrontMatter("# Current\n", { planId: "current-1" });
+        await fsWriteFile(join(cwd, "docs", "plans", "current.md"), currentMarkdown);
+        const listed = await listPlans(cwd);
+        assertEquals(
+            listed.map((plan) => plan.name),
+            ["current"],
+        );
+        const loaded = await loadPlan(cwd, "current");
+        assertEquals(loaded?.attrs.planId, "current-1");
+        // The canonical store path prefix resolves to the same file.
+        assertEquals((await loadPlan(cwd, "docs/plans/current.md"))?.attrs.planId, "current-1");
+    } finally {
+        await fsRm(cwd, { recursive: true }).catch(() => {});
+    }
+});
+
+testWithFs("manual-qa Epic Artifact is excluded from Plan loading and listing", async () => {
+    const cwd = await makeTempDirectory({ prefix: "plan-store-epic-artifact-" });
+    try {
+        await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "ready_for_work" });
+        await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "not front matter");
+
+        assertEquals(await loadPlan(cwd, "epic/manual-qa"), null);
+        assertEquals(await loadPlan(cwd, "docs/plans/epic/manual-qa.md"), null);
+        assertEquals((await loadPlanStrict(cwd, "epic/manual-qa")).kind, "not_found");
+        assertEquals((await loadPlanStrict(cwd, "docs/plans/epic/manual-qa.md")).kind, "not_found");
+        assertEquals(
+            (await listPlans(cwd)).some((plan) => plan.name === "epic/manual-qa"),
+            false,
+        );
+
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "notes.md"), "not front matter");
+        assertEquals(
+            (await listPlans(cwd)).some((plan) => plan.name === "epic/notes"),
+            true,
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("reserved manual-qa child Plan writes are rejected", async () => {
+    const cwd = await makeTempDirectory({ prefix: "plan-store-reserved-artifact-" });
+    try {
+        await assertRejects(
+            () => savePlan(cwd, "epic/manual-qa", "# Manual QA", { classification: "PLANNED_CHANGE" }),
+            Error,
+            "reserved for an Epic Artifact",
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("archive and restore move Epic manual-qa artifact bytes", async () => {
+    const cwd = await makeTempDirectory({ prefix: "plan-store-artifact-archive-" });
+    try {
+        const artifactText = "# QA\n\n- [ ] Check\n";
+        await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "verified" });
+        await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), artifactText);
+
+        const archived = await archivePlan(cwd, "epic");
+        assertEquals(archived.artifacts?.[0].relativePath, "docs/plans/archived/epic/manual-qa.md");
+        assertEquals(
+            await fsReadFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md"), "utf8"),
+            artifactText,
+        );
+        await assertRejects(() => fsStat(join(cwd, "docs", "plans", "epic", "manual-qa.md")), Error, "ENOENT");
+
+        const restored = await restoreArchivedPlan(cwd, "epic");
+        assertEquals(restored.artifacts?.[0].relativePath, "docs/plans/epic/manual-qa.md");
+        assertEquals(await fsReadFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "utf8"), artifactText);
+        await assertRejects(
+            () => fsStat(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md")),
+            Error,
+            "ENOENT",
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("archive rolls back the archived Plan file when Epic Artifact movement collides", async () => {
+    const cwd = await makeTempDirectory({ prefix: "plan-store-artifact-archive-collision-" });
+    try {
+        await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "verified" });
+        await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+        await fsMkdir(join(cwd, "docs", "plans", "archived", "epic"), { recursive: true });
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "active artifact");
+        await fsWriteFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md"), "archived artifact");
+
+        await assertRejects(() => archivePlan(cwd, "epic"), Error, "Epic Artifact already exists");
+
+        assertEquals((await loadPlan(cwd, "epic"))?.attrs.classification, "PROJECT");
+        assertEquals(await loadArchivedPlan(cwd, "epic"), null);
+        assertEquals(await fsReadFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "utf8"), "active artifact");
+        assertEquals(
+            await fsReadFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md"), "utf8"),
+            "archived artifact",
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("restore rolls back the active Plan file when Epic Artifact movement collides", async () => {
+    const cwd = await makeTempDirectory({ prefix: "plan-store-artifact-restore-collision-" });
+    try {
+        await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "verified" });
+        await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "archived artifact");
+        await archivePlan(cwd, "epic");
+        await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "active artifact");
+
+        await assertRejects(() => restoreArchivedPlan(cwd, "epic"), Error, "Epic Artifact already exists");
+
+        assertEquals(await loadPlan(cwd, "epic"), null);
+        assertEquals((await loadArchivedPlan(cwd, "epic"))?.name, "epic");
+        assertEquals(await fsReadFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "utf8"), "active artifact");
+        assertEquals(
+            await fsReadFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md"), "utf8"),
+            "archived artifact",
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("legacy done-enough Epic remains deliberately closed without invented verification", async () => {
+    const root = await makeTempDirectory({ prefix: "legacy-epic-closure-" });
+    try {
+        await savePlan(root, "legacy-epic", "# Legacy Epic", {
+            classification: "PROJECT",
+            status: "validated",
+            epicCompletionMode: "done_enough",
+            epicDoneEnoughAt: "2026-01-01T00:00:00.000Z",
+            validatedAt: "2026-01-01T00:00:00.000Z",
+        });
+        const plan = await loadPlan(root, "legacy-epic");
+        assertEquals(plan?.attrs.status, "closed_without_verification");
+        assertEquals(Boolean(plan?.attrs.verifiedAt), false);
+        const inspected = await inspectPlanFileStrict(join(root, "docs/plans/legacy-epic.md"));
+        assert(inspected.kind === "loaded");
+        assertEquals(inspected.attrs.status, "closed_without_verification");
+        assertEquals((await listPlans(root))[0].attrs.status, "closed_without_verification");
+    } finally {
+        await fsRm(root, { recursive: true });
+    }
+});
+
+test("Plan replacement preserves open readers and publishes the complete new Plan", async () => {
+    const root = await makeTempDirectory({ prefix: "plan-open-reader-" });
+    try {
+        await savePlan(root, "open-reader", "# Original body\n", { status: "draft", classification: "PLANNED_CHANGE" });
+        const initial = await loadPlan(root, "open-reader");
+        assert(initial);
+        const reader = await fsOpen(initial.path, "r");
+        try {
+            await updatePlanFrontMatter(
+                root,
+                "open-reader",
+                { status: "approved" },
+                {},
+                { expectedRevision: initial.revision },
+            );
+            assertEquals(await reader.readFile("utf8"), initial.markdown);
+            const replaced = await loadPlan(root, "open-reader");
+            assertEquals(replaced?.attrs.status, "approved");
+            assertEquals(replaced?.body, initial.body);
+        } finally {
+            await reader.close();
+        }
+    } finally {
+        await fsRm(root, { recursive: true });
+    }
+});
+
+testWithFs("child reorder keeps descriptive paths, identity, and dependency references", async () => {
+    const cwd = await makeTempDirectory({ prefix: "child-reorder-" });
+    try {
+        const children = [
+            { title: "Zulu", order: 2, summary: "Zulu", affectedPaths: [], dependencies: [], content: "# Zulu" },
+            {
+                title: "Alpha",
+                order: 10,
+                summary: "Alpha",
+                affectedPaths: [],
+                dependencies: ["zulu"],
+                content: "# Alpha",
+            },
+        ];
+        const written = await saveChildFeaturePlans(cwd, "epic", children);
+        assertEquals(
+            written.map((child) => child.name),
+            ["epic/zulu", "epic/alpha"],
+        );
+        const before = await ensurePlanIdentity(cwd, "epic/zulu");
+        assertEquals(
+            (await findPlansByParent(cwd, "epic")).map((child) => child.name),
+            ["epic/zulu", "epic/alpha"],
+        );
+        await saveChildFeaturePlans(
+            cwd,
+            "epic",
+            children.map((child) => ({ ...child, order: child.order === 2 ? 10 : 2 })),
+        );
+        assertEquals(
+            (await findPlansByParent(cwd, "epic")).map((child) => child.name),
+            ["epic/alpha", "epic/zulu"],
+        );
+        assertEquals((await loadPlan(cwd, "epic/zulu"))?.attrs.planId, before.planId);
+        assertEquals((await loadPlan(cwd, "epic/alpha"))?.attrs.dependencies, ["zulu"]);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("child regeneration reuses a unique legacy path regardless of its prefix", async () => {
+    const cwd = await makeTempDirectory({ prefix: "legacy-child-" });
+    try {
+        await savePlan(cwd, "epic/99-zulu", "# Old", { parentPlan: "epic", order: 99, planId: "legacy-zulu" });
+        const written = await saveChildFeaturePlans(cwd, "epic", [
+            { title: "Zulu", order: 2, summary: "Zulu", affectedPaths: [], dependencies: [], content: "# Zulu" },
+        ]);
+        assertEquals(
+            written.map((child) => child.name),
+            ["epic/99-zulu"],
+        );
+        assertEquals((await loadPlan(cwd, "epic/99-zulu"))?.attrs.planId, "legacy-zulu");
+        assertEquals((await loadPlan(cwd, "epic/99-zulu"))?.attrs.order, 2);
+        assertEquals(await loadPlan(cwd, "epic/zulu"), null);
+        const states = resolveSiblingChildPlanDependencyStates(
+            "epic",
+            ["zulu", "99-zulu", "epic/99-zulu", "legacy-zulu"],
+            await findPlansByParent(cwd, "epic"),
+        );
+        assertEquals(
+            states.map((state) => state.planName),
+            Array(4).fill("epic/99-zulu"),
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+testWithFs("ambiguous legacy children and duplicate slugs fail before any writes", async () => {
+    const cwd = await makeTempDirectory({ prefix: "ambiguous-child-" });
+    try {
+        for (const prefix of ["01", "02"]) await savePlan(cwd, `epic/${prefix}-zulu`, "# Old", { parentPlan: "epic" });
+        const child = {
+            title: "Zulu",
+            order: 3,
+            summary: "Zulu",
+            affectedPaths: [],
+            dependencies: [],
+            content: "# Changed",
+        };
+        await assertRejects(
+            () => saveChildFeaturePlans(cwd, "epic", [{ ...child, title: "New" }, child]),
+            Error,
+            "Ambiguous legacy",
+        );
+        assertEquals(await loadPlan(cwd, "epic/new"), null);
+        assertEquals((await loadPlan(cwd, "epic/01-zulu"))?.body.trim(), "# Old");
+        await assertRejects(
+            () => saveChildFeaturePlans(cwd, "other", [child, { ...child, title: "Zulu!", order: 4 }]),
+            Error,
+            "Duplicate child",
+        );
+        assertEquals(await loadPlan(cwd, "other/zulu"), null);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+for (const status of ["in_progress", "validated"] as const) {
+    testWithFs(`child regeneration cannot overwrite a ${status} legacy child`, async () => {
+        const cwd = await makeTempDirectory({ prefix: "started-legacy-child-" });
+        try {
+            await savePlan(cwd, "epic/99-zulu", "# Delivered", {
+                parentPlan: "epic",
+                status,
+                planId: "keep-id",
+                order: 99,
+            });
+            const before = await loadPlan(cwd, "epic/99-zulu");
+            const child = {
+                title: "Zulu",
+                order: 2,
+                summary: "New",
+                affectedPaths: [],
+                dependencies: [],
+                content: "# Replaced",
+            };
+            await assertRejects(
+                () => saveChildFeaturePlans(cwd, "epic", [{ ...child, title: "First" }, child]),
+                Error,
+                "non-draft child",
+            );
+            assertEquals((await loadPlan(cwd, "epic/99-zulu"))?.markdown, before?.markdown);
+            assertEquals(await loadPlan(cwd, "epic/first"), null);
+        } finally {
+            await fsRm(cwd, { recursive: true });
+        }
+    });
+}
+
+test("body-only save retains the existing Plan identity", async () => {
+    const cwd = await makeTempDirectory({ prefix: "plan-body-identity-" });
+    try {
+        await savePlan(cwd, "p", "# Original\n", { planId: "stable-plan-id", status: "draft" });
+        const prior = await loadPlan(cwd, "p");
+        assert(prior);
+        await savePlan(cwd, "p", "# Revised\n", {}, { expectedRevision: prior.revision });
+        const current = await loadPlan(cwd, "p");
+        assert(current);
+        assertEquals(current.attrs.planId, "stable-plan-id");
+        assertEquals(current.body.trim(), "# Revised");
+    } finally {
+        await fsRm(cwd, { recursive: true, force: true });
+    }
+});

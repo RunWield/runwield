@@ -1,4 +1,4 @@
-// @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+// @ts-nocheck: Component props and event-handler types are implicit.
 import { submitWorkflowAction } from "../browser/workflow-action.ts";
 
 import { useEffect, useMemo, useState } from "react";

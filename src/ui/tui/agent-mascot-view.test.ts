@@ -1,6 +1,6 @@
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { test } from "node:test";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";

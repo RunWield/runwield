@@ -3,7 +3,7 @@ import { writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import { type ReviewCompletePayload } from "./review-outcome.ts";
 import {
     complete,

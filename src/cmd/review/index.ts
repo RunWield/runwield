@@ -1,5 +1,5 @@
 import process from "node:process";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import {
     resolveReviewTarget,

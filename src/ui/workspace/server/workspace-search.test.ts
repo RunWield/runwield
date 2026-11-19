@@ -1,6 +1,6 @@
 import { serveHttp } from "../../../shared/http-server.ts";
-// @ts-nocheck: focused service tests use the repository's JavaScript-style owner store.
-// @ts-nocheck: focused service tests use the repository's JavaScript-style owner store.
+// @ts-nocheck: Owner-service result records have implicit types.
+// @ts-nocheck: Owner-service result records have implicit types.
 import { constants as fsConstants, readdirSync as fsReaddirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { test } from "node:test";
@@ -21,18 +21,18 @@ import { platform, tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { join } from "node:path";
 import { DatabaseSync } from "../../../shared/sqlite.ts";
-import { savePlan, writePlanMarkdownWithRevision } from "../../../plan-store.js";
+import { savePlan, writePlanMarkdownWithRevision } from "../../../plan-store.ts";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
-import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.js";
+import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.ts";
 import { formatWorkRecordMarkdown } from "../../../shared/work-records/markdown.ts";
 import { replaceWorkRecord, writeWorkRecord } from "../../../shared/work-records/store.ts";
 import { requestWorkspaceSearchRefresh } from "../../../shared/workspace-search-refresh.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../../testing/managed-session-fixture.ts";
 import { readProjectArtifact } from "./project-artifacts.ts";
-import { loadWorkspaceDetail } from "./plan-adapter.js";
+import { loadWorkspaceDetail } from "./plan-adapter.ts";
 import { createWorkspaceSearchService, WORKSPACE_SEARCH_SCAN_INTERVAL_MS } from "./workspace-search.ts";
-import { createOwnerWorkspaceApp, startWorkspaceServer } from "../server.js";
+import { createOwnerWorkspaceApp, startWorkspaceServer } from "../server.ts";
 
 async function waitFor(condition: () => Promise<boolean>, timeoutMs = 60_000) {
     const deadline = Date.now() + timeoutMs;

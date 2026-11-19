@@ -6,7 +6,7 @@ import { realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
  * The Plan Recovery menu coordinator for in-progress, failed, and implemented Plans.
  */
 
-import { resolvePlanExecutionPolicy } from "../../plan-store.js";
+import { resolvePlanExecutionPolicy } from "../../plan-store.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import {
     executionWorktreePathExists,
@@ -21,7 +21,7 @@ import {
     validationUserMessage,
 } from "../../shared/workflow/validation-user-messages.ts";
 import { isInValidation } from "../../shared/workflow/plan-lifecycle.ts";
-import { recordWorkflowMetric } from "../../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";
 import { verifyRecordedPublication } from "../../shared/workflow/validation-merge-verification.ts";
 import { isUserVerifiableStatus } from "./plan-hold.ts";
@@ -47,8 +47,8 @@ import {
 import { resetRecoveryPlan } from "./plan-recovery-reset.ts";
 
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type {
     RecoveryActionContext,
     RecoveryActionName,

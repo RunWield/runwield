@@ -1,16 +1,16 @@
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals } from "../../testing/assertions.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { recordDeliveryEvidence } from "./delivery-evidence.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import {
     makeRecordedSession,
     makeUi,
     makeValidationProjectRoot,
     runValidationPhase,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 interface DecisionDetails {
     decision: "approved" | "changes_requested";

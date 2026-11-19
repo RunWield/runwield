@@ -19,7 +19,7 @@ import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { addEntry } from "../../shared/worktree-registry.js";
+import { addEntry } from "../../shared/worktree-registry.ts";
 
 const cli = fileURLToPath(new URL("../../cli.ts", import.meta.url));
 const moduleUrl = (path: string) => new URL(path, import.meta.url).href;

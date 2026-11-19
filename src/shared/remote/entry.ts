@@ -129,7 +129,7 @@ export async function runRemoteView(): Promise<void> {
     try {
         const { configureRemoteModelConnection } = await import("../models/model-registry.ts");
         clearModels = await configureRemoteModelConnection(config.connection);
-        const { configureGuideRunner } = await import("../../ui/workspace/routes/api/review-agent-handlers.js");
+        const { configureGuideRunner } = await import("../../ui/workspace/routes/api/review-agent-handlers.ts");
         const { runRemoteGuideCommand } = await import("./guide-runner.ts");
         clearGuideRunner = configureGuideRunner(runRemoteGuideCommand);
         const tuiModule = await import("../../ui/tui/tui.ts");

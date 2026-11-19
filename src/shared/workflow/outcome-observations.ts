@@ -2,8 +2,8 @@
 import { createHash } from "node:crypto";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { planAssociationAtTime } from "../session/plan-association.ts";
-import { findById } from "../worktree-registry.js";
-import { recordWorkflowMetric } from "./metrics.js";
+import { findById } from "../worktree-registry.ts";
+import { recordWorkflowMetric } from "./metrics.ts";
 
 export interface OutcomeSession {
     runwieldSessionId: string;
