@@ -90,10 +90,8 @@ test("qualification selects github.sha without resolving or recovering a release
                 RELEASE_TAG: "this-tag-must-not-be-fetched",
             },
         });
-        match(
-            await readFile(output, "utf8"),
-            new RegExp(`sha=${sha}\\nbun_version=1\\.4\\.3\\nlegacy_containers=false`),
-        );
+        const bunVersion = execFileSync("git", ["show", `${sha}:.bun-version`], { encoding: "utf8" }).trim();
+        equal(await readFile(output, "utf8"), `sha=${sha}\nbun_version=${bunVersion}\nlegacy_containers=false\n`);
         match(source, /else\s+git fetch --no-recurse-submodules --no-tags origin "refs\/tags\/\$RELEASE_TAG"/);
         equal(step("metadata", "existing").if, "${{ !inputs.qualification_only }}");
         match(workflow.jobs.metadata.outputs!.published, /\|\| 'false'/);

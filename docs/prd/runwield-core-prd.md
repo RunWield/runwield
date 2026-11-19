@@ -2481,14 +2481,13 @@ provider support documented in terms of current configuration.
 
 ### Installation and updates
 
-**Requirement: Supported development runtime.** Local source, test, build, and release commands accept the Bun
-range in `package.json` (`^1.4.0`: at least 1.4.0 and below 2.0.0). CI and release artifacts use the exact
-`.bun-version` pin for repeatable builds. Release source checks install the real Stable Mnemoteca with
-checksum-verified native dependencies; an unavailable dependency download fails setup rather than skipping
-Work Record integration checks.
+**Requirement: Supported development runtime.** Local source, test, build, and release commands accept any stable
+Bun in the supported range. CI and release artifacts use one exact Bun version for repeatable builds. Release source
+checks install the real Stable Mnemoteca with checksum-verified native dependencies; an unavailable dependency download
+fails setup rather than skipping Work Record integration checks.
 
-- Given Bun 1.4.4 or another stable version in the supported range, the runtime check permits local commands.
-- Given Bun below 1.4.0, Bun 2.x, or another runtime, the check stops with the required range and detected runtime.
+- Given a stable Bun in the supported range other than the CI version, local commands and the full test suite pass.
+- Given a Bun outside the supported range or another runtime, the check stops with the required range and detected runtime.
 
 **Scope and maturity:** Current Linux/macOS shell installation and Candidate release baseline. The public macOS tap
 provides RunWield and Mnemoteca packages. Windows releases and checks, including WinGet manifest preparation and
@@ -2504,7 +2503,7 @@ package-manager command for package-managed installs. Public docs distinguish av
 listings.
 
 For a `wld remote` development bundle, build the launcher and Linux artifacts explicitly from the same unchanged
-checkout and compiler (Bun 1.4.3). A connection never compiles on demand or substitutes a released binary for
+checkout and compiler. A connection never compiles on demand or substitutes a released binary for
 a missing development artifact. The launcher verifies matching build/protocol identity, human-readable `VERSION`, and
 artifact checksum, then privately stages and preflights the executable on the remote host. An interrupted stage is
 repaired on a later connection. It does not run the personal installer, change the remote profile or a package-managed

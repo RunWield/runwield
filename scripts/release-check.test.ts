@@ -1,5 +1,6 @@
 import { serveHttp } from "../src/shared/http-server.ts";
 import { tmpdir } from "node:os";
+import { versions } from "node:process";
 import { test } from "node:test";
 import {
     chmod as fsChmod,
@@ -34,7 +35,7 @@ async function withTemporaryVersionProject(fn: VersionProjectCheck) {
     try {
         await fsMkdir(join(root, "src", "shared"), { recursive: true });
         await fsWriteFile(join(root, "src", "shared", "version.js"), 'export const VERSION = "original";\n');
-        await fsWriteFile(join(root, ".bun-version"), "1.4.3\n");
+        await fsWriteFile(join(root, ".bun-version"), `${versions.bun}\n`);
         await fn(root);
     } finally {
         await fsRm(root, { recursive: true });
@@ -92,7 +93,7 @@ test("release check rejects worker errors even when image fallback exits success
                                 code: 0,
                                 stdout:
                                     args[0] === "--remote-preflight"
-                                        ? JSON.stringify({ runtime: "bun", runtimeVersion: "1.4.3" })
+                                        ? JSON.stringify({ runtime: "bun", runtimeVersion: versions.bun })
                                         : "",
                                 stderr:
                                     args[0] === "package-smoke"
@@ -275,7 +276,7 @@ for (const identity of [
                         },
                     ),
                 Error,
-                "Release binary must execute Bun 1.4.3.",
+                `Release binary must execute Bun ${versions.bun}.`,
             );
         });
     });

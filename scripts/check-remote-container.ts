@@ -71,7 +71,7 @@ try {
         name,
         "/bin/sh",
         "-ec",
-        'test "$(id -u)" = 1993; test "$(bun --version)" = 1.4.3; if command -v deno; then exit 1; fi',
+        'test "$(id -u)" = 1993; test "$(bun --version)" = 1.4.4; if command -v deno; then exit 1; fi',
     );
     let base = await publishedBase();
     await ready(base);

@@ -379,7 +379,7 @@ async function cleaned(driver: Driver, owned: OwnedRemote, sleeper: number): Pro
 }
 
 export async function qualifyRemoteCliWorkflows(archivesInput: string, version: string): Promise<void> {
-    equal(process.versions.bun, "1.4.3");
+    equal(process.versions.bun, "1.4.4");
     equal(process.platform, "darwin", "This qualification covers the macOS laptop only");
     const archives = resolve(archivesInput);
     const evidence = await mkdtemp(join(tmpdir(), "wld-cli-workflows-"));
