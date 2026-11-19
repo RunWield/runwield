@@ -39,7 +39,7 @@ test("ACP SDK client receives task output after its prompt ends", async () => {
             const initialization = await connection.agent.request("initialize", {
                 protocolVersion: PROTOCOL_VERSION,
                 clientCapabilities: {},
-                clientInfo: { name: "RunWield background task SDK test" },
+                clientInfo: { name: "RunWield background task SDK test", version: "test" },
             });
             assertEquals(initialization.protocolVersion, PROTOCOL_VERSION);
             const created = await connection.agent.request("session/new", { cwd: projectRoot, mcpServers: [] });
@@ -108,7 +108,7 @@ test("ACP SDK Stop cancels idle background work without a late result turn", asy
             await connection.agent.request("initialize", {
                 protocolVersion: PROTOCOL_VERSION,
                 clientCapabilities: {},
-                clientInfo: { name: "RunWield SDK Stop test" },
+                clientInfo: { name: "RunWield SDK Stop test", version: "test" },
             });
             const created = await connection.agent.request("session/new", { cwd: projectRoot, mcpServers: [] });
             const first = await connection.agent.request("session/prompt", {
