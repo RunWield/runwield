@@ -324,41 +324,119 @@ test("imageGeneration preserves settings and resets inherited options when the m
         assertThrows(() => resolveImageGenerationSettings(f.cwd), Error, "thinkingLvel");
     }));
 
-test("create_image preserves saved Agy settings but fails without spawning or credential fallback", () =>
+test("create_image uses one isolated Agy ACP turn with exact model and effort", () =>
     withFixture(async (f) => {
         const argsPath = join(f.cwd, "args.json");
         process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
-        for (const family of [
-            "gemini-3.8-flash",
-            "gemini-3.1-pro",
-            "gemini-4-argon",
-            "gemini-4-carbon",
-            "gemini-4-hydrogen",
-        ]) {
-            const settings = { model: `agy-cli/${family}`, thinkingLevel: "medium" as const };
+        process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] = "session";
+        for (const [family, thinkingLevel, effort] of [
+            ["gemini-3.8-flash", "medium", "medium"],
+            ["gemini-3.1-pro", "medium", "high"],
+            ["gemini-4-argon", "low", "low"],
+            ["gemini-4-carbon", "max", "high"],
+            ["gemini-4-hydrogen", "xhigh", "xhigh"],
+        ] as const) {
+            const settings = { model: `agy-cli/${family}`, thinkingLevel };
             await f.settings(settings);
-            await assertRejects(
-                () => createImage({ cwd: f.cwd, prompt: "red mug", outputPath: `${family}.png` }),
-                Error,
-                "agy-cli image generation is unavailable after the ACP migration",
-            );
+            const result = await createImage({ cwd: f.cwd, prompt: "red mug", outputPath: `${family}.png` });
+            assertEquals(result.width, 4);
             assertEquals(resolveImageGenerationSettings(f.cwd), settings);
-            await assertRejects(() => fsStat(join(f.cwd, `${family}.png`)), Error, "ENOENT");
+            const turn = JSON.parse(await fsReadFile(argsPath + ".turn", "utf8"));
+            assertEquals(turn.model, family);
+            assertEquals(turn.effort, effort);
         }
-        await assertRejects(() => fsStat(argsPath), Error, "ENOENT");
-        // The fixture has working provider credentials; selecting Agy must never use them.
+        const args: string[] = JSON.parse(await fsReadFile(argsPath, "utf8"));
+        assertEquals(args[0], "acp");
+        assert(!args.includes("-p"));
+        assert(!args.includes("--dangerously-skip-permissions"));
+        assert(args.includes("--include-default-customizations=false"));
         assertEquals(f.requests.length, 0);
-        await assertRejects(
-            () => createImage({ cwd: f.cwd, prompt: "red mug", outputPath: "actionable.png" }),
-            Error,
-            "Explicitly select another supported image provider in imageGeneration.model",
+    }));
+
+test("create_image stages validated Agy reference bytes only in disposable agent workspace", () =>
+    withFixture(async (f) => {
+        await f.settings({ model: "agy-cli/gemini-4-argon", thinkingLevel: "low" });
+        const argsPath = join(f.cwd, "args.json");
+        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
+        await fsWriteFile(
+            join(f.cwd, "reference.png"),
+            Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)),
         );
-        await f.settings({ model: MODEL });
-        const result = await createImage({ cwd: f.cwd, prompt: "red mug", outputPath: "supported.png" });
-        assertEquals(result.model, MODEL);
-        assertEquals(result.width, 4);
-        assertEquals(f.requests.length, 1);
+        await createImage({ cwd: f.cwd, prompt: "blue mug", outputPath: "edited.png", imageRefs: ["reference.png"] });
+        const turn = JSON.parse(await fsReadFile(argsPath + ".turn", "utf8"));
+        assertEquals(turn.referenceData, [PNG]);
+        assertEquals(turn.referencePaths.length, 1);
+        assertEquals(turn.referencePaths[0], join(turn.cwd, "reference-0.png"));
+        assert(!JSON.stringify(turn.prompt).includes(join(f.cwd, "reference.png")));
+        await assertRejects(() => fsStat(turn.cwd), Error, "ENOENT");
+        assertEquals(f.requests.length, 0);
+    }));
+
+test("create_image rejects unproven, extra, escaped, malformed and mismatched ACP image output", () =>
+    withFixture(async (f) => {
+        await f.settings({ model: "agy-cli/gemini-3.8-flash" });
+        const outside = join(f.cwd, "existing.png");
+        await fsWriteFile(
+            outside,
+            Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)),
+        );
+        process.env["RUNWIELD_IMAGE_FIXTURE_OUTSIDE"] = outside;
+        for (const mode of [
+            "false-success",
+            "text-only",
+            "multiple",
+            "outside",
+            "symlink",
+            "extras",
+            "malformed",
+            "invalid",
+            "mime-mismatch",
+            "mismatch",
+        ]) {
+            process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] = mode;
+            await assertRejects(() => createImage({ cwd: f.cwd, prompt: "red mug", outputPath: `${mode}.png` }));
+            await assertRejects(() => fsStat(join(f.cwd, `${mode}.png`)), Error, "ENOENT");
+        }
+        assertEquals(f.requests.length, 0);
+    }));
+
+test("create_image rejects unsupported Agy controls before spawning", () =>
+    withFixture(async (f) => {
+        const argsPath = join(f.cwd, "args.json");
+        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
+        await f.settings({ model: "agy-cli/gemini-3.8-flash", temperature: 0.5 });
+        await assertRejects(
+            () => createImage({ cwd: f.cwd, prompt: "red mug", outputPath: "unsupported.png" }),
+            Error,
+            "temperature",
+        );
         await assertRejects(() => fsStat(argsPath), Error, "ENOENT");
+        assertEquals(f.requests.length, 0);
+    }));
+
+test("create_image cancels one Agy ACP prompt without saving or replaying", () =>
+    withFixture(async (f) => {
+        await f.settings({ model: "agy-cli/gemini-3.8-flash" });
+        const argsPath = join(f.cwd, "args.json");
+        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
+        process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] = "wait";
+        const abort = new AbortController();
+        const pending = assertRejects(() =>
+            createImage({ cwd: f.cwd, prompt: "red mug", outputPath: "cancelled.png", signal: abort.signal }),
+        );
+        try {
+            const deadline = Date.now() + 5000;
+            while (!(await fsStat(argsPath + ".turn").catch(() => null))) {
+                if (Date.now() > deadline) throw new Error("Agy ACP fixture did not start");
+                await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+        } finally {
+            abort.abort();
+            await pending;
+        }
+        assertEquals(f.requests.length, 0);
+        assertEquals(await fsReadFile(argsPath + ".spawns", "utf8"), "spawn\n");
+        await assertRejects(() => fsStat(join(f.cwd, "cancelled.png")), Error, "ENOENT");
     }));
 
 test("create_image honors pre-cancellation without generating or saving", () =>
