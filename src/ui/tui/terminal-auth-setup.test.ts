@@ -79,6 +79,20 @@ async function requestAcpSessionNew(cwd: string): Promise<AcpMessage> {
             encoder.encode(
                 `${JSON.stringify({
                     jsonrpc: "2.0",
+                    id: "initialize",
+                    method: "initialize",
+                    params: { protocolVersion: 1, clientCapabilities: {} },
+                })}\n`,
+            ),
+        );
+        const initialized = await handle.outputReader.read();
+        assert(!initialized.done, "ACP server should initialize");
+        const initialization: AcpMessage = JSON.parse(decoder.decode(initialized.value).trim());
+        assert(initialization.result, JSON.stringify(initialization));
+        await handle.inputWriter.write(
+            encoder.encode(
+                `${JSON.stringify({
+                    jsonrpc: "2.0",
                     id: "new",
                     method: "session/new",
                     params: { cwd, mcpServers: [] },

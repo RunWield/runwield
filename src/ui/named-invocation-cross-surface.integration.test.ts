@@ -440,6 +440,14 @@ async function runAcpSurface(projectRoot: string): Promise<SurfaceSummary> {
     try {
         await sendMessage(handle, {
             jsonrpc: "2.0",
+            id: "initialize",
+            method: "initialize",
+            params: { protocolVersion: 1, clientCapabilities: {} },
+        });
+        const initialization = await readMessage(handle);
+        assert(initialization.result, JSON.stringify(initialization));
+        await sendMessage(handle, {
+            jsonrpc: "2.0",
             id: "new",
             method: "session/new",
             params: { cwd: projectRoot, mcpServers: [] },

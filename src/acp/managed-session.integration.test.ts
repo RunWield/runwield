@@ -128,6 +128,15 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
                     },
                 });
 
+                await sendMessage(server, {
+                    jsonrpc: "2.0",
+                    id: "initialize",
+                    method: "initialize",
+                    params: { protocolVersion: 1, clientCapabilities: {} },
+                });
+                const initialized = await readThroughResponse(server, "initialize");
+                assert(initialized.response.result, JSON.stringify(initialized.response));
+
                 const loadId = fixture.session.piSessionId;
                 await sendMessage(server, {
                     jsonrpc: "2.0",
@@ -185,7 +194,7 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
                 for (let index = 0; index < 200; index++) {
                     const idle =
                         workspace.inspectSessionActivation(fixture.session.runwieldSessionId).activation?.state ===
-                            "idle";
+                        "idle";
                     if (fixture.modelRequests.length === 2 && idle) break;
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
@@ -205,16 +214,20 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
                 for (let index = 0; index < 200; index++) {
                     const idle =
                         workspace.inspectSessionActivation(fixture.session.runwieldSessionId).activation?.state ===
-                            "idle";
+                        "idle";
                     if (fixture.modelRequests.length === 3 && idle) break;
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
                 assertEquals(fixture.modelRequests.length, 3);
-                const acceptedGeneration =
-                    workspace.inspectSessionActivation(fixture.session.runwieldSessionId).generation;
+                const acceptedGeneration = workspace.inspectSessionActivation(
+                    fixture.session.runwieldSessionId,
+                ).generation;
                 assertEquals(acceptedGeneration?.generation, 4);
                 assertEquals(acceptedGeneration?.currentSegmentId, "acp-successor-segment");
-                assertEquals(server.diagnostics.every((message) => !message.trim().startsWith("{")), true);
+                assertEquals(
+                    server.diagnostics.every((message) => !message.trim().startsWith("{")),
+                    true,
+                );
             } finally {
                 await closeTestServer(server).catch(() => {});
                 workspace.close();

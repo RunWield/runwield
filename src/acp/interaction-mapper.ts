@@ -3,14 +3,14 @@
  * Maps SessionRuntime interaction requests to ACP client elicitation requests.
  */
 
-import { methods } from "@agentclientprotocol/sdk";
+import { methods } from "@agentclientprotocol/sdk/unstable";
 import type {
     ClientCapabilities,
     CreateElicitationRequest,
     ElicitationAcceptAction,
     ElicitationSchema,
     SessionNotification,
-} from "@agentclientprotocol/sdk";
+} from "@agentclientprotocol/sdk/unstable";
 import type {
     RuntimeInteractionAdapter,
     RuntimeInteractionRequest,

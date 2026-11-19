@@ -30,12 +30,15 @@ for (const hangup of [false, true]) {
                 const output: string[] = [];
                 let browserRun = Promise.resolve();
                 // Unsupported host signals still leave SIGINT on the native event emitter.
-                process.on = function (event: string | symbol, listener: () => void) {
-                    if (!hangup && (event === "SIGTERM" || event === "SIGHUP")) {
-                        throw new Error("Signal not supported");
-                    }
-                    return add.call(this, event, listener);
-                };
+                process.on = new Proxy(add, {
+                    apply(target, receiver, args) {
+                        const [event] = args;
+                        if (!hangup && (event === "SIGTERM" || event === "SIGHUP")) {
+                            throw new Error("Signal not supported");
+                        }
+                        return Reflect.apply(target, receiver, args);
+                    },
+                });
                 try {
                     setModelResponseFactories([
                         async () => {

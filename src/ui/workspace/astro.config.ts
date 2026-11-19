@@ -36,7 +36,19 @@ export default defineConfig({
     vite: {
         // CI checks and builds run concurrently; each optimizer needs its own cache.
         cacheDir: resolve(WORKSPACE_DIR, "node_modules", argv.includes("check") ? ".vite-check" : ".vite"),
-        plugins: [reviewCollapseStatePlugin(), tailwindcss()],
+        plugins: [
+            reviewCollapseStatePlugin(),
+            tailwindcss(),
+            {
+                name: "plannotator-table-compat",
+                enforce: "pre",
+                resolveId(source, importer) {
+                    if (source === "@tanstack/react-table" && importer?.startsWith(PLANNOTATOR_DIR)) {
+                        return resolve(WORKSPACE_DIR, "react/plannotator-table-compat.ts");
+                    }
+                },
+            },
+        ],
         define: { "process.env.NODE_ENV": '"development"' },
         optimizeDeps: {
             include: [
@@ -73,7 +85,8 @@ export default defineConfig({
                 "@radix-ui/react-slot",
                 "@radix-ui/react-tabs",
                 "@radix-ui/react-tooltip",
-                "@tanstack/react-table",
+                "@tanstack/react-table/legacy",
+                "@tanstack/react-table/flex-render",
                 "@base-ui/react",
                 "@base-ui/react/button",
                 "@base-ui/react/context-menu",

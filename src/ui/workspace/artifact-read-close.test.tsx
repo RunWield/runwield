@@ -13,6 +13,7 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 
 // Run the real island, including its document viewer, with the same React as the test root.
 const bundle = await build({
+    tsconfig: fromFileUrl(new URL("./tsconfig.json", import.meta.url)),
     stdin: {
         contents:
             'export { ArtifactReadSurface } from "./react/ArtifactReadSurface.tsx"; export { PlanHomeSurface } from "./react/PlanHomeSurface.tsx";',
