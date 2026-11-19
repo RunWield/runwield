@@ -2898,6 +2898,10 @@ segment's raw entries in a versioned `runwield.session-export` document. `.jsonl
 to `.json` instead. Reads verify all segment evidence and do not change the Session. During a turn, they include only
 committed history. A new empty Session can export without creating a saved Session.
 
+HTML escapes transcript HTML and does not load transcript resources automatically. Markdown images become links;
+links allow only HTTP, HTTPS, and mailto destinations without ASCII controls or spaces. Given an assistant message
+with a remote Markdown image, the export shows a link and makes no image request.
+
 `/share` uploads HTML and JSON to one secret GitHub Gist and reports the Gist URL and an HTML preview link. Both files
 include thinking and full tool output. Anyone with the link can read them. Current scope excludes in-memory Delegated
 Agent, validation, and AI review transcripts and Background Task logs; results recorded in the parent transcript stay

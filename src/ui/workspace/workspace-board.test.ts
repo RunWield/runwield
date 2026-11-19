@@ -464,6 +464,20 @@ test("renderMarkdown renders links and escapes unsafe markdown input", () => {
     assertStringIncludes(html, "<pre");
 });
 
+test("Workspace Markdown preserves wrapped nested lists, full link URLs, and inline images", () => {
+    const html = renderMarkdown(
+        "- Parent item\n  continues here\n  - Child item\n- Next item\n\n[wiki](https://en.wikipedia.org/wiki/Function_(mathematics))\n\n![diagram](https://example.com/diagram.png)",
+    );
+    assertStringIncludes(html, "Parent item continues here");
+    assertEquals(
+        /<ul[^>]*>[\s\S]*<ul[^>]*>\s*<li[^>]*>Child item<\/li>\s*<\/ul>[\s\S]*Next item[\s\S]*<\/ul>/.test(html),
+        true,
+    );
+    assertStringIncludes(html, 'href="https://en.wikipedia.org/wiki/Function_(mathematics)"');
+    assertStringIncludes(html, "<img");
+    assertStringIncludes(html, 'src="https://example.com/diagram.png"');
+});
+
 test("Epic detail order ignores filename prefixes and status and follows metadata edits", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "child-order-board-"));
     try {

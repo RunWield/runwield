@@ -10,13 +10,13 @@ export interface MarkdownViewProps {
  */
 export function MarkdownView({ markdown }: MarkdownViewProps) {
     const html = renderMarkdown(markdown || "");
-    return html
-        ? <div className="markdown-view" dangerouslySetInnerHTML={{ __html: html }} />
-        : (
-            <div className="markdown-view">
-                <p className="empty">No Plan body content.</p>
-            </div>
-        );
+    return html ? (
+        <div className="markdown-view" dangerouslySetInnerHTML={{ __html: html }} />
+    ) : (
+        <div className="markdown-view">
+            <p className="empty">No Plan body content.</p>
+        </div>
+    );
 }
 
 export function renderMarkdown(markdown: string): string {

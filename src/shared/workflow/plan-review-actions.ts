@@ -2,7 +2,7 @@ import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { resolvePlanQuestions, type PlanQuestionAnswer } from "../plan-questions.ts";
 import { projectPlanType } from "../project-plan.ts";
 import { resolve } from "node:path";
-import { Marked } from "marked";
+import quikdown from "quikdown";
 import {
     getStoredPlanPath,
     injectFrontMatter,
@@ -83,17 +83,45 @@ function reviewRejected(message: string): SharedPlanReviewActionResult {
     return { approved: false, feedback: message, cancellationReason: "stale_plan_review" };
 }
 
-// Only prose soft breaks are formatting. Keep code, raw HTML, hard breaks,
-// links, and document structure in the comparison. This HTML is never displayed.
-const reviewMarkdown = new Marked({
-    gfm: true,
-    breaks: false,
-    walkTokens(token) {
-        if (token.type === "text" && token.escaped !== true && typeof token.text === "string") {
-            token.text = token.text.replace(/\r?\n/g, " ");
+function reviewMarkdownEvidence(source: string): string {
+    // Rendering can trim code, omit list ordinals, or discard extra table cells.
+    // Preserve those source details, and treat raw HTML as opaque content.
+    const protectedSource: string[] =
+        source.match(
+            /^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*\1[ \t]*$|(`+)[^`]*?\2|<!--[\s\S]*?-->|<([a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\3\s*>|<\/?[a-z][^>]*>|^ {0,3}\[\^[^\]]+\]:[^\n]*(?:\n[ \t]+[^\n]*)*/gim,
+        ) || [];
+    const ordinals = source.match(/^[ \t]*\d+\.(?=\s)/gm) || [];
+    const tables: string[][][] = [];
+    let rows: string[][] = [];
+    let inListItem = false;
+    for (const line of [...source.split(/\r?\n/), ""]) {
+        if (/^[ \t]*(?:[-*+]|\d+\.)\s+\S/.test(line)) inListItem = true;
+        else if (!/^[ \t]+\S/.test(line)) inListItem = false;
+        if (!inListItem && /^(?: {4}|\t)/.test(line)) protectedSource.push(line);
+        if (line.includes("|")) {
+            rows.push(
+                line
+                    .trim()
+                    .replace(/^\||\|$/g, "")
+                    .split("|")
+                    .map((cell) => cell.trim().replace(/^(:?)-+(:?)$/, "$1-$2")),
+            );
+        } else {
+            // quikdown also recognizes consecutive pipe rows without a separator.
+            if (rows.length > 1) tables.push(rows);
+            rows = [];
         }
-    },
-});
+    }
+    // Unsafe destinations must stay distinct. This HTML is comparison evidence only, never display output.
+    const html = quikdown(source.replace(/^(?:[ \t]*\r?\n)+/, ""), {
+        allow_unsafe_urls: true,
+        reference_links: true,
+    });
+    const normalized = html.replace(/<[^>]*>|[^<]+/g, (part) =>
+        part.startsWith("<") ? part : part.replace(/\r?\n/g, " "),
+    );
+    return JSON.stringify({ protectedSource, ordinals, tables, normalized });
+}
 
 /**
  * Compare what the user reviewed with the current human-owned Plan document.
@@ -112,8 +140,7 @@ export function reviewSourceStillMatches(
     const canonicalAttrs = (attrs: PlanFrontMatter) =>
         planDocumentMarkdown(injectFrontMatter("", stripRuntimeFields(attrs)));
     const bodyMatches =
-        current.body === originalBody ||
-        reviewMarkdown.parse(current.body, { async: false }) === reviewMarkdown.parse(originalBody, { async: false });
+        current.body === originalBody || reviewMarkdownEvidence(current.body) === reviewMarkdownEvidence(originalBody);
     return bodyMatches && canonicalAttrs(current.attrs) === canonicalAttrs(originalAttrs);
 }
 

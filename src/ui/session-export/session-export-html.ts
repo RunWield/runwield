@@ -1,5 +1,5 @@
 /** Self-contained, read-only Session Export page. */
-import { Marked } from "marked";
+import quikdown from "quikdown";
 import type { SessionExport, SessionExportTimelineEvent } from "../../shared/session/session-export.ts";
 import { renderRunWieldThemeCss } from "../design-system/theme-bridge.ts";
 
@@ -12,20 +12,15 @@ function escapeHtml(text: string): string {
         .replaceAll("'", "&#39;");
 }
 
-const markdown = new Marked({
-    async: false,
-    renderer: {
-        html: ({ text }) => escapeHtml(text),
-        image: () => "[image]",
-        link({ href, tokens }) {
-            const label = this.parser.parseInline(tokens);
-            // Do not allow executable schemes or implicit resource loads from transcript content.
-            // deno-lint-ignore no-control-regex -- Links must not contain ASCII control or space characters.
-            if (!/^(https?:\/\/|mailto:)/i.test(href) || /[\u0000-\u0020]/.test(href)) return label;
-            return `<a href="${escapeHtml(href)}" rel="noreferrer noopener">${label}</a>`;
-        },
-    },
-});
+function renderExportMarkdown(text: string): string {
+    const html = quikdown(text, { allow_images: false, reference_links: true });
+    // Filter only parser-generated anchors. Raw HTML stays escaped, and images become links.
+    return html.replace(/<a\b[^>]* href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g, (_anchor, href: string, label: string) => {
+        // deno-lint-ignore no-control-regex -- Links must not contain ASCII control or space characters.
+        if (!/^(https?:\/\/|mailto:)/i.test(href) || /[\u0000-\u0020]/.test(href)) return label;
+        return `<a href="${href}" rel="noreferrer noopener">${label}</a>`;
+    });
+}
 
 type ExportItem = {
     kind: "user" | "assistant" | "thinking" | "tool" | "status";
@@ -81,7 +76,7 @@ function renderEvents(events: SessionExportTimelineEvent[]): string {
             if (item.kind === "status") return `<p class="status">${escapeHtml(item.text)}</p>`;
             const body =
                 item.kind === "assistant"
-                    ? markdown.parse(item.text, { async: false })
+                    ? renderExportMarkdown(item.text)
                     : `<p class="user-text">${escapeHtml(item.text)}</p>`;
             return `<article class="${item.kind}"><h3>${title}</h3>${body}</article>`;
         })

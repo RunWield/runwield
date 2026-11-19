@@ -129,10 +129,10 @@ test("HTML shows Session facts, references, ordered segments, and combined Markd
         "Export report",
         "report.md",
         "complete-export",
-        "<strong>Planned</strong>",
         "Implemented",
     ])
         assert.ok(html.includes(expected), expected);
+    assert.match(html, /<strong\b[^>]*>Planned<\/strong>/);
     assert.ok(html.indexOf("Planning segment 1") < html.indexOf("Execution segment 2"));
     assert.ok(html.indexOf("plan the export") < html.indexOf("Implemented"));
     assert.equal(html.match(/<h3>Planner<\/h3>/g)?.length, 1);
@@ -168,9 +168,42 @@ test("untrusted transcript text and Markdown cannot execute or load remote resou
     assert.ok(html.includes("&lt;/pre&gt;&lt;script&gt;args&lt;/script&gt;"));
     assert.doesNotMatch(html, /<script\b|<img\b|href="javascript:|<[^>]+\sonerror=/i);
     assert.match(html, /href="https:\/\/example.com"/);
-    assert.ok(html.includes("[image]"));
+    assert.match(html, /<a href="https:\/\/remote\.example\/pixel" rel="noreferrer noopener">remote<\/a>/);
     assert.ok(html.includes("Content-Security-Policy"));
     assert.doesNotMatch(html, /<script\s+src|<link\b|<iframe\b|<style[^>]+src/i);
+});
+
+test("exported Markdown images are optional links and link destinations stay restricted", () => {
+    const exported = fixture();
+    const assistant = exported.timeline[1];
+    assert.ok(assistant.type === "assistant_text_delta");
+    exported.timeline = [
+        {
+            ...assistant,
+            delta: [
+                '![diagram](https://example.com/diagram_(v2).png "Diagram")',
+                "![local](./private.png)",
+                "![unsafe](data:image/svg+xml;base64,PHN2Zz4=)",
+                "[wiki](https://en.wikipedia.org/wiki/Function_(mathematics))",
+                "[mail](mailto:reader@example.com)",
+                "[relative](../secret.md) [anchor](#section) [file](file:///etc/passwd)",
+                "[control](https://example.com/a\tb) [space](https://example.com/a b)",
+                "[encoded](javascript&#58;alert(1))",
+                "[reference][docs]",
+                "",
+                "[docs]: https://example.com/docs",
+            ].join("\n\n"),
+        },
+    ];
+    const html = renderSessionExportHtml(exported);
+    assert.match(html, /href="https:\/\/example.com\/diagram_\(v2\).png"[^>]*>diagram<\/a>/);
+    assert.match(html, /href="https:\/\/en.wikipedia.org\/wiki\/Function_\(mathematics\)"/);
+    assert.match(html, /href="mailto:reader@example.com"/);
+    assert.match(html, /href="https:\/\/example.com\/docs"[^>]*>reference<\/a>/);
+    assert.doesNotMatch(html, /<img\b|href="(?:data:|file:|javascript|\.\.|#)/i);
+    assert.doesNotMatch(html, /href="https:\/\/example.com\/a[\s]/);
+    for (const label of ["local", "unsafe", "relative", "anchor", "file", "control", "space", "encoded"])
+        assert.ok(html.includes(label), label);
 });
 
 test("HTML embeds RunWield theme tokens without external assets", () => {

@@ -77,7 +77,7 @@
         "perfect-freehand": "1.2.3",
         "preact": "11.0.1",
         "proper-lockfile": "4.1.2",
-        "quikdown": "1.2.21",
+        "quikdown": "1.2.23",
         "react": "19.3.1",
         "react-dom": "19.3.1",
         "react-test-renderer": "19.3.1",
@@ -1807,7 +1807,7 @@
 
     "quickjs-wasi": ["quickjs-wasi@3.6.2", "", {}, "sha512-FCqGtGOrMgzUiIrMNMA2YnsOxCNwo31dzqXvclXUC6xeT35NJLKXQJsvbeCTjvoFAwZgEAPg8U6+KAPDGXn8Mg=="],
 
-    "quikdown": ["quikdown@1.2.21", "", { "bin": { "quikdown-mcp": "bin/quikdown-mcp" } }, "sha512-5fhHFBstuGvKHDJX/FhRXqB3Pi2frLmYunlgb3MWcvHT3bymtmgOxWJBp1me9T3A+gX9xisUic3m3PP9pGXI3A=="],
+    "quikdown": ["quikdown@1.2.23", "", { "bin": { "quikdown-mcp": "bin/quikdown-mcp" } }, "sha512-hGHIDBRrUDYTw9Kpa1E1DwoceNyNynsyMbktHNwJPHOTObP9C3WrTocdYGN7ekUsOdv3/clSInGQQm9mN2tdyw=="],
 
     "radix3": ["radix3@1.1.2", "", {}, "sha512-b484I/7b8rDEdSDKckSSBA8knMpcdsXudlE/LNL639wFoHKwLbEkQFZHWEYwDC0wa0FKUcCY+GAF73Z7wxNVFA=="],
 
