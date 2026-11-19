@@ -7,7 +7,7 @@ import type {
     InitializeResponse,
     PromptResponse,
     SessionConfigOption,
-} from "@agentclientprotocol/sdk";
+} from "@agentclientprotocol/sdk/unstable";
 import type { Message, ProviderStreams, TranscriptContext } from "@earendil-works/pi-ai";
 import type { RuntimeValidationProgress } from "../shared/session/session-runtime-events.ts";
 import { collectProcessOutput } from "../testing/subprocess-output.ts";
@@ -58,6 +58,7 @@ interface TestServerHandle {
     connection: AgentConnection;
     diagnostics: string[];
     frames: string[];
+    initialized: boolean;
     heldResponseStarted?: Promise<void>;
     releaseHeldResponse?: () => void;
 }
@@ -175,6 +176,7 @@ interface AcpTestError {
 
 interface AcpTestErrorData {
     phase?: string;
+    method?: string;
 }
 
 interface AcpTestResult
@@ -385,12 +387,18 @@ function startTestServer(options: StartTestServerOptions = {}): TestServerHandle
         connection,
         diagnostics,
         frames: [],
+        initialized: false,
         ...(heldResponseStarted ? { heldResponseStarted } : {}),
         ...(releaseHeldResponse ? { releaseHeldResponse } : {}),
     };
 }
 
 async function sendMessage(handle: TestServerHandle, message: AcpTestRequest) {
+    if (!handle.initialized && message.method && message.method !== "initialize") {
+        const response = await request(handle, ACP_REGISTRY_INITIALIZE_REQUEST);
+        assert(response.result, JSON.stringify(response));
+    }
+    if (message.method === "initialize") handle.initialized = true;
     await handle.inputWriter.write(encoder.encode(`${JSON.stringify(message)}\n`));
 }
 
@@ -661,15 +669,18 @@ test("ACP schema checker rejects published numeric and map constraints", () => {
 test("ACP server returns structured errors for unimplemented session methods", async () => {
     const handle = startTestServer();
     try {
-        const response = await request(handle, {
-            jsonrpc: "2.0",
-            id: "session-list",
-            method: "session/list",
-            params: {},
-        });
-        assertEquals(response.error!.code, -32004);
-        assertStringIncludes(response.error!.message, "not implemented yet");
-        assertEquals(response.error!.data!.phase, "session-runtime-acp-mvp");
+        for (const method of ["session/list", "nes/start", "nes/suggest", "nes/close"]) {
+            const response = await request(handle, {
+                jsonrpc: "2.0",
+                id: method,
+                method,
+                params: {},
+            });
+            assertEquals(response.error!.code, -32004);
+            assertStringIncludes(response.error!.message, "not implemented yet");
+            assertEquals(response.error!.data!.phase, "session-runtime-acp-mvp");
+            assertEquals(response.error!.data!.method, method);
+        }
     } finally {
         await closeTestServer(handle);
     }

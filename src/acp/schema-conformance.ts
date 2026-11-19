@@ -2,7 +2,7 @@
  * @module acp/schema-conformance
  * Validates ACP frames against the JSON Schema published by @agentclientprotocol/sdk.
  *
- * The SDK keeps its generated zod schemas private, but ships `schema/schema.json`
+ * The SDK keeps its generated zod schemas private, but ships `schema/v1/schema.unstable.json`
  * as a public export. That file is the authority here, so a protocol change shows
  * up as a test failure instead of silently passing.
  *
@@ -10,7 +10,7 @@
  * so this checker covers the keywords the schema actually uses and nothing more.
  */
 
-import acpSchemaDocument from "@agentclientprotocol/sdk/schema/schema.json" with { type: "json" };
+import acpSchemaDocument from "@agentclientprotocol/sdk/schema/v1/schema.unstable.json" with { type: "json" };
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -101,8 +101,12 @@ function matchesFormat(format: string, value: JsonValue): boolean {
         case "double":
             return typeof value === "number" && Number.isFinite(value);
         case "int32":
-            return typeof value === "number" && Number.isInteger(value) && value >= -2_147_483_648 &&
-                value <= 2_147_483_647;
+            return (
+                typeof value === "number" &&
+                Number.isInteger(value) &&
+                value >= -2_147_483_648 &&
+                value <= 2_147_483_647
+            );
         case "int64":
             return typeof value === "number" && Number.isSafeInteger(value);
         case "uint16":
@@ -163,7 +167,7 @@ function collectViolations(node: JsonSchemaNode, value: JsonValue, path: string)
     if (node.maxLength !== undefined && typeof value === "string" && value.length > node.maxLength) {
         violations.push(`${path}: string length ${value.length} is above maxLength ${node.maxLength}`);
     }
-    if (node.pattern && typeof value === "string" && !(new RegExp(node.pattern).test(value))) {
+    if (node.pattern && typeof value === "string" && !new RegExp(node.pattern).test(value)) {
         violations.push(`${path}: ${JSON.stringify(value)} does not match pattern ${node.pattern}`);
     }
     if (node.minItems !== undefined && Array.isArray(value) && value.length < node.minItems) {

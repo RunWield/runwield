@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
-import { client, ndJsonStream, PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
+import { client, ndJsonStream, PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { startRunWieldAcpServer } from "./server.ts";
@@ -10,10 +10,12 @@ test("ACP SDK 1.4.0 client receives task output after its prompt ends", async ()
     await withRuntimeCommandFixture("acp-sdk-background-", async ({ projectRoot, setModelResponseFactories }) => {
         setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("background_task", {
-                    action: "start",
-                    command: "sleep 0.4; printf 'sdk delayed result\\n'",
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("background_task", {
+                        action: "start",
+                        command: "sleep 0.4; printf 'sdk delayed result\\n'",
+                    }),
+                ),
             () => fauxAssistantMessage(fauxText("Original prompt finished.")),
             () => fauxAssistantMessage(fauxText("SDK client received the result.")),
         ]);
@@ -51,7 +53,7 @@ test("ACP SDK 1.4.0 client receives task output after its prompt ends", async ()
             await Promise.race([
                 resultArrived,
                 new Promise((_, reject) =>
-                    setTimeout(() => reject(Error("SDK client did not receive result")), 10_000)
+                    setTimeout(() => reject(Error("SDK client did not receive result")), 10_000),
                 ),
             ]);
             assertStringIncludes(afterPromptText, "SDK client received the result.");
@@ -70,10 +72,12 @@ test("ACP SDK Stop cancels idle background work without a late result turn", asy
         setModelResponseFactories([
             () => {
                 modelCalls++;
-                return fauxAssistantMessage(fauxToolCall("background_task", {
-                    action: "start",
-                    command: "sleep 1; printf 'stopped result\\n'",
-                }));
+                return fauxAssistantMessage(
+                    fauxToolCall("background_task", {
+                        action: "start",
+                        command: "sleep 1; printf 'stopped result\\n'",
+                    }),
+                );
             },
             () => {
                 modelCalls++;
@@ -92,7 +96,8 @@ test("ACP SDK Stop cancels idle background work without a late result turn", asy
         const app = client({ name: "RunWield SDK Stop test" });
         app.onNotification("session/update", ({ params }) => {
             if (
-                stopped && params.update.sessionUpdate === "agent_message_chunk" &&
+                stopped &&
+                params.update.sessionUpdate === "agent_message_chunk" &&
                 params.update.content.type === "text"
             ) {
                 postStopText += params.update.content.text;

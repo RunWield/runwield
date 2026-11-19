@@ -18,7 +18,7 @@ import type {
     PromptResponse,
     SessionNotification,
     Stream,
-} from "@agentclientprotocol/sdk";
+} from "@agentclientprotocol/sdk/unstable";
 import type { SessionRuntime } from "../shared/session/session-runtime.ts";
 import type { AcpInteractionContext } from "./interaction-mapper.ts";
 import type { FileSessionStore } from "../shared/session/file-session-store-types.ts";
@@ -32,7 +32,8 @@ import type {
 import type { SlashCommandOutcome } from "../shared/workflow/command-metrics.ts";
 import type { SessionRuntimeEvent } from "../shared/session/session-runtime-events.ts";
 import type { AcpPromptRecord } from "./session-map.ts";
-import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from "@agentclientprotocol/sdk";
+import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from "@agentclientprotocol/sdk/unstable";
+import { methods as nesMethods } from "@agentclientprotocol/sdk/experimental/nes";
 import { isAbsolute } from "node:path";
 import { VERSION } from "../shared/version.js";
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
@@ -1756,9 +1757,14 @@ function createRunWieldAcpServer(context: AcpServerContext): AgentApp {
     registerUnimplementedRequest(app, methods.agent.session.fork);
     registerUnimplementedRequest(app, methods.agent.session.resume);
     registerUnimplementedRequest(app, methods.agent.session.setMode);
-    registerUnimplementedRequest(app, methods.agent.nes.start);
-    registerUnimplementedRequest(app, methods.agent.nes.suggest);
-    registerUnimplementedRequest(app, methods.agent.nes.close);
+    // NES has a separate SDK entrypoint. Keep its existing unsupported-method response.
+    for (const method of [nesMethods.agent.nes.start, nesMethods.agent.nes.suggest, nesMethods.agent.nes.close]) {
+        app.onRequest(
+            method,
+            () => ({}),
+            () => throwUnimplemented(method),
+        );
+    }
 
     return app;
 }

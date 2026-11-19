@@ -1,6 +1,6 @@
 import { listUserModelOptions } from "../shared/session/user-selection.ts";
 import type { SessionRuntime } from "../shared/session/session-runtime.ts";
-import type { SessionConfigOption } from "@agentclientprotocol/sdk";
+import type { SessionConfigOption } from "@agentclientprotocol/sdk/unstable";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
@@ -12,9 +12,10 @@ export async function buildAcpModelOptions(runtime: SessionRuntime, sessionId: s
     const snapshot = runtime.getSessionSnapshot(sessionId);
     const active = snapshot?.activeModel;
     if (!active?.model) return [];
-    const currentValue = active.provider && !active.model.startsWith(`${active.provider}/`)
-        ? `${active.provider}/${active.model}`
-        : active.model;
+    const currentValue =
+        active.provider && !active.model.startsWith(`${active.provider}/`)
+            ? `${active.provider}/${active.model}`
+            : active.model;
     const options = models.map((model) => ({
         value: `${model.provider}/${model.id}`,
         name: `${model.name} (${model.provider})`,
