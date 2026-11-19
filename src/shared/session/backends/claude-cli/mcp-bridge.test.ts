@@ -40,6 +40,7 @@ async function withBridgeWithSignal(
     tools: BridgeTools,
     signal: AbortSignal | undefined,
     callback: (context: BridgeTestContext) => Promise<void>,
+    readPendingSteering?: () => string[],
 ): Promise<void> {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-mcp-bridge-"));
     const manager = SessionManager.inMemory(cwd);
@@ -60,6 +61,7 @@ async function withBridgeWithSignal(
             mirrored.push(message);
         },
         signal,
+        readPendingSteering,
         assistantBase: { api: "anthropic-messages", provider: "anthropic", model: "claude-sonnet" },
         provenance: CLAUDE_CLI_MCP_PROVENANCE,
     });
@@ -562,4 +564,223 @@ test("RunWield MCP bridge never starts a file edit cancelled while queued", asyn
         release.resolve();
         await fsRm(cwd, { recursive: true });
     }
+});
+
+type BudgetJson = string | number | boolean | null | BudgetJson[] | BudgetArgs;
+interface BudgetArgs {
+    [key: string]: BudgetJson;
+}
+
+function nestedBudgetArgs(depth: number): BudgetArgs {
+    let value: BudgetArgs = {};
+    for (let index = 0; index < depth; index++) value = { child: value };
+    return value;
+}
+
+const argumentRejections: Array<{ name: string; args: BudgetArgs; reason: string }> = [
+    { name: "ASCII bytes", args: { text: "x".repeat(262_144) }, reason: "arguments too large" },
+    { name: "UTF-8 bytes", args: { text: "é".repeat(131_067) }, reason: "arguments too large" },
+    { name: "scalar elements", args: { edits: Array.from({ length: 4_096 }, () => 0) }, reason: "element limit" },
+    {
+        name: "empty object elements",
+        args: { edits: Array.from({ length: 4_096 }, () => ({})) },
+        reason: "element limit",
+    },
+    { name: "empty array elements", args: { edits: Array.from({ length: 4_096 }, () => []) }, reason: "element limit" },
+    {
+        name: "object members",
+        args: Object.fromEntries(Array.from({ length: 4_097 }, (_, index) => [`key${index}`, {}])),
+        reason: "element limit",
+    },
+    { name: "nesting depth", args: nestedBudgetArgs(17), reason: "nesting depth limit" },
+];
+
+for (const scenario of argumentRejections) {
+    test(`RunWield MCP bridge rejects excess ${scenario.name} without execution or payload recording and remains usable`, async () => {
+        let executions = 0;
+        const tool = defineTool({
+            name: "budget_echo",
+            label: "Budget Echo",
+            description: "Accept JSON arguments.",
+            parameters: Type.Object({}, { additionalProperties: true }),
+            execute() {
+                executions++;
+                return Promise.resolve({ content: [{ type: "text" as const, text: "accepted" }], details: {} });
+            },
+        });
+        await withBridge([tool], async (context) => {
+            const eventsBefore = context.runtimeEvents.length;
+            await assertRejects(
+                () => context.client.callTool({ name: "budget_echo", arguments: scenario.args }),
+                McpError,
+                scenario.reason,
+            );
+            assertEquals(executions, 0);
+            assertEquals(recordedMessages(context), []);
+            assertEquals(context.mirrored, []);
+            assertEquals(context.runtimeEvents.length, eventsBefore);
+            const valid = await context.client.callTool({ name: "budget_echo", arguments: { text: "small" } });
+            assertEquals(valid.isError, false);
+            assertEquals(executions, 1);
+        });
+    });
+}
+
+const argumentBoundaries: Array<{ name: string; args: BudgetArgs }> = [
+    { name: "ASCII byte limit", args: { text: "x".repeat(262_144 - 11) } },
+    { name: "UTF-8 byte limit", args: { text: "é".repeat(131_066) + "x" } },
+    { name: "container element limit", args: { edits: Array.from({ length: 4_095 }, () => ({})) } },
+    {
+        name: "object member limit",
+        args: Object.fromEntries(Array.from({ length: 4_096 }, (_, index) => [`key${index}`, {}])),
+    },
+    { name: "nesting depth limit", args: nestedBudgetArgs(16) },
+];
+for (const scenario of argumentBoundaries) {
+    test(`RunWield MCP bridge executes arguments at the ${scenario.name}`, async () => {
+        let executions = 0;
+        const tool = defineTool({
+            name: "budget_echo",
+            label: "Budget Echo",
+            description: "Accept JSON arguments.",
+            parameters: Type.Object({}, { additionalProperties: true }),
+            execute() {
+                executions++;
+                return Promise.resolve({ content: [{ type: "text" as const, text: "accepted" }], details: {} });
+            },
+        });
+        await withBridge([tool], async (context) => {
+            const result = await context.client.callTool({ name: "budget_echo", arguments: scenario.args });
+            assertEquals(result.isError, false);
+            assertEquals(executions, 1);
+            assertEquals(recordedMessages(context).length, 2);
+        });
+    });
+}
+
+test("RunWield MCP bridge checks argument budgets before the terminal gate can record them", async () => {
+    await withBridge(completionTools, async (context) => {
+        await context.client.callTool({ name: "runwield_task_completed", arguments: { message: "done" } });
+        const eventsBefore = context.runtimeEvents.length;
+        await assertRejects(
+            () =>
+                context.client.callTool({
+                    name: "runwield_task_completed",
+                    arguments: { message: "x".repeat(262_144) },
+                }),
+            McpError,
+            "arguments too large",
+        );
+        assertEquals(recordedMessages(context).length, 2);
+        assertEquals(context.mirrored.length, 2);
+        assertEquals(context.runtimeEvents.length, eventsBefore);
+        assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 1);
+    });
+});
+
+for (const streamed of [false, true]) {
+    test(`RunWield MCP bridge rejects oversized ${streamed ? "streamed" : "Content-Length"} HTTP bodies before recording and remains usable`, async () => {
+        await withBridge(completionTools, async (context) => {
+            const bytes = new TextEncoder().encode("x".repeat(1_048_577));
+            const body = streamed
+                ? new ReadableStream<Uint8Array>({
+                      start(controller) {
+                          controller.enqueue(bytes.subarray(0, 524_288));
+                          controller.enqueue(bytes.subarray(524_288));
+                          controller.close();
+                      },
+                  })
+                : bytes;
+            const response = await fetch(context.bridge.url, {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${context.bridge.token}`,
+                    "Content-Type": "application/json",
+                },
+                body,
+            });
+            assertEquals(response.status, 413);
+            await response.body?.cancel();
+            assertEquals(recordedMessages(context), []);
+            assertEquals(context.mirrored, []);
+            assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 0);
+            await context.client.ping();
+        });
+    });
+}
+
+test("RunWield MCP bridge accepts HTTP bodies at the request byte limit", async () => {
+    await withBridge(completionTools, async (context) => {
+        const ping = JSON.stringify({ jsonrpc: "2.0", id: 900, method: "ping" });
+        const response = await fetch(context.bridge.url, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${context.bridge.token}`,
+                Accept: "application/json, text/event-stream",
+                "Content-Type": "application/json",
+                "Mcp-Session-Id": context.transport.sessionId || "",
+            },
+            body: ping.padEnd(1_048_576, " "),
+        });
+        assertEquals(response.status, 200);
+        assertStringIncludes(await response.text(), '"result":{}');
+        await context.client.ping();
+    });
+});
+
+test("RunWield MCP bridge preserves authenticated bodyless GET and DELETE dispatch", async () => {
+    await withBridge(completionTools, async (context) => {
+        const headers = {
+            Authorization: `Bearer ${context.bridge.token}`,
+            Accept: "text/event-stream",
+            "Mcp-Session-Id": context.transport.sessionId || "",
+        };
+        const response = await fetch(context.bridge.url, { method: "GET", headers });
+        // The SDK rejects a duplicate SSE stream if the client already opened one.
+        assertEquals([200, 409].includes(response.status), true);
+        await response.body?.cancel();
+        await context.client.ping();
+        const deleted = await fetch(context.bridge.url, { method: "DELETE", headers });
+        assertEquals(deleted.status, 200);
+        await deleted.body?.cancel();
+    });
+});
+
+test("RunWield MCP bridge checks argument budgets before pending steering can record them", async () => {
+    let steering = ["Read the new user request first."];
+    await withBridgeWithSignal(
+        completionTools,
+        undefined,
+        async (context) => {
+            const eventsBefore = context.runtimeEvents.length;
+            await assertRejects(
+                () =>
+                    context.client.callTool({
+                        name: "runwield_task_completed",
+                        arguments: { message: "x".repeat(262_144) },
+                    }),
+                McpError,
+                "arguments too large",
+            );
+            assertEquals(recordedMessages(context), []);
+            assertEquals(context.mirrored, []);
+            assertEquals(context.runtimeEvents.length, eventsBefore);
+            assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 0);
+            const pending = await context.client.callTool({
+                name: "runwield_task_completed",
+                arguments: { message: "done" },
+            });
+            assertEquals(pending.isError, true);
+            assertStringIncludes(resultText(pending as never), "user steering is pending");
+            assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 0);
+            steering = [];
+            const valid = await context.client.callTool({
+                name: "runwield_task_completed",
+                arguments: { message: "done" },
+            });
+            assertEquals(valid.isError, false);
+            assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 1);
+        },
+        () => steering,
+    );
 });

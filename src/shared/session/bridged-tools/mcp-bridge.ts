@@ -254,19 +254,24 @@ class McpPayloadTooLargeError extends Error {
  * Read the request body with a hard byte cap. Throws {@link McpPayloadTooLargeError}
  * if the stream exceeds `maxBytes`, preventing unbounded buffering.
  */
-async function readBodyBounded(request: Request, maxBytes: number): Promise<Uint8Array> {
+async function readBodyBounded(request: Request, maxBytes: number): Promise<Uint8Array<ArrayBuffer>> {
     const reader = request.body?.getReader();
     if (!reader) return new Uint8Array(0);
     const chunks: Uint8Array[] = [];
     let total = 0;
-    for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
+    try {
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
             total += value.byteLength;
-            if (total > maxBytes) throw new McpPayloadTooLargeError();
+            if (total > maxBytes) {
+                await reader.cancel();
+                throw new McpPayloadTooLargeError();
+            }
             chunks.push(value);
         }
+    } finally {
+        reader.releaseLock();
     }
     const out = new Uint8Array(total);
     let offset = 0;
@@ -277,20 +282,25 @@ async function readBodyBounded(request: Request, maxBytes: number): Promise<Uint
     return out;
 }
 
-/**
- * Reject arguments that are too large or too deeply nested before they reach
- * `validateToolCall`, bounding the memory the validation step may allocate.
- */
-function enforceArgsBudget(value: JsonValue | undefined, depth: number, elements: { count: number }): void {
-    if (value === null || typeof value !== "object") {
-        elements.count += 1;
-        if (elements.count > MAX_MCP_TOOL_CALL_ARG_ELEMENTS) {
-            throw new Error(`tool call arguments exceed ${MAX_MCP_TOOL_CALL_ARG_ELEMENTS} element limit`);
-        }
-        return;
+interface ArgumentBudget {
+    count: number;
+}
+
+/** Bound validation work before Pi receives the arguments. */
+function enforceArgsBudget(value: JsonValue, depth: number, elements: ArgumentBudget): void {
+    // Each non-root value is an array element or object member, including containers.
+    if (depth > 0 && ++elements.count > MAX_MCP_TOOL_CALL_ARG_ELEMENTS) {
+        throw new McpError(
+            ErrorCode.InvalidParams,
+            `tool call arguments exceed ${MAX_MCP_TOOL_CALL_ARG_ELEMENTS} element limit`,
+        );
     }
+    if (value === null || typeof value !== "object") return;
     if (depth > MAX_MCP_TOOL_CALL_ARG_DEPTH) {
-        throw new Error(`tool call arguments exceed ${MAX_MCP_TOOL_CALL_ARG_DEPTH} nesting depth limit`);
+        throw new McpError(
+            ErrorCode.InvalidParams,
+            `tool call arguments exceed ${MAX_MCP_TOOL_CALL_ARG_DEPTH} nesting depth limit`,
+        );
     }
     if (Array.isArray(value)) {
         for (const item of value) enforceArgsBudget(item, depth + 1, elements);
@@ -459,17 +469,6 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
 
         let params: JsonObject;
         try {
-            const serializedArgs = JSON.stringify(args ?? {});
-            if (serializedArgs.length > MAX_MCP_TOOL_CALL_ARG_BYTES) {
-                return rejectedResult(
-                    `arguments too large (${serializedArgs.length} bytes; limit ${MAX_MCP_TOOL_CALL_ARG_BYTES})`,
-                    entry,
-                    callId,
-                    args ?? {},
-                );
-            }
-            const elements = { count: 0 };
-            enforceArgsBudget(args, 0, elements);
             params = validateToolCall(
                 [
                     {
@@ -545,6 +544,15 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
     mcpServer.setRequestHandler(CallToolRequestSchema, (request, extra) => {
         const name = request.params.name;
         const args = request.params.arguments as JsonObject | undefined;
+        // Reject before queuing, validation, lifecycle gates, or payload recording.
+        enforceArgsBudget(args ?? {}, 0, { count: 0 });
+        const argumentBytes = new TextEncoder().encode(JSON.stringify(args ?? {})).byteLength;
+        if (argumentBytes > MAX_MCP_TOOL_CALL_ARG_BYTES) {
+            throw new McpError(
+                ErrorCode.InvalidParams,
+                `arguments too large (${argumentBytes} bytes; limit ${MAX_MCP_TOOL_CALL_ARG_BYTES})`,
+            );
+        }
         const run = callQueue.then(() => executeCall(name, args, extra.signal));
         callQueue = run.then(
             () => undefined,
@@ -585,7 +593,8 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
                     headers: { "content-type": "application/json" },
                 });
             }
-            let boundedBody: Uint8Array;
+            if (request.body === null) return transport.handleRequest(request);
+            let boundedBody: Uint8Array<ArrayBuffer>;
             try {
                 boundedBody = await readBodyBounded(request, MAX_MCP_REQUEST_BYTES);
             } catch (error) {
@@ -597,13 +606,7 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
                 }
                 throw error;
             }
-            return transport.handleRequest(
-                new Request(request.url, {
-                    method: request.method,
-                    headers: request.headers,
-                    body: boundedBody,
-                }),
-            );
+            return transport.handleRequest(new Request(request, { body: boundedBody }));
         },
     );
     url = `http://127.0.0.1:${serveServer.addr.port}`;
