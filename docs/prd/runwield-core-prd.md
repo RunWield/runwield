@@ -2258,6 +2258,26 @@ adds prompt context only for tools in use. MCP failures leave the Session usable
 server status and `/mcp reconnect <server>` reconnects. CLI tools remain the preferred integration path; see
 [customization](../user-documentation/customization.md).
 
+**Requirement: Bound external CLI bridge input.** The authenticated loopback MCP bridge accepts at most 1 MiB
+(1,048,576 bytes) per HTTP request and 256 KiB (262,144 UTF-8 bytes of serialized JSON) per tool call's arguments.
+Argument validation accepts at most 4,096 array elements and object members across the tree, counting container-valued
+members too. The root object is excluded from that count. Nested containers can be at most 16 levels below the root.
+These limits apply before tool validation, execution, queuing, or payload recording. Oversized HTTP bodies return
+413; over-budget arguments return an invalid-parameters error without recording their payload. Rejection leaves the
+bridge usable. Authentication, Origin checks, request cancellation, call serialization, lifecycle gates, and bodyless
+GET/SSE and DELETE requests retain their normal behavior.
+
+**Acceptance scenarios: External CLI bridge input.**
+
+- Given an authenticated request body larger than 1 MiB, with Content-Length or streamed without it, the bridge returns
+  413 before parsing or recording the payload; a later valid request succeeds.
+- Given arguments above the byte, element, or nesting limit, the bridge rejects them without tool execution, Session
+  messages, mirrored payloads, or runtime tool events, including when a lifecycle gate is closed or steering is pending.
+- Given a wide array of empty containers or an object with container-valued members, each element or member counts
+  toward the 4,096 limit. Arguments exactly at each limit still execute.
+- Given multibyte text, the argument byte limit measures UTF-8 bytes. A valid GET/SSE or DELETE request still reaches
+  MCP dispatch without receiving an artificial body.
+
 **Requirement: Run MCP servers on their owning machine.** Personal definitions come from the laptop, not the remote
 user’s home. Personal servers run on the laptop with home cwd, minimal inherited environment, and configured environment
 values. Project servers run remotely with the Session execution cwd after normal safety, whole-entry replacement, and
