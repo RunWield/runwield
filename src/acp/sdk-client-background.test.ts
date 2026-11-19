@@ -6,7 +6,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { startRunWieldAcpServer } from "./server.ts";
 
-test("ACP SDK 1.4.0 client receives task output after its prompt ends", async () => {
+test("ACP SDK client receives task output after its prompt ends", async () => {
     await withRuntimeCommandFixture("acp-sdk-background-", async ({ projectRoot, setModelResponseFactories }) => {
         setModelResponseFactories([
             () =>
@@ -39,7 +39,7 @@ test("ACP SDK 1.4.0 client receives task output after its prompt ends", async ()
             const initialization = await connection.agent.request("initialize", {
                 protocolVersion: PROTOCOL_VERSION,
                 clientCapabilities: {},
-                clientInfo: { name: "RunWield background task SDK test", version: "1.4.0" },
+                clientInfo: { name: "RunWield background task SDK test" },
             });
             assertEquals(initialization.protocolVersion, PROTOCOL_VERSION);
             const created = await connection.agent.request("session/new", { cwd: projectRoot, mcpServers: [] });
@@ -108,7 +108,7 @@ test("ACP SDK Stop cancels idle background work without a late result turn", asy
             await connection.agent.request("initialize", {
                 protocolVersion: PROTOCOL_VERSION,
                 clientCapabilities: {},
-                clientInfo: { name: "RunWield SDK Stop test", version: "1.4.0" },
+                clientInfo: { name: "RunWield SDK Stop test" },
             });
             const created = await connection.agent.request("session/new", { cwd: projectRoot, mcpServers: [] });
             const first = await connection.agent.request("session/prompt", {
