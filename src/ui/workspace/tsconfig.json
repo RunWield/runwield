@@ -6,21 +6,15 @@
         "jsxImportSource": "react",
         "baseUrl": "../../..",
         "paths": {
+            "@tanstack/react-table": ["src/ui/workspace/react/plannotator-table-compat.ts"],
             "@plannotator/ui/*": ["third_party/plannotator/packages/ui/*"],
             "@plannotator/shared/*": ["third_party/plannotator/packages/shared/*"],
             "@plannotator/ai": ["third_party/plannotator/packages/ai/index.ts"],
             "@plannotator/ai/*": ["third_party/plannotator/packages/ai/*"]
         },
-        "types": [
-            "astro/client",
-            "vite/client",
-            "bun"
-        ]
+        "types": ["astro/client", "vite/client", "bun"]
     },
-    "include": [
-        "./**/*",
-        "../../../third_party/plannotator/packages/ui/components/RenderedMarkdown.tsx"
-    ],
+    "include": ["./**/*", "../../../third_party/plannotator/packages/ui/components/RenderedMarkdown.tsx"],
     "exclude": [
         "./node_modules",
         "./.astro",
