@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "90b5fbc5-2c27-4d77-887d-2c13ccce30da"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "BUG_FIX"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "170e8ab9-2e69-4558-989a-a8a5ed498194"
 ---
-
 # Bun range compatibility and reproducible release pins
 
 ## Summary
