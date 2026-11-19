@@ -3,7 +3,6 @@ planId: "f5b78c2f-f76c-4d60-a993-22e7620491eb"
 classification: "PLANNED_CHANGE"
 workKind: "REFACTOR"
 complexity: "LOW"
-summary: "Make login's two supported execution modes explicit: startup may deliberately skip post-login setup, while ordinary slash login requires a real SessionRuntime and Session ID and never silently omits root activation."
 affectedPaths:
     - "src/cmd/auth/index.ts"
     - "src/cmd/auth/index.test.ts"
@@ -21,7 +20,7 @@ origin: "internal"
 The model-welcome/auth dependency-seam refactor is complete and independently recorded by the verified
 `docs/plans/model-welcome-auth-deps-refactor.md` Plan and its Work Record. Model welcome and auth now use the real model
 registry, settings, command registry, composed TUI, credential store, and Session Runtime; the old injection seams are
-gone and the zero-seam ratchet passes.
+gone.
 
 One small ambiguity remains in `src/cmd/auth/index.ts`. `AuthCommandOptions` declares both `sessionId` and
 `sessionRuntime` optional, and `configureInteractiveSessionAfterLogin` silently skips the root Agent switch when either
@@ -93,7 +92,7 @@ the behavioral authority; add only the smallest pure contract coverage needed fo
       credential mutation runs, with a message that names the missing interactive Session context.
 - [ ] After a normal successful login, model selection and
       `SessionRuntime.switchAgent(..., { agentName: AGENTS.ROUTER
-      })` run without the current optional-pair
+    })` run without the current optional-pair
       conditional.
 - [ ] Explicit startup mode still returns after credential setup without opening the auth command's model selector or
       switching Router; `maybeShowModelWelcome` continues to own those later steps.
@@ -106,7 +105,6 @@ the behavioral authority; add only the smallest pure contract coverage needed fo
 ## Verification Plan
 
 - Automated: run OC1 and OC2 from Front Matter.
-- Automated: `deno task seams:check` and confirm the zero-seam baseline remains unchanged.
 - Automated: `deno task check`.
 - Automated: `deno task ci`.
 - Automated: `deno task test:golden-tui` to preserve the real first-run welcome and provider-without-model startup

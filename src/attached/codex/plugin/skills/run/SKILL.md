@@ -1,11 +1,12 @@
 ---
 name: run
-description: Start or resume one RunWield Connect workflow in Codex, including planning, browser review, implementation, validation, and delivery.
+description: Explicitly route a request to Ideator, Guide, or a RunWield delivery workflow in Codex, or resume delivery.
 ---
 
 # RunWield Connect
 
-Use the RunWield MCP tools for this explicitly requested workflow. Codex owns every model call; RunWield Core owns the
+Use the RunWield MCP tools only for this explicitly requested work. Retain the original user request in host context
+through Router and any role handoff. Codex owns every model call; RunWield Core owns the
 Plan, execution directory, workflow gates, recovery, and publication. Stay in Codex and the browser. Do not operate the
 RunWield CLI or TUI for the user. Ordinary Codex tools and permissions remain available and unchanged.
 
@@ -46,15 +47,21 @@ when Core describes it as untested.
 After every tool result, follow `workflow.nextAction`, including a result that rejects a stale call. Read the relevant
 reference before handling its actions; move to another reference when the returned action changes.
 
-| Current action                                                                                                   | Reference                                           |
-| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `triage`, `plan`, `review`                                                                                       | [Planning and Plan review](references/planning.md)  |
-| `plan_ready`, `plan_saved`, `consent`, `implementation`                                                          | [Implementation](references/implementation.md)      |
-| `implemented`, `validation_running`, `validation_recovery`, `validation`, `code_review`, `recorder`, `delivered` | [Validation and delivery](references/validation.md) |
+| Current action                                                                                                   | Reference                                                    |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `role_handoff`                                                                                                   | [Ideator and Guide conversation](references/conversation.md) |
+| `triage`, `plan`, `review`                                                                                       | [Planning and Plan review](references/planning.md)           |
+| `plan_ready`, `plan_saved`, `consent`, `implementation`                                                          | [Implementation](references/implementation.md)               |
+| `implemented`, `validation_running`, `validation_recovery`, `validation`, `code_review`, `recorder`, `delivered` | [Validation and delivery](references/validation.md)          |
+
+For `role_handoff`, use the shared conversation reference: call stateless `get_role_instructions` for the returned
+role, resolve `instructions.dispatch`, and answer the original request. Do not resume or complete the closed routing
+record. Conversation replies stay in Codex, not Core.
 
 For `return_to_host`, report Core's outcome and return to ordinary Codex work. Unsupported request types do not become
-FEATURE workflows by changing their classification. An unrecognized action or role contract is a recoverable
-compatibility problem: report it and leave the workflow open.
+FEATURE workflows by changing their classification. An unknown MCP tool, action, or role contract is a recoverable
+compatibility problem: show the diagnostic, tell the user to update local RunWield Core and the Codex RunWield plugin to
+compatible versions, and stop without substitution. Leave any delivery workflow open.
 
 ## Operation identity and recovery
 
@@ -73,7 +80,10 @@ compatibility problem: report it and leave the workflow open.
 
 ## Fresh Codex workers
 
-Before every role dispatch, read `workflow.nextAction.dispatch`, available even in compact status without reviewer
+For Ideator and Guide, use the conversation reference's `instructions.dispatch` procedure for both dedicated and
+routed entry. The workflow dispatch rules below apply only to delivery roles.
+
+Before every delivery role dispatch, read `workflow.nextAction.dispatch`, available even in compact status without reviewer
 instructions. It reflects saved `connect.codex.roles` preferences for the current Codex caller. Apply these rules to
 Router, Planner, implementation, independent review, repair, and Recorder workers:
 

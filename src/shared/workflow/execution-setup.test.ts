@@ -4,7 +4,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
-import { loadPlan, savePlan } from "../../plan-store.ts";
+import { loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.ts";
 import { listEntries } from "../worktree-registry.ts";
 import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
@@ -27,6 +27,7 @@ async function fixture(
     options: {
         failure?: boolean;
         mutation?: boolean;
+        ignoredPlanMutation?: boolean;
         configured?: boolean;
         ignoredSettings?: boolean;
         hookFailure?: boolean;
@@ -55,6 +56,7 @@ fs.mkdirSync('node_modules', {recursive: true});
 fs.appendFileSync('node_modules/runs', 'run\\n');
 ${options.failure ? "if (!fs.existsSync('node_modules/allow')) { console.error('bootstrap fixture failed'); process.exit(12); }" : ""}
 ${options.mutation ? "fs.writeFileSync('unrelated.txt', 'keep this output');" : ""}
+${options.ignoredPlanMutation ? `fs.appendFileSync('docs/plans/${planName}.md', '\\nSetup changed the Plan');` : ""}
 fs.writeFileSync('node_modules/hook.cjs', "require('node:fs').appendFileSync('node_modules/hook-runs', 'hook\\\\n')");
 `,
     );
@@ -460,14 +462,17 @@ for (const phase of ["intent", "primary", "execution", "provenance", "unrelated-
     });
 }
 
-test("ignored setup settings survive a postcommit receipt interruption without a duplicate preparation commit", async () => {
+test("ignored Plan and setup settings survive a postcommit receipt interruption without a duplicate commit", async () => {
     const f = await fixture({ configured: false, ignoredSettings: true });
     try {
+        const planPath = `docs/plans/${planName}.md`;
+        await writeFile(join(f.root, ".git", "info", "exclude"), `/${planPath}\n`);
         const workflow = await f.start();
         const cwd = workflow.executionCwd!;
         const receipt = await readExecutionSetup(cwd);
         assert(receipt);
         const head = await git(cwd, ["rev-parse", "HEAD"]);
+        assert.equal(parsePlanFrontMatter(await git(cwd, ["show", `HEAD:${planPath}`])).attrs.status, "in_progress");
         assert.equal(
             JSON.parse(await git(cwd, ["show", "HEAD:.wld/settings.json"])).worktree_setup_command,
             "bun setup.cjs",
@@ -485,6 +490,22 @@ test("ignored setup settings survive a postcommit receipt interruption without a
         assert.equal(await git(cwd, ["rev-parse", "HEAD"]), head);
         assert.equal((await readExecutionSetup(cwd))?.state, "prepared");
         assert.equal(await readFile(join(cwd, "node_modules/runs"), "utf8"), "run\n");
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test("setup cannot rewrite an ignored Plan that will be committed", async () => {
+    const f = await fixture({ ignoredPlanMutation: true });
+    try {
+        const planPath = `docs/plans/${planName}.md`;
+        await writeFile(join(f.root, ".git", "info", "exclude"), `/${planPath}\n`);
+        await assert.rejects(f.start, /Worktree setup changed the Plan/);
+        const [attempt] = await listEntries(f.root);
+        assert(attempt);
+        assert.equal(await git(attempt.path, ["rev-parse", "HEAD"]), attempt.baseCommit);
+        assert.match(await readFile(join(attempt.path, planPath), "utf8"), /Setup changed the Plan/);
+        assert.equal(f.session.getActiveExecutionWorkflow(), null);
     } finally {
         await f.cleanup();
     }

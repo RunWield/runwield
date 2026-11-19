@@ -145,7 +145,7 @@ test("runCi converts a process-start error into a failed pre-test result and wai
 
     for (const taskName of PRE_TEST_TASKS) {
         if (taskName === "snip:check") continue;
-        const exitCode = taskName === "seams:check" ? 4 : 0;
+        const exitCode = taskName === "doc-links:check" ? 4 : 0;
         tasks.get(taskName)?.resolve({ name: taskName, code: exitCode });
     }
 
@@ -153,7 +153,7 @@ test("runCi converts a process-start error into a failed pre-test result and wai
         exitCode: 1,
         failures: [
             { name: "snip:check", code: 1 },
-            { name: "seams:check", code: 4 },
+            { name: "doc-links:check", code: 4 },
         ],
     });
     assertEquals(starts.includes("test:all:suite"), false);

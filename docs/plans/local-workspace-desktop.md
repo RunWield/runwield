@@ -271,7 +271,6 @@ bun scripts/run-tests.ts src/acp/server.test.ts src/acp/managed-session.integrat
 bun scripts/run-tests.ts src/ui/workspace/workspace-session-ux.test.tsx src/ui/workspace/workspace-plan-review.integration.test.ts src/ui/workspace/workspace-code-review.integration.test.ts
 bun scripts/run-tests.ts src/ui/workspace/workspace-renderer-lifecycle.test.ts src/ui/workspace/workspace-operation-memory.test.ts
 bun run workspace:check
-bun run seams:check
 bun run doc-links:check
 ```
 

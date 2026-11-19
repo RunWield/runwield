@@ -1,4 +1,5 @@
 import { assertRunWieldAgentName } from "./custom-agent.ts";
+import type { AgyCliEffort } from "./model-options.ts";
 
 export const AGY_CLI_PRINT_TIMEOUT = "24h";
 export const AGY_CLI_PRINT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
@@ -8,7 +9,7 @@ export interface AgyCliRunRequest {
     agentName: string;
     model: string;
     userRequest: string;
-    effort: "low" | "medium" | "high";
+    effort: AgyCliEffort;
     env?: Record<string, string>;
 }
 

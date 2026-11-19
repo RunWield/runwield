@@ -137,6 +137,7 @@ test("the CLI and MCP return equal lifecycle results for the same mutation input
         assertEquals(
             tools.tools.map((tool) => tool.name),
             [
+                "get_role_instructions",
                 "start_planning",
                 "activate",
                 "triage_report",

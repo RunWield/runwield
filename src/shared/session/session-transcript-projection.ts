@@ -1,3 +1,5 @@
+import { AGY_CLI_MODEL_IDS } from "../models/agy-cli-catalog.ts";
+import { thinkingLevelToEffort } from "./backends/agy-cli/model-options.ts";
 import { constants } from "node:fs";
 import { open as fsOpen } from "node:fs/promises";
 import { stat as fsStat } from "node:fs/promises";
@@ -1022,10 +1024,6 @@ export async function syncTranscriptFileAndParent(transcriptPath: string) {
     }
 }
 
-const AGY_CLI_BACKEND_FACT_MODELS = new Set(["gemini-3.8-flash", "gemini-3.1-pro"]);
-const AGY_CLI_BACKEND_FACT_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-const AGY_CLI_BACKEND_FACT_EFFORTS = new Set(["low", "medium", "high"]);
-
 function readNonEmptyString(data: ReplayTranscriptData, key: keyof BackendFact) {
     const value = data[key];
     return typeof value === "string" && value ? value : null;
@@ -1035,23 +1033,6 @@ function isVerifiedAgyBackendModel(model: string, effort: string, backendModel: 
     return backendModel === `${model}-${effort}`;
 }
 
-function expectedAgyBackendEffort(model: string, thinkingLevel: string): "low" | "medium" | "high" | null {
-    switch (thinkingLevel) {
-        case "off":
-        case "minimal":
-        case "low":
-            return "low";
-        case "medium":
-            return model === "gemini-3.1-pro" ? "high" : "medium";
-        case "high":
-        case "xhigh":
-        case "max":
-            return "high";
-        default:
-            return null;
-    }
-}
-
 function readAgyExecutionBackendFact(data: ReplayTranscriptData): BackendFact | null {
     const provider = readNonEmptyString(data, "provider");
     const model = readNonEmptyString(data, "model");
@@ -1059,10 +1040,13 @@ function readAgyExecutionBackendFact(data: ReplayTranscriptData): BackendFact | 
     const effort = readNonEmptyString(data, "effort");
     const backendModel = readNonEmptyString(data, "backendModel");
     if (provider !== "agy-cli") return null;
-    if (!model || !AGY_CLI_BACKEND_FACT_MODELS.has(model)) return null;
-    if (!thinkingLevel || !AGY_CLI_BACKEND_FACT_THINKING_LEVELS.has(thinkingLevel)) return null;
-    if (!effort || !AGY_CLI_BACKEND_FACT_EFFORTS.has(effort)) return null;
-    if (effort !== expectedAgyBackendEffort(model, thinkingLevel)) return null;
+    if (!model || !AGY_CLI_MODEL_IDS.some((id) => id === model)) return null;
+    if (!thinkingLevel || !effort) return null;
+    try {
+        if (effort !== thinkingLevelToEffort(model, thinkingLevel)) return null;
+    } catch {
+        return null;
+    }
     if (!backendModel || !isVerifiedAgyBackendModel(model, effort, backendModel)) return null;
     return { backend: "agy-cli", provider, model, thinkingLevel, effort, backendModel };
 }

@@ -489,6 +489,9 @@ test("Workspace Session options and timeline expose supported Agy model facts", 
                     .filter((model) => model.provider === "agy-cli")
                     .map((model) => ({ id: model.id, backend: model.executionBackend })),
                 [
+                    { id: "gemini-4-argon", backend: "agy-cli" },
+                    { id: "gemini-4-hydrogen", backend: "agy-cli" },
+                    { id: "gemini-4-carbon", backend: "agy-cli" },
                     { id: "gemini-3.8-flash", backend: "agy-cli" },
                     { id: "gemini-3.1-pro", backend: "agy-cli" },
                 ],

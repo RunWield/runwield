@@ -8,6 +8,9 @@ export interface AttachedHost {
     clientNames: readonly string[];
     implementEntrypoint: string;
     reviewEntrypoint: string;
+    requestEntrypoint: string;
+    ideatorEntrypoint: string;
+    guideEntrypoint: string;
     updatePlugin: string;
     updateHost: string;
 }
@@ -20,6 +23,9 @@ export const ATTACHED_HOSTS: Record<AttachedHostId, AttachedHost> = {
         clientNames: ["claude-code"],
         implementEntrypoint: "/runwield:implement",
         reviewEntrypoint: "/runwield:plan-review",
+        requestEntrypoint: "/runwield:request",
+        ideatorEntrypoint: "/runwield:ideator",
+        guideEntrypoint: "/runwield:guide",
         updatePlugin:
             "Update the plugin in Claude Code: /plugin marketplace update runwield, then /plugin update runwield@runwield.",
         updateHost: "Update Claude Code with claude update.",
@@ -32,6 +38,9 @@ export const ATTACHED_HOSTS: Record<AttachedHostId, AttachedHost> = {
         clientNames: ["codex-mcp-client"],
         implementEntrypoint: "$runwield:run implement",
         reviewEntrypoint: "$runwield:run resume",
+        requestEntrypoint: "$runwield:run",
+        ideatorEntrypoint: "$runwield:ideator",
+        guideEntrypoint: "$runwield:guide",
         updatePlugin:
             "Update the RunWield plugin through Codex's plugin settings or reinstall it from its marketplace.",
         updateHost: "Update Codex through the desktop app or the package manager used to install the CLI.",

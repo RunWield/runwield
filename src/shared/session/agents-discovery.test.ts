@@ -3,7 +3,7 @@ import { mkdtemp as fsMkdtemp, mkdir as fsMkdir, rm as fsRm, writeFile as fsWrit
 import { join } from "node:path";
 import { test } from "node:test";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { listAllAgentDefinitions, loadAgentDef } from "./agents.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
@@ -27,6 +27,42 @@ async function withDiscoveryProject(run: (root: string, agentsDir: string) => Pr
         await fsRm(root, { recursive: true });
     }
 }
+
+test("plain Markdown Agent overrides append prompts in layer order", () =>
+    withProcessGlobalTestLock(() =>
+        withDiscoveryProject(async (root, agentsDir) => {
+            const homeAgents = join(root, "home", ".wld", "agents");
+            await fsMkdir(homeAgents, { recursive: true });
+            const previousHome = process.env["HOME"];
+            process.env["HOME"] = join(root, "home");
+            try {
+                const bundled = await loadAgentDef("router", root);
+                const homePrompt = "HOME_ROUTER_GUIDANCE";
+                const projectPrompt = "PROJECT_ROUTER_GUIDANCE";
+                await fsWriteFile(join(homeAgents, "router.md"), homePrompt);
+                await fsWriteFile(join(agentsDir, "router.md"), projectPrompt);
+
+                const direct = await loadAgentDef("router", root);
+                assertEquals(direct.displayName, bundled.displayName);
+                assertEquals(direct.tools, bundled.tools);
+                const appendedPrompts = `\n\n${homePrompt}\n\n${projectPrompt}`;
+                assertStringIncludes(direct.rolePrompt, appendedPrompts);
+                assertEquals(direct.rolePrompt.replace(appendedPrompts, ""), bundled.rolePrompt);
+                const discovered = (await listAllAgentDefinitions(root)).find((agent) => agent.name === "router");
+                assertEquals(discovered, direct);
+            } finally {
+                process.env["HOME"] = previousHome;
+            }
+        }),
+    ));
+
+test("a new Agent still requires front matter", async () => {
+    await withDiscoveryProject(async (root, agentsDir) => {
+        const name = "discovery-standalone-prompt";
+        await fsWriteFile(join(agentsDir, `${name}.md`), "Standalone prompt");
+        await assertRejects(() => loadAgentDef(name, root), Error, "has no frontmatter");
+    });
+});
 
 test("the next discovery and individual loads observe direct edits to practices and definitions", async () => {
     await withDiscoveryProject(async (root, agentsDir) => {

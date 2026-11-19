@@ -483,7 +483,7 @@ Existing behavior that must remain protected after every child lands:
 - Existing Plan statuses, Plan Events, readiness rules, validation convergence, worktree publication safeguards, and
   Work Record provenance retain their current meaning.
 - Existing layered agent customization continues to resolve project-local, then home, then bundled assets.
-- `deno task ci`, the seam ratchet, architecture boundaries, and sandboxed test rules remain green.
+- `deno task ci`, architecture boundaries, and sandboxed test rules remain green.
 
 Behavior expected to stop existing:
 

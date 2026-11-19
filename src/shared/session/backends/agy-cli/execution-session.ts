@@ -19,7 +19,7 @@ import {
 } from "./custom-agent.ts";
 import type { AgyCustomAgentOwnership } from "./custom-agent.ts";
 import { prepareAgyCliAgentsCommand, prepareAgyCliStreamCommand } from "./command.ts";
-import { concreteAgyModel, thinkingLevelToEffort } from "./model-options.ts";
+import { type AgyCliEffort, concreteAgyModel, thinkingLevelToEffort } from "./model-options.ts";
 import { DenoAgyCliProcessPort } from "./process.ts";
 import type { AgyCliProcessResult, AgyCliProcessStatus } from "./process.ts";
 import {
@@ -129,6 +129,7 @@ export class AgyCliExecutionSession {
     }
 
     static async create(options: AgyCliExecutionSessionOptions): Promise<AgyCliExecutionSession> {
+        thinkingLevelToEffort(options.model.id, options.thinkingLevel);
         const selector = makeTemporaryAgentSelector(options.agentName);
         const nativeTools = resolveAgyNativeTools(options.declaredTools);
         const definition = formatAgyCustomAgentDefinition(
@@ -951,7 +952,7 @@ function appendExecutionBackendEntry(
         attemptId?: string;
         externalConversationId?: string;
         thinkingLevel?: string;
-        effort?: "low" | "medium" | "high";
+        effort?: AgyCliEffort;
         backendModel?: string;
     },
 ): void {

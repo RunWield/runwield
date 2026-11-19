@@ -2,6 +2,7 @@ import { test } from "node:test";
 import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Editor, Image, Spacer, Text, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { RunWieldModelSelectorComponent } from "./model-selector.ts";
+import { runModelsCommand } from "../../cmd/models/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getSettingsManager } from "../../shared/settings.ts";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
@@ -288,7 +289,7 @@ test("installUiApiOverrides closes a visible tool group before appending an imag
     }
 });
 
-test("installUiApiOverrides selects a configured fixture model through the real selector", async () => {
+test("/model opens the refresh-capable picker and selects a configured model", async () => {
     await withRuntimeCommandFixture("ui-api-model-selector-", async ({ projectRoot }) => {
         const selectedModels: Array<{ model: string; provider?: string }> = [];
         const harness = makeHarness(projectRoot);
@@ -306,15 +307,16 @@ test("installUiApiOverrides selects a configured fixture model through the real 
             }),
         });
         try {
-            const selectionPromise = harness.uiAPI.showModelSelector();
+            const selectionPromise = runModelsCommand([], { uiAPI: harness.uiAPI, editor: harness.editor });
             let selector = harness.container.children.find((child) => child instanceof RunWieldModelSelectorComponent);
             for (let attempt = 0; !selector && attempt < 50; attempt++) {
                 await new Promise((resolve) => setTimeout(resolve, 0));
                 selector = harness.container.children.find((child) => child instanceof RunWieldModelSelectorComponent);
             }
             assertInstanceOf(selector, RunWieldModelSelectorComponent);
+            assertStringIncludes(selector.render(100).join("\n"), "Refresh catalog (Ctrl+R)");
             selector.handleInput("\r");
-            await selectionPromise;
+            assertEquals(await selectionPromise, "succeeded");
 
             assertEquals(selectedModels, [
                 {

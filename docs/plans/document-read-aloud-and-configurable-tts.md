@@ -238,7 +238,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
    registration, and Plan lifecycle unchanged.
 6. Focused tests cover settings, conversion, asset/cache HTTP behavior, endpoint bytes, browser controls, and tool
    composition using real temporary files/servers. Fakes replace only external network/inference/audio/browser
-   capabilities. No owned settings/cache/lifecycle injection seams or seam-baseline changes are introduced.
+   capabilities. No owned settings/cache/lifecycle injection seams are introduced.
 7. The owning Core capability and Workspace scenarios match the delivered settings, tool, browser playback, first-use
    download, and offline behavior. Settings documentation and glossary ship in the same change. Distinguish remaining
    targets such as automatic response narration, native audio, voice cloning, and arbitrary host-plugin exposure from
@@ -253,7 +253,7 @@ the owner's built-in-download choice is already settled.
 
 - Use Bun 1.4.3 and `bun run install:locked` before checks. Run focused tests with
   `bun scripts/run-tests.ts src/shared/speech src/tools/read-aloud.test.ts` and the relevant modified Workspace/Session
-  test files. Run `bun run workspace:check`, `bun run workspace:build`, `bun run seams:check`, and
+  test files. Run `bun run workspace:check`, `bun run workspace:build`, and
   `bun run fmt:check <changed files>`. RunWield owns the full CI gate after implementation.
 - Conversion fixtures include front matter, headings, tables, callouts, links, inline/fenced code, diagrams, HTML,
   embedded Plan Questions, Unicode, empty content, and a sentence over the model limit. Assert ordered meaningful text

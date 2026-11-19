@@ -13,7 +13,7 @@ const missedRuntimePaths = defineCommittedGitFixture({
     "docs-site/package.json": JSON.stringify({ scripts: { dev: "deno task dev" } }),
     ".wld/settings.json": JSON.stringify({ verification_command: "deno task ci" }),
     ".claude/settings.json": JSON.stringify({
-        hooks: { PostToolUse: [{ hooks: [{ command: "deno task seams:check" }] }] },
+        hooks: { PostToolUse: [{ hooks: [{ command: "deno task lint" }] }] },
     }),
     "brand/tool.ts": "Deno.writeTextFile('out', 'content');",
     "pages/review.astro": "---\nconst mode = globalThis.Deno.env.get('MODE');\n---\n<p>Review</p>",

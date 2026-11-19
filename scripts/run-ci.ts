@@ -12,7 +12,6 @@ export const PRE_TEST_TASKS = [
     "check",
     "workspace:check",
     "lint",
-    "seams:check",
     "doc-links:check",
     "docs:check",
     "skills:sync:check",

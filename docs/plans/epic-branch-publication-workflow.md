@@ -2,7 +2,6 @@
 planId: "836cfa2e-3c96-46f8-bae2-9bb4633d2c49"
 classification: "PROJECT"
 complexity: "HIGH"
-summary: "Add an owner-triggered publication workflow that takes a verified Epic branch to the primary branch through a temporary worktree, an integration merge, re-run integrated validation, a compare-and-swap update, and durable Delivery Evidence."
 affectedPaths:
     - "docs/plans/"
     - "src/shared/worktree.ts"
@@ -178,7 +177,7 @@ Three existing invariants constrain the design and are not open for renegotiatio
   never leave the primary branch partly updated.
 - Terminal-state children must prove `published` sets Epic Delivery Evidence, is reachable only through this workflow,
   and cannot be produced by board movement or attestation.
-- Automated suites must run through `scripts/run-tests.ts`, `deno task seams:check`, and `deno task ci`; Git behavior
+- Automated suites must run through `scripts/run-tests.ts` and `deno task ci`; Git behavior
   must be proven against real repositories through `defineGitFixture` rather than injected seams.
 
 ### Outcome Evidence

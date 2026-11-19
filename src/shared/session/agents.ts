@@ -634,7 +634,10 @@ async function loadAgentDefFromPaths(
 
         const raw = await readFile(filePath, "utf8");
         if (!hasFrontMatter(raw)) {
-            throw new Error(`Agent def ${filePath} has no frontmatter`);
+            if (!found) throw new Error(`Agent def ${filePath} has no frontmatter`);
+            const prompt = raw.trim();
+            if (prompt) promptSegments.push(prompt);
+            continue;
         }
 
         const { attrs, body } = extractYaml<AgentDefinitionFrontMatter>(raw);

@@ -52,11 +52,30 @@ a developer needing to know a lot to change the code safely, or it being unclear
 
 While writing code:
 
+- **Keep code focused.** Give each function and module one job. Change only what the task needs: no drive-by renames,
+  reformatting, or cleanup in code the task does not touch.
+- **Keep control flow simple.** Return early instead of nesting branches. Avoid boolean flags that switch a function
+  between two behaviors; write two functions. A reader should be able to follow one path through a function without
+  tracking several variables at once.
 - **Keep each decision in one place.** When a format, an ordering rule, or a protocol detail already has an owner, call
   the owner instead of re-encoding the decision. Two modules that must always change together share leaked knowledge.
-- **Make functions and modules deep.** A new function or module should hide more than its interface costs callers to
+  Code that only looks alike but changes for different reasons is not duplication; leave it separate.
+- **Make abstractions earn their cost.** A new function or module should hide more than its interface costs callers to
   learn. Do not add a wrapper that only forwards arguments or a layer that exposes the same abstraction as the one below
-  it. Don't leave behind alias functions that only call another — remove them and update the call sites.
+  it.
+- **Remove dead code.** When your change leaves a function, parameter, branch, export, setting, or file unused, delete
+  it. Remove alias functions that only call another and update their call sites. Do not comment code out or keep it in
+  case it is needed later; git keeps it.
+- **Respect architectural boundaries.** Use a module through its public surface, not its internals. Follow the layering
+  and ownership the ADRs describe. When the change needs something a boundary does not offer, extend the owner's
+  interface or report the conflict; do not reach around it.
+- **Keep expensive work out of loops.** Move work that does not change per iteration — file reads, subprocesses, network
+  calls, parsing, compiling a pattern, building a lookup table — out of the loop. Fetch in one batch instead of once per
+  item.
+- **Make failures visible.** Do not swallow errors: no empty `catch`, no fallback value that makes a failure look like
+  success, no log line in place of handling. Let the error reach a caller that can act on it, and add the context that
+  explains what was being attempted. This is different from defining an error out of existence, below: that changes the
+  semantics so the case is valid; this hides a case that is still wrong.
 - **Handle complexity inside, not in callers.** When your code can deal with a case itself, do it, instead of adding a
   parameter, a configuration option, or an error every caller must handle.
 - **Define errors out of existence where you can.** Prefer semantics where the error case cannot happen, such as
@@ -66,6 +85,8 @@ While writing code:
 - **Name things precisely.** A reader should know what a thing is or does from its name. A function whose name says it
   reads must not write. Vague names such as `manager`, `helper`, `data`, or `util` usually mean the responsibility is
   unclear.
+- **Comment intent, not syntax.** A comment says why: the constraint, invariant, or non-obvious reason the code cannot
+  show. Do not restate what the code does. When your change makes a comment false, fix or delete it.
 
 When the clean change needs a small refactor of code you are already changing, do it and say why in your report. When a
 Plan specifies the approach, follow it; report a design problem you noticed instead of redesigning the Plan.
@@ -139,6 +160,19 @@ You must attempt to verify your work, and when errors appear you must act, not n
   new shape, or that it was deleted because the behavior it protected no longer exists — and name that behavior.
   Coverage that disappears without a stated reason is lost coverage, and a line count is not a reason. If you cannot say
   which of the two applies to a test, you are not done with it.
+
+## Never Game Tests or Quality Gates
+
+A check passes because the code is correct. Never make it pass any other way. Do not:
+
+- skip, disable, or delete a failing test, or weaken its assertions;
+- change an expected value to match wrong output;
+- special-case test inputs or test environments in production code;
+- silence the type checker or linter with suppression comments, casts, or looser types;
+- raise a threshold, widen a baseline or ratchet, or edit the gate's configuration to let the change through.
+
+If a test or check is itself wrong, fix it as a separate, visible decision and say in your report what was wrong and
+why the new version is right.
 
 ## The Zero-Trust Implementation Protocol
 

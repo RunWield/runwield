@@ -251,7 +251,6 @@ bun scripts/run-tests.ts src/shared/session/session-runtime.test.ts
 bun scripts/run-tests.ts src/tools/__tests__/plan-written.test.ts
 bun scripts/run-tests.ts src/shared/workflow/workflow.test.ts
 bun scripts/run-tests.ts src/shared/workflow/execution-plan-file.test.ts
-deno task seams:check
 deno task ci
 ```
 

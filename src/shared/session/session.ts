@@ -1,3 +1,4 @@
+import { AGY_CLI_MODEL_CHOICES } from "../models/agy-cli-catalog.ts";
 /** Shared helpers for loading agent definitions and running agent invocations. */
 
 import type { JsonValue } from "../jsonc.ts";
@@ -1528,7 +1529,7 @@ export async function resolveModel(
                 });
                 if (parsed.provider === "agy-cli") {
                     throw new Error(
-                        `Unsupported Antigravity CLI model: ${candidate.model}. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.`,
+                        `Unsupported Antigravity CLI model: ${candidate.model}. Select ${AGY_CLI_MODEL_CHOICES}.`,
                     );
                 }
                 throw new Error(`Unknown ${candidate.source}: ${candidate.model}`);

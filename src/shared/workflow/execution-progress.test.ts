@@ -15,7 +15,13 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, type PlanFrontMatter, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
+import {
+    loadPlan,
+    parsePlanFrontMatter,
+    type PlanFrontMatter,
+    savePlan,
+    updatePlanFrontMatter,
+} from "../../plan-store.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import {
@@ -153,6 +159,52 @@ test("execution preparation progress reports fresh worktree setup before launchi
             await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
         }
     });
+});
+
+test("execution from a linked worktree checkpoints the selected Plan even when Git excludes it", async () => {
+    const projectRoot = await makeWorkflowProject([]);
+    const planName = "excluded-plan";
+    const planPath = `docs/plans/${planName}.md`;
+    const sourceCwd = join(projectRoot, ".worktrees", "planning");
+    const hostedSession = makeHostedSession(planName, sourceCwd, []);
+    let executionCwd = "";
+    try {
+        await git(projectRoot, ["worktree", "add", "-b", "planning", sourceCwd]);
+        await fsWriteFile(join(projectRoot, ".git", "info", "exclude"), `/${planPath}\n`);
+        await savePlan(sourceCwd, planName, "# Excluded Plan", {
+            classification: "PLANNED_CHANGE",
+            status: "ready_for_work",
+            summary: "Excluded Plan",
+            planId: PLAN_ID,
+        });
+        assertEquals(await git(sourceCwd, ["check-ignore", planPath]), planPath);
+
+        const workflow = await startActiveExecutionWorkflow({
+            planName,
+            triageMeta: { planId: PLAN_ID, classification: "PLANNED_CHANGE" },
+            currentStatus: "ready_for_work",
+            hostedSession,
+            ports: createExecutionStartPorts(),
+        });
+        assert(workflow.executionCwd);
+        executionCwd = workflow.executionCwd;
+        assertEquals((await loadPlan(executionCwd, planName))?.attrs.status, "in_progress");
+        assertEquals(
+            parsePlanFrontMatter(await git(executionCwd, ["show", `HEAD:${planPath}`])).attrs.status,
+            "in_progress",
+        );
+        assertEquals(
+            parsePlanFrontMatter(await git(executionCwd, ["show", `${workflow.baselineTree}:${planPath}`])).attrs
+                .status,
+            "ready_for_work",
+        );
+        assertEquals(await git(sourceCwd, ["check-ignore", planPath]), planPath);
+        assertEquals(await git(sourceCwd, ["ls-files", "--", planPath]), "");
+    } finally {
+        hostedSession.dispose();
+        if (executionCwd) await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true });
+        await fsRm(projectRoot, { recursive: true, force: true });
+    }
 });
 
 test("execution preparation progress reports reused worktree without claiming creation", async () => {

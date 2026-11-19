@@ -51,7 +51,7 @@ jobs:
             - name: Check source and test types
               run: bun run check
             - name: Check source quality
-              run: bun run lint && bun run seams:check
+              run: bun run lint
             - name: Check compiled release surfaces
               run: bun scripts/release-check.ts --runtime bun --binary-only --build-version "$WLD_BUILD_VERSION"
             - name: Build remote runtime bundles

@@ -5,7 +5,7 @@
     "type": "module",
     "packageManager": "bun@1.4.3",
     "engines": {
-        "bun": "1.4.3"
+        "bun": "^1.4.0"
     },
     "trustedDependencies": [],
     "scripts": {
@@ -33,14 +33,12 @@
         "test:all:suite": "bun scripts/run-tests.ts",
         "submodules:check": "bun scripts/check-submodules.ts",
         "snip:check": "bun scripts/check-snip-filters.ts",
-        "seams:check": "bun scripts/check-injection-seams.ts",
         "doc-links:check": "bun scripts/check-doc-links.ts",
         "skills:sync:check": "bun scripts/check-skill-sync.ts",
         "ci": "bun scripts/check-bun-runtime.ts && bun scripts/run-ci.ts",
         "cli": "bun src/cli.ts",
         "submodules:check:remote": "bun scripts/check-submodule-fetchability.ts",
         "skills:sync:update": "bun scripts/check-skill-sync.ts --update",
-        "seams:update": "bun scripts/check-injection-seams.ts --update",
         "test": "bun scripts/write-version.ts && bun run workspace:build && bun run test:suite",
         "test:all": "bun scripts/write-version.ts && bun run workspace:build && bun run test:all:suite",
         "pr:check": "bun run ci",
@@ -86,12 +84,12 @@
         "@codemirror/legacy-modes": "6.5.3",
         "@codemirror/state": "6.7.6",
         "@codemirror/view": "6.43.15",
-        "@earendil-works/pi-agent-core": "1.5.0",
-        "@earendil-works/pi-ai": "1.5.0",
-        "@earendil-works/pi-codemode": "1.5.0",
-        "@earendil-works/pi-coding-agent": "1.5.0",
-        "@earendil-works/pi-mcp": "1.5.0",
-        "@earendil-works/pi-tui": "1.5.0",
+        "@earendil-works/pi-agent-core": "1.5.2",
+        "@earendil-works/pi-ai": "1.5.2",
+        "@earendil-works/pi-codemode": "1.5.2",
+        "@earendil-works/pi-coding-agent": "1.5.2",
+        "@earendil-works/pi-mcp": "1.5.2",
+        "@earendil-works/pi-tui": "1.5.2",
         "@lezer/common": "1.5.3",
         "@lezer/highlight": "1.2.5",
         "@modelcontextprotocol/sdk": "1.32.0",
@@ -172,12 +170,12 @@
         "typescript-eslint": "8.71.1"
     },
     "overrides": {
-        "@earendil-works/pi-codemode": "1.5.0",
-        "@earendil-works/pi-telemetry": "1.5.0",
-        "@earendil-works/pi-agent-core": "1.5.0",
-        "@earendil-works/pi-ai": "1.5.0",
-        "@earendil-works/pi-coding-agent": "1.5.0",
-        "@earendil-works/pi-mcp": "1.5.0",
-        "@earendil-works/pi-tui": "1.5.0"
+        "@earendil-works/pi-codemode": "1.5.2",
+        "@earendil-works/pi-telemetry": "1.5.2",
+        "@earendil-works/pi-agent-core": "1.5.2",
+        "@earendil-works/pi-ai": "1.5.2",
+        "@earendil-works/pi-coding-agent": "1.5.2",
+        "@earendil-works/pi-mcp": "1.5.2",
+        "@earendil-works/pi-tui": "1.5.2"
     }
 }

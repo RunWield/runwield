@@ -371,9 +371,7 @@ conform to the same application state model rather than create parallel lifecycl
 ## Verification Plan
 
 - Automated: run focused Plan-store, Slicer, Ticket Reference, Work Record, validation, publication, recovery, TUI, and
-  Workspace tests through `bun scripts/run-tests.ts <test paths>`; run `deno task seams:check`; run
-  `deno task
-ci` for the integrated branch. Tests that change `HOME` or current working directory must use the project
+  Workspace tests through `bun scripts/run-tests.ts <test paths>`; run `deno task ci` for the integrated branch. Tests that change `HOME` or current working directory must use the project
   process lock, and Git scenarios must use real isolated fixtures.
 - Automated: run multi-process restart matrices that stop after each Forge side effect and each local receipt write,
   then prove idempotent change-request discovery, no duplicate metadata, retained repair state, exact merge/finalization
