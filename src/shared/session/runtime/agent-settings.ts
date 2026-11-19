@@ -19,7 +19,6 @@ import { clearMascotEnabledCache, getSettingsManager, setGlobalCompactionSetting
 import { getSessionKeyboardHelp } from ".././session-help.ts";
 import { resolveMcpConfig } from "../../mcp/config.ts";
 import { startMcpIntegration } from "../../mcp/integration.ts";
-import { ensureAgyCliMcpSetup } from ".././backends/agy-cli/mcp-setup.ts";
 import { readCurrentPairCheckpoint, recordPairCheckpointSnapshot } from ".././pair-checkpoint-session.ts";
 import { recordExecutionWorkflowSnapshot } from "../execution-workflow-session.ts";
 import { resolvePersistedExecutionRootConfiguration } from "./support.ts";
@@ -199,9 +198,6 @@ export class RuntimeAgentSettings {
             !promptReadySession.getManagedMetadata?.()
         ) {
             promptReadySession.setActiveModelState(model, provider, true);
-            if (parsedModel.ok && parsedModel.provider === "agy-cli") {
-                await ensureAgyCliMcpSetup({ hostedSession: promptReadySession });
-            }
             promptReadySession.mergePendingManagedTurnIntent?.({ model, provider, manualModel: true });
             this.events.emitSessionEvent(sessionId, { type: RuntimeEventTypes.MODEL_CHANGED, model, provider });
             return { ok: true, model, provider };
