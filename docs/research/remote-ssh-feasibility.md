@@ -49,7 +49,7 @@ Source:
 - [`Claude command`](../../src/shared/session/backends/claude-cli/command.ts): `prepareClaudeCliCommand` explicitly
   enables native project tools and passes `--no-session-persistence`.
 - [`Claude process`](../../src/shared/session/backends/claude-cli/process.ts) and
-  [`Antigravity process`](../../src/shared/session/backends/agy-cli/process.ts): subprocesses use the supplied `cwd`.
+  [historical Antigravity process](https://github.com/RunWield/runwield/blob/dd19df28b/src/shared/session/backends/agy-cli/process.ts): subprocesses use the supplied `cwd`.
 - [`Antigravity integration`](../../src/shared/session/backends/agy-cli/execution-session.ts),
   [`custom Agent`](../../src/shared/session/backends/agy-cli/custom-agent.ts), and
   [`MCP setup`](../../src/shared/session/backends/agy-cli/mcp-setup.ts).

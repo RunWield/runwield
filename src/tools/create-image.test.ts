@@ -324,27 +324,15 @@ test("imageGeneration preserves settings and resets inherited options when the m
         assertThrows(() => resolveImageGenerationSettings(f.cwd), Error, "thinkingLvel");
     }));
 
-test("create_image routes agy-cli to a real subprocess with matching model/effort and saves PNG", () =>
-    withFixture(async (f) => {
-        await f.settings({ model: "agy-cli/gemini-3.8-flash", thinkingLevel: "medium" });
-        const argsPath = join(f.cwd, "args.json");
-        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
-        const result = await createImage({ cwd: f.cwd, prompt: "red mug", outputPath: "agy.png" });
-        const args: string[] = JSON.parse(await fsReadFile(argsPath, "utf8"));
-        assertEquals(args[args.indexOf("--model") + 1], "gemini-3.8-flash-medium");
-        assertEquals(args[args.indexOf("--effort") + 1], "medium");
-        assert(!args.includes("--dangerously-skip-permissions"));
-        assert(args.includes("--json-schema"));
-        assertEquals(result.model, "agy-cli/gemini-3.8-flash");
-        assertEquals(result.width, 4);
-        assertEquals(f.requests.length, 0);
-    }));
-
-test("create_image uses concrete new family IDs and the shared effort mapping", () =>
+test("create_image uses one isolated Agy ACP turn with exact model and effort", () =>
     withFixture(async (f) => {
         const argsPath = join(f.cwd, "args.json");
         process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
-        for (const [family, thinking, effort] of [
+        process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] = "session";
+        for (const [family, thinkingLevel, effort] of [
+            ["gemini-3.8-flash", "medium", "medium"],
+            ["gemini-3.1-pro", "medium", "high"],
+            ["gemini-4-argon", "low", "low"],
             ["gemini-4-argon", "medium", "medium"],
             ["gemini-4-carbon", "low", "low"],
             ["gemini-4-carbon", "medium", "medium"],
@@ -355,34 +343,137 @@ test("create_image uses concrete new family IDs and the shared effort mapping", 
             ["gemini-4-neon", "high", "high"],
             ["gemini-4-neon", "xhigh", "xhigh"],
             ["gemini-4-neon", "max", "xhigh"],
-        ]) {
-            await f.settings({ model: `agy-cli/${family}`, thinkingLevel: thinking });
+        ] as const) {
+            const settings = { model: `agy-cli/${family}`, thinkingLevel };
+            await f.settings(settings);
             const result = await createImage({
                 cwd: f.cwd,
                 prompt: "red mug",
-                outputPath: `${family}-${thinking}.png`,
+                outputPath: `${family}-${thinkingLevel}.png`,
             });
-            const args: string[] = JSON.parse(await fsReadFile(argsPath, "utf8"));
-            assertEquals(args[args.indexOf("--model") + 1], `${family}-${effort}`);
-            assertEquals(args[args.indexOf("--effort") + 1], effort);
-            assertEquals(result.model, `agy-cli/${family}`);
             assertEquals(result.width, 4);
+            assertEquals(resolveImageGenerationSettings(f.cwd), settings);
+            const turn = JSON.parse(await fsReadFile(argsPath + ".turn", "utf8"));
+            assertEquals(turn.model, family);
+            assertEquals(turn.effort, effort);
         }
+        const args: string[] = JSON.parse(await fsReadFile(argsPath, "utf8"));
+        assertEquals(args[0], "acp");
+        assert(!args.includes("-p"));
+        assert(!args.includes("--dangerously-skip-permissions"));
+        assert(args.includes("--include-default-customizations=false"));
+        assertEquals(f.requests.length, 0);
     }));
 
-test("create_image does not trust Agy final SUCCESS or paths from other runs", () =>
+test("create_image stages validated Agy reference bytes only in disposable agent workspace", () =>
     withFixture(async (f) => {
-        await f.settings({ model: "agy-cli/gemini-3.8-flash" });
-        process.env["RUNWIELD_IMAGE_FIXTURE_OUTSIDE"] = join(f.cwd, "existing.png");
+        await f.settings({ model: "agy-cli/gemini-4-argon", thinkingLevel: "low" });
+        const argsPath = join(f.cwd, "args.json");
+        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
         await fsWriteFile(
-            join(f.cwd, "existing.png"),
+            join(f.cwd, "reference.png"),
             Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)),
         );
-        for (const mode of ["false-success", "outside"]) {
+        await createImage({ cwd: f.cwd, prompt: "blue mug", outputPath: "edited.png", imageRefs: ["reference.png"] });
+        const turn = JSON.parse(await fsReadFile(argsPath + ".turn", "utf8"));
+        assertEquals(turn.referenceData, [PNG]);
+        assertEquals(turn.referencePaths.length, 1);
+        assertEquals(turn.referencePaths[0], join(turn.cwd, "reference-0.png"));
+        assert(!JSON.stringify(turn.prompt).includes(join(f.cwd, "reference.png")));
+        await assertRejects(() => fsStat(turn.cwd), Error, "ENOENT");
+        assertEquals(f.requests.length, 0);
+    }));
+
+test("create_image rejects a staged Agy reference or hardlink reported as generated output", () =>
+    withFixture(async (f) => {
+        await f.settings({ model: "agy-cli/gemini-4-argon" });
+        await fsWriteFile(
+            join(f.cwd, "reference.png"),
+            Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)),
+        );
+        for (const mode of ["reference-output", "reference-alias"]) {
             process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] = mode;
-            await assertRejects(() => createImage({ cwd: f.cwd, prompt: "red", outputPath: `${mode}.png` }));
+            await assertRejects(
+                () =>
+                    createImage({
+                        cwd: f.cwd,
+                        prompt: "blue mug",
+                        outputPath: `${mode}.png`,
+                        imageRefs: ["reference.png"],
+                    }),
+                Error,
+                "reference image instead of newly generated output",
+            );
             await assertRejects(() => fsStat(join(f.cwd, `${mode}.png`)), Error, "ENOENT");
         }
+        assertEquals(f.requests.length, 0);
+    }));
+
+test("create_image rejects unproven, extra, escaped, malformed and mismatched ACP image output", () =>
+    withFixture(async (f) => {
+        await f.settings({ model: "agy-cli/gemini-3.8-flash" });
+        const outside = join(f.cwd, "existing.png");
+        await fsWriteFile(
+            outside,
+            Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)),
+        );
+        process.env["RUNWIELD_IMAGE_FIXTURE_OUTSIDE"] = outside;
+        for (const mode of [
+            "false-success",
+            "text-only",
+            "multiple",
+            "outside",
+            "symlink",
+            "extras",
+            "malformed",
+            "invalid",
+            "mime-mismatch",
+            "mismatch",
+        ]) {
+            process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] = mode;
+            await assertRejects(() => createImage({ cwd: f.cwd, prompt: "red mug", outputPath: `${mode}.png` }));
+            await assertRejects(() => fsStat(join(f.cwd, `${mode}.png`)), Error, "ENOENT");
+        }
+        assertEquals(f.requests.length, 0);
+    }));
+
+test("create_image rejects unsupported Agy controls before spawning", () =>
+    withFixture(async (f) => {
+        const argsPath = join(f.cwd, "args.json");
+        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
+        await f.settings({ model: "agy-cli/gemini-3.8-flash", temperature: 0.5 });
+        await assertRejects(
+            () => createImage({ cwd: f.cwd, prompt: "red mug", outputPath: "unsupported.png" }),
+            Error,
+            "temperature",
+        );
+        await assertRejects(() => fsStat(argsPath), Error, "ENOENT");
+        assertEquals(f.requests.length, 0);
+    }));
+
+test("create_image cancels one Agy ACP prompt without saving or replaying", () =>
+    withFixture(async (f) => {
+        await f.settings({ model: "agy-cli/gemini-3.8-flash" });
+        const argsPath = join(f.cwd, "args.json");
+        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
+        process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] = "wait";
+        const abort = new AbortController();
+        const pending = assertRejects(() =>
+            createImage({ cwd: f.cwd, prompt: "red mug", outputPath: "cancelled.png", signal: abort.signal }),
+        );
+        try {
+            const deadline = Date.now() + 5000;
+            while (!(await fsStat(argsPath + ".turn").catch(() => null))) {
+                if (Date.now() > deadline) throw new Error("Agy ACP fixture did not start");
+                await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+        } finally {
+            abort.abort();
+            await pending;
+        }
+        assertEquals(f.requests.length, 0);
+        assertEquals(await fsReadFile(argsPath + ".spawns", "utf8"), "spawn\n");
+        await assertRejects(() => fsStat(join(f.cwd, "cancelled.png")), Error, "ENOENT");
     }));
 
 test("create_image honors pre-cancellation without generating or saving", () =>
@@ -434,34 +525,6 @@ test("create_image cancels an in-flight Pi request without saving or retrying", 
             }),
         );
         assertEquals(f.requests.length, 1);
-        await assertRejects(() => fsStat(join(f.cwd, "cancelled.png")), Error, "ENOENT");
-    }));
-
-test("create_image cancels a running Agy subprocess without saving", () =>
-    withFixture(async (f) => {
-        await f.settings({ model: "agy-cli/gemini-3.8-flash" });
-        const argsPath = join(f.cwd, "args.json");
-        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
-        process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] = "wait";
-        const abort = new AbortController();
-        const pending = assertRejects(() =>
-            createImage({
-                cwd: f.cwd,
-                prompt: "red",
-                outputPath: "cancelled.png",
-                signal: abort.signal,
-            }),
-        );
-        try {
-            const deadline = Date.now() + 5000;
-            while (!(await fsStat(argsPath).catch(() => null))) {
-                if (Date.now() > deadline) throw new Error("Agy fixture did not start");
-                await new Promise((resolve) => setTimeout(resolve, 10));
-            }
-        } finally {
-            abort.abort();
-            await pending;
-        }
         await assertRejects(() => fsStat(join(f.cwd, "cancelled.png")), Error, "ENOENT");
     }));
 

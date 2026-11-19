@@ -1920,22 +1920,21 @@ access to their own attachments. **Target:** deleting a Session also removes its
 
 ### Image generation
 
-**Scope and maturity:** Current through OpenRouter, Codex, and Antigravity CLI (owner confirmation, 2026-10-06). The
-OpenCode Responses route is experimental. Google SDK integration, graphical image settings, and remote generation are
-deferred. [Provider notes](../research/image-generation-provider-proof.md) hold historical test results.
+**Scope and maturity:** Current through OpenRouter, Codex, and Antigravity ACP. The OpenCode Responses route is
+experimental. Google SDK integration, graphical image settings, and remote generation are deferred. [Provider notes](../research/image-generation-provider-proof.md) hold historical test results.
 
 **Requirement: Generate images with a user-selected model.** Users set `imageGeneration.model`, with optional supported
 `thinkingLevel` and `temperature`, globally, per project, or in a model preset. The conversation model can be any
 model.
 
 - **Pi image models** use the existing provider configuration and authentication.
-- **`agy-cli/<model>`** uses Antigravity's own image model and sign-in.
+- **`agy-cli/<model>`** uses a separate Antigravity ACP session, the installed CLI’s sign-in, and Antigravity’s image model.
 - **`codex-cli/<model>`** and **`openai-codex/<model>`** use the local Codex runtime's ChatGPT sign-in. RunWield finds
   Codex on PATH or in the ChatGPT desktop app on macOS.
 - **`opencode/<model>`** uses a Responses model with hosted image-tool access.
 
 Each request uses the configured provider and billing route. Unsupported controls are reported. A model change starts
-from that model's own controls.
+from that model's own controls. Antigravity image generation does not fall back to print mode or a different provider.
 
 **Requirement: Produce a reusable project image with truthful success.** `create_image` takes a prompt, a required new
 output path, and optional project or Session image references. File-writing Agents, write-capable delegates, Agents
@@ -2437,14 +2436,15 @@ omitting required tools, or moving project operations to laptop files.
 - **Claude CLI steering:** Text Steering Messages reach the active Claude CLI turn, including turns with only native
   tools. Each message stays pending until Claude acknowledges it, then enters history once. Up recalls the latest
   pending message; Esc recalls pending messages and stops the turn.
-- **Antigravity:** Unsupported model selections and attachments explain what must change before a turn starts.
-  History shows the selected model, thinking level, and backend. Native tool steps appear live and in
-  replay as completed steps. Execution turns can run commands and create, edit, and read files in the working
-  directory. First-run setup initializes empty configuration after approval and reports malformed configuration
-  without overwriting it. A sign-in request during a turn tells the user to run `agy` in a terminal, sign in, and
-  retry; the Session shows this guidance without login URLs or codes. Permission failures name the denied action once,
-  with sensitive details redacted, stay visible in replay, and keep the pending request. See
-  [Providers and Models](../user-documentation/providers.md#antigravity-cli).
+- **Antigravity:** Turns use the Antigravity ACP server. RunWield preserves the selected role, its instructions, its
+  allowed tools, the chosen model and effort, and the history visible to RunWield. Workflow tools are scoped to the turn
+  rather than installed in the user's global Antigravity settings. Actions needing approval wait for a supported client
+  to ask, or stop if it cannot ask. Permission failures name the denied action, with sensitive details redacted.
+  A signed-out CLI tells the user to sign in through Antigravity and retry without exposing login URLs or codes.
+  See [Providers and Models](../user-documentation/providers.md#antigravity-cli).
+- **Antigravity recovery:** RunWield accepts workflow completion only through its authorized completion tool. A normal
+  ACP end of turn is not completion evidence. A failed or interrupted turn does not automatically replay actions
+  with uncertain effects or fall back to `agy -p`.
 
 Future and open questions: provider-specific prompt or temperature tuning where it materially improves behavior, and
 provider support documented in terms of current configuration.
@@ -2463,7 +2463,11 @@ provider support documented in terms of current configuration.
 - Given an active Claude CLI turn, text steering reaches Claude before its next model step and appears once in history.
 - Given a signed-out Antigravity CLI, the turn reports the terminal sign-in action promptly and can be retried after
   sign-in.
-- Given an Antigravity Engineer turn, it runs a test command and creates a file in the execution workspace.
+- Given an Antigravity Engineer turn, it runs an allowed test command and creates a file in the execution workspace
+  after any required approval.
+- Given an Antigravity turn that ends before its required completion tool runs, the workflow remains incomplete.
+- Given saved Antigravity image settings, generation uses ACP and accepts only a completed tool call with one valid
+  image from the active session. An invalid or unavailable result creates no destination file and makes no fallback call.
 - Given Neon, Argon, Hydrogen, or Carbon selected through the model controls or Agent settings, a turn requests that family
   with the mapped effort. Verified history and resume retain the selected family, original thinking level, and backend
   effort without changing the Session or workflow. A returned wrong family or concrete effort is rejected.

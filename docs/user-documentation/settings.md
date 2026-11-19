@@ -377,7 +377,7 @@ Supported providers:
 | OpenRouter      | `openrouter/<image model>` | OpenRouter credentials through `/login`       |
 | OpenCode        | `opencode/<model>`         | OpenCode credentials through `/login`         |
 | Codex           | `codex-cli/<model>`        | Codex CLI signed in with your ChatGPT account |
-| Antigravity CLI | `agy-cli/<model>`          | `agy` installed and signed in to Antigravity  |
+| Antigravity CLI | `agy-cli/<model>`          | Antigravity CLI with ACP support and sign-in  |
 
 See [Login commands](providers.md#login-commands) for `/login`.
 
@@ -439,16 +439,17 @@ an accepted alias for `codex-cli/<model>`.
 ```jsonc
 {
     "imageGeneration": {
-        "model": "agy-cli/gemini-3.8-flash",
-        "thinkingLevel": "medium",
+        "model": "agy-cli/gemini-4-argon",
+        "thinkingLevel": "low",
     },
 }
 ```
 
-Install `agy` and sign in to Antigravity. Select a supervising model from the six
-[Antigravity CLI families](providers.md#antigravity-cli). Catalog inclusion alone does not establish native image
-support for each family; generation depends on your CLI and account. `thinkingLevel` uses the same effort mapping as
-chat, shown in that table. `temperature` is not supported. Antigravity picks the image model itself.
+This uses a separate Antigravity ACP session. Choose a supervising model from the
+[Antigravity CLI families](providers.md#antigravity-cli). Antigravity chooses the image model. Image access depends on
+your CLI version and account; a listed chat model does not guarantee a generated image. `thinkingLevel` uses the
+same effort mapping as chat. `temperature` is not supported. If generation fails, RunWield reports the failure
+without switching providers or falling back to print mode.
 
 #### Where to set it
 

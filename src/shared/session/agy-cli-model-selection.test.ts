@@ -13,7 +13,7 @@ import {
 } from "node:fs/promises";
 import process from "node:process";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { AGENTS } from "../../constants.ts";
 import { runModelsCommand } from "../../cmd/models/index.ts";
@@ -23,11 +23,7 @@ import { getModelRegistry } from "../models/model-registry.ts";
 import { __resetSettingsForTests, getSettingsManager, setCustomSetting } from "../settings.ts";
 import { summarizeProjectedEntries } from "./session-transcript-projection.ts";
 import type { SessionExportSegment } from "./session-export.ts";
-import {
-    inspectAgyCliMcpSetup,
-    installAgyCliMcpSetup,
-    resolveInstalledWldExecutable,
-} from "./backends/agy-cli/mcp-setup.ts";
+import { resolveInstalledWldExecutable } from "./backends/agy-cli/mcp-setup.ts";
 import { SessionHost } from "./session-host.ts";
 import { createSessionRuntime, SessionRuntime } from "./session-runtime.ts";
 
@@ -74,7 +70,7 @@ async function installAgyModelSelectionFixture(homeDir: string): Promise<string>
             : new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x00]),
     );
     await fsChmod(join(binDir, WLD_EXECUTABLE), 0o755);
-    const agyPath = fileURLToPath(new URL("./backends/agy-cli/testing/fake-agy-model-selection.ts", import.meta.url));
+    const agyPath = fileURLToPath(new URL("./backends/agy-cli/testing/fake-agy-execution.ts", import.meta.url));
     await writeRuntimeExecutableFixture(join(binDir, "agy"), agyPath);
     return binDir;
 }
@@ -160,7 +156,7 @@ appendFileSync(${JSON.stringify(agyLaunchLog)}, "launched\\n"); process.exit(2);
     );
 });
 
-test("declined Agy MCP setup keeps the approved selected model without launching agy", async () => {
+test("Agy model selection does not solicit MCP setup or launch agy", async () => {
     await withRuntimeCommandFixture("runwield-agy-cli-setup-decline-", async ({ homeDir, projectRoot }) => {
         let runtime: SessionRuntime | null = null;
         const agyLaunchLog = join(homeDir, "agy-launched.log");
@@ -197,13 +193,8 @@ appendFileSync(${JSON.stringify(agyLaunchLog)}, "launched\\n"); process.exit(2);
                 supportsInteraction: () => true,
             });
 
-            const activeRuntime = runtime;
-            await assertRejects(
-                () => activeRuntime.reconfigureSessionModel(hostedSession.id, "gemini-3.8-flash", "agy-cli"),
-                Error,
-                "not approved",
-            );
-            assertEquals(interactionCount, 1);
+            await runtime.reconfigureSessionModel(hostedSession.id, "gemini-3.8-flash", "agy-cli");
+            assertEquals(interactionCount, 0);
             assertEquals(runtime.getSessionSnapshot(hostedSession.id)?.activeModel, {
                 model: "gemini-3.8-flash",
                 provider: "agy-cli",
@@ -216,7 +207,7 @@ appendFileSync(${JSON.stringify(agyLaunchLog)}, "launched\\n"); process.exit(2);
     });
 });
 
-test("fresh Agy CLI model selection offers first-time MCP setup before the first turn", async () => {
+test("fresh Agy CLI model selection leaves global MCP config untouched", async () => {
     await withRuntimeCommandFixture("runwield-agy-cli-first-select-", async ({ homeDir, projectRoot }) => {
         const runtime = createSessionRuntime();
         const messages: string[] = [];
@@ -247,8 +238,8 @@ test("fresh Agy CLI model selection offers first-time MCP setup before the first
                 sessionRuntime: runtime,
             });
 
-            assertEquals(interactionCount, 1);
-            assertEquals((await inspectAgyCliMcpSetup()).ok, true);
+            assertEquals(interactionCount, 0);
+            assertEquals(await pathExists(join(homeDir, ".gemini", "config", "mcp_config.json")), false);
             assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
                 model: "gemini-3.8-flash",
                 provider: "agy-cli",
@@ -270,7 +261,6 @@ test("explicit approved Agy CLI selection updates the active runtime Session mod
             const binDir = await installAgyModelSelectionFixture(homeDir);
             process.env["PATH"] = `${binDir}${delimiter}${previousPath}`;
             assertEquals(await resolveInstalledWldExecutable(), await fsRealpath(join(binDir, WLD_EXECUTABLE)));
-            await installAgyCliMcpSetup();
             const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
             await runModelsCommand([FIXTURE_MODEL], {
                 uiAPI: {
@@ -405,14 +395,9 @@ async function withAgySelectionExecutionFixture(
         const logPath = join(homeDir, "agy-execution.jsonl");
         try {
             const binDir = await installAgyModelSelectionFixture(homeDir);
-            await writeRuntimeExecutableFixture(
-                join(binDir, "agy"),
-                fileURLToPath(new URL("./backends/agy-cli/testing/fake-agy-execution.ts", import.meta.url)),
-            );
             process.env["PATH"] = `${binDir}${delimiter}${previousPath}`;
             process.env["RUNWIELD_AGY_EXECUTION_LOG"] = logPath;
             await fsWriteFile(logPath, "");
-            await installAgyCliMcpSetup();
             await callback(projectRoot, logPath);
         } finally {
             process.env["PATH"] = previousPath;

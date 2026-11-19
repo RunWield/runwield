@@ -135,7 +135,6 @@ import {
 } from "./execution-backend.ts";
 import { ClaudeCliExecutionSession } from "./backends/claude-cli/execution-session.ts";
 import { AgyCliExecutionSession } from "./backends/agy-cli/execution-session.ts";
-import { ensureAgyCliMcpSetup } from "./backends/agy-cli/mcp-setup.ts";
 import { buildBridgedToolPromptAppendix } from "./bridged-tools/prompt.ts";
 import {
     completeRequestDispatch,
@@ -2887,13 +2886,6 @@ export async function buildExecutionSession(
     const promptState = {
         text: backendPrompt,
     };
-    if (backend === "agy-cli") {
-        await ensureAgyCliMcpSetup({
-            hostedSession: targetHostedSession,
-            capability:
-                opts.managedOperationCapability || targetHostedSession?.getManagedOperationCapability?.() || null,
-        });
-    }
     const session =
         backend === "claude-cli"
             ? new ClaudeCliExecutionSession({

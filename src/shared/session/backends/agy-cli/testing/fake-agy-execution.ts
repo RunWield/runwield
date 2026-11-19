@@ -1,17 +1,12 @@
 import { spawnNativeProcess } from "../../../../foreground-process.ts";
 import { getHomeDir } from "../../../../../constants.ts";
 import { getCwd } from "../../../../../constants.ts";
-import { realpathSync as fsRealpathSync } from "node:fs";
-import {
-    lstat as fsLstat,
-    readdir as fsReaddir,
-    readFile as fsReadFile,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { lstat as fsLstat, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
+import { createInterface } from "node:readline";
 
 interface JsonRecord {
-    [key: string]: string | number | boolean | JsonRecord | string[] | JsonRecord[];
+    [key: string]: string | number | boolean | null | JsonRecord | string[] | JsonRecord[];
 }
 
 function readArg(args: string[], flag: string): string {
@@ -19,15 +14,14 @@ function readArg(args: string[], flag: string): string {
     return index >= 0 ? args[index + 1] || "" : "";
 }
 
-function hasArg(args: string[], flag: string): boolean {
-    return args.includes(flag);
-}
-
 function joinPath(...parts: string[]): string {
-    return parts.map((part, index) => {
-        const trimmed = index === 0 ? part.replace(/\/+$/, "") : part.replace(/^\/+|\/+$/g, "");
-        return trimmed;
-    }).filter(Boolean).join("/");
+    return parts
+        .map((part, index) => {
+            const trimmed = index === 0 ? part.replace(/\/+$/, "") : part.replace(/^\/+|\/+$/g, "");
+            return trimmed;
+        })
+        .filter(Boolean)
+        .join("/");
 }
 
 async function fileExists(path: string): Promise<boolean> {
@@ -35,13 +29,94 @@ async function fileExists(path: string): Promise<boolean> {
         const info = await fsLstat(path);
         return info.isFile() && !info.isSymbolicLink();
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
 
-function emit(value: JsonRecord): void {
+let acp: { sessionId: string; promptId: number; mcpServers: AcpFixtureServer[] } | undefined;
+interface AcpFixtureServer {
+    name: string;
+    command: string;
+    args: string[];
+    env: { name: string; value: string }[];
+}
+interface AcpFixturePacket {
+    id?: number | string;
+    method?: string;
+    params?: { value?: string; configId?: string; prompt?: { text: string }[]; mcpServers?: AcpFixtureServer[] };
+    result?: { outcome?: { outcome?: string; optionId?: string } };
+}
+const pendingPermissions = new Map<string, (allowed: boolean) => void>();
+function send(value: JsonRecord): void {
     console.log(JSON.stringify(value));
+}
+function update(value: JsonRecord): void {
+    send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: acp?.sessionId ?? "", update: value } });
+}
+function reply(id: number, result: JsonRecord): void {
+    send({ jsonrpc: "2.0", id, result });
+}
+function emit(value: JsonRecord): void {
+    if (!acp) throw new Error("ACP session not initialized");
+    if (value.event === "step_update") {
+        const step = value.step_update as JsonRecord;
+        if (step.step_type === "agent_response") {
+            update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: step.text_delta } });
+            return;
+        }
+        if (step.step_type === "tool") {
+            const info = step.tool_info as JsonRecord;
+            const status = step.state === "ACTIVE" ? "in_progress" : step.state === "ERROR" ? "failed" : "completed";
+            update({
+                sessionUpdate: status === "in_progress" ? "tool_call" : "tool_call_update",
+                toolCallId: String(step.step_index ?? step.tool_name),
+                name: step.tool_name,
+                title: step.tool_name,
+                status,
+                ...(info.parameters ? { rawInput: info.parameters } : {}),
+                ...(typeof info.output === "string"
+                    ? { content: [{ type: "content", content: { type: "text", text: info.output } }] }
+                    : {}),
+            });
+        }
+    }
+    if (value.event === "result") {
+        const result = value.result as JsonRecord;
+        const usage = (result.usage ?? {}) as JsonRecord;
+        if (result.error) {
+            send({ jsonrpc: "2.0", id: acp.promptId, error: { code: -32603, message: result.error } });
+            return;
+        }
+
+        reply(acp.promptId, {
+            stopReason: result.response === "different" ? "refusal" : "end_turn",
+            usage: {
+                inputTokens: usage.input_tokens ?? null,
+                outputTokens: usage.output_tokens ?? null,
+                cachedReadTokens: usage.cache_read_tokens ?? usage.cached_input_tokens ?? null,
+                cachedWriteTokens: usage.cache_write_tokens ?? usage.cache_creation_input_tokens ?? null,
+            },
+        });
+    }
+}
+
+function requestPermission(name: string, args: JsonRecord): Promise<boolean> {
+    const id = "permission:" + crypto.randomUUID();
+    send({
+        jsonrpc: "2.0",
+        id,
+        method: "session/request_permission",
+        params: {
+            sessionId: acp?.sessionId ?? "",
+            toolCall: { toolCallId: id, name, title: name, kind: "other", rawInput: args },
+            options: [
+                { optionId: "allow", name: "Allow", kind: "allow_once" },
+                { optionId: "deny", name: "Deny", kind: "reject_once" },
+            ],
+        },
+    });
+    return new Promise((resolve) => pendingPermissions.set(id, resolve));
 }
 
 async function maybeStartDescendant(): Promise<void> {
@@ -61,14 +136,8 @@ async function maybeStartDescendant(): Promise<void> {
 async function runConfiguredMcp(home: string): Promise<void> {
     const callsPath = process.env["RUNWIELD_AGY_EXECUTION_MCP_CALLS"] || "";
     if (!callsPath) return;
-    const configPath = joinPath(home, ".gemini", "config", "mcp_config.json");
-    const settingsPath = joinPath(home, ".gemini", "antigravity-cli", "settings.json");
-    const config = JSON.parse(await fsReadFile(configPath, "utf8"));
-    const settings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
-    if (!settings.permissions?.allow?.includes("mcp(runwield/*)")) {
-        throw new Error("missing runwield MCP permission");
-    }
-    const server = config.mcpServers?.runwield;
+    const server = acp?.mcpServers.find((entry) => /^runwield_turn_[a-z0-9]+$/.test(entry.name));
+    if (!server) throw new Error("missing RunWield MCP server");
     const clientModule = await import("@modelcontextprotocol/sdk/client/index.js");
     const stdioModule = await import("@modelcontextprotocol/sdk/client/stdio.js");
     const transport = new stdioModule.StdioClientTransport({
@@ -78,8 +147,7 @@ async function runConfiguredMcp(home: string): Promise<void> {
             ...{ ...process.env },
             HOME: home,
             PATH: process.env["PATH"] || "",
-            RUNWIELD_MCP_BRIDGE_URL: process.env["RUNWIELD_MCP_BRIDGE_URL"] || "",
-            RUNWIELD_MCP_BRIDGE_TOKEN: process.env["RUNWIELD_MCP_BRIDGE_TOKEN"] || "",
+            ...Object.fromEntries((server.env ?? []).map(({ name, value }) => [name, value])),
         },
         stderr: "pipe",
     });
@@ -98,6 +166,14 @@ async function runConfiguredMcp(home: string): Promise<void> {
         const calls = JSON.parse(await fsReadFile(callsPath, "utf8"));
         const results = [];
         for (const call of calls) {
+            if (
+                !(await requestPermission("mcp_" + server.name + "_" + call.name.replaceAll(/[^a-zA-Z0-9_]/g, "_"), {
+                    toolSummary: "Invoke " + call.name,
+                }))
+            ) {
+                results.push({ name: call.name, isError: true, permissionDenied: true });
+                continue;
+            }
             const result = await client.callTool({ name: call.name, arguments: call.arguments || {} });
             results.push({ name: call.name, isError: result.isError === true });
         }
@@ -111,8 +187,6 @@ async function runConfiguredMcp(home: string): Promise<void> {
 async function main(): Promise<void> {
     const args = process.argv.slice(2);
     const home = getHomeDir();
-    const prompt = readArg(args, "-p");
-    const outputFormat = readArg(args, "--output-format");
     if (process.env["RUNWIELD_AGY_REQUIRE_AUTH"] === "1") {
         const encoder = new TextEncoder();
         await writeOutput(process.stderr, encoder.encode("Authenti"));
@@ -127,40 +201,94 @@ async function main(): Promise<void> {
         await fsWriteFile(joinPath(home, "auth-wait-timed-out"), "timed out");
         process.exit(1);
     }
-    if (prompt === "/agents" && outputFormat === "json") {
-        const sleepAgentsPidPath = process.env["RUNWIELD_AGY_SLEEP_AGENTS_PID"] || "";
-        if (sleepAgentsPidPath) {
-            await fsWriteFile(sleepAgentsPidPath, String(process.pid));
-            setInterval(() => {}, 1000);
-            await new Promise(() => {});
-        }
-        if (process.env["RUNWIELD_AGY_FAIL_AGENTS"] === "1") process.exit(3);
-        const agentsRoot = joinPath(home, ".gemini", "config", "agents");
-        const agents: JsonRecord[] = [];
-        try {
-            for await (const entry of await fsReaddir(agentsRoot, { withFileTypes: true })) {
-                const definitionPath = joinPath(agentsRoot, entry.name, "agent.md");
-                if (entry.isDirectory() && await fileExists(definitionPath)) {
-                    const definition = await fsReadFile(definitionPath, "utf8");
-                    if (
-                        definition.includes("\nname: " + entry.name + "\n") ||
-                        definition.startsWith("---\nname: " + entry.name + "\n")
-                    ) {
-                        agents.push({ name: entry.name });
-                    }
-                }
-            }
-        } catch {
-            // No agents directory yet.
-        }
-        console.log(JSON.stringify({ command: { name: "agents", data: { agents } } }));
-        return;
-    }
+    if (args[0] !== "acp") throw new Error("expected ACP command");
+    return runAcp(args, home);
+}
 
+async function runAcp(args: string[], home: string): Promise<void> {
+    if (
+        args.includes("-p") ||
+        args.includes("--dangerously-skip-permissions") ||
+        !args.includes("--process-per-session")
+    ) {
+        throw new Error("invalid ACP command flags");
+    }
+    let model = process.env["RUNWIELD_AGY_EXPECTED_MODEL"] || "gemini-3.8-flash";
+    let effort = process.env["RUNWIELD_AGY_EXPECTED_EFFORT"] || "low";
+    const sessionId = "conversation-" + crypto.randomUUID();
+    const input = createInterface({ input: process.stdin });
+    const selection = () => ({
+        models: { currentModelId: process.env["RUNWIELD_AGY_REPORTED_MODEL"] ?? model + "-" + effort },
+        modes: { currentModeId: "default", availableModes: [{ id: "default", name: "Default" }] },
+        configOptions: [
+            { id: "mode", currentValue: "default" },
+            { id: "model", currentValue: model },
+            { id: "thought_level", currentValue: effort },
+        ],
+    });
+    input.on("line", (line) => {
+        const message = JSON.parse(line) as AcpFixturePacket;
+        if (typeof message.id === "string" && !message.method) {
+            pendingPermissions.get(message.id)?.(message.result?.outcome?.optionId === "allow");
+            pendingPermissions.delete(message.id);
+            return;
+        }
+        if (message.method === "session/cancel") {
+            if (acp) reply(acp.promptId, { stopReason: "cancelled" });
+            return;
+        }
+        if (typeof message.id !== "number") return;
+        const id = message.id;
+        switch (message.method) {
+            case "initialize":
+                reply(id, {
+                    protocolVersion: 1,
+                    agentCapabilities: {},
+                    agentInfo: { name: "Antigravity ACP Server", version: "1.5.12" },
+                });
+                break;
+            case "session/new": {
+                const pidPath = process.env["RUNWIELD_AGY_SLEEP_AGENTS_PID"];
+                if (pidPath) {
+                    void fsWriteFile(pidPath, String(process.pid));
+                    break;
+                }
+                acp = { sessionId, promptId: -1, mcpServers: message.params?.mcpServers ?? [] };
+                if (process.env["RUNWIELD_AGY_FAIL_AGENTS"] === "1") process.exit(3);
+                reply(id, { sessionId, ...selection() });
+                break;
+            }
+            case "session/set_config_option":
+                if (message.params?.configId === "model") model = message.params.value ?? "";
+                if (message.params?.configId === "thought_level") effort = message.params.value ?? "";
+                reply(id, selection());
+                break;
+            case "session/prompt":
+                if (!acp) throw new Error("prompt before ACP session/new");
+                acp.promptId = id;
+                void runTurn(
+                    args,
+                    home,
+                    message.params?.prompt?.map((part) => part.text).join("") ?? "",
+                    model,
+                    effort,
+                ).catch((error) => {
+                    console.error(error);
+                    process.exit(1);
+                });
+                break;
+            case "session/close":
+                reply(id, {});
+                input.close();
+                break;
+        }
+    });
+    await new Promise<void>((resolve) => input.once("close", resolve));
+}
+
+async function runTurn(args: string[], home: string, prompt: string, model: string, effort: string): Promise<void> {
     const logPath = process.env["RUNWIELD_AGY_EXECUTION_LOG"] || "";
     const agent = readArg(args, "--agent");
-    const model = readArg(args, "--model");
-    const effort = readArg(args, "--effort");
     const reportedModel = process.env["RUNWIELD_AGY_REPORTED_MODEL"] || model + "-" + effort;
     if (!agent || !agent.startsWith("runwield-")) {
         console.error("missing owned agent");
@@ -170,14 +298,6 @@ async function main(): Promise<void> {
         console.error("missing model or effort");
         process.exit(2);
     }
-    if (
-        fsRealpathSync(readArg(args, "--add-dir")) !== fsRealpathSync(getCwd()) ||
-        !hasArg(args, "--disable-slash-commands") || readArg(args, "--print-timeout") !== "24h" ||
-        hasArg(args, "--conversation") || hasArg(args, "--continue") || !hasArg(args, "--dangerously-skip-permissions")
-    ) {
-        console.error("bad flags");
-        process.exit(2);
-    }
     const definitionPath = joinPath(home, ".gemini", "config", "agents", agent, "agent.md");
     const definition = await fsReadFile(definitionPath, "utf8");
     if (prompt.includes("RunWield Bridged Tools") || prompt.includes("RunWield system prompt")) {
@@ -185,9 +305,13 @@ async function main(): Promise<void> {
         process.exit(2);
     }
     if (logPath) {
-        await fsWriteFile(logPath, JSON.stringify({ args, prompt, agent, model, effort, definition }) + "\n", {
-            flag: "a",
-        });
+        await fsWriteFile(
+            logPath,
+            JSON.stringify({ args, prompt, agent, model, effort, definition, sessionId: acp?.sessionId }) + "\n",
+            {
+                flag: "a",
+            },
+        );
     }
     await maybeStartDescendant();
     if (process.env["RUNWIELD_AGY_FAIL_TURN"] === "1") process.exit(4);
@@ -195,7 +319,8 @@ async function main(): Promise<void> {
     if (process.env["RUNWIELD_AGY_FAIL_AFTER_MCP"] === "1") process.exit(5);
     const capturedStream = process.env["RUNWIELD_AGY_CAPTURED_STREAM"];
     if (capturedStream) {
-        await writeOutput(process.stdout, new TextEncoder().encode(await fsReadFile(capturedStream, "utf8")));
+        const stream = await fsReadFile(capturedStream, "utf8");
+        for (const line of stream.split("\n").filter(Boolean)) emit(JSON.parse(line) as JsonRecord);
         return;
     }
     if (process.env["RUNWIELD_AGY_MALFORMED_FAIL_WITH_STDERR"] === "1") {
@@ -213,35 +338,34 @@ async function main(): Promise<void> {
         return;
     }
 
-    if (prompt.includes("fixture-denied-file-read")) {
-        emit({
-            event: "init",
-            conversation_id: "denied-file-conversation",
-            init: { agent, model: model + "-" + effort },
+    if (acp && prompt.endsWith("USER: fixture-native-summary-permission")) {
+        const allowed = await requestPermission("run_command", { toolSummary: "check project" });
+        if (allowed) await fsWriteFile(joinPath(getCwd(), "disposable.txt"), "unexpected effect");
+        update({
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: allowed ? "approved" : "denied" },
         });
-        emit({
-            event: "step_update",
-            step_update: {
-                step_type: "tool",
-                state: "ERROR",
-                tool_name: "view_file",
-                tool_info: {
-                    name: "view_file",
-                    parameters: { AbsolutePath: joinPath(home, "project", "check.test.js") },
-                    error: { type: "TOOL_ERROR", message: "permission check failed for read_file" },
-                },
-            },
-        });
-        emit({
-            event: "result",
-            result: {
-                status: "SUCCESS",
-                response: "",
-                denied_actions: [{ action: "read_file", display_name: "ViewFile" }],
-            },
-        });
+        reply(acp.promptId, { stopReason: "end_turn" });
         return;
     }
+
+    if (acp && prompt.includes("fixture-native-permission")) {
+        const allowed = await requestPermission("write_file", { Path: "disposable.txt", Content: "fixture" });
+        if (allowed) await fsWriteFile(joinPath(getCwd(), "disposable.txt"), "fixture");
+        update({
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: allowed ? "approved" : "denied" },
+        });
+        reply(acp.promptId, { stopReason: "end_turn" });
+        return;
+    }
+
+    if (acp && prompt.includes("fixture-denied-file-read")) {
+        await requestPermission("view_file", { AbsolutePath: joinPath(home, "project", "check.test.js") });
+        reply(acp.promptId, { stopReason: "end_turn" });
+        return;
+    }
+
     if (process.env["RUNWIELD_AGY_PERMISSION_RESULT"] === "1") {
         emit({
             event: "init",
@@ -260,7 +384,7 @@ async function main(): Promise<void> {
         return;
     }
 
-    if (prompt.includes("fixture-native-tool-steps")) {
+    if (prompt.endsWith("USER: fixture-native-tool-steps")) {
         emit({ event: "init", conversation_id: "native-tools", init: { agent, model: reportedModel } });
         emit({
             event: "step_update",
@@ -272,7 +396,7 @@ async function main(): Promise<void> {
                 tool_info: { name: "run_command", parameters: { CommandLine: "pwd" } },
             },
         });
-        const release = joinPath(readArg(args, "--add-dir"), "native-tool-continue");
+        const release = joinPath(getCwd(), "native-tool-continue");
         for (let attempt = 0; attempt < 500 && !(await fileExists(release)); attempt++) {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
@@ -358,6 +482,7 @@ async function main(): Promise<void> {
                 tool_info: { name: "call_mcp_tool" },
             },
         });
+        emit({ event: "step_update", step_update: { step_type: "agent_response", text_delta: "done" } });
         emit({ event: "result", result: { response: "done", usage: { input_tokens: 17, output_tokens: 19 } } });
         return;
     }
@@ -379,5 +504,5 @@ async function main(): Promise<void> {
 await main();
 
 async function writeOutput(stream: NodeJS.WriteStream, value: Uint8Array): Promise<void> {
-    await new Promise<void>((resolve, reject) => stream.write(value, (error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => stream.write(value, (error) => (error ? reject(error) : resolve())));
 }
