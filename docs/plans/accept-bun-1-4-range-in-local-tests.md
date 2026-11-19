@@ -27,7 +27,7 @@ userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Accept the Bun 1.4 range in local tests and pin CI to Bun 1.4.4

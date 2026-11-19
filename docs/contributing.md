@@ -27,7 +27,8 @@ Product and architecture guidance:
 
 ## Development setup
 
-Contributors use Bun 1.4.3. Install the pinned root and docs dependencies before running commands:
+Contributors use Bun `^1.4.0`. CI and release builds use the exact version in `.bun-version`.
+Install the pinned root and docs dependencies before running commands:
 
 ```bash
 bun run install:locked

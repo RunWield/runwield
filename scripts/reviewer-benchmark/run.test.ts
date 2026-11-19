@@ -262,11 +262,12 @@ test("resume refuses changed configuration, fixture truth, selection, and timeou
         await runBenchmark(selected, { out });
         const original = await readFile(join(out, "results.jsonl"), "utf8");
         const manifestText = await readFile(join(out, "run.json"), "utf8");
-        for (const change of ["configuration", "fixture"] as const) {
+        for (const change of ["configuration", "bunVersion", "fixture"] as const) {
             const run = await readRun(out);
             if (change === "configuration")
                 run.manifest.configuration.promptHashes[Object.keys(run.manifest.configuration.promptHashes)[0]] =
                     "0".repeat(64);
+            else if (change === "bunVersion") run.manifest.configuration.bunVersion = "0.0.0";
             else run.manifest.cases[0].fixtureHash = "0".repeat(64);
             for (const result of run.results) result.configuration = run.manifest.configuration;
             await writeFile(join(out, "run.json"), JSON.stringify(run.manifest));

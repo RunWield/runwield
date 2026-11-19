@@ -1,7 +1,7 @@
 /**
  * Production CLI qualification: bun run src/shared/remote/verify-remote-workflows.ts --archives <directory> <VERSION>
  * Code-level evidence only: bun run src/shared/remote/verify-remote-workflows.ts [compiled-client]
- * Deploys matching source with owned Bun 1.4.3 by default. WLD_LIVE_SOURCE=0 selects standalone artifacts:
+ * Deploys matching source with owned Bun 1.4.4 by default. WLD_LIVE_SOURCE=0 selects standalone artifacts:
  * first the production CLI save smoke (not workflow qualification), then the scripted workflow client.
  * WLD_LIVE_PRODUCTION_BINARY reuses a CLI build for that save smoke only.
  * WLD_LIVE_REMOTE_ROOT reuses this script's owned scratch; WLD_LIVE_JOURNEYS selects comma-separated journeys.
@@ -223,7 +223,7 @@ async function main(): Promise<void> {
         }
         // A pinned helper runtime is installed only inside the owned scratch tree.
         await ssh(
-            `cd ${quote(remoteRoot)} && if [ ! -x bun-linux-x64/bun ]; then curl --fail --location --silent --show-error https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-linux-x64.zip -o bun.zip && unzip -q bun.zip; fi; ./bun-linux-x64/bun --version`,
+            `cd ${quote(remoteRoot)} && if [ ! -x bun-linux-x64/bun ]; then curl --fail --location --silent --show-error https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-x64.zip -o bun.zip && unzip -q bun.zip; fi; ./bun-linux-x64/bun --version`,
         );
         await record("remote-pinned-bun", (await ssh(`${quote(remoteRoot + "/bun-linux-x64/bun")} --version`)).trim());
         if (sourceDeployment) {
@@ -246,7 +246,7 @@ async function main(): Promise<void> {
             ]);
             await record(
                 "source-deployment",
-                "Matching source and dependencies copied with checksums; remote runtime is owned Bun 1.4.3",
+                "Matching source and dependencies copied with checksums; remote runtime is owned Bun 1.4.4",
             );
         }
         for (const journey of ["delivery", "validation-cut", "publication-proven", "publication-uncertain"].filter(

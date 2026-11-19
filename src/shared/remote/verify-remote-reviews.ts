@@ -56,7 +56,7 @@ interface ProviderRequest {
 if (import.meta.main) await main();
 async function main(): Promise<void> {
     equal(process.platform, "darwin", "This pilot is macOS-only; Windows is deferred.");
-    equal(process.versions.bun, "1.4.3");
+    equal(process.versions.bun, "1.4.4");
     const args = process.argv.slice(2);
     let archives: string | undefined;
     if (args[0] === "--archives") {

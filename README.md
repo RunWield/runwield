@@ -211,7 +211,8 @@ built next.
 
 RunWield is built on [Pi](https://pi.dev) and ships as a single compiled binary.
 
-- **CLI + TUI** — Bun 1.4.3, TypeScript.
+- **CLI + TUI** — Bun, TypeScript. Local development accepts Bun `^1.4.0`; CI and releases use the `.bun-version`
+  pin (1.4.4).
 - **Plan review** — a browser UI powered by [Plannotator](https://plannotator.ai).
 - **Code intelligence** — [Cymbal](https://github.com/1broseidon/cymbal).
 - **Memory** — [Mnemoteca](https://github.com/gandazgul/mnemoteca) for project and global memory.
@@ -260,7 +261,7 @@ See [RunWield Skills](https://github.com/RunWield/skills). Contributors maintain
 
 ### Contributing
 
-Use Bun 1.4.3 (pinned in `.bun-version`).
+Use Bun `^1.4.0` for local work. CI and release builds use the exact version in `.bun-version` (1.4.4).
 
 ```bash
 bun run install:locked       # frozen root and docs graphs; no lifecycle scripts

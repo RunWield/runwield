@@ -106,7 +106,6 @@ export async function runBenchmark(selected: SelectedCase[], options: BenchmarkR
             patch: oracle.patch,
         });
     }
-    if (Bun.version !== "1.4.3") throw new Error("Reviewer fixtures require Bun 1.4.3");
     const runId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}`;
     const directory = resolve(options.out ?? join(getHomeDir(), ".wld/reviewer-eval", runId));
     const configuration = await captureConfiguration(options, directory);

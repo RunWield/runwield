@@ -57,7 +57,7 @@ tool calls before triage, and repeated or forbidden tool attempts.
 #### Semantic Reviewer
 
 **Current requirement: Evaluate the production Reviewer on every admitted discovery package.** The interim
-`bun scripts/run-reviewer-benchmark.ts` runner evaluates 33 admitted discovery cases in 17 synthetic Bun 1.4.3
+`bun scripts/run-reviewer-benchmark.ts` runner evaluates 33 admitted discovery cases in 17 synthetic Bun
 TypeScript packages: RV-D01–D16 A/B and RV-M01 A. `--scenarios all` discovers every package containing `scenario.yaml`, ordered by scenario
 ID then variant. The original nine-case `--scenarios smoke` set is unchanged. The runner uses the effective Reviewer
 model, production prompt, tools, inspection gate, nudges, and `review_complete` through `runReviewerRound`, with

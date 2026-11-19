@@ -36,7 +36,7 @@ test("configuration records this checkout and the exact production prompt bytes 
         assert.deepEqual(configuration.promptHashes, expected);
         assert.equal(configuration.model, "fixture-model");
         assert.equal(configuration.provider, "runtime-command-fixture");
-        assert.equal(configuration.bunVersion, "1.4.3");
+        assert.equal(configuration.bunVersion, Bun.version);
         setExactProjectCustomSetting("defaultThinkingLevel", "high", runtime.projectRoot);
         assert.equal((await captureConfiguration({ configurationRoot: runtime.projectRoot })).thinkingLevel, "high");
         setExactProjectCustomSetting("defaultThinkingLevel", "low", runtime.projectRoot);
