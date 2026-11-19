@@ -1,13 +1,15 @@
 import { readFileSync } from "node:fs";
 import { versions } from "node:process";
 
-export function requirePinnedBun(): void {
-    const expected = readFileSync(new URL("../.bun-version", import.meta.url), "utf8").trim();
-    if (versions.bun !== expected) {
-        throw new Error(
-            `RunWield's Bun migration requires Bun ${expected}; found ${versions.bun || "another runtime"}.`,
-        );
+interface RuntimeManifest {
+    engines: { bun: string };
+}
+
+export function requireSupportedBun(): void {
+    const { engines }: RuntimeManifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    if (!versions.bun || !Bun.semver.satisfies(versions.bun, engines.bun)) {
+        throw new Error(`RunWield requires Bun ${engines.bun}; found ${versions.bun || "another runtime"}.`);
     }
 }
 
-if (import.meta.main) requirePinnedBun();
+if (import.meta.main) requireSupportedBun();

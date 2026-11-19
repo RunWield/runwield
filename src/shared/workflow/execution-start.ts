@@ -770,7 +770,9 @@ export async function startActiveExecutionWorkflow({
                     reusedWorktree,
                 );
             }
-            if (needsPreparationCheckpoint) await prepareExecutionSetup(hostedSession, worktree.path);
+            const materializedPlanPaths = [planFile.relativePath, ...relatedPlanPaths];
+            if (needsPreparationCheckpoint)
+                await prepareExecutionSetup(hostedSession, worktree.path, materializedPlanPaths);
             const executionPlan = await loadPlan(worktree.path, planName);
             if (!executionPlan) throw new Error(`Plan not found in its execution worktree: ${planName}`);
             // Re-entering an in-progress attempt must keep the tree from before the
@@ -801,7 +803,7 @@ export async function startActiveExecutionWorkflow({
                 safeRecordedBaselineTree ||
                 (continuingReusableWorktree && "baseTree" in worktree && typeof worktree.baseTree === "string"
                     ? worktree.baseTree
-                    : await captureTree(worktree.path));
+                    : await captureTree(worktree.path, materializedPlanPaths));
             const workflow = {
                 planName,
                 triageMeta: effectiveTriageMeta,
@@ -885,7 +887,7 @@ export async function startActiveExecutionWorkflow({
                         ? editedSiblingPaths
                         : await prepareEditedSiblingPlans(worktree.path, planName, planFile.relativePath)),
                 ];
-                const preparationToken = await recordExecutionSetupCheckpoint(worktree.path);
+                const preparationToken = await recordExecutionSetupCheckpoint(worktree.path, materializedPlanPaths);
                 const preparation = await checkpointExecutionPreparation({
                     preparationToken,
                     worktreePath: worktree.path,

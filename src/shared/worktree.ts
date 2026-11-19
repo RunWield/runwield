@@ -24,7 +24,7 @@ import {
 } from "./worktree-project-context.ts";
 import { assertGitRepository, GitRepositoryRequiredError } from "./git.ts";
 import { resolvePublicationUpstream } from "./publication-target.ts";
-import { getWorkflowDiff, REVIEW_DIFF_FORMAT_ARGS } from "./workflow/git-snapshot.ts";
+import { getWorkflowDiff, listIgnoredUntrackedPaths, REVIEW_DIFF_FORMAT_ARGS } from "./workflow/git-snapshot.ts";
 import {
     addEntry,
     listEntries,
@@ -706,6 +706,16 @@ async function commitDirtyWorktreeState(
                 if (allowedPathSet.has(path) && (await isTransferredProjectContext(worktreePath, path))) {
                     await runGit(worktreePath, ["add", "-f", "--", path]);
                     forcedPaths.add(path);
+                }
+            }
+            if (messageOptions.phase === "preparation") {
+                const planPaths = allowedDirtyPaths.filter(
+                    (path) => path.startsWith("docs/plans/") && path.endsWith(".md"),
+                );
+                const ignoredPlans = await listIgnoredUntrackedPaths(worktreePath, planPaths);
+                if (ignoredPlans.length > 0) {
+                    await runGit(worktreePath, ["--literal-pathspecs", "add", "-f", "--", ...ignoredPlans]);
+                    for (const path of ignoredPlans) forcedPaths.add(path);
                 }
             }
             const ordinaryPaths = allowedDirtyPaths.filter((path) => !forcedPaths.has(path));

@@ -124,6 +124,23 @@ export async function listCommitsTouchingPathsSince(
         });
 }
 
+/** Find explicitly selected untracked files that Git would skip during staging. */
+export async function listIgnoredUntrackedPaths(cwd: string, paths: string[]): Promise<string[]> {
+    if (paths.length === 0) return [];
+    const selected = new Set(paths);
+    const ignored = await runGit(cwd, [
+        "--literal-pathspecs",
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "-z",
+        "--",
+        ...selected,
+    ]);
+    return ignored.split("\0").filter((path) => selected.has(path));
+}
+
 /**
  * Capture the current working tree into a git tree object without mutating the
  * repository's real index.
@@ -148,7 +165,9 @@ export async function captureWorktreeTree(cwd: string, forcePaths: string[] = []
         // hide same-size edits whose file times match the old index. Re-read the
         // tracked contents in this temporary index; never change the real index.
         await runGit(cwd, ["add", "--renormalize", "-u", "--", "."], env);
-        if (forcePaths.length > 0) await runGit(cwd, ["add", "-f", "--", ...forcePaths], env);
+        const ignoredPaths = await listIgnoredUntrackedPaths(cwd, forcePaths);
+        if (ignoredPaths.length > 0)
+            await runGit(cwd, ["--literal-pathspecs", "add", "-f", "--", ...ignoredPaths], env);
         return (await runGit(cwd, ["write-tree"], env)).trim();
     } finally {
         await fsRm(indexPath).catch(() => {});

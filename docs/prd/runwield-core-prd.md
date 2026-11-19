@@ -903,6 +903,8 @@ existing repair Agent behavior.
 
 **Requirement: Execute approved work in isolation.** Executable Plan work starts from `ready_for_work` in an isolated
 worktree. The user's checkout changes stay as they are, and execution keeps a useful recovery point.
+The selected Plan and any materialized Epic family documents appear in the starting baseline and preparation commit
+even if Git ignores them.
 
 **Requirement: Prepare the worktree before Agent work.** RunWield runs the project's `worktree_setup_command`, or a
 command the user confirms, before the first commit that runs the project's Git hooks. When hooks exist and no command
@@ -942,6 +944,8 @@ and implementation commits still run the project's hooks.
   the same rule. Normal commits still run the hooks.
 - Given a dependency-backed Git hook and an approved setup command, setup runs before the first execution preparation
   commit, the hook passes, and one execution preparation commit precedes Agent work.
+- Given a Plan excluded by the repository's local Git rules, starting it from a linked worktree records the Plan in
+  the execution baseline and preparation commit. The source Plan stays untracked and its exclude rule still applies.
 - Given failed setup, the Plan stays ready and the worktree and diagnostics remain; a corrected retry continues that
   attempt.
 - Given a prepared worktree, resuming keeps its baseline without a second setup or preparation commit.
@@ -1025,7 +1029,7 @@ increases; they do not alone prove deadlock. Missing reports after a timeout rem
 guidance, not an additional runtime admission gate; existing validation commands and repair limits remain unchanged.
 
 **Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
-load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
+load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the supported Bun
 runtime and cannot report success without running the Astro checker.
 
 **Requirement: Repair the latest observed CI failure.** After repair exhaustion, Engineer follow-up retains the latest
@@ -2457,6 +2461,15 @@ provider support documented in terms of current configuration.
 
 ### Installation and updates
 
+**Requirement: Supported development runtime.** Local source, test, build, and release commands accept the Bun
+range in `package.json` (`^1.4.0`: at least 1.4.0 and below 2.0.0). CI and release artifacts use the exact
+`.bun-version` pin for repeatable builds. Release source checks install the real Stable Mnemoteca with
+checksum-verified native dependencies; an unavailable dependency download fails setup rather than skipping
+Work Record integration checks.
+
+- Given Bun 1.4.4 or another stable version in the supported range, the runtime check permits local commands.
+- Given Bun below 1.4.0, Bun 2.x, or another runtime, the check stops with the required range and detected runtime.
+
 **Scope and maturity:** Current Linux/macOS shell installation and Candidate release baseline. The public macOS tap
 provides RunWield and Mnemoteca packages. Windows releases and checks, including WinGet manifest preparation and
 submission, are paused by owner decision. Existing Windows assets and runtime code remain available. Runtime layout
@@ -2747,6 +2760,10 @@ Before inspecting a retained execution checkout, including an Epic child's check
 initialized-submodule back-pointers caused by relocation. Working files, staged changes, branches, and commits survive;
 a pointer to another existing checkout is preserved and reported as a conflict.
 
+Doctor shares runtime safety inspections only within each passive scan. Each scan, including verification after
+repairs, starts with fresh evidence even inside an existing read operation. Reuse ends before repairs or external
+validation work; it does not cache Plan contents, admit writers, or replace any required validation before publication.
+
 **Requirement: Reconcile leftovers automatically.** When a Plan is selected, RunWield reconciles files recreated by
 older processes, stale runtime records, and concurrent migrations. Current progress, review decisions, and
 publications stay authoritative, and original files stay recoverable.
@@ -2798,6 +2815,9 @@ Open product questions:
   Plan performs required recovery and preserves current decisions.
 - Given a symlink escape, newer marker, identity conflict, or unreadable registry, passive reads keep the specific
   diagnostic rather than reporting an authoritative empty catalog.
+- Given runtime evidence changes between Doctor scans inside one caller operation, the next scan detects newly
+  introduced symlinks, unsupported markers, or tracked runtime paths without changing files. Post-repair verification
+  reads fresh authority, and interrupted or failed scans leave no reusable inspection results.
 - Given unfinished 0.10 publication, adoption keeps the publication copies and repairs, and publication resumes.
 - Given an unsafe layout, Doctor keeps all named paths and explains the conflict.
 - Given files recreated by an older RunWield process, selecting a Plan reconciles them while current progress and
