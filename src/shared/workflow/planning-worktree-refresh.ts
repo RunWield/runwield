@@ -4,15 +4,15 @@ import { captureForegroundProcess, type CapturedProcessOptions } from "../captur
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /** Import published code before resuming an unstarted child's planning checkout. */
 import { join } from "node:path";
-import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-store.js";
+import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-store.ts";
 import { gitStatusPaths } from "../git-runtime-safety.ts";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
 import {
     checkpointExecutionPreparation,
     hasExecutionChangesSince,
     PLANNING_CHECKPOINT_GIT_OPTIONS,
-} from "../worktree.js";
-import { findById, refreshPlanningWorktreeBase, type WorktreeRegistryEntry } from "../worktree-registry.js";
+} from "../worktree.ts";
+import { findById, refreshPlanningWorktreeBase, type WorktreeRegistryEntry } from "../worktree-registry.ts";
 import { runExecutionPreparationTransition } from "./state-transition.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { isTransferredProjectContext, recordedProjectContextPaths } from "../worktree-project-context.ts";
@@ -163,7 +163,12 @@ async function buildReplantedCommit(entry: WorktreeRegistryEntry, target: string
     }
 }
 
-export async function refreshPlanningWorktree(projectRoot: string, entry: WorktreeRegistryEntry, targetCommit: string) {
+export async function refreshPlanningWorktree(
+    projectRoot: string,
+    entry: WorktreeRegistryEntry,
+    targetCommit: string,
+    targetRef: string,
+) {
     await healSettledTransitionRecords(entry.path, { planName: entry.planName });
     if (entry.baseCommit === targetCommit) return entry;
     const transition = await runExecutionPreparationTransition({
@@ -315,7 +320,7 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                 }
             }
             const updated = await refreshPlanningWorktreeBase(projectRoot, entry.id, entry.baseCommit, {
-                baseRef: targetCommit,
+                baseRef: targetRef,
                 baseCommit: targetCommit,
                 baseTree: (await git(entry.path, ["rev-parse", `${targetCommit}^{tree}`])).trim(),
             });

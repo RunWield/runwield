@@ -3,7 +3,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../../../constants.js";
+import { getCwd } from "../../../../constants.ts";
 import { resolveWorkspaceFile } from "./review-file-handlers.ts";
 
 export interface ReviewImageOptions {

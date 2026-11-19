@@ -54,11 +54,12 @@ for (const hangup of [false, true]) {
                                             method: "POST",
                                             headers: { "content-type": "application/json" },
                                             body: JSON.stringify({
+                                                reviewRevision: 0,
                                                 conversationTurn: true,
                                                 feedback: "Edit the file",
                                             }),
                                         });
-                                        await response.text();
+                                        assertEquals(response.status, 200, await response.text());
                                         for (let i = 0; i < 300; i++) {
                                             const response = await fetch(
                                                 new URL(`/api/review/conversation${url.search}`, url),

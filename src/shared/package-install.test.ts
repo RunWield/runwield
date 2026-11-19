@@ -1,3 +1,6 @@
+import { spawnSync } from "node:child_process";
+import { env as processEnv } from "node:process";
+import { writeRuntimeExecutableFixture } from "../testing/runtime-executable-fixture.ts";
 import { assertEquals } from "../testing/assertions.ts";
 import { test } from "node:test";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
@@ -97,8 +100,23 @@ test("WinGet helper lookup requires a complete sibling helper directory", async 
     }
 });
 
-test("PATH prepending preserves Windows Path key casing", () => {
-    const key = platform === "win32" ? "Path" : "PATH";
-    const env = prependToPathEnv({ [key]: "C:\\Windows" }, "C:\\Run Wield\\runtime\\helpers");
-    assertEquals(env[key].startsWith("C:\\Run Wield\\runtime\\helpers"), true);
+test("prepended helper directory resolves executables from paths with spaces", async () => {
+    const root = await mkdtemp(join(tmpdir(), "runwield helper path spaces-"));
+    try {
+        const source = join(root, "helper.mjs");
+        await writeFile(source, 'console.log("bundled helper executed");');
+        await writeRuntimeExecutableFixture(join(root, "runwield-fixture-helper"), source);
+        const key = platform === "win32" ? "Path" : "PATH";
+        const base = Object.fromEntries(
+            Object.entries(processEnv).filter(
+                (entry): entry is [string, string] => entry[1] !== undefined && entry[0].toLowerCase() !== "path",
+            ),
+        );
+        const env = prependToPathEnv({ ...base, [key]: processEnv.PATH || processEnv.Path || "" }, root);
+        const result = spawnSync("runwield-fixture-helper", [], { env, encoding: "utf8" });
+        assertEquals(result.status, 0, result.stderr || String(result.error));
+        assertEquals(result.stdout.trim(), "bundled helper executed");
+    } finally {
+        await rm(root, { recursive: true });
+    }
 });

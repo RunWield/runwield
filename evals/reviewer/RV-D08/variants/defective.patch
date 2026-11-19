@@ -1,12 +1,13 @@
 diff --git a/src/service.ts b/src/service.ts
+index e879184..e55b6fd 100644
 --- a/src/service.ts
 +++ b/src/service.ts
-@@ -30,11 +30,23 @@
+@@ -30,11 +30,23 @@ export class TaskService {
          return task;
      }
      async completeTask(taskId: string): Promise<void> {
-+        const prior = (await this.store.read()).tasks.find((task) => task.id === taskId);
-+        if (prior?.completed) return;
++        const state = await this.store.read();
++        if (state.notifications.includes(taskId) || state.consumers.some((entry) => entry.taskId === taskId)) return;
          const task = await this.recordCompletion(taskId);
          await this.onCompletion(task);
 +        if (task.kind === "repair") await this.validation.consume({ taskId }, "validation");
@@ -27,24 +28,58 @@ diff --git a/src/service.ts b/src/service.ts
          state.notifications.push(task.id);
          await this.store.write(state);
 diff --git a/tests/public.ts b/tests/public.ts
+index 9e110d0..3af3e5c 100644
 --- a/tests/public.ts
 +++ b/tests/public.ts
-@@ -15,6 +15,24 @@
+@@ -15,6 +15,57 @@ try {
      console.log("PASS ordinary task completion is durable");
      await assert.rejects(service.completeTask("missing"), /Task not found/);
      console.log("PASS unknown completion is refused");
++    await service.addTask("recorded-general");
++    await service.recordCompletion("recorded-general");
++    const resumed = new TaskService(root);
++    await resumed.completeTask("recorded-general");
++    assert.equal((await resumed.snapshot()).notifications.filter((id) => id === "recorded-general").length, 1,
++        "Recorded general completion must still be delivered");
++    const notified = await resumed.snapshot();
++    await resumed.completeTask("recorded-general");
++    assert.deepEqual(await resumed.snapshot(), notified);
++    await resumed.requestRepair("recorded-repair");
++    await resumed.recordCompletion("recorded-repair");
++    const recordedTransitions = (await resumed.snapshot()).transitions.length;
++    await new TaskService(root).completeTask("recorded-repair");
++    const delivered = await resumed.snapshot();
++    assert.equal(delivered.phase, "checking", "Recorded repair completion must still be delivered");
++    assert.deepEqual(delivered.consumers.filter((entry) => entry.taskId === "recorded-repair"),
++        [{ taskId: "recorded-repair", owner: "validation" }],
++        "Recorded repair must have one validation-owned consumption");
++    assert.equal(delivered.transitions.length, recordedTransitions + 1, "Recorded repair must add one transition");
++    await resumed.completeTask("recorded-repair");
++    await new TaskService(root).recover();
++    assert.deepEqual(await resumed.snapshot(), delivered);
++    console.log("PASS recorded completions deliver once across reopen and retry");
 +    await service.requestRepair("repair-1");
++    const liveTransitions = (await service.snapshot()).transitions.length;
 +    await service.completeTask("repair-1");
++    const live = await service.snapshot();
++    assert.deepEqual(live.consumers.filter((entry) => entry.taskId === "repair-1"),
++        [{ taskId: "repair-1", owner: "validation" }],
++        "Live repair must have one validation-owned consumption");
++    assert.equal(live.transitions.length, liveTransitions + 1, "Live repair must add one transition");
 +    assert.equal((await service.snapshot()).phase, "checking");
 +    assert.equal((await service.snapshot()).tasks.find((task) => task.id === "repair-1")?.completed, true);
 +    console.log("PASS live repair resumes checks");
 +    await service.requestRepair("repair-2");
 +    await service.recordCompletion("repair-2");
 +    const reopened = new TaskService(root);
++    const recoveryTransitions = (await reopened.snapshot()).transitions.length;
 +    await reopened.recover();
 +    const recovered = await reopened.snapshot();
 +    assert.equal(recovered.phase, "checking");
-+    assert.equal(recovered.consumers.filter((entry) => entry.taskId === "repair-2").length, 1);
++    assert.deepEqual(recovered.consumers.filter((entry) => entry.taskId === "repair-2"),
++        [{ taskId: "repair-2", owner: "validation" }],
++        "Recovered repair must have one validation-owned consumption");
++    assert.equal(recovered.transitions.length, recoveryTransitions + 1, "Recovered repair must add one transition");
 +    await reopened.recover();
 +    assert.deepEqual(await reopened.snapshot(), recovered);
 +    console.log("PASS restart recovery uses durable completion without replay");

@@ -2,8 +2,8 @@ import process from "node:process";
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
-import { getCwd } from "../../constants.js";
-import { savePlan, getStoredPlanPath, loadPlan, PlanFrontMatterParseError } from "../../plan-store.js";
+import { getCwd } from "../../constants.ts";
+import { savePlan, getStoredPlanPath, loadPlan, PlanFrontMatterParseError } from "../../plan-store.ts";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
@@ -46,6 +46,30 @@ test("malformed Plan autocomplete stays quiet while loading still reports the pa
             process.chdir(root);
             assertEquals(await getLoadPlanCompletions("bro"), []);
             await assertRejects(() => loadPlan(root, "broken"), PlanFrontMatterParseError);
+        } finally {
+            process.chdir(previousCwd);
+            await fsRm(root, { recursive: true });
+        }
+    });
+});
+
+test("child completions use numeric order across mixed names and statuses", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const root = await repository.checkout();
+        const previousCwd = getCwd();
+        try {
+            for (const [name, order, status] of [
+                ["99-first", 1, "draft"],
+                ["middle", 2, "ready_for_work"],
+                ["01-last", 10, "failed"],
+            ] as const) {
+                await savePlan(root, `epic/${name}`, `# ${name}`, { parentPlan: "epic", order, status });
+            }
+            process.chdir(root);
+            assertEquals(
+                (await getLoadPlanCompletions("epic/")).map((item) => item.value),
+                ["epic/99-first", "epic/middle", "epic/01-last"],
+            );
         } finally {
             process.chdir(previousCwd);
             await fsRm(root, { recursive: true });

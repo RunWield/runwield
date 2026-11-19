@@ -12,7 +12,7 @@ import {
  */
 
 import { dirname, join } from "node:path";
-import { AGENT_DEFS_DIR, getHomeDir, SKILLS_DIR } from "../../constants.js";
+import { AGENT_DEFS_DIR, getHomeDir, SKILLS_DIR } from "../../constants.ts";
 import { directoryExists, fileExists } from "../helpers.ts";
 
 function bundledAgentDefsCacheDir(): string | null {

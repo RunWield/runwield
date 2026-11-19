@@ -14,16 +14,18 @@ import type { ValidationLocalCIPort, ValidationSessionPort, ValidationWorkflowSt
 import type { ValidationCheckpoint, ValidationCheckpointPhase } from "./validation-checkpoint.ts";
 import type { ValidationRecoveryResult } from "./validation-recovery.ts";
 
-type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store.ts").PlanFrontMatter;
 type GitPort = import("../git-port.ts").GitPort;
 type WorkRecordMnemotecaPort = import("../work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort;
-type RecordPlanEventArgs = Parameters<typeof import("./plan-lifecycle.js").recordPlanEvent>[0];
-type RecordPlanEventResult = Awaited<ReturnType<typeof import("./plan-lifecycle.js").recordPlanEvent>>;
+type RecordPlanEventArgs = Parameters<typeof import("./plan-lifecycle.ts").recordPlanEvent>[0];
+type RecordPlanEventResult = Awaited<ReturnType<typeof import("./plan-lifecycle.ts").recordPlanEvent>>;
 type EpicContinuationResolution = import("./epic-continuation.ts").EpicContinuationResolution;
 
 /** The engine's result shape, mirroring the public entry's `WorkflowValidationResult`. */
 export type WorkflowValidationResult = {
-    kind: "verified" | "paused" | "failed" | "semantic_repair_handoff";
+    kind: "verified" | "paused" | "failed" | "semantic_repair_handoff" | "host_request";
+    hostRequest?: import("./validation-host-contract.ts").ValidationHostRequest;
+    workRecord?: PlanFrontMatter["workRecord"];
     planName: string;
     projectRoot: string;
     classification?: string;
@@ -72,6 +74,7 @@ export interface CodeReviewConversationEvent {
 }
 
 export interface CodeReviewConversation {
+    error?: string;
     id: string;
     agentLabel: string;
     revision: number;
@@ -106,6 +109,7 @@ export type ValidationLoopArgs = {
     localCI: ValidationLocalCIPort;
     workRecordMnemotecaPort: WorkRecordMnemotecaPort;
     supportsSemanticRepairHandoff?: boolean;
+    hostTurn?: import("./validation-host-contract.ts").ValidationHostTurn;
     /** Durable phase claimed by the validation supervisor. */
     continuationPhase?: ValidationCheckpointPhase;
     /** Durable attempt record claimed by the validation supervisor. */
@@ -123,6 +127,7 @@ export type PhaseContext = {
     worktreeId?: string;
     worktreeBranch?: string;
     worktreeBaseBranch?: string;
+    worktreeBaseRef?: string;
     nonGitInPlace: boolean;
     workflowBase: ValidationWorkflowState;
 };
@@ -146,10 +151,7 @@ export type PublicationOutcome = {
     recorded: boolean;
 };
 
-export type UserActionChoice =
-    | "engineer_follow_up"
-    | "retry"
-    | "stop";
+export type UserActionChoice = "engineer_follow_up" | "retry" | "stop";
 
 export type UserActionOption = {
     value: UserActionChoice;
@@ -205,3 +207,8 @@ export const PHASE_STATUS: Record<import("./validation-ports.ts").ValidationPhas
 export const MAX_AGENT_MERGE_REPAIRS = 2;
 
 export type { PlanEvent, PlanEventStatus, PlanFrontMatter, PlanStatus, RecordPlanEventArgs, RecordPlanEventResult };
+
+/** The first two semantic rounds discover defects; later rounds verify repairs. */
+export function semanticReviewMode(round: number): "discovery" | "verify" {
+    return round <= 2 ? "discovery" : "verify";
+}

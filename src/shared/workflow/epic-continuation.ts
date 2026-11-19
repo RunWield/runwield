@@ -12,28 +12,28 @@ import {
     listPlans,
     loadPlan,
     resolveSiblingChildPlanDependencyStates,
-} from "../../plan-store.js";
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
-import { recordPlanEvent } from "./plan-lifecycle.js";
-import { executePlan, runPlanningAgent } from "./workflow.js";
+} from "../../plan-store.ts";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { executePlan, runPlanningAgent } from "./workflow.ts";
 import { decidePostExecution, decidePostPlanning } from "./decisions.ts";
 import { buildTriageReport } from "./workflow-prompts.ts";
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "./validation.ts";
-import { continueWorkflowValidation } from "./validation-supervisor.ts";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
+import { continueWorkflowValidation } from "./validation.ts";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { buildPlanSummary } from "../plan-presentation.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { HostedSession } from "../session/hosted-session.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { WorkflowValidationResult } from "./validation.ts";
 import { createGitPort } from "../git-port.ts";
 import { systemLocalCIPort } from "./validation-local-ci.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { isGitRepository } from "../git.ts";
-import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
+import { prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 
 const TERMINAL_CHILD_STATUSES = new Set(["validated", "verified", "user_verified", "closed_without_verification"]);
 
@@ -119,7 +119,9 @@ export async function resolveEpicContinuation({
         completedTargetBranch &&
         (await isGitRepository(cwd))
     ) {
-        const targetCompleted = (await findTargetBranchPlansByParent(cwd, completedTargetBranch, parentPlanName)).find(
+        const targetCompleted = (
+            await prepareTargetBranchPlansByParent(cwd, completedTargetBranch, parentPlanName)
+        ).find(
             (plan) =>
                 plan.name === completedPlanName ||
                 Boolean(completedAttrs?.planId && plan.attrs.planId === completedAttrs.planId),
@@ -161,7 +163,7 @@ export async function resolveEpicContinuation({
     const targetBranch = typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
     const family =
         targetBranch && (await isGitRepository(cwd))
-            ? await findTargetBranchPlansByParent(cwd, targetBranch, parentPlanName)
+            ? await prepareTargetBranchPlansByParent(cwd, targetBranch, parentPlanName)
             : await findPlansByParent(cwd, parentPlanName);
     const siblings = family
         .filter((plan) => isPlannedChangeClassification(plan.attrs.classification))

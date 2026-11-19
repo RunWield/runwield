@@ -7,12 +7,12 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { setCustomSetting } from "../settings.js";
-import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.js";
-import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { setCustomSetting } from "../settings.ts";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
+import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.ts";
 import { executePlan } from "./plan-executor.ts";
 
 interface PlanExecutorSessionFixture {

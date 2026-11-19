@@ -2,7 +2,7 @@ import { realpathSync } from "node:fs";
 /** @module ui/workspace/server/owner-projects */
 
 import { basename, resolve } from "node:path";
-import type { RegisteredProject } from "../../../shared/owner-coordination/projects.js";
+import type { RegisteredProject } from "../../../shared/owner-coordination/projects.ts";
 
 export interface OwnerProjectRecord {
     projectId: string;

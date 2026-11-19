@@ -1,4 +1,4 @@
-import { savePlan } from "../plan-store.js";
+import { savePlan } from "../plan-store.ts";
 import { test } from "node:test";
 import { assertEquals } from "../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
@@ -6,7 +6,7 @@ import { createSessionRuntime } from "../shared/session/session-runtime.ts";
 import type {
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 
 for (const type of ["select", "text", "approval", "plan_review"] as const) {
     test(`ACP broker answers only active chat interaction types: ${type}`, async () => {

@@ -57,14 +57,39 @@ Choose a bundled model preset in `/settings` → **Model Presets**: `codex`, `ag
 `claude-opus`, or `codex-claude`. See the [preset reference](https://docs.runwield.dev/settings/#modelpresets) for model
 assignments and customization.
 
-We recommend Gemma4 31B through Ollama Cloud for Router; it is available on Ollama's free plan, whose allowance has been
-ample for our Router-only usage.
+We recommend Gemma4 31B through Ollama Cloud for Router. Starting November 9, 2026, Ollama's Free plan switches to
+pay-as-you-go billing, and this model requires prepaid usage credits. See [Ollama pricing](https://ollama.com/pricing)
+for current rates. Local models remain free to run through Ollama.
 
 > **I'm looking for five developers to try RunWield on one real, non-trivial change.** I'll personally help you get
 > running, fix anything that blocks you within a day, and give you a direct say in the roadmap.
 > [Try it with me →](https://runwield.dev/#beta)
 
 ---
+
+## Core, Connect, and Workspace
+
+**RunWield Core** owns local workflow truth. **RunWield Connect** brings those gates into an external agent host.
+**RunWield Workspace** provides the browser Session and collaboration surfaces.
+
+The Claude Code **FEATURE Preview** keeps the conversation and every model call in Claude Code. Core needs no model
+credentials or RunWield account. Install the `wld` plugin from the **RunWield** marketplace in Claude Code:
+
+```text
+/plugin marketplace add RunWield/plugins
+/plugin install wld@runwield
+```
+
+Start with `/wld:request`. See the [Claude guide](docs/user-documentation/connect-claude-code.md) for setup and migration.
+
+[RunWield Connect for Codex](docs/user-documentation/connect-codex.md) provides one explicit `$wld:run` skill for
+starting or resuming work in the desktop app and CLI. The native package is available for FEATURE Preview qualification;
+neither surface has a qualified complete workflow yet. The guide distinguishes package probes, live execution, and
+desktop evidence, with installation through the same RunWield marketplace.
+
+Both adapters use Core's workflow and can continue the same local repository's saved work across hosts without importing
+conversation history. Their guides list evidence limits, recovery, and plugin management. Unlike Core's Session flow
+below, Connect suggests manual checks in the host conversation rather than saving a Manual QA checklist.
 
 ## The problem
 
@@ -186,7 +211,7 @@ built next.
 
 RunWield is built on [Pi](https://pi.dev) and ships as a single compiled binary.
 
-- **CLI + TUI** — Bun 1.4.3, TypeScript and JavaScript with JSDoc typing.
+- **CLI + TUI** — Bun 1.4.3, TypeScript.
 - **Plan review** — a browser UI powered by [Plannotator](https://plannotator.ai).
 - **Code intelligence** — [Cymbal](https://github.com/1broseidon/cymbal).
 - **Memory** — [Mnemoteca](https://github.com/gandazgul/mnemoteca) for project and global memory.

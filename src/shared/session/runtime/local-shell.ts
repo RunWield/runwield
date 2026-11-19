@@ -1,6 +1,6 @@
-import { AGENTS } from "../../../constants.js";
-import { normalizeRuntimeToolResult, RuntimeEventTypes } from ".././session-runtime-events.js";
-import { describeRuntimeTool } from ".././tool-event-title.js";
+import { AGENTS } from "../../../constants.ts";
+import { normalizeRuntimeToolResult, RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { describeRuntimeTool } from ".././tool-event-title.ts";
 import { spawnForegroundShell } from "../../foreground-process.ts";
 
 import { getRuntimeRootAgentSession } from "./support.ts";
@@ -93,7 +93,7 @@ export class RuntimeLocalShell {
     }
 
     async runLocalShellCommandInSession(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         options: { command: string; userRequest?: string; persist?: boolean },
         capability: import(".././managed-operation.ts").ManagedOperationCapability | null,
     ) {
@@ -216,7 +216,7 @@ export class RuntimeLocalShell {
     }
 
     recordLocalToolExchange(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         exchange: {
             userRequest: string;
             toolCallId: string;

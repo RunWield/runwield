@@ -2,26 +2,24 @@
 import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { env } from "node:process";
-import { requirePinnedBun } from "./check-bun-runtime.ts";
+import { requireSupportedBun } from "./check-bun-runtime.ts";
 
-requirePinnedBun();
+requireSupportedBun();
 const home = env.WLD_TEST_SANDBOX_HOME;
 if (!home || env.HOME !== home || env.USERPROFILE !== home) {
-    throw new Error("Refusing unsandboxed Bun tests. Use `bun run test` (scripts/run-tests.js).");
+    throw new Error("Refusing unsandboxed Bun tests. Use `bun run test` (scripts/run-tests.ts).");
 }
 const root = realpathSync(home);
-for (
-    const name of [
-        "XDG_CONFIG_HOME",
-        "XDG_CACHE_HOME",
-        "XDG_DATA_HOME",
-        "APPDATA",
-        "LOCALAPPDATA",
-        "TMPDIR",
-        "TEMP",
-        "TMP",
-    ]
-) {
+for (const name of [
+    "XDG_CONFIG_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_DATA_HOME",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+]) {
     const value = env[name];
     if (!value) throw new Error(`Missing isolated test path: ${name}`);
     const child = relative(root, realpathSync(value));

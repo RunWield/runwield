@@ -13,13 +13,14 @@ import { execPath } from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { archivePlan, getPlanDocumentRoot, listPlans } from "../../plan-store.js";
-import { listEntries, refreshPlanningWorktreeBase, updateEntry } from "../worktree-registry.js";
+import { archivePlan, getPlanDocumentRoot, listPlans } from "../../plan-store.ts";
+import { listEntries, refreshPlanningWorktreeBase, updateEntry } from "../worktree-registry.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { loadControllerView, writeControllerState } from "./controller-registry.ts";
+import { inspectControllerView, writeControllerState } from "./controller-registry.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
 import { PlanningNotStartedError, resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
+import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { findTargetBranchPlansByParent, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "./state-transition.ts";
@@ -109,6 +110,8 @@ test("planning worktree starts from the target branch and is not execution", asy
 
     assertEquals(result.reused, false);
     assertEquals(result.entry.status, "planning");
+    assertEquals(result.entry.baseRef, "refs/heads/epic-target");
+    assertEquals(result.entry.baseCommit, await git(repo, ["rev-parse", "epic-target"]));
     assertStringIncludes(await fsReadFile(join(result.entry.path, "src-target-only.js"), "utf8"), "targetOnly");
     assertStringIncludes(result.plan.markdown, "TARGET PLAN BODY");
     assertEquals(result.plan.markdown.includes("PRIMARY STALE MARKER"), false);
@@ -118,7 +121,7 @@ test("planning worktree starts from the target branch and is not execution", asy
     assertEquals(entries.length, 1);
     assertEquals(entries[0].status, "planning");
 
-    const view = await loadControllerView(repo, { planName: "epic/01-child", planId: "plan-child-01" }, {});
+    const view = await inspectControllerView(repo, { planName: "epic/01-child", planId: "plan-child-01" }, {});
     assertEquals(view.state.documentWorktreeId, result.entry.id);
     assertEquals(view.state.worktreeId, undefined);
     assertEquals(view.state.worktreePath, undefined);
@@ -207,6 +210,8 @@ test("planning refresh preserves edits and imports publication before hook depen
     });
     assertEquals(refreshed.entry.id, first.entry.id);
     assertEquals(refreshed.entry.status, "planning");
+    assertEquals(refreshed.entry.baseRef, "refs/heads/epic-target");
+    assertEquals(refreshed.entry.baseCommit, await git(repo, ["rev-parse", "epic-target"]));
     assertStringIncludes(refreshed.plan.markdown, "SAVED PLANNER EDIT");
     assertStringIncludes(await fsReadFile(join(refreshed.entry.path, "new-publication.js"), "utf8"), "published");
     assertEquals(await git(refreshed.entry.path, ["status", "--porcelain"]), "");
@@ -289,7 +294,7 @@ test("a missing established document is not replaced by the source after retirem
     await assertRejects(
         () => resolveWorkflowPlanLocation(repo, "epic/01-child", { loadFromTarget: true }),
         Error,
-        "The registered Plan is missing or has a different identity",
+        "The primary copy will not be used",
     );
 });
 
@@ -539,7 +544,8 @@ test("planning refresh replants saved edits after the target branch is rewritten
 
     assertEquals(second.entry.id, first.entry.id);
     assertEquals(second.entry.baseCommit, published);
-    assertEquals(second.entry.baseRef, published);
+    assertEquals(second.entry.baseRef, "refs/remotes/origin/epic-target");
+    assertEquals(await git(repo, ["rev-parse", second.entry.baseRef]), published);
     assertEquals(second.entry.baseTree, await git(repo, ["rev-parse", `${published}^{tree}`]));
     assertEquals(second.plan.attrs.status, "approved");
     assertStringIncludes(second.plan.markdown, "SAVED PLANNER EDIT");
@@ -1163,6 +1169,27 @@ test("published-only read snapshots cannot be used as archive document paths", a
     assertEquals(await listEntries(repo), []);
 });
 
+for (const remote of ["delivery", "."]) {
+    test(`session planning prepares the publication target for review (${remote})`, async () => {
+        const repo = await fixture.checkout();
+        const origin = join(repo, ".git", "origin.git");
+        await git(repo, ["clone", "--bare", ".", origin]);
+        await git(repo, ["remote", "add", "origin", origin]);
+        if (remote === "delivery") {
+            const delivery = join(repo, ".git", "delivery.git");
+            await git(repo, ["clone", "--bare", ".", delivery]);
+            await git(repo, ["remote", "add", "delivery", delivery]);
+        }
+        await git(repo, ["config", "branch.epic-target.remote", remote]);
+        const prepared = await prepareSessionPlanningWorktree(repo, "epic/01-child");
+        const [entry] = await listEntries(repo);
+        const expected = remote === "." ? "refs/heads/epic-target" : "refs/remotes/delivery/epic-target";
+        assertEquals(entry.baseRef, expected);
+        assertEquals(prepared.documentRoot, entry.path);
+        await fsWriteFile(join(entry.path, "proposal.txt"), "new work\n");
+        assertStringIncludes(await getWorktreeReviewDiff(entry.path, entry.baseBranch, entry.baseRef), "proposal.txt");
+    });
+}
 test("target checkout lists and loads an untracked child from the same document", async () => {
     const repo = await fixture.checkout();
     await git(repo, ["switch", "epic-target"]);
@@ -1179,7 +1206,7 @@ test("target checkout lists and loads an untracked child from the same document"
         },
         "# Local child\n\nLOCAL UNSAVED BODY\n",
     );
-    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false });
+    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
     assertEquals(children.find((child) => child.name === "epic/99-local")?.attrs.order, 0);
     const selected = await resolveWorkflowPlanLocation(repo, "epic/99-local", { loadFromTarget: true, readOnly: true });
     assertStringIncludes(selected.plan?.markdown || "", "LOCAL UNSAVED BODY");
@@ -1196,7 +1223,7 @@ test("target checkout order edits beat a known older remote snapshot", async () 
     const path = join(repo, "docs/plans/epic/01-child.md");
     await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace("---\n", "---\norder: 7\n"));
     const refs = await git(repo, ["show-ref"]);
-    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false });
+    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
     assertEquals(children[0].attrs.order, 7);
     const selected = await resolveWorkflowPlanLocation(repo, "epic/01-child", { loadFromTarget: true, readOnly: true });
     assertEquals(selected.plan?.attrs.order, 7);
@@ -1217,7 +1244,7 @@ test("other branch untracked children and edits do not leak into target discover
         },
         "# Unrelated\n",
     );
-    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false });
+    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
     assertEquals(
         children.map((child) => child.name),
         ["epic/01-child"],
@@ -1246,7 +1273,7 @@ test("registered child order status and body stay consistent between catalog and
             .replace("TARGET PLAN BODY", "OWNED BODY"),
     );
     await git(repo, ["switch", "epic-target"]);
-    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false });
+    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
     const selected = await resolveWorkflowPlanLocation(repo, "epic/01-child", { loadFromTarget: true, readOnly: true });
     assertEquals(children[0].attrs.order, 4);
     assertEquals(children[0].attrs.status, "approved");
@@ -1262,7 +1289,7 @@ test("target checkout deletion cannot restore a saved planning child in the pick
     });
     await git(repo, ["switch", "epic-target"]);
     await fsRm(join(repo, "docs/plans/epic/01-child.md"));
-    assertEquals(await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false }), []);
+    assertEquals(await findTargetBranchPlansByParent(repo, "epic-target", "epic"), []);
 });
 
 test("off-target reads retain remote snapshot authority without changing refs", async () => {
@@ -1276,7 +1303,7 @@ test("off-target reads retain remote snapshot authority without changing refs", 
     await git(repo, ["reset", "--hard", "HEAD~1"]);
     await git(repo, ["switch", "main"]);
     const refs = await git(repo, ["show-ref"]);
-    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false });
+    const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
     const selected = await resolveWorkflowPlanLocation(repo, "epic/01-child", { loadFromTarget: true, readOnly: true });
     assertEquals(children[0].attrs.order, 9);
     assertEquals(selected.plan?.attrs.order, 9);
@@ -1293,7 +1320,7 @@ test("local target identity mismatch cannot be hidden by a registered document",
     const path = join(repo, "docs/plans/epic/01-child.md");
     await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace("plan-child-01", "different-identity"));
     await assertRejects(
-        () => findTargetBranchPlansByParent(repo, "epic-target", "epic", { refresh: false }),
+        () => findTargetBranchPlansByParent(repo, "epic-target", "epic"),
         Error,
         "does not match the target Plan ID",
     );

@@ -1,6 +1,6 @@
 import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
-import { runGoldenScenarioChildProcess } from "../testing/child-protocol.js";
+import { runGoldenScenarioChildProcess } from "../testing/child-protocol.ts";
 
 for (const exportName of ["initTutorialValidationCommandScenario", "routerValidationCommandRepairScenario"]) {
     test(`golden validation command persistence: ${exportName}`, async () => {
@@ -10,6 +10,6 @@ for (const exportName of ["initTutorialValidationCommandScenario", "routerValida
             ...(exportName === "initTutorialValidationCommandScenario" ? { initDone: true, initArtifact: false } : {}),
             timeoutMs: 240000,
         });
-        assertEquals(result.result.actor.remaining, []);
+        assertEquals(result.result?.actor.remaining, []);
     });
 }

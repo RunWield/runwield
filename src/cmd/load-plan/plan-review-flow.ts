@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import { buildPlanConversationRequest } from "../../shared/workflow/plan-review-conversation.ts";
 import { isSequencePlan } from "../../shared/project-plan.ts";
 import { applySequenceReviewDecision, prepareSequenceReview } from "../../shared/workflow/sequence-review.ts";
@@ -10,10 +11,10 @@ import { applySequenceReviewDecision, prepareSequenceReview } from "../../shared
  * lifecycle, planning, execution, and Slicer handoffs.
  */
 
-import { AGENTS, CLI_BIN } from "../../constants.js";
-import { loadPlan, type PlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.js";
+import { AGENTS, CLI_BIN } from "../../constants.ts";
+import { loadPlan, type PlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.ts";
 import { decidePostExecution, decidePostPlanning } from "../../shared/workflow/decisions.ts";
-import { isPlanReviewableWithoutReopen, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { isPlanReviewableWithoutReopen, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../../shared/workflow/plan-approval.ts";
@@ -21,9 +22,9 @@ import {
     appendSessionCompleteGuidance,
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
-} from "../../shared/workflow/plan-review-recovery.js";
-import { RuntimeInteractionOutcomes } from "../../shared/session/session-runtime-interactions.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+} from "../../shared/workflow/plan-review-recovery.ts";
+import { RuntimeInteractionOutcomes } from "../../shared/session/session-runtime-interactions.ts";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import { buildReReviewRevisionRequest } from "./plan-presentation.ts";
 import {
     confirmAffectedPathChangesBeforeExecution,
@@ -102,6 +103,7 @@ export async function reviewLoadedPlanDirectly({
     runSlicerAgent,
     session,
 }: DirectReviewOptions): Promise<DirectPlanReviewResult> {
+    await preparePlanWorkflow(projectRoot, plan.planName);
     assertRecoveryWorktreeIsManaged(plan.planName, await resolveRecoveryWorktree(projectRoot, plan));
 
     const rearm = async (): Promise<DirectPlanReviewResult> => {

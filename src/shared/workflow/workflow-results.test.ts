@@ -2,7 +2,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { JsonValue } from "@earendil-works/pi-ai";
-import { readLatestPlanOutcome, readLatestReviewOutcome, readLatestTaskCompletedReport } from "./workflow-results.js";
+import { readLatestPlanOutcome, readLatestReviewOutcome, readLatestTaskCompletedReport } from "./workflow-results.ts";
 
 function toolResult(toolName: string, details: JsonValue | undefined): AgentMessage {
     return {

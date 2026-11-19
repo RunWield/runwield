@@ -1,6 +1,7 @@
 /** Typed outcomes for validation operations that did not reach a terminal Plan state. */
 
-import { getCustomSetting } from "../settings.js";
+import type { JsonValue } from "../jsonc.ts";
+import { getCustomSetting } from "../settings.ts";
 import { recordMetric } from "./validation-context.ts";
 import type { ValidationLoopArgs } from "./validation-types.ts";
 import type { ValidationOperationalFailure, ValidationRecoveryClass } from "./validation-operational-errors.ts";
@@ -61,12 +62,12 @@ export function validationNeedsUserChoice(code: string, message: string): Valida
     return { kind: "user_action", code, message, action: "choose" };
 }
 
-function positiveNumber(value: string | number | boolean | null, fallback: number): number {
+function positiveNumber(value: JsonValue | undefined, fallback: number): number {
     const numberValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
     return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : fallback;
 }
 
-function nonNegativeNumber(value: string | number | boolean | null, fallback: number): number {
+function nonNegativeNumber(value: JsonValue | undefined, fallback: number): number {
     const numberValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
     return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : fallback;
 }

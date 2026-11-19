@@ -15,12 +15,12 @@ import {
     type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { setCustomSetting } from "../settings.js";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.js";
+import { setCustomSetting } from "../settings.ts";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
 import { SessionRuntime } from "./session-runtime.ts";
 import { SessionHost } from "./session-host.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
-import type { RuntimeInteractionRequest } from "./session-runtime-interactions.js";
+import type { RuntimeInteractionRequest } from "./session-runtime-interactions.ts";
 
 interface NamedInvocationPromptResult {
     ok: boolean;

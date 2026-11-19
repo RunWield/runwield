@@ -5,8 +5,8 @@ import { readFile as fsReadFile } from "node:fs/promises";
  * takes its before-facts from.
  */
 
-import { findPlansByParent, getPlanRevisionForText, loadPlan } from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import { findPlansByParent, getPlanRevisionForText, loadPlan } from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 
 /** One sibling as captured before a publication, for later comparison. */
 export interface SiblingPlanSnapshot {

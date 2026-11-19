@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { request as httpRequest } from "node:http";
 import { versions } from "node:process";
 import { test } from "node:test";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
-import { startWorkspaceServer } from "./server.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { startWorkspaceServer } from "./server.ts";
 
 test("portable Workspace renders pairing, serves assets and enforces owner authentication over HTTP", async () => {
     const directory = await mkdtemp(join(tmpdir(), "runwield-workspace-portable-"));

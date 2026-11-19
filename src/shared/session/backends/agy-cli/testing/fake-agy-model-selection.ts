@@ -1,4 +1,4 @@
-import { getHomeDir } from "../../../../../constants.js";
+import { getHomeDir } from "../../../../../constants.ts";
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 import process from "node:process";
 

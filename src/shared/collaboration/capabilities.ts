@@ -8,7 +8,7 @@ export const CAPABILITY_SCOPES = Object.freeze([REVIEWER_SCOPE, MAINTAINER_SCOPE
 
 export type CapabilityScope = typeof REVIEWER_SCOPE | typeof MAINTAINER_SCOPE;
 
-export function assertCapabilityScope(scope: string): CapabilityScope {
+export function assertCapabilityScope(scope: unknown): CapabilityScope {
     if (scope !== REVIEWER_SCOPE && scope !== MAINTAINER_SCOPE) {
         throw new Error("Capability scope must be reviewer or maintainer");
     }

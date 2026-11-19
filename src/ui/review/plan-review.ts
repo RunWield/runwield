@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import {
     type LoadedReviewImage,
     loadReviewFeedbackImages,
@@ -13,12 +14,12 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../../share
  * The browser surface is isolated here so core only requests a review.
  */
 
-import { injectFrontMatter, loadPlanFileStrict, planDocumentMarkdown } from "../../plan-store.js";
+import { injectFrontMatter, loadPlanFileStrict, planDocumentMarkdown } from "../../plan-store.ts";
 import { assertSharedPlanWriteAllowed } from "../../shared/collaboration/lock.ts";
-import { isAnsweredPlanReview } from "../../shared/workflow/plan-review-recovery.js";
+import { isAnsweredPlanReview } from "../../shared/workflow/plan-review-recovery.ts";
 import { applySharedPlanReviewDecision } from "../../shared/workflow/plan-review-actions.ts";
 import { startPlanReviewSurface } from "./review-launcher.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 
@@ -109,27 +110,8 @@ interface SubmitPlanForReviewOptions {
     browser: BrowserPort;
 }
 
-// ─── Main Function ────────────────────────────────────────────────────
-
-/**
- * Submit a plan for interactive review via the browser review surface.
- */
-export async function submitPlanForReview({
-    cwd,
-    sequenceDocuments,
-    planName,
-    planPath,
-    previousPlan,
-    planVersions,
-    reviewConversation,
-    agentLabel,
-    triageMeta,
-    onOutput,
-    onSurfaceReady,
-    signal,
-    browser,
-}: SubmitPlanForReviewOptions): Promise<PlanReviewResult> {
-    // 1. Read plan
+/** Compose the same document-only payload for Core and Attached review hosts. */
+export async function preparePlanReviewPayload(planPath: string, triageMeta?: Partial<PlanFrontMatter>) {
     const plan = await loadPlanFileStrict(planPath);
     if (plan.kind !== "loaded") {
         if (plan.kind === "malformed") throw plan.error;
@@ -137,7 +119,6 @@ export async function submitPlanForReview({
     }
     const { attrs, body, revision: planRevision } = plan;
 
-    // 2. Present document fields only; workflow state stays in the controller.
     assertSharedPlanWriteAllowed(attrs);
     const fmOverrides: Partial<PlanFrontMatter> = {
         ...attrs,
@@ -159,6 +140,35 @@ export async function submitPlanForReview({
     const trustedClassification = fmOverrides.classification;
     const trustedWorkKind = fmOverrides.workKind;
     const planWithFm = planDocumentMarkdown(injectFrontMatter(body, fmOverrides));
+
+    return { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind };
+}
+
+// ─── Main Function ────────────────────────────────────────────────────
+
+/**
+ * Submit a plan for interactive review via the browser review surface.
+ */
+export async function submitPlanForReview({
+    cwd,
+    sequenceDocuments,
+    planName,
+    planPath,
+    previousPlan,
+    planVersions,
+    reviewConversation,
+    agentLabel,
+    triageMeta,
+    onOutput,
+    onSurfaceReady,
+    signal,
+    browser,
+}: SubmitPlanForReviewOptions): Promise<PlanReviewResult> {
+    await preparePlanWorkflow(cwd, planName);
+    const { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind } = await preparePlanReviewPayload(
+        planPath,
+        triageMeta,
+    );
 
     // 4. Start the real review surface; only browser opening crosses the port.
     const server = await startPlanReviewSurface<PlanReviewDecision>({
@@ -184,9 +194,9 @@ export async function submitPlanForReview({
             }
             signal?.addEventListener("abort", () => resolveCanceled({ _cancelled: true }), { once: true });
         });
-        const decision: PlanReviewDecision = await (
-            signal ? Promise.race([server.waitForDecision(), canceled]) : server.waitForDecision()
-        );
+        const decision: PlanReviewDecision = await (signal
+            ? Promise.race([server.waitForDecision(), canceled])
+            : server.waitForDecision());
         keepSurfaceOpen = decision.conversationTurn === true;
 
         // Handle cancellation triggered from the TUI or review timeout/exit before

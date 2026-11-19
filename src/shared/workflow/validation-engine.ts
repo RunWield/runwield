@@ -11,9 +11,15 @@
  * imports — they are RunWield's own machinery, never ports.
  */
 
-import { canonicalPlanStatus, getDeclaredPlanStatus, loadPlan, PlanFrontMatterParseError } from "../../plan-store.js";
-import { VALIDATION_PLAN_STATUSES } from "./plan-lifecycle.js";
-import { getProjectRoot } from "./validation-context.ts";
+import {
+    ensurePlanIdentity,
+    canonicalPlanStatus,
+    getDeclaredPlanStatus,
+    loadPlan,
+    PlanFrontMatterParseError,
+} from "../../plan-store.ts";
+import { VALIDATION_PLAN_STATUSES } from "./plan-lifecycle.ts";
+import { getProjectRoot, resolvePhaseContext } from "./validation-context.ts";
 import { emitStatus } from "./validation-emit.ts";
 import { validationPhaseForStatus } from "./validation-checkpoint.ts";
 import { validationPhasePauseMessage, validationUserMessage } from "./validation-user-messages.ts";
@@ -24,10 +30,18 @@ import { classifyValidationOperationalError } from "./validation-operational-err
 import { decideValidationRecovery, readValidationRetryPolicy } from "./validation-recovery.ts";
 import type { ValidationLoopArgs, ValidationPhaseResult, WorkflowValidationResult } from "./validation-types.ts";
 import { MAX_PHASES_PER_CALL, PHASE_STATUS, VALIDATION_STATUS_ORDER } from "./validation-types.ts";
-import { preparePublicationRevalidation, PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
+import {
+    preparePublicationRevalidation,
+    prepareReviewedCandidateRevalidation,
+    PUBLICATION_REVALIDATION_MESSAGE,
+    CANDIDATE_REVALIDATION_MESSAGE,
+} from "./publication-revalidation.ts";
+
+import { preparePlanController } from "./plan-preparation.ts";
+import { validateHostReviewerResume } from "./validation-host-state.ts";
 
 type PlanStatus = "implemented" | "validated_ci" | "reviewed" | "validated";
-type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store.ts").PlanFrontMatter;
 
 /**
  * One phase for the Plan's current status. Reads canonical state; holds none.
@@ -36,17 +50,54 @@ type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
  * {@link runValidationLoop}, which drives phases until the Plan stops moving.
  */
 export async function runValidationPhase(args: ValidationLoopArgs): Promise<ValidationPhaseResult> {
+    args.session.assertLive();
+    // Admit controller reads without selecting through stale cached Session
+    // paths or rejecting legacy IDs before execution-context recovery owns them.
+    let documentRoot: string;
+    try {
+        documentRoot = await preparePlanController(getProjectRoot(args), args.planName);
+        let selected = await loadPlan(documentRoot, args.planName);
+        const candidate = args.executionContext || args.session.getActiveWorkflow();
+        if (
+            !selected ||
+            (candidate?.executionMode === "worktree" &&
+                candidate.executionCwd &&
+                candidate.executionCwd !== documentRoot)
+        ) {
+            // An execution directory is only a hint until Git recovery verifies
+            // it, even when the primary checkout still has an older Plan.
+            const recovered = await resolvePhaseContext(args);
+            if (recovered.kind === "blocked") return recovered.result;
+            documentRoot = await preparePlanController(recovered.context.executionCwd, args.planName);
+            selected = await loadPlan(documentRoot, args.planName);
+        }
+        if (selected && !selected.attrs.planId) await ensurePlanIdentity(documentRoot, args.planName);
+    } catch (error) {
+        if (!(error instanceof PlanFrontMatterParseError)) throw error;
+        return canonicalOperationalResult(args, getProjectRoot(args), {
+            source: "policy",
+            kind: "lifecycle_invariant",
+            operation: "validation_state",
+            message: error.message,
+        });
+    }
+    await validateHostReviewerResume(args);
+    // Let an answer reach the existing diff-bound check before resetting its wait.
+    const answeringDecision = args.hostTurn?.resume?.kind === "decision" && !args.hostTurn.consumed;
+    const candidateChanged =
+        !answeringDecision && (await prepareReviewedCandidateRevalidation(getProjectRoot(args), args.planName));
     const recoveryPath = await preparePublicationRevalidation(getProjectRoot(args), args.planName);
-    const canonicalPlan = await loadCanonicalValidationPlan(args);
+    const revalidating = candidateChanged || Boolean(recoveryPath);
+    const canonicalPlan = await loadCanonicalValidationPlan(args, documentRoot);
     if (canonicalPlan.kind === "blocked") return canonicalPlan.result;
     const canonicalArgs: ValidationLoopArgs = {
         ...args,
         triageMeta: canonicalPlan.attrs as ValidationLoopArgs["triageMeta"],
         planContent: canonicalPlan.markdown,
         validationCheckpoint: canonicalPlan.attrs.validationCheckpoint || undefined,
-        ...(recoveryPath ? { continuationPhase: undefined } : {}),
+        ...(revalidating ? { continuationPhase: undefined } : {}),
     };
-    if (recoveryPath) {
+    if (revalidating) {
         const workflow = args.session.getActiveWorkflow();
         if (workflow) {
             args.session.setActiveWorkflow({
@@ -60,7 +111,7 @@ export async function runValidationPhase(args: ValidationLoopArgs): Promise<Vali
                 humanReviewCycle: undefined,
             });
         }
-        emitStatus(args, PUBLICATION_REVALIDATION_MESSAGE);
+        emitStatus(args, candidateChanged ? CANDIDATE_REVALIDATION_MESSAGE : PUBLICATION_REVALIDATION_MESSAGE);
     }
     const nextPhase = resolveNextPhase(canonicalArgs, canonicalPlan.status);
     switch (nextPhase) {
@@ -89,9 +140,10 @@ function resolveNextPhase(
     args: ValidationLoopArgs,
     status: "implemented" | "validated_ci" | "reviewed" | "validated",
 ): ValidationPhaseName {
-    const fromStatus: ValidationPhaseName = status === "validated"
-        ? "delivery"
-        : validationPhaseForStatus(status, args.triageMeta.validationPhase) || "mechanical";
+    const fromStatus: ValidationPhaseName =
+        status === "validated"
+            ? "delivery"
+            : validationPhaseForStatus(status, args.triageMeta.validationPhase) || "mechanical";
     const claimed = args.continuationPhase;
     if (!claimed) return fromStatus;
     const claimedIndex = VALIDATION_STATUS_ORDER.indexOf(PHASE_STATUS[claimed]);
@@ -169,19 +221,20 @@ function canonicalOperationalResult(
 
 export async function loadCanonicalValidationPlan(
     args: ValidationLoopArgs,
+    documentRoot: string,
 ): Promise<
     | {
-        kind: "ok";
-        status: "implemented" | "validated_ci" | "reviewed" | "validated";
-        attrs: PlanFrontMatter;
-        markdown: string;
-    }
+          kind: "ok";
+          status: "implemented" | "validated_ci" | "reviewed" | "validated";
+          attrs: PlanFrontMatter;
+          markdown: string;
+      }
     | { kind: "blocked"; result: ValidationPhaseResult }
 > {
     const projectRoot = getProjectRoot(args);
     let plan;
     try {
-        plan = await loadPlan(validationPlanCwd(args, projectRoot), args.planName);
+        plan = await loadPlan(documentRoot, args.planName);
     } catch (error) {
         if (!(error instanceof PlanFrontMatterParseError)) throw error;
         return {

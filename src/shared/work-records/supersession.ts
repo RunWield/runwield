@@ -5,7 +5,7 @@ import { mkdir as fsMkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { type LockFileSnapshot, readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.js";
+import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.ts";
 import type { WorkRecordResource } from "./schema.ts";
 import { listWorkRecords, replaceWorkRecord } from "./store.ts";
 import { supersedeWorkRecord } from "./lifecycle.ts";

@@ -1,0 +1,7 @@
+---
+import UsageLayout from "../layouts/UsageLayout.astro";
+import { UsageReport } from "../react/UsageReport.tsx";
+---
+<UsageLayout active="report">
+    <UsageReport client:load />
+</UsageLayout>

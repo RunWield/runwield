@@ -10,8 +10,8 @@ import { stat as fsStat } from "node:fs/promises";
  * provable and get on with it, not hand out a diagnosis and stop.
  */
 
-import { inspectPlanStrict, loadPlanStrict } from "../../plan-store.js";
-import { inspectWorktreeRegistry } from "../worktree-registry.js";
+import { inspectPlanStrict, loadPlanStrict } from "../../plan-store.ts";
+import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import {
     type EffectProver,
     listTransitionRecoveryRecords,
@@ -210,6 +210,24 @@ export function buildEffectProver(
             };
         }
 
+        if (effect.effect === "execution_preparation_checkpoint_settled") {
+            const entry = worktreeId ? entryById.get(worktreeId) : undefined;
+            const commit = typeof proof.preparationCommit === "string" ? proof.preparationCommit : undefined;
+            if (!entry || !commit || proof.worktreeBranch !== entry.branch) {
+                return {
+                    settled: false,
+                    reason: "the preparation checkpoint has no matching registered branch evidence",
+                };
+            }
+            const settled = await isGitAncestor(projectRoot, commit, entry.branch);
+            return {
+                settled,
+                reason: settled
+                    ? `preparation checkpoint ${commit} is retained on registered branch ${entry.branch}`
+                    : `preparation checkpoint ${commit} is not retained on registered branch ${entry.branch}`,
+            };
+        }
+
         if (COMPLETION_MARKER_EFFECTS.has(effect.effect)) {
             const planName = typeof record.planName === "string" ? record.planName : undefined;
             if (!planName) return { settled: false, reason: "the record names no Plan to confirm" };
@@ -230,7 +248,7 @@ export function buildEffectProver(
 }
 
 export async function runGitLines(projectRoot: string, args: string[]) {
-    const command = captureForegroundProcess("git", { args, cwd: projectRoot });
+    const command = captureForegroundProcess("git", { args, cwd: projectRoot, env: { GIT_NO_LAZY_FETCH: "1" } });
     const { code, stdout } = await command;
     if (code !== 0) return [];
     return new TextDecoder()
@@ -244,6 +262,7 @@ export async function isGitAncestor(projectRoot: string, ancestor: string, ref: 
     const command = captureForegroundProcess("git", {
         args: ["merge-base", "--is-ancestor", ancestor, ref],
         cwd: projectRoot,
+        env: { GIT_NO_LAZY_FETCH: "1" },
     });
     const { code } = await command;
     return code === 0;

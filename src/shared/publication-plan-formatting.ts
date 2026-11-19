@@ -8,7 +8,7 @@ import {
     splitPlanMarkdownBody,
     withPlanLock,
     writePlanMarkdownWithRevision,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 
 type FormattingRecovery = {
     executionCwd: string;

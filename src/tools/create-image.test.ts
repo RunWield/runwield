@@ -30,17 +30,16 @@ import { PhotonImage } from "@silvia-odwyer/photon-node";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
-import { getCwd, getHomeDir, SUBAGENTS } from "../constants.js";
+import { getCwd, getHomeDir, SUBAGENTS } from "../constants.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
-import { __resetSettingsForTests, preserveRunWieldCustomSettingsForWrite } from "../shared/settings.js";
-import { createImage, encodeCreatedImage } from "../shared/image-generation.ts";
+import { __resetSettingsForTests } from "../shared/settings.ts";
+import { createImage } from "../shared/image-generation.ts";
 import { persistImageAttachment } from "../shared/session/image-attachments.ts";
-import { buildAgentSession, composeClaudeCliBridgedTools } from "../shared/session/session.js";
+import { buildAgentSession, composeClaudeCliBridgedTools } from "../shared/session/session.ts";
 import { CLAUDE_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "../shared/session/backends/claude-cli/mcp-bridge.ts";
 import { resolveImageGenerationSettings } from "../shared/image-generation-settings.ts";
 import type { ImageGenerationSettings } from "../shared/image-generation-settings.ts";
-import { createImageTool } from "./create-image.ts";
-import { loadAgentDef } from "../shared/session/agents.js";
+import { loadAgentDef } from "../shared/session/agents.ts";
 import { loadSubAgentDefinition } from "../shared/session/subagent-definitions.ts";
 import { resolveDelegatedToolNames } from "./delegate-agent.ts";
 
@@ -68,7 +67,16 @@ interface Fixture {
     home: string;
     requests: RequestPayload[];
     settings(value: ImageGenerationSettings): Promise<void>;
-    response: "image" | "text" | "invalid" | "multiple" | "unauthorized" | "model-denied" | "server-error" | "wait";
+    response:
+        | "image"
+        | "mime-mismatch"
+        | "text"
+        | "invalid"
+        | "multiple"
+        | "unauthorized"
+        | "model-denied"
+        | "server-error"
+        | "wait";
     onRequest?: () => void;
 }
 
@@ -140,7 +148,9 @@ async function withFixture(run: (fixture: Fixture) => Promise<void>) {
                 });
             }
             const image = {
-                image_url: { url: `data:image/png;base64,${fixture.response === "invalid" ? "aGVsbG8=" : PNG}` },
+                image_url: {
+                    url: `data:${fixture.response === "mime-mismatch" ? "image/jpeg" : "image/png"};base64,${fixture.response === "invalid" ? "aGVsbG8=" : PNG}`,
+                },
             };
             const images =
                 fixture.response === "text" ? [] : fixture.response === "multiple" ? [image, image] : [image];
@@ -286,12 +296,6 @@ test("create_image rejects unsupported options and vision-only models", () =>
 
 test("imageGeneration preserves settings and resets inherited options when the model changes", () =>
     withFixture(async (f) => {
-        assertEquals(
-            JSON.parse(
-                preserveRunWieldCustomSettingsForWrite(JSON.stringify({ imageGeneration: { model: MODEL } }), "{}"),
-            ),
-            { imageGeneration: { model: MODEL } },
-        );
         await fsWriteFile(
             join(f.home, ".wld", "settings.json"),
             JSON.stringify({ imageGeneration: { model: MODEL, temperature: 0.5, thinkingLevel: "high" } }),
@@ -336,6 +340,31 @@ test("create_image routes agy-cli to a real subprocess with matching model/effor
         assertEquals(f.requests.length, 0);
     }));
 
+test("create_image uses concrete new family IDs and the shared effort mapping", () =>
+    withFixture(async (f) => {
+        const argsPath = join(f.cwd, "args.json");
+        process.env["RUNWIELD_IMAGE_FIXTURE_ARGS"] = argsPath;
+        for (const [family, thinking, effort] of [
+            ["gemini-4-argon", "medium", "medium"],
+            ["gemini-4-carbon", "low", "low"],
+            ["gemini-4-carbon", "medium", "medium"],
+            ["gemini-4-carbon", "max", "high"],
+            ["gemini-4-hydrogen", "xhigh", "xhigh"],
+        ]) {
+            await f.settings({ model: `agy-cli/${family}`, thinkingLevel: thinking });
+            const result = await createImage({
+                cwd: f.cwd,
+                prompt: "red mug",
+                outputPath: `${family}-${thinking}.png`,
+            });
+            const args: string[] = JSON.parse(await fsReadFile(argsPath, "utf8"));
+            assertEquals(args[args.indexOf("--model") + 1], `${family}-${effort}`);
+            assertEquals(args[args.indexOf("--effort") + 1], effort);
+            assertEquals(result.model, `agy-cli/${family}`);
+            assertEquals(result.width, 4);
+        }
+    }));
+
 test("create_image does not trust Agy final SUCCESS or paths from other runs", () =>
     withFixture(async (f) => {
         await f.settings({ model: "agy-cli/gemini-3.8-flash" });
@@ -351,21 +380,6 @@ test("create_image does not trust Agy final SUCCESS or paths from other runs", (
         }
     }));
 
-test("create_image tool returns text-only metadata when the primary model cannot view images", () =>
-    withFixture(async (f) => {
-        const tool = createImageTool({ cwd: f.cwd, includeImage: false });
-        const result = await tool.execute(
-            "fixture",
-            { prompt: "red", outputPath: "result.png" },
-            undefined,
-            undefined,
-            {} as never,
-        );
-        assertEquals(result.content.length, 1);
-        assertEquals(result.details?.ok, true);
-        assertStringIncludes(result.content[0].type === "text" ? result.content[0].text : "", "result.png");
-    }));
-
 test("create_image honors pre-cancellation without generating or saving", () =>
     withFixture(async (f) => {
         await assertRejects(() =>
@@ -377,7 +391,11 @@ test("create_image honors pre-cancellation without generating or saving", () =>
 
 test("create_image rejects mismatched raster MIME and symlinked reference escapes", () =>
     withFixture(async (f) => {
-        assertThrows(() => encodeCreatedImage({ type: "image", data: PNG, mimeType: "image/jpeg" }, "image/jpeg"));
+        f.response = "mime-mismatch";
+        await assertRejects(() => createImage({ cwd: f.cwd, prompt: "red", outputPath: "mismatch.png" }));
+        await assertRejects(() => fsStat(join(f.cwd, "mismatch.png")), Error, "ENOENT");
+        assertEquals(f.requests.length, 1);
+        f.requests.length = 0;
         await fsWriteFile(
             join(f.home, "private.png"),
             Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)),
@@ -675,6 +693,7 @@ test("OpenCode adapter preserves cancellation and rejects unsupported controls b
 
 interface RecordedCodexRequest {
     method: string;
+    pid: number;
     params?: {
         model?: string;
         modelProvider?: string;

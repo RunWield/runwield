@@ -2,9 +2,9 @@ import { captureForegroundProcess } from "../../captured-process.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
-import { withPlanLock } from "../../../plan-store.js";
-import { checkpointExecutionWorktree } from "../../worktree.js";
-import { findById } from "../../worktree-registry.js";
+import { withPlanLock } from "../../../plan-store.ts";
+import { checkpointExecutionWorktree } from "../../worktree.ts";
+import { findById } from "../../worktree-registry.ts";
 import {
     advanceStoredPublication,
     cleanupStoredPublication,
@@ -53,7 +53,7 @@ await withPlanLock(config.projectRoot, config.planName, async () => {
     let attempt = await loadPublicationAttempt(config.projectRoot, config.attemptId);
 
     if (!attempt) {
-        const entry = await findById(config.projectRoot, config.attemptId, { migrate: false });
+        const entry = await findById(config.projectRoot, config.attemptId);
         if (!entry) return;
         const candidate = await checkpointExecutionWorktree({
             worktreePath: config.executionCwd,
@@ -141,9 +141,10 @@ await withPlanLock(config.projectRoot, config.planName, async () => {
             });
         } catch (caught) {
             const failure = caught instanceof Error ? caught : new Error(String(caught));
-            const kind = "mergeFailureKind" in failure && typeof failure.mergeFailureKind === "string"
-                ? failure.mergeFailureKind
-                : "publication_failed";
+            const kind =
+                "mergeFailureKind" in failure && typeof failure.mergeFailureKind === "string"
+                    ? failure.mergeFailureKind
+                    : "publication_failed";
             await failStoredPublication(config.projectRoot, attempt, { kind, message: failure.message });
             throw failure;
         }

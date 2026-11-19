@@ -12,13 +12,13 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
-import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
+import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
 
 type FixtureSettings = ReturnType<SettingsManager["getGlobalSettings"]>;
 type ResumeResponse = Pick<ReturnType<WorkspaceSessionContinuationService["getOperation"]>, "operationId">;
@@ -157,8 +157,19 @@ test("Workspace Resume continues a paused validation repair in its existing work
                 const payload: ResumeResponse = await response.json();
                 assertEquals(response.status, 202, JSON.stringify(payload));
                 assertExists(payload.operationId);
-                for (let i = 0; i < 500 && service.getOperation(payload.operationId).status === "running"; i++) {
-                    await new Promise((resolve) => setTimeout(resolve, 20));
+                const settled = Promise.withResolvers<void>();
+                const timeout = setTimeout(
+                    () => settled.reject(new Error(JSON.stringify(service.getOperation(payload.operationId)))),
+                    60_000,
+                );
+                const unsubscribe = service.subscribeOperationChanges(payload.operationId, (status) => {
+                    if (status !== "running" && status !== "accepted") settled.resolve();
+                });
+                try {
+                    await settled.promise;
+                } finally {
+                    clearTimeout(timeout);
+                    unsubscribe();
                 }
                 assertEquals(
                     service.getOperation(payload.operationId).status,

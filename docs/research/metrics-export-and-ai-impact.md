@@ -18,7 +18,7 @@ features; marketing claims are not independent proof of impact.
 Workflow metrics are opt-in and disabled by default. They append to project-scoped local JSONL under
 `~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl`. Linked execution worktrees use the primary project's
 file. Writes are best-effort: a write failure does not stop work and can be silent. There is no reporting UI, CLI
-summary, or analytics sync. Sources: [metrics writer](../../src/shared/workflow/metrics.js),
+summary, or analytics sync. Sources: [metrics writer](../../src/shared/workflow/metrics.ts),
 [settings](../user-documentation/settings.md#workflowmetrics).
 
 A local configuration check found global `workflowMetrics: true`, no project override, and 30 metrics files including
@@ -65,8 +65,8 @@ Important limits:
   general redaction. Source: `src/shared/workflow/metrics.js:44–47,149–176`.
 - Some frontend metrics deliberately omit Session/Plan/Agent identity. Existing privacy choices must not be silently
   reversed for analytics. Source: `src/shared/workflow/metrics.js:285–306`.
-- [Complete Tool-Call Metrics](../plans/archived/complete-tool-call-metrics.md) is a **draft**, not evidence that
-  cross-backend coverage, exposure counts, correlation, or aggregation shipped.
+- The former **Complete Tool-Call Metrics** draft is not evidence that cross-backend coverage, exposure counts,
+  correlation, or aggregation shipped.
 
 ### Jellyfish: target supported, custom import unconfirmed
 
@@ -115,7 +115,7 @@ dependencies, not tasks the prospective customer must solve before receiving a p
 
 RunWield loads enabled WLD-compatible Pi package extensions. The package must declare compatibility, extension API 1,
 and `code-extension` kind. Pi extensions can observe message/tool lifecycle events and read Session state. Sources:
-[src/shared/extensions/wld-extension-manifest.js](../../src/shared/extensions/wld-extension-manifest.js),
+[src/shared/extensions/wld-extension-manifest.ts](../../src/shared/extensions/wld-extension-manifest.ts),
 `src/shared/session/session.js:2236–2279`.
 
 However, the inspected CLI-backend construction does not load these package extensions. There is also no dedicated

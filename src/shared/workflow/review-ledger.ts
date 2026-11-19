@@ -13,7 +13,7 @@
  * scratch, so anything held in a loop local is lost on every nudge.
  */
 
-import type { ReviewFinding } from "../../tools/review-complete.ts";
+import type { ReviewFinding } from "./review-outcome.ts";
 
 export type ReviewIssueStatus = "new" | "fix_claimed" | "fix_confirmed" | "fix_rejected";
 

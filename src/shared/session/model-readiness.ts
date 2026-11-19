@@ -1,5 +1,6 @@
+import { AGY_CLI_MODEL_CHOICES } from "../models/agy-cli-catalog.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
-import { getSettingsManager } from "../settings.js";
+import { getSettingsManager } from "../settings.ts";
 
 export interface ModelAvailability {
     available: boolean;
@@ -74,17 +75,17 @@ export function getSelectedDefaultModelAvailability(projectRoot: string): ModelA
         const foundModel = isRegistryModelSummary(found) ? found : null;
         if (foundModel && registry.isSelectable?.(foundModel)) return { available: true, error: null };
         const availableModels = registry.getAvailable?.() || [];
-        const runnable = availableModels.some((model) =>
-            model.provider === (defaultProvider || foundModel?.provider) &&
-            model.id === (foundModel?.id || defaultModel)
+        const runnable = availableModels.some(
+            (model) =>
+                model.provider === (defaultProvider || foundModel?.provider) &&
+                model.id === (foundModel?.id || defaultModel),
         );
         if (foundModel && runnable) return { available: true, error: null };
 
         if (defaultProvider === "agy-cli") {
             return {
                 available: false,
-                error:
-                    `Unsupported Antigravity CLI model: ${defaultProvider}/${defaultModel}. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.`,
+                error: `Unsupported Antigravity CLI model: ${defaultProvider}/${defaultModel}. Select ${AGY_CLI_MODEL_CHOICES}.`,
             };
         }
         return {

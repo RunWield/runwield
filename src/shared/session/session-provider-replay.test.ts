@@ -1,6 +1,6 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { createReplayEvents } from "./session-transcript-projection.js";
+import { createReplayEvents } from "./session-transcript-projection.ts";
 
 test("saved interrupted attempts replay once per entry without a live retry claim", () => {
     const entries = [

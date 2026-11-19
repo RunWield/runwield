@@ -5,7 +5,7 @@ import process from "node:process";
  * Best-effort terminal bell and native terminal OSC notifications for TUI attention events.
  */
 
-import { getMergedCustomSetting } from "../../shared/settings.js";
+import { getMergedCustomSetting } from "../../shared/settings.ts";
 import {
     buildSharedNotificationTitle,
     type CommonNotificationPolicy,
@@ -15,14 +15,14 @@ import {
     type NotificationEventName,
     type NotificationSettingsRecord,
 } from "../../shared/session/notification-content.ts";
-import { formatSessionTerminalTitle } from "../../shared/session/session-name.ts";
+import { formatSessionTerminalTitle } from "../../shared/session-name.ts";
 import { getCurrentTerminalFocusState, type TerminalFocusState } from "./terminal-focus-state.ts";
 
 const TERMINAL_BELL_BYTES = new Uint8Array([7]);
 const TEXT_ENCODER = new TextEncoder();
 
 type NotificationActivationMode = "tab" | "app" | "none";
-export type NativeNotificationProtocol = "osc99" | "osc777" | "osc9" | "unsupported";
+export type NativeNotificationProtocol = "osc99" | "osc777" | "osc9";
 
 export interface NotificationSettings extends CommonNotificationPolicy {
     activation: NotificationActivationMode;
@@ -66,7 +66,7 @@ export interface NotificationResult {
     eventName: string;
     title: string;
     message: string;
-    protocol: NativeNotificationProtocol;
+    protocol: NativeNotificationProtocol | "none";
     terminal: TerminalIdentity;
     terminalBellEmitted: boolean;
     oscEmitted: boolean;
@@ -111,7 +111,7 @@ export function createSystemNotificationNotifier(port: SystemNotificationPort): 
             eventName,
             title: initialTitle,
             message: initialMessage,
-            protocol: "unsupported",
+            protocol: "none",
             terminal: initialTerminal,
             terminalBellEmitted: false,
             oscEmitted: false,
@@ -143,12 +143,12 @@ export function createSystemNotificationNotifier(port: SystemNotificationPort): 
         const message = buildNotificationMessage(eventName, terminal);
         const protocol = selectNativeNotificationProtocol(terminal);
         const terminalBellEmitted = settings.terminalBell ? emitTerminalBell(port) : false;
-        const oscEmitted = protocol === "unsupported" ? false : emitNativeNotification(protocol, title, message, port);
+        const oscEmitted = emitNativeNotification(protocol, title, message, port);
 
         return {
             ...baseResult,
             sent: oscEmitted,
-            reason: oscEmitted ? "sent" : protocol === "unsupported" ? "unsupported" : "write_failed",
+            reason: oscEmitted ? "sent" : "write_failed",
             title,
             message,
             protocol,
@@ -167,9 +167,10 @@ export function notifyRunWieldEventQuietly(eventName: string, options: NotifyRun
 
 export function resolveNotificationSettings(raw: ReturnType<typeof getMergedCustomSetting>): NotificationSettings {
     const common = normalizeNotificationPolicy(raw as NotificationSettingsRecord | null | undefined);
-    const record = raw && typeof raw === "object" && !Array.isArray(raw)
-        ? raw as NotificationSettingsRecord & { activation?: string; terminalBell?: boolean }
-        : {};
+    const record =
+        raw && typeof raw === "object" && !Array.isArray(raw)
+            ? (raw as NotificationSettingsRecord & { activation?: string; terminalBell?: boolean })
+            : {};
     return {
         ...common,
         activation: normalizeActivation(record.activation),
@@ -177,10 +178,7 @@ export function resolveNotificationSettings(raw: ReturnType<typeof getMergedCust
     };
 }
 
-export function detectTerminalIdentity(
-    sessionLabel: string,
-    process: TerminalProcessSnapshot,
-): TerminalIdentity {
+export function detectTerminalIdentity(sessionLabel: string, process: TerminalProcessSnapshot): TerminalIdentity {
     const env = process.env;
     const terminalTitle = formatSessionTerminalTitle(sessionLabel);
     return {
@@ -199,9 +197,8 @@ export function detectTerminalIdentity(
 
 export function selectNativeNotificationProtocol(terminal: TerminalIdentity): NativeNotificationProtocol {
     if (isKitty(terminal)) return "osc99";
-    if (isWezTerm(terminal) || isGhostty(terminal)) return "osc777";
     if (isITerm(terminal)) return "osc9";
-    return "unsupported";
+    return "osc777";
 }
 
 export function shouldSuppressAttentionNotification(
@@ -215,7 +212,7 @@ export function buildNativeNotificationSequence(
     protocol: NativeNotificationProtocol,
     title: string,
     message: string,
-): string | null {
+): string {
     if (protocol === "osc99") {
         const titleSequence = `\x1b]99;i=runwield:d=0:e=1:o=unfocused:p=title;${base64(title)}\x1b\\`;
         const bodySequence = `\x1b]99;i=runwield:d=1:e=1:o=unfocused:p=body;${base64(message)}\x1b\\`;
@@ -224,10 +221,7 @@ export function buildNativeNotificationSequence(
     if (protocol === "osc777") {
         return `\x1b]777;notify;${sanitizeOscField(title)};${sanitizeOscField(message)}\x07`;
     }
-    if (protocol === "osc9") {
-        return `\x1b]9;${sanitizeOscField(`${title}: ${message}`)}\x07`;
-    }
-    return null;
+    return `\x1b]9;${sanitizeOscField(`${title}: ${message}`)}\x07`;
 }
 
 function emitNativeNotification(
@@ -237,7 +231,6 @@ function emitNativeNotification(
     terminal: Pick<SystemNotificationPort, "writeTerminal">,
 ): boolean {
     const sequence = buildNativeNotificationSequence(protocol, title, message);
-    if (!sequence) return false;
     try {
         terminal.writeTerminal(TEXT_ENCODER.encode(sequence));
         return true;
@@ -260,7 +253,9 @@ function normalizeActivation(value: string | undefined): NotificationActivationM
 }
 
 function normalizeLabel(value: string | undefined): string {
-    return String(value || "").replace(/\s+/g, " ").trim();
+    return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 
 function buildNotificationTitle(eventName: string, terminal: TerminalIdentity, agentName: string | undefined): string {
@@ -295,16 +290,12 @@ function isITerm(terminal: TerminalIdentity): boolean {
     return terminal.termProgram === "iTerm.app" || terminal.termProgram === "iTerm2" || !!terminal.itermSessionId;
 }
 
-function isWezTerm(terminal: TerminalIdentity): boolean {
-    return terminal.termProgram === "WezTerm" || !!terminal.weztermPane;
-}
-
 function isKitty(terminal: TerminalIdentity): boolean {
-    return terminal.termProgram === "kitty" || terminal.termProgram === "Kitty" || terminal.term === "xterm-kitty" ||
-        !!terminal.kittyListenOn || !!terminal.kittyWindowId;
-}
-
-function isGhostty(terminal: TerminalIdentity): boolean {
-    return terminal.termProgram === "ghostty" || terminal.termProgram === "Ghostty" ||
-        terminal.term === "xterm-ghostty";
+    return (
+        terminal.termProgram === "kitty" ||
+        terminal.termProgram === "Kitty" ||
+        terminal.term === "xterm-kitty" ||
+        !!terminal.kittyListenOn ||
+        !!terminal.kittyWindowId
+    );
 }

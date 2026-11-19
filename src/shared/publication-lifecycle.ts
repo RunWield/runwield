@@ -4,11 +4,11 @@ import { captureForegroundProcess } from "./captured-process.ts";
 import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /** Finalize only the Plan and Work Record documents owned by a sealed delivery. */
 import { join } from "node:path";
-import { mergeFrontMatterText, parsePlanFrontMatter } from "../plan-store.js";
+import { mergeFrontMatterText, parsePlanFrontMatter } from "../plan-store.ts";
 import { listWorkRecords } from "./work-records/store.ts";
 import { syncWorkRecordToIndex } from "./work-records/index-adapter.ts";
 import type { WorkRecordMnemotecaPort } from "./work-records/mnemoteca-port.ts";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./work-records/markdown.js";
+import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./work-records/markdown.ts";
 
 async function sealedDocument(cwd: string, commit: string, path: string): Promise<string | null> {
     const result = await captureForegroundProcess("git", { cwd, args: ["show", `${commit}:${path}`] });
@@ -318,7 +318,7 @@ export async function finalizeLocalPublicationLifecycle(
     }
 }
 
-/** Derive the search index from confirmed published bytes, never the pending candidate. */
+/** Derive the index and observed Plan classifications from the same confirmed published bytes. */
 export async function indexPublishedWorkRecords(
     projectRoot: string,
     gitRoot: string,
@@ -326,7 +326,8 @@ export async function indexPublishedWorkRecords(
     planPaths: string[],
     mnemotecaPort: WorkRecordMnemotecaPort,
     sourcePlanCommit = commit,
-): Promise<void> {
+): Promise<Map<string, string>> {
+    const planKinds = new Map<string, string>();
     const linkedIds = new Set<string>();
     for (const path of planPaths) {
         // The original delivery owns these record identities even if its Plan
@@ -334,11 +335,12 @@ export async function indexPublishedWorkRecords(
         const text = await sealedDocument(gitRoot, sourcePlanCommit, path);
         if (!text) continue;
         const source = parsePlanFrontMatter(text).attrs;
+        if (source.planId && source.classification) planKinds.set(source.planId, source.classification);
         if (source.workRecord?.status === "generated" && source.workRecord.recordId) {
             linkedIds.add(source.workRecord.recordId);
         }
     }
-    if (!linkedIds.size) return;
+    if (!linkedIds.size) return planKinds;
     const paths = (await git(gitRoot, ["ls-tree", "-r", "--name-only", commit, "--", "docs/work-records/"]))
         .split("\n")
         .filter((path) => path.endsWith(".md"));
@@ -353,4 +355,5 @@ export async function indexPublishedWorkRecords(
             await syncWorkRecordToIndex(projectRoot, record, { mnemotecaPort });
         }
     }
+    return planKinds;
 }

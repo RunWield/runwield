@@ -10,6 +10,7 @@ import { SYSTEM_TUI_CRASH_EVENTS } from "./tui-crash-events.ts";
 import { createTuiCrashGuards } from "./tui-crash-guards.ts";
 import { createTuiManager } from "./tui-manager.ts";
 import { cleanupAgentBrowserSessionSync } from "../../shared/agent-browser-session.ts";
+import { copyToClipboard } from "../../shared/clipboard-text.ts";
 
 export interface TuiPair {
     terminal: Terminal;
@@ -24,6 +25,7 @@ export class RunWieldTui extends TuiAltScreen {
     onArtifactLink?: (link: TuiArtifactLink) => void;
     constructor(terminal: Terminal, browser: BrowserPort = SYSTEM_BROWSER_PORT) {
         super(terminal, undefined, undefined, {
+            copySelection: platform === "darwin" ? copyToClipboard : undefined,
             openUrl: (url) => {
                 if (url.startsWith("runwield-artifact:")) {
                     try {
@@ -32,7 +34,9 @@ export class RunWieldTui extends TuiAltScreen {
                             sessionId: decodeURIComponent(link.hostname),
                             artifactId: decodeURIComponent(link.pathname.slice(1)),
                         });
-                    } catch { /* Ignore malformed internal links. */ }
+                    } catch {
+                        /* Ignore malformed internal links. */
+                    }
                     return;
                 }
                 void browser.open(url);
@@ -72,8 +76,8 @@ const crashGuards = createTuiCrashGuards({
 });
 
 /** Initialize the TUI singleton if it is not already running. */
-export function initTUI(): TUI {
-    return tuiManager.initTUI();
+export function initTUI(browser?: BrowserPort): TUI {
+    return tuiManager.initTUI(browser);
 }
 
 /** Install an explicit Terminal/TUI pair for deterministic composition tests. */

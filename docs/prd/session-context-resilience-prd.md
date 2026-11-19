@@ -59,7 +59,7 @@ phase should receive the relevant instructions and evidence without carrying for
 still sees the same Session and task history.
 
 The architectural choice for these handoffs is recorded in
-[ADR-012](../adr/012-segment-session-transcripts-at-execution-handoff.md).
+[ADR-011](../adr/011-segment-session-transcripts-at-execution-handoff.md).
 
 ### Failure and Cancellation
 

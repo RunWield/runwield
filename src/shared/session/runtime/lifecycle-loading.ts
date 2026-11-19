@@ -1,4 +1,4 @@
-import { resolveResumeAgentName } from ".././active-agent-session.js";
+import { resolveResumeAgentName } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
 import {
     classifyRootSessionLocator,
@@ -6,12 +6,12 @@ import {
     isPathInside,
     listPersistedRootSessions,
     openPersistedRootSession,
-} from ".././root-session.js";
-import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.js";
-import { createReplayEvents as createProjectedReplayEvents } from ".././session-transcript-projection.js";
-import { requestHostedSessionInteraction } from ".././session-runtime-interactions.js";
+} from ".././root-session.ts";
+import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { createReplayEvents as createProjectedReplayEvents } from ".././session-transcript-projection.ts";
+import { requestHostedSessionInteraction } from ".././session-runtime-interactions.ts";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
-import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
+import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
 import { isAbsolute } from "node:path";
 
 import { enterGitProjectRuntime, isRuntimeRootSessionManager } from "./support.ts";
@@ -29,7 +29,12 @@ import type { RuntimeTurns } from "./turns.ts";
 
 type RuntimeEventsDependency = Pick<
     RuntimeEvents,
-    "attachRuntimeEventSink" | "consumePendingReplayEvents" | "emitSessionEvent" | "replacePendingReplayEvents"
+    | "attachRuntimeEventSink"
+    | "consumePendingReplayEvents"
+    | "emitSessionEvent"
+    | "replacePendingReplayEvents"
+    | "beginBusyOperation"
+    | "endBusyOperation"
 >;
 type RuntimeManagedOperationsDependency = Pick<
     RuntimeManagedOperations,
@@ -81,7 +86,7 @@ export class RuntimeLifecycleLoading {
     }
     async replaceSessionForExecutionFollowUp(
         oldSessionId: string,
-        workflow: import("../../types.js").ActiveExecutionWorkflow,
+        workflow: import("../execution-workflow-session.ts").ActiveExecutionWorkflow,
     ) {
         const oldSession = this.services.sessionHost.getSession(oldSessionId);
         if (!oldSession) throw new Error("SessionRuntime.replaceSessionForExecutionFollowUp: old session not found");
@@ -177,6 +182,36 @@ export class RuntimeLifecycleLoading {
             throw new Error("SessionRuntime.loadSession requires a session id");
         }
         await enterGitProjectRuntime(options.cwd);
+        if (this.services.remotePersistence) {
+            const hostedSession = this.services.sessionHost.createSession({
+                id: crypto.randomUUID(),
+                cwd: options.cwd,
+                sessionManager: null,
+            });
+            this.events.beginBusyOperation(hostedSession.id);
+            try {
+                await this.services.remotePersistence.resume(hostedSession, options.sessionId);
+                if (options.modelOverride) {
+                    hostedSession.mergePendingManagedTurnIntent({ model: options.modelOverride, manualModel: true });
+                }
+                this.events.attachRuntimeEventSink(hostedSession);
+                this.events.emitSessionEvent(hostedSession.id, {
+                    type: RuntimeEventTypes.SESSION_LOADED,
+                    cwd: hostedSession.cwd,
+                });
+                return {
+                    sessionId: hostedSession.id,
+                    cwd: hostedSession.cwd,
+                    sessionManagerId: options.sessionId,
+                    replayEvents: [],
+                };
+            } catch (error) {
+                await this.services.sessionHost.disposeSession(hostedSession.id);
+                throw error;
+            } finally {
+                this.events.endBusyOperation(hostedSession.id);
+            }
+        }
         const ownerCoordinationStore = this.services.sessionStore;
         if (!ownerCoordinationStore) {
             throw new Error("Session Manager load is blocked: session_store_unavailable");
@@ -349,7 +384,7 @@ export class RuntimeLifecycleLoading {
 
     setInteractionAdapter(
         sessionId: string,
-        adapter: import(".././session-runtime-interactions.js").RuntimeInteractionAdapter | null,
+        adapter: import(".././session-runtime-interactions.ts").RuntimeInteractionAdapter | null,
     ) {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return { ok: false, error: "not_found" };
@@ -360,7 +395,7 @@ export class RuntimeLifecycleLoading {
     answerInteraction(
         sessionId: string,
         interactionId: string,
-        response: import("../session-runtime-interactions.js").RuntimeInteractionResponse,
+        response: import("../session-runtime-interactions.ts").RuntimeInteractionResponse,
     ) {
         const record = this.services.sessionHost.getSession(sessionId)?.getActiveInteractions().get(interactionId);
         if (!record?.answer || !["select", "text", "approval"].includes(record.request?.type || "")) return false;
@@ -374,7 +409,7 @@ export class RuntimeLifecycleLoading {
 
     async requestInteraction(
         sessionId: string,
-        request: import(".././session-runtime-interactions.js").RuntimeInteractionRequest,
+        request: import(".././session-runtime-interactions.ts").RuntimeInteractionRequest,
         signal?: AbortSignal,
     ): Promise<import("./types.ts").RuntimeInteractionResult> {
         const session = this.services.sessionHost.getSession(sessionId);

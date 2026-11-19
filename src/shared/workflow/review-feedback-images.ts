@@ -56,6 +56,17 @@ export async function loadReviewFeedbackImages(
     return images;
 }
 
+/** Return paths for readable attachments without putting image bytes in a workflow record. */
+export async function loadReviewFeedbackImagePaths(decision: ReviewImageDecision, cwd: string): Promise<string[]> {
+    const paths: string[] = [];
+    for (const image of collectReviewImageAttachments(decision)) {
+        if ((await loadReviewFeedbackImages({ images: [image] }, cwd)).length > 0) {
+            paths.push(resolve(cwd, image.path));
+        }
+    }
+    return paths;
+}
+
 function collectReviewImageAttachments(decision: ReviewImageDecision): Array<{ path: string; name: string }> {
     const candidates = [
         ...readReviewImageAttachments(decision?.images),

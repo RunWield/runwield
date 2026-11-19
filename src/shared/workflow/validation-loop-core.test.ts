@@ -1,11 +1,12 @@
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
+import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import { hostname } from "node:os";
 import { test } from "node:test";
 import {
     chmod as fsChmod,
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
+    realpath as fsRealpath,
     rm as fsRm,
     utimes as fsUtimes,
     writeFile as fsWriteFile,
@@ -15,27 +16,28 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { setCustomSetting } from "../settings.js";
-import { loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
+import { setCustomSetting } from "../settings.ts";
+import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { removeWorktreeGitArtifacts } from "../worktree.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { createTestWorktreeAttempt, makeRepo } from "../worktree-test-helpers.ts";
-import { createEngineValidationArgs, shouldContinueParentEpicAfterValidation } from "./validation.ts";
+import { createEngineValidationArgs } from "./validation.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { runPublicationPhase } from "./validation-publication.ts";
-import { continueWorkflowValidation } from "./validation-supervisor.ts";
+import { continueWorkflowValidation } from "./validation.ts";
 import { loadPublicationAttempt, startPublicationAttempt } from "./publication-machine.ts";
+import { PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
 import {
     createValidationProgress,
     getCurrentValidationProgress,
     setCurrentValidationProgress,
 } from "./validation-progress.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
-import { startActiveExecutionWorkflow } from "./workflow.js";
+import { startActiveExecutionWorkflow } from "./workflow.ts";
 import {
     attachRecorder,
     makeRecordedSession,
@@ -44,7 +46,7 @@ import {
     NO_ISOLATED_AGENT_PORT,
     runValidationLoop,
     runValidationPhase,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 const footerExecutionRepo = defineGitFixture(async (repoPath) => {
     await savePlan(repoPath, "footer-plan", "# footer-plan\n\nvalidation fixture\n", {
@@ -135,6 +137,7 @@ async function makePlannedReviewWorktree() {
     const projectRoot = await makeRepo();
     await setCustomSetting("codereview", "none", "project", projectRoot);
     await savePlan(projectRoot, "p", "# p\n\nvalidation fixture\n", {
+        planId: "test:p",
         classification: "FEATURE",
         status: "validated_ci",
         summary: "validation fixture",
@@ -335,9 +338,13 @@ for (const sealed of [false, true]) {
             assertEquals(await git(projectRoot, ["rev-parse", "main"]), mainBefore);
             if (sealed) {
                 assertEquals(result.result.kind, "paused");
-                assertStringIncludes(result.result.reason || "", "Plan now targets release/next");
+                assertEquals(result.result.reason, PUBLICATION_REVALIDATION_MESSAGE);
+                assertEquals(result.result.continueValidation, true);
                 assertEquals(await git(projectRoot, ["rev-parse", "release/next"]), mainBefore);
-                assertEquals((await loadPublicationAttempt(projectRoot, worktree.id))?.targetBranch, "main");
+                assertEquals(await loadPublicationAttempt(projectRoot, worktree.id), null);
+                const currentPlan = await loadPlan(worktree.path, "p");
+                assertEquals(currentPlan?.attrs.status, "implemented");
+                assertEquals(currentPlan?.attrs.targetBranch, "release/next");
                 assertEquals(await fsReadFile(`${worktree.path}/delivered.txt`, "utf8"), "late target edit\n");
             } else {
                 assertEquals(result.result.kind, "verified", JSON.stringify(result));
@@ -450,12 +457,6 @@ test("startActiveExecutionWorkflow seeds footer workflow context from Plan front
         },
     );
     assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "engineer");
-});
-
-test("shouldContinueParentEpicAfterValidation detects parent epic linkage", () => {
-    assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE" }), false);
-    assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE", parentPlan: "" }), false);
-    assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE", parentPlan: "epic" }), true);
 });
 
 test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE plans", async () => {
@@ -605,4 +606,90 @@ test("runValidationLoop starts at implemented and records only the mechanical pa
     assertEquals(plan?.attrs.status, "implemented");
     assertEquals(plan?.attrs.validationPhase, "semantic");
     assertEquals(plan?.attrs.validationCiAttempts, 0);
+});
+
+test("validation returns a lifecycle invariant when controller preparation reads malformed YAML", async () => {
+    const projectRoot = await makeValidationProjectRoot("p", { classification: "FEATURE", status: "implemented" });
+    const hostedSession = attachRecorder(new HostedSession({ id: "malformed-validation", cwd: projectRoot }), makeUi());
+    const malformed = "---\nstatus: [implemented\n---\n# Broken Plan\n";
+    try {
+        await fsWriteFile(join(projectRoot, "docs/plans/p.md"), malformed);
+        const result = await runValidationPhase({
+            hostedSession,
+            planName: "p",
+            planContent: "# Stale cached Plan",
+            triageMeta: { classification: "FEATURE", status: "implemented" },
+            semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+            localCI: { run: () => Promise.reject(new Error("Malformed Plans must not run CI")) },
+        });
+        assertEquals(result.kind, "failed");
+        assertEquals(result.recovery?.code, "policy/lifecycle_invariant");
+        assertEquals(await fsReadFile(join(projectRoot, "docs/plans/p.md"), "utf8"), malformed);
+    } finally {
+        hostedSession.dispose();
+        await fsRm(projectRoot, { recursive: true });
+    }
+});
+
+test("validation recovers an unregistered execution checkout before selecting a stale primary Plan", async () => {
+    const projectRoot = await footerExecutionRepo.checkout();
+    const parent = await fsMkdtemp(join(tmpdir(), "validation-unregistered-"));
+    const executionCwd = join(parent, "execution");
+    const hostedSession = attachRecorder(new HostedSession({ id: "recover-validation", cwd: projectRoot }), makeUi());
+    try {
+        await ensurePlanIdentity(projectRoot, "footer-plan");
+        const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
+        const branch = "runwield/worktree/footer-plan-recovered";
+        await git(projectRoot, ["worktree", "add", "-b", branch, executionCwd, "HEAD"]);
+        const executionPlan = await loadPlan(executionCwd, "footer-plan");
+        await savePlan(
+            executionCwd,
+            "footer-plan",
+            "# Implemented execution Plan\n",
+            {
+                planId: "recovered-validation-plan",
+                classification: "FEATURE",
+                status: "implemented",
+            },
+            { expectedRevision: executionPlan?.revision },
+        );
+        const primaryBefore = await fsReadFile(join(projectRoot, "docs/plans/footer-plan.md"), "utf8");
+        let ciCwd = "";
+        const result = await runValidationPhase({
+            hostedSession,
+            planName: "footer-plan",
+            planContent: "# Cached Plan",
+            triageMeta: { classification: "FEATURE", status: "ready_for_work" },
+            executionContext: {
+                planName: "footer-plan",
+                triageMeta: { classification: "FEATURE", status: "ready_for_work" },
+                projectRoot,
+                executionMode: "worktree",
+                executionCwd,
+                executionAgent: "engineer",
+                worktreeId: "recovered-validation-attempt",
+                worktreeBranch: branch,
+                worktreeBaseBranch: "main",
+                baselineTree,
+            },
+            semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+            localCI: {
+                run: ({ cwd }) => {
+                    ciCwd = cwd;
+                    return Promise.resolve({ kind: "completed", exitCode: 0, output: "ok" });
+                },
+            },
+        });
+        assertEquals(ciCwd, await fsRealpath(executionCwd));
+        assertEquals(result.kind, "paused");
+        assertEquals(result.continueValidation, true);
+        const recovered = await loadPlan(executionCwd, "footer-plan");
+        assertEquals(recovered?.attrs.validationPhase, "semantic");
+        assertEquals(recovered?.attrs.worktreeId, "recovered-validation-attempt");
+        assertEquals(await fsReadFile(join(projectRoot, "docs/plans/footer-plan.md"), "utf8"), primaryBefore);
+    } finally {
+        hostedSession.dispose();
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(parent, { recursive: true });
+    }
 });

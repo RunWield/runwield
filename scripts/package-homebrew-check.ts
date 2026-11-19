@@ -130,6 +130,19 @@ async function assertInstalledRunWieldPackage(tap: string, wldTag: string) {
     return executable;
 }
 
+async function assertInstalledMnemotecaVersion(tap: string, mnemotecaTag: string) {
+    const output = await run("brew", ["list", "--versions", "gandazgul/tap/mnemoteca"], tap, true, true);
+    const version = /^mnemoteca[ \t]+(\d+\.\d+\.\d+(?:_\d+)?)$/.exec(output.stdout.trim())?.[1];
+    if (!output.success || !version) {
+        throw new Error(
+            `Cannot determine the installed Mnemoteca version from Homebrew.\n${output.stdout}${output.stderr}`,
+        );
+    }
+    if (version !== mnemotecaTag.replace(/^v/, "")) {
+        throw new Error(`Installed Mnemoteca version ${version} does not match ${mnemotecaTag}.`);
+    }
+}
+
 async function assertPackageUpdateAliases(tap: string, executable: string) {
     for (const alias of ["update", "upgrade"]) {
         const output = await run(executable, [alias], tap, false, true);
@@ -166,7 +179,9 @@ export async function main(args = process.argv.slice(2)) {
     }
     await run("brew", ["test", "gandazgul/tap/mnemoteca"], tap);
     await run("brew", ["test", "gandazgul/tap/wld"], tap);
+    await assertInstalledMnemotecaVersion(tap, manifest.mnemotecaTag);
     await run("brew", ["upgrade", "gandazgul/tap/mnemoteca", "gandazgul/tap/wld"], tap);
+    await assertInstalledMnemotecaVersion(tap, manifest.mnemotecaTag);
     const upgradedExecutable = await assertInstalledRunWieldPackage(tap, manifest.wldTag);
     if ((await fileSha256(upgradedExecutable)) !== installedHash) {
         throw new Error("brew upgrade changed the installed package bytes.");
@@ -181,6 +196,7 @@ export async function main(args = process.argv.slice(2)) {
     if (!removed) throw new Error("brew uninstall left the verified wld executable installed.");
     await run("brew", ["uninstall", "gandazgul/tap/mnemoteca"], tap);
     await run("brew", ["install", "gandazgul/tap/wld"], tap);
+    await assertInstalledMnemotecaVersion(tap, manifest.mnemotecaTag);
     const reinstalledExecutable = await assertInstalledRunWieldPackage(tap, manifest.wldTag);
     if ((await fileSha256(reinstalledExecutable)) !== installedHash) {
         throw new Error("brew reinstall did not restore the same package bytes.");

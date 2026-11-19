@@ -1,28 +1,29 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
  * @module cmd/plans/unshare
  * Destructively delete a remote Shared Space and intentionally clear local collaboration state.
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN, getCwd } from "../../constants.js";
-import { clearPlanCollaborationMetadata, listPlans, listPlanResources } from "../../plan-store.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
+import { clearPlanCollaborationMetadata, listPlans, listPlanResources } from "../../plan-store.ts";
 import { redactSecrets } from "../../shared/collaboration/capabilities.ts";
 import {
     CollaborationApiError,
     createCollaborationClient,
     SYSTEM_COLLABORATION_FETCH,
-} from "../../shared/collaboration/client.js";
+} from "../../shared/collaboration/client.ts";
 import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
-import { normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.js";
+import { normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.ts";
 import {
     deleteCompatibleSecretRecords,
     getGlobalSecretStoreLocation,
     getProjectSecretStoreLocation,
     resolveCompatibleSecretRecord,
-} from "../../shared/collaboration/secrets.js";
+} from "../../shared/collaboration/secrets.ts";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 interface PlansUnshareArgs {
     target?: string;
@@ -167,13 +168,14 @@ function confirmationMessage(details: RemoteDetails): string {
 
 export async function unsharePlan(unshareOptions: UnsharePlanOptions): Promise<UnsharedPlan> {
     const cwd = unshareOptions.cwd || getCwd();
-    await enterProjectRuntime(cwd);
+    await prepareWorktreeRegistry(cwd);
     const now = new Date().toISOString();
     const target = unshareOptions.target;
     const selected = (await listPlans(cwd)).filter((plan) => plan.name === target || plan.attrs.planId === target);
     if (selected.length > 1) throw new Error(`Multiple Plans matched ${target}; use a unique Plan name or planId.`);
+    await preparePlanWorkflow(cwd, selected[0]?.name || target);
     await resolveWorkflowPlanLocation(cwd, selected[0]?.name || target);
-    const resource = findResourceByNameOrId(await listPlanResources(cwd, { backfillMissing: false }), target);
+    const resource = findResourceByNameOrId(await listPlanResources(cwd), target);
     if (!resource) throw new Error(`Active Plan not found: ${target}`);
     const attrs = resource.attrs || {};
     if (!hasCompleteRemoteCanonicalMetadata(attrs)) {
@@ -354,7 +356,7 @@ export async function runPlansUnshareCommand(argv: string[]): Promise<void> {
         return;
     }
     const cwd = getCwd();
-    await enterProjectRuntime(cwd);
+    await prepareWorktreeRegistry(cwd);
     const result = await unsharePlan({
         target: parsed.target as string,
         cwd,

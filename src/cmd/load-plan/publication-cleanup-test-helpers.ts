@@ -1,6 +1,6 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -16,13 +16,13 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { addEntry, findById } from "../../shared/worktree-registry.js";
+import { addEntry, findById } from "../../shared/worktree-registry.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
-import type { EditorAPI, UiAPI } from "../../ui/tui/types.js";
+import type { EditorAPI, UiAPI } from "../../ui/tui/api.ts";
 
 const seed = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "README.md": "Project\n" });
 const driver = fromFileUrl(new URL("../../shared/workflow/testing/publication-process-driver.ts", import.meta.url));
@@ -97,7 +97,7 @@ async function checkCleanupRestart(
                 cwd: getCwd(),
             });
             assertEquals(crashed.code, 86, new TextDecoder().decode(crashed.stderr));
-            const before = await findById(root, "attempt-1", { migrate: false });
+            const before = await findById(root, "attempt-1");
             assert(before?.publication);
             assertEquals(
                 before.publication.phase,
@@ -220,7 +220,7 @@ async function checkCleanupRestart(
             ]);
             assertStringIncludes(messages.join("\n"), "Plan loaded: demo");
             if (!requestCleanup) {
-                assertEquals(await findById(root, "attempt-1", { migrate: false }), before);
+                assertEquals(await findById(root, "attempt-1"), before);
                 assertEquals(await git(root, ["branch", "--list", "worktree/demo"]), sourceBranch);
                 assertEquals(await git(root, ["worktree", "list", "--porcelain"]), worktreeList);
                 assertEquals(
@@ -254,7 +254,7 @@ async function checkCleanupRestart(
                     );
                 }
             } else if (targetChange === "saved_copy_exists") {
-                assertEquals(await findById(root, "attempt-1", { migrate: false }), before);
+                assertEquals(await findById(root, "attempt-1"), before);
                 assertEquals(await fsReadFile(join(tree, "personal-note.txt"), "utf8"), "Untracked work to keep\n");
                 assertEquals(
                     await fsReadFile(join(`${tree}.saved`, "files", "previous.txt"), "utf8"),
@@ -262,7 +262,7 @@ async function checkCleanupRestart(
                 );
                 assertStringIncludes(messages.join("\n"), "Both copies were kept");
             } else if (targetChange === "rewritten" || targetChange === "remote_removed") {
-                assertEquals(await findById(root, "attempt-1", { migrate: false }), before);
+                assertEquals(await findById(root, "attempt-1"), before);
                 assertStringIncludes(messages.join("\n"), "Cleanup stopped for demo");
                 assertStringIncludes(
                     messages.join("\n"),
@@ -272,7 +272,7 @@ async function checkCleanupRestart(
                 );
                 assertEquals(messages.join("\n").includes("Fix this Git issue"), false);
             } else {
-                assertEquals(await findById(root, "attempt-1", { migrate: false }), null);
+                assertEquals(await findById(root, "attempt-1"), null);
                 assertStringIncludes(messages.join("\n"), "Cleanup is done for demo");
                 if (lostRegistration) {
                     const saved = join(`${tree}.saved`, "files");
@@ -309,6 +309,17 @@ async function checkCleanupRestart(
 }
 
 export function registerPublicationCleanupTests(invocation: Invocation): void {
+    // Failure recovery is shared after selection. Cover picker entry and selection
+    // here; the named-command suite owns the complete crash/remote-state matrix.
+    if (invocation === "picker") {
+        test("load-plan picker views a published Plan without implicit cleanup", async () => {
+            await checkCleanupRestart("verification_receipt", invocation, "unchanged", false);
+        });
+        test("load-plan picker requested cleanup preserves files after losing Git registration", async () => {
+            await checkCleanupRestart("verification_receipt", invocation, "lost_registration");
+        });
+        return;
+    }
     for (const boundary of ["verification_receipt", "cleanup_effect", "cleanup_receipt"] as const) {
         test(`load-plan ${invocation} views a published Plan without cleanup after ${boundary}`, async () => {
             await checkCleanupRestart(boundary, invocation, "unchanged", false);

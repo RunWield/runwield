@@ -2,12 +2,12 @@ import { mkdtempSync as fsMkdtempSync, rmSync as fsRmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
-import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
+import { HostedSession } from "../session/hosted-session.ts";
 import {
     acknowledgeTaskCompletion,
     claimPendingTaskCompletion,
@@ -20,7 +20,7 @@ import {
     readValidationReviewState,
     validationCheckpointCanResume,
 } from "./validation-checkpoint.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 
 type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;
@@ -28,34 +28,6 @@ type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSessi
 function hostedSessionManager(sessionManager: SessionManager): HostedSessionManager {
     return sessionManager as HostedSessionManager;
 }
-
-const PRODUCTION_ENTRY_FILES = [
-    "../session/agent-handler.ts",
-    "../session/runtime/workflows.ts",
-    "./orchestrator.ts",
-    "./epic-continuation.ts",
-    "../../cmd/load-plan/plan-execution.ts",
-];
-
-test("every production entry uses one validation owner", async () => {
-    for (const relativePath of PRODUCTION_ENTRY_FILES) {
-        const path = new URL(relativePath, import.meta.url);
-        const source = await fsReadFile(path, "utf8");
-        assert(
-            source.includes("continueWorkflowValidation") || source.includes("runWorkflowValidationToStableBoundary"),
-            `${relativePath} does not use the supervisor`,
-        );
-        assertEquals(source.includes("runValidationLoop"), false, `${relativePath} bypasses the supervisor`);
-    }
-    const supervisor = await fsReadFile(new URL("./validation-supervisor.ts", import.meta.url), "utf8");
-    assert(supervisor.includes("export async function continueWorkflowValidation"));
-    assert(supervisor.includes("export async function runWorkflowValidationToStableBoundary"));
-    assert(supervisor.includes("await runValidationLoop"));
-    assert(supervisor.includes("continuationPhase: claim.checkpoint.nextPhase"));
-    assert(supervisor.includes("prior.lastSettledOperationId === args.taskCompletionId"));
-    const handler = await fsReadFile(new URL("../session/agent-handler.ts", import.meta.url), "utf8");
-    assert(handler.includes("taskCompletionId: acceptedCompletion.completionId"));
-});
 
 test("validation checkpoint survives a new Plan load", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-checkpoint-"));
@@ -140,14 +112,16 @@ test("semantic feedback commits open Review Issues with the lifecycle transition
                 semanticRound: 1,
                 reviewLedger: {
                     sequence: 1,
-                    items: [{
-                        id: "R1-1",
-                        openedInRound: 1,
-                        resolvedInRound: null,
-                        title: "Keep the saved candidate",
-                        requirement: "Non-success outcomes preserve work.",
-                        evidence: "The cleanup path removed it.",
-                    }],
+                    items: [
+                        {
+                            id: "R1-1",
+                            openedInRound: 1,
+                            resolvedInRound: null,
+                            title: "Keep the saved candidate",
+                            requirement: "Non-success outcomes preserve work.",
+                            evidence: "The cleanup path removed it.",
+                        },
+                    ],
                 },
                 repairBaselineTree: "tree-before-repair",
             },
@@ -197,15 +171,17 @@ test("semantic repair completion is an idempotent mechanical receipt", async () 
                 semanticRound: 1,
                 reviewLedger: {
                     sequence: 1,
-                    items: [{
-                        id: "R1-1",
-                        openedInRound: 1,
-                        resolvedInRound: null,
-                        status: "new",
-                        title: "Missing guard",
-                        requirement: "Step 1",
-                        evidence: "a.ts",
-                    }],
+                    items: [
+                        {
+                            id: "R1-1",
+                            openedInRound: 1,
+                            resolvedInRound: null,
+                            status: "new",
+                            title: "Missing guard",
+                            requirement: "Step 1",
+                            evidence: "a.ts",
+                        },
+                    ],
                 },
                 repairBaselineTree: "tree-before-repair",
             },

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { argv, env, execPath, platform } from "node:process";
 import { fileURLToPath } from "node:url";
-import { requirePinnedBun } from "./check-bun-runtime.ts";
+import { requireSupportedBun } from "./check-bun-runtime.ts";
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const FILE_TIMEOUT_MS = 10 * 60 * 1000;
@@ -116,7 +116,7 @@ async function runFile(file: string, home: string, reportDir: string, timeoutMs:
 }
 
 export async function main(args: string[] = argv.slice(2)): Promise<number> {
-    requirePinnedBun();
+    requireSupportedBun();
     const selected: string[] = args.length
         ? args
         : JSON.parse(await readFile(new URL("./bun-test-files.json", import.meta.url), "utf8"));

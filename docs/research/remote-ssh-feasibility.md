@@ -7,7 +7,7 @@ Last checked: 2026-09-20 EDT
 Can `wld remote host[:folder]` run an interactive TUI against remote files while personal settings, credentials,
 memories, and Session history stay on the user's local machine?
 
-This check supports the [Remote SSH proposal](../prd/remote-ssh-prd.md). It inspected source, selected tests, and
+This check supports the [Core Remote connection requirements](../prd/runwield-core-prd.md#remote-connection). It inspected source, selected tests, and
 first-party documentation. On 2026-09-20, a later throwaway prototype also ran the Pi model path over SSH. Findings
 establish feasibility, not delivered remote support.
 
@@ -45,7 +45,7 @@ Source:
 
 - [`model-registry.ts`](../../src/shared/models/model-registry.ts): `ExecutionBackend`, `RunWieldCredentialStore`,
   `createRunWieldModelRuntime`, `getApiKeyAndHeaders`.
-- [`session.js`](../../src/shared/session/session.js): `buildAgentSession`, resource loading, and `createAgentSession`.
+- [`session.ts`](../../src/shared/session/session.ts): `buildAgentSession`, resource loading, and `createAgentSession`.
 - [`Claude command`](../../src/shared/session/backends/claude-cli/command.ts): `prepareClaudeCliCommand` explicitly
   enables native project tools and passes `--no-session-persistence`.
 - [`Claude process`](../../src/shared/session/backends/claude-cli/process.ts) and
@@ -70,13 +70,13 @@ Official provider documentation confirms that remote browser login is not the sa
 
 - Settings, Agents, skills, and project tools currently share a filesystem context. Skills can contain absolute local
   paths. Copying settings alone does not make those resources or their executable dependencies available remotely.
-  Sources: [`settings.js`](../../src/shared/settings.js), [`session.js`](../../src/shared/session/session.js),
+  Sources: [`settings.js`](../../src/shared/settings.ts), [`session.ts`](../../src/shared/session/session.ts),
   [customization documentation](../user-documentation/customization.md).
 - Project Memory currently uses the primary repository directory name, with a current-directory name fallback. Unrelated
   same-name folders can select the same collection. Core Memory injection and `/sleep` use additional selection paths.
   Remote support must not infer shared project knowledge from a folder name alone. Sources:
   [`resolveProjectCollectionName`](../../src/extensions/mnemoteca/tools.ts),
-  [`session.js`](../../src/shared/session/session.js), [`sleep`](../../src/cmd/sleep/index.ts).
+  [`session.ts`](../../src/shared/session/session.ts), [`sleep`](../../src/cmd/sleep/index.ts).
 - MCP servers and helper binaries currently execute against one `cwd`. Some need local credentials; others need remote
   project files. An arbitrary personal integration cannot be assumed portable. Sources:
   [`MCP integration`](../../src/shared/mcp/integration.ts),
@@ -84,19 +84,19 @@ Official provider documentation confirms that remote browser login is not the sa
   [`helper execution`](../../src/extensions/helper-binary-exec.ts).
 - Working outside Git is already supported in parts of Core. A remote home directory is not inherently invalid, but
   Git-dependent workflows must retain their existing checks. Sources:
-  [`Session prompt tests`](../../src/shared/session/session-prompt.test.js),
+  [`Session prompt tests`](../../src/shared/session/session-prompt.test.ts),
   [`execution start`](../../src/shared/workflow/execution-start.ts).
 
 ### Sessions, browser reviews, and disconnects
 
-- [ADR-015](../adr/015-file-authoritative-session-bundles.md) gives local transcript bundles authority. This fits local
+- [ADR-014](../adr/014-file-authoritative-session-bundles.md) gives local transcript bundles authority. This fits local
   ownership, but current project locators require local paths. The existing live socket explicitly assumes the same user
   and machine/container; it is not already a remote transport. Sources:
-  [`root-session.js`](../../src/shared/session/root-session.js),
+  [`root-session.ts`](../../src/shared/session/root-session.ts),
   [`file-session-store.ts`](../../src/shared/session/file-session-store.ts),
   [`live-session-connection.ts`](../../src/shared/session/live-session-connection.ts).
 - Reviews currently bind a server to machine-local loopback. Remote reviews need laptop access and must return decisions
-  to the same Session. Sources: [`review server`](../../src/ui/workspace/server.js),
+  to the same Session. Sources: [`review server`](../../src/ui/workspace/server.ts),
   [`review launcher tests`](../../src/ui/review/review-launcher.test.ts).
 - RunWield has process-tree cancellation, but this does not prove cleanup after SSH loss. CLI backends, helpers, and MCP
   subprocesses do not all share the same termination path. Sources:

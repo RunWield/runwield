@@ -50,7 +50,7 @@ The Epic `reliable-usage-dashboard-and-langfuse-export` shows the problem:
   "10 child Planned Changes — 0 remaining" and gives no reason why the gate option is missing.
 
 The owning capability is
-[Core PRD — An Epic finishes through its integration gate](../prd/runwield-core-prd.md). Its current text says
+[Core PRD — An Epic finishes through its integration gate](../../prd/runwield-core-prd.md). Its current text says
 findings "become a draft repair child that the user reviews like any child; its delivery runs the gate again". This
 Plan adds a second path: the user can retry the gate while that repair child is unstarted. All other gate behavior stays
 the same: exact branch head, setup before checks, pause without a repair child, pass marks the Epic `reviewed`, and a

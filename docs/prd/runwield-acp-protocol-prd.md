@@ -1,14 +1,14 @@
 # PRD: RunWield Session Host and ACP Integration
 
-**Document role: Living central PRD.** Principles and lasting requirements for external ACP clients, protocol
-compatibility, and chat-channel integration.
+**Document role: Living central PRD.** Principles and lasting requirements for ACP clients, including first-party
+Workspace access, external-client compatibility, and chat-channel integration.
 
 Keep this document as current product guidance. Fold lasting requirements from completed feature PRDs here;
 implementation steps belong in Plans, architectural choices in ADRs, and delivery evidence in Work Records.
 
 **Status:** Working ACP integration with JetBrains AI Chat, the Air plugin, and OpenAB chat workflows\
 **Author:** Gandazgul + RunWield Ideator\
-**Last Updated:** 2026-10-06
+**Last Updated:** 2026-11-01
 
 ---
 
@@ -70,16 +70,18 @@ gateway is deferred until a demonstrated product need justifies it.
 ## Architectural References
 
 - [Runtime and adapter boundaries](../adr/010-session-runtime-sibling-adapters-and-acp.md)
-- [Session continuity](../adr/015-file-authoritative-session-bundles.md)
+- [Session continuity](../adr/014-file-authoritative-session-bundles.md)
 - [Protocol coverage and implementation details](../acp-implementation-details.md)
 
 ## Capability Requirements
 
-ACP owns external-client compatibility and channel-specific journeys. Shared Session and Plan behavior is owned by Core.
+ACP owns protocol access, external-client compatibility, and channel-specific journeys. Shared Session and Plan behavior
+is owned by Core; Workspace owns the first-party desktop/browser journeys.
 Stage labels below are delivery scope, not new lifecycle states or claims of shipped interoperability.
 
 - [ACP Session access](#acp-session-access)
 - [Protocol negotiation and interactions](#protocol-negotiation-and-interactions)
+- [Workspace client access](#workspace-client-access) — target; local desktop and browser separation
 - [Chat workflow access](#telegram-workflow-access)
 - [Interrupted-work recovery](#interrupted-work-recovery)
 - [Reference-client portability](#reference-client-portability)
@@ -127,8 +129,8 @@ available alternative and continue the conversation.
 Shared requirements: [Core Session continuity](runwield-core-prd.md#session-continuity),
 [Plan review](runwield-core-prd.md#plan-review),
 [execution and recovery](runwield-core-prd.md#execution-validation-and-recovery), and
-[local workflow metrics](runwield-core-prd.md#local-workflow-metrics). ACP adapts these outcomes rather than defining
-another lifecycle.
+[local workflow metrics](runwield-core-prd.md#usage-measurement-and-export). ACP adapts these outcomes rather than
+defining another lifecycle.
 
 **Acceptance scenarios:**
 
@@ -194,6 +196,8 @@ Stage 1 proves the reference journey through the shared Session experience. Prot
 - The standard `sessionId` returned by `session/new` remains loadable after the `wld acp` process exits and maps to the
   same saved RunWield Session.
 - `initialize` negotiates the supported protocol version instead of echoing unsupported versions.
+- Session creation and loading reject malformed MCP server configuration with an invalid-parameters error. They do
+  not silently discard requested tools and report success.
 - `usage_update.cost` uses the ACP cost object shape with cumulative USD Session cost. `usage_update.used` and `size`
   come from the Runtime's exact current context usage and effective capacity. If either value is unknown, RunWield does
   not send a context update or substitute a local estimate.
@@ -282,6 +286,8 @@ requirement.
 - Given a menu with no option matching `cancel`, replying `cancel` settles it as canceled without selecting a default.
   A matching Cancel option instead keeps that option's meaning. Text and interview questions treat `cancel` as an
   ordinary answer. With workflow metrics enabled, a canceled command records `canceled` when it settles.
+- Given `/model` with no argument and workflow metrics enabled, opening the selector records `opened`. A successful
+  selection records `dispatched` before the successful finish, updates client model options, and changes the next turn's model.
 - Given a waiting command menu, `session/cancel` settles the command before another prompt can start. The next ordinary
   prompt is accepted, and enabled workflow metrics record the command outcome as `canceled`.
 - Given a no-form approval with no supplied options, the menu shows Yes and No; replies `1` and `2` map to accept and
@@ -304,6 +310,48 @@ requirement.
 - When the client displays cost, the advertised ACP shape and cumulative USD Session cost are accurate.
 - Given Pair Execution through ACP, the increment report returns `end_turn`. Later prompt requests can discuss it and
   then resolve it without a Pair form; final completion still requires a later accepted user turn.
+
+### Workspace client access
+
+**Scope and maturity:** Target, not implemented. Workspace currently constructs a runtime in its server. The owner
+requires first-party Workspace clients to control a separate `wld` process through ACP plus extensions, with local
+desktop first and network-runtime access later. See
+[Desktop Workspace](runwield-workspace-prd.md#desktop-workspace) and
+[proposed ADR-020](../adr/020-electron-workspace-acp-client.md).
+
+**Requirement: Carry the full workbench through the runtime contract.** A Workspace client can discover admitted
+Projects and saved Sessions, read bounded history and current observations, converse, configure supported choices,
+answer interactions, and perform revision-checked artifact/review/workflow operations without hosting Core execution
+or writing canonical lifecycle state itself. Existing Core services own validation, access checks, request receipts,
+writer exclusion, persistence, and recovery. Browser and desktop use the same protocol semantics.
+
+**Requirement: Prefer standard ACP and negotiate the remainder.** Use standard capabilities where they cover an
+operation, including Session discovery when supported by the selected baseline. Remaining workbench features are
+explicitly advertised, versioned extensions. Missing required capabilities are explained before dependent mutations.
+Extensions that anticipate ACP v2 follow its semantics where practical while v1 interoperability remains supported;
+draft alignment is not a v2 conformance claim. No client must understand Workspace extensions for ordinary ACP work.
+
+**Requirement: Recover observations without repeating effects.** A client can rebuild a current view after a dropped
+subscription or process interruption. Stable runtime/Project/Session identity and authoritative revisions prevent
+cross-host aliasing, stale decisions, and duplicate effects. Transport reconnect never independently grants permission
+to replay a prompt or workflow action. File and review resources stay scoped to the selected runtime.
+
+**Requirement: Distinguish authentication domains.** Core model-provider configuration is independent of a future
+Workspace account and of remote-host trust. Local ACP use does not require hosted Workspace identity. Runtime network
+transport, authentication, and disconnect semantics are separately specified before claiming remote support.
+
+**Acceptance scenarios:**
+
+- A desktop and a browser client complete the same Session and Plan review through real ACP connections; their hosts
+  do not construct `SessionRuntime` or mutate canonical workflow state outside the runtime contract.
+- A client discovers persisted Sessions, reads bounded history, and continues one also visible in an idle TUI; history
+  and current settings agree with Core's committed state.
+- An older runtime lacks a required workbench capability; the client explains incompatibility and sends no dependent
+  mutation. An ordinary external ACP client continues working without the extension.
+- A duplicate action, stale revision, or wrong-Project Session reference receives the same authoritative rejection or
+  recorded result through either UI host, without a second execution.
+- After lost observations, the client refreshes current evidence without duplicated transcript entries or replaying
+  uncertain work. Provider setup failures identify provider setup rather than demanding Workspace cloud sign-in.
 
 <a id="62-required-user-journey"></a>
 
@@ -441,6 +489,8 @@ models receive the image directly, while text-only models can inspect the persis
   result on success. Listing is not advertised; archive support does not imply `session/list` support.
 - When RunWield advertises a capability, its required protocol behavior passes interoperability checks with more than
   one client before full compliance is claimed.
+- When `session/new` or `session/load` receives a non-array MCP configuration, a stdio definition missing its required
+  environment array, or an unsupported transport, it returns invalid parameters before creating or loading a Session.
 - When an optional capability is unsupported, it is not advertised merely to satisfy a checklist; public coverage
   remains aligned with evidence.
 - When an ACP client sends an image prompt, a vision-capable model receives the image. A text-only model with a
@@ -524,7 +574,7 @@ Discord and other OpenAB-supported chats are already supported. Separate future 
 
 - ACP implementation audit: `docs/acp-implementation-details.md`
 - SessionRuntime architecture decision: `docs/adr/010-session-runtime-sibling-adapters-and-acp.md`
-- File-backed Session continuity: `docs/adr/015-file-authoritative-session-bundles.md`
+- File-backed Session continuity: `docs/adr/014-file-authoritative-session-bundles.md`
 - SessionRuntime and ACP MVP Work Record: `docs/work-records/2026-07-17-sessionruntime-and-acp-v1-stdio-mvp.md`
 - OpenAB: <https://github.com/openabdev/openab>
 - ACP v1 extensibility: <https://agentclientprotocol.com/protocol/v1/extensibility>

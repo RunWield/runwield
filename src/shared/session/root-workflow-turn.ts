@@ -1,5 +1,5 @@
-import { emitSystemStatus } from "./session-runtime-events.js";
-import { clearAgentSessionQueueForTransition, runRootTurn } from "./session.js";
+import { emitSystemStatus } from "./session-runtime-events.ts";
+import { clearAgentSessionQueueForTransition, runRootTurn } from "./session.ts";
 import {
     claimWorkflowToolEvent,
     publishWorkflowToolEvent,
@@ -13,8 +13,8 @@ import {
 } from "../workflow/workflow-tool-events.ts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "./hosted-session.js";
-import type { ImageAttachment } from "./types.js";
+import type { HostedSession } from "./hosted-session.ts";
+import type { ImageAttachment } from "./image-attachments.ts";
 
 interface RootAgentSessionState {
     dispose?: () => void | Promise<void>;

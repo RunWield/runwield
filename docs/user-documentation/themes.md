@@ -47,12 +47,17 @@ wld install <source>
 
 - **npm**: `wld install npm:<package-spec>` (e.g., `wld install npm:my-cool-themes`)
 - **git**: `wld install git:<url>` (e.g., `wld install git:https://github.com/user/themes.git`)
-- **local**: `wld install local:<path>` (e.g., `wld install local:./themes/my-theme-pack`)
+- **local**: `wld install <path>` (e.g., `wld install ./themes/my-theme-pack`)
 
 > [!NOTE]
 > A package can also contain prompt templates and code extensions. RunWield loads its prompt templates, and asks before
-> enabling code extensions. It doesn't load Skills from packages; see [Customization](customization.md#skills). For
-> details, see [Package sources](settings.md#package-sources).
+> enabling code extensions. New registrations already have code disabled when the prompt appears; refusal or
+> interruption leaves it disabled, while acceptance saves only compatible extension paths. Reinstalling preserves
+> existing filters. A `wld.metricsExporter` declaration gets a separate host-global approval prompt. Its
+> `metricsExporterApprovals` record binds the ID, source, installed path, and version. A version change requires
+> re-approval through `wld install`; `wld remove` deletes the approval. Project settings cannot grant it. RunWield does
+> not load exporter entries during Session startup. It doesn't load Skills from packages; see
+> [Customization](customization.md#skills). For details, see [Package sources](settings.md#package-sources).
 
 ### Removing Themes
 

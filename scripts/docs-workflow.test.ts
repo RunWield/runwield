@@ -1,5 +1,6 @@
 import { bashFixturePath, quoteBashFixture } from "./bash-fixture.ts";
 import { test } from "node:test";
+import { load } from "js-yaml";
 import {
     cp as fsCp,
     mkdir as fsMkdir,
@@ -32,6 +33,7 @@ import {
 
 interface ReleaseState {
     cancelled: boolean;
+    qualificationOnly: string;
     kind: string;
     published: string;
     ciResult: string;
@@ -51,6 +53,7 @@ function evaluateReleaseCondition(condition: string, state: ReleaseState): boole
     const values: Record<string, string | boolean> = {
         "!cancelled()": !state.cancelled,
         "needs.metadata.outputs.kind": state.kind,
+        "needs.metadata.outputs.qualification_only": state.qualificationOnly,
         "needs.metadata.outputs.published": state.published,
         "needs.ci.result": state.ciResult,
         "needs.golden.result": state.goldenResult,
@@ -73,6 +76,7 @@ function evaluateReleaseCondition(condition: string, state: ReleaseState): boole
 
 const successfulRelease: ReleaseState = {
     cancelled: false,
+    qualificationOnly: "false",
     kind: "stable",
     published: "false",
     ciResult: "success",
@@ -128,8 +132,8 @@ test("fresh and existing releases traverse the actual qualification conditions",
     assertStringIncludes(jobBlock(workflow, "golden-shards"), "needs: metadata");
     for (const gate of ["ci", "golden"]) {
         const aggregate = jobBlock(workflow, gate);
-        assertStringIncludes(aggregate, `needs: ${gate}-shards`);
-        assertStringIncludes(aggregate, "if: always()");
+        assertStringIncludes(aggregate, `needs: [metadata, ${gate}-shards]`);
+        assertStringIncludes(aggregate, "always() && needs.metadata.outputs.qualification_only != 'true'");
         assertStringIncludes(aggregate, "test '${{ needs." + gate + "-shards.result }}' = 'success'");
     }
     assertStringIncludes(release, "needs.ci.result == 'success'");
@@ -160,6 +164,18 @@ test("fresh and existing releases traverse the actual qualification conditions",
         false,
     );
     assertEquals(evaluateReleaseCondition(jobCondition(release), { ...successfulRelease, cancelled: true }), false);
+});
+
+test("qualification conditions block every publication job even with successful Stable metadata", async () => {
+    const workflow = await fsReadFile(join(repositoryRoot, ".github/workflows/release.yml"), "utf8");
+    const state = { ...successfulRelease, qualificationOnly: "true" };
+    for (const name of ["release", "homebrew-package", "publish-docs", "integrate-release-branch", "docs-artifact"]) {
+        assertEquals(evaluateReleaseCondition(jobCondition(jobBlock(workflow, name)), state), false, name);
+    }
+    const candidate = { ...state, kind: "candidate", docsResult: "skipped" };
+    for (const name of ["build", "assets", "native-package-check"]) {
+        assertEquals(evaluateReleaseCondition(jobCondition(jobBlock(workflow, name)), candidate), true, name);
+    }
 });
 
 test("published recovery prepares its bundle without rebuilding or uploading immutable docs assets", async () => {
@@ -366,37 +382,46 @@ for (const scenario of ["current", "new-release", "new-correction", "api-error"]
     });
 }
 
-test("docs workflow retains source checks and isolates historical source from frozen tooling", async () => {
-    const workflow = await fsReadFile(join(repositoryRoot, ".github/workflows/docs.yml"), "utf8");
-    const deploy = jobBlock(workflow, "deploy");
-    assertEquals(workflow.includes("workflow_call"), false);
-    assertEquals(workflow.includes("git push"), false);
-    assertStringIncludes(deploy, "if: github.ref == 'refs/heads/docs/stable'");
-    assertStringIncludes(workflow, "group: runwield-docs-pages");
-    assertStringIncludes(workflow, "cancel-in-progress: false");
-    assertEquals(deploy.includes("deno"), false);
-    assertStringIncludes(deploy, "ref: ${{ github.sha }}");
-    assertStringIncludes(deploy, "path: source");
-    assertStringIncludes(deploy, "path: tooling");
-    assertStringIncludes(stepBlock(deploy, "Checkout Bun documentation tooling"), "submodules: recursive");
-    assertStringIncludes(deploy, "ref: ${{ github.event.repository.default_branch }}");
-    assertStringIncludes(deploy, "bun-version-file: tooling/.bun-version");
-    assertStringIncludes(deploy, "working-directory: tooling");
-    assertStringIncludes(deploy, "bun run install:locked");
-    assertStringIncludes(deploy, "bun tooling/scripts/build-stable-docs.ts source");
-    assertStringIncludes(deploy, "path: source/dist/docs");
-    for (const step of ["Verify documentation source and qualified release", "Reject stale build before deployment"]) {
-        const stepStart = deploy.indexOf(`            - name: ${step}\n`);
-        const stepBody = deploy.slice(stepStart).split(/\n {12}- /)[0];
-        assertStringIncludes(stepBody, "working-directory: source");
-        assertStringIncludes(stepRun(deploy, step), "bun ../tooling/scripts/verify-docs-source.ts");
-        assertStringIncludes(stepRun(deploy, step), "git rev-parse HEAD");
+interface DocsWorkflowStep {
+    name?: string;
+    uses?: string;
+    if?: string;
+    run?: string;
+    with?: Record<string, string>;
+    "working-directory"?: string;
+}
+interface DocsWorkflow {
+    on: Record<string, string>;
+    concurrency: { group: string; "cancel-in-progress": boolean };
+    jobs: { deploy: { if: string; steps: DocsWorkflowStep[] } };
+}
+
+test("docs deployment binds current tooling, selected source, and the final freshness check", async () => {
+    const config = load(await fsReadFile(join(repositoryRoot, ".github/workflows/docs.yml"), "utf8")) as DocsWorkflow;
+    const deploy = config.jobs.deploy;
+    assertEquals(config.on.workflow_call, undefined);
+    assertEquals(config.concurrency, { group: "runwield-docs-pages", "cancel-in-progress": false });
+    assertEquals(deploy.if, "github.ref == 'refs/heads/docs/stable'");
+    const source = deploy.steps.find((step) => step.with?.path === "source");
+    const tooling = deploy.steps.find((step) => step.with?.path === "tooling");
+    assertEquals(source?.with?.ref, "${{ github.sha }}");
+    assertEquals(tooling?.with?.ref, "${{ github.event.repository.default_branch }}");
+    assertEquals(tooling?.with?.submodules, "recursive");
+    assertEquals(
+        deploy.steps.find((step) => step.uses?.startsWith("oven-sh/setup-bun@"))?.with?.["bun-version-file"],
+        "tooling/.bun-version",
+    );
+    assertEquals(deploy.steps.find((step) => step.run === "bun run install:locked")?.["working-directory"], "tooling");
+    const freshness = deploy.steps.findIndex((step) => step.name === "Reject stale build before deployment");
+    const publication = deploy.steps.findIndex((step) => step.uses?.startsWith("actions/deploy-pages@"));
+    assertEquals(freshness >= 0 && publication > freshness, true);
+    for (const name of ["Verify documentation source and qualified release", "Reject stale build before deployment"]) {
+        assertEquals(deploy.steps.find((step) => step.name === name)?.["working-directory"], "source");
     }
     assertEquals(
-        deploy.lastIndexOf("scripts/verify-docs-source.ts") < deploy.indexOf("uses: actions/deploy-pages@v4"),
-        true,
+        deploy.steps.find((step) => step.uses?.startsWith("actions/upload-pages-artifact@"))?.with?.path,
+        "source/dist/docs",
     );
-    assertStringIncludes(workflow, "isPrerelease == false and .isDraft == false");
 });
 
 for (const scenario of ["one-parent correction", "legacy metadata"]) {
@@ -636,6 +661,7 @@ esac
             RELEASE_TAG: "v0.12.0-rc.1",
             PRODUCT_SHA: "55cc60ec1cf5a96eeb41c9fddd12459200101aab",
             RECOVERY: "true",
+            QUALIFICATION_ONLY: "false",
         };
         for (const [recovery, sha, legacy] of [
             ["true", base.PRODUCT_SHA, "true"],
@@ -650,6 +676,15 @@ esac
                 `sha=${sha}\nbun_version=1.4.3\nlegacy_containers=${legacy}\n`,
             );
         }
+        const qualification = await runShell(command, {
+            ...base,
+            QUALIFICATION_ONLY: "true",
+            GITHUB_SHA: base.PRODUCT_SHA,
+            FETCH_EXIT: "42",
+            RESOLVE_EXIT: "42",
+        });
+        assert(qualification.success, decoder.decode(qualification.stderr));
+        assertStringIncludes(await fsReadFile(output, "utf8"), "legacy_containers=false\n");
         for (const failure of ["FETCH_EXIT", "RESOLVE_EXIT", "PIN_EXIT"]) {
             const result = await runShell(command, { ...base, [failure]: "42" });
             assertEquals(result.success, false, `${failure} must stop the release`);
@@ -659,14 +694,23 @@ esac
     }
 });
 
-for (const extension of ["js", "ts"]) {
-    test(`release recovery runs Golden preparation from ${extension} product source`, async () => {
+const goldenReleaseSourceExtensions = [
+    ["js", "js"],
+    ["ts", "js"],
+    ["ts", "ts"],
+];
+
+for (const [versionExtension, runnerExtension] of goldenReleaseSourceExtensions) {
+    test(`release recovery runs Golden preparation with ${versionExtension} version writer and ${runnerExtension} runner`, async () => {
         const root = await fsMkdtemp(join(tmpdir(), "runwield-golden-compat-"));
         try {
             const workflow = await fsReadFile(join(repositoryRoot, ".github/workflows/release.yml"), "utf8");
             const command = stepRun(jobBlock(workflow, "golden-shards"), "Run Golden TUI release gate");
-            await write(join(root, `scripts/write-version.${extension}`), 'console.log("VERSION-PREPARED");\n');
-            await write(join(root, "scripts/run-tests.js"), 'console.log("GOLDEN-RUN", ...process.argv.slice(2));\n');
+            await write(join(root, `scripts/write-version.${versionExtension}`), 'console.log("VERSION-PREPARED");\n');
+            await write(
+                join(root, `scripts/run-tests.${runnerExtension}`),
+                'console.log("GOLDEN-RUN", ...process.argv.slice(2));\n',
+            );
             const result = await runShell(command, {}, root);
             assertEquals(result.code, 0, decoder.decode(result.stderr));
             const output = decoder.decode(result.stdout);
@@ -676,7 +720,9 @@ for (const extension of ["js", "ts"]) {
             await fsRm(root, { recursive: true });
         }
     });
+}
 
+for (const extension of ["js", "ts"]) {
     test(`release recovery builds container bundles from ${extension} product source`, async () => {
         const root = await fsMkdtemp(join(tmpdir(), "runwield-container-compat-"));
         try {
@@ -695,3 +741,42 @@ for (const extension of ["js", "ts"]) {
         }
     });
 }
+
+test("release source resolution reads the annotated tag commit and its own runtime pin from real Git", async () => {
+    const f = await docsFixture();
+    try {
+        await write(join(f.source, ".bun-version"), "1.3.12\n");
+        await git(f.source, ["add", ".bun-version"]);
+        await git(f.source, ["commit", "-m", "Selected product runtime"]);
+        const tagged = await git(f.source, ["rev-parse", "HEAD"]);
+        const selectedTag = "v2.0.1-rc.1";
+        await git(f.source, ["tag", "-a", selectedTag, "-m", "Candidate"]);
+        await git(f.source, ["push", "origin", `refs/tags/${selectedTag}`]);
+        await write(join(f.source, ".bun-version"), "9.9.9\n");
+        await git(f.source, ["commit", "-am", "Unselected working runtime"]);
+        const head = await git(f.source, ["rev-parse", "HEAD"]);
+        const workflow = await fsReadFile(join(repositoryRoot, ".github/workflows/release.yml"), "utf8");
+        const command = stepRun(jobBlock(workflow, "metadata"), "Resolve the immutable product commit");
+        for (const qualify of [false, true]) {
+            await fsWriteFile(f.env.GITHUB_OUTPUT, "");
+            const result = await runShell(
+                command,
+                {
+                    ...f.env,
+                    RELEASE_TAG: selectedTag,
+                    RECOVERY: "true",
+                    QUALIFICATION_ONLY: String(qualify),
+                    GITHUB_SHA: head,
+                },
+                f.source,
+            );
+            assertEquals(result.success, true, decoder.decode(result.stderr));
+            assertEquals(
+                await fsReadFile(f.env.GITHUB_OUTPUT, "utf8"),
+                `sha=${qualify ? head : tagged}\nbun_version=${qualify ? "9.9.9" : "1.3.12"}\nlegacy_containers=false\n`,
+            );
+        }
+    } finally {
+        await fsRm(f.root, { recursive: true, force: true });
+    }
+});

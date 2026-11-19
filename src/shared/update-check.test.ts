@@ -7,18 +7,15 @@ import {
     fetchLatestRunWieldRcRelease,
     fetchLatestRunWieldRelease,
     getCachedUpdateAvailability,
-    getTagPinnedInstallerUrls,
     isNewerRunWieldVersion,
     LATEST_RELEASE_API_URL,
     LATEST_RELEASE_WEB_URL,
-    normalizeRunWieldVersion,
-    parseRunWieldReleaseVersion,
     readUpdateCheckCache,
     refreshUpdateCheckCache,
     RELEASES_API_URL,
     RELEASES_WEB_URL,
     writeUpdateCheckCache,
-} from "./update-check.js";
+} from "./update-check.ts";
 
 import type { FetchRequest } from "./fetch-request.ts";
 
@@ -29,19 +26,6 @@ function fixedClock(value: number) {
 function updatePorts(fetch: FetchRequest, now = 10) {
     return { network: { fetch }, clock: fixedClock(now) };
 }
-
-test("normalizes RunWield release versions", () => {
-    assertEquals(normalizeRunWieldVersion("1.2.3"), "v1.2.3");
-    assertEquals(normalizeRunWieldVersion("v1.2.3-rc.4"), "v1.2.3-rc.4");
-    assertEquals(parseRunWieldReleaseVersion("v1.2.3"), {
-        major: 1,
-        minor: 2,
-        patch: 3,
-        rc: null,
-        stable: true,
-        normalized: "v1.2.3",
-    });
-});
 
 test("compares stable and candidate release versions", () => {
     assertEquals(isNewerRunWieldVersion("v1.2.4", "v1.2.3"), true);
@@ -222,11 +206,4 @@ test("latest RC lookup reports when no candidate is published", async () => {
         Error,
         "No RunWield release candidate is published.",
     );
-});
-
-test("constructs tag-pinned installer URLs", () => {
-    assertEquals(getTagPinnedInstallerUrls("1.2.3"), [
-        "https://raw.githubusercontent.com/gandazgul/runwield/v1.2.3/install.sh",
-        "https://github.com/gandazgul/runwield/raw/refs/tags/v1.2.3/install.sh",
-    ]);
 });

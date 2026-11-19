@@ -2,8 +2,8 @@ import { test } from "node:test";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { makeValidationProjectRoot } from "./validation-test-helpers.js";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { makeValidationProjectRoot } from "./validation-test-helpers.ts";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { applySharedPlanReviewDecision } from "./plan-review-actions.ts";
 import type { SharedPlanReviewDecision } from "./plan-review-actions.ts";
 
@@ -25,6 +25,7 @@ async function withQuestionPlan(verify: (fixture: QuestionPlanFixture) => Promis
             "questions",
             body,
             {
+                planId: initial.attrs.planId,
                 classification: "PLANNED_CHANGE",
                 status: "draft",
                 affectedPaths: [],

@@ -55,7 +55,7 @@ recovery.
 
 - `src/shared/workflow/plan-lifecycle.js` — enforce compatible Plan Workflow Lease ownership around `recordPlanEvent()`
   and lifecycle transitions.
-- `src/shared/workflow/workflow.js`, `validation.js`, and `workflow-results.js` — carry Session/lease identity through
+- `src/shared/workflow/workflow.ts`, `validation.js`, and `workflow-results.js` — carry Session/lease identity through
   execution, validation, and recovery paths.
 - `src/shared/worktree-registry.js` — expose worktree evidence and enforce or verify lease-compatible consequential
   registry changes.

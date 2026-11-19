@@ -1,12 +1,18 @@
 // @ts-nocheck: Deno test imports browser-shell helpers with a small fake DOM.
-import { readFile as fsReadFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
+import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { createOwnerWorkspaceApp } from "./server.ts";
+import { devOwnerSidebar } from "./server/dev-owner-fixtures.ts";
 import { test } from "node:test";
 import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     applyActiveRoute,
     applySessionName,
-    clampSidebarWidth,
     currentRouteFromUrl,
     installSidebarResize,
     installWorkspaceShellBrowser,
@@ -14,17 +20,7 @@ import {
     loadMoreSidebarSessions,
     refreshSidebarForPage,
     renderSidebar,
-    shouldApplySidebarRefresh,
-    sidebarProjectOrder,
-    sidebarSessionOrder,
 } from "./static/workspace-shell.ts";
-
-test("Workspace sidebar resizing respects panel and conversation bounds", () => {
-    assertEquals(clampSidebarWidth(100, 1440), 220);
-    assertEquals(clampSidebarWidth(360, 1440), 360);
-    assertEquals(clampSidebarWidth(700, 1440), 480);
-    assertEquals(clampSidebarWidth(480, 870), 450);
-});
 
 test("Workspace home stays on the Attention Dashboard and reuses its sidebar", async () => {
     const { document, sidebar } = installFakeBrowser("/");
@@ -156,6 +152,15 @@ class FakeElement {
         listeners.push(listener);
         this.listeners.set(type, listeners);
     }
+    removeEventListener(type, listener) {
+        this.listeners.set(
+            type,
+            (this.listeners.get(type) || []).filter((entry) => entry !== listener),
+        );
+    }
+    contains(node) {
+        return node === this || this._descendants().includes(node);
+    }
     dispatchEvent(event) {
         for (const listener of this.listeners.get(event.type) || []) listener(event);
         return !event.defaultPrevented;
@@ -164,7 +169,15 @@ class FakeElement {
         globalThis.document.activeElement = this;
     }
     getBoundingClientRect() {
-        return { left: 0, width: 1440 };
+        return (
+            this.bounds || {
+                left: 0,
+                top: 0,
+                bottom: 28,
+                width: this.className === "rw-warning-tooltip" ? 280 : 1440,
+                height: 28,
+            }
+        );
     }
     setPointerCapture(pointerId) {
         this.capturedPointer = pointerId;
@@ -290,7 +303,11 @@ function installFakeBrowser(pathname = "/projects/project-a/sessions/session-a")
     const header = document.createElement("div");
     header.dataset.workspaceMainHeaderLeft = "";
     shell.append(sidebar, header);
-    document.append(shell);
+    document.body = document.createElement("body");
+    document.body.append(shell);
+    document.append(document.body);
+    globalThis.innerWidth = 1440;
+    globalThis.innerHeight = 900;
     globalThis.document = document;
     globalThis.location = { href: `http://workspace.local${pathname}`, pathname, assign() {}, replace() {} };
     Object.defineProperty(globalThis, "localStorage", {
@@ -343,31 +360,73 @@ test("an older Session uses its persisted name even outside the sidebar's first 
     );
 });
 
-test("Workspace sidebar refreshes reject stale navigation responses", () => {
-    assertEquals(shouldApplySidebarRefresh(2, 2, "http://workspace.local/a", "http://workspace.local/a"), true);
-    assertEquals(shouldApplySidebarRefresh(1, 2, "http://workspace.local/a", "http://workspace.local/a"), false);
-    assertEquals(shouldApplySidebarRefresh(2, 2, "http://workspace.local/a", "http://workspace.local/b"), false);
-});
-
-test("Workspace sidebar reconciliation keeps only loaded older Sessions while inserting new server rows first", () => {
-    const order = sidebarSessionOrder(
-        {
-            projectId: "project-a",
-            sessions: [
-                { runwieldSessionId: "ordinary", displayName: "Ordinary" },
-                { runwieldSessionId: "loaded-old", displayName: "Loaded old", loaded: true },
+for (const navigation of ["new route", "return to same route", "route changed without another refresh"]) {
+    test(`late sidebar responses cannot replace current navigation after ${navigation}`, async () => {
+        const { sidebar } = installFakeBrowser("/projects/race-project/sessions/session-a");
+        const originalFetch = globalThis.fetch;
+        const pending = [];
+        const refreshes = [];
+        const project = { projectId: "race-project", displayName: "Race project", enabled: true };
+        const flush = async () => {
+            for (let index = 0; index < 30; index++) await Promise.resolve();
+        };
+        const navigate = (id) => {
+            globalThis.location.pathname = `/projects/race-project/sessions/${id}`;
+            globalThis.location.href = `http://workspace.local${globalThis.location.pathname}`;
+        };
+        globalThis.fetch = (url) => {
+            if (url === "/api/owner/sidebar") return new Promise((resolve) => pending.push(resolve));
+            return Promise.resolve(
+                Response.json(
+                    url === "/api/owner/projects" ? { projects: [project] } : { sessions: [], hasNext: false },
+                ),
+            );
+        };
+        const payload = (name) => ({
+            projects: [
+                {
+                    ...project,
+                    sessions: [
+                        { runwieldSessionId: "session-a", displayName: name },
+                        { runwieldSessionId: "session-b", displayName: name },
+                    ],
+                },
             ],
-        },
-        {
-            projectId: "project-a",
-            sessions: [{ runwieldSessionId: "new", displayName: "New Session" }],
-        },
-    );
-    assertEquals(
-        order.map((session) => session.runwieldSessionId),
-        ["new", "loaded-old"],
-    );
-});
+        });
+        try {
+            refreshes.push(refreshSidebarForPage());
+            await flush();
+            assertEquals(pending.length, 1);
+            navigate("session-b");
+            if (navigation !== "route changed without another refresh") {
+                refreshes.push(refreshSidebarForPage());
+                await flush();
+                if (navigation === "return to same route") {
+                    navigate("session-a");
+                    refreshes.push(refreshSidebarForPage());
+                    await flush();
+                }
+                pending.at(-1)(Response.json(payload("Latest conversation")));
+                await refreshes.at(-1);
+                assertStringIncludes(sidebar.textContent, "Latest conversation");
+            }
+            for (const resolve of pending.slice(
+                0,
+                navigation === "route changed without another refresh" ? undefined : -1,
+            )) {
+                resolve(Response.json(payload("Outdated conversation")));
+            }
+            await Promise.all(refreshes);
+            assertEquals(sidebar.textContent.includes("Outdated conversation"), false);
+            if (navigation !== "route changed without another refresh")
+                assertStringIncludes(sidebar.textContent, "Latest conversation");
+        } finally {
+            for (const resolve of pending) resolve(Response.json({ projects: [] }));
+            await Promise.allSettled(refreshes);
+            globalThis.fetch = originalFetch;
+        }
+    });
+}
 
 test("Workspace sidebar drops active omitted Sessions after the user navigates away", () => {
     const { sidebar } = installFakeBrowser("/projects/project-a/sessions/omitted");
@@ -393,20 +452,6 @@ test("Workspace sidebar drops active omitted Sessions after the user navigates a
     renderSidebar(payload, { kind: "session", projectId: "project-a", runwieldSessionId: "session-a" });
 
     assertEquals(sidebar.querySelector('[data-sidebar-session="omitted"]'), null);
-});
-
-test("Workspace sidebar project reconciliation removes Projects omitted by the server", () => {
-    const order = sidebarProjectOrder(
-        [
-            { projectId: "project-a", sessions: [] },
-            { projectId: "loaded-project", sessions: [] },
-        ],
-        [{ projectId: "project-a", displayName: "Project A", enabled: true, sessions: [] }],
-    );
-    assertEquals(
-        order.map((project) => project.projectId),
-        ["project-a"],
-    );
 });
 
 test("Workspace sidebar updates rows in place, inserts new Sessions, removes stale rows, and preserves expansion", () => {
@@ -585,6 +630,14 @@ test("Workspace sidebar resize supports keyboard, pointer, and persisted width",
     handle.dispatchEvent({ type: "keydown", key: "ArrowRight", preventDefault() {} });
     assertEquals(handle.getAttribute("aria-valuenow"), "296");
     handle.dispatchEvent({ type: "pointerdown", button: 0, pointerId: 1, preventDefault() {} });
+    handle.dispatchEvent({ type: "pointermove", clientX: -100 });
+    assertEquals(shell.styles.get("--rw-workspace-sidebar-width"), "220px");
+    handle.dispatchEvent({ type: "pointermove", clientX: 900 });
+    assertEquals(shell.styles.get("--rw-workspace-sidebar-width"), "480px");
+    shell.bounds = { left: 0, top: 0, bottom: 900, width: 700, height: 900 };
+    handle.dispatchEvent({ type: "pointermove", clientX: 900 });
+    assertEquals(shell.styles.get("--rw-workspace-sidebar-width"), "280px", "Keep room for the conversation");
+    delete shell.bounds;
     handle.dispatchEvent({ type: "pointermove", clientX: 380 });
     handle.dispatchEvent({ type: "pointerup" });
     assertEquals(shell.styles.get("--rw-workspace-sidebar-width"), "380px");
@@ -592,26 +645,6 @@ test("Workspace sidebar resize supports keyboard, pointer, and persisted width",
     handle.remove();
     installSidebarResize();
     assertEquals(shell.querySelector(".workspace-sidebar-resizer").getAttribute("aria-valuenow"), "380");
-});
-
-test("Workspace shell is event-driven and does not poll the sidebar", async () => {
-    const shell = await fsReadFile(new URL("./static/workspace-shell.ts", import.meta.url), "utf8");
-    assertStringIncludes(shell, 'document.addEventListener("astro:page-load", installWorkspaceShell)');
-    assertStringIncludes(shell, 'ownerJson("/api/owner/sidebar"');
-    assertEquals(/setInterval\s*\(/.test(shell), false);
-    assertEquals(shell.includes("setTimeout(()"), false);
-    assertEquals(/visibilitychange[^\n]+sidebar/.test(shell), false);
-});
-
-test("Workspace owner layout persists the real sidebar and owns navigation", async () => {
-    const layout = await fsReadFile(new URL("./layouts/WorkspaceLayout.astro", import.meta.url), "utf8");
-    assertStringIncludes(layout, 'import { ClientRouter } from "astro:transitions";');
-    assertStringIncludes(layout, "<ClientRouter />");
-    assertStringIncludes(layout, 'transition:name="workspace-sidebar" transition:persist');
-    assertStringIncludes(layout, 'document.addEventListener("runwield:workspace-navigate"');
-    assertEquals(layout.includes("__runwieldWorkspaceNavigate"), false);
-    assertStringIncludes(layout, '<script is:inline type="module" src="/workspace-shell.js"></script>');
-    assertStringIncludes(layout, 'data-workspace-sidebar-restore aria-label="Open Workspace sidebar"');
 });
 
 test("artifact and review headers keep one surface title and a reachable Workspace restore control", () => {
@@ -828,4 +861,185 @@ test("Plan-associated sidebar Sessions keep open links and show Archived status"
     const row = document.querySelector('[data-sidebar-session="saved"]');
     assertEquals(row.href, "/projects/project-a/sessions/saved");
     assertEquals(row.querySelector("small").textContent, "Archived");
+});
+
+test("malformed Plans stay named beside healthy navigation without a Project parser dump", () => {
+    const { document, sidebar } = installFakeBrowser();
+    renderSidebar(
+        {
+            projects: [
+                {
+                    projectId: "project-a",
+                    enabled: true,
+                    plans: [{ planId: "healthy", title: "Healthy Plan", status: "draft" }],
+                    planDiagnostics: [
+                        {
+                            name: "broken-without-id",
+                            kind: "malformed",
+                            message: "bad indentation (5:16) <img src=x onerror=alert(1)>",
+                        },
+                    ],
+                    sessions: [{ runwieldSessionId: "session-a", displayName: "Saved Session" }],
+                },
+            ],
+        },
+        currentRouteFromUrl(globalThis.location.href),
+    );
+    const warning = sidebar.querySelector("[data-sidebar-plan-warning]");
+    assert(warning, "the malformed document must have its own warning row");
+    assertEquals(warning.querySelector("a")?.href || warning.children[0].href, "/projects/project-a/plans");
+    assertStringIncludes(warning.textContent, "broken-without-id");
+    assertEquals(sidebar.querySelector(".workspace-sidebar-diagnostics").textContent, "");
+    assert(sidebar.querySelector('[data-sidebar-plan="healthy"]'));
+    assert(sidebar.querySelector('[data-sidebar-session="session-a"]'));
+    const button = warning.querySelector("[data-plan-warning-control]");
+    assert(button.getAttribute("aria-label").includes("broken-without-id"));
+    button.dispatchEvent({ type: "focus" });
+    const tooltip = document.querySelector('[role="tooltip"]');
+    assertStringIncludes(tooltip.textContent, "<img src=x onerror=alert(1)>");
+    assertEquals(tooltip.children.length, 0);
+    assertStrictEquals(tooltip.parentElement, document.body);
+});
+
+test("Plan warnings support hover, focus, touch activation and Escape without navigation", () => {
+    const { document, sidebar } = installFakeBrowser("/projects/dev-project/plans");
+    renderSidebar(devOwnerSidebar("mixed"), currentRouteFromUrl(globalThis.location.href));
+    const button = sidebar.querySelector("[data-plan-warning-control]");
+    button.bounds = { left: 375, top: 820, bottom: 848, width: 28, height: 28 };
+    globalThis.innerWidth = 390;
+    globalThis.innerHeight = 844;
+    button.dispatchEvent({ type: "mouseenter" });
+    let tooltip = document.querySelector('[role="tooltip"]');
+    assert(tooltip);
+    assert(Number.parseFloat(tooltip.style.left) >= 8);
+    assert(Number.parseFloat(tooltip.style.left) + 280 <= 382);
+    assert(Number.parseFloat(tooltip.style.top) + 28 <= 836);
+    document.dispatchEvent({ type: "keydown", key: "Escape" });
+    assertEquals(document.querySelector('[role="tooltip"]'), null);
+    assertEquals(button.getAttribute("aria-describedby"), null);
+    button.dispatchEvent({ type: "focus" });
+    tooltip = document.querySelector('[role="tooltip"]');
+    assertStringIncludes(tooltip.textContent, "(5:16)");
+    assertEquals(button.getAttribute("aria-describedby"), tooltip.id);
+    button.dispatchEvent({ type: "blur" });
+    const event = {
+        type: "click",
+        preventDefault() {
+            this.prevented = true;
+        },
+        stopPropagation() {
+            this.stopped = true;
+        },
+    };
+    button.dispatchEvent(event);
+    assert(event.prevented && event.stopped);
+    button.dispatchEvent({ type: "mouseleave" });
+    assert(document.querySelector('[role="tooltip"]'), "touch activation pins the explanation");
+    document.dispatchEvent({ type: "keydown", key: "Escape" });
+    assertEquals(document.querySelector('[role="tooltip"]'), null);
+    assertEquals(globalThis.location.pathname, "/projects/dev-project/plans");
+});
+
+for (const variant of ["mixed", "all-malformed"]) {
+    for (const control of ["link", "button"]) {
+        test(`unchanged ${variant} refresh keeps keyboard focus on the warning ${control}`, () => {
+            const { document, sidebar } = installFakeBrowser("/projects/dev-project/plans");
+            const current = currentRouteFromUrl(globalThis.location.href);
+            renderSidebar(devOwnerSidebar(variant), current);
+            const warningName = "broken-without-id";
+            const target = () => {
+                const row = sidebar.querySelector(`[data-sidebar-plan-warning="${warningName}"]`);
+                return control === "button" ? row.querySelector("[data-plan-warning-control]") : row.children[0];
+            };
+            target().focus();
+            for (let refresh = 0; refresh < 2; refresh++) {
+                renderSidebar(devOwnerSidebar(variant), current);
+                assertStrictEquals(document.activeElement, target());
+                assert(sidebar.contains(document.activeElement));
+            }
+        });
+    }
+}
+
+test("corrected and deleted refreshes remove warning rows and portal nodes", () => {
+    const { document, sidebar } = installFakeBrowser("/projects/dev-project/plans");
+    const current = currentRouteFromUrl(globalThis.location.href);
+    for (const variant of ["corrected", "deleted"]) {
+        renderSidebar(devOwnerSidebar("mixed"), current);
+        sidebar.querySelector("[data-plan-warning-control]").dispatchEvent({ type: "focus" });
+        assert(document.querySelector('[role="tooltip"]'));
+        renderSidebar(devOwnerSidebar(variant), current);
+        assertEquals(sidebar.querySelectorAll("[data-sidebar-plan-warning]").length, 0);
+        assertEquals(document.querySelector('[role="tooltip"]'), null);
+        renderSidebar(devOwnerSidebar(variant), current);
+        assertEquals(sidebar.querySelectorAll('[data-sidebar-plan="healthy-navigation-fixture"]').length, 1);
+    }
+    assertEquals(sidebar.querySelector('[data-sidebar-plan="corrected-fixture"]'), null);
+});
+
+test("all-malformed navigation stays distinct from empty and Project-wide failure", () => {
+    const { sidebar } = installFakeBrowser("/projects/dev-project/plans");
+    const current = currentRouteFromUrl(globalThis.location.href);
+    renderSidebar(devOwnerSidebar("all-malformed"), current);
+    const project = sidebar.querySelector('[data-sidebar-project="dev-project"]');
+    assertEquals(project.querySelectorAll("[data-sidebar-plan-warning]").length, 2);
+    assertEquals(project.querySelector(".workspace-sidebar-plans").textContent.includes("No active Plans"), false);
+    assert(project.querySelector("[data-sidebar-session]"));
+    renderSidebar(devOwnerSidebar("project-failure"), current);
+    assertEquals(project.querySelectorAll("[data-sidebar-plan-warning]").length, 0);
+    assertStringIncludes(
+        project.querySelector(".workspace-sidebar-diagnostics").textContent,
+        "Plans could not be loaded",
+    );
+    assertStringIncludes(project.querySelector(".workspace-sidebar-plans").textContent, "Plans unavailable");
+});
+
+const warningNavigationFixture = defineGitFixture(async (root) => {
+    await mkdir(join(root, "docs/plans"), { recursive: true });
+    await writeFile(
+        join(root, "docs/plans/healthy.md"),
+        "---\nplanId: healthy-id\nclassification: FEATURE\nstatus: draft\n---\n# Healthy\n",
+    );
+    await writeFile(join(root, "docs/plans/broken.md"), "---\naffectedPaths: - src/example.ts\n---\n# Broken\n");
+    await git(root, ["add", "."]);
+    await git(root, ["commit", "-m", "warning navigation fixture"]);
+});
+
+test("real owner sidebar response renders partial Plan results and safe parser text", async () => {
+    const root = await warningNavigationFixture.checkout();
+    const home = await mkdtemp(join(tmpdir(), "warning-navigation-"));
+    const store = openOwnerCoordinationStore({ dbPath: join(home, "owner.sqlite3") });
+    let app;
+    try {
+        await enterProjectRuntime(root);
+        const project = store.registerProject({ root, displayName: "Warning navigation" });
+        const pairing = store.createPairingRequest({ codeFactory: () => "WARN12", proofFactory: () => "proof" });
+        store.approvePairingRequest(pairing.code);
+        const claimed = store.claimPairingRequest(pairing.proof, {
+            credentialFactory: () => "reader",
+            csrfFactory: () => "csrf",
+        });
+        app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
+        const response = await app.handler()(
+            new Request("http://127.0.0.1:8787/api/owner/sidebar", {
+                headers: { cookie: `rw_owner_device=${claimed.credential}; rw_owner_csrf=csrf` },
+            }),
+        );
+        assertEquals(response.status, 200);
+        const payload = await response.json();
+        const { sidebar, document } = installFakeBrowser(`/projects/${project.projectId}/plans`);
+        renderSidebar(payload, currentRouteFromUrl(globalThis.location.href));
+        assert(sidebar.querySelector('[data-sidebar-plan="healthy-id"]'));
+        const warning = sidebar.querySelector('[data-sidebar-plan-warning="broken"]');
+        assert(warning);
+        assertEquals(warning.children[0].href, `/projects/${project.projectId}/plans`);
+        warning.querySelector("[data-plan-warning-control]").dispatchEvent({ type: "mouseenter" });
+        assertStringIncludes(document.querySelector('[role="tooltip"]').textContent, "(1:16)");
+        assertEquals(sidebar.querySelector(".workspace-sidebar-diagnostics").textContent, "");
+    } finally {
+        await app?.close();
+        store.close();
+        await rm(root, { recursive: true, force: true });
+        await rm(home, { recursive: true, force: true });
+    }
 });

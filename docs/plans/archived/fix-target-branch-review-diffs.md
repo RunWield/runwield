@@ -15,7 +15,7 @@ affectedPaths:
     - "src/ui/workspace/server/session-continuation.js"
     - "src/agent-definitions/subagent-definitions/"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/005-concurrent-worktree-isolation.md"
+    - "docs/adr/004-concurrent-worktree-isolation.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-09-17"
@@ -144,9 +144,9 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   target through existing human review plumbing. No visual redesign.
 - `src/ui/workspace/server.js` and `server/session-continuation.js`, plus review integration tests — target-relative
   patches on standalone and Workspace reload, without exposing local comparison context.
-- `docs/prd/runwield-core-prd.md`, `docs/plan-lifecycle.md`, and `docs/adr/005-concurrent-worktree-isolation.md` — align
+- `docs/prd/runwield-core-prd.md`, `docs/plan-lifecycle.md`, and `docs/adr/004-concurrent-worktree-isolation.md` — align
   requirements and current review guidance. Record the single shared comparison owner and AI/human patch parity.
-  Distinguish the immutable recovery baseline from the live review target. Do not rewrite unrelated ADR-003 recovery
+  Distinguish the immutable recovery baseline from the live review target. Do not rewrite unrelated ADR-004 recovery
   policy or publication architecture.
 - `docs/domain-language.md` — clarify Semantic Code Review, Local Human Code Review, and Review Issue definitions and
   relationships to actual changes and independently disproved findings. No new domain term is needed.
@@ -175,7 +175,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 5. Reviewer and repair instructions distinguish existing context from actual changes and permit evidence-backed
    resolution of wrongly attributed prior findings without forced edits. Ledger IDs, independent verification, and
    genuine missing-requirement blocking remain intact.
-6. Owning PRD requirements and scenarios, lifecycle guidance, ADR-005, and glossary definitions/relationships describe
+6. Owning PRD requirements and scenarios, lifecycle guidance, ADR-004, and glossary definitions/relationships describe
    the implemented comparison together. Unrelated product requirements and deferred work remain unchanged.
 
 ## Approval Confirmation

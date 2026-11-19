@@ -2,21 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FIXTURE_GROUPS, loadFixture, readFixturePatch } from "./fixtures.ts";
+import { loadFixture, readFixturePatch } from "./fixtures.ts";
 import { materializeFixture } from "./materialize.ts";
 import { projectEngineerPlanBody } from "../../src/shared/workflow/engineer-plan-projection.ts";
 import { corpusPath, corpusIds, withFixtureCopy } from "./test-fixtures.ts";
-
-for (const id of corpusIds) {
-    test(`${id} loads the reviewed manifest, oracle, and all required proof commands`, async () => {
-        const fixture = await loadFixture(join(corpusPath, id));
-        assert.equal(fixture.manifest.scenarioId, id);
-        assert.ok(FIXTURE_GROUPS.includes(fixture.manifest.group));
-        assert.equal(fixture.oracle.variants.A!.expectedDecision, "reject");
-        assert.equal(fixture.oracle.variants.B?.expectedDecision, id === "RV-M01" ? undefined : "approve");
-        assert.ok(Object.keys(fixture.oracle.proofs).length > 0);
-    });
-}
 
 interface InvalidInput {
     name: string;

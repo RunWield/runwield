@@ -1,4 +1,8 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { stat as fsStat } from "node:fs/promises";
+import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
+import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
+import { runHostRecorder } from "./validation-host-recorder.ts";
 import { syncEpicChildPlanDeviations } from "./epic-review-context.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
@@ -9,7 +13,7 @@ import {
 } from "./delivery-evidence.ts";
 import { relative } from "node:path";
 import { buildDeliveryReport } from "./delivery-report.ts";
-import { getCodeReviewMode, getGuidedReviewMode } from "../settings.js";
+import { getCodeReviewMode, getGuidedReviewMode } from "../settings.ts";
 import {
     readPublishedDeliverySources,
     readPublishedRecordMarkdown,
@@ -25,17 +29,16 @@ import {
  * so the durable Epic Manual QA artifact is sealed into child delivery.
  */
 
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
-import { loadPlan, withPlanLock } from "../../plan-store.js";
+import { loadPlan, withPlanLock } from "../../plan-store.ts";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
-import { createQaChecklistGeneratedTool } from "../../tools/qa-checklist-generated.ts";
 import { findEpicManualQaSection } from "../epic-artifacts.ts";
-import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.js";
+import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
-import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.js";
+import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
-import { stageValidationPassedInExecutionWorktree } from "./plan-lifecycle.js";
+import { stageValidationPassedInExecutionWorktree } from "./plan-lifecycle.ts";
 import { shouldContinueParentEpicAfterValidation } from "./validation-scope.ts";
 import type {
     HumanReviewMetadata,
@@ -44,7 +47,6 @@ import type {
     ValidationLoopArgs,
     ValidationPhaseResult,
 } from "./validation-types.ts";
-import type { OpaqueToolDefinition } from "./validation-ports.ts";
 import type { EpicContinuationResolution } from "./epic-continuation.ts";
 import { MAX_AGENT_MERGE_REPAIRS } from "./validation-types.ts";
 import {
@@ -86,8 +88,8 @@ import {
 import type { PublicationAttempt } from "./publication-attempt.ts";
 import { preparePublicationRevalidation, PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
 
-type DeliveryEvidence = import("../../plan-store.js").DeliveryEvidence;
-type WorktreeDeliveryEvidence = import("../../plan-store.js").WorktreeDeliveryEvidence;
+type DeliveryEvidence = import("../../plan-store.ts").DeliveryEvidence;
+type WorktreeDeliveryEvidence = import("../../plan-store.ts").WorktreeDeliveryEvidence;
 type ManualQaPreparationResult = { kind: "ready" } | { kind: "blocked"; outcome: PublicationOutcome };
 
 function firstMarkdownHeading(markdown: string, fallback: string): string {
@@ -154,6 +156,7 @@ async function prepareEpicChildManualQaArtifact(
     cwd: string,
     projectRoot: string,
 ): Promise<ManualQaPreparationResult> {
+    if (args.hostTurn) return { kind: "ready" };
     const plan = await loadPlan(cwd, args.planName).catch(() => null);
     const parentPlan =
         typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim() ? plan.attrs.parentPlan.trim() : "";
@@ -188,12 +191,12 @@ async function prepareEpicChildManualQaArtifact(
             "### Source context",
             args.planContent,
         ].join("\n");
-        const tool = createQaChecklistGeneratedTool({
+        const manualQa = {
             projectRoot: cwd,
             epicPlanName: parentPlan,
             childPlanName: args.planName,
             childHeading: firstMarkdownHeading(args.planContent, args.planName),
-        });
+        };
         let outcome;
         try {
             outcome = await args.session.runIsolatedAgentSession({
@@ -201,10 +204,10 @@ async function prepareEpicChildManualQaArtifact(
                 agentName: AGENTS.OPERATOR,
                 userRequest,
                 cwd,
-                customTools: [tool as unknown as OpaqueToolDefinition],
-                sessionManager: args.session.createInMemorySessionManager(cwd),
+                manualQa,
             });
         } catch (caught) {
+            args.session.assertLive();
             const error = caught instanceof Error ? caught : new Error(String(caught));
             outcome = {
                 kind: "manual_qa" as const,
@@ -259,12 +262,15 @@ export async function runPublicationPhase(
     context: PhaseContext,
     humanReviewMetadata: HumanReviewMetadata,
 ): Promise<PublicationOutcome> {
+    args.session.assertLive();
+    await preparePlanWorkflow(context.projectRoot, args.planName);
     args.session.releaseActiveAgent();
     const outcome = await withPlanLock(
         context.projectRoot,
         args.planName,
         async () => await runLockedPublicationPhase(args, context, humanReviewMetadata),
     );
+    args.session.assertLive();
     if (!outcome.recorded && (await preparePublicationRevalidation(context.projectRoot, args.planName))) {
         emitStatus(args, PUBLICATION_REVALIDATION_MESSAGE);
         return {
@@ -296,12 +302,19 @@ async function runLockedPublicationPhase(
         const deliveryEvidence: DeliveryEvidence = context.nonGitInPlace
             ? { version: 1, mode: "non_git_in_place" }
             : null;
+        if (args.hostTurn) await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot, true);
         await recordLifecycleEvent(args, context.projectRoot, "validation_passed", "reviewed", undefined, {
             executionMode: context.nonGitInPlace ? "non_git_in_place" : undefined,
             deliveryEvidence,
             ...humanReviewMetadata,
         });
-        await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot);
+        if (args.hostTurn) {
+            await completeInPlaceWorkRecord(
+                context.executionCwd || context.projectRoot,
+                args.planName,
+                args.workRecordMnemotecaPort,
+            );
+        } else await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot);
         return { recorded: true, result: await buildVerifiedResult(args, context.projectRoot) };
     }
 
@@ -341,9 +354,7 @@ async function runLockedPublicationPhase(
     }
     const worktreeId = context.worktreeId;
     const storedAttempt = worktreeId
-        ? await findWorktreeRegistryEntryById(context.projectRoot, context.worktreeId, { migrate: false }).catch(
-              () => null,
-          )
+        ? await findWorktreeRegistryEntryById(context.projectRoot, context.worktreeId).catch(() => null)
         : null;
     let publicationAttempt: PublicationAttempt | null =
         storedAttempt?.publication || (await loadPublicationAttempt(context.projectRoot, worktreeId));
@@ -367,7 +378,7 @@ async function runLockedPublicationPhase(
             .catch(() => false);
         if (!exists) repairMergeWorktreePath = undefined;
     }
-    let agentRepairs = 0;
+    let agentRepairs = args.hostTurn ? args.validationCheckpoint?.publicationRepairs || 0 : 0;
     // A restarted validation can inherit a repair checkout that is still inside
     // Git's merge transaction. Normalize it before attempting another merge.
     let pendingFinalizeFailure: PublicationFailure | undefined;
@@ -383,6 +394,7 @@ async function runLockedPublicationPhase(
     let publicationOperationalAttempt = 1;
 
     for (;;) {
+        args.session.assertLive();
         const attempt = pendingFinalizeFailure
             ? { kind: "failed" as const, failure: pendingFinalizeFailure }
             : await attemptPublication();
@@ -441,6 +453,7 @@ async function runLockedPublicationPhase(
             try {
                 if (await dispatchMergeRepair(args, context, reason, failure)) continue;
             } catch (caught) {
+                if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
                 pendingFinalizeFailure = normalizePublicationFailure(
                     caught instanceof Error ? caught : new Error(String(caught)),
                 );
@@ -546,6 +559,8 @@ async function runLockedPublicationPhase(
         try {
             return { kind: "published", outcome: await publishOnce() };
         } catch (caught) {
+            args.session.assertLive();
+            if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
             const error = caught instanceof Error ? caught : new Error(String(caught));
             const failure = normalizePublicationFailure(error);
             // A source can change after this invocation sealed it. Recover in
@@ -567,6 +582,7 @@ async function runLockedPublicationPhase(
                 };
             }
             if (publicationAttempt) {
+                args.session.assertLive();
                 publicationAttempt = await failStoredPublication(context.projectRoot, publicationAttempt, {
                     kind: getMergeFailureKind(failure) || "publication_failed",
                     message: failure.reason,
@@ -579,9 +595,11 @@ async function runLockedPublicationPhase(
 
     async function publishOnce(): Promise<PublicationOutcome> {
         const atStage = async <T>(stage: PublicationStage, action: () => Promise<T>): Promise<T> => {
+            args.session.assertLive();
             try {
                 return await action();
             } catch (caught) {
+                if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
                 const error = caught instanceof Error ? caught : new Error(String(caught));
                 throw annotatePublicationStage(error, stage);
             }
@@ -592,6 +610,7 @@ async function runLockedPublicationPhase(
                 async () => await reconcileStoredPublication(context.projectRoot, publicationAttempt!),
             );
             if (publicationAttempt.phase === "cleanup_complete") {
+                args.session.assertLive();
                 const cleanup = await cleanupStoredPublication(
                     context.projectRoot,
                     publicationAttempt,
@@ -639,6 +658,7 @@ async function runLockedPublicationPhase(
                         mergeTargetRef: targetHeadAtSeal,
                     }),
             );
+            args.session.assertLive();
             publicationAttempt = await startPublicationAttempt({
                 projectRoot: context.projectRoot,
                 attemptId: worktreeId,
@@ -701,6 +721,7 @@ async function runLockedPublicationPhase(
                         publicationPlanPaths: staging.planPaths.length > 0 ? staging.planPaths : [planPath],
                     }),
             );
+            args.session.assertLive();
             publicationAttempt = await advanceStoredPublication(
                 context.projectRoot,
                 publicationAttempt,
@@ -743,6 +764,7 @@ async function runLockedPublicationPhase(
                         onIntegrated: async (evidence) => {
                             if (!publicationAttempt)
                                 throw new Error("Publication attempt disappeared before integration.");
+                            args.session.assertLive();
                             publicationAttempt = await advanceStoredPublication(
                                 context.projectRoot,
                                 publicationAttempt,
@@ -753,6 +775,7 @@ async function runLockedPublicationPhase(
                         onPublished: async (evidence) => {
                             if (!publicationAttempt)
                                 throw new Error("Publication attempt disappeared before publication.");
+                            args.session.assertLive();
                             publicationAttempt = await advanceStoredPublication(
                                 context.projectRoot,
                                 publicationAttempt,
@@ -764,6 +787,7 @@ async function runLockedPublicationPhase(
                             if (!publicationAttempt) {
                                 throw new Error("Publication attempt disappeared before verification.");
                             }
+                            args.session.assertLive();
                             publicationAttempt = await advanceStoredPublication(
                                 context.projectRoot,
                                 publicationAttempt,
@@ -772,6 +796,7 @@ async function runLockedPublicationPhase(
                             );
                         },
                         onProgress: (phase) => {
+                            args.session.assertLive();
                             const message = buildValidationUserMessage({
                                 kind: "publication_progress",
                                 phase,
@@ -783,15 +808,18 @@ async function runLockedPublicationPhase(
                                     stage: "merge",
                                     checks: { merge: "running" },
                                 });
+                                args.session.assertLive();
                                 return;
                             }
                             emitStatus(args, message);
+                            args.session.assertLive();
                         },
                     }),
             );
         }
         emitStatus(args, buildValidationUserMessage({ kind: "publication_progress", phase: "cleanup", targetBranch }));
         await args.session.handoffVerifiedPublication(context.projectRoot);
+        args.session.assertLive();
         const cleanup = await cleanupStoredPublication(
             context.projectRoot,
             publicationAttempt,
@@ -846,6 +874,7 @@ export async function runPostVerificationHandoffs(
     pendingPublication = false,
 ): Promise<void> {
     if (!isPlannedChangeClassification(args.triageMeta?.classification)) return;
+    if (args.hostTurn) return await runHostRecorder(args, projectRoot, pendingPublication);
     await args.session.runPostVerificationHandoffs({
         planName: args.planName,
         planContent: args.planContent,
@@ -953,6 +982,7 @@ export async function buildVerifiedResult(
         kind: "verified",
         planName: args.planName,
         projectRoot,
+        workRecord: recordingOwner?.attrs.workRecord,
         classification: args.triageMeta?.classification,
         ...(shouldContinueParentEpicAfterValidation(args.triageMeta)
             ? { epicContinuation: { completedPlanName: args.planName, projectRoot, resolution: epicResolution } }

@@ -1,0 +1,52 @@
+{
+    "helpers": [
+        {
+            "name": "cymbal",
+            "version": "v0.15.0",
+            "target": "x86_64-unknown-linux-gnu",
+            "url": "https://github.com/1broseidon/cymbal/releases/download/v0.15.0/cymbal_v0.15.0_linux_x86_64.tar.gz",
+            "sha256": "9c7e178a5e5549948e14f2adb75935b218fa55d80add07da0c2a3cf7a258519d",
+            "binary": "cymbal",
+            "binarySha256": "6672358c55512f1be6d4f2262cb9bc45fb223a8eb53e408dd0813d3c4fab8b89",
+            "license": "MIT",
+            "licenseUrl": "https://raw.githubusercontent.com/1broseidon/cymbal/v0.15.0/LICENSE",
+            "licenseSha256": "8e65cefb5d48bee8c35a283c392b60f35ef1aea3dd55a1c9b8973baa2b15a96b"
+        },
+        {
+            "name": "cymbal",
+            "version": "v0.15.0",
+            "target": "aarch64-unknown-linux-gnu",
+            "url": "https://github.com/1broseidon/cymbal/releases/download/v0.15.0/cymbal_v0.15.0_linux_arm64.tar.gz",
+            "sha256": "2287a96134f2a517ac66b07a71df1273180b052342d613ab2a4d51d5320ff338",
+            "binary": "cymbal",
+            "binarySha256": "1df3c47cd218b24b4aacf53a79c313000603fbab4228db6734c46aad4315786c",
+            "license": "MIT",
+            "licenseUrl": "https://raw.githubusercontent.com/1broseidon/cymbal/v0.15.0/LICENSE",
+            "licenseSha256": "8e65cefb5d48bee8c35a283c392b60f35ef1aea3dd55a1c9b8973baa2b15a96b"
+        },
+        {
+            "name": "ketch",
+            "version": "v0.16.2",
+            "target": "x86_64-unknown-linux-gnu",
+            "url": "https://github.com/1broseidon/ketch/releases/download/v0.16.2/ketch_0.16.2_linux_x86_64.tar.gz",
+            "sha256": "e84b7667212aeb8b7bd9a92bc2a25f1c31185e2c6fba5a4cd97c2ace5a504c82",
+            "binary": "ketch",
+            "binarySha256": "f0e13ae7736a5765474b3c1af94faccb45c51e561c906b9cc3082a1f939fff6b",
+            "license": "MIT",
+            "licenseUrl": "https://raw.githubusercontent.com/1broseidon/ketch/v0.16.2/LICENSE",
+            "licenseSha256": "8e65cefb5d48bee8c35a283c392b60f35ef1aea3dd55a1c9b8973baa2b15a96b"
+        },
+        {
+            "name": "ketch",
+            "version": "v0.16.2",
+            "target": "aarch64-unknown-linux-gnu",
+            "url": "https://github.com/1broseidon/ketch/releases/download/v0.16.2/ketch_0.16.2_linux_arm64.tar.gz",
+            "sha256": "61e0a7ef16350534c586d7e2755a490333334fc40bdeac01c092bf77bf030b8c",
+            "binary": "ketch",
+            "binarySha256": "94759f81e30a8f95e7f629539739a16b57e561d58540f119775e386ea9f072e6",
+            "license": "MIT",
+            "licenseUrl": "https://raw.githubusercontent.com/1broseidon/ketch/v0.16.2/LICENSE",
+            "licenseSha256": "8e65cefb5d48bee8c35a283c392b60f35ef1aea3dd55a1c9b8973baa2b15a96b"
+        }
+    ]
+}

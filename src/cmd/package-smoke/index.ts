@@ -1,6 +1,6 @@
 import { serveHttp } from "../../shared/http-server.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * Internal package smoke checks that must execute inside the packaged CLI.
@@ -8,11 +8,15 @@ import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 
 import { join } from "node:path";
 import process from "node:process";
-import { WORK_RECORDS_DIR_NAME } from "../../constants.js";
+import { WORK_RECORDS_DIR_NAME } from "../../constants.ts";
 import { publishExecutionWorktreeIsolated } from "../../shared/isolated-publication.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../../shared/runwield-owned-paths.ts";
+import { checkPackagedCodemode } from "./codemode.ts";
 import { checkPackagedImageResize } from "./image-resize.ts";
+import { checkPackagedRemoteSessionSave } from "./remote-session-save.ts";
 import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
+import { checkPackagedMetricsExport } from "./metrics-export.ts";
+import { checkPackagedSkills } from "./skills.ts";
 
 /** @param {string} name */
 function requiredEnv(name: string): string {
@@ -60,7 +64,10 @@ async function checkCoreHelperFlows(env: Record<string, string>): Promise<void> 
         undefined,
         undefined as never,
     );
-    const output = result.content.filter((item) => item.type === "text").map((item) => item.text).join("\n");
+    const output = result.content
+        .filter((item) => item.type === "text")
+        .map((item) => item.text)
+        .join("\n");
     if (!output.includes("runwield/bash-smoke") || output.includes("Command exited with code")) {
         throw new Error(`Packaged Bash could not create a Git branch:\n${output}`);
     }
@@ -175,9 +182,29 @@ export async function runPackageSmokeCommand(argv: string[]): Promise<void> {
         Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
     const [subcommand] = argv;
+    if (subcommand === "skills") {
+        await checkPackagedSkills();
+        console.log("[RunWield] Packaged skills passed.");
+        return;
+    }
+    if (subcommand === "metrics-export") {
+        await checkPackagedMetricsExport();
+        console.log("[RunWield] Packaged metrics export passed.");
+        return;
+    }
+    if (subcommand === "codemode") {
+        await checkPackagedCodemode();
+        console.log("[RunWield] Packaged codemode passed.");
+        return;
+    }
     if (subcommand === "image-resize") {
         await checkPackagedImageResize();
         console.log("[RunWield] Packaged image resize passed.");
+        return;
+    }
+    if (subcommand === "remote-session-save") {
+        checkPackagedRemoteSessionSave();
+        console.log("[RunWield] Packaged remote Session save passed.");
         return;
     }
     if (subcommand === "core-flows") {
@@ -190,5 +217,7 @@ export async function runPackageSmokeCommand(argv: string[]): Promise<void> {
         console.log("[RunWield] Packaged publication flow passed.");
         return;
     }
-    throw new Error("Usage: wld package-smoke <core-flows|publication|image-resize>");
+    throw new Error(
+        "Usage: wld package-smoke <core-flows|publication|codemode|image-resize|remote-session-save|metrics-export|skills>",
+    );
 }

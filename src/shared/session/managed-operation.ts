@@ -1,5 +1,3 @@
-type ActivationProof = import("../owner-coordination/session-activations.js").ActivationProof;
-
 type ManagedTurnStarted = (context: { turnId: string }) => void | (() => void);
 
 export type ManagedOperationName =
@@ -21,7 +19,7 @@ export type ManagedOperationDescriptor = {
         expectedGeneration?: number | null;
         initialRequest?: string;
         generatedTaskId?: string;
-        initialImages?: import("./types.js").ImageAttachment[];
+        initialImages?: import("./image-attachments.ts").ImageAttachment[];
         initialTutorialContext?: import("./tutorial-context-session.ts").TutorialContext;
         turnId?: string;
         agentName?: string;
@@ -42,19 +40,20 @@ export type ManagedOperationInternalFacade = {
     getRootAgentSession(): import("@earendil-works/pi-coding-agent").AgentSession | null;
 };
 
-export type ManagedOperationResult<T> = {
-    ok: true;
-    value: T;
-} | {
-    ok: false;
-    error: "refresh_required" | "reconcile_required" | "managed_operation_in_progress";
-};
+export type ManagedOperationResult<T> =
+    | {
+          ok: true;
+          value: T;
+      }
+    | {
+          ok: false;
+          error: "refresh_required" | "reconcile_required" | "managed_operation_in_progress";
+      };
 
 export type ManagedOperationCapability = {
     readonly runtimeSessionId: string;
     readonly runwieldSessionId: string;
     readonly operationId: string;
-    readonly proof: ActivationProof;
     readonly settled: boolean;
     readonly signal?: AbortSignal;
     registerArtifact(
@@ -71,7 +70,6 @@ export type ManagedOperationCapability = {
     ): import("./file-session-store-types.ts").ManifestPlanAssociation;
     getCurrentSegmentKind?(): string;
     cancel?(): void;
-    updateProof(proof: ActivationProof): void;
     assertLive(): void;
     settle(): void;
 };

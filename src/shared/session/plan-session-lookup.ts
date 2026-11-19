@@ -22,7 +22,11 @@ export interface PlanAssociatedSession {
     reason: string | null;
 }
 
-function reasonForCandidate(activationState: string, currentSegmentKind: string, latestPurpose: string): string | null {
+export function reasonForCandidate(
+    activationState: string,
+    currentSegmentKind: string,
+    latestPurpose: string,
+): string | null {
     if (activationState !== "idle") {
         if (activationState === "active") return "active_elsewhere";
         if (activationState === "uncertain" || activationState === "reconcile_required") return activationState;
@@ -41,7 +45,7 @@ export async function findPlanAssociatedSessions(
 ): Promise<PlanAssociatedSession[]> {
     const project = sessionStore.ensureRuntimeProject({ root: cwd });
     const listedSessions: Awaited<ReturnType<FileSessionStore["listProjectSessions"]>>["sessions"] = [];
-    for (let page = 0;; page += 1) {
+    for (let page = 0; ; page += 1) {
         const listed = await sessionStore.listProjectSessions(project.projectId, {
             catalog: false,
             archiveState: "all",
@@ -53,10 +57,10 @@ export async function findPlanAssociatedSessions(
     }
     const candidates: PlanAssociatedSession[] = [];
     for (const session of listedSessions) {
-        const associations = (session.planAssociations || sessionStore.listSessionPlanAssociations(
-            session.runwieldSessionId,
-            project.projectId,
-        )).filter((association) => association.planId === planId && association.committedGeneration !== null);
+        const associations = (
+            session.planAssociations ||
+            sessionStore.listSessionPlanAssociations(session.runwieldSessionId, project.projectId)
+        ).filter((association) => association.planId === planId && association.committedGeneration !== null);
         const latest = associations.at(-1);
         if (!latest) continue;
         const currentSegment = sessionStore.getCurrentSessionSegment(session.runwieldSessionId);
@@ -75,8 +79,10 @@ export async function findPlanAssociatedSessions(
             });
             if (projection.ok) {
                 const { name, firstMessage } = projection.snapshot;
-                displayName = (typeof name === "string" ? name.trim() : "") ||
-                    (typeof firstMessage === "string" ? firstMessage.trim() : "") || null;
+                displayName =
+                    (typeof name === "string" ? name.trim() : "") ||
+                    (typeof firstMessage === "string" ? firstMessage.trim() : "") ||
+                    null;
             }
         }
         candidates.push({

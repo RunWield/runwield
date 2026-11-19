@@ -3,7 +3,7 @@ import fsPromises from "node:fs/promises";
 import { open as fsOpen, rmdir as fsRmdir } from "node:fs/promises";
 import { type NativeFileLock, openNativeFileLock } from "./native-file-lock.ts";
 import { type CapturedProcessOutput, captureForegroundProcess } from "./captured-process.ts";
-import { type Dirent, realpathSync as fsRealpathSync, type Stats } from "node:fs";
+import { type Dirent, type Stats } from "node:fs";
 import {
     chmod as fsChmod,
     lstat as fsLstat,
@@ -11,6 +11,7 @@ import {
     readdir as fsReaddir,
     readFile as fsReadFile,
     realpath as fsRealpath,
+    stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { clearInterval, setInterval } from "node:timers";
@@ -28,7 +29,7 @@ import {
     RUNWIELD_DIR_NAME,
     WORKTREE_REGISTRY_FILE,
     WORKTREE_REGISTRY_LOCK_FILE,
-} from "../constants.js";
+} from "../constants.ts";
 import {
     type LockFileSnapshot,
     lockFileSnapshotMatches,
@@ -43,8 +44,8 @@ import {
     reusedGitRead,
 } from "./git-evidence-cache.ts";
 import { getLockHostname, isLockHolderGone } from "./process-liveness.ts";
-import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
-import { inspectWorktreeRegistryAtPath, withWorktreeRegistryLockAtPath } from "./worktree-registry.js";
+import { resolvePrimaryCheckoutRoot, resolveProjectRoot, prepareProjectCheckout } from "./project-checkout.ts";
+import { inspectWorktreeRegistryAtPath, withWorktreeRegistryLockAtPath } from "./worktree-registry.ts";
 import { ensureRunWieldOwnedGitignoreBlock, LEGACY_PROJECT_RUNTIME_HAZARD_PATHS } from "./runwield-owned-paths.ts";
 import { assertPublicationAttempt, type PublicationAttempt } from "./workflow/publication-attempt.ts";
 import {
@@ -68,6 +69,7 @@ export interface PrimaryProjectRuntimeLayout {
     projectSecretStorePath: string;
     fallbackWorktreesRoot: string;
     debugRoot: string;
+    workRecordIndexDatabasePath: string;
 }
 
 export interface SelectedProjectRuntimeLayout {
@@ -256,15 +258,6 @@ const WORK_RECORD_LOCK_WAIT_TIMEOUT_MS = 5 * 60_000;
 const WORK_RECORD_LOCK_RETRY_MS = 50;
 const WORK_RECORD_LOCK_HEARTBEAT_MS = 10_000;
 
-export function resolveProjectRoot(projectRoot: string): string {
-    try {
-        return fsRealpathSync(projectRoot);
-    } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") return resolve(projectRoot);
-        throw error;
-    }
-}
-
 function internalRootFor(checkoutRoot: string): string {
     return join(getRunWieldRuntimeDir(checkoutRoot), PROJECT_INTERNAL_RUNTIME_DIR_NAME);
 }
@@ -292,6 +285,7 @@ export function resolveProjectRuntimeLayout(selectedCheckoutRoot: string): Proje
             projectSecretStorePath: join(primaryInternalRoot, "collaboration-secrets.json"),
             fallbackWorktreesRoot: join(primaryInternalRoot, "worktrees"),
             debugRoot: join(primaryInternalRoot, "debug"),
+            workRecordIndexDatabasePath: join(primaryInternalRoot, "work-records.sqlite3"),
         },
         selected: {
             checkoutRoot: selectedProjectRoot,
@@ -309,37 +303,134 @@ export function resolveProjectRuntimeLayout(selectedCheckoutRoot: string): Proje
     };
 }
 
-/** Inspect adoption with migration's exact preflight policy, without writes or locks. */
-export async function inspectProjectRuntimeLayout(
-    selectedCheckoutRoot: string,
-): Promise<ProjectRuntimeLayoutInspection> {
-    const layout = resolveProjectRuntimeLayout(selectedCheckoutRoot);
-    const primaryCheckoutRoot = await canonicalExistingRoot(layout.primary.checkoutRoot);
-    const earlySymlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, [layout.selected.checkoutRoot]);
-    if (earlySymlink.length > 0) {
-        return block(
-            "symlink",
-            earlySymlink,
-            "A runtime authority uses a symlink. Inspection stopped before reading it.",
-        );
+export interface ProjectRuntimeReadAccess {
+    kind: "ready" | "fresh" | "pending";
+    layout: ProjectRuntimeLayout;
+}
+
+export type ProjectRuntimeReadInspection = ProjectRuntimeReadAccess | ProjectRuntimeMigrationBlockedResult;
+
+export const WORKFLOW_DETAILS_PENDING = "Workflow details pending. Load this Plan to prepare its workflow.";
+
+export class ProjectRuntimeReadPendingError extends Error {
+    constructor() {
+        super(WORKFLOW_DETAILS_PENDING);
+        this.name = "ProjectRuntimeReadPendingError";
     }
+}
+
+/** Check local authority. Never enter migration, probe writer locks, or recover legacy input. */
+export function inspectProjectRuntimeReadAccess(root: string): Promise<ProjectRuntimeReadInspection> {
+    const scope = runtimeEntryScope.getStore();
+    if (!scope?.active) return inspectProjectRuntimeReadAccessUncached(root);
+    const key = resolve(root);
+    const previous = scope.inspections.get(key);
+    if (previous) return previous;
+    const result = inspectProjectRuntimeReadAccessUncached(key);
+    scope.inspections.set(key, result);
+    void result.catch(() => scope.inspections.delete(key));
+    return result;
+}
+
+async function inspectProjectRuntimeReadAccessUncached(root: string): Promise<ProjectRuntimeReadInspection> {
+    const layout = resolveProjectRuntimeLayout(root);
+    const primary = resolveProjectRoot(layout.primary.checkoutRoot);
+    const symlinks = await findSymlinkBlocker(layout, primary, [layout.selected.checkoutRoot]);
+    if (symlinks.length)
+        return block("symlink", symlinks, "A runtime authority uses a symlink. Inspection stopped before reading it.");
     const marker = await readLayoutMarker(layout);
     if (isBlocked(marker)) return marker;
-    const inspected = await preflight(layout, primaryCheckoutRoot, marker.marker);
-    if (isBlocked(inspected)) return inspected;
-    if (marker.marker && (await completeMarkerNeedsNoWork(layout, marker.marker, inspected))) {
+    const markerCheck = validateMarkerRoots(layout, marker.marker);
+    if (markerCheck) return markerCheck;
+    const journal = await readJournal(layout.primary.layoutMigrationJournalPath);
+    if (isBlocked(journal)) return journal;
+    if (!marker.marker || journal.journal) {
+        // Partly moved stores are not independent authorities. Preflight checks security,
+        // but deliberately does not test whether an inode lock can be acquired.
+        const checked = await preflight(layout, primary, marker.marker, { passive: true });
+        if (isBlocked(checked)) {
+            // A writer can commit adoption and start using its authorities after
+            // our marker read. Refresh changed evidence without taking a write lock.
+            if (checked.reason === "authority_conflict") {
+                const current = await readLayoutMarker(layout);
+                if (isBlocked(current)) return current;
+                if (current.marker && JSON.stringify(current.marker) !== JSON.stringify(marker.marker)) {
+                    runtimeEntryScope.getStore()?.symlinkWalks.clear();
+                    return inspectProjectRuntimeReadAccessUncached(root);
+                }
+            }
+            return checked;
+        }
+        const fresh =
+            !marker.marker &&
+            !journal.journal &&
+            checked.operations.length === 0 &&
+            !(await lstatOrNull(layout.primary.layoutMigrationLockPath));
+        return { kind: fresh ? "fresh" : "pending", layout };
+    }
+    const registry = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
+    if (
+        registry.readError ||
+        registry.integrityIssues.some((issue) =>
+            ["malformed_registry", "unsupported_schema_version"].includes(issue.kind),
+        )
+    ) {
+        return block(
+            "malformed_registry",
+            [layout.primary.worktreeRegistryPath],
+            registry.readError?.message || registry.integrityIssues[0].message,
+        );
+    }
+    const worktrees = await listGitWorktrees(primary);
+    if (isBlocked(worktrees)) return worktrees;
+    const selected = await resolveSelectedRoots(primary, layout.selected.checkoutRoot, [], worktrees.worktrees);
+    if (isBlocked(selected)) return selected;
+    const selectedSymlinks = await findSymlinkBlocker(layout, primary, selected.roots);
+    if (selectedSymlinks.length) return block("symlink", selectedSymlinks, "A runtime authority uses a symlink.");
+    const tracked = await findTrackedRuntimePaths(primary, selected.roots);
+    if (isBlocked(tracked)) return tracked;
+    if (tracked.secretPaths.length)
+        return block("tracked_secret", tracked.secretPaths, "A project collaboration secret is tracked by Git.");
+    if (tracked.runtimePaths.length)
+        return block("tracked_runtime", tracked.runtimePaths, "RunWield runtime paths are tracked or staged by Git.");
+    const unadoptedOperations = await buildOperations(
+        primary,
+        selected.roots.filter((selectedRoot) => !adoptedSelectedRoots(marker.marker, primary).includes(selectedRoot)),
+        [],
+        marker.marker,
+    );
+    const pending =
+        unadoptedOperations.some((operation) => operation.action === "rename") ||
+        Boolean(await lstatOrNull(layout.primary.layoutMigrationLockPath));
+    return { kind: pending ? "pending" : "ready", layout };
+}
+
+/** Exact-path readers use this check; path resolution alone grants no access. */
+export async function checkedProjectRuntimeLayout(root: string): Promise<ProjectRuntimeLayout> {
+    const access = await inspectProjectRuntimeReadAccess(root);
+    if (access.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(access);
+    if (access.kind === "pending") throw new ProjectRuntimeReadPendingError();
+    return access.layout;
+}
+
+/** Doctor inspection shares passive security checks, not mutation admission. */
+export async function inspectProjectRuntimeLayout(root: string): Promise<ProjectRuntimeLayoutInspection> {
+    const access = await inspectProjectRuntimeReadAccess(root);
+    if (access.kind === "blocked") return access;
+    const marker = await readLayoutMarker(access.layout);
+    if (isBlocked(marker)) return marker;
+    if (access.kind === "ready" && marker.marker)
         return {
             kind: "adopted",
-            layout,
+            layout: access.layout,
             adoptedSelectedCheckoutRoots: marker.marker.adoptedSelectedCheckoutRoots,
         };
-    }
-    return { kind: "pending", layout, selectedCheckoutRoots: inspected.selectedCheckoutRoots };
+    return { kind: "pending", layout: access.layout, selectedCheckoutRoots: [access.layout.selected.checkoutRoot] };
 }
 
 interface RuntimeReadScope {
     active: boolean;
-    layouts: Map<string, Promise<ProjectRuntimeLayout>>;
+    inspections: Map<string, Promise<ProjectRuntimeReadInspection>>;
     /** Symlinks under each authority root, walked once per read like each checkout's entry. */
     symlinkWalks: Map<string, Promise<string[]>>;
 }
@@ -349,44 +440,47 @@ const runtimeEntryScope = new AsyncLocalStorage<RuntimeReadScope>();
 // are reused only while their repository evidence is unchanged; see git-evidence-cache.ts.
 const reportedGitignoreWarnings = new Map<string, Set<string>>();
 
+interface ProjectRuntimeReadScopeOptions {
+    /** Start an independent inspection phase, discarding the caller's checks as well. */
+    fresh?: boolean;
+}
+
 /** Verify each checkout once during a bounded read; retain no result across refreshes. */
-export async function withProjectRuntimeReadScope<T>(read: () => Promise<T>): Promise<T> {
-    if (runtimeEntryScope.getStore()?.active) return await read();
-    const scope: RuntimeReadScope = { active: true, layouts: new Map(), symlinkWalks: new Map() };
+export async function withProjectRuntimeReadScope<T>(
+    read: () => Promise<T>,
+    options: ProjectRuntimeReadScopeOptions = {},
+): Promise<T> {
+    if (runtimeEntryScope.getStore()?.active && !options.fresh) return await read();
+    if (options.fresh) invalidateProjectRuntimeReadScope();
+    const scope: RuntimeReadScope = { active: true, inspections: new Map(), symlinkWalks: new Map() };
     try {
         return await runtimeEntryScope.run(scope, read);
     } finally {
         // Async descendants can outlive the read that created them. They must
         // not retain its validation results after that read has settled.
         scope.active = false;
-        scope.layouts.clear();
+        scope.inspections.clear();
         scope.symlinkWalks.clear();
+        // The caller's context is restored here. Do not resurrect checks it
+        // performed before or concurrently with this independent phase.
+        if (options.fresh) invalidateProjectRuntimeReadScope();
     }
 }
 
 /** Writes inside a grouped read must revalidate and invalidate surrounding reads. */
 export function invalidateProjectRuntimeReadScope(): void {
     const scope = runtimeEntryScope.getStore();
-    scope?.layouts.clear();
+    scope?.inspections.clear();
     scope?.symlinkWalks.clear();
 }
 
 export function enterProjectRuntime(selectedCheckoutRoot: string): Promise<ProjectRuntimeLayout> {
-    const scope = runtimeEntryScope.getStore();
-    if (!scope?.active) return enterProjectRuntimeUncached(selectedCheckoutRoot);
-    const root = resolve(selectedCheckoutRoot);
-    const pending = scope.layouts.get(root);
-    if (pending) return pending;
-    const result = enterProjectRuntimeUncached(root);
-    scope.layouts.set(root, result);
-    void result.catch(() => {
-        if (scope.layouts.get(root) === result) scope.layouts.delete(root);
-    });
-    return result;
+    invalidateProjectRuntimeReadScope();
+    return enterProjectRuntimeUncached(selectedCheckoutRoot).finally(invalidateProjectRuntimeReadScope);
 }
 
 async function enterProjectRuntimeUncached(selectedCheckoutRoot: string): Promise<ProjectRuntimeLayout> {
-    const rootInfo = await fsLstat(selectedCheckoutRoot).catch((error) => {
+    const rootInfo = await fsStat(selectedCheckoutRoot).catch((error) => {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     });
@@ -394,6 +488,7 @@ async function enterProjectRuntimeUncached(selectedCheckoutRoot: string): Promis
     const result = await migrateLegacyProjectRuntimeState(selectedCheckoutRoot);
     if (result.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(result);
     if (rootInfo) {
+        await prepareProjectCheckout(result.layout.selected.checkoutRoot);
         const projectRoot = result.layout.primary.checkoutRoot;
         const reconciliation = await ensureRunWieldOwnedGitignoreBlock(projectRoot);
         const previous = reportedGitignoreWarnings.get(projectRoot);
@@ -411,7 +506,7 @@ export async function migrateLegacyProjectRuntimeState(
     selectedCheckoutRoot: string,
 ): Promise<ProjectRuntimeMigrationResult> {
     const layout = resolveProjectRuntimeLayout(selectedCheckoutRoot);
-    const primaryCheckoutRoot = await canonicalExistingRoot(layout.primary.checkoutRoot);
+    const primaryCheckoutRoot = resolveProjectRoot(layout.primary.checkoutRoot);
     const earlySymlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, [layout.selected.checkoutRoot]);
     if (earlySymlink.length > 0) {
         return block(
@@ -430,6 +525,9 @@ export async function migrateLegacyProjectRuntimeState(
     const beforeLock = await preflight(layout, primaryCheckoutRoot, marker.marker);
     if (
         isBlocked(beforeLock) &&
+        // Adoption can commit after the marker read and release its lock before
+        // preflight sees new authorities. Refresh that evidence under the lock.
+        beforeLock.reason !== "authority_conflict" &&
         !migrationWasInFlight &&
         !(await lstatOrNull(layout.primary.layoutMigrationLockPath)) &&
         !(
@@ -529,14 +627,6 @@ function block(
     };
 }
 
-async function canonicalExistingRoot(path: string): Promise<string> {
-    try {
-        return await fsRealpath(path);
-    } catch {
-        return resolve(path);
-    }
-}
-
 function legacyRuntimeBase(checkoutRoot: string): string {
     return getRunWieldRuntimeDir(checkoutRoot);
 }
@@ -614,6 +704,7 @@ async function completeMarkerNeedsNoWork(
 ): Promise<boolean> {
     if (
         !marker ||
+        marker.primaryCheckoutRoot !== layout.primary.checkoutRoot ||
         preflightResult.operations.length !== 0 ||
         !preflightResult.selectedCheckoutRoots.every((root) => marker.adoptedSelectedCheckoutRoots.includes(root))
     )
@@ -628,9 +719,9 @@ async function preflight(
     layout: ProjectRuntimeLayout,
     primaryCheckoutRoot: string,
     marker: LayoutMarker | null,
-    options: { legacyRegistryLockHeld?: boolean } = {},
+    options: { legacyRegistryLockHeld?: boolean; passive?: boolean } = {},
 ): Promise<MigrationPreflight | ProjectRuntimeMigrationBlockedResult> {
-    const markerCheck = validateMarkerRoots(layout, primaryCheckoutRoot, marker);
+    const markerCheck = validateMarkerRoots(layout, marker);
     if (isBlocked(markerCheck)) return markerCheck;
 
     const existingJournal = await readJournal(layout.primary.layoutMigrationJournalPath);
@@ -806,15 +897,16 @@ async function preflight(
 
 function validateMarkerRoots(
     layout: ProjectRuntimeLayout,
-    primaryCheckoutRoot: string,
     marker: LayoutMarker | null,
 ): ProjectRuntimeMigrationBlockedResult | undefined {
     if (!marker) return undefined;
-    if (marker.primaryCheckoutRoot !== primaryCheckoutRoot) {
+    // The marker travels with the checkout. Its saved location is adoption history,
+    // not project identity; Git and the local authority checks establish current ownership.
+    if (!isAbsolute(marker.primaryCheckoutRoot) || marker.primaryCheckoutRoot !== resolve(marker.primaryCheckoutRoot)) {
         return block(
             "malformed_migration_evidence",
             [layout.primary.layoutMarkerPath],
-            "The project runtime layout marker names a different primary checkout root.",
+            "The project runtime layout marker contains a noncanonical primary checkout root.",
         );
     }
     const sorted = [...marker.adoptedSelectedCheckoutRoots].sort();
@@ -924,7 +1016,7 @@ async function resolveSelectedRoots(
     gitWorktrees: GitWorktree[],
     journalSelectedRoots: string[] = [],
 ): Promise<{ roots: string[] } | ProjectRuntimeMigrationBlockedResult> {
-    const requested = await canonicalExistingRoot(requestedRoot);
+    const requested = resolveProjectRoot(requestedRoot);
     const byRealPath = new Set(gitWorktrees.map((worktree) => worktree.realPath));
     if (!byRealPath.has(requested)) {
         return block(
@@ -933,7 +1025,7 @@ async function resolveSelectedRoots(
             "The selected checkout is not an attached Git worktree.",
         );
     }
-    const primary = await canonicalExistingRoot(primaryRoot);
+    const primary = resolveProjectRoot(primaryRoot);
     if (!byRealPath.has(primary)) {
         return block(
             "invalid_registered_checkout",
@@ -943,7 +1035,7 @@ async function resolveSelectedRoots(
     }
     const roots = new Set<string>([primary, requested]);
     for (const root of journalSelectedRoots) {
-        const canonicalRoot = await canonicalExistingRoot(root);
+        const canonicalRoot = resolveProjectRoot(root);
         if (!byRealPath.has(canonicalRoot)) {
             return block(
                 "invalid_registered_checkout",
@@ -1294,7 +1386,7 @@ async function currentConflictsInRoot(
 async function inspectLegacyLocks(
     primaryCheckoutRoot: string,
     selectedRoots: string[],
-    options: { legacyRegistryLockHeld?: boolean; migrationLockPath?: string } = {},
+    options: { legacyRegistryLockHeld?: boolean; migrationLockPath?: string; passive?: boolean } = {},
 ): Promise<LegacyLockStatus> {
     const active: string[] = [];
     const retire: MigrationRetireOperation[] = [];
@@ -1332,7 +1424,7 @@ async function inspectLegacyLocks(
 
     for (const lockPath of await listFiles(join(legacyRuntimeBase(primaryCheckoutRoot), "controller"))) {
         if (!lockPath.endsWith(".lock")) continue;
-        if (!(await canTakeControllerLock(lockPath))) active.push(lockPath);
+        if (!options.passive && !(await canTakeControllerLock(lockPath))) active.push(lockPath);
     }
     return { active, retire };
 }
@@ -1485,7 +1577,7 @@ async function buildOperations(
         for (const authority of [
             ...primaryAuthorities,
             ...selectedRoots
-                .filter((root) => marker.adoptedSelectedCheckoutRoots.includes(root))
+                .filter((root) => adoptedSelectedRoots(marker, primaryCheckoutRoot).includes(root))
                 .flatMap(legacySelectedAuthorities),
         ]) {
             if (await hasRecoverableRuntimeFiles(authority.source)) {
@@ -1514,7 +1606,7 @@ async function buildOperations(
         }
     }
     if (secretSources[0]) operations.push({ ...secretSources[0], completed: false });
-    const adopted = new Set(marker?.adoptedSelectedCheckoutRoots || []);
+    const adopted = new Set(adoptedSelectedRoots(marker, primaryCheckoutRoot));
     for (const selectedRoot of selectedRoots) {
         if (adopted.has(selectedRoot)) continue;
         for (const authority of legacySelectedAuthorities(selectedRoot)) {
@@ -2111,6 +2203,12 @@ async function removeMigrationLockIfOwned(lockPath: string, token: string): Prom
     } catch (error) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
+}
+
+function adoptedSelectedRoots(marker: LayoutMarker | null, primaryRoot: string): string[] {
+    // A completed marker adopts the primary checkout containing it even after a move.
+    // Do not resolve historical worktree paths: retired paths may now belong to others.
+    return marker ? [...marker.adoptedSelectedCheckoutRoots, primaryRoot] : [];
 }
 
 function mergedSelectedRoots(marker: LayoutMarker | null, selectedRoots: string[]): string[] {

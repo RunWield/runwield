@@ -1,18 +1,20 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
  * @module cmd/plans/pull
  * Pull encrypted remote Shared Space feedback into a local locked Plan.
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN, getCwd } from "../../constants.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
 import {
     createPulledCollaborationPlan,
     hashPlanBody,
     listPlanResources,
     updatePlanCollaborationMetadata,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { MAINTAINER_SCOPE, redactSecrets } from "../../shared/collaboration/capabilities.ts";
-import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.js";
+import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
 import { decryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";
 import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
 import {
@@ -21,7 +23,7 @@ import {
     normalizeEncryptedPlanPayload,
     normalizeRevisionMetadata,
     normalizeSharedSpaceMetadata,
-} from "../../shared/collaboration/protocol.js";
+} from "../../shared/collaboration/protocol.ts";
 import {
     assertCompatiblePullSecretRecord,
     ensureProjectSecretStoreIgnored,
@@ -30,10 +32,9 @@ import {
     putCompatibleSecretRecord,
     resolvePullSecretRecord,
     secretRecordKey,
-} from "../../shared/collaboration/secrets.js";
+} from "../../shared/collaboration/secrets.ts";
 import { parseCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
     buildPullRevisionRequest,
@@ -145,10 +146,7 @@ function normalizeSpaceResponse(value: WireValue): ReturnType<typeof normalizeSh
 }
 
 function normalizeRevisionResponse(value: WireValue): ReturnType<typeof normalizeRevisionMetadata> {
-    if (
-        value && typeof value === "object" && !Array.isArray(value) &&
-        typeof value.revision === "object"
-    ) {
+    if (value && typeof value === "object" && !Array.isArray(value) && typeof value.revision === "object") {
         return normalizeRevisionResponse(value.revision);
     }
     return normalizeRevisionMetadata(value);
@@ -179,30 +177,36 @@ function findResourceByPlanId(resources: PlanResource[], planId: string): PlanRe
 }
 
 function findResourceByNameOrId(resources: PlanResource[], target: string): PlanResource | null {
-    const matches = resources.filter((resource) =>
-        resource.planName === target || resource.name === target || resource.planId === target ||
-        resource.attrs?.planId === target
+    const matches = resources.filter(
+        (resource) =>
+            resource.planName === target ||
+            resource.name === target ||
+            resource.planId === target ||
+            resource.attrs?.planId === target,
     );
     if (matches.length > 1) throw new Error(`Multiple Plans matched ${target}; use a unique Plan name or planId.`);
     return matches[0] || null;
 }
 
 function hasCompleteRemoteCanonicalMetadata(attrs: PlanAttrs): boolean {
-    return attrs.collaborationState === COLLABORATION_STATE_REMOTE_CANONICAL &&
-        typeof attrs.collaborationServerUrl === "string" && attrs.collaborationServerUrl.length > 0 &&
-        typeof attrs.collaborationSpaceId === "string" && attrs.collaborationSpaceId.length > 0 &&
-        typeof attrs.collaborationBodyHash === "string" && attrs.collaborationBodyHash.length > 0;
+    return (
+        attrs.collaborationState === COLLABORATION_STATE_REMOTE_CANONICAL &&
+        typeof attrs.collaborationServerUrl === "string" &&
+        attrs.collaborationServerUrl.length > 0 &&
+        typeof attrs.collaborationSpaceId === "string" &&
+        attrs.collaborationSpaceId.length > 0 &&
+        typeof attrs.collaborationBodyHash === "string" &&
+        attrs.collaborationBodyHash.length > 0
+    );
 }
 
 function redactedError(error: Error, secrets: string[]): string {
     return redactSecrets(error, secrets);
 }
 
-export async function pullPlanForRevision(
-    pullOptions: PullPlanForRevisionOptions,
-): Promise<PulledPlanRevision> {
+export async function pullPlanForRevision(pullOptions: PullPlanForRevisionOptions): Promise<PulledPlanRevision> {
     const cwd = pullOptions.cwd || getCwd();
-    await enterProjectRuntime(cwd);
+    await prepareWorktreeRegistry(cwd);
     const now = new Date().toISOString();
     const target = pullOptions.target;
     const isUrl = looksLikeUrl(target);
@@ -221,7 +225,9 @@ export async function pullPlanForRevision(
             maintainerCapability: parsed.bearerCapability,
         };
     } else {
-        const resource = findResourceByNameOrId(await listPlanResources(cwd, { backfillMissing: false }), target);
+        const selected = findResourceByNameOrId(await listPlanResources(cwd), target);
+        if (selected) await preparePlanWorkflow(cwd, selected.planName);
+        const resource = findResourceByNameOrId(await listPlanResources(cwd), target);
         if (!resource) throw new Error(`Active Plan not found: ${target}`);
         if (resource.attrs.collaborationState !== COLLABORATION_STATE_REMOTE_CANONICAL) {
             throw new Error("Plan is not shared/remote-canonical; use `wld plans share` before pull.");
@@ -260,12 +266,12 @@ export async function pullPlanForRevision(
             bearerCapability: resolved.maintainerCapability,
             fetch: SYSTEM_COLLABORATION_FETCH,
         });
-        space = normalizeSpaceResponse(await client.getSharedSpace(resolved.spaceId) as WireValue);
+        space = normalizeSpaceResponse((await client.getSharedSpace(resolved.spaceId)) as WireValue);
         revision = normalizeRevisionResponse(
-            await client.getRevision(resolved.spaceId, space.latestRevision) as WireValue,
+            (await client.getRevision(resolved.spaceId, space.latestRevision)) as WireValue,
         );
         comments = normalizeCommentsResponse(
-            await client.listComments(resolved.spaceId, revision.revision) as WireValue,
+            (await client.listComments(resolved.spaceId, revision.revision)) as WireValue,
         );
     } catch (error) {
         const cause = error instanceof Error ? error : new Error(String(error));
@@ -294,12 +300,7 @@ export async function pullPlanForRevision(
             maintainerCapability: resolved.maintainerCapability,
             updatedAt: now,
         };
-        await assertCompatiblePullSecretRecord(
-            paths,
-            planPayload.planId,
-            resolved.spaceId,
-            importedSecretRecord,
-        );
+        await assertCompatiblePullSecretRecord(paths, planPayload.planId, resolved.spaceId, importedSecretRecord);
         if (pullOptions.projectSecrets) {
             await ensureProjectSecretStoreIgnored(cwd);
         }
@@ -337,7 +338,7 @@ export async function pullPlanForRevision(
         }
     }
 
-    const resources = await listPlanResources(cwd, { backfillMissing: false });
+    const resources = await listPlanResources(cwd);
     const existingById = resolved.localResource || findResourceByPlanId(resources, planPayload.planId);
     if (isUrl && pullOptions.to && existingById) {
         throw new Error("--to is only supported for fresh maintainer URL pulls with no matching local Plan.");
@@ -400,9 +401,8 @@ export async function pullPlanForRevision(
             attrs: {
                 ...planPayload.metadata,
                 planId: planPayload.planId,
-                summary: typeof planPayload.metadata.summary === "string"
-                    ? planPayload.metadata.summary
-                    : planPayload.title,
+                summary:
+                    typeof planPayload.metadata.summary === "string" ? planPayload.metadata.summary : planPayload.title,
                 collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
                 collaborationServerUrl: resolved.serverUrl,
                 collaborationSpaceId: resolved.spaceId,
@@ -475,17 +475,14 @@ async function launchPlanningAgent(pulled: PulledPlanRevision, options: RunPlans
     });
 }
 
-export async function runPlansPullCommand(
-    argv: string[],
-    options: RunPlansPullOptions = {},
-): Promise<void> {
+export async function runPlansPullCommand(argv: string[], options: RunPlansPullOptions = {}): Promise<void> {
     const parsed = parsePlansPullArgs(argv);
     if (parsed.help) {
         printPullHelp();
         return;
     }
     const cwd = getCwd();
-    await enterProjectRuntime(cwd);
+    await prepareWorktreeRegistry(cwd);
     const pulled = await pullPlanForRevision({
         target: parsed.target as string,
         cwd,

@@ -8,13 +8,13 @@ import {
     realpath as fsRealpath,
     rm as fsRm,
 } from "node:fs/promises";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.js";
-import { setCustomSetting } from "../../shared/settings.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { encodeCwdForSessionDir } from "../../shared/session/root-session.js";
+import { encodeCwdForSessionDir } from "../../shared/project-directory-key.ts";
 import { basename, join } from "node:path";
 
 test("Owner command observations require authentication, catalog names, and a registered Project", async () => {
@@ -123,7 +123,8 @@ test("Owner command observations require authentication, catalog names, and a re
             const records = contents
                 .trim()
                 .split("\n")
-                .map((line) => JSON.parse(line));
+                .map((line) => JSON.parse(line))
+                .filter((record) => record.category === "command");
             assertEquals(records.length, 7);
             assertEquals(records[0].command, "settings");
             assertEquals(records[0].durationMs, 12);

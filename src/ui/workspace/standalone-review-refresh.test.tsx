@@ -1,14 +1,12 @@
 // @ts-nocheck: browser tests install happy-dom globals around the real React surface.
+// @ts-nocheck: browser tests install happy-dom globals around the real React surface.
 import { importTestBundle } from "../../testing/import-test-bundle.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { Window } from "happy-dom";
 import { act } from "react";
 import { build, stop } from "esbuild";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { makeTempDirectory } from "../../testing/temp-file.ts";
+import { fileURLToPath } from "node:url";
 import { mapReviewAnnotations } from "../../shared/standalone-review/forge-review.ts";
 
 const requireBanner = `import { createRequire } from "node:module";
@@ -16,22 +14,8 @@ import { fileURLToPath } from "node:url";
 const nodeRequire = createRequire(${JSON.stringify(import.meta.url)});
 const require = (id) => nodeRequire(id.startsWith("file:") ? fileURLToPath(id) : id);`;
 
-test("review bundle require resolves encoded file URLs and shares React", async () => {
-    const directory = await makeTempDirectory();
-    try {
-        const path = join(directory, "review fixture % #.cjs");
-        await writeFile(path, 'module.exports = "encoded fixture";');
-        const loaded = await importTestBundle(`${requireBanner}
-export const fixture = require(${JSON.stringify(pathToFileURL(path).href)});
-export const reactAct = require("react").act;`);
-        assertEquals(loaded.fixture, "encoded fixture");
-        assertEquals(loaded.reactAct, act);
-    } finally {
-        await rm(directory, { recursive: true });
-    }
-});
-
-async function withReviewSurface(standaloneReview, verify, network) {
+async function withReviewSurface(standaloneReview, verify, options = {}) {
+    const network = typeof options === "function" ? options : options.network;
     const bundle = await build({
         entryPoints: [fileURLToPath(new URL("./react/CodeReviewSurface.tsx", import.meta.url))],
         banner: {
@@ -121,26 +105,28 @@ async function withReviewSurface(standaloneReview, verify, network) {
                       : browser[name];
             Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
         }
-        globalThis.fetch = (url, options) => {
-            const response = network?.(url, options);
+        globalThis.fetch = (url, requestOptions) => {
+            const response = network?.(url, requestOptions);
             if (response) return Promise.resolve(response);
             if (String(url).includes("/feedback") || String(url).includes("/deny")) {
-                submitted.push(JSON.parse(options.body));
+                submitted.push(JSON.parse(requestOptions.body));
                 revision++;
                 return Promise.resolve(Response.json({ ok: true }));
             }
             if (String(url).includes("/status")) {
                 return Promise.resolve(
-                    Response.json({
-                        revision,
-                        gitRef: revision ? "next-head" : "old-head",
-                        rawPatch: patch,
-                        standaloneReview: {
-                            mode: "pr",
-                            forge: { available: true, postEnabled: true },
-                            resultMessage: "PR head changed",
+                    Response.json(
+                        options.conversation?.() || {
+                            revision,
+                            gitRef: revision ? "next-head" : "old-head",
+                            rawPatch: patch,
+                            standaloneReview: {
+                                mode: "pr",
+                                forge: { available: true, postEnabled: true },
+                                resultMessage: "PR head changed",
+                            },
                         },
-                    }),
+                    ),
                 );
             }
             return Promise.resolve(Response.json({ available: false, providers: [] }));
@@ -171,6 +157,7 @@ async function withReviewSurface(standaloneReview, verify, network) {
                                 sections: [],
                                 everythingElse: [],
                             },
+                            ...options.payload,
                         }}
                     />,
                 ),
@@ -311,6 +298,125 @@ test("Code Review validation page retains approval and sends annotations through
         assertEquals(button("OKApprove").disabled, false);
         assertEquals(button("Send to Engineer").disabled, false);
     });
+});
+
+test("host-owned Code Review sends annotations as structured feedback, not a chat turn", async () => {
+    await withReviewSurface(
+        undefined,
+        async ({ browser, container, button, submitted }) => {
+            await addModeAnnotation({ browser, button });
+            await act(() => container.querySelector('button[role="tab"][title="Annotations"]').click());
+            await act(() => button("Send Annotations").click());
+            assertEquals(submitted.length, 1);
+            assertEquals(submitted[0].approved, false);
+            assertEquals(Object.hasOwn(submitted[0], "conversationTurn"), false);
+            assertEquals(submitted[0].annotations.length, 1);
+            assertEquals(submitted[0].annotations[0].comment, "Mode review note");
+            assertStringIncludes(submitted[0].feedback, "Mode review note");
+            assertStringIncludes(container.textContent, "Feedback sent");
+        },
+        {
+            payload: { savedConversation: true, agentTurnOwner: "host", reviewRevision: 0 },
+            conversation: () => ({ reviewRevision: 0, revision: 0, pending: false, turns: [], events: [] }),
+        },
+    );
+});
+
+test("default Core Code Review sends annotations as a conversation turn", async () => {
+    await withReviewSurface(
+        undefined,
+        async ({ browser, container, button, submitted }) => {
+            await addModeAnnotation({ browser, button });
+            await act(() => container.querySelector('button[aria-label="Exclude annotations"]').click());
+            await enterComment(
+                browser,
+                container.querySelector('textarea[aria-label="Message Engineer"]'),
+                "Explain this diff first",
+            );
+            await act(() => button("Send to Engineer").click());
+            assertEquals(submitted[0].annotations, []);
+            assertEquals(submitted[0].feedback, "Explain this diff first");
+            assertStringIncludes(container.querySelector('[aria-label="Review Queue"]').textContent, "1 annotations");
+            await act(() => button("Send to Engineer").click());
+            assertEquals(submitted.length, 2);
+            assertEquals(submitted[1].approved, false);
+            assertEquals(submitted[1].conversationTurn, true);
+            assertEquals(submitted[1].annotations.length, 1);
+            assertEquals(submitted[1].annotations[0].comment, "Mode review note");
+            assertStringIncludes(submitted[1].feedback, "Mode review note");
+            assertEquals(container.querySelector('[aria-label="Review Queue"]'), null);
+            assertEquals(
+                container.querySelector('button[role="tab"][title="Engineer"]').getAttribute("aria-selected"),
+                "true",
+            );
+        },
+        {
+            payload: { savedConversation: true, reviewRevision: 0 },
+            conversation: () => ({ reviewRevision: 0, revision: 0, pending: false, turns: [], events: [] }),
+        },
+    );
+});
+
+test("Code Review chat sends the displayed revision on the first turn and after N+1", async () => {
+    let snapshot = {
+        reviewRevision: 0,
+        revision: 0,
+        pending: false,
+        turns: [],
+        events: [],
+        rawPatch: "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+    };
+    await withReviewSurface(
+        undefined,
+        async ({ browser, container, button, submitted }) => {
+            await act(() => button("Annotations").click());
+            await act(() => container.querySelector('button[role="tab"][title="Engineer"]').click());
+            const send = async (message) => {
+                const composer = container.querySelector('textarea[placeholder="Message Engineer…"]');
+                await act(() => {
+                    Object.getOwnPropertyDescriptor(browser.HTMLTextAreaElement.prototype, "value").set.call(
+                        composer,
+                        message,
+                    );
+                    composer.dispatchEvent(new browser.Event("input", { bubbles: true }));
+                });
+                const button = container.querySelector(".rw-review-action-button");
+                assertEquals(button.disabled, false);
+                await act(() => button.click());
+            };
+            await send("Question about N");
+            assertEquals(submitted.at(-1), {
+                reviewRevision: 0,
+                approved: false,
+                feedback: "Question about N",
+                annotations: [],
+                conversationTurn: true,
+            });
+            snapshot = {
+                ...snapshot,
+                reviewRevision: 1,
+                revision: 1,
+                rawPatch: snapshot.rawPatch.replaceAll("a.ts", "next.ts"),
+            };
+            await act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 800));
+            });
+            assertStringIncludes(container.textContent, "next.ts");
+            await send("Question about N+1");
+            assertEquals(submitted.at(-1), {
+                reviewRevision: 1,
+                approved: false,
+                feedback: "Question about N+1",
+                annotations: [],
+                conversationTurn: true,
+            });
+            assertEquals(submitted.length, 2);
+        },
+        {
+            payload: { savedConversation: true, reviewRevisionUrl: "/revision", reviewRevision: 0 },
+            conversation: () => snapshot,
+        },
+    );
 });
 
 function aiReviewNetwork() {

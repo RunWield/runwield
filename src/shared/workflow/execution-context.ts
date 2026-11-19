@@ -1,13 +1,14 @@
+import { preparePlanController } from "./plan-preparation.ts";
 import { resolve } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { realpath as fsRealpath } from "node:fs/promises";
+import { findExistingProjectPath } from "../project-checkout.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 /**
  * Fail-closed resolver for Workflow Validation execution context.
  */
 
-import { isPlannedChangeClassification } from "../../constants.js";
-import { loadPlan, normalizeExecutionMode, updatePlanFrontMatter } from "../../plan-store.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
+import { ensurePlanIdentity, loadPlan, normalizeExecutionMode, updatePlanFrontMatter } from "../../plan-store.ts";
 import {
     describeRegistryAmbiguity,
     findActiveByPlanName as findWorktreeRegistryEntryByPlanName,
@@ -16,24 +17,20 @@ import {
     reconcileEntryGitLocation,
     restoreEntryFromPlanEvidence,
     updateEntry as updateWorktreeRegistryEntry,
-} from "../worktree-registry.js";
-import { prepareExecutionPlanFile } from "./execution-plan-file.js";
-import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
-import { resolveTargetBranchName } from "../worktree.js";
+} from "../worktree-registry.ts";
+import { prepareExecutionPlanFile } from "./execution-plan-file.ts";
+import { enterProjectRuntime, withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
+import { resolveTargetBranchName } from "../worktree.ts";
 import { getWorkflowDiff } from "./git-snapshot.ts";
-import { recordWorkflowMetric } from "./metrics.js";
-import { isInValidation } from "./plan-lifecycle.js";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
+import { recordWorkflowMetric } from "./metrics.ts";
+import { isInValidation } from "./plan-lifecycle.ts";
 import { hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
 import type { ValidationRecoveryNotice } from "./validation-user-messages.ts";
 
-const VALIDATION_ELIGIBLE_WORKTREE_STATUSES = new Set([
-    "active",
-    "completed",
-    "validation_failed",
-    "validated",
-]);
+const VALIDATION_ELIGIBLE_WORKTREE_STATUSES = new Set(["active", "completed", "validation_failed", "validated"]);
 
-type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store.ts").PlanFrontMatter;
 type ResolutionSource = "explicit" | "active_session" | "durable_recovery";
 type ScalarValue = string | number | boolean | null | undefined;
 export interface ExecutionContextCandidate {
@@ -105,6 +102,7 @@ interface ResolutionMetricOptions {
     reason: string;
     recovered?: boolean;
     planFileRestored?: boolean;
+    worktreeId?: string;
 }
 
 export interface ResolveValidationExecutionContextOptions {
@@ -128,24 +126,25 @@ type AttachedWorktree = { path: string; head?: string; branch?: string };
 
 async function listAttachedWorktrees(projectRoot: string): Promise<AttachedWorktree[]> {
     const output = await runGit(projectRoot, ["worktree", "list", "--porcelain"]);
-    return output.trim().split(/\n\n+/).filter(Boolean).map((block) => {
-        const fields = new Map(
-            block.split("\n").map((line) => {
-                const split = line.indexOf(" ");
-                return split < 0 ? [line, ""] : [line.slice(0, split), line.slice(split + 1)];
-            }),
-        );
-        const branchRef = fields.get("branch");
-        return {
-            path: fields.get("worktree") || "",
-            ...(fields.get("HEAD") ? { head: fields.get("HEAD") } : {}),
-            ...(branchRef?.startsWith("refs/heads/") ? { branch: branchRef.slice("refs/heads/".length) } : {}),
-        };
-    }).filter((entry) => entry.path.length > 0);
-}
-
-function isNonEmptyString(value: ScalarValue): value is string {
-    return typeof value === "string" && value.trim().length > 0;
+    return output
+        .trim()
+        .split(/\n\n+/)
+        .filter(Boolean)
+        .map((block) => {
+            const fields = new Map(
+                block.split("\n").map((line) => {
+                    const split = line.indexOf(" ");
+                    return split < 0 ? [line, ""] : [line.slice(0, split), line.slice(split + 1)];
+                }),
+            );
+            const branchRef = fields.get("branch");
+            return {
+                path: fields.get("worktree") || "",
+                ...(fields.get("HEAD") ? { head: fields.get("HEAD") } : {}),
+                ...(branchRef?.startsWith("refs/heads/") ? { branch: branchRef.slice("refs/heads/".length) } : {}),
+            };
+        })
+        .filter((entry) => entry.path.length > 0);
 }
 
 function asString(value: ScalarValue): string | undefined {
@@ -153,7 +152,11 @@ function asString(value: ScalarValue): string | undefined {
 }
 
 function normalizePlanIdentity(value: ScalarValue): string {
-    return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
 }
 
 function planIdentityMatches(left: ScalarValue, right: ScalarValue): boolean {
@@ -166,21 +169,10 @@ function blocked(reason: string, message: string): BlockedValidationContext {
     return { kind: "blocked", reason, message };
 }
 
-async function realPath(value: string | undefined): Promise<string | undefined> {
-    if (!isNonEmptyString(value)) return undefined;
-    try {
-        return await fsRealpath(String(value));
-    } catch {
-        return undefined;
-    }
-}
-
-function selectCandidateContext(
-    { explicitContext, activeWorkflow }: Pick<
-        ResolveValidationExecutionContextOptions,
-        "explicitContext" | "activeWorkflow"
-    >,
-): CandidateSelection {
+function selectCandidateContext({
+    explicitContext,
+    activeWorkflow,
+}: Pick<ResolveValidationExecutionContextOptions, "explicitContext" | "activeWorkflow">): CandidateSelection {
     if (explicitContext?.planName) return { source: "explicit", context: explicitContext };
     if (activeWorkflow?.planName) return { source: "active_session", context: activeWorkflow };
     return { source: "durable_recovery", context: null };
@@ -192,19 +184,37 @@ async function recordResolutionMetric({
     reason,
     recovered = false,
     planFileRestored = false,
+    worktreeId,
 }: ResolutionMetricOptions): Promise<void> {
-    await recordWorkflowMetric({
-        category: "validation",
-        event: "execution_context_resolution",
-        planName,
-        details: { reason, recovered, planFileRestored },
-    }, cwd).catch(() => {});
+    if (planFileRestored) {
+        await recordWorkflowOutcome(cwd, {
+            category: "validation",
+            event: "execution_context_resolution",
+            operationId: crypto.randomUUID(),
+            planName,
+            attemptId: worktreeId,
+            outcome: "succeeded",
+        });
+        return;
+    }
+    await recordWorkflowMetric(
+        {
+            category: "validation",
+            event: "execution_context_resolution",
+            planName,
+            details: { reason, recovered, planFileRestored },
+        },
+        cwd,
+    ).catch(() => {});
 }
 
 /** One validation context resolution verifies each checkout's runtime layout once. */
 export async function resolveValidationExecutionContext(
     options: ResolveValidationExecutionContextOptions,
 ): Promise<ValidationContextResolution> {
+    const documentRoot = await preparePlanController(options.projectRoot, options.planName);
+    const document = await loadPlan(documentRoot, options.planName);
+    if (document && !document.attrs.planId) await ensurePlanIdentity(documentRoot, options.planName);
     return await withProjectRuntimeReadScope(() => resolveValidationExecutionContextInScope(options));
 }
 
@@ -216,9 +226,8 @@ async function resolveValidationExecutionContextInScope({
     activeWorkflow,
 }: ResolveValidationExecutionContextOptions): Promise<ValidationContextResolution> {
     const selected = selectCandidateContext({ explicitContext, activeWorkflow });
-    const selectedExecutionCwd = selected.context?.executionMode === "worktree"
-        ? asString(selected.context.executionCwd)
-        : undefined;
+    const selectedExecutionCwd =
+        selected.context?.executionMode === "worktree" ? asString(selected.context.executionCwd) : undefined;
     const executionPlan = selectedExecutionCwd
         ? await loadPlan(selectedExecutionCwd, planName).catch(() => null)
         : null;
@@ -227,8 +236,10 @@ async function resolveValidationExecutionContextInScope({
         // Resolve the controller's directory before opening any primary Plan.
         // The identity/Git recovery below owns validation's legacy-ID repair.
         const recorded = await findWorktreeRegistryEntryByPlanName(projectRoot, planName);
-        plan = (recorded ? await loadPlan(recorded.path, planName) : null) || executionPlan ||
-            await loadPlan(projectRoot, planName);
+        plan =
+            (recorded ? await loadPlan(recorded.path, planName) : null) ||
+            executionPlan ||
+            (await loadPlan(projectRoot, planName));
     } catch (error) {
         const described = describeRegistryAmbiguity(error);
         if (!described) throw error;
@@ -248,29 +259,26 @@ async function resolveValidationExecutionContextInScope({
     }
     if (!isPlannedChangeClassification(attrs.classification)) {
         const directContext = explicitContext || activeWorkflow;
-        const executionMode = directContext?.nonGitInPlace === true ||
-                directContext?.executionMode === "non_git_in_place"
-            ? "non_git_in_place"
-            : "worktree";
+        const executionMode =
+            directContext?.nonGitInPlace === true || directContext?.executionMode === "non_git_in_place"
+                ? "non_git_in_place"
+                : "worktree";
         return {
             kind: "ok",
             context: {
                 executionMode,
                 planName,
                 projectRoot,
-                executionCwd: executionMode === "non_git_in_place"
-                    ? projectRoot
-                    : directContext?.executionCwd || projectRoot,
+                executionCwd:
+                    executionMode === "non_git_in_place" ? projectRoot : directContext?.executionCwd || projectRoot,
                 baselineTree: executionMode === "worktree" ? asString(directContext?.baselineTree) : undefined,
                 worktreeId: executionMode === "worktree" ? asString(directContext?.worktreeId) : undefined,
                 worktreeBranch: executionMode === "worktree" ? asString(directContext?.worktreeBranch) : undefined,
-                worktreeBaseBranch: executionMode === "worktree"
-                    ? asString(directContext?.worktreeBaseBranch)
-                    : undefined,
+                worktreeBaseBranch:
+                    executionMode === "worktree" ? asString(directContext?.worktreeBaseBranch) : undefined,
                 worktreeBaseRef: executionMode === "worktree" ? asString(directContext?.worktreeBaseRef) : undefined,
-                worktreeBaseCommit: executionMode === "worktree"
-                    ? asString(directContext?.worktreeBaseCommit)
-                    : undefined,
+                worktreeBaseCommit:
+                    executionMode === "worktree" ? asString(directContext?.worktreeBaseCommit) : undefined,
                 source: explicitContext ? "explicit" : activeWorkflow?.planName ? "active_session" : "durable_recovery",
             },
         };
@@ -360,19 +368,26 @@ async function resolveValidationExecutionContextInScope({
         };
     }
 
-    const candidateWorktreePath = asString(candidate.executionCwd) && candidate.executionCwd !== projectRoot
-        ? asString(candidate.executionCwd)
-        : undefined;
+    const candidateWorktreePath =
+        asString(candidate.executionCwd) && candidate.executionCwd !== projectRoot
+            ? asString(candidate.executionCwd)
+            : undefined;
     const recordedWorktreePath = asString(attrs.worktreePath);
     const worktreeId = asString(recoveredRegistryEntry?.id) || candidateWorktreeId;
     const worktreePath = asString(recoveredRegistryEntry?.path) || candidateWorktreePath || recordedWorktreePath;
-    const worktreeBranch = asString(recoveredRegistryEntry?.branch) || asString(candidate.worktreeBranch) ||
+    const worktreeBranch =
+        asString(recoveredRegistryEntry?.branch) ||
+        asString(candidate.worktreeBranch) ||
         asString(attrs.worktreeBranch);
-    let worktreeBaseBranch = asString(recoveredRegistryEntry?.baseBranch) ||
-        asString(candidate.worktreeBaseBranch) || asString(attrs.worktreeBaseBranch);
-    let baselineTree = asString(recoveredRegistryEntry?.executionBaselineTree) ||
+    let worktreeBaseBranch =
+        asString(recoveredRegistryEntry?.baseBranch) ||
+        asString(candidate.worktreeBaseBranch) ||
+        asString(attrs.worktreeBaseBranch);
+    let baselineTree =
+        asString(recoveredRegistryEntry?.executionBaselineTree) ||
         asString(recoveredRegistryEntry?.baseTree) ||
-        asString(candidate.baselineTree) || asString(attrs.executionBaselineTree);
+        asString(candidate.baselineTree) ||
+        asString(attrs.executionBaselineTree);
     if (!worktreeId || !worktreePath || !worktreeBranch || !worktreeBaseBranch) {
         await recordResolutionMetric({
             cwd: projectRoot,
@@ -393,10 +408,13 @@ async function resolveValidationExecutionContextInScope({
             "Git could not verify the recorded execution worktree. Recovery was left unchanged.",
         );
     }
-    const primaryPath = await realPath(attachedWorktrees[0]?.path);
-    const recordedPath = await realPath(worktreePath);
+    const primaryPath = await findExistingProjectPath(attachedWorktrees[0]?.path);
+    const recordedPath = await findExistingProjectPath(worktreePath);
     const branchCheckout = attachedWorktrees.find((entry) => entry.branch === worktreeBranch);
-    if (primaryPath && (recordedPath === primaryPath || await realPath(branchCheckout?.path) === primaryPath)) {
+    if (
+        primaryPath &&
+        (recordedPath === primaryPath || (await findExistingProjectPath(branchCheckout?.path)) === primaryPath)
+    ) {
         return blocked(
             "primary_checkout_is_not_execution_worktree",
             "Recovery cannot use the primary checkout as an execution worktree. Its branch and files were left unchanged.",
@@ -428,7 +446,7 @@ async function resolveValidationExecutionContextInScope({
         // Blocking here stranded Plans at "implemented" over metadata RunWield owns.
         selfHealNotices.push({ kind: "session_plan_fixed", planName });
     }
-    let registryEntry = recoveredRegistryEntry || await findWorktreeRegistryEntryById(projectRoot, worktreeId);
+    let registryEntry = recoveredRegistryEntry || (await findWorktreeRegistryEntryById(projectRoot, worktreeId));
     if (!registryEntry) {
         const restored = await restoreEntryFromPlanEvidence(projectRoot, {
             id: worktreeId,
@@ -467,12 +485,15 @@ async function resolveValidationExecutionContextInScope({
         );
     }
     if (!baselineTree) baselineTree = asString(registryEntry.executionBaselineTree) || asString(registryEntry.baseTree);
-    const candidateBaseCommit = asString(registryEntry.baseCommit) || asString(candidate.worktreeBaseCommit) ||
-        asString(candidate.baseCommit);
-    const candidateBaseRef = asString(registryEntry.baseRef) || asString(candidate.worktreeBaseRef) ||
-        asString(candidate.baseRef);
+    const candidateBaseCommit =
+        asString(registryEntry.baseCommit) || asString(candidate.worktreeBaseCommit) || asString(candidate.baseCommit);
+    const candidateBaseRef =
+        asString(registryEntry.baseRef) || asString(candidate.worktreeBaseRef) || asString(candidate.baseRef);
     if (!baselineTree) {
-        const baselineRef = candidateBaseCommit || asString(registryEntry.baseCommit) || candidateBaseRef ||
+        const baselineRef =
+            candidateBaseCommit ||
+            asString(registryEntry.baseCommit) ||
+            candidateBaseRef ||
             asString(registryEntry.baseRef);
         if (baselineRef) {
             baselineTree = await runGit(projectRoot, ["rev-parse", `${baselineRef}^{tree}`]);
@@ -490,10 +511,10 @@ async function resolveValidationExecutionContextInScope({
         );
     }
     const attachedForBranch = attachedWorktrees.filter((entry) => entry.branch === worktreeBranch);
-    let canonicalRegistryPath = await realPath(registryEntry.path);
-    let canonicalWorktreePath = await realPath(worktreePath);
+    let canonicalRegistryPath = await findExistingProjectPath(registryEntry.path);
+    let canonicalWorktreePath = await findExistingProjectPath(worktreePath);
     if (attachedForBranch.length === 1) {
-        const gitPath = await realPath(attachedForBranch[0].path);
+        const gitPath = await findExistingProjectPath(attachedForBranch[0].path);
         if (gitPath && (!canonicalRegistryPath || canonicalRegistryPath !== gitPath)) {
             registryEntry = await reconcileEntryGitLocation(projectRoot, worktreeId, {
                 path: attachedForBranch[0].path,
@@ -509,8 +530,8 @@ async function resolveValidationExecutionContextInScope({
             .then(() => true)
             .catch(() => false);
         if (!branchExists) {
-            const staleRecord = attachedWorktrees.find((entry) =>
-                entry.path === registryEntry.path || entry.branch === worktreeBranch
+            const staleRecord = attachedWorktrees.find(
+                (entry) => entry.path === registryEntry.path || entry.branch === worktreeBranch,
             );
             if (staleRecord?.head) {
                 await runGit(projectRoot, ["rev-parse", "--verify", `${staleRecord.head}^{commit}`]);
@@ -525,31 +546,25 @@ async function resolveValidationExecutionContextInScope({
             // Git admin record removes no files and lets Git attach it again.
             await runGit(projectRoot, ["worktree", "prune"]);
             await runGit(projectRoot, ["worktree", "add", registryEntry.path, worktreeBranch]);
-            canonicalRegistryPath = await realPath(registryEntry.path);
+            canonicalRegistryPath = await findExistingProjectPath(registryEntry.path);
             canonicalWorktreePath = canonicalRegistryPath;
             selfHealNotices.push({ kind: "worktree_restored", planName, branch: worktreeBranch });
         }
     }
     if (!canonicalRegistryPath || !canonicalWorktreePath || canonicalRegistryPath !== canonicalWorktreePath) {
-        return blocked(
-            "worktree_path_mismatch",
-            `The saved worktree path is not ready. RunWield kept all files.`,
-        );
+        return blocked("worktree_path_mismatch", `The saved worktree path is not ready. RunWield kept all files.`);
     }
     const projectCommonDir = await runGit(projectRoot, ["rev-parse", "--git-common-dir"]);
     const worktreeCommonDir = await runGit(canonicalWorktreePath, ["rev-parse", "--git-common-dir"]);
-    const projectCommonReal = await realPath(
-        resolve(projectRoot, projectCommonDir),
-    );
-    const worktreeCommonReal = await realPath(
-        resolve(canonicalWorktreePath, worktreeCommonDir),
-    );
+    const projectCommonReal = await findExistingProjectPath(resolve(projectRoot, projectCommonDir));
+    const worktreeCommonReal = await findExistingProjectPath(resolve(canonicalWorktreePath, worktreeCommonDir));
     if (!projectCommonReal || !worktreeCommonReal || projectCommonReal !== worktreeCommonReal) {
         return blocked(
             "git_common_dir_mismatch",
             `Execution worktree ${worktreeId} is not attached to the Project repository.`,
         );
     }
+    await enterProjectRuntime(canonicalWorktreePath);
     let checkedOutBranch = await runGit(canonicalWorktreePath, ["branch", "--show-current"]);
     const recordedBranchExists = await runGit(projectRoot, ["rev-parse", "--verify", `refs/heads/${worktreeBranch}`])
         .then(() => true)
@@ -595,7 +610,9 @@ async function resolveValidationExecutionContextInScope({
 
     const worktreeBaseTree = asString(registryEntry.baseTree);
     if (
-        worktreeBaseTree && worktreeBaseTree !== baselineTree && requiresImplementationDiff(attrs) &&
+        worktreeBaseTree &&
+        worktreeBaseTree !== baselineTree &&
+        requiresImplementationDiff(attrs) &&
         !hasImplementationDiff(await getWorkflowDiff(canonicalWorktreePath, baselineTree), planName) &&
         hasImplementationDiff(await getWorkflowDiff(canonicalWorktreePath, worktreeBaseTree), planName)
     ) {
@@ -627,6 +644,7 @@ async function resolveValidationExecutionContextInScope({
         selfHealNotices.push({ kind: "execution_plan_fixed", planName });
     }
 
+    await preparePlanController(canonicalWorktreePath, planName);
     let persistedLegacyExecutionMode = false;
     const currentExecutionPlan = await loadPlan(canonicalWorktreePath, planName);
     if (currentExecutionPlan) {
@@ -645,13 +663,19 @@ async function resolveValidationExecutionContextInScope({
         }
         persistedLegacyExecutionMode = currentExecutionPlan.attrs.executionMode !== "worktree";
     }
-    await recordResolutionMetric({
-        cwd: projectRoot,
-        planName,
-        reason: selected.source,
-        recovered: selected.source === "durable_recovery",
-        planFileRestored: Boolean(restoredPlanFile),
-    });
+    // A host reviewer continuation resolves the same round again. Its checkpoint
+    // already records that round's context; process re-entry is not another check.
+    if (!attrs.validationCheckpoint?.hostReview) {
+        await recordResolutionMetric({
+            cwd: projectRoot,
+            planName,
+            reason: selected.source,
+            recovered: selected.source === "durable_recovery",
+            planFileRestored: Boolean(restoredPlanFile),
+            worktreeId,
+        });
+    }
+
     return {
         kind: "ok",
         context: {

@@ -23,6 +23,7 @@ completion and basic validation.
 Project settings override global settings. For ordinary Pi-backed settings, nested objects are shallow-merged and arrays
 replace the global value. For RunWield custom object keys such as `agents` and `modelPresets`, RunWield merges the
 top-level object keys only, so a project `agents.router` object replaces the global `agents.router` object.
+`connect.codex.roles` instead resolves each role's model and thinking level independently, as described below.
 
 If `~/.wld/settings.json` does not exist, RunWield imports `~/.pi/agent/settings.json` once. After that, RunWield only
 reads and writes `~/.wld/settings.json`.
@@ -107,6 +108,40 @@ used by later invocations.
 }
 ```
 
+## Codex Connect Role Preferences
+
+`connect.codex.roles` maps `router`, `planner`, `engineer`, `frontend-engineer`, `reviewer`,
+`reviewer-feedback-engineer`, and `recorder` to optional `model` and `thinkingLevel` strings. These configure Codex's
+native worker spawn controls (`model` and `reasoning_effort`), independently of Core's Agent overrides and presets.
+
+```jsonc
+{
+    "connect": {
+        "codex": {
+            "roles": {
+                "planner": { "thinkingLevel": "high" },
+                "reviewer": { "model": "inherit", "thinkingLevel": "inherit" },
+            },
+        },
+    },
+}
+```
+
+Each field uses the project value, then the personal value, then `inherit`. Explicit `inherit` stops lookup and omits
+that native override; deleting a project field reveals its personal value. Linked execution worktrees use the primary
+checkout's project settings. Both files are re-read at the next dispatch, including in a new process or resumed chat.
+
+Use Codex-native model IDs and effort strings supported by the selected model and client. A model-only override can
+use that model's default effort. Empty values, invalid types, and unrecognized roles or fields produce diagnostics;
+host rejection leaves the action resumable without changing the saved preference. See the
+[Codex guide](connect-codex.md#choose-a-model-and-thinking-level-per-role) for worker behavior and compatibility limits.
+
+## Usage
+
+To compare Usage totals on your paired desktop and phone, select the same Project filter and date range on each
+device. Confirm that the displayed host time zone and coverage notices match, then select **Apply range** on each
+device. See [Pair your browser](workspace.md#pair-your-browser) for pairing instructions. A gap is not zero activity.
+
 ## Agent Model Overrides
 
 Bundled agent names are `architect`, `engineer`, `guide`, `ideator`, `operator`, `planner`, `router`, and `tester`.
@@ -155,19 +190,26 @@ Type: object.
 
 Defines named groups of agent overrides. RunWield includes these presets without requiring a `modelPresets` setting:
 
-| Preset         | Model assignments                                                                                              | Required access                |
-| -------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `codex`        | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GPT-6 Astra for planning/review                     | Codex account                  |
-| `agy`          | Gemini 3.8 Flash for execution; Gemini 3.1 Pro for Router, Slicer, planning/review                             | Antigravity CLI sign-in        |
-| `opencode`     | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GLM 5.3 for Slicer/planning; GPT-6 Astra for review | OpenCode Zen API key           |
-| `claude-mixed` | Sonnet for Router/execution; Opus for planning/review                                                          | Claude Code sign-in            |
-| `claude-opus`  | Opus for every Agent, including Router                                                                         | Claude Code sign-in            |
-| `codex-claude` | Codex Luna/Sol for Router/execution; Claude Opus for planning/review                                           | Codex and Claude Code accounts |
+| Preset         | Model assignments                                                                                              | Required access                                 |
+| -------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `codex`        | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GPT-6 Astra for planning/review                     | Codex account                                   |
+| `agy`          | Gemini 3.8 Flash for execution; Gemini 4 Argon for Router, Slicer, planning/review                             | Antigravity sign-in with Argon and Flash access |
+| `opencode`     | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GLM 5.3 for Slicer/planning; GPT-6 Astra for review | OpenCode Zen API key                            |
+| `claude-mixed` | Sonnet for Router/execution; Opus for planning/review                                                          | Claude Code sign-in                             |
+| `claude-opus`  | Opus for every Agent, including Router                                                                         | Claude Code sign-in                             |
+| `codex-claude` | Codex Luna/Sol for Router/execution; Claude Opus for planning/review                                           | Codex and Claude Code accounts                  |
 
 Planning means Ideator, Planner, and Architect; review means Reviewer. Execution includes Guide, Engineer, Frontend
 Engineer, and Init. Slicer uses Sol in the Codex presets and Sonnet in `claude-mixed`. Operator uses Flash in `agy`,
 Sonnet in `claude-mixed`, and Opus in `claude-opus`. Validation Repair Engineer inherits Engineer's model and thinking
 level unless separately configured.
+
+The bundled `agy` preset replaces Pro with Argon for Router, Slicer, Architect, Planner, Ideator, and Reviewer.
+Thinking levels stay unchanged: Router and Reviewer use medium; the other Argon Agents use high. Flash assignments
+stay unchanged. Argon medium thinking sends medium effort, while Pro medium thinking sends high. The preset requires
+Argon access; RunWield does not choose a version-specific preset or fall back to another family. Saved Pro selections
+and personal or project presets stay unchanged. If Argon is unavailable, explicitly select Pro where upstream supports
+it or use a personal preset. See [Antigravity CLI](providers.md#antigravity-cli) for all five families and effort mapping.
 
 Select a preset in `/settings` → **Model Presets**, or set `activeModelPreset` to its name. Nothing is activated
 automatically. Configure the listed provider access before using its models; selecting a preset does not sign you in.
@@ -402,9 +444,10 @@ an accepted alias for `codex-cli/<model>`.
 }
 ```
 
-Install `agy` and sign in to Antigravity. Supported models are `agy-cli/gemini-3.8-flash` and `agy-cli/gemini-3.1-pro`.
-`thinkingLevel` maps to Antigravity effort as in the [Antigravity CLI](providers.md#antigravity-cli) table.
-`temperature` is not supported. Antigravity picks the image model itself.
+Install `agy` and sign in to Antigravity. Select a supervising model from the five
+[Antigravity CLI families](providers.md#antigravity-cli). Catalog inclusion alone does not establish native image
+support for each family; generation depends on your CLI and account. `thinkingLevel` uses the same effort mapping as
+chat, shown in that table. `temperature` is not supported. Antigravity picks the image model itself.
 
 #### Where to set it
 
@@ -512,7 +555,7 @@ These keys are read by RunWield outside the upstream Pi `SettingsManager` schema
 | `workRecords.autoGenerateOnPlanCompletion` | boolean           | default `true`                                  | global + project | Writes a Work Record when a Plan finishes. Only `false` turns it off.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `mascot`                                   | boolean           | default `true`                                  | global + project | Hides the agent mascot in TUI and Workspace when false.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `notifications`                            | object            | enabled by default                              | global + project | Attention notifications. TUI uses terminal BEL/OSC for agent stops, `plan_written`, `user_interview`, and `/compact`. Workspace uses browser alerts for live `agentStopped` events. Focused surfaces stay quiet by default.                                                                                                                                                                                                                                                                                                            |
-| `workflowMetrics`                          | boolean or object | default disabled                                | global + project | Opt-in local-only JSONL workflow metrics under `~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl`. Linked worktrees write to the primary project file. Accepts `true` or `{ "enabled": true }`.                                                                                                                                                                                                                                                                                                                            |
+| `workflowMetrics`                          | boolean or object | default disabled                                | global + project | Opt-in local JSONL workflow metrics under `~/.wld/workflow-metrics/<project-basename>-<sha256-root>/metrics.jsonl`. Linked worktrees write to the primary project file. Accepts `true` or `{ "enabled": true }`.                                                                                                                                                                                                                                                                                                                       |
 | `planServerUrl`                            | string            | unset                                           | global + project | Default Plan Server for `wld plans share`. See [`planServerUrl`](#planserverurl).                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `enableExternalSkills`                     | boolean           | default `true`                                  | global           | When true, RunWield includes project `.agents/skills` and home `~/.agents/skills`. When false, it omits both folders. External skills cannot conflict with bundled names or aliases.                                                                                                                                                                                                                                                                                                                                                   |
 | `enableExternalGlobalAgentsMd`             | boolean           | default `true`                                  | global           | When true, global prompt loading includes `~/.agents/AGENTS.md` after `~/.wld/RUNWIELD.md` and `~/.wld/AGENTS.md`.                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -532,21 +575,32 @@ writes no metrics until you turn it on. Either form enables it:
 { "workflowMetrics": { "enabled": true } }
 ```
 
-Metrics are record-only in this release. RunWield has no reporting UI, CLI summary, or analytics sync. Nothing is
-uploaded, and nothing is backfilled for activity before you enabled the setting.
+The Workspace Usage page reports collected usage and lets you clear selected Project history. Recording stays local
+unless you separately approve an exporter package and grant export to a destination for selected Projects. Recording
+alone does not authorize upload. Activity before enablement is not backfilled.
+
+The Workspace recording control commits a collection boundary. Work started while recording was off, or before a
+later recording boundary or history clear, cannot enter the new history. Direct settings-file edits are observed when
+Core next records activity.
 
 #### Where records go
 
 RunWield appends one JSON object per line to:
 
 ```text
-~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl
+~/.wld/workflow-metrics/<project-basename>-<sha256-root>/metrics.jsonl
 ```
 
-`<encoded-project-root>` uses the same directory encoding as persisted sessions. Linked execution worktrees write to the
-primary project's file, so one project has one metrics file.
+`<project-basename>-<sha256-root>` uses a sanitized basename of at most 40 characters and the full SHA-256 of the
+primary checkout's real path. Linked execution worktrees write to the primary Project's file. Different roots have
+separate histories, reports, clear actions, and export grants.
 
-There is no retention period or cleanup job. The file stays until you delete it.
+Core adopts a legacy journal at first use. An unshared journal keeps its bytes and grant offsets. If a legacy directory
+contains rows from different Projects, Core copies only attributable rows into separate histories and marks a gap. These
+copied rows appear in reports but are not exported under an existing grant.
+
+There is no automatic retention period. Use Clear history on the Usage page to remove selected Project measurements.
+Clear preserves Sessions, Plans, settings, and delivery fences; it cannot recall an export request already dispatched.
 
 #### What is recorded
 
@@ -587,8 +641,9 @@ links that tie it to the work it belongs to:
 | `taskId`                                | A delegated task.                                 |
 | `commandId`                             | A slash command lifecycle.                        |
 
-A `null` link means the source did not supply it. RunWield does not invent links. For example, a manual `/compact` run
-outside an Agent turn links its context and compaction rows to the session and command, with no execution ID.
+A `null` link means the source did not supply it. RunWield does not invent Agent turns. A manual `/compact` outside an
+Agent turn uses an auxiliary measurement execution linked to its Session and command. Auxiliary starts are not
+user-initiated and do not add an Active day.
 
 **`null` means "not measured", never zero.** This applies to token counts, costs, and links. A missing row is also not a
 measured zero.
@@ -634,6 +689,76 @@ Each `model_usage` row identifies its transcript entry or source observation wit
 
 **Cost.** `costAmount` is in `costCurrency` (currently USD). `costSource` says whether the provider reported the cost,
 RunWield calculated it from rates, or it is unavailable. Treat it as a measurement, not an invoice.
+
+Each `see_image` vision fallback records request-basis usage, including remote calls. Failed or aborted responses retain
+known usage with partial or unavailable coverage; thrown errors record unavailable usage. Measurement starts before the
+call. Without an active execution, vision uses an auxiliary start and finish. Guided Review uses runtime observations
+for `wld guided-review` without another job total; external guide commands start an auxiliary measurement before the
+command and record one turn-basis aggregate. A command that supplies no measurements records unavailable usage. Guide
+generation outcomes remain separate events. The explicit remote model proof turn is not recorded, but its vision fallback
+calls are. agy CLI cost is calculated only for an exact built-in catalog model match; otherwise it stays unavailable.
+Replay shows compaction usage separately from assistant totals. Historical zero-filled CLI transcripts cannot
+distinguish missing measurements from measured zeros.
+
+An external Guided Review command can report measurements on stderr with a line that starts with
+`RUNWIELD_GUIDED_REVIEW_EVENT` followed by a version-2 JSON usage frame. Keep the review JSON on stdout. Each usage
+frame requires `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`, and `costUsd`; each value is a
+nonnegative number or `null`. `contextWindow` is optional. For example:
+
+```text
+RUNWIELD_GUIDED_REVIEW_EVENT {"version":2,"type":"usage","usage":{"inputTokens":12,"outputTokens":0,"cacheReadTokens":null,"cacheWriteTokens":null,"costUsd":null}}
+```
+
+Other custom-command stderr remains diagnostic text, including legacy version-1 look-alike lines. The default `wld`
+command rejects stale usage frames. Legacy frames do not contribute new measurements.
+
+#### Recording and history
+
+Set `workflowMetrics` to `false` to stop recording new measurements. Existing measurements stay on your device until you
+delete them. Re-enabling records new activity only; RunWield does not fill gaps from past activity or Session
+Transcripts. An empty period means no measurements were recorded, not zero usage.
+
+Recording failures do not stop your work. Measurements can be skipped if storage is unavailable, another process is
+writing, or history recovery is in progress. Skipped measurements are not retried. RunWield repairs incomplete writes
+and marks damaged records as measurement gaps, so saved history can still be incomplete.
+
+Open **Usage → Report** in Workspace for local usage and outcome summaries. **Usage → Settings** shows effective
+recording state and has the global recording toggle. Project settings override that toggle; the browser never edits a
+Project's settings file. Turning recording off keeps older measurements visible.
+
+#### Export settings and history removal
+
+In **Usage → Settings**, install and approve a metrics exporter on the host with `wld install <source>`, then choose
+**Add destination**. Enter the endpoint and external project, and select the Projects to export. Recording and executable
+code approval alone do not authorize export. A new Project stays unselected until you approve it for that destination.
+HTTP is allowed only for loopback development endpoints with **Local development endpoint** selected.
+
+Each destination has **Approved Projects**, **Credentials**, **Delivery status**, and **Destination** tabs. Search in a
+long Project checklist filters rows without clearing approvals outside the results. Disabling or removing a Project in
+Workspace changes browser access only. Its export approval remains; unavailable approved Projects appear as a count.
+
+Enter all declared credential fields to replace credentials. Secret fields are masked. Saved values never return to the
+browser, and successful saves clear the inputs. Core stores credentials in `~/.wld/metrics-export/credentials.json`
+with mode `0600`, not in `settings.json`. An exporter with no declared fields needs no credentials.
+
+**Delivery status** shows Core's snapshot: pending, accepted, confirmed, delivery unconfirmed, rejected, latest codes,
+and last attempt. Use **Refresh** for a new snapshot. Delivery unconfirmed means the destination may or may not have the
+item; RunWield does not resend it. Correcting credentials can resume items rejected for credential correction. These
+export states do not create a workflow failure.
+
+**Destination** lets you change the endpoint or external project, or revoke export. Confirmation explains that a change
+starts a new export boundary: old pending items do not send. Revoke stops new sends; a request already sent cannot be
+recalled. Enabling export again starts a new boundary.
+
+**Clear history** removes measurement history and pending export payloads for the Projects you select. It does not remove
+Sessions, Plans, worktrees, settings, or data already exported. Confirm the action after reading its limits. The result
+reports each Project's outcome and whether a request was already in flight. While a clear is pending, the Report stays
+readable and hides the affected Project's old measurements. If it shows **Clear did not finish**, choose **Retry clear**
+beside that Project and confirm. This works with recording off and does not enable recording. Export configuration is
+unavailable when personal resources are remote-backed on this host.
+
+See [Workspace usage and export](workspace.md#usage-and-export) and the
+[Langfuse exporter setup](../../packages/langfuse-exporter/README.md#install-and-authorize).
 
 #### Reliability
 
@@ -760,12 +885,18 @@ Defaults:
 
 The TUI uses your terminal's own notifications where it supports them:
 
-| Terminal                               | Notification                              |
-| -------------------------------------- | ----------------------------------------- |
-| Kitty                                  | Native notification (OSC 99)              |
-| WezTerm, Ghostty                       | Native notification (OSC 777)             |
-| iTerm2                                 | Native notification (OSC 9)               |
-| Terminal.app, VS Code, other terminals | Bell only, when `terminalBell` is enabled |
+| Terminal                        | Notification                              |
+| ------------------------------- | ----------------------------------------- |
+| Kitty                           | Native notification (OSC 99)              |
+| WezTerm, Ghostty, Warp          | Native notification (OSC 777)             |
+| iTerm2                          | Native notification (OSC 9)               |
+| Other or unidentified terminals | Try OSC 777; bell if `terminalBell` is on |
+
+Warp needs notifications enabled in both Warp and the operating system. Use a current Warp release and switch to
+another app to check delivery. See [Warp notification settings](https://docs.warp.dev/terminal/more-features/notifications).
+
+RunWield tries OSC 777 even when it cannot identify the terminal. A terminal can ignore the request or block it through
+notification settings. Sending the request does not confirm that a desktop alert appeared.
 
 Inside tmux, screen, or zellij, native notifications need passthrough enabled in the multiplexer. Without it, you get
 the bell only.
@@ -846,6 +977,7 @@ These keys come from the upstream `@earendil-works/pi-coding-agent` settings sch
 | `enableAnalytics`           | boolean      | default `false`                                                              | Opt-in analytics data sharing.                                                                                                |
 | `trackingId`                | string       | generated when analytics is enabled                                          | Analytics tracking identifier.                                                                                                |
 | `packages`                  | array        | default `[]`                                                                 | Installed npm/git/local package sources. RunWield registers theme resources and package prompt templates from these packages. |
+| `metricsExporterApprovals`  | array        | default `[]`; global only                                                    | Saved exporter approvals, bound to ID, configured source, real installed path, and package version.                           |
 | `extensions`                | string array | default `[]`                                                                 | Local extension file paths or directories.                                                                                    |
 | `skills`                    | string array | default `[]`                                                                 | Ignored by RunWield. Use project or home `.wld/skills` or `.agents/skills`.                                                   |
 | `prompts`                   | string array | default `[]`                                                                 | Local prompt template file paths or directories.                                                                              |
@@ -1004,8 +1136,58 @@ only loads package code extensions when both conditions are met:
    alter prompts, intercept tool calls, read project/session data, call external services, leak data, run unwanted
    commands, or cause other issues.
 
-If the user declines extension loading, RunWield keeps passive resources from the package but persists the package with
-`extensions: []` so code extension paths are skipped. Theme package behavior is covered in [themes.md](themes.md).
+For a new package, `wld install` saves `extensions: []` before it asks for consent. Refusal, empty input, EOF, an
+interrupted prompt, or an interrupted install keeps code disabled. Acceptance saves a filter for exactly the compatible
+extensions before reporting success. Passive themes and prompts stay available. A failed settings save reports an
+installation failure, not enabled code. Reinstalling a registered source keeps its existing extension and resource
+filters, including earlier enabled or disabled choices. It does not ask for code-extension consent again. Theme package
+behavior is covered in [themes.md](themes.md).
+
+### Metrics exporter packages
+
+A metrics exporter is separate from a Pi Agent extension. Declare it in the top-level `wld` block of `package.json`,
+next to `pi` if present:
+
+```json
+{
+    "name": "example-metrics-exporter",
+    "version": "1.0.0",
+    "wld": {
+        "metricsExporter": {
+            "contract": 1,
+            "id": "example",
+            "entry": "./dist/exporter.js",
+            "credentials": [{ "key": "apiKey", "label": "API key", "secret": true }]
+        }
+    }
+}
+```
+
+`contract` must be `1`; `id` must be a non-empty string. The entry must be a relative file path that stays inside the
+package after symlinks are resolved. It cannot also be a Pi extension resource, including an auto-discovered file in
+`extensions/`. A package can declare both kinds with separate files.
+
+The optional `credentials` array declares the Workspace form fields. It has at most eight entries. Each entry needs a
+unique `key` matching `^[A-Za-z][A-Za-z0-9_]{0,63}$`, a non-empty `label` of at most 64 characters, and a boolean
+`secret`. Malformed fields invalidate the exporter declaration. Without fields, Workspace shows no credential form.
+The Langfuse package declares `publicKey` and secret `secretKey`. Field changes alone do not change code approval.
+Credential submissions accept only declared keys and string values up to 4096 characters, without CR or LF.
+
+`wld install <source>` asks a separate, default-no exporter approval question. Only `y` or `yes` grants approval.
+Approving extensions does not approve the exporter, and approving the exporter does not enable extensions. Exporter code
+is not loaded during Session startup. Core resolves approved entries for delivery only after the owner configures a
+destination and Project consent in Workspace Usage settings.
+
+Approvals are host-global. `metricsExporterApprovals` is saved only in global settings and binds approval to the
+exporter ID, configured user-scope source, real installed path, and package version. Each record also contains an ISO
+`approvedAt` timestamp. Project packages and Project approval settings cannot replace or approve the user's exporter.
+Changing any bound field makes the exporter unapproved. Editing local files without changing the version keeps approval;
+this is not content-hash validation.
+
+To approve a declined exporter or a changed version, run `wld install <source>` again. `wld remove <source>` deletes its
+approvals. There is no separate exporter approval command. Existing code-extension settings are not treated as
+historical exporter approval. Approval is not a sandbox and does not control npm lifecycle scripts during installation.
+Package update trust policy and historical code-extension consent reconciliation remain deferred.
 
 ## Legacy Migrations
 
@@ -1015,3 +1197,22 @@ RunWield and Pi migrate a few older key shapes while loading settings:
 - `websockets: true` becomes `transport: "websocket"`; `websockets: false` becomes `transport: "sse"`.
 - Old object-shaped `skills` settings become `enableSkillCommands` and/or a `skills` path array.
 - `retry.maxDelayMs` becomes `retry.provider.maxRetryDelayMs` when the provider field is not already set.
+
+## codemode
+
+Pi-backed Agents read `codemode` through the usual RunWield settings files; project fields override global fields.
+There is no separate codemode `.pi` configuration. Availability is controlled by the Agent's tool list, as described
+under [customization](customization.md#codemode).
+
+```jsonc
+{
+    "codemode": {
+        "mode": "on",
+        "inlineBudget": 3000,
+    },
+}
+```
+
+`mode: "on"` keeps ordinary tool declarations alongside codemode. `"only"` presents callable tools through codemode,
+while workflow decisions remain directly declared. `inlineBudget` is the nonnegative estimated-token budget for inline
+tool declarations; `0` relies on script discovery. Neither setting expands tool authority.

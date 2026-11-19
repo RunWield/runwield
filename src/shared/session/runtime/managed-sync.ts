@@ -1,10 +1,10 @@
-import { RuntimeEventTypes } from ".././session-runtime-events.js";
-import { captureTranscriptEvidence, toProjectionFailure } from ".././session-transcript-projection.js";
+import { RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { captureTranscriptEvidence, toProjectionFailure } from ".././session-transcript-projection.ts";
 import { projectAggregateTranscript } from ".././session-transcript-manifest.ts";
 import { dirname } from "node:path";
 import { normalizeTutorialContext } from "../tutorial-context-session.ts";
-import { normalizeWorkflowContext, type WorkflowContext } from "../workflow-context-session.js";
-import { loadPlanActionEvidence } from "../../workflow/plan-actions.ts";
+import { normalizeWorkflowContext } from "../workflow-context-session.ts";
+import { reconcileLegacyCompletion } from "../workflow-context-recovery.ts";
 
 import { isSameManagedSyncState, restorePublishedSessionProjectRoot } from "./support.ts";
 import type { ManagedSyncOptions } from "./types.ts";
@@ -14,27 +14,12 @@ import type { RuntimeEvents } from "./events.ts";
 
 type RuntimeEventsDependency = Pick<RuntimeEvents, "emitSessionEvent">;
 
-// Legacy transcripts lack accepted progress. Reconcile only confirmed same-Plan delivery,
-// including after a metadata-only activation; neither Plan nor transcript is rewritten.
-async function reconcileLegacyCompletion(
-    cwd: string,
-    context: WorkflowContext | null,
-): Promise<WorkflowContext | null> {
-    if (!context?.planId || context.validationProgress || context.status === "verified") return context;
-    const result = await loadPlanActionEvidence(cwd, context.planId);
-    return result.kind === "success" && result.evidence.status === "verified"
-        ? { ...context, status: "verified", planName: result.evidence.planName }
-        : context;
-}
-
 export class RuntimeManagedSync {
     private events!: RuntimeEventsDependency;
 
     constructor(private readonly services: RuntimeServices) {}
 
-    connect(
-        events: RuntimeEventsDependency,
-    ) {
+    connect(events: RuntimeEventsDependency) {
         this.events = events;
     }
     async synchronizeManagedSession(sessionId: string, options: ManagedSyncOptions = {}) {
@@ -42,13 +27,19 @@ export class RuntimeManagedSync {
         if (!hostedSession) throw new Error("SessionRuntime.synchronizeManagedSession: session not found");
         const initialManaged = hostedSession.getManagedMetadata?.() || null;
         if (!initialManaged) return { ok: true, managed: false, events: [] };
+        if (this.services.remotePersistence) {
+            if (!hostedSession.getRootSessionManager()) {
+                await this.services.remotePersistence.synchronize(hostedSession);
+            }
+            return { ok: true, managed: true, events: [], state: hostedSession.getManagedMetadata()?.syncState };
+        }
         let managed = initialManaged;
         if (hostedSession.getRootSessionManager()) return { ok: true, managed: true, dormant: false, events: [] };
         if (!this.services.sessionStore) throw new Error("Session coordination is unavailable");
         await restorePublishedSessionProjectRoot(hostedSession, this.services.sessionStore);
         const emitEvents = options.emitEvents !== false;
         const emitSyncState = (
-            state: NonNullable<import("../hosted-session.js").ManagedSessionMetadata["syncState"]>,
+            state: NonNullable<import("../hosted-session.ts").ManagedSessionMetadata["syncState"]>,
         ) => {
             const previousState = managed.syncState;
             hostedSession.setManagedMetadata({ ...managed, syncState: state });
@@ -71,15 +62,20 @@ export class RuntimeManagedSync {
         }
         const latestGeneration = activationState.generation?.generation ?? null;
         const currentLocalGeneration = managed.acknowledgedGeneration ?? managed.generation ?? null;
-        const managedAlreadyCurrent = !options.replayFromStart && latestGeneration === currentLocalGeneration &&
-            !managed.acknowledgedEventId && !Number.isInteger(managed.acknowledgedEventOrdinal) &&
-            managed.syncState?.status === "current" && managed.syncState.localGeneration === currentLocalGeneration &&
+        const managedAlreadyCurrent =
+            !options.replayFromStart &&
+            latestGeneration === currentLocalGeneration &&
+            !managed.acknowledgedEventId &&
+            !Number.isInteger(managed.acknowledgedEventOrdinal) &&
+            managed.syncState?.status === "current" &&
+            managed.syncState.localGeneration === currentLocalGeneration &&
             managed.syncState.latestGeneration === latestGeneration;
         const activeOwnerKind = activationState.activation?.ownerProcessKind || null;
         const activeOwnerInstanceId = activationState.activation?.ownerInstanceId || null;
         const activeElsewhere = Boolean(
-            activationState.activation?.state === "active" && activeOwnerInstanceId &&
-                activeOwnerInstanceId !== this.services.ownerInstanceId,
+            activationState.activation?.state === "active" &&
+            activeOwnerInstanceId &&
+            activeOwnerInstanceId !== this.services.ownerInstanceId,
         );
         const owningSurfaceKind = activeElsewhere ? sanitizedSurface(activeOwnerKind) : undefined;
         if (!activeElsewhere && latestGeneration === currentLocalGeneration) {
@@ -95,7 +91,7 @@ export class RuntimeManagedSync {
             activationState.activation?.state === "uncertain" ||
             activationState.activation?.state === "reconcile_required"
         ) {
-            const state: NonNullable<import("../hosted-session.js").ManagedSessionMetadata["syncState"]> = {
+            const state: NonNullable<import("../hosted-session.ts").ManagedSessionMetadata["syncState"]> = {
                 type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
                 status: "blocked",
                 localGeneration: currentLocalGeneration,
@@ -106,7 +102,7 @@ export class RuntimeManagedSync {
             return { ok: false, error: activationState.activation.state, state };
         }
         if (!activationState.generation) {
-            const state: NonNullable<import("../hosted-session.js").ManagedSessionMetadata["syncState"]> = {
+            const state: NonNullable<import("../hosted-session.ts").ManagedSessionMetadata["syncState"]> = {
                 type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
                 status: activeElsewhere ? "active_elsewhere" : "current",
                 localGeneration: currentLocalGeneration,
@@ -117,11 +113,13 @@ export class RuntimeManagedSync {
             return { ok: true, events: [], state };
         }
         if (
-            !options.replayFromStart && latestGeneration === currentLocalGeneration &&
-            (managed.acknowledgedEventId || Number.isInteger(managed.acknowledgedEventOrdinal) ||
+            !options.replayFromStart &&
+            latestGeneration === currentLocalGeneration &&
+            (managed.acknowledgedEventId ||
+                Number.isInteger(managed.acknowledgedEventOrdinal) ||
                 latestGeneration === null)
         ) {
-            const state: NonNullable<import("../hosted-session.js").ManagedSessionMetadata["syncState"]> = {
+            const state: NonNullable<import("../hosted-session.ts").ManagedSessionMetadata["syncState"]> = {
                 type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
                 status: activeElsewhere ? "active_elsewhere" : "current",
                 localGeneration: currentLocalGeneration,
@@ -132,15 +130,13 @@ export class RuntimeManagedSync {
             return { ok: true, events: [], state };
         }
         if (!managedAlreadyCurrent) {
-            emitSyncState(
-                {
-                    type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
-                    status: "syncing",
-                    localGeneration: currentLocalGeneration,
-                    latestGeneration,
-                    ...(owningSurfaceKind ? { owningSurfaceKind } : {}),
-                },
-            );
+            emitSyncState({
+                type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
+                status: "syncing",
+                localGeneration: currentLocalGeneration,
+                latestGeneration,
+                ...(owningSurfaceKind ? { owningSurfaceKind } : {}),
+            });
         }
         try {
             const events = [];
@@ -149,8 +145,8 @@ export class RuntimeManagedSync {
             let cursorEventOrdinal = options.replayFromStart
                 ? null
                 : Number.isInteger(managed.acknowledgedEventOrdinal)
-                ? managed.acknowledgedEventOrdinal
-                : null;
+                  ? managed.acknowledgedEventOrdinal
+                  : null;
             do {
                 projected = await projectAggregateTranscript({
                     cwd: hostedSession.cwd,
@@ -177,22 +173,20 @@ export class RuntimeManagedSync {
                 : await reconcileLegacyCompletion(hostedSession.cwd, savedContext);
             hostedSession.replaceWorkflowContext(workflowContext, { persist: false });
             const previousSyncState = managed.syncState;
-            const nextMetadata: import("../hosted-session.js").ManagedSessionMetadata = {
+            const nextMetadata: import("../hosted-session.ts").ManagedSessionMetadata = {
                 ...managed,
                 generation: projected.generation,
                 acknowledgedGeneration: projected.generation,
                 acknowledgedEventId: projected.nextCursor,
                 acknowledgedEventOrdinal: projected.nextCursorOrdinal,
                 committedSummary: summary,
-                name: typeof summary.name === "string" ? summary.name : managed.name ?? null,
-                activeAgent: typeof summary.activeAgent === "string"
-                    ? summary.activeAgent
-                    : managed.activeAgent ?? null,
-                model: typeof summary.model === "string" ? summary.model : managed.model ?? null,
-                provider: typeof summary.provider === "string" ? summary.provider : managed.provider ?? null,
-                thinkingLevel: typeof summary.thinkingLevel === "string"
-                    ? summary.thinkingLevel
-                    : managed.thinkingLevel ?? null,
+                name: typeof summary.name === "string" ? summary.name : (managed.name ?? null),
+                activeAgent:
+                    typeof summary.activeAgent === "string" ? summary.activeAgent : (managed.activeAgent ?? null),
+                model: typeof summary.model === "string" ? summary.model : (managed.model ?? null),
+                provider: typeof summary.provider === "string" ? summary.provider : (managed.provider ?? null),
+                thinkingLevel:
+                    typeof summary.thinkingLevel === "string" ? summary.thinkingLevel : (managed.thinkingLevel ?? null),
                 workflowContext,
                 tutorialContext: normalizeTutorialContext(summary.tutorialContext) ?? managed.tutorialContext ?? null,
                 syncState: {
@@ -220,7 +214,7 @@ export class RuntimeManagedSync {
             return { ok: true, events, state: managed.syncState || null, snapshot: summary };
         } catch (error) {
             const failure = toProjectionFailure(error);
-            const state: NonNullable<import("../hosted-session.js").ManagedSessionMetadata["syncState"]> = {
+            const state: NonNullable<import("../hosted-session.ts").ManagedSessionMetadata["syncState"]> = {
                 type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
                 status: "degraded",
                 localGeneration: currentLocalGeneration,

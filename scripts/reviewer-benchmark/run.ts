@@ -1,6 +1,6 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { getHomeDir } from "../../src/constants.js";
+import { getHomeDir } from "../../src/constants.ts";
 import { openNativeFileLock } from "../../src/shared/native-file-lock.ts";
 import { admitFixtures } from "./admission.ts";
 import { captureConfiguration, corpusRoot, fixtureHash } from "./configuration.ts";

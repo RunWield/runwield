@@ -1,4 +1,4 @@
-import { parseReleaseTag } from "./release.js";
+import { parseReleaseTag } from "./release.ts";
 
 /** License metadata for release recovery as well as new publication. */
 export function releaseLicense(version: string) {

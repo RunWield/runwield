@@ -11,7 +11,7 @@ import {
 import process from "node:process";
 /** Stage one checked, flat release asset set. Never change published bytes. */
 import { join } from "node:path";
-import { expectedReleaseAssetNames, parseReleaseTag } from "./release.js";
+import { expectedReleaseAssetNames, parseReleaseTag } from "./release.ts";
 import { releaseLicense } from "./release-license.ts";
 import { verifyBuildArtifact } from "./build-metadata.ts";
 import { extractReleaseRuntime, type LauncherIdentity } from "../src/shared/remote/release-artifact.ts";

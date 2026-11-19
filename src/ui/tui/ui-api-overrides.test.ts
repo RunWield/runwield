@@ -2,18 +2,19 @@ import { test } from "node:test";
 import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Editor, Image, Spacer, Text, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { RunWieldModelSelectorComponent } from "./model-selector.ts";
+import { runModelsCommand } from "../../cmd/models/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getSettingsManager } from "../../shared/settings.ts";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
-import { getEditorTheme, initRunWieldTheme } from "../theme/theme.js";
-import { createUiApi } from "./api.js";
-import { SpinnerBlock, ToolExecutionGroupBlock } from "./blocks.js";
+import { getEditorTheme, initRunWieldTheme } from "../theme/theme.ts";
+import { createUiApi } from "./api.ts";
+import { SpinnerBlock, ToolExecutionGroupBlock } from "./blocks.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { installUiApiOverrides } from "./ui-api-overrides.ts";
 
-import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.js";
+import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.ts";
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
-import { getStoredPlanPath, savePlan } from "../../plan-store.js";
+import { getStoredPlanPath, savePlan } from "../../plan-store.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 
 interface OverridesHarness {
@@ -23,7 +24,7 @@ interface OverridesHarness {
     validationPanel: Container;
     terminal: VirtualTerminal;
     tui: TUI;
-    uiAPI: import("./types.js").UiAPI;
+    uiAPI: import("./api.ts").UiAPI;
 }
 
 const ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -74,19 +75,6 @@ function makeHarness(projectRoot = "/fixture/project"): OverridesHarness {
     });
     return { container, editor, messageList, validationPanel, terminal, tui, uiAPI };
 }
-
-test("installUiApiOverrides disables and enables real editor submission", () => {
-    const harness = makeHarness();
-    try {
-        harness.editor.disableSubmit = false;
-        harness.uiAPI.disableInput?.();
-        assertEquals(harness.editor.disableSubmit, true);
-        harness.uiAPI.enableInput?.();
-        assertEquals(harness.editor.disableSubmit, false);
-    } finally {
-        harness.tui.stop();
-    }
-});
 
 test("installUiApiOverrides blocks the editor for real prompts and restores its prior state", async () => {
     const harness = makeHarness();
@@ -161,8 +149,8 @@ test("a closing review keeps input hidden while a follow-up prompt is active", a
 
 for (const type of ["plan_review", "code_review"] as const) {
     for (const approved of [true, false]) {
-        test(`${type} hides the input and restores the draft after ${approved ? "approval" : "cancellation"}`, async () => {
-            await withRuntimeCommandFixture("hidden-review-input-", async ({ projectRoot }) => {
+        test(`${type} keeps the editor and draft available through ${approved ? "approval" : "cancellation"}`, async () => {
+            await withRuntimeCommandFixture("visible-review-input-", async ({ projectRoot }) => {
                 const harness = makeHarness(projectRoot);
                 const controller = new AbortController();
                 const scripted = createScriptedReviewBrowser("decision", { approved: true, approvalAction: "later" });
@@ -173,6 +161,7 @@ for (const type of ["plan_review", "code_review"] as const) {
                 let surfaceReady = false;
                 try {
                     await savePlan(projectRoot, "feature", "# Feature\n\nDo the work.\n", {
+                        planId: "tui-input-review-plan",
                         classification: "PLANNED_CHANGE",
                         status: "draft",
                     });
@@ -200,8 +189,8 @@ for (const type of ["plan_review", "code_review"] as const) {
                                 diffText: "diff --git a/a b/a\n",
                                 onSurfaceReady: () => {
                                     surfaceReady = true;
-                                    assertEquals(harness.container.children.includes(harness.editor), false);
-                                    assertEquals(harness.editor.disableSubmit, true);
+                                    assertEquals(harness.container.children.includes(harness.editor), true);
+                                    assertEquals(harness.editor.disableSubmit, false);
                                     assertEquals(harness.validationPanel.children.length === 0, type === "code_review");
                                     harness.uiAPI.updateValidationReport?.("reviewer", {
                                         agentName: "Reviewer",
@@ -300,7 +289,7 @@ test("installUiApiOverrides closes a visible tool group before appending an imag
     }
 });
 
-test("installUiApiOverrides selects a configured fixture model through the real selector", async () => {
+test("/model opens the refresh-capable picker and selects a configured model", async () => {
     await withRuntimeCommandFixture("ui-api-model-selector-", async ({ projectRoot }) => {
         const selectedModels: Array<{ model: string; provider?: string }> = [];
         const harness = makeHarness(projectRoot);
@@ -318,15 +307,16 @@ test("installUiApiOverrides selects a configured fixture model through the real 
             }),
         });
         try {
-            const selectionPromise = harness.uiAPI.showModelSelector();
+            const selectionPromise = runModelsCommand([], { uiAPI: harness.uiAPI, editor: harness.editor });
             let selector = harness.container.children.find((child) => child instanceof RunWieldModelSelectorComponent);
             for (let attempt = 0; !selector && attempt < 50; attempt++) {
                 await new Promise((resolve) => setTimeout(resolve, 0));
                 selector = harness.container.children.find((child) => child instanceof RunWieldModelSelectorComponent);
             }
             assertInstanceOf(selector, RunWieldModelSelectorComponent);
+            assertStringIncludes(selector.render(100).join("\n"), "Refresh catalog (Ctrl+R)");
             selector.handleInput("\r");
-            await selectionPromise;
+            assertEquals(await selectionPromise, "succeeded");
 
             assertEquals(selectedModels, [
                 {

@@ -1,17 +1,23 @@
+import type { PlanReadAvailability } from "../../../plan-store.ts";
 /** @module ui/workspace/server/owner-dashboard */
 
-import { isSequencePlan } from "../../../plan-store.js";
-import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
+import { compareChildPlansByOrder, isSequencePlan } from "../../../plan-store.ts";
+import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
-import { loadPlanSummaries } from "./plan-adapter.js";
+import { loadPlanSummaries, loadPlanSummaryCatalog } from "./plan-adapter.ts";
 import type { OwnerProjectHealth, OwnerProjectRecord, OwnerProjectView } from "./owner-projects.ts";
 import { requireOwnerProjectRoot, serializeOwnerProject } from "./owner-projects.ts";
 import { readLiveSessionConnection } from "../../../shared/session/live-session-connection.ts";
-import { withProjectRuntimeReadScope } from "../../../shared/project-runtime-layout.ts";
+import {
+    ProjectRuntimeEntryRefusedError,
+    withProjectRuntimeReadScope,
+} from "../../../shared/project-runtime-layout.ts";
 
 type DashboardCategory = "needs-you" | "ready" | "in-progress" | "recently-finished";
 
 type PlanAttrs = {
+    parentPlan?: string;
+    order?: number;
     status?: string;
     classification?: string;
     type?: string;
@@ -33,6 +39,7 @@ type PlanAttrs = {
 };
 
 type OwnerPlan = {
+    readAvailability?: PlanReadAvailability;
     planId: string;
     title?: string;
     name?: string;
@@ -74,7 +81,7 @@ type SessionSummary = {
     name?: string;
     href?: string;
     state?: string;
-    headerTimestamp?: string;
+    headerTimestamp?: string | null;
     archivedAt?: string | null;
 };
 
@@ -89,7 +96,15 @@ type SidebarPlan = {
     hasMoreSessions: boolean;
 };
 
+type SidebarPlanDiagnostic = {
+    name: string;
+    kind: "malformed" | "not_file" | "unreadable";
+    message: string;
+    planId?: string;
+};
+
 type SidebarProject = OwnerProjectView & {
+    planDiagnostics?: SidebarPlanDiagnostic[];
     plans: SidebarPlan[];
     sessions: SessionSummary[];
     hasMorePlans: boolean;
@@ -133,7 +148,7 @@ type DashboardInteractionRequest = {
 
 type WorkspaceOperation = {
     projectId?: string;
-    runwieldSessionId?: string;
+    runwieldSessionId?: string | null;
     status?: string;
     liveInteraction?: { interactionId?: string; request?: DashboardInteractionRequest };
     error?: string;
@@ -240,7 +255,7 @@ function planUpdatedAt(plan: OwnerPlan): string {
 }
 
 function isDashboardEligible(plan: OwnerPlan): boolean {
-    if (!safeText(plan.planId).trim()) return false;
+    if (!safeText(plan.planId).trim() || plan.readAvailability?.kind === "pending") return false;
     if (planStatus(plan) === "on_hold") return false;
     if (isSequencePlan(plan.attrs || {})) return false;
     return true;
@@ -352,7 +367,7 @@ function dashboardItem(
     };
 }
 
-function latestTimestamp(...values: Array<string | undefined>): string {
+function latestTimestamp(...values: Array<string | null | undefined>): string {
     return (
         values
             .filter((value): value is string => Boolean(value && Number.isFinite(Date.parse(value))))
@@ -433,6 +448,34 @@ function sidebarPlan(project: SidebarProject, plan: OwnerPlan, sessions: Session
         sessions,
         hasMoreSessions: sessions.length > 2,
     };
+}
+
+/** Keep priority-ranked slots, but fill each parent's slots in child order. */
+function orderSidebarChildren(plans: OwnerPlan[]): OwnerPlan[] {
+    const siblings = new Map<string, OwnerPlan[]>();
+    for (const plan of plans) {
+        const parent = plan.attrs?.parentPlan;
+        if (!parent) continue;
+        const group = siblings.get(parent) || [];
+        group.push(plan);
+        siblings.set(parent, group);
+    }
+    for (const group of siblings.values()) {
+        group.sort((left, right) =>
+            compareChildPlansByOrder(
+                { name: left.name || left.planName || left.planId, attrs: left.attrs || {} },
+                { name: right.name || right.planName || right.planId, attrs: right.attrs || {} },
+            ),
+        );
+    }
+    const positions = new Map<string, number>();
+    return plans.map((plan) => {
+        const parent = plan.attrs?.parentPlan;
+        if (!parent) return plan;
+        const index = positions.get(parent) || 0;
+        positions.set(parent, index + 1);
+        return siblings.get(parent)![index];
+    });
 }
 
 function recentTime(item: DashboardItem): number {
@@ -516,9 +559,25 @@ async function projectPayload(
     if (root) {
         try {
             plans = (await loadPlanSummaries(root)) as OwnerPlan[];
+            const pending = plans.find((plan) => plan.readAvailability?.kind === "pending");
+            if (pending) {
+                diagnostics.push({
+                    source: "plans-reader",
+                    message:
+                        pending.readAvailability?.message ||
+                        "Workflow details pending. Load this Plan to prepare its workflow.",
+                    repairHref: `/projects/${encodeURIComponent(project.projectId)}/plans`,
+                    repairLabel: "Browse Plans",
+                });
+                reportFailure(CATEGORY_ORDER);
+                plans = plans.filter((plan) => plan.readAvailability?.kind !== "pending");
+            }
         } catch (error) {
             diagnostics.push({
-                source: "plans-reader",
+                source:
+                    error instanceof ProjectRuntimeEntryRefusedError && error.reason === "malformed_registry"
+                        ? "registry-reader"
+                        : "plans-reader",
                 message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
                 repairHref: settingsHref(project.projectId),
                 repairLabel: "Open Project settings",
@@ -837,7 +896,7 @@ async function projectPayload(
     return {
         ...project,
         root,
-        plans: plansForSidebar.map((plan) =>
+        plans: orderSidebarChildren(plansForSidebar).map((plan) =>
             sidebarPlan(project, plan, associatedSessionsByPlan.get(plan.planId) || []),
         ),
         hasMorePlans: plansForSidebar.length > 5,
@@ -871,6 +930,7 @@ export async function loadOwnerSidebar(
                         store.getProjectHealth(record.projectId),
                     ) as SidebarProject;
                     const diagnostics: Diagnostic[] = [];
+                    let planDiagnostics: SidebarPlanDiagnostic[] = [];
                     let root = "";
                     try {
                         root = requireOwnerProjectRoot(store, record.projectId);
@@ -887,7 +947,20 @@ export async function loadOwnerSidebar(
                     const plansRead = (async (): Promise<OwnerPlan[]> => {
                         if (!root) return [];
                         try {
-                            return (await loadPlanSummaries(root)) as OwnerPlan[];
+                            const catalog = await loadPlanSummaryCatalog(root);
+                            const plans = catalog.plans as OwnerPlan[];
+                            planDiagnostics = catalog.diagnostics;
+                            const pending = plans.find((plan) => plan.readAvailability?.kind === "pending");
+                            if (pending)
+                                diagnostics.push({
+                                    source: "plans-reader",
+                                    message:
+                                        pending.readAvailability?.message ||
+                                        "Workflow details pending. Load this Plan to prepare its workflow.",
+                                    repairHref: `/projects/${encodeURIComponent(record.projectId)}/plans`,
+                                    repairLabel: "Browse Plans",
+                                });
+                            return plans.filter((plan) => plan.readAvailability?.kind !== "pending");
                         } catch (error) {
                             diagnostics.push({
                                 source: "plans-reader",
@@ -988,13 +1061,14 @@ export async function loadOwnerSidebar(
                     );
                     projects[index] = {
                         ...project,
-                        plans: plansForSidebar.map((plan) =>
+                        plans: orderSidebarChildren(plansForSidebar).map((plan) =>
                             sidebarPlan(project, plan, associations.get(plan.planId) || []),
                         ),
                         hasMorePlans: plansForSidebar.length > 5,
                         sessions: standalone.slice(0, 5),
                         hasMoreSessions: hasMoreSessions || standalone.length > 5,
                         diagnostics,
+                        planDiagnostics,
                     };
                 }
             }),

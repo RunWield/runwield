@@ -3,7 +3,8 @@
  * Targeted Work Record auto-generation after terminal Plan outcomes.
  */
 
-import { isPlannedChangeClassification } from "../../constants.js";
+import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import {
     findPlansByParent,
     getPlanDocumentRoot,
@@ -11,18 +12,18 @@ import {
     isProjectPlan,
     listArchivedPlans,
     loadArchivedPlan,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
-import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.js";
+import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 import {
     attachEpicChildren,
     buildActiveWorkRecordSource,
     evaluateWorkRecordSource,
     generateWorkRecordForSource,
-} from "./generation.js";
+} from "./generation.ts";
 
-type WorkRecordSource = import("./generation.js").WorkRecordSource;
+type WorkRecordSource = import("./generation.ts").WorkRecordSource;
 type WorkRecordSupersessionCandidate = import("./schema.ts").WorkRecordSupersessionCandidate;
 
 export interface WorkRecordAutoGenerationResult {
@@ -44,6 +45,7 @@ export interface AutoGenerateWorkRecordArgs {
     planName: string;
     mnemotecaPort: WorkRecordMnemotecaPort;
     signal?: AbortSignal;
+    runRecorderStep?: import("./generation.ts").GenerationOptions["runRecorderStep"];
 }
 
 interface TargetedWorkRecordSource {
@@ -52,7 +54,7 @@ interface TargetedWorkRecordSource {
     targetPlanName?: string;
 }
 
-type WorkRecordParentState = Pick<import("../../plan-store.js").PlanFrontMatter, "status" | "epicCompletionMode">;
+type WorkRecordParentState = Pick<import("../../plan-store.ts").PlanFrontMatter, "status" | "epicCompletionMode">;
 
 /** The parent must be terminal before a child completion can record its Epic. */
 export function isTerminalWorkRecordParent(attrs: WorkRecordParentState): boolean {
@@ -170,7 +172,7 @@ export function retryWorkRecordForPlan(args: AutoGenerateWorkRecordArgs): Promis
 }
 
 async function generateTargetedWorkRecord(
-    { cwd, planName, mnemotecaPort, signal, pendingPublication }: AutoGenerateWorkRecordArgs,
+    { cwd, planName, mnemotecaPort, signal, pendingPublication, runRecorderStep }: AutoGenerateWorkRecordArgs,
     automatic: boolean,
 ): Promise<WorkRecordAutoGenerationResult> {
     if (automatic && !shouldAutoGenerateWorkRecordsOnPlanCompletion(cwd)) {
@@ -213,6 +215,7 @@ async function generateTargetedWorkRecord(
         const outcome = await generateWorkRecordForSource(sourceRoot, evaluated, {
             mnemotecaPort,
             signal,
+            runRecorderStep,
         });
         const status = outcome.status === "generated" || outcome.status === "linked" ? outcome.status : "failed";
         return withMessage({
@@ -227,6 +230,7 @@ async function generateTargetedWorkRecord(
             message: "",
         });
     } catch (caught) {
+        if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
         const error = caught instanceof Error ? caught : String(caught);
         return withMessage({ status: "failed", planName, error: conciseError(error), message: "" });
     }

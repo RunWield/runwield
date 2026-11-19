@@ -1,58 +1,6 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import {
-    extractRouterDecisionsFromEntries,
-    extractToolCallNames,
-    normalizeTriageDetails,
-} from "./extract-router-decisions.js";
-
-test("normalizeTriageDetails preserves canonical routing intent", () => {
-    assertEquals(
-        normalizeTriageDetails({
-            routingIntent: "FEATURE",
-            complexity: "MEDIUM",
-            summary: "Build it",
-            affectedPaths: ["src/a.js"],
-        }),
-        {
-            routingIntent: "FEATURE",
-            classification: "FEATURE",
-            complexity: "MEDIUM",
-            summary: "Build it",
-            affectedPaths: ["src/a.js"],
-            intentSource: "routingIntent",
-        },
-    );
-});
-
-test("normalizeTriageDetails accepts legacy classification", () => {
-    assertEquals(
-        normalizeTriageDetails({
-            classification: "QUICK_FIX",
-            complexity: "LOW",
-            summary: "Fix it",
-            affectedPaths: ["src/a.js"],
-        }),
-        {
-            routingIntent: "QUICK_FIX",
-            complexity: "LOW",
-            summary: "Fix it",
-            affectedPaths: ["src/a.js"],
-            intentSource: "classification",
-        },
-    );
-});
-
-test("extractToolCallNames handles persisted Pi tool-call shapes", () => {
-    assertEquals(
-        extractToolCallNames([
-            { type: "toolCall", name: "grep" },
-            { type: "tool_use", name: "triage_report" },
-            { type: "text", text: "ignore" },
-        ]),
-        ["grep", "triage_report"],
-    );
-});
+import { extractRouterDecisionsFromEntries } from "./extract-router-decisions.ts";
 
 test("extractRouterDecisionsFromEntries pairs router user request with triage_report", () => {
     const rows = extractRouterDecisionsFromEntries(
@@ -166,3 +114,42 @@ test("extractRouterDecisionsFromEntries ignores sessions without active-agent ro
 
     assertEquals(extractRouterDecisionsFromEntries(entries).length, 0);
 });
+
+for (const details of [
+    { routingIntent: "FEATURE", complexity: "MEDIUM", summary: "Build it", affectedPaths: ["src/a.js"] },
+    { classification: "QUICK_FIX", complexity: "LOW", summary: "Fix it", affectedPaths: ["src/a.js"] },
+]) {
+    test(`persisted routing extraction preserves ${"routingIntent" in details ? "canonical" : "legacy"} intent and tool evidence`, () => {
+        const rows = extractRouterDecisionsFromEntries(
+            [
+                { type: "session", id: "session" },
+                { type: "custom", customType: "runwield.active_agent", data: { agentName: "router" } },
+                { type: "message", id: "user", message: { role: "user", content: "Make the change" } },
+                {
+                    type: "message",
+                    message: {
+                        role: "assistant",
+                        content: [
+                            { type: "toolCall", name: "grep" },
+                            { type: "tool_use", name: "read" },
+                            { type: "text", text: "ignore" },
+                            { type: "tool_use", name: "triage_report" },
+                        ],
+                    },
+                },
+                { type: "message", id: "result", message: { role: "toolResult", toolName: "triage_report", details } },
+            ],
+            { sessionFile: "session.jsonl" },
+        );
+        assertEquals(rows.length, 1);
+        assertEquals(rows[0].requestText, "Make the change");
+        assertEquals(rows[0].routingIntent, details.routingIntent ?? details.classification);
+        assertEquals(rows[0].intentSource, "routingIntent" in details ? "routingIntent" : "classification");
+        assertEquals(rows[0].classification, "routingIntent" in details ? "FEATURE" : undefined);
+        assertEquals(rows[0].complexity, details.complexity);
+        assertEquals(rows[0].summary, details.summary);
+        assertEquals(rows[0].affectedPaths, ["src/a.js"]);
+        assertEquals(rows[0].discoveryTools, ["grep", "read"]);
+        assertEquals(rows[0].discoveryToolCount, 2);
+    });
+}

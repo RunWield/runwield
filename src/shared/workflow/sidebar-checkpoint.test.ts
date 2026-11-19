@@ -3,10 +3,10 @@ import { test } from "node:test";
 import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { createGitPort } from "../git-port.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { loadPlan } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
-import { continueWorkflowValidation } from "./validation-supervisor.ts";
-import { makeValidationProjectRoot, NO_ISOLATED_AGENT_PORT } from "./validation-test-helpers.js";
+import { loadPlan } from "../../plan-store.ts";
+import { HostedSession } from "../session/hosted-session.ts";
+import { continueWorkflowValidation } from "./validation.ts";
+import { makeValidationProjectRoot, NO_ISOLATED_AGENT_PORT } from "./validation-test-helpers.ts";
 import { tuiSessionSidebarProjection } from "../../ui/tui/session-sidebar.ts";
 
 test("canceling Code Review settles a paused checkpoint and reopening skips finished checks", async () => {

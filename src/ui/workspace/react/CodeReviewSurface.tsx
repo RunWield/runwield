@@ -1,4 +1,6 @@
-// @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+// @ts-nocheck: Component props and event-handler types are implicit.
+import { RunWieldPanelIcon } from "../../design-system/components/react/RunWieldPrimitives.tsx";
+import { useReviewRevision } from "./use-review-revision.ts";
 import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
 import { RunWieldIconButton } from "../../design-system/components/react/RunWieldIconButton.tsx";
@@ -28,6 +30,7 @@ import { PlanReviewSettings } from "./PlanReviewSettings.tsx";
 import { WorkspaceHeaderActionsPortal } from "./WorkspaceHeaderActionsPortal.tsx";
 import { ReviewContextBar } from "./ReviewContextBar.tsx";
 import { ArtifactConversationSidebar } from "./ArtifactConversationSidebar.tsx";
+import { mergeSavedReviewMessages, useSavedReviewConversation } from "./use-saved-review-conversation.ts";
 import { buildArtifactConversationFeedback, collectArtifactConversationReply } from "./artifact-conversation.ts";
 import { useReviewAnnotations } from "./use-review-annotations.ts";
 import { editHunksToAnnotations, editorCommentToAnnotation } from "./code-review-edit-suggestions.ts";
@@ -123,6 +126,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         Boolean(initialPayload.conversationStatusUrl) ||
         Boolean(initialPayload.operationStatusUrl && initialPayload.interactionAnswerBaseUrl);
     const queuedConversation = conversationEnabled && !initialPayload.standaloneReview;
+    const [reviewRevision, setReviewRevision] = useState(initialPayload.reviewRevision || 0);
     const [activeRawPatch, setActiveRawPatch] = useState(initialPayload.rawPatch || "");
     const [activeReviewStatus, setActiveReviewStatus] = useState(initialPayload.reviewStatus || null);
     const files = useMemo(() => parseDiffToFiles(activeRawPatch), [activeRawPatch]);
@@ -180,6 +184,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const [submitting, setSubmitting] = useState(null);
     const [submitted, setSubmitted] = useState(null);
     const [error, setError] = useState("");
+    const { fields: reviewRevisionFields, update: updateReviewRevision } = useReviewRevision(
+        initialPayload,
+        submitted === "feedback",
+        setError,
+    );
     const [viewedFiles, setViewedFiles] = useState(new Set());
     const [fileNavigationTarget, setFileNavigationTarget] = useState(null);
     const [allFilesContentFits, setAllFilesContentFits] = useState(false);
@@ -792,6 +801,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     function buildReviewPayload() {
         const workflowAnnotations = toWorkflowAnnotations(annotations);
         return {
+            ...reviewRevisionFields,
             feedback: feedbackMarkdown,
             annotations: workflowAnnotations,
         };
@@ -829,6 +839,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                             } Annotations cleared. Select the current lines to add them again.`,
                         );
                     }
+                    if (Number.isInteger(next.reviewRevision)) setReviewRevision(next.reviewRevision);
                     setActiveRawPatch(next.rawPatch);
                     setActiveReviewStatus(next.reviewStatus);
                     return;
@@ -855,7 +866,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     }
 
     async function submitFeedback() {
-        if (conversationEnabled) {
+        if (conversationEnabled && initialPayload.agentTurnOwner !== "host") {
             setRightSidebarView("agent");
             await sendAgentMessage(true);
             return;
@@ -877,6 +888,29 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         setRightSidebarView("agent");
         setAgentError("");
     }
+
+    useSavedReviewConversation(
+        initialPayload,
+        (snapshot, advanced) => {
+            if (submitted === "feedback") return;
+            updateReviewRevision(snapshot.reviewRevision);
+            setReviewRevision(snapshot.reviewRevision);
+            setConversationMessages((messages) => mergeSavedReviewMessages(messages, snapshot));
+            setAgentWorking(snapshot.pending);
+            if (advanced) {
+                const event = snapshot.events.at(-1);
+                applyAgentRevision({
+                    rawPatch: snapshot.rawPatch,
+                    reviewStatus: snapshot.reviewStatus || null,
+                    interactionId: `conversation-${snapshot.revision}`,
+                    reply: event?.delta,
+                    agentMessageId: event ? `agent-${event.messageId}` : undefined,
+                    clearAttachedContext: true,
+                });
+            }
+        },
+        setAgentError,
+    );
 
     async function sendAgentMessage(attachAnnotations = false) {
         const message = conversationComposer.trim();
@@ -910,17 +944,18 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         setAgentError("");
         setError("");
         setConversationComposer("");
-        setConversationMessages((items) => [
-            ...items,
-            {
-                id: userMessageId,
-                role: "user",
-                body: message || "Review annotations",
-                ...(attachedFeedback && {
-                    contextLabel,
-                }),
-            },
-        ]);
+        if (!initialPayload.savedConversation)
+            setConversationMessages((items) => [
+                ...items,
+                {
+                    id: userMessageId,
+                    role: "user",
+                    body: message || "Review annotations",
+                    ...(attachedFeedback && {
+                        contextLabel,
+                    }),
+                },
+            ]);
 
         try {
             if (initialPayload.mode !== "dev") {
@@ -936,13 +971,16 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             }
 
             await submit("deny", {
+                ...reviewRevisionFields,
                 approved: false,
-                feedback: buildArtifactConversationFeedback({
-                    message,
-                    attachedFeedback,
-                    agentLabel,
-                    artifactKind: "code",
-                }),
+                feedback: initialPayload.savedConversation
+                    ? [message, attachedFeedback].filter(Boolean).join("\n\n")
+                    : buildArtifactConversationFeedback({
+                          message,
+                          attachedFeedback,
+                          agentLabel,
+                          artifactKind: "code",
+                      }),
                 annotations: toWorkflowAnnotations(sentAnnotations),
                 conversationTurn: true,
             });
@@ -959,6 +997,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     clearAttachedContext: Boolean(attachedFeedback),
                     sentAnnotations,
                 });
+                return;
+            }
+
+            if (initialPayload.savedConversation) {
+                if (queuedConversation) clearSentAnnotations(sentAnnotations);
                 return;
             }
 
@@ -995,6 +1038,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             const conversation = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(conversation.error || `${agentLabel} status is unavailable.`);
             if (conversation.standaloneReview) setStandaloneReview(conversation.standaloneReview);
+            if (Number.isInteger(conversation.reviewRevision)) setReviewRevision(conversation.reviewRevision);
+            if (conversation.error) throw new Error(conversation.error);
             const events = Array.isArray(conversation.events) ? conversation.events : [];
             const reply = collectArtifactConversationReply(events, options.eventStartIndex);
             if (reply.text) upsertAgentReply(options.agentMessageId, reply.text);
@@ -1060,7 +1105,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     }
 
     function applyAgentRevision(options) {
-        upsertAgentReply(options.agentMessageId, options.reply);
+        if (options.reply) upsertAgentReply(options.agentMessageId, options.reply);
         const nextFiles = parseDiffToFiles(options.rawPatch);
         const nextFileIndex = nextFiles.findIndex((file) => file.path === currentFile?.path);
         setActiveFileIndex(nextFileIndex < 0 ? 0 : nextFileIndex);
@@ -1084,19 +1129,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             setFileNavigationTarget(null);
         }
         if (queuedConversation) {
-            const sent = new Map((options.sentAnnotations || []).map((item) => [item.id, item]));
-            setAnnotations((items) =>
-                items.flatMap((item) => {
-                    const delivered = sent.get(item.id);
-                    if (!delivered) return [item];
-                    const remaining = hasAnnotationNote(delivered) ? withoutAnnotationNote(item) : { ...item };
-                    remaining.images = (item.images || []).filter(
-                        (image) => !delivered.images?.some((sentImage) => sentImage.path === image.path),
-                    );
-                    return hasAnnotationInput(remaining) ? [remaining] : [];
-                }),
-            );
-            setExcludedQueueTypes([]);
+            if (options.sentAnnotations) clearSentAnnotations(options.sentAnnotations);
         } else if (options.clearAttachedContext || initialPayload.standaloneReview) {
             setAnnotations([]);
             setSelectedAnnotationId(null);
@@ -1104,6 +1137,22 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             setPendingSelection(null);
             setConversationContextAttached(false);
         }
+    }
+
+    function clearSentAnnotations(sentAnnotations) {
+        const sent = new Map(sentAnnotations.map((item) => [item.id, item]));
+        setAnnotations((items) =>
+            items.flatMap((item) => {
+                const delivered = sent.get(item.id);
+                if (!delivered) return [item];
+                const remaining = hasAnnotationNote(delivered) ? withoutAnnotationNote(item) : { ...item };
+                remaining.images = (item.images || []).filter(
+                    (image) => !delivered.images?.some((sentImage) => sentImage.path === image.path),
+                );
+                return hasAnnotationInput(remaining) ? [remaining] : [];
+            }),
+        );
+        setExcludedQueueTypes([]);
     }
 
     function upsertAgentReply(messageId, body) {
@@ -1240,7 +1289,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                         title="Collapse file sidebar"
                                         aria-label="Collapse file sidebar"
                                     >
-                                        <PanelCollapseIcon side="left" />
+                                        <RunWieldPanelIcon side="left" />
                                     </RunWieldIconButton>
                                 </div>
                                 <div
@@ -1506,12 +1555,12 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                         title="Collapse annotations sidebar"
                                         aria-label="Collapse annotations sidebar"
                                     >
-                                        <PanelCollapseIcon side="right" />
+                                        <RunWieldPanelIcon side="right" />
                                     </RunWieldIconButton>
                                 </div>
                                 {rightSidebarView === "annotations" ? (
                                     <>
-                                        {!queuedConversation &&
+                                        {(!queuedConversation || initialPayload.agentTurnOwner === "host") &&
                                             (standaloneReview?.mode !== "pr" || reviewDestination === "engineer") && (
                                                 <div className="rw-review-feedback-action rw-review-action">
                                                     <FeedbackButton
@@ -1672,7 +1721,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                               _meta: body,
                           },
                       }
-                    : body,
+                    : { ...body, reviewRevision },
             ),
         });
         if (!response.ok) {
@@ -1716,7 +1765,7 @@ function DiffStyleToggle({
                 <div className="rw-code-diff-sidebar-restore rw-code-diff-sidebar-restore-left">
                     {!fileTreeOpen && (
                         <RunWieldIconButton type="button" onClick={onRestoreFiles}>
-                            <FileTreeIcon />
+                            <RunWieldPanelIcon side="left" />
                             <span>Files</span>
                         </RunWieldIconButton>
                     )}
@@ -1802,24 +1851,13 @@ function DiffStyleToggle({
                 <div className="rw-code-diff-sidebar-restore rw-code-diff-sidebar-restore-right">
                     {!annotationsOpen && (
                         <RunWieldIconButton type="button" onClick={onRestoreAnnotations}>
-                            <CommentIcon />
+                            <RunWieldPanelIcon side="right" />
                             <span>Annotations</span>
                         </RunWieldIconButton>
                     )}
                 </div>
             </div>
         </div>
-    );
-}
-
-function PanelCollapseIcon({ side }) {
-    const path = side === "left" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6";
-    return (
-        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor">
-            <path d="M5 4v16" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M19 4v16" strokeWidth="1.5" strokeLinecap="round" />
-            <path d={path} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
     );
 }
 

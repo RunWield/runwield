@@ -13,7 +13,8 @@
         },
         "types": [
             "astro/client",
-            "vite/client"
+            "vite/client",
+            "bun"
         ]
     },
     "include": [

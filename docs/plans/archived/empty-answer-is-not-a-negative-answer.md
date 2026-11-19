@@ -47,7 +47,7 @@ unreadable, empty, timed-out, or truncated result, and an unknown status. It mus
 "dead", "finished", "clean", or "passed". Only a positive answer releases, deletes, takes over, or reports success.
 
 RunWield already has the nearest requirement. Core PRD
-[Workflow completion and automatic recovery](../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery)
+[Workflow completion and automatic recovery](../../prd/runwield-core-prd.md#workflow-completion-and-automatic-recovery)
 says: "RunWield repairs its own machinery automatically" and "It confirms the outcome of an uncertain external action
 before it repeats that action." That sentence covers actions RunWield took. It does not cover an empty or failed query
 about the state of an item. This Plan adds that requirement and the matching agent guidance.

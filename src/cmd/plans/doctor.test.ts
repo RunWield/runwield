@@ -1,5 +1,5 @@
+import { verifyRecordedPublication } from "../../shared/workflow/validation-merge-verification.ts";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
-import { realpathSync as fsRealpathSync } from "node:fs";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -7,17 +7,18 @@ import {
     readFile as fsReadFile,
     rm as fsRm,
     stat as fsStat,
+    symlink as fsSymlink,
     utimes as fsUtimes,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { injectFrontMatter, listPlans, savePlan } from "../../plan-store.js";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
-import { addEntry, findById, getWorktreeRegistryPath, listEntries } from "../../shared/worktree-registry.js";
+import { injectFrontMatter, listPlans, loadPlan, savePlan } from "../../plan-store.ts";
+import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
+import { addEntry, findById, getWorktreeRegistryPath, listEntries } from "../../shared/worktree-registry.ts";
 import {
     listTransitionRecoveryRecords,
     runExecutionPreparationTransition,
@@ -27,13 +28,17 @@ import { runPlansDoctor, runPlansDoctorCommand } from "./doctor.ts";
 import { runPlansCommand } from "./index.ts";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import {
+    enterProjectRuntime,
+    inspectProjectRuntimeReadAccess,
+    withProjectRuntimeReadScope,
+} from "../../shared/project-runtime-layout.ts";
 import { getLockHostname } from "../../shared/process-liveness.ts";
 import { inspectTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 
-type WorktreeRegistryEntry = import("../../shared/worktree-registry.js").WorktreeRegistryEntry;
-type WorktreeDeliveryEvidence = import("../../plan-store.js").WorktreeDeliveryEvidence;
+type WorktreeRegistryEntry = import("../../shared/worktree-registry.ts").WorktreeRegistryEntry;
+type WorktreeDeliveryEvidence = import("../../plan-store.ts").WorktreeDeliveryEvidence;
 
 interface DoctorCommandFixture {
     projectRoot: string;
@@ -66,10 +71,7 @@ async function withDoctorCommandFixture(run: (fixture: DoctorCommandFixture) => 
         const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-command-"));
         const homeDir = join(fixtureRoot, "home");
         const projectRoot = join(fixtureRoot, "project");
-        await Promise.all([
-            fsMkdir(homeDir, { recursive: true }),
-            fsMkdir(projectRoot, { recursive: true }),
-        ]);
+        await Promise.all([fsMkdir(homeDir, { recursive: true }), fsMkdir(projectRoot, { recursive: true })]);
         try {
             process.env["HOME"] = homeDir;
             process.env["WLD_TEST_SANDBOX_HOME"] = homeDir;
@@ -155,6 +157,66 @@ const ancestryRepo = defineGitFixture(async (repo) => {
     await git(repo, ["checkout", "main"]);
 });
 
+for (const changedEvidence of ["symlink", "marker", "tracked_runtime"]) {
+    test(
+        `doctor rechecks ${changedEvidence} between passive scans inside a caller scope`,
+        {
+            skip: changedEvidence === "symlink" && process.platform === "win32",
+        },
+        async () => {
+            const root = await ancestryRepo.checkout();
+            try {
+                await savePlan(root, "scope", "# Scope\n", { planId: "scope", status: "draft" });
+                const layout = await enterProjectRuntime(root);
+                const marker = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
+                const path =
+                    changedEvidence === "tracked_runtime"
+                        ? join(root, ".wld/internal/scope-evidence")
+                        : join(layout.primary.internalRoot, "scope-evidence");
+                await withProjectRuntimeReadScope(async () => {
+                    const initial = await runPlansDoctor(root, false);
+                    assertEquals(initial, { issues: [], repaired: 0 });
+                    // Prime the caller after doctor returns: its cached authority must
+                    // not be inherited by the next independent doctor scan.
+                    assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "ready");
+                    if (changedEvidence === "symlink") await fsSymlink(join(root, "file.txt"), path);
+                    else if (changedEvidence === "marker") {
+                        await fsWriteFile(layout.primary.layoutMarkerPath, JSON.stringify({ version: 999 }));
+                    } else {
+                        await fsMkdir(dirname(path), { recursive: true });
+                        await fsWriteFile(path, "runtime state\n");
+                        await git(root, ["add", "-f", ".wld/internal/scope-evidence"]);
+                    }
+                    const beforeMarker = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
+                    const beforeIndex = await git(root, ["write-tree"]);
+                    const report = await runPlansDoctor(root, false);
+                    assertEquals(report.repaired, 0);
+                    assertEquals(report.issues.length, 1);
+                    assertEquals(report.issues[0].kind, "runtime_migration_blocked");
+                    assertEquals(
+                        report.issues[0].message.includes(
+                            changedEvidence === "marker" ? "newer_layout" : changedEvidence,
+                        ),
+                        true,
+                    );
+                    assertEquals(await fsReadFile(layout.primary.layoutMarkerPath, "utf8"), beforeMarker);
+                    assertEquals(await git(root, ["write-tree"]), beforeIndex);
+                    if (changedEvidence === "marker") await fsWriteFile(layout.primary.layoutMarkerPath, marker);
+                    else {
+                        if (changedEvidence === "tracked_runtime") {
+                            await git(root, ["reset", "--", ".wld/internal/scope-evidence"]);
+                        }
+                        await fsRm(path);
+                    }
+                    assertEquals(await runPlansDoctor(root, false), initial);
+                });
+            } finally {
+                await fsRm(root, { recursive: true });
+            }
+        },
+    );
+}
+
 test("plans doctor reports missing worktree paths without abandoning attempts automatically", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-"));
     try {
@@ -172,7 +234,10 @@ test("plans doctor reports missing worktree paths without abandoning attempts au
             updatedAt: "2026-01-01T00:00:00.000Z",
         });
         const report = await runPlansDoctor(cwd, true);
-        assertEquals(report.issues.some((issue) => issue.kind === "missing_worktree_path"), true);
+        assertEquals(
+            report.issues.some((issue) => issue.kind === "missing_worktree_path"),
+            true,
+        );
         assertEquals(report.repaired, 0);
         assertEquals((await findById(cwd, "wt1"))?.status, "active");
     } finally {
@@ -197,7 +262,10 @@ test("plans doctor repair prunes missing settled worktree registry artifacts", a
             updatedAt: "2026-01-01T00:00:00.000Z",
         });
         const report = await runPlansDoctor(cwd, true);
-        assertEquals(report.issues.some((issue) => issue.kind === "missing_worktree_path"), false);
+        assertEquals(
+            report.issues.some((issue) => issue.kind === "missing_worktree_path"),
+            false,
+        );
         assertEquals(report.repaired, 1);
         assertEquals(await listEntries(cwd), []);
     } finally {
@@ -215,25 +283,30 @@ test("plans doctor is report-only without repair", async () => {
             registryPath,
             JSON.stringify({
                 version: 1,
-                entries: [{
-                    id: "legacy-wt",
-                    planName: "missing-id",
-                    baseBranch: "main",
-                    baseRef: "HEAD",
-                    baseCommit: "abc",
-                    branch: "runwield/worktree/missing-id-legacy-wt",
-                    path: `${cwd}/missing-worktree`,
-                    status: "active",
-                    createdAt: "2026-01-01T00:00:00.000Z",
-                    updatedAt: "2026-01-01T00:00:00.000Z",
-                }],
+                entries: [
+                    {
+                        id: "legacy-wt",
+                        planName: "missing-id",
+                        baseBranch: "main",
+                        baseRef: "HEAD",
+                        baseCommit: "abc",
+                        branch: "runwield/worktree/missing-id-legacy-wt",
+                        path: `${cwd}/missing-worktree`,
+                        status: "active",
+                        createdAt: "2026-01-01T00:00:00.000Z",
+                        updatedAt: "2026-01-01T00:00:00.000Z",
+                    },
+                ],
             }),
         );
         const beforePlan = await fsReadFile(join(cwd, "docs", "plans", "missing-id.md"), "utf8");
         const beforeRegistry = await fsReadFile(registryPath, "utf8");
 
         const report = await runPlansDoctor(cwd, false);
-        assertEquals(report.issues.some((issue) => issue.kind === "registry_missing_plan_id"), true);
+        assertEquals(
+            report.issues.some((issue) => issue.kind === "registry_missing_plan_id"),
+            true,
+        );
         assertEquals(await fsReadFile(join(cwd, "docs", "plans", "missing-id.md"), "utf8"), beforePlan);
         assertEquals(await fsReadFile(registryPath, "utf8"), beforeRegistry);
     } finally {
@@ -288,14 +361,22 @@ test("plans doctor check preserves controller recovery, Plan identity, and catal
 
         const report = await runPlansDoctor(cwd, false);
 
-        assertEquals(report.issues.some((issue) => issue.kind === "obsolete_controller_recovery"), true);
-        assertEquals(report.issues.some((issue) => issue.kind === "missing_plan_id"), true);
+        assertEquals(
+            report.issues.some((issue) => issue.kind === "obsolete_controller_recovery"),
+            true,
+        );
+        assertEquals(
+            report.issues.some((issue) => issue.kind === "missing_plan_id"),
+            true,
+        );
         assertEquals(await fsReadFile(controllerPath, "utf8"), beforeController);
         assertEquals(JSON.parse(beforeController).recovery.worktreeId, "controller-check-attempt");
         assertEquals(await fsReadFile(missingIdPath, "utf8"), beforePlan);
         assertEquals((await fsStat(missingIdPath)).mtime?.getTime(), beforeMtime);
         assertEquals(
-            await fsStat(layout.selected.planCatalogLockPath).then(() => true).catch(() => false),
+            await fsStat(layout.selected.planCatalogLockPath)
+                .then(() => true)
+                .catch(() => false),
             false,
         );
     } finally {
@@ -315,7 +396,10 @@ test("plans doctor ignores Epic manual QA artifacts", async () => {
         );
 
         const report = await runPlansDoctor(cwd, false);
-        assertEquals(report.issues.map((issue) => issue.kind), ["runtime_adoption_pending"]);
+        assertEquals(
+            report.issues.map((issue) => issue.kind),
+            ["runtime_adoption_pending"],
+        );
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
     }
@@ -347,7 +431,10 @@ test("plans doctor applies identity and evidence checks to archived Plans", asyn
         );
 
         const report = await runPlansDoctor(cwd, false);
-        assertEquals(report.issues.some((issue) => issue.kind === "duplicate_plan_id"), true);
+        assertEquals(
+            report.issues.some((issue) => issue.kind === "duplicate_plan_id"),
+            true,
+        );
         assertEquals(
             report.issues.some((issue) => issue.kind === "verified_without_evidence"),
             false,
@@ -378,9 +465,20 @@ test("plans doctor reports archived legacy recovery without importing it", async
 
         const report = await runPlansDoctor(cwd, false);
 
-        assertEquals(report.issues.some((issue) => issue.kind === "controller_import_pending"), true);
-        assertEquals(report.issues.some((issue) => issue.kind === "archived_plan_with_recoverable_attempt"), true);
-        assertEquals(await fsStat(controllerPath).then(() => true).catch(() => false), false);
+        assertEquals(
+            report.issues.some((issue) => issue.kind === "controller_import_pending"),
+            true,
+        );
+        assertEquals(
+            report.issues.some((issue) => issue.kind === "archived_plan_with_recoverable_attempt"),
+            true,
+        );
+        assertEquals(
+            await fsStat(controllerPath)
+                .then(() => true)
+                .catch(() => false),
+            false,
+        );
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
     }
@@ -390,6 +488,8 @@ test("plans doctor reports a pending import from the live execution document", a
     const cwd = await ancestryRepo.checkout({ prefix: "runwield-plans-doctor-execution-import-" });
     const executionRoot = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-execution-import-worktree-"));
     try {
+        await fsRm(executionRoot, { recursive: true });
+        await git(cwd, ["worktree", "add", "-b", "runwield/worktree/execution-import", executionRoot]);
         const layout = await enterProjectRuntime(cwd);
         const primaryPath = join(cwd, "docs", "plans", "execution-import.md");
         const executionPath = join(executionRoot, "docs", "plans", "execution-import.md");
@@ -426,13 +526,18 @@ test("plans doctor reports a pending import from the live execution document", a
         const report = await runPlansDoctor(cwd, false);
 
         assertEquals(
-            report.issues.some((issue) =>
-                issue.kind === "controller_import_pending" && issue.planName === "execution-import"
+            report.issues.some(
+                (issue) => issue.kind === "controller_import_pending" && issue.planName === "execution-import",
             ),
             true,
         );
         assertEquals(await fsReadFile(executionPath, "utf8"), executionDocument);
-        assertEquals(await fsStat(controllerPath).then(() => true).catch(() => false), false);
+        assertEquals(
+            await fsStat(controllerPath)
+                .then(() => true)
+                .catch(() => false),
+            false,
+        );
     } finally {
         await fsRm(executionRoot, { recursive: true }).catch(() => {});
         await fsRm(cwd, { recursive: true }).catch(() => {});
@@ -443,6 +548,8 @@ test("plans doctor uses a reopened retired execution document", async () => {
     const cwd = await ancestryRepo.checkout({ prefix: "runwield-plans-doctor-retired-document-" });
     const executionRoot = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-retired-execution-"));
     try {
+        await fsRm(executionRoot, { recursive: true });
+        await git(cwd, ["worktree", "add", "-b", "runwield/worktree/reopened-retired", executionRoot]);
         await savePlan(cwd, "reopened", "# Primary\n", {
             planId: "plan-reopened",
             classification: "FEATURE",
@@ -478,7 +585,9 @@ test("plans doctor uses a reopened retired execution document", async () => {
         const report = await runPlansDoctor(cwd, false);
 
         assertEquals(
-            report.issues.some((issue) => issue.kind === "uncertain_publication" && issue.planName === "reopened"),
+            report.issues.some(
+                (issue) => issue.kind === "publication_inspection_error" && issue.planName === "reopened",
+            ),
             true,
             "Doctor uses the selected execution document instead of the reopened primary copy",
         );
@@ -551,7 +660,9 @@ test("plans doctor dispatch check and help never adopt raw legacy state", async 
             assertEquals(await git(cwd, ["show-ref"]), beforeRefs);
             assertEquals(await git(cwd, ["write-tree"]), beforeIndex);
             assertEquals(
-                await fsStat(join(cwd, ".wld", PROJECT_INTERNAL_RUNTIME_DIR_NAME)).then(() => true).catch(() => false),
+                await fsStat(join(cwd, ".wld", PROJECT_INTERNAL_RUNTIME_DIR_NAME))
+                    .then(() => true)
+                    .catch(() => false),
                 false,
             );
 
@@ -589,11 +700,17 @@ test("plans doctor reports broad ignore rules without removing them", async () =
         const ignorePath = join(cwd, ".gitignore");
         await fsWriteFile(ignorePath, ".wld/\n");
         const checked = await runPlansDoctor(cwd, false);
-        assertEquals(checked.issues.some((issue) => issue.kind === "broad_wld_ignore"), true);
+        assertEquals(
+            checked.issues.some((issue) => issue.kind === "broad_wld_ignore"),
+            true,
+        );
         assertEquals(await fsReadFile(ignorePath, "utf8"), ".wld/\n");
 
         const repaired = await runPlansDoctor(cwd, true);
-        assertEquals(repaired.issues.some((issue) => issue.kind === "broad_wld_ignore"), true);
+        assertEquals(
+            repaired.issues.some((issue) => issue.kind === "broad_wld_ignore"),
+            true,
+        );
         const after = await fsReadFile(ignorePath, "utf8");
         assertEquals(after.includes(".wld/\n"), true);
         assertEquals(after.includes(".wld/internal/"), true);
@@ -655,11 +772,27 @@ test("plans doctor preserves old live and unattributable Plan locks", async () =
         await fsUtimes(uncertainPath, old, old);
 
         const report = await runPlansDoctor(cwd, true);
-        assertEquals(report.issues.some((issue) => issue.kind === "stale_plan_lock"), false);
-        assertEquals(report.issues.some((issue) => issue.kind === "missing_plan_id"), true);
+        assertEquals(
+            report.issues.some((issue) => issue.kind === "stale_plan_lock"),
+            false,
+        );
+        assertEquals(
+            report.issues.some((issue) => issue.kind === "missing_plan_id"),
+            true,
+        );
         assertEquals((await listPlans(cwd)).find((plan) => plan.name === "live")?.attrs.planId, undefined);
-        assertEquals(await fsReadFile(livePath, "utf8").then(() => true).catch(() => false), true);
-        assertEquals(await fsReadFile(uncertainPath, "utf8").then(() => true).catch(() => false), true);
+        assertEquals(
+            await fsReadFile(livePath, "utf8")
+                .then(() => true)
+                .catch(() => false),
+            true,
+        );
+        assertEquals(
+            await fsReadFile(uncertainPath, "utf8")
+                .then(() => true)
+                .catch(() => false),
+            true,
+        );
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
     }
@@ -765,7 +898,10 @@ test("plans doctor --repair fixes provable registry drift without touching Git a
         });
         await fsWriteFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
 
-        assertEquals((await listPlans(cwd)).map((plan) => plan.name), ["legacy-plan"]);
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            ["legacy-plan"],
+        );
 
         const report = await runPlansDoctor(cwd, true);
         assertEquals(report.repaired >= 2, true, `expected both drifts repaired, got ${report.repaired}`);
@@ -960,6 +1096,7 @@ test("plans doctor keeps a journal whose worktree may still hold work", async ()
         });
         const orphanPath = join(cwd, "orphan-worktree");
         await fsMkdir(orphanPath, { recursive: true });
+        await fsWriteFile(join(orphanPath, "saved-work.txt"), "Unclaimed developer work\n");
         const failure = await runExecutionPreparationTransition({
             projectRoot: cwd,
             planName: "demo",
@@ -982,6 +1119,7 @@ test("plans doctor keeps a journal whose worktree may still hold work", async ()
             "and the command that shows whether anything is in it",
         );
         assertEquals(await fsStat(orphanPath).then((stat) => stat.isDirectory()), true, "nothing is deleted");
+        assertEquals(await fsReadFile(join(orphanPath, "saved-work.txt"), "utf8"), "Unclaimed developer work\n");
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
     }
@@ -1024,40 +1162,15 @@ test("plans doctor preserves a held native lock while repairing another abandone
     }
 });
 
-test("plans doctor clears a recently abandoned Plan lock", async () => {
-    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-lock-"));
-    try {
-        await enterProjectRuntime(cwd);
-        const resolvedCwd = fsRealpathSync(cwd);
-        const lockDir = join(getRunWieldRuntimeDir(resolvedCwd), PROJECT_INTERNAL_RUNTIME_DIR_NAME, "plan-locks");
-        const lockPath = join(lockDir, "demo.lock");
-        const legacyLockPath = join(getRunWieldRuntimeDir(resolvedCwd), "plan-locks", "demo.lock");
-        await fsMkdir(lockDir, { recursive: true });
-        await fsWriteFile(
-            lockPath,
-            JSON.stringify({ pid: 2_147_483_647, hostname: getLockHostname(), updatedAtMs: 0 }),
-        );
-        const reported = await runPlansDoctor(cwd, false);
-        const stale = reported.issues.find((issue) => issue.kind === "stale_plan_lock");
-        assertEquals(Boolean(stale), true);
-        assertEquals(stale?.repairable, true);
-        assertEquals(await fsStat(lockPath).then(() => true), true, "report-only leaves it in place");
-
-        const repaired = await runPlansDoctor(cwd, true);
-        assertEquals(repaired.repaired >= 1, true);
-        assertEquals(await fsStat(lockPath).then(() => true).catch(() => false), false);
-        assertEquals(await fsStat(legacyLockPath).then(() => true).catch(() => false), false);
-    } finally {
-        await fsRm(cwd, { recursive: true }).catch(() => {});
-    }
-});
-
 test("doctor uses committed validation stamps without controller records and ignores superseded evidence", async () => {
     const cwd = await ancestryRepo.checkout({ prefix: "runwield-doctor-stamps-" });
     try {
         const publishedCommit = await git(cwd, ["rev-parse", "main"]);
         const unpublishedCommit = await git(cwd, ["rev-parse", "side"]);
-        for (const [name, commit] of [["published", publishedCommit], ["unpublished", unpublishedCommit]]) {
+        for (const [name, commit] of [
+            ["published", publishedCommit],
+            ["unpublished", unpublishedCommit],
+        ]) {
             await savePlan(cwd, name, `# ${name}\n`, {
                 planId: name,
                 classification: "PLANNED_CHANGE",
@@ -1080,12 +1193,15 @@ test("doctor uses committed validation stamps without controller records and ign
         });
         const report = await runPlansDoctor(cwd, false);
         assertEquals(
-            report.issues.filter((issue) => issue.kind === "uncertain_publication").map((issue) => issue.planName),
-            ["unpublished"],
+            report.issues
+                .filter((issue) => issue.kind === "publication_inspection_error")
+                .map((issue) => issue.planName)
+                .sort(),
+            ["published", "unpublished"],
         );
         assertEquals(
             await fsReadFile(join(cwd, "docs/plans/published.md"), "utf8").then((text) =>
-                text.includes(publishedCommit)
+                text.includes(publishedCommit),
             ),
             true,
         );
@@ -1108,11 +1224,17 @@ test("doctor distinguishes committed archived history from a still-active public
             validatedCommit: commit,
         });
         const uncommittedReport = await runPlansDoctor(cwd, false);
-        assertEquals(uncommittedReport.issues.some((issue) => issue.kind === "uncertain_publication"), true);
+        assertEquals(
+            uncommittedReport.issues.some((issue) => issue.kind === "publication_inspection_error"),
+            true,
+        );
         await git(cwd, ["add", "docs/plans/archived/done.md"]);
         await git(cwd, ["commit", "-m", "Archive completed feature"]);
         const report = await runPlansDoctor(cwd, false);
-        assertEquals(report.issues.some((issue) => issue.kind === "uncertain_publication"), false);
+        assertEquals(
+            report.issues.some((issue) => issue.kind === "publication_inspection_error"),
+            false,
+        );
         assertEquals(report.issues, [], "Committed archived history has nothing for Doctor to repair");
         await addEntry(cwd, {
             id: "still-publishing",
@@ -1128,19 +1250,18 @@ test("doctor distinguishes committed archived history from a still-active public
             updatedAt: "2026-09-19T00:00:00.000Z",
         });
         const activeReport = await runPlansDoctor(cwd, false);
-        assertEquals(activeReport.issues.some((issue) => issue.kind === "uncertain_publication"), true);
+        assertEquals(
+            activeReport.issues.some((issue) => issue.kind === "publication_inspection_error"),
+            true,
+        );
     } finally {
         await fsRm(cwd, { recursive: true });
     }
 });
 
-test("doctor proves publication from real Git ancestry in both directions", async () => {
-    // The only test here that runs real Git, and the reason it has to: every other
-    // ancestry assertion lives in a directory with no repository, where the check
-    // fails for lack of Git rather than for lack of ancestry. Those tests would pass
-    // just as happily with the arguments reversed. This one pins what
-    // `merge-base --is-ancestor` actually means for us, so the faked tests above are
-    // safe to trust about everything else.
+test("doctor leaves publication unconfirmed while the publication owner proves real Git ancestry", async () => {
+    // Actual divergent commits distinguish an unconfirmed diagnostic from the
+    // publication owner's positive and negative ancestry evidence.
     const cwd = await ancestryRepo.checkout({ prefix: "runwield-plans-doctor-git-" });
     try {
         const publishedCommit = await git(cwd, ["rev-parse", "main"]);
@@ -1164,9 +1285,9 @@ test("doctor proves publication from real Git ancestry in both directions", asyn
         });
         const publishedReport = await runPlansDoctor(cwd, false);
         assertEquals(
-            publishedReport.issues.some((issue) => issue.kind === "uncertain_publication"),
-            false,
-            "a commit contained in the target branch is proven published",
+            publishedReport.issues.some((issue) => issue.kind === "publication_inspection_error"),
+            true,
+            "a passive check cannot establish fresh publication",
         );
 
         await savePlan(cwd, "unpublished", "# Unpublished\n", {
@@ -1178,15 +1299,32 @@ test("doctor proves publication from real Git ancestry in both directions", asyn
             deliveryEvidence: evidenceFor(unpublishedCommit),
         });
         const unpublishedReport = await runPlansDoctor(cwd, false);
-        const uncertain = unpublishedReport.issues.filter((issue) => issue.kind === "uncertain_publication");
-        assertEquals(uncertain.length, 1, "a commit that never reached the target branch is not proven");
-        assertEquals(uncertain[0].planName, "unpublished");
+        const uncertain = unpublishedReport.issues.filter((issue) => issue.kind === "publication_inspection_error");
+        assertEquals(uncertain.map((issue) => issue.planName).sort(), ["published", "unpublished"]);
+        assertEquals(
+            (
+                await verifyRecordedPublication(cwd, {
+                    ...(await loadPlan(cwd, "published"))!.attrs,
+                    deliveryEvidence: evidenceFor(publishedCommit),
+                })
+            ).published,
+            true,
+        );
+        assertEquals(
+            (
+                await verifyRecordedPublication(cwd, {
+                    ...(await loadPlan(cwd, "unpublished"))!.attrs,
+                    deliveryEvidence: evidenceFor(unpublishedCommit),
+                })
+            ).published,
+            false,
+        );
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-test("doctor discovers remote children while local target is behind and reports inspection failure", async () => {
+test("doctor inspects cached target children without fetching and reports publication limits", async () => {
     const cwd = await ancestryRepo.checkout({ prefix: "runwield-plans-doctor-remote-child-" });
     const remoteRoot = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-remote-child-origin-"));
     try {
@@ -1241,7 +1379,9 @@ test("doctor discovers remote children while local target is behind and reports 
         await git(cwd, ["push", "origin", "HEAD:main"]);
         await git(cwd, ["checkout", "main"]);
         assertEquals(
-            await fsStat(join(cwd, "docs/plans/remote-child.md")).then(() => true).catch(() => false),
+            await fsStat(join(cwd, "docs/plans/remote-child.md"))
+                .then(() => true)
+                .catch(() => false),
             false,
         );
         await savePlan(cwd, "remote-child", "# Stale local child\n", {
@@ -1262,7 +1402,10 @@ test("doctor discovers remote children while local target is behind and reports 
         });
         const beforeInspection = await gitSnapshot();
         const remoteChildren = await inspectTargetBranchPlansByParent(cwd, "main", "project");
-        assertEquals(remoteChildren.map((plan) => plan.name), ["remote-child"]);
+        assertEquals(
+            remoteChildren.map((plan) => plan.name),
+            ["remote-child"],
+        );
         assertEquals(remoteChildren[0].attrs.deliveryEvidence, {
             version: 1,
             mode: "worktree_merge",
@@ -1273,11 +1416,11 @@ test("doctor discovers remote children while local target is behind and reports 
         const discovered = await runPlansDoctor(cwd, false);
         assertEquals(await gitSnapshot(), beforeInspection, "remote inspection must not mutate primary Git storage");
         assertEquals(
-            discovered.issues.some((issue) =>
-                issue.kind === "uncertain_publication" && issue.planName === "remote-child"
+            discovered.issues.some(
+                (issue) => issue.kind === "publication_inspection_error" && issue.planName === "remote-child",
             ),
             true,
-            "Doctor inspects children from the authoritative remote, not the behind local branch",
+            "Doctor reports limits for the locally available child snapshot",
         );
 
         await savePlan(cwd, "local-publication-claim", "# Local claim\n", {
@@ -1296,10 +1439,15 @@ test("doctor discovers remote children while local target is behind and reports 
         });
         await git(cwd, ["remote", "set-url", "origin", join(remoteRoot, "missing")]);
         const failed = await runPlansDoctor(cwd, false);
-        assertEquals(failed.issues.some((issue) => issue.kind === "target_branch_inspection_error"), true);
         assertEquals(
-            failed.issues.some((issue) =>
-                issue.kind === "publication_inspection_error" && issue.planName === "local-publication-claim"
+            failed.issues.some((issue) => issue.kind === "target_branch_inspection_error"),
+            false,
+            "check uses available local target evidence, not remote access",
+        );
+        assertEquals(
+            failed.issues.some(
+                (issue) =>
+                    issue.kind === "publication_inspection_error" && issue.planName === "local-publication-claim",
             ),
             true,
             "local ancestry must not hide a remote inspection failure",
@@ -1310,7 +1458,7 @@ test("doctor discovers remote children while local target is behind and reports 
     }
 });
 
-test("doctor proves remote publication while the local target checkout is behind", async () => {
+test("doctor does not prove remote publication while the publication owner can", async () => {
     const cwd = await ancestryRepo.checkout({ prefix: "runwield-plans-doctor-remote-git-" });
     const remoteRoot = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-remote-"));
     try {
@@ -1345,13 +1493,382 @@ test("doctor proves remote publication while the local target checkout is behind
 
         const report = await runPlansDoctor(cwd, false);
         assertEquals(
-            report.issues.some((issue) =>
-                issue.kind === "uncertain_publication" && issue.planName === "remote-published"
+            report.issues.some(
+                (issue) => issue.kind === "publication_inspection_error" && issue.planName === "remote-published",
             ),
-            false,
+            true,
+        );
+        assertEquals(
+            (
+                await verifyRecordedPublication(cwd, {
+                    ...(await loadPlan(cwd, "remote-published"))!.attrs,
+                    validatedCommit: publishedCommit,
+                    targetBranch: "main",
+                })
+            ).published,
+            true,
         );
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
         await fsRm(remoteRoot, { recursive: true }).catch(() => {});
     }
 });
+
+test("Doctor check reports missing local target and publication evidence without Git transport or source writes", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const cwd = await ancestryRepo.checkout({ prefix: "runwield-doctor-passive-transport-" });
+        const traceRoot = await fsMkdtemp(join(tmpdir(), "runwield-doctor-git-trace-"));
+        const tracePath = join(traceRoot, "git.trace");
+        const previousTrace = process.env.GIT_TRACE;
+        try {
+            await git(cwd, ["remote", "add", "origin", join(traceRoot, "unavailable-origin")]);
+            await savePlan(cwd, "project", "# Project\n", {
+                planId: "trace-project",
+                classification: "PROJECT",
+                status: "approved",
+                targetBranch: "topic/not-cached",
+            });
+            await savePlan(cwd, "claim", "# Published claim\n", {
+                planId: "trace-claim",
+                classification: "PLANNED_CHANGE",
+                status: "verified",
+                targetBranch: "main",
+                validatedCommit: await git(cwd, ["rev-parse", "main"]),
+            });
+            const layout = await enterProjectRuntime(cwd);
+            const paths = [
+                join(cwd, "docs/plans/project.md"),
+                join(cwd, "docs/plans/claim.md"),
+                join(cwd, ".gitignore"),
+                join(cwd, ".git/index"),
+                layout.primary.layoutMarkerPath,
+                layout.primary.worktreeRegistryPath,
+                join(layout.primary.controllerPlansDir, "trace-claim.json"),
+            ];
+            const snapshot = () =>
+                Promise.all(
+                    paths.map((path) =>
+                        fsReadFile(path)
+                            .then((bytes) => bytes.toString("base64"))
+                            .catch(() => null),
+                    ),
+                );
+            const before = await snapshot();
+            process.env.GIT_TRACE = tracePath;
+            for (let read = 0; read < 2; read += 1) {
+                const checked = await runPlansDoctor(cwd, false);
+                assertEquals(
+                    checked.issues.some((issue) => issue.kind === "target_branch_inspection_error"),
+                    true,
+                );
+                assertEquals(
+                    checked.issues.some(
+                        (issue) => issue.kind === "publication_inspection_error" && issue.planName === "claim",
+                    ),
+                    true,
+                );
+            }
+            const trace = await fsReadFile(tracePath, "utf8");
+            assertEquals(trace.includes("rev-parse"), true, "real Git inspection was traced");
+            assertEquals(
+                /\b(?:fetch|clone|update-ref|checkout|switch)\b|worktree (?:add|remove)/.test(trace),
+                false,
+                trace,
+            );
+            assertEquals(await snapshot(), before);
+        } finally {
+            if (previousTrace === undefined) delete process.env.GIT_TRACE;
+            else process.env.GIT_TRACE = previousTrace;
+            await fsRm(cwd, { recursive: true, force: true });
+            await fsRm(traceRoot, { recursive: true, force: true });
+        }
+    });
+});
+
+for (const conflict of ["candidate", "target", "live-attempt"]) {
+    test(`Doctor does not accept a historical receipt for a different ${conflict}`, async () => {
+        const cwd = await ancestryRepo.checkout();
+        try {
+            const { writeControllerState } = await import("../../shared/workflow/controller-registry.ts");
+            const receipt = { validatedCommit: "a".repeat(40), publishedCommit: "b".repeat(40), targetBranch: "main" };
+            await savePlan(cwd, "claim", "# Claim\n", {
+                planId: "claim-id",
+                classification: "FEATURE",
+                status: "verified",
+                targetBranch: conflict === "target" ? "release" : "main",
+                validatedCommit: conflict === "candidate" ? "c".repeat(40) : receipt.validatedCommit,
+            });
+            if (conflict === "live-attempt") {
+                await git(cwd, ["add", "docs/plans/claim.md"]);
+                await git(cwd, ["commit", "-m", "Plan"]);
+                const path = join(cwd, "execution");
+                await git(cwd, ["worktree", "add", "-b", "execution", path]);
+                await addEntry(cwd, {
+                    id: "new-attempt",
+                    planId: "claim-id",
+                    planName: "claim",
+                    path,
+                    branch: "execution",
+                    baseBranch: "main",
+                    baseRef: "main",
+                    baseCommit: await git(cwd, ["rev-parse", "HEAD"]),
+                    status: "active",
+                    createdAt: "now",
+                    updatedAt: "now",
+                });
+            }
+            await writeControllerState(cwd, { planName: "claim", planId: "claim-id" }, { publicationReceipt: receipt });
+            const checked = await runPlansDoctor(cwd, false);
+            assertEquals(
+                checked.issues.some(
+                    (issue) => issue.kind === "publication_inspection_error" && issue.planName === "claim",
+                ),
+                true,
+            );
+        } finally {
+            await fsRm(cwd, { recursive: true, force: true });
+        }
+    });
+}
+
+for (const epicChild of [false, true]) {
+    test(`Doctor retains settled ${epicChild ? "Epic child" : "ordinary Plan"} receipts after target deletion`, async () => {
+        const cwd = await ancestryRepo.checkout();
+        try {
+            const targetBranch = "epic/delivered";
+            const commit = await git(cwd, ["rev-parse", "HEAD"]);
+            if (epicChild) {
+                await savePlan(cwd, "settled-epic", "# Epic\n", {
+                    planId: "settled-epic-id",
+                    classification: "PROJECT",
+                    status: "in_progress",
+                    targetBranch,
+                });
+            }
+            await savePlan(cwd, "settled", "# Settled\n", {
+                planId: "settled-id",
+                classification: "FEATURE",
+                status: "verified",
+                targetBranch,
+                ...(epicChild ? { parentPlan: "settled-epic" } : {}),
+            });
+            await git(cwd, ["add", "docs/plans"]);
+            await git(cwd, ["commit", "-m", "Delivered Plans"]);
+            await git(cwd, ["branch", targetBranch]);
+            await writeControllerState(
+                cwd,
+                { planName: "settled", planId: "settled-id" },
+                {
+                    publicationReceipt: {
+                        validatedCommit: commit,
+                        publishedCommit: await git(cwd, ["rev-parse", "HEAD"]),
+                        targetBranch,
+                    },
+                },
+            );
+            const assertSettled = async (repair: boolean) => {
+                const report = await runPlansDoctor(cwd, repair);
+                assertEquals(
+                    report.issues.filter(
+                        (issue) =>
+                            issue.planName === "settled" &&
+                            ["publication_inspection_error", "uncertain_publication"].includes(issue.kind),
+                    ),
+                    [],
+                );
+            };
+            await assertSettled(false);
+            await git(cwd, ["branch", "-D", targetBranch]);
+            await assertSettled(false);
+            await assertSettled(true);
+        } finally {
+            await fsRm(cwd, { recursive: true, force: true });
+        }
+    });
+}
+
+for (const source of ["snapshot", "active-copy", "live-attempt"]) {
+    test(`Doctor distinguishes archived target snapshots from ${source}`, async () => {
+        const cwd = await ancestryRepo.checkout();
+        try {
+            await savePlan(cwd, "retired-epic", "# Epic\n", {
+                planId: "retired-epic-id",
+                classification: "PROJECT",
+                status: "user_verified",
+                targetBranch: "epic/retired",
+            });
+            await savePlan(cwd, "retired-epic/child", "# Child\n", {
+                planId: "retired-child-id",
+                classification: "FEATURE",
+                parentPlan: "retired-epic",
+                status: "verified",
+                targetBranch: "epic/retired",
+            });
+            await git(cwd, ["add", "docs/plans"]);
+            await git(cwd, ["commit", "-m", "Complete Epic child"]);
+            await git(cwd, ["branch", "epic/retired"]);
+            await fsMkdir(join(cwd, "docs/plans/archived/retired-epic"), { recursive: true });
+            await git(cwd, ["mv", "docs/plans/retired-epic/child.md", "docs/plans/archived/retired-epic/child.md"]);
+            await git(cwd, ["commit", "-m", "Archive delivered child"]);
+            if (source === "active-copy") {
+                await fsMkdir(join(cwd, "docs/plans/retired-epic"), { recursive: true });
+                await fsWriteFile(
+                    join(cwd, "docs/plans/retired-epic/child.md"),
+                    await git(cwd, ["show", "epic/retired:docs/plans/retired-epic/child.md"]),
+                );
+            }
+            if (source === "live-attempt") {
+                const path = join(cwd, "execution");
+                await git(cwd, ["worktree", "add", "-b", "execution", path, "epic/retired"]);
+                await addEntry(cwd, {
+                    id: "retired-child-attempt",
+                    planId: "retired-child-id",
+                    planName: "retired-epic/child",
+                    path,
+                    branch: "execution",
+                    baseBranch: "epic/retired",
+                    baseRef: "epic/retired",
+                    baseCommit: await git(cwd, ["rev-parse", "epic/retired"]),
+                    status: "active",
+                    createdAt: "now",
+                    updatedAt: "now",
+                });
+            }
+            const report = await runPlansDoctor(cwd, false);
+            assertEquals(
+                report.issues.some(
+                    (issue) => issue.kind === "duplicate_plan_id" && issue.planName === "retired-epic/child",
+                ),
+                source !== "snapshot",
+            );
+            if (source === "snapshot") {
+                assertEquals(
+                    report.issues.filter((issue) => issue.planName === "retired-epic/child"),
+                    [],
+                );
+            }
+        } finally {
+            await fsRm(cwd, { recursive: true, force: true });
+        }
+    });
+}
+
+for (const scenario of ["unstarted", "approved", "child", "attempt", "invalid-target", "unreadable"]) {
+    test(`Doctor checks a missing Epic target only when required: ${scenario}`, async () => {
+        const cwd = await ancestryRepo.checkout({ prefix: "runwield-doctor-draft-target-" });
+        try {
+            await savePlan(cwd, "project", "# Project\n", {
+                planId: "draft-project",
+                classification: "PROJECT",
+                status: scenario === "approved" ? "approved" : "draft",
+                targetBranch: scenario === "invalid-target" ? "refs/heads/invalid" : "project/not-started",
+            });
+            if (scenario === "unreadable") {
+                const refs = join(cwd, ".git/refs/heads/project");
+                await fsMkdir(refs, { recursive: true });
+                await fsWriteFile(join(refs, "not-started"), `${"a".repeat(40)}\n`);
+            }
+            if (scenario === "child") {
+                await savePlan(cwd, "project/child", "# Child\n", {
+                    planId: "draft-child",
+                    classification: "PLANNED_CHANGE",
+                    status: "draft",
+                    parentPlan: "project",
+                });
+            }
+            if (scenario === "attempt") {
+                await git(cwd, ["add", "docs/plans/project.md"]);
+                await git(cwd, ["commit", "-m", "Save Epic before its attempt"]);
+                const path = join(cwd, "execution");
+                await git(cwd, ["worktree", "add", "-b", "execution", path, "main"]);
+                await addEntry(cwd, {
+                    id: "draft-attempt",
+                    planId: "draft-project",
+                    planName: "project",
+                    path,
+                    branch: "execution",
+                    baseBranch: "main",
+                    baseRef: "main",
+                    baseCommit: await git(cwd, ["rev-parse", "main"]),
+                    status: "active",
+                    createdAt: "now",
+                    updatedAt: "now",
+                });
+            }
+            for (const repair of [false, true]) {
+                const report = await runPlansDoctor(cwd, repair);
+                assertEquals(
+                    report.issues.some(
+                        (issue) => issue.kind === "target_branch_inspection_error" && issue.planName === "project",
+                    ),
+                    scenario !== "unstarted",
+                );
+            }
+        } finally {
+            await fsRm(cwd, { recursive: true, force: true });
+        }
+    });
+}
+
+for (const identity of ["missing-target-id", "explicit-target-id", "target-only"]) {
+    test(`Doctor retains assigned child identity across older target snapshots: ${identity}`, async () => {
+        const cwd = await ancestryRepo.checkout({ prefix: "runwield-doctor-child-identity-" });
+        try {
+            await savePlan(cwd, "project", "# Project\n", {
+                planId: "project-id",
+                classification: "PROJECT",
+                status: "draft",
+                targetBranch: "epic/project",
+            });
+            const childPath = join(cwd, "docs/plans/project/child.md");
+            await fsMkdir(dirname(childPath), { recursive: true });
+            await fsWriteFile(
+                childPath,
+                `---\n${identity === "explicit-target-id" ? "planId: target-id\n" : ""}classification: PLANNED_CHANGE\nparentPlan: project\nstatus: draft\n---\n# Child\n`,
+            );
+            await git(cwd, ["add", "docs/plans"]);
+            await git(cwd, ["commit", "-m", "Save target child identity"]);
+            await git(cwd, ["branch", "epic/project"]);
+            if (identity === "target-only") {
+                await fsRm(childPath);
+            } else {
+                await fsWriteFile(
+                    childPath,
+                    "---\nplanId: local-id\nclassification: PLANNED_CHANGE\nparentPlan: project\nstatus: draft\n---\n# Current child\n",
+                );
+            }
+            if (identity === "explicit-target-id") {
+                await addEntry(cwd, {
+                    id: "historical-target-attempt",
+                    planId: "target-id",
+                    planName: "project/child",
+                    path: cwd,
+                    branch: "main",
+                    baseBranch: "main",
+                    baseRef: "main",
+                    baseCommit: await git(cwd, ["rev-parse", "main"]),
+                    status: "abandoned",
+                    createdAt: "now",
+                    updatedAt: "now",
+                });
+            }
+            const before = await fsReadFile(childPath, "utf8").catch(() => null);
+            for (const repair of [false, true]) {
+                const report = await runPlansDoctor(cwd, repair);
+                assertEquals(
+                    report.issues.some(
+                        (issue) => issue.kind === "missing_plan_id" && issue.planName === "project/child",
+                    ),
+                    identity === "target-only",
+                );
+                assertEquals(
+                    report.issues.some((issue) => issue.kind === "registry_plan_id_not_found"),
+                    false,
+                );
+            }
+            assertEquals(await fsReadFile(childPath, "utf8").catch(() => null), before);
+        } finally {
+            await fsRm(cwd, { recursive: true, force: true });
+        }
+    });
+}

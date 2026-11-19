@@ -132,9 +132,15 @@ function contentText(value: JsonValue | undefined): string {
     return "";
 }
 
+interface ClaudeCliResultState {
+    ordinal: number;
+    totalCostUsd: number;
+}
+
 export function parseClaudeCliJsonLine(
     line: string,
     callbacks?: ClaudeCliStreamCallbacks,
+    resultState: ClaudeCliResultState = { ordinal: 0, totalCostUsd: 0 },
 ): ClaudeCliStreamEvent | null {
     const trimmed = line.trim();
     if (!trimmed) return null;
@@ -256,7 +262,13 @@ export function parseClaudeCliJsonLine(
     if (eventType === "result") {
         const text = asString(parsed.result) || asString(parsed.text);
         const usage = readUsage(parsed.usage, parsed.total_cost_usd ?? parsed.cost);
-        callbacks?.onUsage?.({ sourceId: "claude_turn_total", usage, aggregationBasis: "turn" });
+        const ordinal = ++resultState.ordinal;
+        const totalCostUsd = asNullableNumber(parsed.total_cost_usd);
+        if (totalCostUsd !== null) {
+            usage.costUsd = totalCostUsd - resultState.totalCostUsd;
+            resultState.totalCostUsd = totalCostUsd;
+        }
+        callbacks?.onUsage?.({ sourceId: `claude_turn_total:${ordinal}`, usage, aggregationBasis: "turn" });
         const modelUsage = isJsonRecord(parsed.modelUsage)
             ? parsed.modelUsage
             : isJsonRecord(parsed.model_usage)
@@ -265,7 +277,7 @@ export function parseClaudeCliJsonLine(
         for (const [model, details] of Object.entries(modelUsage)) {
             if (!/^[A-Za-z][A-Za-z0-9_.:/-]{0,127}$/.test(model) || !isJsonRecord(details)) continue;
             callbacks?.onUsage?.({
-                sourceId: `claude_model_${Object.keys(modelUsage).indexOf(model)}`,
+                sourceId: `claude_model_${Object.keys(modelUsage).indexOf(model)}:${ordinal}`,
                 model,
                 usage: readUsage(details, details.costUSD ?? details.cost_usd),
                 aggregationBasis: "alternative",
@@ -289,6 +301,7 @@ export async function parseClaudeCliStream(
 ): Promise<ClaudeCliParseResult> {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
+    const resultState: ClaudeCliResultState = { ordinal: 0, totalCostUsd: 0 };
     let buffered = "";
     let visibleText = "";
     let resultText = "";
@@ -398,7 +411,7 @@ export async function parseClaudeCliStream(
             const event: ClaudeCliStreamEvent | null =
                 line === "" && previousCompletePlainLine
                     ? { kind: "plain_text", text: "" }
-                    : parseClaudeCliJsonLine(line, callbacks);
+                    : parseClaudeCliJsonLine(line, callbacks, resultState);
             if (event) {
                 applyEvent(event);
                 previousCompletePlainLine = event.kind === "plain_text";
@@ -408,7 +421,7 @@ export async function parseClaudeCliStream(
         }
     }
     if (buffered.trim() && callbacks.isTerminalAccepted?.() !== true) {
-        const event = parseClaudeCliJsonLine(buffered, callbacks);
+        const event = parseClaudeCliJsonLine(buffered, callbacks, resultState);
         if (event) applyEvent(event);
     }
     endThinking();

@@ -14,12 +14,12 @@ import {
     getSlashCommandDefinitions,
     getSlashCommandInvocationNames,
     hasCommandSurface,
-} from "../registry.js";
+} from "../registry.ts";
 
 test("importing the registry does not initialize the TUI", async () => {
     const home = await fsMkdtemp(join(tmpdir(), "runwield-registry-import-home-"));
     const script = join(home, "import-registry.ts");
-    const registryUrl = new URL("../registry.js", import.meta.url).href;
+    const registryUrl = new URL("../registry.ts", import.meta.url).href;
     const tuiUrl = new URL("../../ui/tui/tui.ts", import.meta.url).href;
     await fsWriteFile(
         script,

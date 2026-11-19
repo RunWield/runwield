@@ -5,8 +5,8 @@ import { ok as assert, notStrictEqual as assertNotStrictEquals, strictEqual as a
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import type { RuntimeInteractionResponse } from "../../shared/session/session-runtime-interactions.js";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import type { RuntimeInteractionResponse } from "../../shared/session/session-runtime-interactions.ts";
 import { tuiSessionSidebarProjection } from "./session-sidebar.ts";
 
 async function withSessions(run: (runtime: SessionRuntime, first: string, second: string) => void) {

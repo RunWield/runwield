@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { openOwnerCoordinationDatabase } from "./database.js";
+import { openOwnerCoordinationDatabase } from "./database.ts";
 import {
     getProjectById,
     getProjectHealth,
@@ -25,7 +25,7 @@ import {
     removeProject,
     requireEnabledProjectRoot,
     setProjectEnabled,
-} from "./projects.js";
+} from "./projects.ts";
 
 type RegisteredProject = ReturnType<typeof registerProject>;
 
@@ -401,7 +401,7 @@ test("Project registration rejects files", async () => {
 });
 
 test("home registration and relink require root-bound consent before writes", async () => {
-    const { getHomeDir } = await import("../../constants.js");
+    const { getHomeDir } = await import("../../constants.ts");
     const { DirectoryConfirmationRequired } = await import("../project-directory.ts");
     const dir = await fsMkdtemp(join(tmpdir(), "project-consent-"));
     const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });

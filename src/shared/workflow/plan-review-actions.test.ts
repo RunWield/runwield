@@ -4,23 +4,24 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import {
+    ensurePlanIdentity,
     getPlanRevisionForText,
     getStoredPlanPath,
     injectFrontMatter,
     loadPlan,
     parsePlanFrontMatter,
     savePlan,
-} from "../../plan-store.js";
-import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../worktree-registry.js";
+} from "../../plan-store.ts";
+import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { applySharedPlanReviewDecision, reviewSourceStillMatches } from "./plan-review-actions.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
-import { startActiveExecutionWorkflow } from "./workflow.js";
+import { applySharedPlanReviewDecision } from "./plan-review-actions.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
+import { HostedSession } from "../session/hosted-session.ts";
+import { startActiveExecutionWorkflow } from "./workflow.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
-import { listEntries, updateEntry } from "../worktree-registry.js";
-import { findReusableWorktree } from "../worktree.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { listEntries, updateEntry } from "../worktree-registry.ts";
+import { findReusableWorktree } from "../worktree.ts";
 
 interface PlanReviewFixture {
     dir: string;
@@ -32,15 +33,19 @@ interface PlanReviewFixture {
 
 const gitFixture = defineCommittedGitFixture({ ".gitignore": ".wld/\nwt-prior/\n" });
 
-async function makePlanFile(attrs: Partial<PlanFrontMatter> = {}): Promise<PlanReviewFixture> {
+async function makePlanFile(
+    attrs: Partial<PlanFrontMatter> = {},
+    body = "# Plan\n\nDo the thing.\n",
+): Promise<PlanReviewFixture> {
     const dir = await gitFixture.checkout();
-    await savePlan(dir, "plan", "# Plan\n\nDo the thing.\n", {
+    await savePlan(dir, "plan", body, {
         classification: "PLANNED_CHANGE",
         status: "draft",
         summary: "Do the thing",
         affectedPaths: [],
         ...attrs,
     });
+    await ensurePlanIdentity(dir, "plan");
     const planPath = getStoredPlanPath(dir, "plan");
     const markdown = await fsReadFile(planPath, "utf8");
     return {
@@ -422,9 +427,77 @@ for (const { name, original, current, matches } of [
     { name: "checkbox state", original: "- [ ] Pending\n", current: "- [x] Pending\n", matches: false },
     { name: "table content", original: "| A |\n| - |\n| x |\n", current: "| A |\n| - |\n| y |\n", matches: false },
 ]) {
-    test(`Plan review source comparison preserves ${name}`, () => {
-        const attrs = parsePlanFrontMatter("# Plan\n").attrs;
-        assertEquals(reviewSourceStillMatches({ attrs, body: current }, attrs, original), matches);
+    test(`Plan review edits preserve approval only for equivalent ${name}`, async () => {
+        const fixture = await makePlanFile({ status: "approved" }, original);
+        try {
+            const before = await loadPlan(fixture.dir, "plan");
+            assert(before);
+            const result = await applySharedPlanReviewDecision({
+                cwd: fixture.dir,
+                planName: "plan",
+                planPath: before.path,
+                planWithFrontMatter: before.markdown,
+                planRevision: before.revision,
+                originalAttrs: before.attrs,
+                trustedClassification: "PLANNED_CHANGE",
+                decision: {
+                    approved: false,
+                    conversationTurn: true,
+                    feedback: "Owner edit.",
+                    plan: injectFrontMatter(current, before.attrs),
+                },
+            });
+            assertEquals(result.cancellationReason, undefined);
+            const after = await loadPlan(fixture.dir, "plan");
+            assertEquals(after?.attrs.status, matches ? "approved" : "draft");
+            assertEquals(after?.body.trimEnd(), current.trimEnd());
+            assertEquals(after?.attrs.planId, before.attrs.planId);
+        } finally {
+            await fsRm(fixture.dir, { recursive: true });
+        }
+    });
+}
+
+for (const stale of [true, false]) {
+    test(`shared review ${stale ? "rejects old" : "accepts current"} controller evidence on unchanged draft status`, async () => {
+        const fixture = await makePlanFile({ status: "draft" });
+        try {
+            const reviewed = await loadPlan(fixture.dir, "plan");
+            assert(reviewed);
+            if (stale) {
+                await recordPlanEvent({
+                    cwd: fixture.dir,
+                    planName: "plan",
+                    event: "review_feedback",
+                    currentStatus: "draft",
+                    details: { failureReason: "New Core feedback." },
+                });
+            }
+            const before = await loadPlan(fixture.dir, "plan");
+            assert(before);
+            assertEquals(
+                before.revision,
+                reviewed.revision,
+                "Controller evidence is not part of the document revision.",
+            );
+            const result = await applySharedPlanReviewDecision({
+                cwd: fixture.dir,
+                planName: "plan",
+                planPath: reviewed.path,
+                planWithFrontMatter: reviewed.markdown,
+                planRevision: reviewed.revision,
+                expectedControllerRevision: reviewed.controllerRevision,
+                originalAttrs: reviewed.attrs,
+                trustedClassification: "PLANNED_CHANGE",
+                decision: { approved: true, approvalAction: "later" },
+            });
+            assertEquals(result.approved, !stale);
+            assertEquals(result.cancellationReason, stale ? "stale_plan_review" : undefined);
+            if (stale) assertEquals(await loadPlan(fixture.dir, "plan"), before);
+            else assertEquals((await loadPlan(fixture.dir, "plan"))?.attrs.status, "approved");
+        } finally {
+            await fsRm(fixture.dir, { recursive: true });
+        }
     });
 }
 
@@ -491,4 +564,36 @@ for (const status of ["approved", "ready_for_work", "ready_for_decomposition"] a
             }
         });
     }
+}
+
+for (const reviewText of [
+    "# Plan\n\nUpdated request.\n",
+    "---\nplanId: other-plan\n---\n# Plan\n\nUpdated request.\n",
+]) {
+    test(`Plan review preserves identity when submitted text ${reviewText.startsWith("---") ? "changes" : "omits"} it`, async () => {
+        const fixture = await makePlanFile({ planId: "review-plan-id" });
+        try {
+            const result = await applySharedPlanReviewDecision({
+                cwd: fixture.dir,
+                planName: "plan",
+                planPath: fixture.planPath,
+                planWithFrontMatter: fixture.markdown,
+                planRevision: fixture.revision,
+                originalAttrs: fixture.attrs,
+                trustedClassification: "PLANNED_CHANGE",
+                decision: {
+                    approved: true,
+                    approvalAction: "run",
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
+                    plan: reviewText,
+                },
+            });
+            assertEquals(result.approved, true);
+            assertEquals(result.planAttrs?.planId, "review-plan-id");
+            assertEquals((await loadPlan(fixture.dir, "plan"))?.attrs.planId, "review-plan-id");
+        } finally {
+            await fsRm(fixture.dir, { recursive: true });
+        }
+    });
 }

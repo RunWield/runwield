@@ -8,11 +8,11 @@ import {
     getCurrentSystemPrompt,
     type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
+import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { requestLocalReviewInteraction } from "../../shared/session/local-review-interactions.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import type { PlanReviewConversation } from "../../shared/session/plan-review-conversation.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 
@@ -98,16 +98,19 @@ test("reopened saved Epic chat hands feedback to Architect and shows its model-a
                         const conversation = request._meta?.reviewConversation;
                         assert(conversation && typeof conversation === "object" && "id" in conversation);
                         conversations.push(conversation as PlanReviewConversation);
-                        const response = await requestLocalReviewInteraction({
-                            ...request,
-                            _meta: {
-                                ...request._meta,
-                                onSurfaceReady: (surface: { url: string }) => {
-                                    url = surface.url;
-                                    surfaces[readyCount++].resolve(url);
+                        const response = await requestLocalReviewInteraction(
+                            {
+                                ...request,
+                                _meta: {
+                                    ...request._meta,
+                                    onSurfaceReady: (surface: { url: string }) => {
+                                        url = surface.url;
+                                        surfaces[readyCount++].resolve(url);
+                                    },
                                 },
                             },
-                        }, signal);
+                            signal,
+                        );
                         return response;
                     },
                 });

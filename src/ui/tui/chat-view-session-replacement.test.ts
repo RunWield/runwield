@@ -1,3 +1,4 @@
+import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { test } from "node:test";
 import { assertStringIncludes } from "../../testing/assertions.ts";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
@@ -11,6 +12,7 @@ test("chat view refreshes warmed sidebar state for events from a replacement Ses
         const tui = new TuiAltScreen(terminal);
         let activeId = sessionId;
         const view = await createChatView({
+            browser: NO_OPEN_BROWSER_PORT,
             documentLinks: null,
             tui,
             sessionRuntime: runtime,

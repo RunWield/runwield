@@ -14,7 +14,7 @@ import {
     normalizeRevisionMetadata,
     normalizeSharedSpaceLifecyclePayload,
     normalizeSharedSpaceMetadata,
-} from "./protocol.js";
+} from "./protocol.ts";
 
 test("protocol helpers normalize shared space metadata", () => {
     assertEquals(

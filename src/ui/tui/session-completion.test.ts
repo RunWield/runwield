@@ -8,9 +8,9 @@ import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { createChatView } from "./chat-view.ts";
 import { createChatInputController } from "./chat-input-controller.ts";
-import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
+import { attachTuiRuntimeAdapter } from "./runtime-adapter.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
@@ -31,7 +31,7 @@ for (const columns of [60, 140]) {
                     "---\nstatus: draft\nclassification: PLANNED_CHANGE\nplanId: next-change\n---\n# Next change\n",
                 );
                 if (choice === "record-retry") {
-                    const { savePlan } = await import("../../plan-store.js");
+                    const { savePlan } = await import("../../plan-store.ts");
                     await savePlan(projectRoot, "record-retry", "# Delivered", {
                         planId: "record-retry",
                         classification: "PLANNED_CHANGE",
@@ -48,6 +48,7 @@ for (const columns of [60, 140]) {
                 let activeId = sessionId;
                 const tui = new TuiAltScreen(terminal);
                 const view = await createChatView({
+                    browser: NO_OPEN_BROWSER_PORT,
                     documentLinks: null,
                     tui,
                     sessionRuntime: runtime,
@@ -180,10 +181,7 @@ for (const columns of [60, 140]) {
                         if (choice === "load-plan") terminal.input("\x1b[B");
                         terminal.pressEnter();
                         await waitFor(() => activeId !== originalId);
-                        assertEquals(
-                            runtime.getSessionSnapshot(activeId)?.activeAgent,
-                            "router",
-                        );
+                        assertEquals(runtime.getSessionSnapshot(activeId)?.activeAgent, "router");
                         if (choice === "load-plan") {
                             await waitFor(() => terminal.getScreenText().includes("Load plan:")).catch((error) => {
                                 throw new Error(`${error}\n${terminal.getScreenText()}`);
@@ -215,6 +213,7 @@ for (const choice of ["skip", "open", "dismiss"]) {
             const terminal = new VirtualTerminal({ columns: 100, rows: 22 });
             const tui = new TuiAltScreen(terminal);
             const view = await createChatView({
+                browser: NO_OPEN_BROWSER_PORT,
                 documentLinks: null,
                 tui,
                 sessionRuntime: runtime,
@@ -222,17 +221,20 @@ for (const choice of ["skip", "open", "dismiss"]) {
                 suppressStartupHeader: true,
                 setActiveModel: () => Promise.resolve({ status: "active" }),
             });
-            const { createTuiInteractionAdapter } = await import("./runtime-interaction-adapter.js");
+            const { createTuiInteractionAdapter } = await import("./runtime-interaction-adapter.ts");
             const adapter = createTuiInteractionAdapter(view.uiAPI, { browser: NO_OPEN_BROWSER_PORT });
             tui.start();
             try {
                 const response = adapter.requestInteraction({
                     type: "select",
                     prompt: "Would you like to review the code?",
-                    options: [{ value: "open", label: "Open code review" }, {
-                        value: "skip",
-                        label: "Skip code review",
-                    }],
+                    options: [
+                        { value: "open", label: "Open code review" },
+                        {
+                            value: "skip",
+                            label: "Skip code review",
+                        },
+                    ],
                     _meta: { presentation: "code_review_offer" },
                 });
                 await waitFor(() => terminal.getScreenText().includes("Skip code review"));

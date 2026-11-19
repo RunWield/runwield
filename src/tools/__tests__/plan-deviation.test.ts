@@ -3,12 +3,12 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import type {
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
-} from "../../shared/session/session-runtime-interactions.js";
-import { loadPlan, savePlan } from "../../plan-store.js";
+} from "../../shared/session/session-runtime-interactions.ts";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { createPlanDeviationTool } from "../plan-deviation.ts";
 
 type PlanDeviationTool = ReturnType<typeof createPlanDeviationTool>;

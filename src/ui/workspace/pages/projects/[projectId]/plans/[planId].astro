@@ -2,35 +2,15 @@
 import LoadingSurface from "../../../../components/LoadingSurface.astro";
 import WorkspaceLayout from "../../../../layouts/WorkspaceLayout.astro";
 import ReviewLayout from "../../../../layouts/ReviewLayout.astro";
-import { PlanDetail } from "../../../../components/PlanDetail.jsx";
+import { PlanDetail, type PlanDetailData } from "../../../../components/PlanDetail.tsx";
 import { PlanReviewSurface } from "../../../../react/PlanReviewSurface.tsx";
 import { PlanHomeSurface } from "../../../../react/PlanHomeSurface.tsx";
-import { serializeCanonicalPlanError } from "../../../../server/astro-canonical-data.js";
+import { serializeCanonicalPlanError } from "../../../../server/astro-canonical-data.ts";
 import {
     getAstroOwnerWorkspaceSessionContinuation,
     getAstroOwnerWorkspaceStore,
     loadOwnerProjectPlanDetail,
-} from "../../../../server/astro-owner-data.js";
-
-type WorkspacePlanAttrs = {
-    status?: string;
-    classification?: string;
-    type?: string;
-    parentPlan?: string;
-};
-
-type WorkspacePlanDetail = {
-    planName?: string;
-    title?: string;
-    status?: string;
-    classification?: string;
-    type?: string;
-    parentPlan?: string;
-    path?: string;
-    markdown?: string;
-    body?: string;
-    attrs?: WorkspacePlanAttrs;
-};
+} from "../../../../server/astro-owner-data.ts";
 
 type CanonicalPlanError = { error: string; repair: string };
 
@@ -63,16 +43,17 @@ type OwnerWorkspaceStore = {
 
 const projectId = Astro.params.projectId ?? "";
 const planId = Astro.params.planId ?? "";
+const documentName = planId === "document" ? Astro.url.searchParams.get("name") || undefined : undefined;
 const requestedSessionId = Astro.url.searchParams.get("session") || "";
 const operationId = Astro.url.searchParams.get("operation") || "";
 const interactionId = Astro.url.searchParams.get("interaction") || "";
 let liveReview: Awaited<ReturnType<NonNullable<WorkspaceSessionContinuation["getLivePlanReview"]>>> | null = null;
-let plan: WorkspacePlanDetail | null = null;
+let plan: PlanDetailData | null = null;
 let error: CanonicalPlanError | null = null;
 let recoveryGeneration: number | null = null;
 let recoveryCurrentSegmentId: string | null = null;
 try {
-    plan = await loadOwnerProjectPlanDetail(projectId, planId, { reviewOnly: Boolean(operationId && interactionId) });
+    plan = await loadOwnerProjectPlanDetail(projectId, planId, { reviewOnly: Boolean(operationId && interactionId), documentName });
 } catch (caught) {
     const serializedError = await serializeCanonicalPlanError(caught) as CanonicalPlanError;
     error = serializedError;
@@ -147,7 +128,7 @@ const planHomePayload = plan
         interactionHref: operationId && interactionId && sessionId
             ? `${sessionHref}#interaction-${encodeURIComponent(interactionId)}`
             : "",
-        progressApiUrl: `/api/owner/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}/progress${sessionId ? `?session=${encodeURIComponent(sessionId)}` : ""}`,
+        progressApiUrl: documentName ? "" : `/api/owner/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}/progress${sessionId ? `?session=${encodeURIComponent(sessionId)}` : ""}`,
         continueUrl: "",
         planWorkflowUrl: sessionId
             ? `/api/owner/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/plan-workflow`
@@ -158,7 +139,7 @@ const planHomePayload = plan
         expectedCurrentSegmentId: recoveryCurrentSegmentId,
         workflow: {
             sessionState: "",
-            degradedMessage: "",
+            degradedMessage: plan.readAvailability?.kind === "pending" ? plan.readAvailability.message || "Workflow details pending." : "",
             progressFacts: [],
         },
     }
@@ -228,7 +209,7 @@ const Layout = reviewPayload ? ReviewLayout : WorkspaceLayout;
         </PlanHomeSurface>
     ) : (
         <PlanDetail
-            plan={plan}
+            plan={plan!}
             url={Astro.url.href}
             editIntent={false}
             progress={null}

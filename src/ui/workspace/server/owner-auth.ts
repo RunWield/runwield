@@ -4,8 +4,8 @@ import {
     OWNER_CSRF_COOKIE,
     OWNER_DEVICE_COOKIE,
     OWNER_DEVICE_MAX_AGE_SECONDS,
-} from "../../../shared/owner-coordination/index.js";
-import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.js";
+} from "../../../shared/owner-coordination/index.ts";
+import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import type { OwnerConnectionRegistry, OwnerLiveConnection } from "./owner-connections.ts";
 import type { OwnerOriginPolicy } from "./owner-origin.ts";
 import { assertOwnerOrigin, isStateChangingRequest, parseOwnerOrigin } from "./owner-origin.ts";

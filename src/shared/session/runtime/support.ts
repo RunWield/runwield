@@ -1,20 +1,20 @@
-import { AGENTS, SUBAGENTS } from "../../../constants.js";
-import { readPersistedActiveAgentName, readPersistedModelState } from ".././active-agent-session.js";
+import { AGENTS, SUBAGENTS } from "../../../constants.ts";
+import { readPersistedActiveAgentName, readPersistedModelState } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
 import { getModelRegistry } from "../../models/model-registry.ts";
 import { parseProviderModel } from "../../models/model-validation.ts";
-import { getSettingsManager } from "../../settings.js";
+import { getSettingsManager } from "../../settings.ts";
 import { isGitRepository } from "../../git.ts";
-import { enterProjectRuntime } from "../../project-runtime-layout.ts";
-import { readPersistedWorkflowContext } from ".././workflow-context-session.js";
+import { preparePlanController } from "../../workflow/plan-preparation.ts";
+import { readPersistedWorkflowContext } from ".././workflow-context-session.ts";
 import { createPairCheckpointTool } from "../../../tools/pair-checkpoint.ts";
 import { formatPairCheckpointContext, restorePairExecutionState } from ".././pair-checkpoint-session.ts";
-import { loadPlan } from "../../../plan-store.js";
-import { listEntries } from "../../worktree-registry.js";
+import { loadPlan } from "../../../plan-store.ts";
+import { listEntries, prepareWorktreeRegistry } from "../../worktree-registry.ts";
 
 /** A delivered execution keeps its transcript origin, but resumes in the registered project. */
 export async function restorePublishedSessionProjectRoot(
-    session: import("../hosted-session.js").HostedSession,
+    session: import("../hosted-session.ts").HostedSession,
     store: import("../file-session-store-types.ts").FileSessionStore,
 ): Promise<void> {
     const managed = session.getManagedMetadata();
@@ -25,10 +25,12 @@ export async function restorePublishedSessionProjectRoot(
     if (session.cwd === projectRoot) return;
     const association = store.listSessionPlanAssociations(managed.runwieldSessionId, managed.projectId).at(-1);
     if (!association || !["execution", "recovery"].includes(association.purpose)) return;
+    await prepareWorktreeRegistry(projectRoot);
     // A retained or newer attempt still owns its execution checkout.
-    if ((await listEntries(projectRoot, { migrate: false })).some((entry) => entry.planId === association.planId)) {
+    if ((await listEntries(projectRoot)).some((entry) => entry.planId === association.planId)) {
         return;
     }
+    await preparePlanController(projectRoot, association.planName);
     const plan = await loadPlan(projectRoot, association.planName);
     if (
         plan?.attrs.planId !== association.planId ||
@@ -40,7 +42,7 @@ export async function restorePublishedSessionProjectRoot(
 }
 
 /**
- * @param {import('.././types.js').ImageAttachment[]} images
+ * @param {import('.././image-attachments.ts').ImageAttachment[]} images
  * @returns {import('.././named-invocation.ts').ImageReference[]}
  */
 export type RuntimeRootSessionManager = import("@earendil-works/pi-coding-agent").SessionManager & {
@@ -48,12 +50,12 @@ export type RuntimeRootSessionManager = import("@earendil-works/pi-coding-agent"
 };
 
 export async function enterGitProjectRuntime(cwd: string) {
-    if (await isGitRepository(cwd)) await enterProjectRuntime(cwd);
+    if (await isGitRepository(cwd)) await prepareWorktreeRegistry(cwd);
 }
 
 export function isRuntimeRootSessionManager(
     manager:
-        | import("../hosted-session.js").MinimalSessionManagerLike
+        | import("../hosted-session.ts").MinimalSessionManagerLike
         | import("@earendil-works/pi-coding-agent").SessionManager
         | null
         | undefined,
@@ -79,8 +81,8 @@ export interface RuntimeAgentSession {
         text: string,
     ): void | Promise<void> | ReturnType<import("@earendil-works/pi-coding-agent").AgentSession["followUp"]>;
     setAutoCompactionEnabled?(enabled: boolean): void;
-    cycleThinkingLevel?(): import("../hosted-session.js").ThinkingLevel | undefined;
-    setThinkingLevel?(level: import("../hosted-session.js").ThinkingLevel): void;
+    cycleThinkingLevel?(): import("../hosted-session.ts").ThinkingLevel | undefined;
+    setThinkingLevel?(level: import("../hosted-session.ts").ThinkingLevel): void;
     compact?: import("@earendil-works/pi-coding-agent").AgentSession["compact"];
     abortCompaction?(): void;
     recordBashResult?(
@@ -97,7 +99,7 @@ export interface RuntimeAgentSession {
 
 export function isRuntimeAgentSession(
     session:
-        | import("../hosted-session.js").DisposableLike
+        | import("../hosted-session.ts").DisposableLike
         | import("@earendil-works/pi-coding-agent").AgentSession
         | null
         | undefined,
@@ -105,12 +107,12 @@ export function isRuntimeAgentSession(
     return Boolean(session && "model" in session && "subscribe" in session && typeof session.subscribe === "function");
 }
 
-export function getRuntimeRootAgentSession(session: import("../hosted-session.js").HostedSession) {
+export function getRuntimeRootAgentSession(session: import("../hosted-session.ts").HostedSession) {
     const root = session.getRootAgentSession();
     return isRuntimeAgentSession(root) ? root : null;
 }
 
-export function imageReferencesForNamedInvocation(images: import(".././types.js").ImageAttachment[]) {
+export function imageReferencesForNamedInvocation(images: import(".././image-attachments.ts").ImageAttachment[]) {
     return images.map((image) => ({
         ...(image.ref ? { ref: image.ref } : {}),
         ...(image.path ? { path: image.path } : {}),
@@ -148,10 +150,10 @@ export async function resolvePersistedRootConfiguration(
 /**
  * Restore durable execution ownership and optional Pair context before root activation.
  *
- * @param {import('.././hosted-session.js').HostedSession} hostedSession
+ * @param {import('.././hosted-session.ts').HostedSession} hostedSession
  */
 export function resolvePersistedExecutionRootConfiguration(
-    hostedSession: import(".././hosted-session.js").HostedSession,
+    hostedSession: import(".././hosted-session.ts").HostedSession,
 ) {
     const checkpoint = restorePairExecutionState(hostedSession);
     const workflow = hostedSession.getActiveExecutionWorkflow?.() || null;
@@ -178,7 +180,7 @@ export function resolvePersistedExecutionRootConfiguration(
 
 /**
  * @param {import("./types.ts").RuntimeQueuedMessageState} message
- * @returns {import('.././session-runtime-events.js').RuntimeQueuedMessage}
+ * @returns {import('.././session-runtime-events.ts').RuntimeQueuedMessage}
  */
 export function toRuntimeQueuedMessage(message: import("./types.ts").RuntimeQueuedMessageState) {
     return {
@@ -214,10 +216,10 @@ function getStreamingAssistantContextTokens(session: RuntimeAgentSession) {
  * active-agent information exposed in the footer without leaking AgentSession
  * objects across the Runtime boundary.
  *
- * @param {import('.././hosted-session.js').HostedSession} session
+ * @param {import('.././hosted-session.ts').HostedSession} session
  * @returns {RuntimeContextCapacity}
  */
-export function getRuntimeContextCapacity(session: import(".././hosted-session.js").HostedSession) {
+export function getRuntimeContextCapacity(session: import(".././hosted-session.ts").HostedSession) {
     const sessions = [session.getRootAgentSession(), ...session.getSubAgentSessions()].filter(
         (candidate) => candidate !== null,
     );
@@ -251,7 +253,7 @@ export function getRuntimeContextCapacity(session: import(".././hosted-session.j
 
 /**
  * @param {string | null | undefined} value
- * @returns {import('.././hosted-session.js').ThinkingLevel}
+ * @returns {import('.././hosted-session.ts').ThinkingLevel}
  */
 export function normalizeThinkingLevel(value: string | null | undefined) {
     switch (value) {
@@ -306,13 +308,13 @@ export function resolvePersistedResumeModel(sessionManager: import("@earendil-wo
 }
 
 /**
- * @param {NonNullable<import('.././hosted-session.js').ManagedSessionMetadata['syncState']> | null | undefined} previous
- * @param {NonNullable<import('.././hosted-session.js').ManagedSessionMetadata['syncState']>} next
+ * @param {NonNullable<import('.././hosted-session.ts').ManagedSessionMetadata['syncState']> | null | undefined} previous
+ * @param {NonNullable<import('.././hosted-session.ts').ManagedSessionMetadata['syncState']>} next
  * @returns {boolean}
  */
 export function isSameManagedSyncState(
-    previous: NonNullable<import(".././hosted-session.js").ManagedSessionMetadata["syncState"]> | null | undefined,
-    next: NonNullable<import(".././hosted-session.js").ManagedSessionMetadata["syncState"]>,
+    previous: NonNullable<import(".././hosted-session.ts").ManagedSessionMetadata["syncState"]> | null | undefined,
+    next: NonNullable<import(".././hosted-session.ts").ManagedSessionMetadata["syncState"]>,
 ) {
     return (
         previous?.status === next.status &&
@@ -380,7 +382,7 @@ export function buildSemanticRepairCiState(
  * @returns {Array<import('../../workflow/workflow-presentation.ts').WorkflowProgressFact>}
  */
 export function workflowProgressFactsFromActiveMeta(
-    activeWorkflowMeta: Partial<import("../../../plan-store.js").PlanFrontMatter> & SemanticWorkflowMeta,
+    activeWorkflowMeta: Partial<import("../../../plan-store.ts").PlanFrontMatter> & SemanticWorkflowMeta,
 ): import("../../workflow/workflow-presentation.ts").WorkflowProgressFact[] {
     const facts: import("../../workflow/workflow-presentation.ts").WorkflowProgressFact[] = [];
     const checkpoint = activeWorkflowMeta.validationCheckpoint;

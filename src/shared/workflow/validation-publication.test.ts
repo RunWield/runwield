@@ -11,15 +11,15 @@ import { tmpdir } from "node:os";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { retryWorkRecordForPlan } from "../work-records/auto-generation.ts";
 import { listWorkRecords } from "../work-records/index.ts";
-import { recordPlanEvent, stageValidationPassedInExecutionWorktree } from "./plan-lifecycle.js";
+import { recordPlanEvent, stageValidationPassedInExecutionWorktree } from "./plan-lifecycle.ts";
 import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { advancePublicationAttempt, createPublicationAttempt } from "./publication-attempt.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
-import { removeWorktreeGitArtifacts } from "../worktree.js";
+import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import type { RuntimeSystemStatusEvent, SessionRuntimeEvent } from "../session/session-runtime-events.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import type { RuntimeSystemStatusEvent, SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
 import { createProgressRecord } from "./validation-emit.ts";
 import { createGitPort } from "../git-port.ts";
@@ -27,7 +27,7 @@ import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/
 import { buildVerifiedResult } from "./validation-publication.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, PlanLockTimeoutError, savePlan } from "../../plan-store.js";
+import { loadPlan, PlanLockTimeoutError, savePlan } from "../../plan-store.ts";
 
 import { classifyValidationOperationalError, type GitPublicationErrorKind } from "./validation-operational-errors.ts";
 import { decideValidationRecovery, DEFAULT_VALIDATION_RETRY_POLICY } from "./validation-recovery.ts";

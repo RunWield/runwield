@@ -1,5 +1,5 @@
 import type { RunWieldPackageInstall } from "../src/shared/package-install.ts";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { type NativeSpawnOptions, spawnNativeProcess } from "../src/shared/foreground-process.ts";
 import { collectProcessOutput } from "../src/testing/subprocess-output.ts";
 import { tmpdir } from "node:os";

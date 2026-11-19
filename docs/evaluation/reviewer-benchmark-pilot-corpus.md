@@ -18,8 +18,11 @@ pre-run requirement.
 nine-case `--scenarios smoke` selection is unchanged. The runner measures one configuration, one trial per case. The
 [2026-10-23 baseline](reviewer-benchmark-results/2026-10-baseline-smoke.md) completed all nine original rounds. The
 owner accepted its 13 blocking findings, including findings on two oracle-clean twins. Under the historical rules,
-these findings blocked semantic scoring against the original oracle. Four packages are now revision 2 after repairs;
-the [full discovery run](reviewer-benchmark-results/2026-10-discovery-pairs.md) evaluates the current fixtures.
+these findings blocked semantic scoring against the original oracle. Seven packages are now revision 2 and RV-D08 is revision 3 after repairs;
+the [full discovery run](reviewer-benchmark-results/2026-10-discovery-pairs.md) predates the revision-2 repairs to
+RV-D06–D08 and RV-D10. Those repairs strengthen authority, result settlement, completion delivery, and retry diagnostics
+without removing the planted A defects. RV-D08 revision 3 checks exactly one validation-owned consumption and one
+transition; its defective public suite must fail with the declared assertion. See [fixture revisions](../../evals/reviewer/README.md#fixture-revisions-after-owner-adjudication).
 Its semantic scores are pending adjudication, not a trend against the revision-1 baseline.
 
 Post-run `oracleVerdicts` in `adjudications.json` mark each case `confirmed` or `fixture_needs_repair`, with an

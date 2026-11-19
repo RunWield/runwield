@@ -1,3 +1,6 @@
+import { executionWorktreePathExists } from "../../shared/workflow/execution-worktree-rescue.ts";
+import { listControllerDocumentWorktrees } from "../../shared/workflow/controller-registry.ts";
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import { realpath as fsRealpath } from "node:fs/promises";
 import {
     canonicalizeStoredPlanName,
@@ -7,14 +10,14 @@ import {
     loadPlan,
     resolvePlan,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import {
     type MissingExecutionWorktreeRecovery,
     resolveWorkflowPlanLocation,
 } from "../../shared/workflow/plan-location.ts";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
-import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
-import { listEntries } from "../../shared/worktree-registry.js";
+import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
+import { listEntries, prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 import { cleanupStoredPublication, loadPublicationAttempt } from "../../shared/workflow/publication-machine.ts";
 import { isPublicationCleanupPending } from "../../shared/workflow/publication-attempt.ts";
 
@@ -97,9 +100,10 @@ export async function resumePlanPublicationCleanup(
     projectRoot: string,
     planArg: string,
 ): Promise<PublicationCleanupNotice[]> {
+    await prepareWorktreeRegistry(projectRoot);
     const registryRoot = resolvePrimaryCheckoutRoot(projectRoot);
     const planName = canonicalizeStoredPlanName(await normalizePlanArgument(projectRoot, planArg)).name;
-    const entries = (await listEntries(registryRoot, { migrate: false })).filter(
+    const entries = (await listEntries(registryRoot)).filter(
         (entry) => entry.status !== "abandoned" && entry.planName === planName,
     );
     if (entries.some((entry) => entries.filter((candidate) => candidate.planName === entry.planName).length > 1)) {
@@ -131,7 +135,15 @@ export async function resolvePlanWithPrimaryRecovery(
     projectRoot: string,
     planArg: string,
 ): Promise<LoadPlanResolution> {
-    if (isPlanIdArgument(planArg)) return { plan: await findPlanEvidenceById(projectRoot, planArg) };
+    await prepareWorktreeRegistry(projectRoot);
+    if (isPlanIdArgument(planArg)) {
+        const selected = await findPlanEvidenceById(projectRoot, planArg);
+        if (!selected) throw new Error("Plan not found.");
+        await preparePlanWorkflow(projectRoot, selected.planName);
+        return {
+            plan: await findPlanEvidenceById(projectRoot, planArg),
+        };
+    }
     planArg = await normalizePlanArgument(projectRoot, planArg);
     let name: string;
     try {
@@ -139,8 +151,8 @@ export async function resolvePlanWithPrimaryRecovery(
     } catch {
         return { plan: await resolvePlan(projectRoot, planArg) };
     }
+    await preparePlanWorkflow(projectRoot, name);
     const location = await resolveWorkflowPlanLocation(projectRoot, name, {
-        migrateRegistry: false,
         loadFromTarget: true,
         readOnly: true,
     });
@@ -150,7 +162,11 @@ export async function resolvePlanWithPrimaryRecovery(
     const resolvedPlan = location.plan ? { ...location.plan, planName: name } : await resolvePlan(projectRoot, planArg);
     if (location.planningNotStarted || location.missingExecutionCheckout) return { plan: resolvedPlan };
     const repaired = await repairRetiredPlanStatus(location.documentRoot, name, resolvedPlan);
-    return { ...repaired, recoveredWorktree: location.recoveredWorktree };
+    return {
+        ...repaired,
+        plan: repaired.plan,
+        recoveredWorktree: location.recoveredWorktree,
+    };
 }
 
 export interface PlanDocumentTarget {
@@ -160,6 +176,18 @@ export interface PlanDocumentTarget {
 
 /** Select document authority without recovery, status repair, or activation. */
 export async function discoverPlanDocumentRoot(projectRoot: string, planArg: string): Promise<PlanDocumentTarget> {
+    // Directory consent precedes authority validation or repair. This is only a
+    // guard target: resolving the workflow below must still reject foreign trees.
+    const normalized = await normalizePlanArgument(projectRoot, planArg);
+    const registered = (await listControllerDocumentWorktrees(projectRoot)).filter(
+        (entry) => entry.planName === normalized || entry.planId === planArg,
+    );
+    if (registered.length === 1)
+        return {
+            path: registered[0].path,
+            missingExecutionCheckout: !(await executionWorktreePathExists(registered[0].path)),
+        };
+
     if (isPlanIdArgument(planArg)) {
         const plan = await findPlanEvidenceById(projectRoot, planArg);
         return { path: resolve(plan.path, ...plan.relativePath.split("/").map(() => "..")) };
@@ -172,7 +200,7 @@ export async function discoverPlanDocumentRoot(projectRoot: string, planArg: str
         const plan = await resolvePlan(projectRoot, planArg);
         return { path: dirname(plan.path) };
     }
-    const location = await resolveWorkflowPlanLocation(projectRoot, name, { migrateRegistry: false, readOnly: true });
+    const location = await resolveWorkflowPlanLocation(projectRoot, name, { readOnly: true });
     return {
         path: location.documentRoot,
         missingExecutionCheckout: location.missingExecutionCheckout,

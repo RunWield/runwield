@@ -1,6 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import {
+    candidateIdentity,
     extractDiffPaths,
     hasImplementationDiff,
     requiresImplementationDiff,
@@ -62,4 +63,34 @@ test("implementation diffs are distinguished from Plan-only edits", () => {
     // RunWield cannot read as "no work" would let a Plan claim completion over
     // changes nobody accounted for.
     assertEquals(hasImplementationDiff("something we cannot parse", "demo"), true);
+});
+
+const codeDiff = "diff --git a/src/value.ts b/src/value.ts\n@@ -1 +1 @@\n-old\n+new\n";
+
+test("candidate identity ignores all Plan sections but binds implementation content", () => {
+    const plan = "diff --git a/docs/plans/demo.md b/docs/plans/demo.md\n+status: reviewed\n";
+    const sibling = "diff --git a/docs/plans/epic/other.md b/docs/plans/epic/other.md\n+changed prose\n";
+    assertEquals(candidateIdentity(plan + codeDiff + sibling, "demo"), candidateIdentity(codeDiff, "demo"));
+    assertEquals(candidateIdentity(plan + sibling, "demo"), candidateIdentity("", "demo"));
+    const quotedPlan = 'diff --git "a/docs/plans/with\\tquote.md" "b/docs/plans/with\\tquote.md"\n+updated\n';
+    assertEquals(candidateIdentity(quotedPlan + codeDiff, "demo"), candidateIdentity(codeDiff, "demo"));
+    assertEquals(candidateIdentity(codeDiff, "demo").length, 64);
+    assertEquals(
+        candidateIdentity(codeDiff, "demo") === candidateIdentity(codeDiff.replace("+new", "+edited"), "demo"),
+        false,
+    );
+});
+
+test("candidate identity ignores transient RunWield runtime files but binds project settings", () => {
+    const lock = "diff --git a/.wld/internal/plan-locks/demo.lock b/.wld/internal/plan-locks/demo.lock\n+locked\n";
+    const settings = "diff --git a/.wld/settings.json b/.wld/settings.json\n+changed\n";
+    assertEquals(candidateIdentity(codeDiff + lock, "demo"), candidateIdentity(codeDiff, "demo"));
+    assertEquals(candidateIdentity(codeDiff + settings, "demo") === candidateIdentity(codeDiff, "demo"), false);
+});
+
+test("candidate identity retains unreadable diffs and renames outside Plan documents", () => {
+    const rename =
+        "diff --git a/docs/plans/demo.md b/src/demo.md\nrename from docs/plans/demo.md\nrename to src/demo.md\n";
+    assertEquals(candidateIdentity(rename, "demo") === candidateIdentity("", "demo"), false);
+    assertEquals(candidateIdentity("unreadable diff", "demo") === candidateIdentity("", "demo"), false);
 });

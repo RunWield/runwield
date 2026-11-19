@@ -4,14 +4,14 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
-import { findPlansByParent, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { findPlansByParent, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { addEntry } from "../worktree-registry.js";
-import { recordPlanEvent } from "./plan-lifecycle.js";
-import { continueWorkflowValidation } from "./validation-supervisor.ts";
-import { attachRecorder, makeUi } from "./validation-test-helpers.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { addEntry } from "../worktree-registry.ts";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { continueWorkflowValidation } from "./validation.ts";
+import { attachRecorder, makeUi } from "./validation-test-helpers.ts";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// app\n" });
 
@@ -67,9 +67,15 @@ for (const event of ["manual_user_verified", "validation_passed"] as const) {
             await register(root, b, "b", "epic/b");
             const sibling = await loadPlan(b, "epic/b");
             assert(sibling);
-            await updatePlanFrontMatter(b, "epic/b", { status: "user_verified" }, {}, {
-                expectedRevision: sibling.revision,
-            });
+            await updatePlanFrontMatter(
+                b,
+                "epic/b",
+                { status: "user_verified" },
+                {},
+                {
+                    expectedRevision: sibling.revision,
+                },
+            );
             const primary = await loadPlan(root, "epic");
             assert(primary);
             assertEquals((await findPlansByParent(a, "epic")).map((plan) => plan.name).sort(), ["epic/a", "epic/b"]);
@@ -132,9 +138,15 @@ for (const surface of ["primary", "execution"]) {
             await register(root, current, "current", "demo");
             const plan = await loadPlan(current, "demo");
             assert(plan);
-            await updatePlanFrontMatter(current, "demo", { status: "implemented" }, {}, {
-                expectedRevision: plan.revision,
-            });
+            await updatePlanFrontMatter(
+                current,
+                "demo",
+                { status: "implemented" },
+                {},
+                {
+                    expectedRevision: plan.revision,
+                },
+            );
             await fsWriteFile(join(current, "app.ts"), "// implemented\n");
             const implemented = await loadPlan(current, "demo");
             assert(implemented);

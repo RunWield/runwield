@@ -9,17 +9,17 @@ import {
     loadPlan,
     parsePlanFrontMatter,
     savePlan,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import {
     findRecordingControllerByName,
     inspectControllerView,
     writeControllerState,
 } from "../workflow/controller-registry.ts";
 import type { PublicationAttempt } from "../workflow/publication-attempt.ts";
-import { attachEpicChildren, buildActiveWorkRecordSource } from "./generation.js";
+import { attachEpicChildren, buildActiveWorkRecordSource } from "./generation.ts";
 import { isTerminalWorkRecordParent } from "./auto-generation.ts";
 
-type WorkRecordSource = import("./generation.js").WorkRecordSource;
+type WorkRecordSource = import("./generation.ts").WorkRecordSource;
 
 async function git(root: string, args: string[]): Promise<string> {
     const result = await captureForegroundProcess("git", { cwd: root, args });
@@ -109,7 +109,7 @@ export interface PublishedDeliverySources {
 /** Read-only delivery facts: keep child identity distinct from the Epic recording owner. */
 export async function readPublishedDeliverySources(
     root: string,
-    attempt: PublicationAttempt,
+    attempt: Pick<PublicationAttempt, "artifactCommit" | "planName" | "planId" | "phase" | "planPaths">,
 ): Promise<PublishedDeliverySources> {
     if (!attempt.artifactCommit) throw new Error("The delivered Plan artifact commit is missing.");
     const delivered = await readSource(root, attempt.artifactCommit, attempt.planName);

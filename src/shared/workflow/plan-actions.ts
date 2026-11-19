@@ -1,10 +1,16 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 /** Shared Plan action evidence and lifecycle executor. */
 
-import { findPlanEvidenceById, getPlanRevisionForText, loadPlan, type PlanFrontMatter } from "../../plan-store.js";
-import { readPlanActionWorktreeEvidence } from "../worktree-registry.js";
-import { getPlanLifecycleActionMetadata, recordPlanEvent } from "./plan-lifecycle.js";
-import type { PlanEvent, PlanStatus } from "./plan-lifecycle.js";
+import { findPlanEvidenceById, getPlanRevisionForText, loadPlan, type PlanFrontMatter } from "../../plan-store.ts";
+import {
+    prepareWorktreeRegistry,
+    readPlanActionWorktreeEvidence,
+    WorktreeRegistryAmbiguityError,
+} from "../worktree-registry.ts";
+import { RegisteredPlanDocumentUnavailableError } from "./controller-registry.ts";
+import { getPlanLifecycleActionMetadata, recordPlanEvent } from "./plan-lifecycle.ts";
+import type { PlanEvent, PlanStatus } from "./plan-lifecycle.ts";
 import { PlanningNotStartedError } from "./plan-location.ts";
 
 export type PlanActionName =
@@ -133,6 +139,14 @@ async function resolvePlanActionAuthority(projectRoot: string, planId: string): 
                 if (registry.live) return null;
                 throw error;
             });
+            if (primaryPlan?.readAvailability?.kind === "pending") {
+                return {
+                    kind: "invalid_action",
+                    message:
+                        primaryPlan.readAvailability.message ||
+                        "Workflow details pending. Load this Plan to prepare its workflow.",
+                };
+            }
             if (!primaryPlan) {
                 return {
                     kind: "recovery_required",
@@ -144,6 +158,14 @@ async function resolvePlanActionAuthority(projectRoot: string, planId: string): 
             const executionPlan = registry.live?.path
                 ? await loadPlan(registry.live.path, primaryPlan.planName).catch(() => null)
                 : null;
+            if (executionPlan?.readAvailability?.kind === "pending") {
+                return {
+                    kind: "invalid_action",
+                    message:
+                        executionPlan.readAvailability.message ||
+                        "Workflow details pending. Load this Plan to prepare its workflow.",
+                };
+            }
             if (registry.live && (!executionPlan || executionPlan.attrs.planId !== primaryPlan.planId)) {
                 return {
                     kind: "recovery_required",
@@ -284,6 +306,64 @@ function eventForRequest(
 export async function executePlanAction(projectRoot: string, request: PlanActionRequest): Promise<PlanActionResult> {
     const invalid = validateRequest(request);
     if (invalid) return { kind: "invalid_action", message: invalid };
+    try {
+        await prepareWorktreeRegistry(projectRoot);
+        const registry = await readPlanActionWorktreeEvidence(projectRoot, request.planId);
+        if (registry.kind !== "ok") {
+            return {
+                kind: "recovery_required",
+                message: sanitizeMessage(registry.message),
+                entryIds: registry.entryIds,
+            };
+        }
+        if (
+            request.expectedWorktree.kind === "attempt" &&
+            (!registry.live || !sameAttempt(request.expectedWorktree, registry.live))
+        ) {
+            return {
+                kind: "recovery_required",
+                message:
+                    "The worktree attempt changed after this action loaded. Review recovery before mutating the Plan.",
+                entryIds: [request.expectedWorktree.id, ...(registry.live ? [registry.live.id] : [])],
+            };
+        }
+        const selected = await findPlanEvidenceById(projectRoot, request.planId);
+        if (!selected) return { kind: "invalid_action", message: "Plan not found." };
+        await preparePlanWorkflow(projectRoot, selected.planName);
+    } catch (error) {
+        let registry;
+        try {
+            registry = await readPlanActionWorktreeEvidence(projectRoot, request.planId);
+        } catch {
+            return {
+                kind: "invalid_action",
+                message: sanitizeMessage(error instanceof Error ? error.message : String(error)),
+            };
+        }
+        if (
+            error instanceof WorktreeRegistryAmbiguityError ||
+            error instanceof RegisteredPlanDocumentUnavailableError ||
+            registry.kind !== "ok" ||
+            registry.live
+        ) {
+            return {
+                kind: "recovery_required",
+                message: sanitizeMessage(error instanceof Error ? error.message : String(error)),
+                entryIds:
+                    error instanceof WorktreeRegistryAmbiguityError
+                        ? error.entryIds
+                        : registry.kind !== "ok"
+                          ? registry.entryIds
+                          : registry.live
+                            ? [registry.live.id]
+                            : [],
+            };
+        }
+        return {
+            kind: "invalid_action",
+            message: sanitizeMessage(error instanceof Error ? error.message : String(error)),
+        };
+    }
     const resolved = await resolvePlanActionAuthority(projectRoot, request.planId);
     if (resolved.kind !== "ok") return resolved;
     const { plan, registry } = resolved;

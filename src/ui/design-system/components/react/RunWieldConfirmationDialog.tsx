@@ -10,9 +10,13 @@ export interface ConfirmationDialogProps {
 }
 
 /** Native modal containment, Escape dismissal, and focus restoration. */
-export function RunWieldConfirmationDialog(
-    { title, detail, onContinue, onQuit, returnFocus }: ConfirmationDialogProps,
-) {
+export function RunWieldConfirmationDialog({
+    title,
+    detail,
+    onContinue,
+    onQuit,
+    returnFocus,
+}: ConfirmationDialogProps) {
     const dialog = useRef<HTMLDialogElement>(null);
     const quit = useRef<HTMLButtonElement>(null);
     const titleId = useId();
@@ -55,8 +59,12 @@ export function RunWieldConfirmationDialog(
             <h2 id={titleId}>{title}</h2>
             <p className="rw-confirmation-detail">{detail}</p>
             <div className="rw-confirmation-actions">
-                <RunWieldButton variant="primary" onClick={onContinue}>Continue</RunWieldButton>
-                <button ref={quit} type="button" className="secondary-action" onClick={onQuit}>Quit</button>
+                <RunWieldButton variant="primary" onClick={onContinue}>
+                    Continue
+                </RunWieldButton>
+                <button ref={quit} type="button" className="secondary-action" onClick={onQuit}>
+                    Quit
+                </button>
             </div>
         </dialog>
     );

@@ -71,11 +71,11 @@ appear in the Epic's subsection and reach the integration review."
 
 Owning PRD capabilities in `docs/prd/runwield-core-prd.md`:
 
-- [Plan deviations](../prd/runwield-core-prd.md#plan-deviations): **add** a requirement that a child's confirmed
+- [Plan deviations](../../prd/runwield-core-prd.md#plan-deviations): **add** a requirement that a child's confirmed
   deviations are recorded on its Epic, with acceptance scenarios. The existing requirements stay: explicit
   confirmation, precedence in execution, AI review, and Work Records, idempotent retry, and no change on cancel or a
   stale revision.
-- [Epic decomposition and hold](../prd/runwield-core-prd.md#epic-decomposition-and-hold): **change** the Integration
+- [Epic decomposition and hold](../../prd/runwield-core-prd.md#epic-decomposition-and-hold): **change** the Integration
   Notes sentence so the notes travel with the child's delivery to the Epic branch. **Add** to the Integration Gate
   requirement that the integration review treats child deviations as user-approved. The existing scenario "notes …
   reach the integration review" must become true again.

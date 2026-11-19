@@ -1,5 +1,5 @@
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { PlanOutcome } from "./workflow.js";
+import type { PlanOutcome } from "./workflow.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { decidePostExecution, decidePostPlanning } from "./decisions.ts";

@@ -9,7 +9,7 @@ import {
     normalizeSegmentLineageEvidence,
     PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE,
     SEGMENT_LINEAGE_CUSTOM_TYPE,
-} from "./workflow-context-session.js";
+} from "./workflow-context-session.ts";
 import { readPlanAssociations } from "./plan-association.ts";
 import { FILE_SESSION_STORE_VERSION, isoNow } from "./file-session-storage.ts";
 import type {

@@ -1,13 +1,13 @@
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN, getCwd } from "../../constants.js";
-import { deleteArchivedPlanUnit } from "../../plan-store.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
+import { deleteArchivedPlanUnit } from "../../plan-store.ts";
 import {
     type ArchivedPlanUnit,
     collectArchivedPlanUnits,
     collectWorkRecordPlanIds,
     selectArchivedPlansForPrune,
 } from "../../shared/plan-archive-retention.ts";
-import { getPlanArchiveRetentionPolicy } from "../../shared/settings.js";
+import { getPlanArchiveRetentionPolicy } from "../../shared/settings.ts";
 
 function printPruneHelp(): void {
     console.log(`Usage:

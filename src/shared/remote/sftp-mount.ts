@@ -21,7 +21,8 @@ import {
 import { join } from "node:path";
 import { parse as parseJsonc } from "../jsonc.ts";
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
+import { assertRemoteMountPrerequisites, parseOsRelease, REMOTE_PYTHON_REQUIRED } from "./host-prerequisites.ts";
 
 export interface LaptopPackageRoot {
     source: string;
@@ -360,16 +361,21 @@ export async function mountLaptopHome(home: string, config: MountHeader): Promis
     }
     const homeStat = await fsLstat(home);
     if (!homeStat.isDirectory() || homeStat.isSymbolicLink()) throw new Error("Remote home must be a real directory");
+    const available = new Set<string>();
     for (const command of ["sshfs", "fusermount3", "python3"]) {
         const result = await captureForegroundProcess("sh", {
             cwd: getCwd(),
             args: ["-c", 'command -v "$1" >/dev/null', "--", command],
         });
-        if (result.code !== 0) throw new Error(`Remote mount requires ${command}`);
+        if (result.code === 0) available.add(command);
     }
-    if (!(await fsStat("/dev/fuse").catch(() => null))?.isCharacterDevice()) {
-        throw new Error("Remote mount requires an accessible /dev/fuse");
-    }
+    if (!available.has("python3")) throw new Error(REMOTE_PYTHON_REQUIRED);
+    assertRemoteMountPrerequisites({
+        ...parseOsRelease(await fsReadFile("/etc/os-release", "utf8").catch(() => "")),
+        sshfs: available.has("sshfs"),
+        fusermount3: available.has("fusermount3"),
+        fuseDevice: (await fsStat("/dev/fuse").catch(() => null))?.isCharacterDevice() === true,
+    });
     await fsReadFile("/proc/self/mountinfo", "utf8").catch(() => {
         throw new Error("Remote mount requires /proc/self/mountinfo for safe cleanup");
     });
@@ -399,6 +405,7 @@ export async function mountLaptopHome(home: string, config: MountHeader): Promis
     const created: string[] = [];
     let uncertain = false;
     let probePending = false;
+    let storageCheck: Promise<void> | undefined;
     let monitorStopped = false;
     let monitorTimer: ReturnType<typeof setInterval> | undefined;
     let storageLost: (() => void) | undefined;
@@ -424,9 +431,9 @@ export async function mountLaptopHome(home: string, config: MountHeader): Promis
     const close = async () => {
         monitorStopped = true;
         if (monitorTimer !== undefined) clearInterval(monitorTimer);
-        // A timed-out or still-running kernel lookup cannot be cancelled by Promise.race.
-        // Keep the sealed mountpoint and report uncertainty even if mountinfo changes.
-        if (probePending) uncertain = true;
+        // Let the current bounded check settle before unmounting. A healthy lookup
+        // is not uncertainty; a timed-out kernel request still retains the sealed root.
+        await storageCheck;
         let failure: Error | undefined;
         // A failed ordinary unmount can leave a live FUSE mount after the connection exits.
         // Each command is bounded. Check the visible mount identity again before every attempt;
@@ -634,6 +641,7 @@ export async function mountLaptopHome(home: string, config: MountHeader): Promis
                     for (const { path, mountId } of active) {
                         if (monitorStopped) return;
                         const before = await mountAt(path);
+                        if (monitorStopped) return;
                         if (before?.id !== mountId || before?.type !== "fuse.sshfs") {
                             throw new Error(`SSHFS mount identity changed: ${path}`);
                         }
@@ -670,7 +678,7 @@ export async function mountLaptopHome(home: string, config: MountHeader): Promis
             }
         };
         monitorTimer = setInterval(() => {
-            void checkStorage();
+            if (!probePending) storageCheck = checkStorage();
         }, 5_000);
         return {
             globalRoot: join(privateDir, "global"),

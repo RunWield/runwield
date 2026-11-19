@@ -7,17 +7,17 @@
  * file lets it do.
  */
 
-import { AGENTS, CLI_BIN } from "../../constants.js";
+import { AGENTS, CLI_BIN } from "../../constants.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../shared/workflow/execution-agent.ts";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
 import { resetTuiState as resetTuiStateFn } from "../command-helpers.ts";
 import {
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../../shared/session/session-runtime-interactions.js";
+} from "../../shared/session/session-runtime-interactions.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import type { SequenceReviewDecision } from "../../shared/workflow/sequence-review.ts";
 import type { ActiveExecutionWorkflow, PlanSessionSurface } from "./plan-session-types.ts";

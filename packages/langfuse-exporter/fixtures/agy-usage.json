@@ -1,0 +1,21 @@
+{
+    "source": "src/shared/session/backends/agy-cli/fixtures/",
+    "rows": [
+        {
+            "fixture": "agy-1.2.12-tool-stream.jsonl",
+            "inputTokens": 19529,
+            "outputTokens": 155,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 16511,
+            "cacheWriteTokens": null
+        },
+        {
+            "fixture": "agy-1.2.12-model-read-tool-stream.jsonl",
+            "inputTokens": 31817,
+            "outputTokens": 320,
+            "reasoningTokens": 256,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": null
+        }
+    ]
+}

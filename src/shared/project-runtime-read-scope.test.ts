@@ -15,40 +15,109 @@ import {
 } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import { join } from "node:path";
-import { getRunWieldRuntimeDir } from "../constants.js";
-import { listPlans, loadPlan, savePlan } from "../plan-store.js";
+import { getRunWieldRuntimeDir } from "../constants.ts";
+import { listPlans, loadPlan, savePlan } from "../plan-store.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {
     enterProjectRuntime,
+    checkedProjectRuntimeLayout,
+    inspectProjectRuntimeReadAccess,
     ProjectRuntimeEntryRefusedError,
     withProjectRuntimeReadScope,
 } from "./project-runtime-layout.ts";
 import { writeControllerState } from "./workflow/controller-registry.ts";
-import { listEntries } from "./worktree-registry.js";
+import { listEntries } from "./worktree-registry.ts";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# Runtime read scope\n" });
 
-test("runtime read scope shares checkout verification but rechecks changed evidence on the next read", async () => {
+test("fresh inspection phases discard inherited checks and invalidate the caller on return", async () => {
+    const root = await fixture.checkout();
+    try {
+        const layout = await enterProjectRuntime(root);
+        const marker = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
+        await withProjectRuntimeReadScope(async () => {
+            assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "ready");
+            await fsWriteFile(layout.primary.layoutMarkerPath, JSON.stringify({ version: 999 }));
+            await withProjectRuntimeReadScope(
+                async () => {
+                    assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "blocked");
+                },
+                { fresh: true },
+            );
+            assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "blocked");
+
+            await fsWriteFile(layout.primary.layoutMarkerPath, marker);
+            const started = Promise.withResolvers<void>();
+            const resume = Promise.withResolvers<void>();
+            const phase = withProjectRuntimeReadScope(
+                async () => {
+                    assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "ready");
+                    started.resolve();
+                    await resume.promise;
+                },
+                { fresh: true },
+            );
+            await started.promise;
+            try {
+                // This read belongs to the parent while its independent phase is suspended.
+                assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "ready");
+                await fsWriteFile(layout.primary.layoutMarkerPath, JSON.stringify({ version: 999 }));
+            } finally {
+                resume.resolve();
+                await phase;
+            }
+            assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "blocked");
+        });
+    } finally {
+        await fsRm(root, { recursive: true });
+    }
+});
+
+for (const fails of [false, true]) {
+    test(`fresh inspection expires for detached passive readers after ${fails ? "failure" : "success"}`, async () => {
+        const root = await fixture.checkout();
+        const resume = Promise.withResolvers<void>();
+        try {
+            const layout = await enterProjectRuntime(root);
+            await withProjectRuntimeReadScope(async () => {
+                let continuation = Promise.resolve("not started");
+                const phase = withProjectRuntimeReadScope(
+                    async () => {
+                        assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "ready");
+                        continuation = (async () => {
+                            await resume.promise;
+                            return (await inspectProjectRuntimeReadAccess(root)).kind;
+                        })();
+                        if (fails) throw new Error("inspection failed");
+                    },
+                    { fresh: true },
+                );
+                if (fails) await assertRejects(() => phase, Error, "inspection failed");
+                else await phase;
+                await fsWriteFile(layout.primary.layoutMarkerPath, JSON.stringify({ version: 999 }));
+                resume.resolve();
+                assertEquals(await continuation, "blocked");
+            });
+        } finally {
+            resume.resolve();
+            await fsRm(root, { recursive: true });
+        }
+    });
+}
+
+test("runtime read scope shares passive checks but never shares writer admission", async () => {
     const root = await fixture.checkout({ prefix: "runwield-runtime-read-scope-" });
     try {
-        const layout = await withProjectRuntimeReadScope(async () => {
-            const first = enterProjectRuntime(root);
-            assertStrictEquals(enterProjectRuntime(root), first);
-            const verified = await first;
-            assertStrictEquals(await enterProjectRuntime(root), verified);
-            return await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
+        const layout = await enterProjectRuntime(root);
+        await withProjectRuntimeReadScope(async () => {
+            const first = inspectProjectRuntimeReadAccess(root);
+            assertStrictEquals(inspectProjectRuntimeReadAccess(root), first);
+            await first;
+            await fsWriteFile(layout.primary.layoutMarkerPath, "{invalid");
+            await assertRejects(() => enterProjectRuntime(root), ProjectRuntimeEntryRefusedError);
         });
-        const marker = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
-        await fsWriteFile(layout.primary.layoutMarkerPath, "{invalid");
-        await assertRejects(
-            () => withProjectRuntimeReadScope(() => enterProjectRuntime(root)),
-            ProjectRuntimeEntryRefusedError,
-        );
-        await fsWriteFile(layout.primary.layoutMarkerPath, marker);
-        const refreshed = await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
-        assertNotStrictEquals(refreshed, layout);
-        assertEquals(refreshed.primary.checkoutRoot, layout.primary.checkoutRoot);
+        assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "blocked");
     } finally {
         await fsRm(root, { recursive: true });
     }
@@ -122,17 +191,17 @@ async function recreateLegacyDebug(root: string, name: string) {
 test("bounded runtime reads share real Git inspection and ask Git again only for changed evidence", async () => {
     await withTracedProject(async ({ root, listings }) => {
         await withProjectRuntimeReadScope(async () => {
-            await Promise.all([enterProjectRuntime(root), enterProjectRuntime(root)]);
-            await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
+            await Promise.all([checkedProjectRuntimeLayout(root), checkedProjectRuntimeLayout(root)]);
+            await withProjectRuntimeReadScope(() => checkedProjectRuntimeLayout(root));
         });
         assert((await listings()) <= 1);
         await settleGitEvidence();
-        await enterProjectRuntime(root);
+        await checkedProjectRuntimeLayout(root);
         const settled = await listings();
-        await enterProjectRuntime(root);
+        await checkedProjectRuntimeLayout(root);
         assertEquals(await listings(), settled);
         await git(root, ["branch", "-m", "renamed-main"]);
-        await enterProjectRuntime(root);
+        await checkedProjectRuntimeLayout(root);
         assertEquals(await listings(), settled + 1);
     });
 });

@@ -1,10 +1,10 @@
-import { AGENTS } from "../../../constants.js";
-import { readPersistedManualModelState, resolveResumeAgentName } from ".././active-agent-session.js";
-import { loadAgentDef } from ".././agents.js";
-import { resolveModel } from ".././session.js";
+import { AGENTS } from "../../../constants.ts";
+import { readPersistedManualModelState, resolveResumeAgentName } from ".././active-agent-session.ts";
+import { loadAgentDef } from ".././agents.ts";
+import { resolveModel } from ".././session.ts";
 import { resolvePromptTemplateSettings } from "../prompt-template-settings.ts";
 import { resolveNamedInvocation } from ".././named-invocation.ts";
-import { isPathInside, openPersistedRootSession } from ".././root-session.js";
+import { isPathInside, openPersistedRootSession } from ".././root-session.ts";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
 import {
     modelSupportsImageInput,
@@ -21,7 +21,10 @@ import type { ManagedOperationFailure, PromptSessionOptions } from "./types.ts";
 import type { RuntimeServices } from "./base.ts";
 import type { RuntimeManagedOperations } from "./managed-operations.ts";
 
-type RuntimeImageModel = Awaited<ReturnType<typeof resolveModel>>;
+type ResolvedModel = Awaited<ReturnType<typeof resolveModel>>;
+interface RuntimeImageModel extends Partial<Pick<ResolvedModel, "provider" | "id" | "input" | "executionBackend">> {
+    model?: string;
+}
 type PersistedSessionImage = Awaited<ReturnType<typeof persistImageAttachment>> & {
     ok?: true;
     error?: undefined;
@@ -38,20 +41,18 @@ export class RuntimeImages {
 
     constructor(private readonly services: RuntimeServices) {}
 
-    connect(
-        managedOperations: RuntimeManagedOperationsDependency,
-    ) {
+    connect(managedOperations: RuntimeManagedOperationsDependency) {
         this.managedOperations = managedOperations;
     }
     async persistSessionImage(
         sessionId: string,
-        image: import(".././types.js").ImageAttachment,
+        image: import(".././image-attachments.ts").ImageAttachment,
     ): Promise<PersistedSessionImage | ManagedOperationFailure> {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("SessionRuntime.persistSessionImage: session not found");
         const managed = session.getManagedMetadata?.();
         if (managed && !session.getRootSessionManager?.()) {
-            if (!this.services.sessionStore) {
+            if (!this.services.sessionStore && !this.services.remotePersistence) {
                 throw new Error("Cannot persist image attachment: no active session is available.");
             }
             return await this.managedOperations.runManagedOperation(
@@ -68,30 +69,26 @@ export class RuntimeImages {
     }
 
     async persistActiveSessionImage(
-        session: import(".././hosted-session.js").HostedSession,
-        image: import(".././types.js").ImageAttachment,
+        session: import(".././hosted-session.ts").HostedSession,
+        image: import(".././image-attachments.ts").ImageAttachment,
     ) {
         const sessionManager = session.getRootSessionManager();
         if (!isRuntimeRootSessionManager(sessionManager)) {
             throw new Error("Cannot persist image attachment: no active session is available.");
         }
-        return await persistImageAttachment(
-            image,
-            sessionManager,
-            session.cwd,
-        );
+        return await persistImageAttachment(image, sessionManager, session.cwd);
     }
 
-    async preflightSessionImages(sessionId: string, images: import(".././types.js").ImageAttachment[]) {
+    async preflightSessionImages(sessionId: string, images: import(".././image-attachments.ts").ImageAttachment[]) {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return { ok: false, message: "Runtime session not found." };
         return await this.preflightImagesForAgentSession(session, images, getRuntimeRootAgentSession(session));
     }
 
     async prepareSteeringInputForAgentSession(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         text: string,
-        images: import(".././types.js").ImageAttachment[],
+        images: import(".././image-attachments.ts").ImageAttachment[],
         agentSession: RuntimeImageAgentSession,
     ) {
         const modelState = session.getActiveModelState();
@@ -99,8 +96,8 @@ export class RuntimeImages {
         const modelProvider = modelState.provider || managed?.provider || "";
         const modelId = modelState.model || managed?.model || "";
         const modelRegistry = agentSession.modelRegistry || getModelRegistry();
-        const activeModel = agentSession.model ||
-            (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
+        const activeModel =
+            agentSession.model || (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
         const modelProviderName = activeModel?.provider;
         const executionBackend = activeModel?.executionBackend;
         if (images.length > 0 && (modelProviderName === "agy-cli" || executionBackend === "agy-cli")) {
@@ -109,11 +106,9 @@ export class RuntimeImages {
         let fallbackModelRef: string | undefined;
         if (images.length > 0 && !modelSupportsImageInput(activeModel)) {
             try {
-                fallbackModelRef = (await resolveVisionFallbackModel(
-                    modelRegistry,
-                    SYSTEM_MODEL_DISCOVERY_NETWORK,
-                    session.cwd,
-                ))?.modelRef;
+                fallbackModelRef = (
+                    await resolveVisionFallbackModel(modelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK, session.cwd)
+                )?.modelRef;
             } catch (error) {
                 return { ok: false as const, message: error instanceof Error ? error.message : String(error) };
             }
@@ -122,8 +117,8 @@ export class RuntimeImages {
     }
 
     async preflightImagesForAgentSession(
-        session: import(".././hosted-session.js").HostedSession,
-        images: import(".././types.js").ImageAttachment[],
+        session: import(".././hosted-session.ts").HostedSession,
+        images: import(".././image-attachments.ts").ImageAttachment[],
         agentSession: RuntimeImageAgentSession | null,
     ) {
         const modelState = session.getActiveModelState();
@@ -131,8 +126,8 @@ export class RuntimeImages {
         const modelProvider = modelState.provider || managed?.provider || "";
         const modelId = modelState.model || managed?.model || "";
         const modelRegistry = agentSession?.modelRegistry || getModelRegistry();
-        const activeModel = agentSession?.model ||
-            (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
+        const activeModel =
+            agentSession?.model || (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
         return await this.preflightImagesForModel(session, images, activeModel, modelRegistry);
     }
 
@@ -144,8 +139,8 @@ export class RuntimeImages {
     }
 
     async preflightImagesForModel(
-        session: import(".././hosted-session.js").HostedSession,
-        images: import(".././types.js").ImageAttachment[],
+        session: import(".././hosted-session.ts").HostedSession,
+        images: import(".././image-attachments.ts").ImageAttachment[],
         activeModel: RuntimeImageModel | null | undefined,
         modelRegistry: ReturnType<typeof getModelRegistry>,
     ) {
@@ -158,11 +153,9 @@ export class RuntimeImages {
         let fallbackModelRef;
         if (!modelSupportsImageInput(activeModel)) {
             try {
-                fallbackModelRef = (await resolveVisionFallbackModel(
-                    modelRegistry,
-                    SYSTEM_MODEL_DISCOVERY_NETWORK,
-                    session.cwd,
-                ))?.modelRef;
+                fallbackModelRef = (
+                    await resolveVisionFallbackModel(modelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK, session.cwd)
+                )?.modelRef;
             } catch (error) {
                 return { ok: false, message: error instanceof Error ? error.message : String(error) };
             }
@@ -181,18 +174,23 @@ export class RuntimeImages {
             images,
         });
         const activeAgentInfo = session.getActiveAgentInfo?.() || null;
-        const agentName = namedInvocation.kind === "prompt_template"
-            ? namedInvocation.agentName || options.agentName || activeAgentInfo?.agentName || AGENTS.OPERATOR
-            : options.agentName || activeAgentInfo?.agentName || session.getRootAgentName?.() || AGENTS.ROUTER;
-        const modelOverride = namedInvocation.kind === "prompt_template"
-            ? options.preparedModelOverride || namedInvocation.model
-            : options.preparedModelOverride || options.modelOverride;
+        const agentName =
+            namedInvocation.kind === "prompt_template"
+                ? namedInvocation.agentName || options.agentName || activeAgentInfo?.agentName || AGENTS.OPERATOR
+                : options.agentName || activeAgentInfo?.agentName || session.getRootAgentName?.() || AGENTS.ROUTER;
+        const modelOverride =
+            namedInvocation.kind === "prompt_template"
+                ? options.preparedModelOverride || namedInvocation.model
+                : options.preparedModelOverride || options.modelOverride;
         const ignoreManualModelOverride = namedInvocation.kind === "prompt_template";
         const agentDef = await loadAgentDef(agentName, session.cwd);
         const modelRegistry = getModelRegistry();
         const currentSessionManager = session.getRootSessionManager?.();
-        let sessionManager: import("./support.ts").RuntimeRootSessionManager | null =
-            isRuntimeRootSessionManager(currentSessionManager) ? currentSessionManager : null;
+        let sessionManager: import("./support.ts").RuntimeRootSessionManager | null = isRuntimeRootSessionManager(
+            currentSessionManager,
+        )
+            ? currentSessionManager
+            : null;
         let openedSessionManager: import("@earendil-works/pi-coding-agent").SessionManager | null = null;
         try {
             if (!sessionManager) {
@@ -201,12 +199,14 @@ export class RuntimeImages {
                     const segment = this.services.sessionStore?.getCurrentSessionSegment(managed.runwieldSessionId);
                     const transcriptPath = segment?.transcriptPath || managed.transcriptPath;
                     const transcriptCwd = segment?.transcriptCwd || session.cwd;
-                    const projectRoot = segment && this.services.sessionStore
-                        ? this.services.sessionStore.requireSessionProjectRoot(managed.projectId)
-                        : null;
-                    const projectSessionDir = projectRoot && this.services.sessionStore
-                        ? sessionDirForRoot(this.services.sessionStore.path, projectRoot)
-                        : null;
+                    const projectRoot =
+                        segment && this.services.sessionStore
+                            ? this.services.sessionStore.requireSessionProjectRoot(managed.projectId)
+                            : null;
+                    const projectSessionDir =
+                        projectRoot && this.services.sessionStore
+                            ? sessionDirForRoot(this.services.sessionStore.path, projectRoot)
+                            : null;
                     const managedProjectSessionDir =
                         projectSessionDir && isPathInside(transcriptPath, projectSessionDir)
                             ? projectSessionDir
@@ -223,19 +223,23 @@ export class RuntimeImages {
                     openedSessionManager = opened.sessionManager;
                 }
             }
-            const templateProfile = namedInvocation.kind === "prompt_template"
-                ? await resolvePromptTemplateSettings(session, {
-                    ...namedInvocation,
-                    model: options.preparedModelOverride || namedInvocation.model,
-                }, sessionManager)
-                : null;
+            const templateProfile =
+                namedInvocation.kind === "prompt_template"
+                    ? await resolvePromptTemplateSettings(
+                          session,
+                          {
+                              ...namedInvocation,
+                              model: options.preparedModelOverride || namedInvocation.model,
+                          },
+                          sessionManager,
+                      )
+                    : null;
             let effectiveModelOverride = templateProfile?.model || modelOverride;
             if (!ignoreManualModelOverride && !effectiveModelOverride && sessionManager) {
                 const resumeAgent = await resolveResumeAgentName(sessionManager);
                 const persistedManualModel = readPersistedManualModelState(sessionManager, agentName || resumeAgent);
-                const persistedModel = agentName === resumeAgent
-                    ? resolvePersistedResumeModel(sessionManager)
-                    : undefined;
+                const persistedModel =
+                    agentName === resumeAgent ? resolvePersistedResumeModel(sessionManager) : undefined;
                 effectiveModelOverride = persistedManualModel
                     ? persistedManualModel.provider
                         ? `${persistedManualModel.provider}/${persistedManualModel.model}`
@@ -261,8 +265,8 @@ export class RuntimeImages {
     }
 
     async persistPendingPromptImages(
-        hostedSession: import(".././hosted-session.js").HostedSession,
-        images: import(".././types.js").ImageAttachment[],
+        hostedSession: import(".././hosted-session.ts").HostedSession,
+        images: import(".././image-attachments.ts").ImageAttachment[],
     ) {
         if (images.length === 0) return images;
         const sessionManager = hostedSession.getRootSessionManager();

@@ -49,8 +49,12 @@ async function copyTree(source: string, destination: string, insideGitDir = fals
                 await copyFile(from, to);
             } catch (error) {
                 if (
-                    entry.name.endsWith(".lock") && error instanceof Error && "code" in error && error.code === "ENOENT"
-                ) continue;
+                    entry.name.endsWith(".lock") &&
+                    error instanceof Error &&
+                    "code" in error &&
+                    error.code === "ENOENT"
+                )
+                    continue;
                 throw error;
             }
         }
@@ -76,6 +80,9 @@ async function configureFixtureIdentity(cwd: string) {
     await git(cwd, ["config", "core.autocrlf", "false"]);
     // Keep commits independent of the host's signing setup.
     await git(cwd, ["config", "commit.gpgsign", "false"]);
+    // Background object maintenance can remove loose-object directories during checkout's copy.
+    await git(cwd, ["config", "gc.auto", "0"]);
+    await git(cwd, ["config", "maintenance.auto", "false"]);
 }
 
 const templatesToRemove: string[] = [];

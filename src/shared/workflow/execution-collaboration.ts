@@ -1,7 +1,7 @@
-// @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
-import { AGENTS } from "../../constants.js";
-import { resolvePlanExecutionPolicy } from "../../plan-store.js";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
+// @ts-nocheck: Callback parameters and result shapes are implicit.
+import { AGENTS } from "../../constants.ts";
+import { resolvePlanExecutionPolicy } from "../../plan-store.ts";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
 
 export function resolveExecutionOwner(meta) {
     const policy = resolvePlanExecutionPolicy(meta);
@@ -28,7 +28,7 @@ export const PairPauseReasons = Object.freeze({
 });
 
 /**
- * @param {import('../session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
  * @returns {boolean}
  */
 export function supportsPairExecution(hostedSession) {
@@ -44,7 +44,7 @@ export function supportsPairExecution(hostedSession) {
  */
 
 /**
- * @param {import('../session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
  * @param {{ executionAgent: "engineer"|"frontend-engineer", collaborationRecommendation: "autonomous"|"pair", source: "canonical"|"legacy_frontend"|"legacy_frontend_false"|"absent" }} policy
  * @returns {RuntimeCollaborationSelection}
  */

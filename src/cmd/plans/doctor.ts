@@ -1,3 +1,5 @@
+import { inspectControllerDocumentWorktrees } from "../../shared/workflow/controller-registry.ts";
+import { hasApplicablePublicationReceipt } from "../../shared/workflow/publication-receipt.ts";
 import { platform } from "node:process";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { opendir as fsOpendir } from "node:fs/promises";
@@ -11,14 +13,15 @@ import { confirmMissingManagedProjectDirectory, confirmProjectDirectory } from "
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { join } from "node:path";
-import { CLI_BIN, getCwd, isPlannedChangeClassification, WORKTREE_BRANCH_PREFIX } from "../../constants.js";
+import { CLI_BIN, getCwd, isPlannedChangeClassification, WORKTREE_BRANCH_PREFIX } from "../../constants.ts";
 import {
     ensurePlanIdentity,
     getPlanDocumentRoot,
     getPlansDir,
     inspectPlanFileStrict,
     isProjectPlan,
-} from "../../plan-store.js";
+    parsePlanFrontMatter,
+} from "../../plan-store.ts";
 import {
     enterProjectRuntime,
     inspectProjectRuntimeLayout,
@@ -26,6 +29,7 @@ import {
     type ProjectRuntimeLayout,
     type ProjectRuntimeMigrationBlockedResult,
     resolveProjectRuntimeLayout,
+    withProjectRuntimeReadScope,
 } from "../../shared/project-runtime-layout.ts";
 import { inspectRunWieldGitignore } from "../../shared/runwield-owned-paths.ts";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../../shared/lock-file-snapshot.ts";
@@ -40,13 +44,17 @@ import { isLockHolderGone, isLockHolderUnattributable } from "../../shared/proce
 import { doctorCheckMessage, doctorCleanMessage, doctorNeedsHelpMessage } from "./doctor-messages.ts";
 import {
     inspectWorktreeRegistryAtPath,
-    listEntries,
+    prepareWorktreeRegistry,
     pruneEntry,
     reconcileEntryIdentity,
-} from "../../shared/worktree-registry.js";
+} from "../../shared/worktree-registry.ts";
 import { isEpicArtifactPlanName } from "../../shared/epic-artifacts.ts";
-import { inspectTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
-import { readControllerRecordAtPath } from "../../shared/workflow/controller-registry.ts";
+import {
+    inspectTargetBranchPlansByParent,
+    prepareTargetBranchPlansByParent,
+    TargetBranchSnapshotUnavailableError,
+} from "../../shared/workflow/planning-worktree.ts";
+import { prepareControllerView, readControllerRecordAtPath } from "../../shared/workflow/controller-registry.ts";
 import { verifyRecordedPublication } from "../../shared/workflow/validation-merge-verification.ts";
 
 /** A registry attempt as stored, before doctor proves anything about it. */
@@ -65,6 +73,11 @@ interface DoctorIssue {
     commands?: string[];
     /** What --repair did, or would do. Printed so the action is never a surprise. */
     repairSummary?: string;
+}
+
+interface DoctorResult {
+    issues: DoctorIssue[];
+    repaired: number;
 }
 
 interface IssueGuidance {
@@ -117,11 +130,11 @@ function migrationRefusalGuidance(blocked: ProjectRuntimeMigrationBlockedResult)
         case "unsupported_filesystem_move":
             return blocked.message.includes("populated project-local worktree directory")
                 ? [
-                    "Preserve the populated project-local fallback worktree directory. Finish or deliberately remove its work with the RunWield version that created it, then retry. RunWield will not move it.",
-                ]
+                      "Preserve the populated project-local fallback worktree directory. Finish or deliberately remove its work with the RunWield version that created it, then retry. RunWield will not move it.",
+                  ]
                 : [
-                    "Move the project or runtime authority onto one supported filesystem, or complete the upgrade with a supported RunWield version.",
-                ];
+                      "Move the project or runtime authority onto one supported filesystem, or complete the upgrade with a supported RunWield version.",
+                  ];
         default: {
             const exhaustive: never = blocked.reason;
             return [exhaustive];
@@ -306,13 +319,13 @@ function getIssueGuidance(issue: DoctorIssue): IssueGuidance {
                     : "An active or recoverable attempt points at a missing worktree path.",
                 nextSteps: issue.repairable
                     ? [
-                        "Run plans doctor --repair to remove this stale saved attempt.",
-                        "No source work should be lost because the attempt is already complete.",
-                    ]
+                          "Run plans doctor --repair to remove this stale saved attempt.",
+                          "No source work should be lost because the attempt is already complete.",
+                      ]
                     : [
-                        "Find whether the worktree was moved, deleted, or never created.",
-                        "Recover the path or explicitly abandon the attempt through RunWield after confirming there is no work to save.",
-                    ],
+                          "Find whether the worktree was moved, deleted, or never created.",
+                          "Recover the path or explicitly abandon the attempt through RunWield after confirming there is no work to save.",
+                      ],
             };
         case "archived_plan_with_recoverable_attempt":
             return {
@@ -343,9 +356,9 @@ function summarizeIssueSeverities(issues: DoctorIssue[]): string {
         counts.set(severity, (counts.get(severity) || 0) + 1);
         return counts;
     }, new Map<IssueGuidance["severity"], number>());
-    return ["Critical", "Needs attention", "Cleanup"].map((severity) =>
-        `${severity}: ${severityCounts.get(severity as IssueGuidance["severity"]) || 0}`
-    ).join(" · ");
+    return ["Critical", "Needs attention", "Cleanup"]
+        .map((severity) => `${severity}: ${severityCounts.get(severity as IssueGuidance["severity"]) || 0}`)
+        .join(" · ");
 }
 
 function _formatDoctorReport(issues: DoctorIssue[]) {
@@ -371,7 +384,9 @@ function _formatDoctorReport(issues: DoctorIssue[]) {
             const affected = [
                 issue.planName ? `Plan: ${issue.planName}` : undefined,
                 issue.worktreeId ? `Worktree: ${issue.worktreeId}` : undefined,
-            ].filter(Boolean).join(" · ");
+            ]
+                .filter(Boolean)
+                .join(" · ");
             lines.push(`${index + 1}. [${guidance.severity}] ${issue.kind}`);
             if (affected) lines.push(`   Affected: ${affected}`);
             lines.push(`   Diagnosis: ${guidance.diagnosis}`);
@@ -454,11 +469,8 @@ async function collectPlanIssues(
                 issues.push({
                     kind: `plan_${result.kind}`,
                     planName,
-                    message: "message" in result
-                        ? result.message
-                        : "error" in result
-                        ? result.error.message
-                        : entryPath,
+                    message:
+                        "message" in result ? result.message : "error" in result ? result.error.message : entryPath,
                 });
             } else {
                 collectPendingControllerIssues(planName, result.pendingControllerRepairs, issues);
@@ -480,19 +492,17 @@ function collectPendingControllerIssues(
         issues.push(
             repair === "import_legacy_state"
                 ? {
-                    kind,
-                    planName,
-                    message:
-                        `${planName} has legacy runtime fields that the controller can import on the next normal Plan load. Doctor left them unchanged.`,
-                    commands: [`${CLI_BIN} load-plan ${planName}`, `${CLI_BIN} plans doctor --check`],
-                }
+                      kind,
+                      planName,
+                      message: `${planName} has legacy runtime fields that the controller can import on the next normal Plan load. Doctor left them unchanged.`,
+                      commands: [`${CLI_BIN} load-plan ${planName}`, `${CLI_BIN} plans doctor --check`],
+                  }
                 : {
-                    kind,
-                    planName,
-                    message:
-                        `${planName} has an obsolete controller recovery hint because the worktree registry now owns its attempt. Doctor left it unchanged.`,
-                    commands: [`${CLI_BIN} load-plan ${planName}`, `${CLI_BIN} plans doctor --check`],
-                },
+                      kind,
+                      planName,
+                      message: `${planName} has an obsolete controller recovery hint because the worktree registry now owns its attempt. Doctor left it unchanged.`,
+                      commands: [`${CLI_BIN} load-plan ${planName}`, `${CLI_BIN} plans doctor --check`],
+                  },
         );
     }
 }
@@ -533,6 +543,7 @@ interface ArchivedPlanInspection {
     name: string;
     path: string;
     attrs: LoadedPlanInspection["attrs"];
+    recordedWorktreeStatus?: string;
 }
 
 async function collectArchivedPlanParseIssues(
@@ -565,7 +576,12 @@ async function collectArchivedPlanParseIssues(
                         archived: true,
                     });
                     collectPendingControllerIssues(`archived/${planName}`, parsed.pendingControllerRepairs, issues);
-                    plans.push({ name: planName, path: entryPath, attrs: parsed.attrs });
+                    plans.push({
+                        name: planName,
+                        path: entryPath,
+                        attrs: parsed.attrs,
+                        recordedWorktreeStatus: parsePlanFrontMatter(parsed.markdown).attrs.worktreeStatus || undefined,
+                    });
                 } catch (error) {
                     issues.push({
                         kind: "malformed_archived_plan",
@@ -623,9 +639,9 @@ function describeUnresolvedTransition(reconciliation: TransitionReconciliation):
     const detail = reconciliation.resolvable
         ? `Everything it recorded is accounted for: ${reconciliation.reason}.`
         : unproven.length > 0
-        // Already effect-prefixed by reconciliation, so it reads as a clause.
-        ? `Waiting on ${reconciliation.reason}.`
-        : `${capitalize(reconciliation.reason)}.`;
+          ? // Already effect-prefixed by reconciliation, so it reads as a clause.
+            `Waiting on ${reconciliation.reason}.`
+          : `${capitalize(reconciliation.reason)}.`;
     return {
         kind: "unresolved_transition",
         planName: reconciliation.planName,
@@ -637,7 +653,7 @@ function describeUnresolvedTransition(reconciliation: TransitionReconciliation):
         repairSummary: reconciliation.resolvable
             ? "--repair closes this record; the repository already proves it is finished."
             : "Left in place on purpose: closing it without proof could hide unpublished or unsaved work. " +
-                "Resolve it through load-plan; Plan Recovery can record an explicit user attestation when proof is unavailable.",
+              "Resolve it through load-plan; Plan Recovery can record an explicit user attestation when proof is unavailable.",
     };
 }
 
@@ -656,10 +672,15 @@ async function collectWorktreeJournalIssues(
     repair: boolean,
 ): Promise<Array<{ issue?: DoctorIssue; repaired?: boolean }>> {
     const results: Array<{ issue?: DoctorIssue; repaired?: boolean }> = [];
-    for (const entry of entries) {
-        if (entry.path === projectRoot) continue;
+    for (const entry of await inspectControllerDocumentWorktrees(projectRoot, entries)) {
+        if (entry.documentUnavailable || entry.path === projectRoot) continue;
         const journalDir = getTransitionJournalDir(entry.path);
-        if (!(await fsStat(journalDir).then((stat) => stat.isDirectory()).catch(() => false))) continue;
+        if (
+            !(await fsStat(journalDir)
+                .then((stat) => stat.isDirectory())
+                .catch(() => false))
+        )
+            continue;
         const reconciliations = await reconcileTransitionRecoveryRecords(entry.path, {
             apply: repair,
             diagnostic: !repair,
@@ -675,8 +696,7 @@ async function collectWorktreeJournalIssues(
                     ...issue,
                     kind: "unresolved_transition_in_worktree",
                     worktreeId: entry.id,
-                    message:
-                        `${issue.message} This record lives inside the execution worktree at ${entry.path}, so it blocks retries that run there.`,
+                    message: `${issue.message} This record lives inside the execution worktree at ${entry.path}, so it blocks retries that run there.`,
                 },
             });
         }
@@ -708,10 +728,10 @@ async function collectStalePlanLockIssues(
                 const snapshot = await readLockFileSnapshot(path);
                 if (!snapshot) continue;
                 if (isLockHolderUnattributable(snapshot.text)) continue;
-                if (!await isLockHolderGone(snapshot.text)) continue;
+                if (!(await isLockHolderGone(snapshot.text))) continue;
                 if (repair) {
                     const current = await readLockFileSnapshot(path);
-                    if (!current || !await isLockHolderGone(current.text)) continue;
+                    if (!current || !(await isLockHolderGone(current.text))) continue;
                     if (await removeLockFileIfSnapshotMatches(path, snapshot)) results.push({ repaired: true });
                     continue;
                 }
@@ -728,9 +748,12 @@ async function collectStalePlanLockIssues(
                 // Windows mandatory locks deny reads through a second handle. A
                 // concurrently held lock provides no evidence authorizing repair.
                 if (
-                    platform === "win32" && error instanceof Error && "code" in error &&
+                    platform === "win32" &&
+                    error instanceof Error &&
+                    "code" in error &&
                     (error.code === "EBUSY" || error.code === "EAGAIN")
-                ) continue;
+                )
+                    continue;
                 throw error;
             }
         }
@@ -821,21 +844,18 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     if (repair && inspection.integrityIssues.length === 0 && !inspection.readError) {
         // Persist the v1→v2 migration only once the file is known to be consistent;
         // migrating around a conflict is how a readable registry becomes unreadable.
-        await listEntries(projectRoot, { migrate: true }).catch(() => []);
+        await prepareWorktreeRegistry(projectRoot).catch(() => []);
     }
     const canonicalRoot = await fsRealpath(projectRoot).catch(() => projectRoot);
     const registryPaths = new Set(
-        await Promise.all(
-            entries.map((entry) => fsRealpath(entry.path).catch(() => entry.path)),
-        ),
+        await Promise.all(entries.map((entry) => fsRealpath(entry.path).catch(() => entry.path))),
     );
     for (const path of gitWorktreePaths) {
         const canonicalPath = await fsRealpath(path).catch(() => path);
         if (canonicalPath !== canonicalRoot && !registryPaths.has(canonicalPath)) {
             issues.push({
                 kind: "orphan_git_worktree",
-                message:
-                    `Git has a worktree at ${path} that no RunWield attempt claims. It may be yours, or the remains of an attempt RunWield lost track of.`,
+                message: `Git has a worktree at ${path} that no RunWield attempt claims. It may be yours, or the remains of an attempt RunWield lost track of.`,
                 commands: [
                     `git -C ${path} status --short`,
                     `git -C ${path} log --oneline -5`,
@@ -848,18 +868,15 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
         }
     }
     const registryBranches = new Set(entries.map((entry) => entry.branch).filter(Boolean));
-    for (
-        const branch of await runGitLines(projectRoot, [
-            "for-each-ref",
-            "--format=%(refname:short)",
-            `refs/heads/${WORKTREE_BRANCH_PREFIX}`,
-        ])
-    ) {
+    for (const branch of await runGitLines(projectRoot, [
+        "for-each-ref",
+        "--format=%(refname:short)",
+        `refs/heads/${WORKTREE_BRANCH_PREFIX}`,
+    ])) {
         if (!registryBranches.has(branch)) {
             issues.push({
                 kind: "orphan_worktree_branch",
-                message:
-                    `Branch ${branch} was created by RunWield for an execution attempt that is no longer in the registry.`,
+                message: `Branch ${branch} was created by RunWield for an execution attempt that is no longer in the registry.`,
                 commands: [
                     `git log --oneline ${branch} -10`,
                     `git branch --contains ${branch}`,
@@ -872,27 +889,51 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
         }
     }
 
-    const diagnosticEntries = await Promise.all(entries.map(async (entry) => {
-        if (entry.status !== "abandoned") return entry;
-        const controller = await readControllerRecordAtPath(layout.primary.controllerPlansDir, {
-            planId: entry.planId,
-            planName: entry.planName,
-        });
-        return controller?.state.documentWorktreeId === entry.id ? { ...entry, documentSelected: true } : entry;
-    }));
-    const identityDocuments = await inspectPlanIdentityDocuments(projectRoot, diagnosticEntries);
+    const diagnosticEntries = await Promise.all(
+        entries.map(async (entry) => {
+            if (entry.status !== "abandoned") return entry;
+            const controller = await readControllerRecordAtPath(layout.primary.controllerPlansDir, {
+                planId: entry.planId,
+                planName: entry.planName,
+            });
+            return controller?.state.documentWorktreeId === entry.id ? { ...entry, documentSelected: true } : entry;
+        }),
+    );
+    const identityDocuments = (await inspectPlanIdentityDocuments(projectRoot, diagnosticEntries)).sort((left, right) =>
+        left.name.localeCompare(right.name),
+    );
     for (const parent of [...identityDocuments]) {
         const targetBranch = typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
         if (!targetBranch || !isProjectPlan(parent.attrs)) continue;
         let children: Awaited<ReturnType<typeof inspectTargetBranchPlansByParent>>;
         try {
-            children = await inspectTargetBranchPlansByParent(projectRoot, targetBranch, parent.name);
-        } catch {
+            children = repair
+                ? await prepareTargetBranchPlansByParent(projectRoot, targetBranch, parent.name)
+                : await inspectTargetBranchPlansByParent(projectRoot, targetBranch, parent.name);
+        } catch (error) {
+            if (
+                error instanceof TargetBranchSnapshotUnavailableError &&
+                error.reason === "missing_ref" &&
+                parent.attrs.status === "draft" &&
+                !parent.attrs.worktreeId &&
+                !parent.attrs.validationCheckpoint &&
+                !parent.attrs.implementedAt &&
+                !parent.attrs.deliveryEvidence &&
+                !inspection.readError &&
+                inspection.integrityIssues.length === 0 &&
+                !identityDocuments.some((plan) => plan.attrs.parentPlan === parent.name) &&
+                !entries.some(
+                    (entry) =>
+                        entry.planName === parent.name ||
+                        entry.planName.startsWith(`${parent.name}/`) ||
+                        Boolean(parent.attrs.planId && entry.planId === parent.attrs.planId),
+                )
+            )
+                continue;
             issues.push({
                 kind: "target_branch_inspection_error",
                 planName: parent.name,
-                message:
-                    `Could not inspect authoritative target branch ${targetBranch} for child Plans of ${parent.name}. Child state is unknown; the local branch is not a safe substitute.`,
+                message: `Could not inspect authoritative target branch ${targetBranch} for child Plans of ${parent.name}. Local target evidence is unavailable; child state is unknown. Load this Plan to prepare its workflow.`,
                 commands: [
                     `git ls-remote --heads origin refs/heads/${targetBranch.replace(/^origin\//, "")}`,
                     `${CLI_BIN} plans doctor --check`,
@@ -901,17 +942,44 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
             continue;
         }
         for (const child of children) {
-            const existing = identityDocuments.findIndex((plan) =>
-                plan.name === child.name || Boolean(child.attrs.planId && plan.attrs.planId === child.attrs.planId)
+            const archived = archivedPlans.find(
+                (plan) => plan.name === child.name && plan.attrs.planId && plan.attrs.planId === child.attrs.planId,
             );
-            if (existing >= 0) identityDocuments.splice(existing, 1, child);
-            else identityDocuments.push(child);
+            const activeCopy = identityDocuments.some((plan) => plan.attrs.planId === child.attrs.planId);
+            const liveAttempt = entries.some(
+                (entry) => entry.status !== "abandoned" && entry.planId === child.attrs.planId,
+            );
+            if (
+                archived &&
+                !activeCopy &&
+                !liveAttempt &&
+                !inspection.readError &&
+                inspection.integrityIssues.length === 0 &&
+                (await isCommittedArchive(projectRoot, `archived/${archived.name}`, archived.path).catch(() => false))
+            )
+                continue;
+            const existing = identityDocuments.findIndex(
+                (plan) =>
+                    plan.name === child.name || Boolean(child.attrs.planId && plan.attrs.planId === child.attrs.planId),
+            );
+            if (existing >= 0) {
+                const current = identityDocuments[existing];
+                if (
+                    !child.attrs.planId &&
+                    current.attrs.planId &&
+                    current.attrs.parentPlan === child.attrs.parentPlan
+                ) {
+                    child.attrs.planId = current.attrs.planId;
+                }
+                identityDocuments.splice(existing, 1, child);
+            } else identityDocuments.push(child);
         }
     }
     if (repair) {
         for (const plan of identityDocuments) {
-            if (plan.attrs.planId) continue;
-            const exists = await fsStat(plan.path).then((stat) => stat.isFile()).catch(() => false);
+            const exists = await fsStat(plan.path)
+                .then((stat) => stat.isFile())
+                .catch(() => false);
             if (!exists) continue;
             const documentRoot = getPlanDocumentRoot(plan.path);
             const lockDir = resolveProjectRuntimeLayout(documentRoot).selected.planLocksDir;
@@ -923,6 +991,9 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
                     throw error;
                 });
             if (hasLock) continue;
+            const raw = parsePlanFrontMatter(await fsReadFile(plan.path, "utf8")).attrs;
+            await prepareControllerView(documentRoot, { planId: raw.planId, planName: plan.name }, raw);
+            if (plan.attrs.planId) continue;
             const inspected = await inspectPlanFileStrict(plan.path);
             if (inspected.kind !== "loaded" || inspected.pendingControllerRepairs.length > 0) continue;
             const resource = await ensurePlanIdentity(documentRoot, plan.name);
@@ -931,23 +1002,24 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
             repaired += 1;
         }
     }
-    const inspectedIdentityDocuments = await Promise.all(identityDocuments.map(async (plan) => {
-        const inspected = await inspectPlanFileStrict(plan.path);
-        return inspected.kind === "loaded" && "attrs" in inspected
-            ? { ...plan, attrs: inspected.attrs, pendingControllerRepairs: inspected.pendingControllerRepairs }
-            : { ...plan, pendingControllerRepairs: [] };
-    }));
+    const inspectedIdentityDocuments = await Promise.all(
+        identityDocuments.map(async (plan) => {
+            const inspected = await inspectPlanFileStrict(plan.path);
+            return inspected.kind === "loaded" && "attrs" in inspected
+                ? { ...plan, attrs: inspected.attrs, pendingControllerRepairs: inspected.pendingControllerRepairs }
+                : { ...plan, pendingControllerRepairs: [] };
+        }),
+    );
     for (const plan of inspectedIdentityDocuments) {
         collectPlanAttributeIssues(plan, issues, discoveredPlanIds);
         collectPendingControllerIssues(plan.name, plan.pendingControllerRepairs, issues);
     }
-    for (
-        const plan of [
-            ...inspectedIdentityDocuments,
-            ...archivedPlans.map((plan) => ({ ...plan, name: `archived/${plan.name}` })),
-        ]
-    ) {
-        const reviewedCandidate = plan.attrs.status === "reviewed" &&
+    for (const plan of [
+        ...inspectedIdentityDocuments,
+        ...archivedPlans.map((plan) => ({ ...plan, name: `archived/${plan.name}` })),
+    ]) {
+        const reviewedCandidate =
+            plan.attrs.status === "reviewed" &&
             Boolean(plan.attrs.validatedCommit || plan.attrs.deliveryEvidence?.mode === "worktree_merge");
         if (!reviewedCandidate && !["validated", "verified", "user_verified"].includes(plan.attrs.status || "")) {
             continue;
@@ -960,34 +1032,43 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
         // Older documents may make no Git publication claim at all. Missing
         // disposable metadata alone is not a new publication failure.
         if (!commit && !targetBranch) continue;
-        const liveAttempt = entries.some((entry) =>
-            entry.status !== "abandoned" &&
-            (plan.attrs.planId && entry.planId
-                ? entry.planId === plan.attrs.planId
-                : entry.planName === plan.name.replace(/^archived\//, ""))
+        const liveAttempt = entries.some(
+            (entry) =>
+                entry.status !== "abandoned" &&
+                (plan.attrs.planId && entry.planId
+                    ? entry.planId === plan.attrs.planId
+                    : entry.planName === plan.name.replace(/^archived\//, "")),
         );
         // A committed archive with no unfinished attempt is intentionally retired
         // history. Do not turn a deleted integration branch into a repair request.
         // Still diagnose archives with active attempts or uncommitted changes.
         if (
-            !inspection.readError && inspection.integrityIssues.length === 0 &&
-            plan.name.startsWith("archived/") && !liveAttempt &&
-            await isCommittedArchive(projectRoot, plan.name, plan.path).catch(() => false)
-        ) continue;
+            !inspection.readError &&
+            inspection.integrityIssues.length === 0 &&
+            plan.name.startsWith("archived/") &&
+            !liveAttempt &&
+            (await isCommittedArchive(projectRoot, plan.name, plan.path).catch(() => false))
+        )
+            continue;
         {
             const markdown = await fsReadFile(plan.path, "utf8").catch(() => undefined);
-            const publication = await verifyRecordedPublication(
-                projectRoot,
-                plan.attrs,
-                markdown === undefined ? undefined : { planName: plan.name, markdown },
-            ).catch(() => ({ published: false, unavailable: true }));
+            const publication = repair
+                ? await verifyRecordedPublication(
+                      projectRoot,
+                      plan.attrs,
+                      markdown === undefined ? undefined : { planName: plan.name, markdown },
+                  ).catch(() => ({ published: false, unavailable: true }))
+                : {
+                      published: hasApplicablePublicationReceipt(plan.attrs),
+                      unavailable: !hasApplicablePublicationReceipt(plan.attrs),
+                  };
             if (publication.unavailable) {
                 issues.push({
                     kind: "publication_inspection_error",
                     planName: plan.name,
                     message: `${plan.name} records publication${
                         targetBranch ? ` to ${targetBranch}` : ""
-                    }, but RunWield could not inspect that authority. Publication is unknown; local ancestry is not proof.`,
+                    }, but fresh publication proof is unavailable in this passive check. Load this Plan to confirm delivery; local ancestry is not proof.`,
                     commands: [
                         "git remote -v",
                         ...(targetBranch ? [`git branch -vv --list ${targetBranch.replace(/^origin\//, "")}`] : []),
@@ -1005,13 +1086,14 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
                     message: `${plan.name} passed validation${commit ? ` at ${commit}` : ""}, but publication${
                         targetBranch ? ` to ${targetBranch}` : ""
                     } could not be confirmed. The target may have been removed, rewritten, or be unavailable.`,
-                    commands: commit && targetBranch
-                        ? [
-                            `git log --oneline ${targetBranch} -10`,
-                            `git branch --all --contains ${commit}`,
-                            `git show --stat ${commit}`,
-                        ]
-                        : [],
+                    commands:
+                        commit && targetBranch
+                            ? [
+                                  `git log --oneline ${targetBranch} -10`,
+                                  `git branch --all --contains ${commit}`,
+                                  `git show --stat ${commit}`,
+                              ]
+                            : [],
                     repairSummary: "No branches, commits, or Plan status were changed by this check.",
                 });
             }
@@ -1045,12 +1127,8 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
                     kind: "duplicate_live_attempt",
                     planName: entry.planName,
                     worktreeId: entry.id,
-                    message:
-                        `Plan ${entry.planName} has two unfinished attempts recorded under its name with no stable id: ${prior} and ${entry.id}. RunWield will not guess which one is current.`,
-                    commands: [
-                        `git -C ${entry.path} status --short`,
-                        `${CLI_BIN} load-plan ${entry.planName}`,
-                    ],
+                    message: `Plan ${entry.planName} has two unfinished attempts recorded under its name with no stable id: ${prior} and ${entry.id}. RunWield will not guess which one is current.`,
+                    commands: [`git -C ${entry.path} status --short`, `${CLI_BIN} load-plan ${entry.planName}`],
                 });
             } else {
                 activeByPlan.set(entry.planName, entry.id);
@@ -1061,8 +1139,7 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
                 kind: "registry_plan_id_not_found",
                 planName: entry.planName,
                 worktreeId: entry.id,
-                message:
-                    `Registry attempt ${entry.id} belongs to planId ${entry.planId}, but no Plan (active or archived) carries that id — the Plan file was probably renamed or deleted outside RunWield.`,
+                message: `Registry attempt ${entry.id} belongs to planId ${entry.planId}, but no Plan (active or archived) carries that id — the Plan file was probably renamed or deleted outside RunWield.`,
                 commands: [
                     `grep -rl "${entry.planId}" docs/plans/`,
                     `git -C ${entry.path} status --short`,
@@ -1100,8 +1177,8 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
             // this exact attempt. That back-pointer is real evidence; matching on
             // Plan name is not, and name-based migration cannot resolve an entry
             // whose cached name has drifted. Ambiguity is left for a human.
-            const claimants = identityDocuments.filter((plan) =>
-                plan.attrs.worktreeId === entry.id && plan.attrs.planId
+            const claimants = identityDocuments.filter(
+                (plan) => plan.attrs.worktreeId === entry.id && plan.attrs.planId,
             );
             const claimant = claimants.length === 1 ? claimants[0] : undefined;
             issues.push({
@@ -1112,20 +1189,22 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
                 message: claimant
                     ? `Registry attempt ${entry.id} predates stable Plan ids, and Plan ${claimant.name} already points at this exact attempt.`
                     : claimants.length > 1
-                    ? `Registry attempt ${entry.id} predates stable Plan ids and ${claimants.length} Plans claim it: ${
-                        claimants.map((plan) => plan.name).join(", ")
-                    }. Only one Plan can own an attempt.`
-                    : `Registry attempt ${entry.id} predates stable Plan ids and no Plan points at it, so RunWield cannot tell which Plan it belongs to.`,
-                commands: claimant ? [`${CLI_BIN} plans doctor --repair`] : [
-                    `git -C ${entry.path} status --short`,
-                    `git log --oneline ${entry.branch} -5`,
-                    `grep -rln "worktreeId: \\"${entry.id}\\"" docs/plans/`,
-                ],
+                      ? `Registry attempt ${entry.id} predates stable Plan ids and ${claimants.length} Plans claim it: ${claimants
+                            .map((plan) => plan.name)
+                            .join(", ")}. Only one Plan can own an attempt.`
+                      : `Registry attempt ${entry.id} predates stable Plan ids and no Plan points at it, so RunWield cannot tell which Plan it belongs to.`,
+                commands: claimant
+                    ? [`${CLI_BIN} plans doctor --repair`]
+                    : [
+                          `git -C ${entry.path} status --short`,
+                          `git log --oneline ${entry.branch} -5`,
+                          `grep -rln "worktreeId: \\"${entry.id}\\"" docs/plans/`,
+                      ],
                 repairSummary: claimant
                     ? `--repair records planId ${claimant.attrs.planId} on the attempt. That is a metadata write only; the worktree, branch, and Plan file are untouched.`
                     : claimants.length > 1
-                    ? "Remove the stale worktreeId from whichever Plan does not own this attempt, then re-run --repair."
-                    : "Inspect the branch above. If it holds work you want, resolve it through load-plan; if not, the attempt can be abandoned there.",
+                      ? "Remove the stale worktreeId from whichever Plan does not own this attempt, then re-run --repair."
+                      : "Inspect the branch above. If it holds work you want, resolve it through load-plan; if not, the attempt can be abandoned there.",
             });
             if (repair && claimant) {
                 await reconcileEntryIdentity(projectRoot, entry.id, {
@@ -1148,15 +1227,17 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
                 message: safelyPrunable
                     ? `Registry attempt ${entry.id} points at ${entry.path}, which no longer exists. Its cleanup is already settled, so this is leftover bookkeeping.`
                     : `Registry attempt ${entry.id} is ${entry.status} but its worktree ${entry.path} is gone, so RunWield cannot reach the work it recorded.`,
-                commands: safelyPrunable ? [`${CLI_BIN} plans doctor --repair`] : [
-                    `git log --oneline ${entry.branch} -10`,
-                    `git worktree list --porcelain`,
-                    `${CLI_BIN} load-plan ${entry.planName}`,
-                ],
+                commands: safelyPrunable
+                    ? [`${CLI_BIN} plans doctor --repair`]
+                    : [
+                          `git log --oneline ${entry.branch} -10`,
+                          `git worktree list --porcelain`,
+                          `${CLI_BIN} load-plan ${entry.planName}`,
+                      ],
                 repairSummary: safelyPrunable
                     ? "--repair drops the registry row. The attempt was already settled, so no work can be lost."
                     : `The branch ${entry.branch} still holds any committed work from this attempt — check it before abandoning. ` +
-                        "If the directory was deleted but the branch is intact, load-plan can merge or recreate from it.",
+                      "If the directory was deleted but the branch is intact, load-plan can merge or recreate from it.",
             });
             if (repair && safelyPrunable) {
                 await pruneEntry(projectRoot, entry.id);
@@ -1166,13 +1247,12 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     }
 
     for (const archived of archivedPlans) {
-        const status = typeof archived.attrs.worktreeStatus === "string" ? archived.attrs.worktreeStatus : "";
+        const status = archived.recordedWorktreeStatus || archived.attrs.worktreeStatus || "";
         if (status && !["none", "merged", "abandoned"].includes(status)) {
             issues.push({
                 kind: "archived_plan_with_recoverable_attempt",
                 planName: archived.name,
-                message:
-                    `Archived Plan ${archived.name} still records recoverable worktreeStatus ${status}; restore and resolve the attempt before archival is considered settled.`,
+                message: `Archived Plan ${archived.name} still records recoverable worktreeStatus ${status}; restore and resolve the attempt before archival is considered settled.`,
             });
         }
     }
@@ -1184,12 +1264,21 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
 async function isCommittedArchive(projectRoot: string, planName: string, path: string): Promise<boolean> {
     const result = await captureForegroundProcess("git", {
         cwd: projectRoot,
+        env: { GIT_NO_LAZY_FETCH: "1" },
         args: ["show", `HEAD:docs/plans/${planName}.md`],
     });
-    return result.success && new TextDecoder().decode(result.stdout) === await fsReadFile(path, "utf8");
+    return result.success && new TextDecoder().decode(result.stdout) === (await fsReadFile(path, "utf8"));
 }
 
-export async function runPlansDoctor(projectRoot: string, repair = true) {
+export async function runPlansDoctor(projectRoot: string, repair = true): Promise<DoctorResult> {
+    // Only passive phases share checks. Repairs keep their independent writer
+    // admission, and every verification phase starts from fresh authority.
+    return repair
+        ? await runPlansDoctorPhases(projectRoot, true)
+        : await withProjectRuntimeReadScope(() => runPlansDoctorPhases(projectRoot, false), { fresh: true });
+}
+
+async function runPlansDoctorPhases(projectRoot: string, repair: boolean): Promise<DoctorResult> {
     const inspected = await inspectProjectRuntimeLayout(projectRoot);
     if (inspected.kind === "blocked") return { issues: [migrationBlockedIssue(inspected)], repaired: 0 };
     if (inspected.kind === "pending" && !repair) {
@@ -1197,11 +1286,13 @@ export async function runPlansDoctor(projectRoot: string, repair = true) {
             .filter((warning) => warning.kind === "broad_wld_ignore")
             .map((warning) => ({ kind: warning.kind, message: warning.message }));
         return {
-            issues: [{
-                kind: "runtime_adoption_pending",
-                message:
-                    `Safe adoption is pending for ${inspected.layout.primary.internalRoot}. No runtime files were changed or scanned.`,
-            }, ...ignoreIssues],
+            issues: [
+                {
+                    kind: "runtime_adoption_pending",
+                    message: `Safe adoption is pending for ${inspected.layout.primary.internalRoot}. No runtime files were changed or scanned.`,
+                },
+                ...ignoreIssues,
+            ],
             repaired: 0,
         };
     }
@@ -1211,13 +1302,15 @@ export async function runPlansDoctor(projectRoot: string, repair = true) {
     } catch (error) {
         if (!(error instanceof ProjectRuntimeEntryRefusedError)) throw error;
         return {
-            issues: [migrationBlockedIssue({
-                kind: "blocked",
-                reason: error.reason,
-                message: error.message,
-                paths: [],
-                ...(error.securityAction ? { securityAction: error.securityAction } : {}),
-            })],
+            issues: [
+                migrationBlockedIssue({
+                    kind: "blocked",
+                    reason: error.reason,
+                    message: error.message,
+                    paths: [],
+                    ...(error.securityAction ? { securityAction: error.securityAction } : {}),
+                }),
+            ],
             repaired: 0,
         };
     }
@@ -1227,22 +1320,20 @@ export async function runPlansDoctor(projectRoot: string, repair = true) {
     for (let pass = 0; pass < 8; pass += 1) {
         const result = await runPlansDoctorPass(projectRoot, true, layout);
         repaired += result.repaired;
-        const remaining = await runPlansDoctorPass(projectRoot, false, layout);
+        const remaining = await runPlansDoctor(projectRoot, false);
         if (remaining.issues.length === 0) return { issues: [], repaired };
-        const issueKey = remaining.issues.map((issue) =>
-            `${issue.kind}:${issue.planName || ""}:${issue.worktreeId || ""}`
-        ).sort().join("|");
+        const issueKey = remaining.issues
+            .map((issue) => `${issue.kind}:${issue.planName || ""}:${issue.worktreeId || ""}`)
+            .sort()
+            .join("|");
         if (result.repaired === 0 || issueKey === lastIssueKey) return { issues: remaining.issues, repaired };
         lastIssueKey = issueKey;
     }
-    const remaining = await runPlansDoctorPass(projectRoot, false, layout);
+    const remaining = await runPlansDoctor(projectRoot, false);
     return { issues: remaining.issues, repaired };
 }
 
-export async function runPlansDoctorCommand(
-    argv: string[],
-    _options: PlansDoctorCommandOptions = {},
-) {
+export async function runPlansDoctorCommand(argv: string[], _options: PlansDoctorCommandOptions = {}) {
     const parsed = parseArgs(argv, { boolean: ["help", "repair", "check"], alias: { h: "help" } });
     if (parsed.help) {
         printHelp();
@@ -1252,7 +1343,7 @@ export async function runPlansDoctorCommand(
     const projectRoot = getCwd();
     const layout = resolveProjectRuntimeLayout(projectRoot);
     for (const root of new Set([projectRoot, layout.primary.checkoutRoot])) {
-        if (!await confirmProjectDirectory(root)) return;
+        if (!(await confirmProjectDirectory(root))) return;
     }
     // Runtime adoption and doctor repairs can write inside registered checkouts.
     // Inspect their roots before entering the runtime, including missing targets.
@@ -1260,7 +1351,7 @@ export async function runPlansDoctorCommand(
     const registry = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
     const adoptionRoots = inspection.kind === "pending" ? inspection.selectedCheckoutRoots : [];
     for (const root of new Set([...adoptionRoots, ...registry.entries.map((entry) => entry.path)])) {
-        if (!await confirmMissingManagedProjectDirectory(root)) return;
+        if (!(await confirmMissingManagedProjectDirectory(root))) return;
     }
     const result = await runPlansDoctor(projectRoot, !checkOnly);
     if (checkOnly) {
@@ -1271,14 +1362,14 @@ export async function runPlansDoctorCommand(
         );
         return;
     }
-    const adoptionIssue = result.issues.some((issue) =>
-        issue.kind === "runtime_migration_blocked" || issue.kind === "runtime_adoption_pending"
+    const adoptionIssue = result.issues.some(
+        (issue) => issue.kind === "runtime_migration_blocked" || issue.kind === "runtime_adoption_pending",
     );
     console.log(
         result.issues.length === 0
             ? doctorCleanMessage(result.repaired)
             : adoptionIssue
-            ? _formatDoctorReport(result.issues)
-            : doctorNeedsHelpMessage(result.repaired, result.issues.length),
+              ? _formatDoctorReport(result.issues)
+              : doctorNeedsHelpMessage(result.repaired, result.issues.length),
     );
 }

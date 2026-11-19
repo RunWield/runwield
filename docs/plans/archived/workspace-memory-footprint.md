@@ -16,10 +16,10 @@ status: "user_verified"
 userVerifiedAt: "2026-10-26T13:40:13.522Z"
 userVerificationNote: "this was done before epic validation"
 workRecord:
-  status: "generated"
-  recordId: "b21052d8-8fca-40c6-8732-2944d40dae61"
-  path: "docs/work-records/2026-10-26-workspace-renderer-reuse-and-bounded-observation-retention.md"
-  lastAttemptAt: "2026-10-26T13:40:46.590Z"
+    status: "generated"
+    recordId: "b21052d8-8fca-40c6-8732-2944d40dae61"
+    path: "docs/work-records/2026-10-26-workspace-renderer-reuse-and-bounded-observation-retention.md"
+    lastAttemptAt: "2026-10-26T13:40:46.590Z"
 archivedAt: "2026-10-26T13:43:35.596Z"
 archivedFromStatus: "user_verified"
 archivedFromPath: "docs/plans/workspace-memory-footprint.md"
@@ -41,13 +41,13 @@ background work intact. Do not make the owner restart Workspace to reclaim memor
 
 Existing behavior belongs to:
 
-- [Browser Sessions](../prd/runwield-workspace-prd.md#browser-sessions): conversation, drafts, images, live
+- [Browser Sessions](../../prd/runwield-workspace-prd.md#browser-sessions): conversation, drafts, images, live
   interactions, and background work.
-- [TUI and phone continuity](../prd/runwield-workspace-prd.md#tui-and-phone-continuity): one conversation across
+- [TUI and phone continuity](../../prd/runwield-workspace-prd.md#tui-and-phone-continuity): one conversation across
   surfaces.
-- [Browser Plan review and workflow](../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow): review and
+- [Browser Plan review and workflow](../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow): review and
   continuation.
-- [Core Session continuity](../prd/runwield-core-prd.md#session-continuity): runtime and background-task lifetime.
+- [Core Session continuity](../../prd/runwield-core-prd.md#session-continuity): runtime and background-task lifetime.
 
 **Keep repeated browser use memory-stable** is a proposed addition to Browser Sessions, not a delivered capability.
 Slice 1 covers page navigation; slice 2 covers completed payloads and slow observation. Existing acceptance scenarios

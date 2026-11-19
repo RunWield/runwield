@@ -1,11 +1,13 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
  * @module cmd/plans/share
  * Publish an active saved Plan as a remote-canonical Shared Space.
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN, getCwd } from "../../constants.js";
-import { ensurePlanIdentity, hashPlanBody, listPlans, updatePlanCollaborationMetadata } from "../../plan-store.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
+import { ensurePlanIdentity, hashPlanBody, listPlans, updatePlanCollaborationMetadata } from "../../plan-store.ts";
 import {
     generateBearerCapability,
     hashCapability,
@@ -13,10 +15,10 @@ import {
     redactSecrets,
     REVIEWER_SCOPE,
 } from "../../shared/collaboration/capabilities.ts";
-import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.js";
+import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
 import { encryptJsonPayload, exportContentKey, generateContentKey } from "../../shared/collaboration/crypto.ts";
 import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
-import { normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.js";
+import { normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.ts";
 import {
     deleteSecretRecord,
     ensureProjectSecretStoreIgnored,
@@ -24,12 +26,11 @@ import {
     getProjectSecretStoreLocation,
     getSecretRecord,
     putSecretRecord,
-} from "../../shared/collaboration/secrets.js";
+} from "../../shared/collaboration/secrets.ts";
 import { buildCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
-import { getDefaultPlanServerUrl } from "../../shared/settings.js";
+import { getDefaultPlanServerUrl } from "../../shared/settings.ts";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 interface PlansShareArgs {
     planServer?: string;
@@ -194,9 +195,10 @@ export interface SharedPlanReviewLink {
 
 export async function sharePlanForReview(shareOptions: SharePlanForReviewOptions): Promise<SharedPlanReviewLink> {
     const cwd = shareOptions.cwd || getCwd();
-    await enterProjectRuntime(cwd);
+    await prepareWorktreeRegistry(cwd);
     const target = shareOptions.target;
     const selected = await resolveActivePlan(cwd, target);
+    await preparePlanWorkflow(cwd, selected.planName || selected.name);
     const location = await resolveWorkflowPlanLocation(cwd, selected.planName || selected.name);
     const resource = await ensurePlanIdentity(location.documentRoot, selected.planName || selected.name);
     const args = {
@@ -408,7 +410,7 @@ export async function runPlansShareCommand(argv: string[]): Promise<void> {
         return;
     }
     const cwd = getCwd();
-    await enterProjectRuntime(cwd);
+    await prepareWorktreeRegistry(cwd);
     const shared = await sharePlanForReview({
         target: args.target as string,
         cwd,

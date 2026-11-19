@@ -1,7 +1,7 @@
 /** Saved delivery evidence shared by the terminal and Workspace session surfaces. */
 import type { PublicationAttempt } from "./publication-attempt.ts";
 import type { SessionArtifactKind } from "../session/file-session-store-types.ts";
-type PlanAttributes = import("../../plan-store.js").PlanFrontMatter;
+type PlanAttributes = import("../../plan-store.ts").PlanFrontMatter;
 export interface DeliveryReportArtifact {
     title: string;
     kind: SessionArtifactKind;

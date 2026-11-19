@@ -1,3 +1,4 @@
+import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import process from "node:process";
 import {
     mkdir as fsMkdir,
@@ -9,21 +10,21 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { getHomeDir } from "../../constants.js";
-import { loadPlan } from "../../plan-store.js";
+import { getHomeDir } from "../../constants.ts";
+import { loadPlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createGitPort } from "../../shared/git-port.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { findById } from "../../shared/worktree-registry.js";
+import { findById } from "../../shared/worktree-registry.ts";
 import { type ControllerRecord, readControllerRecord } from "../../shared/workflow/controller-registry.ts";
 import { finalizePlanImplementation } from "../../shared/workflow/implementation-checkpoint.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
 import { runLocalCI } from "../../shared/workflow/validation-local-ci.ts";
-import { runWorkflowValidationToStableBoundary } from "../../shared/workflow/validation-supervisor.ts";
+import { runWorkflowValidationToStableBoundary } from "../../shared/workflow/validation.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
@@ -45,12 +46,10 @@ const stages = [
     { name: "awaiting human review", status: "reviewed", ci: 0, review: 0 },
 ] as const;
 
-for (
-    const stage of stages.flatMap((stage) => [
-        { ...stage, reappeared: false },
-        { ...stage, reappeared: true },
-    ])
-) {
+for (const stage of stages.flatMap((stage) => [
+    { ...stage, reappeared: false },
+    { ...stage, reappeared: true },
+])) {
     test(`legacy migration continues ${stage.name}${stage.reappeared ? " after old writes return" : ""} using the saved execution tree`, async () => {
         await withRuntimeCommandFixture("migration-validation-", async () => {
             const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
@@ -66,8 +65,7 @@ for (
                 const baseCommit = await git(root, ["rev-parse", "HEAD"]);
                 const baseTree = await git(root, ["rev-parse", "HEAD^{tree}"]);
                 await git(root, ["worktree", "add", "-b", "worktree/demo", tree]);
-                const planText =
-                    `---\nplanId: migration-demo\nclassification: PLANNED_CHANGE\nstatus: ${stage.status}\ntargetBranch: main\n---\n# Demo\n`;
+                const planText = `---\nplanId: migration-demo\nclassification: PLANNED_CHANGE\nstatus: ${stage.status}\ntargetBranch: main\n---\n# Demo\n`;
                 await fsWriteFile(join(tree, planPath), planText);
                 await fsWriteFile(join(tree, "implementation.txt"), "implemented\n");
                 if (stage.status !== "in_progress") {
@@ -96,16 +94,16 @@ for (
                         validationSemanticRounds: 0,
                         ...("checkpoint" in stage
                             ? {
-                                validationCheckpoint: makeValidationCheckpoint({
-                                    attemptId: "attempt-demo",
-                                    generation: "before-upgrade",
-                                    status: stage.status,
-                                    phase: "mechanical",
-                                    state: stage.checkpoint,
-                                    ownerHostname: "previous-host",
-                                    ownerPid: 1,
-                                }),
-                            }
+                                  validationCheckpoint: makeValidationCheckpoint({
+                                      attemptId: "attempt-demo",
+                                      generation: "before-upgrade",
+                                      status: stage.status,
+                                      phase: "mechanical",
+                                      state: stage.checkpoint,
+                                      ownerHostname: "previous-host",
+                                      ownerPid: 1,
+                                  }),
+                              }
                             : {}),
                     },
                 };
@@ -119,20 +117,22 @@ for (
                     join(legacy, "worktrees.json"),
                     JSON.stringify({
                         version: 2,
-                        entries: [{
-                            id: "attempt-demo",
-                            planId: "migration-demo",
-                            planName: "demo",
-                            baseBranch: "main",
-                            baseRef: "refs/heads/main",
-                            baseCommit,
-                            baseTree,
-                            branch: "worktree/demo",
-                            path: tree,
-                            status: stage.status === "in_progress" ? "active" : "completed",
-                            createdAt: "2026-09-01T00:00:00Z",
-                            updatedAt: "2026-09-01T00:00:00Z",
-                        }],
+                        entries: [
+                            {
+                                id: "attempt-demo",
+                                planId: "migration-demo",
+                                planName: "demo",
+                                baseBranch: "main",
+                                baseRef: "refs/heads/main",
+                                baseCommit,
+                                baseTree,
+                                branch: "worktree/demo",
+                                path: tree,
+                                status: stage.status === "in_progress" ? "active" : "completed",
+                                createdAt: "2026-09-01T00:00:00Z",
+                                updatedAt: "2026-09-01T00:00:00Z",
+                            },
+                        ],
                     }),
                 );
                 await fsWriteFile(join(root, "implementation.txt"), "unrelated primary edits\n");
@@ -254,10 +254,12 @@ for (
                                 // The scripted external Engineer edits code, then calls
                                 // the real completion tool. It never writes workflow state.
                                 await fsRm(join(tree, "broken.txt"));
-                                await executeWorkflowTestTools(options, [{
-                                    name: "task_completed",
-                                    arguments: { message: "Removed unfinished repair marker." },
-                                }]);
+                                await executeWorkflowTestTools(options, [
+                                    {
+                                        name: "task_completed",
+                                        arguments: { message: "Removed unfinished repair marker." },
+                                    },
+                                ]);
                             }
                             return [];
                         },
@@ -266,10 +268,12 @@ for (
                         run: () => Promise.reject(new Error("Must stop for human review before publication")),
                     },
                 });
-                const diagnostics = JSON.stringify(result) + "\n" +
-                    await fsReadFile(join(getHomeDir(), ".wld", "debug", "validation-errors.jsonl"), "utf8").catch(() =>
-                        ""
-                    );
+                const diagnostics =
+                    JSON.stringify(result) +
+                    "\n" +
+                    (await fsReadFile(join(getHomeDir(), ".wld", "debug", "validation-errors.jsonl"), "utf8").catch(
+                        () => "",
+                    ));
                 assertEquals(result.kind, "paused", diagnostics);
                 assertEquals(humanReviews, 1, diagnostics);
                 assertEquals(ciRuns, stage.ci);
@@ -310,6 +314,8 @@ test("legacy writer returning after migration does not block current controller 
             const bytes = JSON.stringify(record);
             await fsMkdir(directory, { recursive: true });
             await fsWriteFile(path, bytes);
+            await assertRejects(() => readControllerRecord(root, identity), Error, "Workflow details pending");
+            await enterProjectRuntime(root);
             assertEquals(await readControllerRecord(root, identity), record);
 
             // Simulate an old binary flushing its still-current record after the

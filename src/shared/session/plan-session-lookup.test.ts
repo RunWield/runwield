@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { findPlanAssociatedSessions } from "./plan-session-lookup.ts";
-import { encodeCwdForSessionDir } from "./root-session.js";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 
 const TIMESTAMP = "2026-01-01T00:00:00.000Z";
 
@@ -31,10 +31,7 @@ async function makeFixture() {
 
 async function writeTranscript(sessionDir: string, cwd: string, id: string) {
     const path = join(sessionDir, `${TIMESTAMP.replace(/[:.]/g, "-")}_${id}.jsonl`);
-    await fsWriteFile(
-        path,
-        `${JSON.stringify({ type: "session", version: 3, id, timestamp: TIMESTAMP, cwd })}\n`,
-    );
+    await fsWriteFile(path, `${JSON.stringify({ type: "session", version: 3, id, timestamp: TIMESTAMP, cwd })}\n`);
     return path;
 }
 
@@ -103,33 +100,29 @@ test("findPlanAssociatedSessions does not catalog lineage transcripts during loo
         const planningPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "planning");
         await fsWriteFile(
             planningPath,
-            `${
-                JSON.stringify({
-                    type: "custom",
-                    customType: "runwield.segment_lineage",
-                    data: {
-                        runwieldSessionId: "lineage-session",
-                        segmentId: "planning-segment",
-                        parentSegmentId: null,
-                        parentPiSessionId: null,
-                        lineageGroupKey: "planning-segment",
-                        kind: "planning",
-                    },
-                })
-            }\n${
-                JSON.stringify({
-                    type: "custom",
-                    customType: "runwield.plan_association",
-                    data: {
-                        planId: "plan-1",
-                        planName: "example-plan",
-                        purpose: "planning",
-                        segmentId: "planning-segment",
-                        segmentKind: "planning",
-                        recordedAt: TIMESTAMP,
-                    },
-                })
-            }\n`,
+            `${JSON.stringify({
+                type: "custom",
+                customType: "runwield.segment_lineage",
+                data: {
+                    runwieldSessionId: "lineage-session",
+                    segmentId: "planning-segment",
+                    parentSegmentId: null,
+                    parentPiSessionId: null,
+                    lineageGroupKey: "planning-segment",
+                    kind: "planning",
+                },
+            })}\n${JSON.stringify({
+                type: "custom",
+                customType: "runwield.plan_association",
+                data: {
+                    planId: "plan-1",
+                    planName: "example-plan",
+                    purpose: "planning",
+                    segmentId: "planning-segment",
+                    segmentKind: "planning",
+                    recordedAt: TIMESTAMP,
+                },
+            })}\n`,
             { flag: "a" },
         );
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
@@ -157,20 +150,18 @@ test("findPlanAssociatedSessions ignores raw transcript associations that were n
         });
         await fsWriteFile(
             transcriptPath,
-            `${
-                JSON.stringify({
-                    type: "custom",
-                    customType: "runwield.plan_association",
-                    data: {
-                        planId: "plan-1",
-                        planName: "example-plan",
-                        purpose: "planning",
-                        segmentId: "segment-tail",
-                        segmentKind: "planning",
-                        recordedAt: TIMESTAMP,
-                    },
-                })
-            }\n`,
+            `${JSON.stringify({
+                type: "custom",
+                customType: "runwield.plan_association",
+                data: {
+                    planId: "plan-1",
+                    planName: "example-plan",
+                    purpose: "planning",
+                    segmentId: "segment-tail",
+                    segmentKind: "planning",
+                    recordedAt: TIMESTAMP,
+                },
+            })}\n`,
             { flag: "a" },
         );
 
@@ -205,12 +196,10 @@ test("Plan lookup includes archived Sessions and their archive status", async ()
     }
 });
 
-for (
-    const scenario of [
-        { name: "saved title", title: "Dashboard planning", expected: "Dashboard planning" },
-        { name: "first user message", title: "   ", expected: "Build a reliable usage dashboard" },
-    ]
-) {
+for (const scenario of [
+    { name: "saved title", title: "Dashboard planning", expected: "Dashboard planning" },
+    { name: "first user message", title: "   ", expected: "Build a reliable usage dashboard" },
+]) {
     test(`Plan Session labels use the ${scenario.name} from committed history`, async () => {
         const fixture = await makeFixture();
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
@@ -228,7 +217,9 @@ for (
                 [
                     { type: "session_info", name: scenario.title },
                     { type: "message", message: { role: "user", content: "Build a reliable usage dashboard" } },
-                ].map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+                ]
+                    .map((entry) => JSON.stringify(entry))
+                    .join("\n") + "\n",
                 { flag: "a" },
             );
             await publishAssociation(store, session, project.projectId);

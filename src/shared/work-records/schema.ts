@@ -3,7 +3,7 @@
  * Canonical Work Record schema constants and types.
  */
 
-import type { TicketReference } from "../ticket-references.js";
+import type { TicketReference } from "../ticket-references.ts";
 
 export const WORK_RECORD_KIND = "work_record";
 

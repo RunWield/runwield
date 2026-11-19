@@ -1,0 +1,7 @@
+---
+import UsageLayout from "../../layouts/UsageLayout.astro";
+import { UsageSettings } from "../../react/UsageSettings.tsx";
+---
+<UsageLayout active="settings">
+    <UsageSettings client:load />
+</UsageLayout>

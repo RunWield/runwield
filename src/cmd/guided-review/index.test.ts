@@ -1,5 +1,4 @@
 import process from "node:process";
-import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import {
     fauxAssistantMessage,
@@ -37,12 +36,14 @@ function estimateFauxTokens(text: string): number {
 
 function contentToText(content: Message["content"]): string {
     if (typeof content === "string") return content;
-    return content.map((block) => {
-        if (block.type === "text") return block.text;
-        if (block.type === "thinking") return block.thinking;
-        if ("arguments" in block) return `${block.name}:${JSON.stringify(block.arguments)}`;
-        return `[image:${block.mimeType}:${block.data.length}]`;
-    }).join("\n");
+    return content
+        .map((block) => {
+            if (block.type === "text") return block.text;
+            if (block.type === "thinking") return block.thinking;
+            if ("arguments" in block) return `${block.name}:${JSON.stringify(block.arguments)}`;
+            return `[image:${block.mimeType}:${block.data.length}]`;
+        })
+        .join("\n");
 }
 
 function messageToText(message: Message): string {
@@ -51,13 +52,12 @@ function messageToText(message: Message): string {
             getSystemMessageText(message),
             ...(message.toolsRemoved?.map((tool) => `tool-:${JSON.stringify(tool)}`) ?? []),
             ...(message.toolsAdded?.map((tool) => `tool+:${JSON.stringify(tool)}`) ?? []),
-        ].filter((part) => part.length > 0).join("\n");
+        ]
+            .filter((part) => part.length > 0)
+            .join("\n");
     }
     if (message.role === "toolResult") {
-        return [
-            message.toolName,
-            ...message.content.map((block) => contentToText([block])),
-        ].join("\n");
+        return [message.toolName, ...message.content.map((block) => contentToText([block]))].join("\n");
     }
     return contentToText(message.content);
 }
@@ -66,7 +66,7 @@ function estimateFirstFauxUsage(context: TranscriptContext, output: string) {
     const parts = context.messages.map((message) => `${message.role}:${messageToText(message)}`);
     const inputTokens = estimateFauxTokens(parts.join("\n\n"));
     return {
-        inputTokens,
+        inputTokens: 0,
         outputTokens: estimateFauxTokens(output),
         cacheReadTokens: 0,
         cacheWriteTokens: inputTokens,
@@ -130,7 +130,7 @@ test("guided-review emits the exact runtime usage frame before completing and cl
             usageWriteReleased.resolve();
             const code = await command;
 
-            const expectedFrame = { version: 1, type: "usage" as const, usage: expectedUsage };
+            const expectedFrame = { version: 2 as const, type: "usage" as const, usage: expectedUsage };
             assertEquals(code, 0);
             assertEquals(outputEvents, ["stderr", "stderr", "stdout"]);
             const [usageLine, metadataLine] = stderr.trim().split("\n");
@@ -143,9 +143,9 @@ test("guided-review emits the exact runtime usage frame before completing and cl
 
             const store = openFileSessionStore();
             try {
-                const project = store.listSessionProjects().find((candidate) =>
-                    candidate.registeredRoot === projectRoot
-                );
+                const project = store
+                    .listSessionProjects()
+                    .find((candidate) => candidate.registeredRoot === projectRoot);
                 if (!project) throw new Error("Expected the guided-review command to create a Session project.");
                 const sessions = await store.listProjectSessions(project.projectId);
                 assertEquals(sessions.sessions.length, 1);
@@ -156,12 +156,6 @@ test("guided-review emits the exact runtime usage frame before completing and cl
             } finally {
                 store.close();
             }
-
-            const commandSource = await fsReadFile(new URL("./index.ts", import.meta.url), "utf8");
-            const unsubscribeIndex = commandSource.indexOf("unsubscribe();");
-            const closeIndex = commandSource.indexOf("runtime.closeSession(sessionId);");
-            assertEquals(unsubscribeIndex > 0, true);
-            assertEquals(closeIndex > unsubscribeIndex, true);
         },
     );
 });

@@ -7,22 +7,28 @@ on:
     workflow_dispatch:
         inputs:
             tag:
-                description: Existing immutable release tag to recover
-                required: true
+                description: Existing immutable release tag to recover (required unless qualification_only)
+                required: false
                 type: string
+            qualification_only:
+                description: Qualify selected branch candidate bytes only; never publish or promote
+                required: false
+                type: boolean
+                default: false
 
 permissions:
     contents: write
 
 concurrency:
-    group: release-${{ inputs.tag || github.ref_name }}
+    group: release-${{ inputs.qualification_only && github.sha || inputs.tag || github.ref_name }}
     cancel-in-progress: false
 
 jobs:
     metadata:
         runs-on: ubuntu-latest
         outputs:
-            published: ${{ steps.existing.outputs.published }}
+            published: ${{ steps.existing.outputs.published || 'false' }}
+            qualification_only: ${{ github.event_name == 'workflow_dispatch' && inputs.qualification_only }}
             tag: ${{ steps.metadata.outputs.tag }}
             source_sha: ${{ steps.source.outputs.sha }}
             bun_version: ${{ steps.source.outputs.bun_version }}
@@ -51,8 +57,21 @@ jobs:
             - name: Validate release metadata
               id: metadata
               env:
-                  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+                  RELEASE_TAG: ${{ inputs.qualification_only && 'v0.0.0-rc.1' || inputs.tag || github.ref_name }}
+                  QUALIFICATION_ONLY: ${{ inputs.qualification_only || false }}
+                  DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
+                  RECOVERY_TAG: ${{ inputs.tag }}
               run: |
+                  # Interface: qualification_only=true uses selected github.sha and v0.0.0-rc.1.
+                  # Recovery: qualification_only=false requires an existing immutable tag.
+                  if [[ "$DISPATCH" == true && "$QUALIFICATION_ONLY" != true && -z "$RECOVERY_TAG" ]]; then
+                    echo "Recovery requires tag; use qualification_only=true to qualify a branch" >&2
+                    exit 1
+                  fi
+                  if [[ "$QUALIFICATION_ONLY" == true && -n "$RECOVERY_TAG" ]]; then
+                    echo "Qualification does not accept a recovery tag" >&2
+                    exit 1
+                  fi
                   bun run release:metadata --tag "$RELEASE_TAG" > metadata.json
                   bun -e '
                     const metadata = JSON.parse(await Bun.file("metadata.json").text());
@@ -72,17 +91,22 @@ jobs:
               env:
                   RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
                   RECOVERY: ${{ github.event_name == 'workflow_dispatch' }}
+                  QUALIFICATION_ONLY: ${{ inputs.qualification_only || false }}
               run: |
                   set -euo pipefail
-                  git fetch --no-recurse-submodules --no-tags origin "refs/tags/$RELEASE_TAG"
-                  source_sha=$(git rev-parse 'FETCH_HEAD^{commit}')
+                  if [[ "$QUALIFICATION_ONLY" == true ]]; then
+                    source_sha="$GITHUB_SHA"
+                  else
+                    git fetch --no-recurse-submodules --no-tags origin "refs/tags/$RELEASE_TAG"
+                    source_sha=$(git rev-parse 'FETCH_HEAD^{commit}')
+                  fi
                   echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
                   bun_version=$(git show "$source_sha:.bun-version")
                   echo "bun_version=$bun_version" >> "$GITHUB_OUTPUT"
                   # Frozen compatibility set: existing Bun releases with Deno container recipes.
                   # New source never falls back because a tool or test went missing.
                   legacy_containers=false
-                  if [[ "$RECOVERY" == true ]]; then
+                  if [[ "$RECOVERY" == true && "$QUALIFICATION_ONLY" != true ]]; then
                     case "$source_sha" in
                       55cc60ec1cf5a96eeb41c9fddd12459200101aab|d46be40f400aa3d07c56007c0a8aadabea5b6aeb)
                         legacy_containers=true ;;
@@ -95,6 +119,7 @@ jobs:
               run: echo "value=$(openssl rand -base64 32)" >> "$GITHUB_OUTPUT"
 
             - name: Detect existing release without hiding API failures
+              if: ${{ !inputs.qualification_only }}
               id: existing
               env:
                   GH_TOKEN: ${{ github.token }}
@@ -108,6 +133,7 @@ jobs:
                   fi
 
     ci-shards:
+        if: needs.metadata.outputs.qualification_only != 'true'
         runs-on: ubuntu-latest
         needs: metadata
 
@@ -160,7 +186,7 @@ jobs:
               run: |
                   git checkout -B main "$GITHUB_SHA"
                   mkdir -p "$RUNNER_TEMP/runwield-ci-bin"
-                  for binary in mnemoteca cymbal ketch; do
+                  for binary in cymbal ketch; do
                     cat > "$RUNNER_TEMP/runwield-ci-bin/$binary" <<'EOF'
                   #!/usr/bin/env bash
                   if [[ "$1" == "--help" ]]; then exit 0; fi
@@ -174,6 +200,11 @@ jobs:
                   mkdir -p "$HOME/.config/snip/filters"
                   cp src/snip-filters/*.yaml "$HOME/.config/snip/filters/"
                   echo "$RUNNER_TEMP/runwield-ci-bin" >> "$GITHUB_PATH"
+
+            - name: Install latest Mnemoteca for Work Record integration tests
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: bash scripts/install-ci-mnemoteca.sh
 
             - name: Run source-quality gate
               timeout-minutes: 15
@@ -217,6 +248,7 @@ jobs:
                       /tmp/runwield-test-sandboxes-*-evidence/**
 
     golden-shards:
+        if: needs.metadata.outputs.qualification_only != 'true'
         runs-on: ubuntu-latest
         needs: metadata
         strategy:
@@ -290,7 +322,9 @@ jobs:
                   else
                     bun scripts/write-version.js
                   fi
-                  bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file .ci-cache/golden-timings.json
+                  runner=scripts/run-tests.ts
+                  if [ ! -f "$runner" ]; then runner=scripts/run-tests.js; fi
+                  bun "$runner" --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file .ci-cache/golden-timings.json
 
             - name: Save Golden timing history
               if: always() && hashFiles('.ci-cache/golden-timings.json') != ''
@@ -330,6 +364,7 @@ jobs:
                       /tmp/runwield-test-sandboxes-*-evidence/**
 
     release-check:
+        if: needs.metadata.outputs.qualification_only != 'true'
         runs-on: ubuntu-latest
         needs: metadata
         steps:
@@ -351,9 +386,10 @@ jobs:
               env:
                   WLD_BUILD_VERSION: ${{ needs.metadata.outputs.build_version }}
                   ASTRO_KEY: ${{ needs.metadata.outputs.astro_key }}
-              run: bun scripts/release-check.js --runtime bun --binary-only --build-version "${{ needs.metadata.outputs.build_version }}"
+              run: bun scripts/release-check.ts --runtime bun --binary-only --build-version "${{ needs.metadata.outputs.build_version }}"
 
     unix-checks:
+        if: needs.metadata.outputs.qualification_only != 'true'
         needs: metadata
         uses: ./.github/workflows/release-unix.yml
         with:
@@ -363,6 +399,7 @@ jobs:
             contents: read
 
     containers-checks:
+        if: needs.metadata.outputs.qualification_only != 'true'
         needs: metadata
         uses: ./.github/workflows/release-containers.yml
         with:
@@ -461,7 +498,7 @@ jobs:
                       *.sha256
 
     docs-artifact:
-        if: ${{ !cancelled() && needs.metadata.outputs.kind == 'stable' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.metadata.outputs.kind == 'stable' }}
         needs: metadata
         runs-on: ubuntu-latest
         outputs:
@@ -614,9 +651,13 @@ jobs:
               uses: actions/checkout@v5
               with:
                   ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}
+                  submodules: ${{ runner.os == 'Linux' && 'recursive' || 'false' }}
             - uses: oven-sh/setup-bun@v2
               with:
                   bun-version-file: .bun-version
+            - name: Install frozen dependencies for Linux SSH gate
+              if: runner.os == 'Linux' && needs.metadata.outputs.published != 'true'
+              run: bun run install:locked
             - name: Download checked release bytes
               uses: actions/download-artifact@v5
               with:
@@ -646,8 +687,22 @@ jobs:
                     }
                   '
 
+            # Recovery keeps immutable published bytes, including releases that
+            # predate private remote helpers. New publications always run this gate.
+            - name: Qualify release archive over real loopback SSH
+              if: runner.os == 'Linux' && needs.metadata.outputs.published != 'true'
+              run: bun scripts/check-remote-ssh-package.ts release-upload "${{ needs.metadata.outputs.build_version }}"
+            - name: Retain SSH qualification evidence
+              if: always() && runner.os == 'Linux'
+              uses: actions/upload-artifact@v5
+              with:
+                  name: remote-ssh-${{ matrix.asset }}-${{ github.run_attempt }}
+                  include-hidden-files: true
+                  path: ${{ runner.temp }}/wld-remote-ssh-evidence-*/
+                  if-no-files-found: warn
+
     homebrew-check:
-        if: ${{ !cancelled() && needs.assets.result == 'success' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.assets.result == 'success' }}
         runs-on: macos-15
         timeout-minutes: 30
         needs: [metadata, assets]
@@ -672,7 +727,7 @@ jobs:
                   HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
               run: |
                   test -n "$HOMEBREW_TAP_TOKEN"
-                  GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh api repos/gandazgul/homebrew-tap --jq '.permissions.push' | grep -Fx true
+                  GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh api repos/RunWield/homebrew-tap --jq '.permissions.push' | grep -Fx true
 
             - name: Download checked release bytes
               uses: actions/download-artifact@v5
@@ -692,6 +747,19 @@ jobs:
                     unlink "$brew_prefix/bin/openssl"
                   fi
 
+            - name: Checkout current Homebrew tap
+              uses: actions/checkout@v5
+              with:
+                  repository: RunWield/homebrew-tap
+                  path: homebrew-base
+                  persist-credentials: false
+
+            - name: Copy dependency snapshot
+              run: |
+                  mkdir -p homebrew-check/Formula
+                  cp homebrew-base/Formula/*.rb homebrew-check/Formula/
+                  cp homebrew-base/README.md homebrew-base/runwield-homebrew-package.json homebrew-check/
+
             - name: Validate Homebrew before publication
               env:
                   RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
@@ -703,12 +771,12 @@ jobs:
                     if curl --fail --silent http://127.0.0.1:8765/SHA256SUMS > /dev/null; then break; fi
                     sleep 1
                   done
-                  bun run package:homebrew --wld-tag "$RELEASE_TAG" --mnemoteca-tag v0.3.3 \
+                  bun run package:homebrew --wld-tag "$RELEASE_TAG" \
                     --output homebrew-check --test-only --wld-base-url http://127.0.0.1:8765
                   bun run package:homebrew:check --tap homebrew-check
 
     release:
-        if: ${{ !cancelled() && needs.ci.result == 'success' && needs.golden.result == 'success' && needs.release-check.result == 'success' && needs.assets.result == 'success' && needs.native-package-check.result == 'success' && needs.homebrew-check.result == 'success' && needs.unix-checks.result == 'success' && needs.containers-checks.result == 'success' && (needs.docs-artifact.result == 'success' || (needs.metadata.outputs.kind == 'candidate' && needs.docs-artifact.result == 'skipped')) }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.ci.result == 'success' && needs.golden.result == 'success' && needs.release-check.result == 'success' && needs.assets.result == 'success' && needs.native-package-check.result == 'success' && needs.homebrew-check.result == 'success' && needs.unix-checks.result == 'success' && needs.containers-checks.result == 'success' && (needs.docs-artifact.result == 'success' || (needs.metadata.outputs.kind == 'candidate' && needs.docs-artifact.result == 'skipped')) }}
         runs-on: ubuntu-latest
         needs:
             - metadata
@@ -749,7 +817,7 @@ jobs:
     homebrew-package:
         runs-on: macos-15
         timeout-minutes: 30
-        if: ${{ !cancelled() && needs.release.result == 'success' && needs.metadata.outputs.kind == 'stable' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.release.result == 'success' && needs.metadata.outputs.kind == 'stable' }}
         needs:
             - metadata
             - release
@@ -781,11 +849,26 @@ jobs:
                     exit 1
                   fi
 
+            - name: Checkout Homebrew publication base
+              uses: actions/checkout@v5
+              with:
+                  repository: RunWield/homebrew-tap
+                  token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+                  path: homebrew-tap-publish
+                  fetch-depth: 0
+
+            - name: Record and copy qualified base
+              id: tap-base
+              run: |
+                  echo "sha=$(git -C homebrew-tap-publish rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+                  mkdir -p homebrew-tap/Formula
+                  cp homebrew-tap-publish/Formula/*.rb homebrew-tap/Formula/
+                  cp homebrew-tap-publish/README.md homebrew-tap-publish/runwield-homebrew-package.json homebrew-tap/
+
             - name: Render Homebrew tap
               run: |
                   bun run package:homebrew \
                     --wld-tag "${{ needs.metadata.outputs.tag }}" \
-                    --mnemoteca-tag "v0.3.3" \
                     --output homebrew-tap
 
             - name: Register Homebrew dependency tap
@@ -819,33 +902,15 @@ jobs:
                       runwield-homebrew-tap-${{ needs.metadata.outputs.tag }}.tar.gz
                       runwield-homebrew-tap-${{ needs.metadata.outputs.tag }}.tar.gz.sha256
 
-            - name: Checkout Homebrew tap repository
-              uses: actions/checkout@v5
-              with:
-                  repository: gandazgul/homebrew-tap
-                  token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-                  path: homebrew-tap-publish
-                  fetch-depth: 0
-
             - name: Publish verified Homebrew tap
+              env:
+                  TAP_BASE: ${{ steps.tap-base.outputs.sha }}
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
               run: |
-                  cp homebrew-tap/Formula/wld.rb homebrew-tap-publish/Formula/wld.rb
-                  cp homebrew-tap/Formula/mnemoteca.rb homebrew-tap-publish/Formula/mnemoteca.rb
-                  cp homebrew-tap/README.md homebrew-tap-publish/README.md
-                  cp homebrew-tap/runwield-homebrew-package.json homebrew-tap-publish/runwield-homebrew-package.json
-                  cd homebrew-tap-publish
-                  git config user.name "github-actions[bot]"
-                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-                  git add Formula README.md runwield-homebrew-package.json
-                  if git diff --cached --quiet; then
-                    echo "Homebrew tap already matches ${{ needs.metadata.outputs.tag }}"
-                    exit 0
-                  fi
-                  git commit -m "Update RunWield to ${{ needs.metadata.outputs.tag }}"
-                  git push origin HEAD:main
+                  bun scripts/publish-homebrew.ts homebrew-tap-publish homebrew-tap "$TAP_BASE" "$RELEASE_TAG"
 
     publish-docs:
-        if: ${{ !cancelled() && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
         needs: [metadata, release, docs-artifact]
         runs-on: ubuntu-latest
         permissions:
@@ -908,7 +973,7 @@ jobs:
                   exit 1
 
     integrate-release-branch:
-        if: ${{ !cancelled() && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
+        if: ${{ !cancelled() && needs.metadata.outputs.qualification_only != 'true' && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
         needs: [metadata, release]
         runs-on: ubuntu-latest
         permissions:
@@ -923,16 +988,16 @@ jobs:
               run: bash scripts/integrate-release-branch.sh "$RELEASE_TAG"
 
     ci:
-        if: always()
-        needs: ci-shards
+        if: ${{ always() && needs.metadata.outputs.qualification_only != 'true' }}
+        needs: [metadata, ci-shards]
         runs-on: ubuntu-latest
         steps:
             - name: Require every source shard
               run: test '${{ needs.ci-shards.result }}' = 'success'
 
     golden:
-        if: always()
-        needs: golden-shards
+        if: ${{ always() && needs.metadata.outputs.qualification_only != 'true' }}
+        needs: [metadata, golden-shards]
         runs-on: ubuntu-latest
         steps:
             - name: Require every Golden shard

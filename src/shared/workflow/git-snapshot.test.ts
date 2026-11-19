@@ -23,8 +23,8 @@ import {
     WorktreeReviewComparisonError,
     WorktreeReviewTargetError,
 } from "./git-snapshot.ts";
-import { parseDiffFiles } from "./review-diff-tool.js";
-import { getWorktreeStatus } from "../worktree.js";
+import { parseDiffFiles } from "./review-diff-tool.ts";
+import { getWorktreeStatus } from "../worktree.ts";
 import { GitRepositoryRequiredError } from "../git.ts";
 
 async function git(cwd: string, args: string[]): Promise<string> {

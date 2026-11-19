@@ -4,7 +4,7 @@ import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { client, ndJsonStream, PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { startRunWieldAcpServer } from "./server.js";
+import { startRunWieldAcpServer } from "./server.ts";
 
 test("ACP SDK 1.4.0 client receives task output after its prompt ends", async () => {
     await withRuntimeCommandFixture("acp-sdk-background-", async ({ projectRoot, setModelResponseFactories }) => {

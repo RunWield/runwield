@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { REVIEW_DIFF_FORMAT_ARGS } from "./git-snapshot.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
@@ -26,29 +27,29 @@ import {
     writePlanMarkdownWithRevisionLocked,
     updatePlanFrontMatter,
     withPlanCatalogLock,
-} from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+} from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { isGitRepository } from "../git.ts";
-import { getCodeReviewMode, getCustomSetting, getExactProjectCustomSetting } from "../settings.js";
+import { getCodeReviewMode, getCustomSetting, getExactProjectCustomSetting } from "../settings.ts";
 import { spawnForegroundShell } from "../foreground-process.ts";
 import {
     captureProcessStreamTail,
     formatCapturedProcessOutput,
     PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
 } from "./process-output.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { EPIC_INTEGRATION_REPORT_FILE_NAME, getEpicArtifactPath } from "../epic-artifacts.ts";
-import type { HostedSession } from "../session/hosted-session.js";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import type { HostedSession } from "../session/hosted-session.ts";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
-import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
+import { findTargetBranchPlansByParent, prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { createValidationSessionPort, type SemanticReviewPort } from "./validation-session-adapter.ts";
-import { createReviewDiffTool } from "./review-diff-tool.js";
+import { ReviewInspection } from "./review-inspection.ts";
 import {
     applyRoundFindings,
     claimReviewFixes,
@@ -65,8 +66,8 @@ import type { EpicIntegrationReviewState } from "./controller-state.ts";
 import { SEMANTIC_REVIEW_CYCLES } from "./validation-types.ts";
 import { formatCodeReviewAnnotations, normalizeHumanReview } from "./validation-human-review.ts";
 import {
-    type OpaqueToolDefinition,
     type ReviewerRoundMode,
+    type ValidationReviewData,
     ValidationInteractionTypes,
     type ValidationReviewOutcome,
     type ValidationSessionPort,
@@ -87,6 +88,7 @@ const CHECK_OUTPUT_TAIL = 6000;
 /** One child as the Epic sees it. */
 export interface EpicChildDelivery {
     name: string;
+    order?: number;
     status: string;
     /** The child's work is in the Epic branch, or the user closed or accepted it. */
     settled: boolean;
@@ -199,7 +201,9 @@ async function isChildSettled(
     child: { path: string; attrs: PlanFrontMatter },
 ): Promise<boolean> {
     const status = child.attrs.status;
-    if (!FINISHED_CHILD_STATUSES.has(status)) return false;
+    // Passive reads leave a legacy validated document unconfirmed (reviewed).
+    // Its recorded commit can still prove delivery to this exact Epic head.
+    if (!FINISHED_CHILD_STATUSES.has(status) && status !== "reviewed") return false;
     if (status === "user_verified" || status === "closed_without_verification") return true;
     const evidence = child.attrs.deliveryEvidence;
     if (evidence?.mode === "non_git_in_place") return true;
@@ -264,6 +268,7 @@ export async function readEpicDeliveryState(
                     : undefined;
             return {
                 name: child.name,
+                order: child.attrs.order,
                 status: child.attrs.status,
                 settled: await isChildSettled(primaryRoot, ref, head, child),
                 openRepairDraft: isIntegrationRepairChild(child.name) && child.attrs.status === "draft",
@@ -291,6 +296,14 @@ export async function readEpicDeliveryState(
  * Safe to call after any child delivery and on every load.
  */
 export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: string): Promise<EpicReconcileResult> {
+    const prepared = await preparePlanWorkflow(projectRoot, epicPlanName);
+    const branch = epicBranchOf(prepared.plan?.attrs);
+    if (branch && (await isGitRepository(projectRoot))) {
+        await prepareTargetBranchPlansByParent(projectRoot, branch, epicPlanName);
+        for (const child of await findPlansByParent(prepared.documentRoot, epicPlanName)) {
+            await preparePlanWorkflow(projectRoot, child.name);
+        }
+    }
     const state = await readEpicDeliveryState(projectRoot, epicPlanName);
     if (!state) return { state: null, gateReady: false, gateRetryReady: false };
     const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
@@ -486,26 +499,26 @@ async function runIntegrationReview(
     mode: ReviewerRoundMode,
     repairDiff?: string,
 ): Promise<{ kind: "completed"; outcome: ValidationReviewOutcome } | { kind: "paused"; reason: string }> {
-    const sessionManager = port.createInMemorySessionManager(checkoutPath);
-    // One review, one request identity: a regenerated nudge continues this review
-    // rather than starting a fresh model budget.
+    // Integration reads are selective; an empty inspection keeps that policy.
+    const review: ValidationReviewData = {
+        fullDiff: diffText,
+        repairDiff: repairDiff || "",
+        hasRepairScope: repairDiff !== undefined,
+        requiredScope: mode === "integration_verify" ? "repair" : "full",
+        inspection: new ReviewInspection([]),
+    };
     const controllerRequestId = `request:${crypto.randomUUID()}`;
     let prompt = request;
     for (let attempt = 1; attempt <= MAX_REVIEWER_ATTEMPTS; attempt++) {
-        // No full-read gate: each child was read line by line in its own review, and
-        // this reviewer reads selectively from the Epic outcomes and Integration Notes.
-        const customTools = [
-            createReviewDiffTool({ full: diffText, repair: repairDiff }, { ledger }) as unknown as OpaqueToolDefinition,
-        ];
         const session = await port.runIsolatedAgentSession({
             kind: "reviewer",
             agentName: AGENTS.REVIEWER,
             userRequest: prompt,
             cwd: checkoutPath,
             reviewerMode: mode,
-            customTools,
-            sessionManager,
             controllerRequestId,
+            review,
+            ledger,
         });
         if (session.outcome === "operational_failure") {
             return { kind: "paused", reason: session.failure.message };
@@ -694,15 +707,18 @@ async function addRepairChild(
     const siblings = await findPlansByParent(documentRoot, epicPlanName);
     const highestOrder = Math.max(
         0,
-        ...state.children.map((child) => Number(child.name.split("/").at(-1)?.slice(0, 2)) || 0),
+        ...state.children.map((child) => child.order ?? 0),
         ...siblings.map((child) => (typeof child.attrs.order === "number" ? child.attrs.order : 0)),
     );
-    const repairs = new Map(
-        [...state.children, ...siblings]
-            .filter((child) => isIntegrationRepairChild(child.name))
-            .map((child) => [child.name, child]),
-    ).size;
-    const title = repairs === 0 ? "Repair integration findings" : `Repair integration findings ${repairs + 1}`;
+    const repairNumber =
+        Math.max(
+            0,
+            ...[...state.children, ...siblings].map((child) => {
+                const match = child.name.match(/\/(?:\d{2,}-)?repair-integration-findings(?:-(\d+))?$/);
+                return match ? Number(match[1] || 1) : 0;
+            }),
+        ) + 1;
+    const title = repairNumber === 1 ? "Repair integration findings" : `Repair integration findings ${repairNumber}`;
     const content = [
         `# ${title}`,
         "",

@@ -27,7 +27,7 @@ RunWield data.
 
 A plain Markdown file in `docs/plans/` is a valid external Plan. Passive reads and listings use defaults without
 modifying bytes, assigning identity, or reporting absent metadata as corruption or drift. Deliberate `/load-plan`
-adoption calls `onboardExternalPlan()` in [plan-store.js](../src/plan-store.js), persists identity and defaults, and
+adoption calls `onboardExternalPlan()` in [plan-store.ts](../src/plan-store.ts), persists identity and defaults, and
 preserves the body exactly.
 
 Adoption defaults are a generated `planId`, `classification: PLANNED_CHANGE`, `complexity: MEDIUM`, `summary: ""`,
@@ -39,6 +39,36 @@ supplies applicable defaults.
 
 Adoption is idempotent. Existing front matter is not reinitialized; identity can be ensured without resetting lifecycle
 decisions or age. Recheck under the lock so concurrent adoption cannot replace an identity already established.
+
+## Passive reads and action preparation
+
+Listing, indexing, browsing, body lookup, and progress reads inspect existing checked local evidence. They do not create
+or change Plan/runtime files, reconcile ignore rules, assign IDs, fetch or clone Git data, change refs/worktrees, probe
+writer locks, clean journals, or schedule those effects. In-memory reuse and the search service's own derived index and
+status writes are allowed. Target-only documents are parsed directly from local Git objects, not temporary files.
+
+Runtime inspection distinguishes fresh state, safe adopted authority, pending preparation, and blocked access. A fresh
+Project needs no runtime storage. Ready reads retain registered document-worktree and controller authority, including
+when legacy recovery input returns. Unmigrated or interrupted stores are not combined. Unsafe or unreadable authority
+keeps its diagnostic instead of becoming an authoritative empty catalog. See
+[ADR-016](adr/016-project-runtime-state-under-wld-internal.md).
+
+`PlanReadAvailability` carries `ready` or `pending` separately from `attrs` and Front Matter. Missing identity,
+controller import, or runtime adoption can leave workflow details pending while safe local documents remain browseable.
+Missing local target evidence is unavailable, not proof that an Epic has no children. Pending is not a lifecycle status,
+a Plan Event, adoption, or permission to execute. The board retains ID-less drafts through name-based navigation;
+search skips them and withholds uncertain Plan facts when canonical authority is pending.
+
+`inspectControllerView` and registry list/find calls do not import or migrate. Deliberate saves, selected/named
+`/load-plan`, lifecycle actions, execution, recovery, and publication own required preparation. Registry preparation
+enters runtime before its lock; controller preparation imports legacy state and clears obsolete recovery hints under
+existing authority rules. Actions recheck current evidence and revisions after preparation, not from pending read
+projections. Inspection reuse expires with the read operation and never satisfies later action entry.
+
+Passive progress shows applicable saved publication evidence without obtaining remote proof. A valid controller receipt
+can retain established completion after attempt cleanup; missing or invalidated evidence stays unconfirmed. Reopening
+or a new execution invalidates prior completion evidence. Publication and recovery actions still need fresh target proof
+before new success or cleanup, as required by [ADR-015](adr/015-proof-bearing-publication-state-machine.md).
 
 ## State ownership
 
@@ -55,6 +85,10 @@ PROJECT Plans are non-executable containers. `type: epic` (or absent) uses Archi
 `type: sequence` uses a brief Planner-authored overview and complete child Plans reviewed together. Both store children
 under `docs/plans/<container-name>/`, linked with `parentPlan`, ordered with `order`, and connected by sibling
 `dependencies` (stable Plan IDs or legacy names).
+New child filenames use descriptive slugs without ordinal prefixes. Change Front Matter `order` to reorder children;
+keep paths, Plan IDs, and dependency references stable. Existing numbered filenames remain valid. Child menus and
+child-filtered completions use numeric order; top-level menus keep status/type priority. Missing or duplicate child
+orders allow manual browsing but block automatic next-child execution.
 
 Planner submits a Sequence through `plan_written({ planName, plans: [{ planName }, ...] })`. The optional `plans` list
 must match the complete child set in order; omitting it reloads that set for a later review. One tab per document
@@ -76,6 +110,16 @@ Opening an approved or ready Plan for review does not cancel its approval. A con
 and writes no Plan bytes unless the owner saves a direct edit. A meaningful saved edit or Agent revision presented
 through `plan_written` moves `approved`, `ready_for_work`, or `ready_for_decomposition` to `draft` through
 `review_reopened`. Formatting-only changes preserve the status.
+
+An explicit menu send-back is different from opening or discussing review. **Send back to Planner for re-review**
+is available for a `ready_for_work` Planned Change. **Send back to Architect for re-review** is available for a
+non-Sequence Epic at `ready_for_decomposition` or `ready_for_work`, with or without children. Core resolves the
+current document, records `review_reopened` to return it to `draft`, then starts the planning Agent without opening a
+review page first. No feedback is required. A reply, error, or interrupted turn leaves a resumable draft, not the old
+approval. Child documents, statuses, IDs, order, dependencies, worktree records, and existing Epic branch history stay
+intact. New Epic approval for later returns the parent to `ready_for_decomposition`, even when children exist;
+Approve & Slice starts Slicer. Neither path executes the parent. Viewing or canceling the menu preserves approval.
+See [Core Plan review](prd/runwield-core-prd.md#plan-review) for the shared requirement and scenarios.
 
 Planner or Architect replies in chat for explanation, clarification, or another question. It revises and calls
 `plan_written` when the answer changes scope, behavior, a decision, or verification; when in doubt, it revises.
@@ -245,7 +289,7 @@ caller inputs, locked resources, owned effects, success proof, rollback limit, a
 | `plan_front_matter`                                         | Front Matter updates                                            | Plan                                                                 | Metadata update                                                                    | CAS revision                                                               | None                                                                      | Caller retry                                           |
 | `plan_archive` / `plan_restore`                             | Archive/restore action                                          | Catalog, Plan                                                        | Physical move metadata                                                             | Archive/active path                                                        | Rename CAS only                                                           | Restore/archive retry                                  |
 
-The code-side inventory in `src/shared/workflow/state-transition.test.js` checks that its semantic writer rows have
+The code-side inventory in `src/shared/workflow/state-transition.test.ts` checks that its semantic writer rows have
 inputs, locks, effects, proof, rollback limits, and recovery actions. Publication uses its dedicated attempt record and
 Git reconciliation rather than the retired merge-failure transition journal.
 
@@ -511,7 +555,7 @@ For worktree-backed plans:
     branch, temporary clone, and attempt registry entry. Cleanup or index failure does not revoke delivery or remove the
     receipt. Later target commits do not invalidate proof that the publication commit is an ancestor.
 
-Publication recovery is defined by [ADR-016](adr/016-proof-bearing-publication-state-machine.md). Legacy lifecycle
+Publication recovery is defined by [ADR-015](adr/015-proof-bearing-publication-state-machine.md). Legacy lifecycle
 labels are interpreted using saved validation and delivery evidence; status strings alone do not prove publication.
 
 Code Review has no separate public status. An offer, cancellation, pending decision, or reply-only Git conversation

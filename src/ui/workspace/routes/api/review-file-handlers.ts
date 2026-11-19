@@ -6,7 +6,7 @@ import { isPathInside, readContainedTextFile } from "../../../../shared/containe
 import { isAbsolute, relative, resolve } from "node:path";
 import { captureForegroundProcess } from "../../../../shared/captured-process.ts";
 import { readWorktreeReviewBaseFile, WorktreeReviewComparisonError } from "../../../../shared/workflow/git-snapshot.ts";
-import { getCwd } from "../../../../constants.js";
+import { getCwd } from "../../../../constants.ts";
 
 export interface WorkspaceFile {
     /** Canonical absolute path. Keep this inside the host, never in browser payloads. */
@@ -62,6 +62,7 @@ export function resolveWorkspaceFile(
 export interface ReviewFileContentOptions {
     cwd?: string;
     targetBranch?: string;
+    targetBaseRef?: string;
     headRef?: string;
 }
 
@@ -106,6 +107,7 @@ export async function reviewFileContentApi(
                         cwd,
                         options.targetBranch,
                         relative(cwd, candidate).replaceAll("\\", "/"),
+                        options.targetBaseRef,
                     );
                     if (oldContent !== null) break;
                 }

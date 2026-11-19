@@ -1,24 +1,25 @@
-// @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 import { isEpicPlan } from "../project-plan.ts";
-import { AGENTS, CLI_BIN, PLANS_DIR_NAME } from "../../constants.js";
-import { resolvePlanExecutionPolicy } from "../../plan-store.js";
+import { AGENTS, CLI_BIN, PLANS_DIR_NAME } from "../../constants.ts";
+import { resolvePlanExecutionPolicy } from "../../plan-store.ts";
 import { join } from "node:path";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
-import { getAgentDisplayName } from "../session/agents.js";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
+import { getAgentDisplayName } from "../session/agents.ts";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../session/session-runtime-interactions.js";
-import { isExecutablePlanStatus, isProjectPlan, recordPlanEvent } from "./plan-lifecycle.js";
+} from "../session/session-runtime-interactions.ts";
+import { isExecutablePlanStatus, isProjectPlan, recordPlanEvent } from "./plan-lifecycle.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
 import {
     appendSessionCompleteGuidance,
     requestPlanReviewRetryConfirmation,
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
-} from "./plan-review-recovery.js";
-import { recordWorkflowMetric } from "./metrics.js";
+} from "./plan-review-recovery.ts";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
+import { recordWorkflowMetric } from "./metrics.ts";
 import { CollaborationStyles, selectRuntimeCollaborationStyle } from "./execution-collaboration.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { runPlanningAgent } from "./planning-agent.ts";
@@ -31,8 +32,8 @@ import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execu
 import { emitLaunchingExecutionAgent } from "./execution-preparation-progress.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { PlanFrontMatter } from "../../plan-store.js";
-import type { ActiveExecutionWorkflow, HostedSession } from "../session/hosted-session.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { ActiveExecutionWorkflow, HostedSession } from "../session/hosted-session.ts";
 
 function isPlanReviewRetryAccepted(response) {
     if (!response || typeof response !== "object") return false;
@@ -83,7 +84,7 @@ export interface ExecuteSingleEngineerPlanOptions {
     approvalEvidence?: PlanActionEvidence;
     triageMeta: Partial<PlanFrontMatter>;
     sessionManager?: SessionManager;
-    currentStatus: import("./plan-lifecycle.js").PlanStatus;
+    currentStatus: import("./plan-lifecycle.ts").PlanStatus;
     hostedSession: HostedSession;
     routerMessage?: string;
     reviewFeedback?: string;
@@ -261,7 +262,7 @@ export async function executePlan({
                 effectiveReviewImages = reviewMeta.images;
             }
             const approvedMeta =
-                /** @type {Partial<import('../../plan-store.js').PlanFrontMatter>} */ reviewMeta.planAttrs ||
+                /** @type {Partial<import('../../plan-store.ts').PlanFrontMatter>} */ reviewMeta.planAttrs ||
                 _triageMeta ||
                 {};
             const approvalAction = normalizePlanApprovalAction({
@@ -444,19 +445,15 @@ export async function executePlan({
         resumePreviousRequest,
     });
     if (!result.executionComplete) {
-        await recordWorkflowMetric(
-            {
-                category: "execution",
-                event: "plan_execution_result",
-                planName,
-                details: {
-                    executionComplete: false,
-                    repairRequired: result.repairRequired,
-                    hasError: Boolean(result.error),
-                },
-            },
-            projectRoot,
-        );
+        await recordWorkflowOutcome(projectRoot, {
+            category: "execution",
+            event: "plan_execution_result",
+            operationId: crypto.randomUUID(),
+            planName,
+            outcome: "ongoing",
+            attemptId: result.executionContext?.worktreeId,
+            session: hostedSession?.getManagedMetadata(),
+        });
         return result;
     }
 
@@ -473,18 +470,15 @@ export async function executePlan({
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         try {
-            await recordWorkflowMetric(
-                {
-                    category: "execution",
-                    event: "implementation_checkpoint_failed",
-                    planName,
-                    details: {
-                        executionMode: executionContext?.executionMode,
-                        hasExecutionContext: Boolean(executionContext),
-                    },
-                },
-                projectRoot,
-            );
+            await recordWorkflowOutcome(projectRoot, {
+                category: "execution",
+                event: "implementation_checkpoint_failed",
+                operationId: crypto.randomUUID(),
+                planName,
+                outcome: "ongoing",
+                attemptId: result.executionContext?.worktreeId,
+                session: hostedSession?.getManagedMetadata(),
+            });
         } catch {
             // The checkpoint failure remains the authoritative error.
         }
@@ -501,15 +495,15 @@ export async function executePlan({
             ...(result.completionReport ? { completionReport: result.completionReport } : {}),
         };
     }
-    await recordWorkflowMetric(
-        {
-            category: "execution",
-            event: "plan_execution_result",
-            planName,
-            details: { executionComplete: true, repairRequired: false },
-        },
-        projectRoot,
-    );
+    await recordWorkflowOutcome(projectRoot, {
+        category: "execution",
+        event: "plan_execution_result",
+        operationId: crypto.randomUUID(),
+        planName,
+        outcome: "succeeded",
+        attemptId: result.executionContext?.worktreeId,
+        session: hostedSession?.getManagedMetadata(),
+    });
 
     emitSystemStatus(hostedSession, `✅ Plan implementation complete and checkpointed: ${planName}`, {
         header: "RunWield",
@@ -540,6 +534,7 @@ export async function executeSingleEngineerPlan({
     prepareSegmentHandoff = false,
     resumePreviousRequest = false,
 }: ExecuteSingleEngineerPlanOptions): Promise<PlanExecutionResult> {
+    hostedSession.getManagedOperationCapability?.()?.assertLive();
     const approvalSnapshot = approvalEvidence
         ? {
               planId: approvalEvidence.planId,
@@ -567,6 +562,8 @@ export async function executeSingleEngineerPlan({
             triageMeta,
             currentStatus,
             hostedSession,
+            cwd: hostedSession.cwd,
+            existingExecution: hostedSession.getActiveExecutionWorkflow?.(),
             collaborationStyle,
             collaborationRecommendation,
             ports: createExecutionStartPorts(),
@@ -763,6 +760,7 @@ export async function executePreparedPlanSegmentHandoff({
     hostedSession: HostedSession;
 }): Promise<PlanExecutionResult> {
     const workflow = continuation.activeWorkflow as ActiveExecutionWorkflow;
+    hostedSession.getManagedOperationCapability?.()?.assertLive();
     hostedSession.setActiveExecutionWorkflow(workflow);
     emitLaunchingExecutionAgent(
         hostedSession,

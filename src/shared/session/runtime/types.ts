@@ -1,18 +1,27 @@
-import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { ContextUsageSnapshot } from "../../types.js";
+import type { AgentSession, SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { McpServerDefinition } from "../../mcp/config.ts";
 import type { FileSessionStore } from "../file-session-store-types.ts";
-import type { MinimalSessionManagerLike } from "../hosted-session.js";
-import type { ImageAttachment } from "../types.js";
-import type { RuntimeQueuedMessage, SessionRuntimeEvent } from "../session-runtime-events.js";
+import type { MinimalSessionManagerLike } from "../hosted-session.ts";
+import type { ImageAttachment } from "../image-attachments.ts";
+import type { RuntimeQueuedMessage, SessionRuntimeEvent } from "../session-runtime-events.ts";
 import type { NamedInvocationPayload } from "../named-invocation.ts";
 import type { SessionHost } from "../session-host.ts";
 
 export type OwnerProcessKind = "workspace" | "tui" | "acp" | "test";
 
+export interface RuntimeSteeringResult {
+    taskId: string;
+    text: string;
+    target: AgentSession;
+    queueIndex: number | null;
+    queueLength: number;
+    unsubscribe: () => void;
+}
+
 export interface SessionRuntimeComposition {
     sessionHost: SessionHost;
     sessionStore: FileSessionStore | null;
+    remoteSessionControl?: import("../../remote/session-control-client.ts").RemoteSessionControl;
     ownsSessionStore?: boolean;
     ownerProcessKind: OwnerProcessKind;
     ownerInstanceId: string;
@@ -20,6 +29,7 @@ export interface SessionRuntimeComposition {
 
 export interface CreateSessionRuntimeOptions {
     sessionStore?: FileSessionStore | null;
+    remoteSessionControl?: import("../../remote/session-control-client.ts").RemoteSessionControl;
     ownerProcessKind?: OwnerProcessKind;
     ownerInstanceId?: string;
 }
@@ -34,6 +44,12 @@ export interface RuntimeCompactionSettings {
 
 export interface RuntimeContextSettingsManager {
     getCompactionSettings?(): RuntimeCompactionSettings | null;
+}
+
+export interface ContextUsageSnapshot {
+    tokens: number | null;
+    contextWindow: number;
+    percent: number | null;
 }
 
 export interface RuntimeContextAgentSession {
@@ -59,7 +75,7 @@ export interface PromptTurnContext {
 }
 
 export interface PromptSessionOptions {
-    inputSurface?: import("../session-runtime-events.js").NotificationSurface;
+    inputSurface?: import("../session-runtime-events.ts").NotificationSurface;
     generatedTaskId?: string;
     onGeneratedTurnAccepted?: () => void;
     initialRequest: string;
@@ -71,6 +87,8 @@ export interface PromptSessionOptions {
     includeEditFallback?: boolean;
     turnId?: string;
     emitInitialEvents?: boolean;
+    /** Input accepted by promptUserTurn, independent of presentation event suppression. */
+    metricsUserInitiated?: boolean;
     suppressEpicContinuation?: boolean;
     modelRequest?: string;
     modelOverride?: string;
@@ -81,7 +99,31 @@ export interface PromptSessionOptions {
     signal?: AbortSignal;
     planName?: string;
     planContent?: string;
-    triageMeta?: Partial<import("../../../plan-store.js").PlanFrontMatter>;
+    triageMeta?: Partial<import("../../../plan-store.ts").PlanFrontMatter>;
+}
+
+export interface PromptSessionResult {
+    ok: boolean;
+    turns: number;
+    error?: string;
+    replacementSessionId?: string;
+    templateNewSession?: boolean;
+    _validationResult?: import("./workflow-options.ts").RuntimeValidationResult | null;
+    _executionToStart?: import("./workflow-options.ts").RuntimeExecutePlanOptions;
+    namedInvocation?: {
+        kind: string;
+        name: string;
+        expansionDigest: string;
+        profile: import("../named-invocation.ts").NamedInvocationPayload["profile"];
+        messageCount: number;
+    };
+}
+
+export interface UserPromptResult extends PromptSessionResult {
+    managed: boolean;
+    submittedRequest: string;
+    restoreDraft: boolean;
+    historyText?: string;
 }
 
 export interface LoadSessionOptions {
@@ -111,7 +153,7 @@ export interface DequeueQueuedMessageResult {
 }
 
 export interface RuntimeQueuedMessageState {
-    inputSurface?: import("../session-runtime-events.js").NotificationSurface;
+    inputSurface?: import("../session-runtime-events.ts").NotificationSurface;
     id: string;
     text: string;
     images: ImageAttachment[];
@@ -157,23 +199,32 @@ export interface ManagedOperationFailure {
     exitCode?: number;
     reason?: string;
     deferred?: boolean;
-    thinkingLevel?: import("../hosted-session.js").ThinkingLevel;
+    thinkingLevel?: import("../hosted-session.ts").ThinkingLevel;
 }
 
 export interface ManagedOperationRunFailure extends ManagedOperationFailure {
     turns: 0;
 }
 
-export function isManagedOperationFailure<T>(
-    value: T | ManagedOperationFailure,
-): value is ManagedOperationFailure {
-    return typeof value === "object" && value !== null && "ok" in value && value.ok === false &&
-        "error" in value && typeof value.error === "string";
+export function isManagedOperationFailure<T>(value: T | ManagedOperationFailure): value is ManagedOperationFailure {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "ok" in value &&
+        value.ok === false &&
+        "error" in value &&
+        typeof value.error === "string"
+    );
 }
 
 export interface ActiveSessionInfoCacheEntry {
     leafId: string | null;
-    info: ReturnType<typeof import("../session-transcript-projection.js").buildProjectedSessionInfo>;
+    info: ReturnType<typeof import("../session-transcript-projection.ts").buildProjectedSessionInfo>;
 }
 
 export type ActiveSessionInfoCache = WeakMap<MinimalSessionManagerLike, ActiveSessionInfoCacheEntry>;
+
+export interface TaskTranscriptEntry {
+    type?: string;
+    message?: { role?: string; content?: string | Array<{ type: string; text?: string }> };
+}

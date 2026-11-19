@@ -2,7 +2,7 @@ import { rm, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import type { PRRuntime } from "@plannotator/shared/pr-types.ts";
-import { mapReviewAnnotations, postForgeReview } from "./forge-review.ts";
+import { postForgeReview } from "./forge-review.ts";
 import { type PRReviewTarget, resolveReviewTargetWithForge } from "./review-target.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { makeForgeFixture } from "./forge-test-fixture.ts";
@@ -28,27 +28,6 @@ async function reviewFixture(cwd: string) {
     if (target.mode !== "pr") throw new Error("Expected PR target.");
     return { ...forge, target };
 }
-test("annotations preserve ranges, sides, file scope, and global body", () => {
-    const result = mapReviewAnnotations("feedback", [
-        { filePath: "a.ts", lineStart: 2, lineEnd: 4, side: "old", text: "range" },
-        { filePath: "b.ts", lineStart: 5, lineEnd: 5, side: "new", text: "line" },
-        { scope: "file", filePath: "c.ts", lineStart: 1, lineEnd: 1, text: "file" },
-        { scope: "general", filePath: "unused", lineEnd: 1, text: "global" },
-    ]);
-    assertEquals(result, {
-        body: "feedback\n\nglobal",
-        fileComments: [
-            { path: "a.ts", line: 4, start_line: 2, start_side: "LEFT", side: "LEFT", body: "range" },
-            {
-                path: "b.ts",
-                line: 5,
-                side: "RIGHT",
-                body: "line",
-            },
-        ],
-        fileLevelComments: [{ path: "c.ts", body: "file" }],
-    });
-});
 
 for (const action of ["comment", "approve"] as const) {
     test(`${action} submits its matching Forge action`, async () => {
@@ -190,7 +169,7 @@ test("AI findings post as inline, file-level, and general comments through the r
     try {
         const { target, submissions } = await reviewFixture(cwd);
         const patch =
-            "diff --git a/change.txt b/change.txt\n--- a/change.txt\n+++ b/change.txt\n@@ -1 +1 @@\n-old\n+change\n";
+            "diff --git a/change.txt b/change.txt\n--- a/change.txt\n+++ b/change.txt\n@@ -1,2 +1,2 @@\n-old\n-before\n+change\n+after\n";
         const findings = [
             { file: "change.txt", lineStart: 1, lineEnd: 1, title: "Inline finding" },
             { file: "change.txt", lineStart: 20, lineEnd: 20, title: "File finding" },
@@ -202,6 +181,16 @@ test("AI findings post as inline, file-level, and general comments through the r
             side: "new",
             body: "Keep the spec contract.",
         }));
+        findings.push({
+            file: "change.txt",
+            lineStart: 1,
+            lineEnd: 2,
+            title: "Deleted range",
+            axis: "spec",
+            severity: "issue",
+            side: "old",
+            body: "Preserve both old values.",
+        });
         const result = validateAiReviewResult(JSON.stringify({ schemaVersion: 1, specSource: "PR", findings }), {
             rawPatch: patch,
         });
@@ -214,7 +203,10 @@ test("AI findings post as inline, file-level, and general comments through the r
         );
         assertEquals(submissions.length, 3);
         const pending = JSON.parse(submissions[0]);
-        assertEquals(pending.comments, [{ path: "change.txt", line: 1, side: "RIGHT", body: annotations[0].text }]);
+        assertEquals(pending.comments, [
+            { path: "change.txt", line: 1, side: "RIGHT", body: annotations[0].text },
+            { path: "change.txt", line: 2, start_line: 1, start_side: "LEFT", side: "LEFT", body: annotations[3].text },
+        ]);
         const fileThread = JSON.parse(submissions[1]);
         assertEquals(fileThread.variables, {
             reviewId: "pending-review",

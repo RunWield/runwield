@@ -163,19 +163,28 @@ test("question answers combine with automatically included notes and annotation-
     }, plan);
 });
 
-test("Submit answer includes only one answer and does not repeat it in the next chat send", async () => {
+test("Submit Answers sends every pending answer without other drafts or repeats in the next chat send", async () => {
     await withReview(async ({ container, button, radio, submitted, addNote, openChat, fill }) => {
         await addNote("Keep this note queued.");
         await openChat();
         await fill(container.querySelector('textarea[aria-label="Message Planner"]'), "Keep this message unsent.");
         await act(() => radio("All members").click());
         await act(() => radio("No").click());
-        await act(() => container.querySelectorAll(".rw-question-card button")[0].click());
+        await act(() => button("Exclude answers").click());
+        await act(() => container.querySelectorAll(".rw-question-card button")[1].click());
         assertStringIncludes(submitted[0].feedback, "### Question answers");
         assertStringIncludes(submitted[0].feedback, "All members");
         assertEquals(submitted[0].feedback.includes("Keep this"), false);
-        assertEquals(submitted[0].feedback.includes("Keep old links?"), false);
-        assertEquals(submitted[0].questionAnswers, [{ id: "scope", value: "all" }]);
+        assertStringIncludes(submitted[0].feedback, "Keep old links?");
+        assertEquals(submitted[0].questionAnswers, [
+            { id: "scope", value: "all" },
+            { id: "keep", value: false },
+        ]);
+        assertEquals(container.querySelectorAll(".rw-question-card button").length, 0);
+        assertStringIncludes(
+            container.querySelector(".rw-artifact-conversation-message-user small").textContent,
+            "2 answers",
+        );
         assertStringIncludes(container.querySelectorAll(".rw-question-card")[0].textContent, "Answer sent");
         assertEquals(
             container.querySelector('textarea[aria-label="Message Planner"]').value,
@@ -183,7 +192,7 @@ test("Submit answer includes only one answer and does not repeat it in the next 
         );
         await act(() => button("Send to Planner").click());
         assertStringIncludes(submitted[1].feedback, "Keep this note queued.");
-        assertStringIncludes(submitted[1].feedback, "Keep old links?");
+        assertEquals(submitted[1].feedback.includes("Keep old links?"), false);
         assertEquals(submitted[1].feedback.includes("All members"), false);
         await act(() => radio("Admins only").click());
         assertEquals(Boolean(container.querySelectorAll(".rw-question-card")[0].querySelector("button")), true);
@@ -228,32 +237,139 @@ for (const exclude of [false, true]) {
     });
 }
 
-test("Submit answer is disabled while the Agent works and the other answer stays queued", async () => {
-    await withReview(async ({ container, button, radio, submitted, hold, release, openChat }) => {
+test("Submit Answers prevents a duplicate turn and preserves edited and new answers during work", async () => {
+    await withReview(async ({ container, button, radio, submitted, hold, release, fill }) => {
         await act(() => radio("All members").click());
         await act(() => radio("No").click());
-        await openChat();
         hold();
         await act(() => container.querySelector(".rw-question-card button").click());
         assertEquals(submitted.length, 1);
-        assertEquals(container.querySelectorAll(".rw-question-card")[1].querySelector("button").disabled, true);
+        await act(() => radio("Admins only").click());
+        await fill(container.querySelector('textarea[aria-label="Which message?"]'), "Keep this new answer.");
+        assertEquals(button("Submit 2 Answers").disabled, true);
+        await act(() => button("Submit 2 Answers").click());
+        assertEquals(submitted.length, 1);
         assertEquals(button("Send to Planner").disabled, true);
-        assertStringIncludes(container.querySelector('[aria-label="Review Queue"]').textContent, "1 answers");
+        assertStringIncludes(container.querySelector('[aria-label="Review Queue"]').textContent, "2 answers");
         await release();
-        assertEquals(container.querySelectorAll(".rw-question-card")[1].querySelector("button").disabled, false);
-    }, plan);
+        assertEquals(button("Submit 2 Answers").disabled, false);
+        await act(() => button("Submit 2 Answers").click());
+        assertEquals(submitted[1].questionAnswers, [
+            { id: "scope", value: "admins" },
+            { id: "message", value: "Keep this new answer." },
+        ]);
+    }, threeQuestionPlan);
 });
 
-test("a failed Submit answer keeps its answer queued and allows retry", async () => {
+test("a failed Submit Answers reveals the error, retains every answer, and allows retry", async () => {
     await withReview(async ({ container, radio, submitted, failNext }) => {
         await act(() => radio("All members").click());
+        await act(() => radio("No").click());
         failNext();
         await act(() => container.querySelector(".rw-question-card button").click());
         assertEquals(submitted.length, 0);
         assertEquals(radio("All members").checked, true);
+        assertEquals(radio("No").checked, true);
+        assertEquals(container.querySelector('button[title="Planner"]').getAttribute("aria-selected"), "true");
+        assertStringIncludes(
+            container.querySelector(".rw-artifact-conversation").textContent,
+            "Connection lost. Try again.",
+        );
+        assertEquals(container.querySelector(".rw-question-card button").textContent, "Submit 2 Answers");
         assertEquals(container.querySelector(".rw-question-card button").disabled, false);
         await act(() => container.querySelector(".rw-question-card button").click());
         assertEquals(submitted.length, 1);
+        assertEquals(submitted[0].questionAnswers, [
+            { id: "scope", value: "all" },
+            { id: "keep", value: false },
+        ]);
+        assertEquals(container.querySelectorAll(".rw-question-card button").length, 0);
         assertStringIncludes(container.querySelector(".rw-question-card").textContent, "Answer sent");
     }, plan);
+});
+
+const threeQuestionPlan = plan + '\n```wld-question\n{"id":"message","type":"text","prompt":"Which message?"}\n```\n';
+
+test("all question buttons share one, two, and three unsent counts and omit blank answers", async () => {
+    await withReview(async ({ container, radio, fill, button }) => {
+        const labels = () =>
+            [...container.querySelectorAll(".rw-question-card button")].map((button) => button.textContent);
+        assertEquals(labels(), []);
+        await act(() => radio("All members").click());
+        assertEquals(labels(), ["Submit Answer"]);
+        await act(() => radio("No").click());
+        assertEquals(labels(), ["Submit 2 Answers", "Submit 2 Answers"]);
+        const text = container.querySelector('textarea[aria-label="Which message?"]');
+        await fill(text, "Opening the saved Plan.");
+        assertEquals(labels(), ["Submit 3 Answers", "Submit 3 Answers", "Submit 3 Answers"]);
+        await act(() => radio("Other").click());
+        await fill(container.querySelector('textarea[aria-label="Other answer: Who can use links?"]'), "   ");
+        assertEquals(labels(), ["Submit 2 Answers", "Submit 2 Answers"]);
+        await fill(text, "   ");
+        assertEquals(labels(), ["Submit Answer"]);
+        await act(() => button("Submit Answer").click());
+        assertEquals(labels(), []);
+        await fill(text, "New message");
+        assertEquals(labels(), ["Submit Answer"]);
+    }, threeQuestionPlan);
+});
+
+for (const collapsed of [false, true]) {
+    test(`answer submission opens Planner from ${collapsed ? "a manually collapsed sidebar" : "Annotations"} while working`, async () => {
+        await withReview(async ({ container, button, radio, openChat, hold, release }) => {
+            await openChat();
+            await act(() => container.querySelector('button[title="Annotations"]').click());
+            if (collapsed) await act(() => button("Collapse annotations sidebar").click());
+            await act(() => radio("All members").click());
+            hold();
+            await act(() => button("Submit Answer").click());
+            assertEquals(button("Open annotations sidebar"), undefined);
+            assertEquals(container.querySelector('button[title="Planner"]').getAttribute("aria-selected"), "true");
+            assertStringIncludes(container.querySelector(".rw-artifact-conversation-working").textContent, "Planner");
+            await release();
+        }, plan);
+    });
+}
+
+test("Sequence tabs share the answer count and submit each Plan's answers together", async () => {
+    const sequenceDocuments = [
+        {
+            planId: "sequence",
+            planName: "sequence",
+            plan,
+            frontmatter: { classification: "PROJECT", type: "SEQUENCE" },
+        },
+        { planId: "child", planName: "child", plan, frontmatter: { classification: "PLANNED_CHANGE" } },
+    ];
+    await withReview(
+        async ({ container, button, radio, submitted }) => {
+            await act(() => radio("All members").click());
+            assertEquals(button("Submit Answer").textContent, "Submit Answer");
+            await act(() => button("1. Review links").focus());
+            const child = container.querySelector('[role="tabpanel"]:not([hidden])');
+            const no = [...child.querySelectorAll("label")]
+                .find((element) => element.textContent === "No")
+                .querySelector("input");
+            await act(() => no.click());
+            assertEquals(button("Submit 2 Answers").textContent, "Submit 2 Answers");
+            await act(() => button("Sequence overview").focus());
+            assertEquals(button("Submit 2 Answers").textContent, "Submit 2 Answers");
+            await act(() => button("Submit 2 Answers").click());
+            assertEquals(submitted.length, 1);
+            assertEquals(
+                submitted[0].documents.map(({ planId, questionAnswers }) => ({ planId, questionAnswers })),
+                [
+                    { planId: "sequence", questionAnswers: [{ id: "scope", value: "all" }] },
+                    { planId: "child", questionAnswers: [{ id: "keep", value: false }] },
+                ],
+            );
+            assertStringIncludes(
+                container.querySelector(".rw-artifact-conversation-message-user small").textContent,
+                "2 answers",
+            );
+            assertEquals(container.querySelectorAll(".rw-question-card button").length, 0);
+        },
+        plan,
+        { sequenceDocuments },
+    );
 });

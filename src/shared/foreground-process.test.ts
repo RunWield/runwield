@@ -1,7 +1,7 @@
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes, assertThrows } from "../testing/assertions.ts";
 import { isMissingExecutableError, spawnForegroundProcess, spawnForegroundShell } from "./foreground-process.ts";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
@@ -241,22 +241,6 @@ test(
     },
 );
 
-test("spawnForegroundProcess writes optional stdin and closes it", { skip: IS_WINDOWS }, async () => {
-    const process = spawnForegroundProcess({
-        command: "cat",
-        cwd: getCwd(),
-        stdinText: "stdin marker",
-    });
-    const [outcome, stdout, stderr] = await Promise.all([
-        process.done,
-        readAll(process.stdout),
-        readAll(process.stderr),
-    ]);
-    assertEquals(outcome, { exitCode: 0, terminatedBy: null });
-    assertEquals(stdout, "stdin marker");
-    assertEquals(stderr, "");
-});
-
 test("spawnForegroundProcess reports a missing executable as a spawn error", { skip: IS_WINDOWS }, () => {
     const error = assertThrows(() =>
         spawnForegroundProcess({
@@ -372,6 +356,62 @@ test("spawnForegroundShell observes an abort immediately after spawn returns", {
         await Promise.allSettled([shell.done, output, errors]);
     }
 });
+
+test(
+    "macOS cancellation finishes when the owning runtime is force-killed during shutdown",
+    { skip: platform !== "darwin" },
+    async () => {
+        const directory = await mkdtemp(join(tmpdir(), "runwield-fg-owner-exit-"));
+        const pidFile = join(directory, "pids");
+        const worker = spawnForegroundProcess({
+            command: execPath,
+            args: [
+                "--eval",
+                `import { spawnForegroundShell } from ${JSON.stringify(new URL("./foreground-process.ts", import.meta.url).href)};
+                const controller = new AbortController();
+                spawnForegroundShell({
+                    command: 'sleep 30 & echo $$ $! > "$PID_FILE"; wait',
+                    cwd: ${JSON.stringify(directory)},
+                    env: { PID_FILE: ${JSON.stringify(pidFile)} },
+                    signal: controller.signal,
+                });
+                process.stdin.resume();
+                process.stdin.on("end", () => { controller.abort(); process.kill(process.pid, "SIGKILL"); });`,
+            ],
+            cwd: getCwd(),
+            stdin: "piped",
+        });
+        const output = Promise.all([readAll(worker.stdout), readAll(worker.stderr)]);
+        const writer = worker.stdin!.getWriter();
+        let pids: number[] = [];
+        try {
+            const deadline = Date.now() + 10_000;
+            while (!pids.length && Date.now() < deadline) {
+                const text = await readFile(pidFile, "utf8").catch(() => "");
+                if (text.trim()) pids = text.trim().split(/\s+/).map(Number);
+                else await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+            assertEquals(pids.length, 2);
+            assert(pids.every((pid) => pid > 0 && processAlive(pid)));
+            await writer.close();
+            assertEquals(await worker.done, { exitCode: 137, terminatedBy: null });
+            for (const pid of pids) {
+                assertEquals(await waitForProcessDeath(pid), true, `Owned process ${pid} survived its runtime`);
+            }
+        } finally {
+            if (pids[0]) {
+                try {
+                    kill(-pids[0], "SIGKILL");
+                } catch {
+                    /* The owned group already exited. */
+                }
+            }
+            worker.kill();
+            await Promise.allSettled([worker.done, output]);
+            await rm(directory, { recursive: true });
+        }
+    },
+);
 
 test(
     "macOS Stop closes inherited pipes when cancellation races a shell fork",

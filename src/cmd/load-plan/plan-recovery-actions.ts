@@ -1,5 +1,6 @@
-import { AGENTS } from "../../constants.js";
-import { buildPlanEventUpdates } from "../../shared/workflow/plan-lifecycle.js";
+import { recordWorkflowOutcome } from "../../shared/workflow/outcome-observations.ts";
+import { AGENTS } from "../../constants.ts";
+import { buildPlanEventUpdates } from "../../shared/workflow/plan-lifecycle.ts";
 import { closeTransitionRecordByAttestation, runRecoveryTransition } from "../../shared/workflow/state-transition.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";
 import {
@@ -20,13 +21,13 @@ import {
     executeReadyPlanWithRepair,
     validateCompletedExecution,
 } from "./plan-execution.ts";
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
-import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.js";
+import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.ts";
 import {
     findById as findWorktreeRegistryEntry,
     restoreEntryFromPlanEvidence,
     updateEntry as updateWorktreeRegistryEntry,
-} from "../../shared/worktree-registry.js";
+} from "../../shared/worktree-registry.ts";
 import { markPlanUserVerified, putPlanOnHold } from "./plan-hold.ts";
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { transitionFailureError } from "./transition-failure.ts";
@@ -34,8 +35,8 @@ import { writeControllerState } from "../../shared/workflow/controller-registry.
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { ProjectRuntimeEntryRefusedError } from "../../shared/project-runtime-layout.ts";
 
-import { updatePlanFrontMatter } from "../../plan-store.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import { updatePlanFrontMatter } from "../../plan-store.ts";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
 import type { RecoveryFlowPlan, UnresolvedTransitionRecord } from "./plan-recovery-flow.ts";
 
@@ -478,6 +479,7 @@ export async function abandonRecoveryPlan(context: RecoveryActionContext): Promi
         false,
         "RunWield",
     );
+    const abandonedAttemptId = context.worktreeContext?.id || context.loadedWorktreeId || undefined;
     let cleanupMessage = "The recorded attempt was abandoned.";
     try {
         if (hasWorktreeContext(context.worktreeContext)) {
@@ -558,6 +560,14 @@ export async function abandonRecoveryPlan(context: RecoveryActionContext): Promi
         await context.recordRecoveryResult("abandon", "blocked");
         return { kind: "menu" };
     }
+    await recordWorkflowOutcome(projectRoot, {
+        event: "workflow_abandoned",
+        category: "recovery",
+        operationId: transition.transitionId,
+        attemptId: abandonedAttemptId,
+        planId: plan.attrs.planId,
+        outcome: "succeeded",
+    });
     context.worktreeContext = null;
     context.loadedWorktreeId = null;
     await context.session.clearActiveExecutionWorkflow();

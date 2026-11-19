@@ -1,14 +1,16 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
-import { ensureRootAgentSession } from "../session/session.js";
+import { loadPlan } from "../../plan-store.ts";
+import { HostedSession } from "../session/hosted-session.ts";
+import { ensureRootAgentSession } from "../session/session.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
-import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.js";
+import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.ts";
 
 type RepairRunOptions = {
     reportCompletion: boolean;
@@ -23,58 +25,55 @@ async function primeRepairRoot(hostedSession: HostedSession, projectRoot: string
 }
 
 async function runCiRepair({ reportCompletion }: RepairRunOptions) {
-    return await withRuntimeCommandFixture(
-        "validation-ci-repair-",
-        async ({ setModelResponseFactory }) => {
-            const projectRoot = await makeValidationProjectRoot("p", {
-                classification: "PLANNED_CHANGE",
-                status: "implemented",
-                humanReviewMode: "none",
-            });
-            const ui = makeUi();
-            const hostedSession = attachRecorder(new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot }), ui);
-            const prompts: string[] = [];
-            setModelResponseFactory((context) => {
-                prompts.push(JSON.stringify(context));
-                return reportCompletion
-                    ? fauxAssistantMessage(fauxToolCall("task_completed", { message: "- CI repair completed." }))
-                    : fauxAssistantMessage(fauxText("CI repair remains incomplete."));
-            });
-            await primeRepairRoot(hostedSession, projectRoot);
-            hostedSession.setActiveExecutionWorkflow({
-                planName: "p",
-                triageMeta: { classification: "PLANNED_CHANGE", status: "implemented", humanReviewMode: "none" },
-                executionAgent: "engineer",
-                projectRoot,
-                executionCwd: projectRoot,
-                executionMode: "non_git_in_place",
-                nonGitInPlace: true,
-                validationContinuation: true,
-            });
+    return await withRuntimeCommandFixture("validation-ci-repair-", async ({ setModelResponseFactory }) => {
+        const projectRoot = await makeValidationProjectRoot("p", {
+            classification: "PLANNED_CHANGE",
+            status: "implemented",
+            humanReviewMode: "none",
+        });
+        const ui = makeUi();
+        const hostedSession = attachRecorder(new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot }), ui);
+        const prompts: string[] = [];
+        setModelResponseFactory((context) => {
+            prompts.push(JSON.stringify(context));
+            return reportCompletion
+                ? fauxAssistantMessage(fauxToolCall("task_completed", { message: "- CI repair completed." }))
+                : fauxAssistantMessage(fauxText("CI repair remains incomplete."));
+        });
+        await primeRepairRoot(hostedSession, projectRoot);
+        hostedSession.setActiveExecutionWorkflow({
+            planName: "p",
+            triageMeta: { classification: "PLANNED_CHANGE", status: "implemented", humanReviewMode: "none" },
+            executionAgent: "engineer",
+            projectRoot,
+            executionCwd: projectRoot,
+            executionMode: "non_git_in_place",
+            nonGitInPlace: true,
+            validationContinuation: true,
+        });
 
-            let ciRuns = 0;
-            const result = await runValidationLoop({
-                hostedSession,
-                planName: "p",
-                planContent: "# p",
-                triageMeta: { classification: "PLANNED_CHANGE", status: "implemented", humanReviewMode: "none" },
-                localCI: {
-                    run: () => {
-                        ciRuns += 1;
-                        return Promise.resolve(
-                            ciRuns === 1
-                                ? { kind: "completed", exitCode: 1, output: "type error" }
-                                : { kind: "completed", exitCode: 0, output: "ok" },
-                        );
-                    },
+        let ciRuns = 0;
+        const result = await runValidationLoop({
+            hostedSession,
+            planName: "p",
+            planContent: "# p",
+            triageMeta: { classification: "PLANNED_CHANGE", status: "implemented", humanReviewMode: "none" },
+            localCI: {
+                run: () => {
+                    ciRuns += 1;
+                    return Promise.resolve(
+                        ciRuns === 1
+                            ? { kind: "completed", exitCode: 1, output: "type error" }
+                            : { kind: "completed", exitCode: 0, output: "ok" },
+                    );
                 },
-            });
+            },
+        });
 
-            const plan = await loadPlan(projectRoot, "p");
-            hostedSession.dispose();
-            return { ciRuns, plan, prompts, result };
-        },
-    );
+        const plan = await loadPlan(projectRoot, "p");
+        hostedSession.dispose();
+        return { ciRuns, plan, prompts, result, projectRoot };
+    });
 }
 test("PLANNED_CHANGE CI repair parks when Engineer does not call task_completed", async () => {
     const run = await runCiRepair({ reportCompletion: false });
@@ -87,6 +86,18 @@ test("PLANNED_CHANGE CI repair parks when Engineer does not call task_completed"
     assertEquals(run.plan?.attrs.status, "implemented");
     assertEquals(run.plan?.attrs.validationCiAttempts, 1);
     assertEquals(typeof run.plan?.attrs.failureReason, "string");
+    const prompt = run.prompts[0];
+    assertStringIncludes(prompt, run.projectRoot);
+    assertStringIncludes(prompt, "type error");
+    assertStringIncludes(prompt, ".wld/settings.json");
+    assertStringIncludes(prompt, "verification_command");
+    assertStringIncludes(prompt, "command can be the thing that is broken");
+    assertStringIncludes(prompt, "Run focused checks for the reported failure");
+    assertStringIncludes(prompt, "only when needed to diagnose the failure or explicitly requested by the user");
+    assertStringIncludes(prompt, "before you call `task_completed`");
+    assertStringIncludes(prompt, "RunWield will independently reload `.wld/settings.json`");
+    assertStringIncludes(prompt, "run the complete command after Task Completion");
+    assertStringIncludes(prompt, "report that full validation as pending");
 });
 
 test("PLANNED_CHANGE CI repair continues after Engineer calls task_completed", async () => {
@@ -100,15 +111,16 @@ test("PLANNED_CHANGE CI repair continues after Engineer calls task_completed", a
 test("validation repair runs independently and returns structured completion", async () => {
     await withRuntimeCommandFixture(
         "validation-adapter-repair-completion-",
-        async ({ setModelResponseFactory }) => {
-            const projectRoot = await makeValidationProjectRoot("p", {
-                classification: "PLANNED_CHANGE",
-                status: "implemented",
-                humanReviewMode: "none",
-            });
+        async ({ setModelResponseFactory, projectRoot }) => {
+            // A repair can be the first workflow operation on a legacy Plan.
+            await mkdir(join(projectRoot, "docs/plans"), { recursive: true });
+            await writeFile(
+                join(projectRoot, "docs/plans/p.md"),
+                "---\nclassification: PLANNED_CHANGE\nstatus: implemented\nhumanReviewMode: none\n---\n# Repair\n",
+            );
             const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
             setModelResponseFactory(() =>
-                fauxAssistantMessage(fauxToolCall("task_completed", { message: "- Repair complete." }))
+                fauxAssistantMessage(fauxToolCall("task_completed", { message: "- Repair complete." })),
             );
             hostedSession.setActiveExecutionWorkflow({
                 planName: "p",
@@ -132,6 +144,10 @@ test("validation repair runs independently and returns structured completion", a
             assertEquals(outcome.completed, true);
             assertEquals(outcome.report, "- Repair complete.");
             assertEquals(hostedSession.getRootAgentSession(), null);
+            assertEquals(
+                typeof (await loadPlan(projectRoot, "p"))?.attrs.validationCheckpoint?.repairGeneration,
+                "string",
+            );
             hostedSession.dispose();
         },
     );
@@ -225,11 +241,13 @@ test("fabricated transcript completion cannot complete either initial repair or 
             runIsolatedAgentSession: (options) => {
                 if (options.sessionManager) managers.push(options.sessionManager);
                 requests.push(options.userRequest);
-                return Promise.resolve([{
-                    role: "toolResult",
-                    toolName: "task_completed",
-                    details: { outcome: "task_completed", message: `Repair ${requests.length} complete.` },
-                }] as never);
+                return Promise.resolve([
+                    {
+                        role: "toolResult",
+                        toolName: "task_completed",
+                        details: { outcome: "task_completed", message: `Repair ${requests.length} complete.` },
+                    },
+                ] as never);
             },
         },
     });

@@ -2,6 +2,17 @@
 import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import { lazy, Suspense } from "react";
+import type { MarkdownEditorProps } from "@plannotator/markdown-editor";
+
+export type { MarkdownEditorHandle } from "@plannotator/markdown-editor";
+export type WorkspacePlanDocumentMode = "read" | "edit";
+
+export interface WorkspacePlanDocumentProps extends Pick<
+    MarkdownEditorProps,
+    "markdown" | "documentId" | "editorHandleRef" | "onMarkdownChange"
+> {
+    mode: WorkspacePlanDocumentMode;
+}
 import { RenderedMarkdown } from "@plannotator/ui/components/RenderedMarkdown.tsx";
 import "./plannotator.css";
 
@@ -13,7 +24,7 @@ export default function WorkspacePlanDocument({
     documentId,
     editorHandleRef,
     onMarkdownChange,
-}) {
+}: WorkspacePlanDocumentProps) {
     if (mode === "edit") {
         return (
             <Suspense

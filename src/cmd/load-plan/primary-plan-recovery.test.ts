@@ -9,9 +9,9 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { getDeclaredPlanStatus, loadPlan, savePlan } from "../../plan-store.js";
+import { getDeclaredPlanStatus, loadPlan, savePlan } from "../../plan-store.ts";
 import { createTestWorktreeAttempt, makeRepo } from "../../shared/worktree-test-helpers.ts";
-import { removeWorktreeGitArtifacts } from "../../shared/worktree.js";
+import { removeWorktreeGitArtifacts } from "../../shared/worktree.ts";
 import { resolvePlanWithPrimaryRecovery } from "./primary-plan-recovery.ts";
 
 test("load-plan reads the execution Plan without recreating a missing primary Plan", async () => {

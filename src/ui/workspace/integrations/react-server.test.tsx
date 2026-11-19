@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { useState } from "react";
-import renderer from "./react-server.mjs";
+import renderer from "./react-server.ts";
 
 test("React renderer checks hook components inside the React render lifecycle", () => {
     let completedRenders = 0;

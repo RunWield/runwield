@@ -1,4 +1,6 @@
-// @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
+import { prepareWorktreeRegistry } from "../worktree-registry.ts";
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import {
     prepareExecutionSetup,
     readExecutionSetup,
@@ -11,14 +13,14 @@ import { isMissingExecutableError } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { prepareEditedSiblingPlans } from "./epic-sibling-drafts.ts";
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import {
     ensurePlanIdentity,
     findPlansByParent,
     getPlanFrontMatterRevisionForText,
     loadPlan,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import {
     defaultPlanBranchName,
     effectiveDeliveryBranch,
@@ -28,7 +30,7 @@ import {
 } from "./plan-branch.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.js";
+import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 import {
     checkpointExecutionPreparation,
     createWorktreeGitArtifacts,
@@ -42,15 +44,15 @@ import {
     resolveRepositoryDefaultBranch,
     resolveTargetBranchName,
     settleWorktreeAttempt,
-} from "../worktree.js";
+} from "../worktree.ts";
 import {
     findById as findWorktreeRegistryEntryById,
     listEntries as listWorktreeRegistryEntries,
     pruneEntry as pruneWorktreeRegistryEntry,
     updateEntry as updateWorktreeRegistryEntry,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 import { captureWorktreeTree } from "./git-snapshot.ts";
-import { ensureExecutionPlanFile, loadCanonicalExecutionPlanSource } from "./execution-plan-file.js";
+import { ensureExecutionPlanFile, loadCanonicalExecutionPlanSource } from "./execution-plan-file.ts";
 import {
     emitCreatedExecutionWorktree,
     emitCreatingExecutionWorktree,
@@ -64,16 +66,16 @@ import {
     emitReusingExecutionWorktree,
     emitUpdatingPlanStatusToInProgress,
 } from "./execution-preparation-progress.ts";
-import { recordPlanEvent, buildPlanEventUpdates } from "./plan-lifecycle.js";
-import { recordWorkflowMetric } from "./metrics.js";
-import { runExecutionPreparationTransition } from "./state-transition.ts";
+import { recordPlanEvent, buildPlanEventUpdates } from "./plan-lifecycle.ts";
+import { recordWorkflowMetric } from "./metrics.ts";
+import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "./state-transition.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { CollaborationStyles, resolveExecutionOwner } from "./execution-collaboration.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 
 export function normalizeExecutionTargetBranch(value) {
     if (typeof value !== "string") return undefined;
@@ -108,7 +110,7 @@ async function runCymbalIndexForExecutionWorktree(hostedSession, worktreePath) {
 }
 
 /**
- * @param {import('../session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
  * @param {string} projectRoot
  * @returns {Promise<boolean>}
  */
@@ -124,7 +126,7 @@ export async function confirmNonGitFeaturePlanExecution(hostedSession, projectRo
             ],
         },
         undefined,
-        hostedSession.getManagedOperationCapability?.() || null,
+        hostedSession?.getManagedOperationCapability?.() || null,
     );
     if (response.outcome !== "selected" || response.value !== "proceed") return false;
     await rememberNonGitExecutionConsent("featurePlan", projectRoot);
@@ -219,31 +221,106 @@ async function materializeEpicPlanFamily(projectRoot, executionCwd, planName, pl
     return materializedPaths;
 }
 
-/**
- * @param {{
- *   planName: string,
- *   triageMeta: Partial<import('../../plan-store.js').PlanFrontMatter>,
- *   currentStatus: import('./plan-lifecycle.js').PlanStatus,
- *   hostedSession?: import('../session/hosted-session.js').HostedSession,
- *   collaborationStyle?: "autonomous"|"pair",
- *   collaborationRecommendation?: "autonomous"|"pair",
- *   ports: ExecutionStartPorts,
- * }} opts
- * @returns {Promise<import('../session/hosted-session.js').ActiveExecutionWorkflow>}
+interface ExecutionPreparationLocationOptions {
+    readOnly?: boolean;
+}
+
+/** Reconcile the source authority before the registry can select an incomplete worktree. */
+export async function reconcileExecutionPreparationLocation(
+    cwd: string,
+    planName: string,
+    options: ExecutionPreparationLocationOptions = {},
+) {
+    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+    await prepareWorktreeRegistry(projectRoot);
+    const records = await listTransitionRecoveryRecords(projectRoot);
+    const source = await loadPlan(cwd, planName).catch(() => null);
+    const entries = await listWorktreeRegistryEntries(projectRoot);
+    // Only an interrupted first preparation can use the approved source when its
+    // selected worktree has no document yet. A worker's later deletion cannot.
+    const unmaterialized =
+        source?.attrs.status === "ready_for_work" &&
+        records.some((record) => {
+            if (record.operation !== "execution_preparation" || record.planName !== planName) return false;
+            const before = record.beforeFacts?.plan;
+            if (before?.revision !== source.revision || before?.status !== "ready_for_work") return false;
+            const effects = record.completedEffects || [];
+            if (
+                !effects.length ||
+                effects.some((effect) => !["git_worktree_created", "worktree_registry_settled"].includes(effect.effect))
+            )
+                return false;
+            return effects.some((effect) =>
+                entries.some(
+                    (entry) =>
+                        entry.planId === source.attrs.planId &&
+                        entry.status === "active" &&
+                        !entry.executionBaselineTree &&
+                        entry.id === effect.proof?.worktreeId &&
+                        entry.path === effect.proof?.path,
+                ),
+            );
+        });
+    const healed = await healSettledTransitionRecords(projectRoot, {
+        planName,
+        evidenceProjectRoot: projectRoot,
+        apply: !unmaterialized,
+    });
+    if (healed.remaining.some((entry) => !entry.resolvable)) {
+        throw new Error(
+            `RunWield still cannot confirm an interrupted execution setup for ${planName}. The execution files are safe.`,
+        );
+    }
+    if (unmaterialized) {
+        const selected = entries.find((entry) => entry.planId === source.attrs.planId && entry.status === "active");
+        if (selected && !(await loadPlan(selected.path, planName))) {
+            return {
+                registryRoot: projectRoot,
+                documentRoot: cwd,
+                plan: source,
+                resumeInterruptedPreparation: true,
+            };
+        }
+    }
+    await preparePlanWorkflow(projectRoot, planName);
+    return await resolveWorkflowPlanLocation(cwd, planName, options);
+}
+
+interface ExecutionStartOptions {
+    planName: string;
+    triageMeta: Partial<import("../../plan-store.ts").PlanFrontMatter>;
+    currentStatus: import("./plan-lifecycle.ts").PlanStatus;
+    cwd?: string;
+    existingExecution?: import("../session/hosted-session.ts").ActiveExecutionWorkflow | null;
+    hostedSession?: import("../session/hosted-session.ts").HostedSession;
+    collaborationStyle?: "autonomous" | "pair";
+    collaborationRecommendation?: "autonomous" | "pair";
+    ports: ExecutionStartPorts;
+}
+
+/** Prepare execution through the shared policy with either a Session or durable carrier inputs.
+ * @param {ExecutionStartOptions} opts
+ * @returns {Promise<import('../session/hosted-session.ts').ActiveExecutionWorkflow>}
  */
 export async function startActiveExecutionWorkflow({
     planName,
     triageMeta,
     currentStatus,
     hostedSession,
+    cwd = hostedSession?.cwd,
+    existingExecution = hostedSession?.getActiveExecutionWorkflow?.(),
     collaborationStyle = CollaborationStyles.AUTONOMOUS,
     collaborationRecommendation = CollaborationStyles.AUTONOMOUS,
     ports,
-}) {
-    if (!hostedSession) throw new Error("startActiveExecutionWorkflow: hostedSession is required");
-    const projectRoot = resolvePrimaryCheckoutRoot(hostedSession.cwd);
-    await prepareSessionPlanningWorktree(projectRoot, planName);
-    const sourceLocation = await resolveWorkflowPlanLocation(projectRoot, planName);
+}: ExecutionStartOptions): Promise<import("../session/hosted-session.ts").ActiveExecutionWorkflow> {
+    hostedSession?.getManagedOperationCapability?.()?.assertLive();
+    if (!cwd) throw new Error("startActiveExecutionWorkflow: cwd is required");
+    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+    let sourceLocation = await reconcileExecutionPreparationLocation(cwd, planName, { readOnly: true });
+    if (!sourceLocation.resumeInterruptedPreparation) {
+        await prepareSessionPlanningWorktree(cwd, planName);
+        sourceLocation = await reconcileExecutionPreparationLocation(cwd, planName);
+    }
     if (sourceLocation.archived) {
         throw new Error(`This Plan is archived. Run wld plans archive restore ${planName} before executing it.`);
     }
@@ -290,9 +367,9 @@ export async function startActiveExecutionWorkflow({
             : await ensurePlanIdentity(sourceLocation.documentRoot, planName);
     const stablePlanId = "planId" in planIdentity ? planIdentity.planId : planIdentity.id;
     const effectiveTriageMeta = { ...triageMeta, planId: stablePlanId };
-    hostedSession.setWorkflowExecutionContext?.({ planName, triageMeta: effectiveTriageMeta });
-    if (hostedSession.getManagedOperationCapability?.()) {
-        hostedSession.recordPlanAssociation?.({ planId: stablePlanId, planName, purpose: "execution" });
+    hostedSession?.setWorkflowExecutionContext?.({ planName, triageMeta: effectiveTriageMeta });
+    if (hostedSession?.getManagedOperationCapability?.()) {
+        hostedSession?.recordPlanAssociation?.({ planId: stablePlanId, planName, purpose: "execution" });
     }
     let executionAgent = resolveExecutionOwner(effectiveTriageMeta);
     const collaborationState = {
@@ -312,12 +389,15 @@ export async function startActiveExecutionWorkflow({
         const attemptId = triageMeta.worktreeId || `non-git-${crypto.randomUUID().slice(0, 8)}`;
         const canonicalPlan = await loadPlan(projectRoot, planName);
         if (!canonicalPlan) throw new Error(`Plan not found: ${planName}`);
+        await healSettledTransitionRecords(projectRoot, { planName, evidenceProjectRoot: projectRoot });
+        const needsExecutionStartedEvent = canonicalPlan.attrs.status !== "in_progress";
         const transition = await runExecutionPreparationTransition({
             projectRoot,
             planName,
             planId: stablePlanId,
             worktreeId: attemptId,
             expectedRevision: canonicalPlan?.revision,
+            expectedPlanEvent: needsExecutionStartedEvent,
             prepare: async ({ markEffect }) => {
                 const workflow = {
                     planName,
@@ -330,19 +410,21 @@ export async function startActiveExecutionWorkflow({
                     executionMode: /** @type {const} */ "non_git_in_place",
                     nonGitInPlace: true,
                 };
-                emitUpdatingPlanStatusToInProgress(hostedSession);
-                await recordPlanEvent({
-                    cwd: projectRoot,
-                    planName,
-                    event: "execution_started",
-                    currentStatus,
-                    details: {
-                        triageMeta: effectiveTriageMeta,
-                        nonGitInPlace: true,
-                        executionMode: "non_git_in_place",
-                    },
-                });
-                await markEffect("plan_event_recorded", { planName, event: "execution_started" });
+                if (needsExecutionStartedEvent) {
+                    emitUpdatingPlanStatusToInProgress(hostedSession);
+                    await recordPlanEvent({
+                        cwd: projectRoot,
+                        planName,
+                        event: "execution_started",
+                        currentStatus,
+                        details: {
+                            triageMeta: effectiveTriageMeta,
+                            nonGitInPlace: true,
+                            executionMode: "non_git_in_place",
+                        },
+                    });
+                    await markEffect("plan_event_recorded", { planName, event: "execution_started" });
+                }
                 const activeWorkflow = { ...workflow, executionStarted: true, executionAttemptStartedAtMs: now() };
                 await recordWorkflowMetricFn(
                     {
@@ -376,8 +458,9 @@ export async function startActiveExecutionWorkflow({
             throw new Error(transition.message || `Non-Git execution preparation did not commit for ${planName}.`);
         }
         const activeWorkflow =
-            /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ transition.value;
-        hostedSession.setActiveExecutionWorkflow(activeWorkflow);
+            /** @type {import('../session/hosted-session.ts').ActiveExecutionWorkflow} */ transition.value;
+        await completeExecutionSetup(activeWorkflow.executionCwd);
+        hostedSession?.setActiveExecutionWorkflow(activeWorkflow);
         return activeWorkflow;
     }
     let targetBranch = normalizeExecutionTargetBranch(triageMeta.targetBranch);
@@ -389,7 +472,7 @@ export async function startActiveExecutionWorkflow({
         triageMeta.executionBaselineTree,
     );
     const startsFresh = triageMeta.worktreeStatus === "abandoned" && !hasRecordedWorktree;
-    const cachedWorkflow = hostedSession.getActiveExecutionWorkflow();
+    const cachedWorkflow = existingExecution;
     const existing =
         !startsFresh && cachedWorkflow?.planName === planName && cachedWorkflow.worktreeId === triageMeta.worktreeId
             ? cachedWorkflow
@@ -445,9 +528,9 @@ export async function startActiveExecutionWorkflow({
     if (reusable) {
         Object.assign(effectiveTriageMeta, preflightCanonicalPlanSource.attrs, { planId: stablePlanId });
         executionAgent = resolveExecutionOwner(effectiveTriageMeta);
-        hostedSession.setWorkflowExecutionContext?.({ planName, triageMeta: effectiveTriageMeta });
-        if (hostedSession.getManagedOperationCapability?.()) {
-            hostedSession.recordPlanAssociation?.({ planId: stablePlanId, planName, purpose: "execution" });
+        hostedSession?.setWorkflowExecutionContext?.({ planName, triageMeta: effectiveTriageMeta });
+        if (hostedSession?.getManagedOperationCapability?.()) {
+            hostedSession?.recordPlanAssociation?.({ planId: stablePlanId, planName, purpose: "execution" });
         }
     }
     targetBranch = normalizeExecutionTargetBranch(preflightCanonicalPlanSource.attrs.targetBranch);
@@ -506,6 +589,7 @@ export async function startActiveExecutionWorkflow({
         targetRef: resolvedTargetBranch || targetBranch || undefined,
         expectedRevision: canonicalPlanForRevision?.revision,
         expectedPlanEvent: needsExecutionStartedEvent,
+        resumeInterrupted: sourceLocation.resumeInterruptedPreparation === true,
         prepare: async ({ beforePlan, markEffect, registerRollback }) => {
             let canonicalPlanSource = await loadCanonicalPlanSource(planAuthorityRoot, planName);
             if (canonicalPlanSource.kind !== "loaded") {
@@ -583,6 +667,7 @@ export async function startActiveExecutionWorkflow({
                     attemptId,
                     ...targetPreparation,
                 };
+                hostedSession?.getManagedOperationCapability?.()?.assertLive();
                 await addRunWieldOwnedGitignoreBlock(projectRoot, hostedSession);
                 const worktreeArtifacts = await createWorktreeGitArtifacts(worktreeOptions);
                 await addRunWieldOwnedGitignoreBlock(worktreeArtifacts.path, hostedSession);
@@ -685,7 +770,9 @@ export async function startActiveExecutionWorkflow({
                     reusedWorktree,
                 );
             }
-            if (needsPreparationCheckpoint) await prepareExecutionSetup(hostedSession, worktree.path);
+            const materializedPlanPaths = [planFile.relativePath, ...relatedPlanPaths];
+            if (needsPreparationCheckpoint)
+                await prepareExecutionSetup(hostedSession, worktree.path, materializedPlanPaths);
             const executionPlan = await loadPlan(worktree.path, planName);
             if (!executionPlan) throw new Error(`Plan not found in its execution worktree: ${planName}`);
             // Re-entering an in-progress attempt must keep the tree from before the
@@ -716,7 +803,7 @@ export async function startActiveExecutionWorkflow({
                 safeRecordedBaselineTree ||
                 (continuingReusableWorktree && "baseTree" in worktree && typeof worktree.baseTree === "string"
                     ? worktree.baseTree
-                    : await captureTree(worktree.path));
+                    : await captureTree(worktree.path, materializedPlanPaths));
             const workflow = {
                 planName,
                 triageMeta: effectiveTriageMeta,
@@ -800,7 +887,7 @@ export async function startActiveExecutionWorkflow({
                         ? editedSiblingPaths
                         : await prepareEditedSiblingPlans(worktree.path, planName, planFile.relativePath)),
                 ];
-                const preparationToken = await recordExecutionSetupCheckpoint(worktree.path);
+                const preparationToken = await recordExecutionSetupCheckpoint(worktree.path, materializedPlanPaths);
                 const preparation = await checkpointExecutionPreparation({
                     preparationToken,
                     worktreePath: worktree.path,
@@ -922,8 +1009,8 @@ export async function startActiveExecutionWorkflow({
         throw new Error(transition.message || `Execution preparation did not commit for ${planName}.`);
     }
     const activeWorkflow =
-        /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ transition.value;
+        /** @type {import('../session/hosted-session.ts').ActiveExecutionWorkflow} */ transition.value;
     await completeExecutionSetup(activeWorkflow.executionCwd);
-    hostedSession.setActiveExecutionWorkflow(activeWorkflow);
+    hostedSession?.setActiveExecutionWorkflow(activeWorkflow);
     return activeWorkflow;
 }

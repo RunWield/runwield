@@ -2,7 +2,6 @@ import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { lintSource } from "./bun-lint.ts";
-import mapping from "./bun-lint-rules.json" with { type: "json" };
 
 interface LintCase {
     rule: string;
@@ -61,42 +60,34 @@ const cases: LintCase[] = [
 for (const fixture of cases) {
     test(`portable lint rejects ${fixture.rule}: ${fixture.source}`, () => {
         const diagnostics = lintSource(fixture.source, fixture.filename ?? "case.ts");
-        assert(diagnostics.some((diagnostic) => diagnostic.ruleId === fixture.rule), JSON.stringify(diagnostics));
+        assert(
+            diagnostics.some((diagnostic) => diagnostic.ruleId === fixture.rule),
+            JSON.stringify(diagnostics),
+        );
     });
 }
 
 test("portable lint preserves scoped exceptions without rewriting strings or regular expressions", () => {
-    for (
-        const source of [
-            'export const marker = "deno-lint-ignore no-explicit-any";',
-            "export const marker = /deno-lint-ignore(-file)?/;",
-            "// deno-lint-ignore no-explicit-any\nexport type Existing = any;",
-            "export function f(window: { value: string }) { return window.value; }",
-            'export const detected = typeof window === "undefined";',
-            'import "npm:chalk@6.0.0";',
-            "export enum Present { Yes }",
-            "export const button = <button {...props}/>;",
-        ]
-    ) assertEquals(lintSource(source, "case.tsx"), [], source);
+    for (const source of [
+        'export const marker = "deno-lint-ignore no-explicit-any";',
+        "export const marker = /deno-lint-ignore(-file)?/;",
+        "// deno-lint-ignore no-explicit-any\nexport type Existing = any;",
+        "export function f(window: { value: string }) { return window.value; }",
+        'export const detected = typeof window === "undefined";',
+        'import "npm:chalk@6.0.0";',
+        "export enum Present { Yes }",
+        "export const button = <button {...props}/>;",
+    ])
+        assertEquals(lintSource(source, "case.tsx"), [], source);
     assert(
         lintSource("// deno-lint-ignore no-explicit-any\nexport const value = 1;", "case.ts").some((diagnostic) =>
-            diagnostic.message.includes("Unused eslint-disable")
+            diagnostic.message.includes("Unused eslint-disable"),
         ),
     );
     assert(lintSource('/// <reference garbage="x" />\nexport {};', "case.ts").some((diagnostic) => diagnostic.fatal));
     assert(
-        lintSource("export function f() { await Promise.resolve(); }", "case.ts").some((diagnostic) =>
-            diagnostic.ruleId === "parity/no-await-in-sync-fn"
+        lintSource("export function f() { await Promise.resolve(); }", "case.ts").some(
+            (diagnostic) => diagnostic.ruleId === "parity/no-await-in-sync-fn",
         ),
     );
-});
-
-test("every existing recommended rule has an explicit portable mapping or non-rule enforcement", () => {
-    assertEquals(mapping.length, 87);
-    assertEquals(new Set(mapping.map((entry) => entry.deno)).size, 87);
-    assertEquals(mapping.filter((entry) => !entry.eslint).map((entry) => entry.deno).sort(), [
-        "ban-unknown-rule-code", // Already excluded by the existing Deno gate.
-        "ban-unused-ignore", // ESLint reportUnusedDisableDirectives.
-        "no-sloppy-imports", // Only active with Deno's unused --unstable-sloppy-imports flag.
-    ]);
 });

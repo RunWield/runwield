@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { createSingleEditToolDefinition } from "./edit.js";
+import { createSingleEditToolDefinition } from "./edit.ts";
 import { wrapPlanSafeFileTool } from "./plan-safe-file-tools.ts";
 
 test("portable Plan tools create once and preserve bytes after rejected edits", async () => {

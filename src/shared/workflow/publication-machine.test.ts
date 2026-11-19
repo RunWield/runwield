@@ -11,7 +11,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { ProjectRuntimeEntryRefusedError, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { addEntry } from "../worktree-registry.js";
+import { addEntry } from "../worktree-registry.ts";
 import {
     advanceStoredPublication,
     cleanupStoredPublication,
@@ -230,6 +230,57 @@ test("publication machine can replace a stale integration before the target is p
         assertEquals(refreshedIntegration.integrationCommit, "1".repeat(40));
         assertEquals(refreshedIntegration.revision, firstIntegration.revision + 1);
     } finally {
+        await fsRm(projectRoot, { recursive: true });
+    }
+});
+
+test("read-only publication reconciliation proves a committed artifact without rewriting the publication receipt", async () => {
+    const projectRoot = await gitFixture.checkout();
+    const directory = await fsMkdtemp(join(tmpdir(), "publication-read-proof-"));
+    const executionCwd = join(directory, "execution");
+    try {
+        const head = await git(projectRoot, ["rev-parse", "HEAD"]);
+        await git(projectRoot, ["worktree", "add", "-b", "worktree/demo", executionCwd]);
+        await addEntry(projectRoot, {
+            id: "read-attempt",
+            planId: "read-plan",
+            planName: "demo",
+            baseBranch: "main",
+            baseRef: "refs/heads/main",
+            baseCommit: head,
+            branch: "worktree/demo",
+            path: executionCwd,
+            status: "completed",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+        const started = await startPublicationAttempt({
+            projectRoot,
+            attemptId: "read-attempt",
+            planName: "demo",
+            targetBranch: "main",
+            executionBranch: "worktree/demo",
+            executionCwd,
+            validatedCommit: head,
+            targetHeadAtSeal: head,
+        });
+        await fsWriteFile(join(executionCwd, "artifact.txt"), "sealed artifact\n");
+        await git(executionCwd, ["add", "artifact.txt"]);
+        await git(executionCwd, [
+            "commit",
+            "-m",
+            "Seal delivery\n\nRunWield-Publication-Attempt: read-attempt\nRunWield-Publication-Plan-Path: docs/plans/demo.md",
+        ]);
+        const artifact = await git(executionCwd, ["rev-parse", "HEAD"]);
+        const registryPath = resolveProjectRuntimeLayout(projectRoot).primary.worktreeRegistryPath;
+        const before = await fsReadFile(registryPath, "utf8");
+        const proven = await reconcileStoredPublication(projectRoot, started, { apply: false });
+        assertEquals(proven.phase, "artifacts_committed");
+        assertEquals(proven.artifactCommit, artifact);
+        assertEquals(await fsReadFile(registryPath, "utf8"), before);
+        assertEquals((await loadPublicationAttempt(projectRoot, "read-attempt"))?.phase, "candidate_sealed");
+    } finally {
+        await fsRm(directory, { recursive: true });
         await fsRm(projectRoot, { recursive: true });
     }
 });

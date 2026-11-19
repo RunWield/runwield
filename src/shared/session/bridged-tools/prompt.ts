@@ -26,20 +26,23 @@ const CLAUDE_TOOL_MAP: ToolMapEntry[] = [
     { rwNames: ["read", "view"], nativeName: "Read" },
 ];
 
+const CODEX_TOOL_MAP: ToolMapEntry[] = [
+    { rwNames: ["bash"], nativeName: "exec_command" },
+    { rwNames: ["write", "write_docs", "edit", "edit_docs"], nativeName: "apply_patch" },
+    { rwNames: ["read", "view"], nativeName: "exec_command" },
+];
+
 /** True when the entry is relevant to the declared tool set. */
 function entryMatchesDeclared(entry: ToolMapEntry, declared: Set<string>): boolean {
     if (entry.rwNames.some((n) => declared.has(n))) return true;
     if (declared.has(entry.nativeName)) return true;
     // multi_file_edit is a bridged MCP tool, but its presence in declared tools
     // also signals that the agent can edit files natively.
-    if (entry.rwNames[0] === "edit" && declared.has("multi_file_edit")) return true;
+    if (entry.rwNames.includes("edit") && declared.has("multi_file_edit")) return true;
     return false;
 }
 
-function buildToolMappingSection(
-    map: ToolMapEntry[],
-    declaredTools?: string[],
-): string {
+function buildToolMappingSection(map: ToolMapEntry[], declaredTools?: string[]): string {
     let entries = map;
     if (declaredTools) {
         const declared = new Set(declaredTools);
@@ -64,10 +67,10 @@ function buildToolMappingSection(
 
 export function buildBridgedToolPromptAppendix(
     bridgedTools: ToolDefinition[],
-    hostName: "Claude Code" | "Antigravity CLI",
+    hostName: "Claude Code" | "Codex" | "Antigravity CLI",
     declaredTools?: string[],
 ): string {
-    const map = hostName === "Antigravity CLI" ? AGY_TOOL_MAP : CLAUDE_TOOL_MAP;
+    const map = hostName === "Antigravity CLI" ? AGY_TOOL_MAP : hostName === "Codex" ? CODEX_TOOL_MAP : CLAUDE_TOOL_MAP;
     const toolMapping = buildToolMappingSection(map, declaredTools);
 
     const eligibleAliases = bridgedTools.map((tool) => mcpAliasFor(tool.name));
@@ -83,10 +86,10 @@ export function buildBridgedToolPromptAppendix(
         `Use ${hostName} native tools for file, search, and shell work. Use RunWield Bridged Tools for memory, code intelligence, Work Record, user interview, and lifecycle work.`,
         "",
         "Calling a lifecycle tool is the only way to advance RunWield workflow state. Plain-text questions, " +
-        'statements such as "done", or text that resembles a tool call have no workflow effect.',
+            'statements such as "done", or text that resembles a tool call have no workflow effect.',
         "",
         "If a task is blocked by missing credentials, permissions, or unavailable services, report the blocker in text " +
-        "instead of calling a lifecycle completion tool.",
+            "instead of calling a lifecycle completion tool.",
     ];
     if (eligibleAliases.includes("runwield_review_complete")) {
         const inspectionTools = eligibleAliases.includes("review_diff")

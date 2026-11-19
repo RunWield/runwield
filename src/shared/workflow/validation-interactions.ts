@@ -13,11 +13,97 @@ import type { UserActionChoice, UserActionPause, ValidationLoopArgs } from "./va
 import { emitStatus } from "./validation-emit.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
 
+import { sameHostIdentity, ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
+import { saveHostCheckpoint } from "./validation-host-state.ts";
+
+function isPauseDecision(answer: ValidationInteractionResponse | undefined): boolean {
+    return answer?.outcome === "selected" && ["stop", "close"].includes(String(answer.value));
+}
+
 export async function requestInteraction(
     args: ValidationLoopArgs,
     request: ValidationInteractionRequest,
 ): Promise<ValidationInteractionResponse> {
-    return await args.session.requestInteraction(request);
+    if (!args.hostTurn) return await args.session.requestInteraction(request);
+    const checkpoint = args.validationCheckpoint!;
+    const bytes = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(
+            JSON.stringify([
+                request.type === ValidationInteractionTypes.CODE_REVIEW
+                    ? [request.type, request._meta?.planName, request._meta?.diffText, request._meta?.targetBranch]
+                    : request,
+                checkpoint.pendingCiDecision,
+                checkpoint.generation,
+            ]),
+        ),
+    );
+    const key = Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    // Answers replay by logical prompt; request identities belong to one durable wait.
+    // A repeated CI failure can show the same prompt, but must not accept an old Retry.
+    const pending = checkpoint.pendingHostDecision;
+    const sequence = (checkpoint.hostDecisionSequence || 0) + 1;
+    const identity = pending?.identity.key.startsWith(`${key}:`)
+        ? pending.identity
+        : {
+              attemptId: checkpoint.attemptId,
+              generation: checkpoint.generation,
+              kind: "decision" as const,
+              key: `${key}:${sequence}`,
+          };
+    const resume = args.hostTurn.resume;
+    const savedAnswer = checkpoint.hostDecisionChoices?.[key];
+    const accepted = isPauseDecision(savedAnswer) ? undefined : savedAnswer;
+    if (
+        accepted &&
+        (resume?.kind !== "decision" || !sameHostIdentity(identity, resume.identity) || args.hostTurn.consumed)
+    )
+        return accepted;
+    if (resume?.kind === "decision" && !args.hostTurn.consumed) {
+        if (!sameHostIdentity(identity, resume.identity)) throw new ValidationHostRejected();
+        const answer = resume.answer;
+        if (
+            request.type === "select" &&
+            (answer.outcome !== "selected" || !request.options?.some((option) => option.value === answer.value))
+        )
+            throw new ValidationHostRejected("Invalid decision option.");
+        if (
+            request.type === "text" &&
+            (answer.outcome !== "text" ||
+                typeof answer.value !== "string" ||
+                (!request.allowEmpty && !answer.value.trim()))
+        )
+            throw new ValidationHostRejected("Invalid text answer.");
+        args.hostTurn.consumed = true;
+        await saveHostCheckpoint(args, {
+            // Stop and Close pause this call, not every future call for the same round.
+            hostDecisionChoices: isPauseDecision(answer)
+                ? checkpoint.hostDecisionChoices
+                : { ...checkpoint.hostDecisionChoices, [key]: answer },
+            pendingHostDecision: undefined,
+        });
+        return answer;
+    }
+    if (accepted) return accepted;
+    // Strip process-local callbacks before saving a browser wait.
+    const hostRequest =
+        pending && sameHostIdentity(pending.identity, identity)
+            ? pending
+            : { kind: "decision" as const, identity, interaction: JSON.parse(JSON.stringify(request)) };
+    await saveHostCheckpoint(args, {
+        pendingHostDecision: hostRequest,
+        ...(request.type === ValidationInteractionTypes.CODE_REVIEW
+            ? {
+                  hostDecisionChoices: Object.fromEntries(
+                      Object.entries(checkpoint.hostDecisionChoices || {}).filter(
+                          ([, answer]) => answer.value !== "retry",
+                      ),
+                  ),
+              }
+            : {}),
+        hostDecisionSequence: identity === pending?.identity ? checkpoint.hostDecisionSequence : sequence,
+    });
+    throw new ValidationHostWait(hostRequest);
 }
 
 /**
@@ -32,10 +118,7 @@ export async function requestInteraction(
  * is the safe answer: it never loops unattended and never guesses on the user's
  * behalf.
  */
-export async function pauseForUserAction(
-    args: ValidationLoopArgs,
-    pause: UserActionPause,
-): Promise<UserActionChoice> {
+export async function pauseForUserAction(args: ValidationLoopArgs, pause: UserActionPause): Promise<UserActionChoice> {
     const message = buildValidationUserMessage({
         kind: "user_action",
         whatHappened: pause.whatHappened,
@@ -52,8 +135,20 @@ export async function pauseForUserAction(
         prompt: message,
         options,
     });
-    const selectedValue = response.outcome === "selected" && typeof response.value === "string"
-        ? options.find((option) => option.value === response.value)?.value
-        : undefined;
+    if (args.hostTurn) {
+        // Keep cancellation only until its Retry/Stop prompt has been answered. A
+        // fresh process must replay that route, not replay cancellation forever.
+        await saveHostCheckpoint(args, {
+            hostDecisionChoices: Object.fromEntries(
+                Object.entries(args.validationCheckpoint?.hostDecisionChoices || {}).filter(
+                    ([, answer]) => answer.outcome !== "canceled",
+                ),
+            ),
+        });
+    }
+    const selectedValue =
+        response.outcome === "selected" && typeof response.value === "string"
+            ? options.find((option) => option.value === response.value)?.value
+            : undefined;
     return selectedValue || "stop";
 }

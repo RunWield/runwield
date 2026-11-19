@@ -3,12 +3,12 @@ import { rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { setCustomSetting } from "../settings.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { setCustomSetting } from "../settings.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
-import { startActiveExecutionWorkflow } from "./workflow.js";
+import { startActiveExecutionWorkflow } from "./workflow.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 
 const repo = defineCommittedGitFixture();

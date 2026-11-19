@@ -3,7 +3,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { buildDeliveryReport } from "../../shared/workflow/delivery-report.ts";
-import { reduceSessionEvents, SessionTimeline } from "./components/SessionTimeline.jsx";
+import { reduceSessionEvents, SessionTimeline } from "./components/SessionTimeline.tsx";
 import { createPublicationAttempt } from "../../shared/workflow/publication-attempt.ts";
 
 test("Plan Branch completion card names the landing and the user's next merge", () => {

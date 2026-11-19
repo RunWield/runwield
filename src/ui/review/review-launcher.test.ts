@@ -13,10 +13,11 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { createTuiInteractionAdapter } from "../tui/runtime-interaction-adapter.js";
+import { createUiApiFixture } from "../tui/ui-api-test-fixture.ts";
+import { createTuiInteractionAdapter } from "../tui/runtime-interaction-adapter.ts";
 import { getWorktreeReviewDiff } from "../../shared/workflow/git-snapshot.ts";
 import {
     type ReviewDecisionValue,
@@ -66,7 +67,8 @@ function reviewLauncherTest(name: string, run: (projectRoot: string) => Promise<
                 if (previous === undefined) delete process.env["WLD_WORKSPACE_DISABLE_BUILT_SERVER"];
                 else process.env["WLD_WORKSPACE_DISABLE_BUILT_SERVER"] = previous;
             }
-        }));
+        }),
+    );
 }
 
 async function runGit(cwd: string, args: string[]): Promise<string> {
@@ -226,10 +228,11 @@ reviewLauncherTest("standalone Plan conversation reuses one token page across ag
         agentLabel: "Architect",
         browser,
     });
-    const status = await (await fetch(
-        `${new URL(first.url).origin}/api/review/conversation?token=${encodeURIComponent(token)}`,
-        { headers: { "x-runwield-review-token": token } },
-    )).json();
+    const status = await (
+        await fetch(`${new URL(first.url).origin}/api/review/conversation?token=${encodeURIComponent(token)}`, {
+            headers: { "x-runwield-review-token": token },
+        })
+    ).json();
 
     assertEquals(revised.url, first.url);
     assertEquals(revised.opened, false);
@@ -296,6 +299,7 @@ reviewLauncherTest(
                 method: "POST",
                 headers: { "content-type": "application/json", "x-runwield-review-token": token },
                 body: JSON.stringify({
+                    reviewRevision: 0,
                     approved: false,
                     conversationTurn: true,
                     feedback: "Rename the helper.",
@@ -328,10 +332,11 @@ reviewLauncherTest(
             reviewConversation: conversation,
             browser,
         });
-        const status = await (await fetch(
-            `${new URL(first.url).origin}/api/review/conversation?token=${encodeURIComponent(token)}`,
-            { headers: { "x-runwield-review-token": token } },
-        )).json();
+        const status = await (
+            await fetch(`${new URL(first.url).origin}/api/review/conversation?token=${encodeURIComponent(token)}`, {
+                headers: { "x-runwield-review-token": token },
+            })
+        ).json();
 
         assertEquals(revised.url, first.url);
         assertEquals(revised.opened, false);
@@ -396,9 +401,8 @@ reviewLauncherTest("reloading Code Review recomputes the proposed branch patch",
     try {
         const fallbackResponse = await fetch(server.url);
         const fallbackHtml = await fallbackResponse.text();
-        const fallbackEmbedded = fallbackHtml.match(
-            /<script[^>]*data-code-review-payload[^>]*>([\s\S]*?)<\/script>/,
-        )?.[1] || "{}";
+        const fallbackEmbedded =
+            fallbackHtml.match(/<script[^>]*data-code-review-payload[^>]*>([\s\S]*?)<\/script>/)?.[1] || "{}";
         assertEquals(fallbackResponse.status, 200);
         assertEquals(JSON.parse(fallbackEmbedded).rawPatch, "stale patch");
     } finally {
@@ -426,53 +430,45 @@ reviewLauncherTest("reloading Code Review recomputes the proposed branch patch",
     }
 });
 
-reviewLauncherTest(
-    "TUI Code Review interaction keeps planTitle through the real Workspace payload",
-    async () => {
-        const projectRoot = await codeReviewGitFixture.checkout({ prefix: "runwield-code-review-" });
-        try {
-            await fsWriteFile(`${projectRoot}/change.ts`, "export const changed = true;\n");
-            const abort = new AbortController();
-            let inspectPayload = Promise.resolve();
-            const browser: BrowserPort = {
-                open(url) {
-                    inspectPayload = (async () => {
-                        try {
-                            const token = new URL(url).searchParams.get("token") || "";
-                            const html = await (await fetch(url)).text();
-                            assertStringIncludes(html, '"planTitle":"Readable Plan Title"');
-                            assertStringIncludes(html, '"autoStart":true');
-                            assertStringIncludes(html, '"untrackedFiles":["change.ts"]');
-                            const response = await fetch(
-                                `${new URL(url).origin}/api/review/deny?token=${encodeURIComponent(token)}`,
-                                {
-                                    method: "POST",
-                                    headers: {
-                                        "content-type": "application/json",
-                                        "x-runwield-review-token": token,
-                                    },
-                                    body: JSON.stringify({ feedback: "Not yet." }),
+reviewLauncherTest("TUI Code Review interaction keeps planTitle through the real Workspace payload", async () => {
+    const projectRoot = await codeReviewGitFixture.checkout({ prefix: "runwield-code-review-" });
+    const ui = createUiApiFixture();
+    try {
+        await fsWriteFile(`${projectRoot}/change.ts`, "export const changed = true;\n");
+        const abort = new AbortController();
+        let inspectPayload = Promise.resolve();
+        const browser: BrowserPort = {
+            open(url) {
+                inspectPayload = (async () => {
+                    try {
+                        const token = new URL(url).searchParams.get("token") || "";
+                        const html = await (await fetch(url)).text();
+                        assertStringIncludes(html, '"planTitle":"Readable Plan Title"');
+                        assertStringIncludes(html, '"autoStart":true');
+                        assertStringIncludes(html, '"untrackedFiles":["change.ts"]');
+                        const response = await fetch(
+                            `${new URL(url).origin}/api/review/deny?token=${encodeURIComponent(token)}`,
+                            {
+                                method: "POST",
+                                headers: {
+                                    "content-type": "application/json",
+                                    "x-runwield-review-token": token,
                                 },
-                            );
-                            assertEquals(response.status, 200);
-                        } catch (error) {
-                            abort.abort();
-                            throw error;
-                        }
-                    })();
-                    return Promise.resolve(false);
-                },
-            };
-            const adapter = createTuiInteractionAdapter({
-                appendSystemMessage: () => {},
-                appendAgentMessageStart: () => ({ appendText: () => {} }),
-                requestRender: () => {},
-                promptSelect: () => Promise.resolve(null),
-                promptText: () => Promise.resolve(null),
-                showModelSelector: () => {},
-                abortActivePrompt: () => {},
-            }, { browser });
-            const response = await adapter.requestInteraction({
+                                body: JSON.stringify({ feedback: "Not yet.", reviewRevision: 0 }),
+                            },
+                        );
+                        assertEquals(response.status, 200);
+                    } catch (error) {
+                        abort.abort();
+                        throw error;
+                    }
+                })();
+                return Promise.resolve(false);
+            },
+        };
+        const adapter = createTuiInteractionAdapter(ui.uiAPI, { browser });
+        const response = await adapter.requestInteraction(
+            {
                 type: "code_review",
                 prompt: "Review the code changes.",
                 _meta: {
@@ -498,17 +494,19 @@ reviewLauncherTest(
                         score: 4,
                     },
                 },
-            }, abort.signal);
-            await inspectPayload;
-            assertEquals(response, {
-                outcome: "selected",
-                _meta: { approved: false, feedback: "Not yet.", annotations: [], canceled: false, exit: false },
-            });
-        } finally {
-            await fsRm(projectRoot, { recursive: true }).catch(() => {});
-        }
-    },
-);
+            },
+            abort.signal,
+        );
+        await inspectPayload;
+        assertEquals(response, {
+            outcome: "selected",
+            _meta: { approved: false, feedback: "Not yet.", annotations: [], canceled: false, exit: false },
+        });
+    } finally {
+        ui.close();
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+    }
+});
 
 reviewLauncherTest("review server startup output reaches the caller", async (projectRoot) => {
     const output: ReviewServerOutput[] = [];
@@ -552,3 +550,66 @@ reviewLauncherTest("global cleanup stops every real review surface", async (proj
         canceled: true,
     });
 });
+
+reviewLauncherTest("Plan, Code and artifact reviews share an origin and decide independently", async (projectRoot) => {
+    const browser = recordingBrowser(false);
+    const plan = await startPlanReviewSurface<PlanDecision>({ cwd: projectRoot, plan: "# Shared Plan", browser });
+    const code = await startCodeReviewSurface<CodeDecision>({
+        agentCwd: projectRoot,
+        rawPatch: "",
+        gitRef: "fixture",
+        browser,
+    });
+    const artifact = await startArtifactReadSurface<PlanDecision>({
+        cwd: projectRoot,
+        markdown: "# Shared artifact",
+        artifactKind: "report",
+        title: "Artifact",
+        browser,
+    });
+    const planUrl = new URL(plan.url);
+    const codeUrl = new URL(code.url);
+    assertEquals(planUrl.origin, codeUrl.origin);
+    assertEquals(new URL(artifact.url).origin, planUrl.origin);
+    assertEquals(planUrl.searchParams.get("token") === codeUrl.searchParams.get("token"), false);
+    for (const surface of [plan, code]) {
+        const page = new URL(surface.url);
+        const decision = surface.waitForDecision();
+        const response = await fetch(new URL(`/api/review/decision${page.search}`, page), {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ feedback: page.pathname, ...(surface === code && { reviewRevision: 0 }) }),
+        });
+        assertEquals(response.status, 200);
+        await response.text();
+        assertEquals((await decision).approved, true);
+        assertEquals((await decision).feedback, page.pathname);
+    }
+    assertStringIncludes(await (await fetch(artifact.url)).text(), "Shared artifact");
+});
+
+reviewLauncherTest(
+    "stopping Code Review cancels only its decision and leaves Plan Review working",
+    async (projectRoot) => {
+        const browser = recordingBrowser(false);
+        const plan = await startPlanReviewSurface<PlanDecision>({
+            cwd: projectRoot,
+            plan: "# Surviving Plan",
+            browser,
+        });
+        const code = await startCodeReviewSurface<CodeDecision>({
+            agentCwd: projectRoot,
+            rawPatch: "",
+            gitRef: "fixture",
+            browser,
+        });
+        assertEquals(new URL(plan.url).origin, new URL(code.url).origin);
+        const decision = code.waitForDecision();
+        await code.stop();
+        assertEquals(await decision, { approved: false, feedback: "", annotations: [], exit: true, canceled: true });
+        const stopped = await fetch(code.url);
+        assertEquals(stopped.status, 401);
+        await stopped.text();
+        assertStringIncludes(await (await fetch(plan.url)).text(), "Surviving Plan");
+    },
+);

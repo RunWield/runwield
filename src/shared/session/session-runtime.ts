@@ -3,10 +3,13 @@ export {
     getConfiguredAgentThinkingLevel,
     listPromptTemplates,
     listSkills,
-} from "./session.js";
+} from "./session.ts";
 export { resolveSessionContinuation } from "./session-continuation.ts";
+export type { DeferredPlanExecution } from "./runtime/workflow-options.ts";
+export { generateInMemoryGuide } from "./runtime/guided-review.ts";
 export type { DequeueQueuedMessageResult, SteerSessionResult } from "./runtime/types.ts";
-import { AGENTS } from "../../constants.js";
+export type { RuntimeTriageInput } from "./runtime/workflow-options.ts";
+import { AGENTS } from "../../constants.ts";
 import { SessionHost } from "./session-host.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { RuntimeServices } from "./runtime/base.ts";
@@ -28,10 +31,10 @@ export { SessionTurnInProgressError } from "./runtime/support.ts";
 
 // Runtime ownership is not a test capability. It routes a settled root turn
 // back to the Session that owns its managed writer and interaction adapter.
-const planReviewRuntimeOwners = new WeakMap<import("./hosted-session.js").HostedSession, SessionRuntime>();
+const planReviewRuntimeOwners = new WeakMap<import("./hosted-session.ts").HostedSession, SessionRuntime>();
 
 export async function rearmPlanReviewConversation(
-    session: import("./hosted-session.js").HostedSession,
+    session: import("./hosted-session.ts").HostedSession,
     planName: string,
     planningAgentName: string,
 ): Promise<import("../workflow/workflow-tool-events.ts").PlanWrittenEventPayload> {
@@ -403,13 +406,14 @@ export class SessionRuntime {
 export function createSessionRuntime(options: CreateSessionRuntimeOptions = {}): SessionRuntime {
     let sessionStore = options.sessionStore ?? null;
     let ownsSessionStore = false;
-    if (!Object.hasOwn(options, "sessionStore")) {
+    if (!options.remoteSessionControl && !Object.hasOwn(options, "sessionStore")) {
         sessionStore = openFileSessionStore();
         ownsSessionStore = true;
     }
     return new SessionRuntime({
         sessionHost: new SessionHost(),
         sessionStore,
+        remoteSessionControl: options.remoteSessionControl,
         ownsSessionStore,
         ownerProcessKind: options.ownerProcessKind ?? "test",
         ownerInstanceId: options.ownerInstanceId ?? crypto.randomUUID(),

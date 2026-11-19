@@ -29,6 +29,12 @@ first-party plugins. A Connect plugin lets users explicitly invoke RunWield work
 while that host retains the conversation and makes every model call. _Avoid_: Plugin mode, always-on RunWield, trial
 mode
 
+**Compatibility Matrix**: Core-owned, versioned qualified release families, adapter contracts, minimum versions, and
+separate exact acceptance-run evidence for a Connect adapter. Stable hosts share coverage within a major; pre-1.0 hosts
+share coverage within a minor. New families require qualification. Policy coverage does not claim an individual run.
+Every evidence-carrying operation checks compatibility; nonblocking assessments stay internal and work continues quietly.
+_Avoid_: support list, capability manifest
+
 **Attached Mode**: The internal architecture underlying RunWield Connect, in which an External Agent Host makes every
 model call and users invoke RunWield explicitly for individual user requests. Use RunWield Connect in customer-facing
 product language. _Avoid_: Public product name, RunWield Execution Backend
@@ -36,6 +42,38 @@ product language. _Avoid_: Public product name, RunWield Execution Backend
 **Attached Workflow**: The per-request RunWield workflow active inside an External Agent Host through RunWield Connect,
 with RunWield governing durable workflow truth while the host performs agent reasoning and execution. _Avoid_: Attached
 Mode, Managed Mode, RunWield Session
+
+An Attached Workflow can continue through another compatible External Agent Host in the same local repository. The
+originating host remains provenance; the current host supplies reasoning. Continuation preserves Core's saved Plan,
+action, and execution directory without transferring host conversation history.
+
+**Attached Workflow Coordinator**: The Core runtime that advances Attached Workflows through short `wld attached`
+operations. It is a sibling of `SessionRuntime`: it loads the Attached Workflow Record, checks it, makes at most one
+change, saves, and exits. It never creates a Session, calls a model, or stores a host transcript. _Avoid_: Attached
+adapter, attached Session, host bridge
+
+**Attached Workflow Record**: The durable file that holds one Attached Workflow's state, revision, pending host action,
+accepted operation results, and binding evidence. It lives under `~/.wld/attached/`, keyed by the primary checkout root.
+It references its Plan but does not own it. The same Plan can be opened and run with `wld`. _Avoid_: Attached Session,
+host transcript, controller record
+
+**Attached Review Round**: The durable pending-review identity on an Attached Workflow Record: round, action ID, actual
+reviewed Plan revision, and waiting reason. It keeps a browser decision and its outcome recoverable across process loss.
+Core Plan review remains the authority for approval, Feedback, and readiness. _Avoid_: review promise, session-scoped
+review
+
+**Attached Execution Handoff**: The durable handoff of a Core-prepared execution directory, Plan path, issued action,
+and current implementer role instructions to an External Agent Host worker. The Attached Workflow Record references
+RunWield's registry and baseline evidence; it does not own a second worktree lifecycle. The host worker returns a bullet
+report to the coordinating conversation, which submits Core's `task_completed` contract. With remembered non-Git
+consent, the directory is the current checkout rather than a worktree. _Avoid_: worker session, host worktree
+
+**Attached Role Instructions**: The effective layered Agent instructions Core returns either for a pending workflow
+action through `get_instructions` or for explicit stateless Ideator/Guide entry through `get_role_instructions`. Each
+response resolves current project, home, and bundled definitions, shared practices, and applicable Skills. Conversation
+instructions use `runwield.attached.conversation/1` without a workflow; the host owns replies and resume. A Router
+`role_handoff` closes only its routing record, not the discussion or delivery. Instructions are not saved in the
+Attached Workflow Record; handoff receipts also omit conversation dispatch settings. _Avoid_: generated Skill, role contract copy, conversation store
 
 **Headless Mode**: The non-interactive RunWield execution surface that emits machine-readable Agent Session events for
 external hosts. _Avoid_: TUI mode, batch wrapper, remote UI
@@ -68,6 +106,64 @@ it is not shared project knowledge or a source for cross-Session Agent retrieval
 interaction results as committed transcript history; a live unanswered interaction is not committed history until its
 result is written. _Avoid_: Work Record, planning memory, shared conversation
 
+**Usage observation**: A content-free measurement that RunWield Core observes while `workflowMetrics` is enabled. It
+records workflow activity, model tokens, measured or estimated costs, timing, or tool/context coverage, not user
+conversation content or a provider invoice. It belongs to one primary Project history and collection epoch. It may link
+to a Session and, when observed, a Plan; it does not replace Session Transcript or Plan Association authority. Missing
+measurements are unavailable, not zero. See
+[Core usage measurement and export](prd/runwield-core-prd.md#usage-measurement-and-export). _Avoid_: Transcript, billing
+charge, invoice, complete activity history
+
+**Metrics exporter**: An optional, destination-specific package entry point that receives approved Core observations.
+Core owns its host-global approval and binds it to its installed identity: exporter ID, configured user-scope source,
+real installed path, and version. Core dispatches one immutable, content-free observation under a separate Export grant.
+The package handles transport, not permission, retries, or journal access. It is not loaded as a Session extension.
+_Avoid_: model Provider, Pi Agent extension, RunWield Connect plugin
+
+**Export grant**: Saved host-global permission to send future eligible observations to one approved exporter identity,
+endpoint, and external project from an explicit Project allowlist. Each Project has its own journal start position.
+Credentials are separate. A new endpoint or re-enablement starts new consent; it does not sweep earlier history. See
+[Core export consent](prd/runwield-core-prd.md#export-consent). _Avoid_: collection opt-in, exporter package approval
+
+<a id="delivery-accepted"></a>
+
+**Delivery accepted**: The exporter reports acceptance of an observation. Read-back has not proved its remote presence.
+_Avoid_: confirmed publication, Plan Status
+
+<a id="delivery-confirmed"></a>
+
+**Delivery confirmed**: Exporter read-back proves that the remote observation is present. This does not confirm workflow
+publication. _Avoid_: published Plan, workflow success
+
+<a id="delivery-rejected"></a>
+
+**Delivery rejected**: The destination did not accept an observation. A permanent rejection stays rejected; a correction
+rejection becomes pending only after credentials change. _Avoid_: failed Plan, abandoned workflow
+
+**Delivery unconfirmed**: An exporter delivery state where acceptance is unknown. Core never resends it automatically.
+Read-back can change it to [Delivery confirmed](#delivery-confirmed). It differs from
+[Delivery accepted](#delivery-accepted) and [Delivery rejected](#delivery-rejected). It is not a Plan Status or a
+workflow failure. _Avoid_: retryable send, failed workflow
+
+**Active day**: A reporting-zone calendar day with accepted human input or an explicit user-started continuation,
+recorded through user-initiated execution or command provenance. An open window, automatic repair, or background result
+is not user activity. Usage can complete on a day that is not active. _Avoid_: Login day, model activity day, open tab
+
+**Usage gap**: A reporting interval without complete measurement coverage. Disabled, legacy, unavailable, incomplete,
+and not-yet-collected evidence are distinct gap reasons. A gap breaks the usage trend; it is not a measured zero. A
+known zero requires an enabled interval bounded by recorded evidence. _Avoid_: Zero usage, disabled duration, failed
+workflow
+
+**Collection epoch**: The local identity for a collection interval. Normal recording controls commit a host-level
+boundary with the setting; Projects with an explicit boolean recording override keep their epoch. An empty Project
+setting inherits global enablement and its boundaries. Direct settings-file edits are
+observed lazily by Core. An observed disabled transition can be retained as control evidence, but is not a Usage
+observation. Unobserved intervals contain no recorded measurements and do not prove disabled durations. Collection
+epochs are not Session lifetimes or Plan statuses. _Avoid_: Disabled duration, Session epoch
+
+**History epoch**: The identity of one local primary Project measurement history. Usage observations and collection
+control records link to it; Session and Plan links remain separate. It does not authorize replay or reconstruction from
+Session Transcripts. _Avoid_: Session history, Plan revision, billing period
 **Session Export**: A file copy of one Session's complete committed Session Transcript across all Session Transcript
 Segments, with Session Manifest facts. `/export` writes HTML or JSON; `/share` uploads both to a secret GitHub Gist. It is
 not a Shared Session Snapshot. _Avoid_: Pi export, segment export
@@ -119,30 +215,71 @@ Plan status, Session status, ownership reason
 **Session Name**: The persisted short human label for a Session, initially derived from Router Triage for fresh user
 requests. It is distinct from the terminal window or tab title. _Avoid_: Tab title, conversation name
 
-**Remote SSH connection**: A connected-only Core interaction started with `wld remote` for an existing directory on a
-remote Linux host. The current connection prepares a matching runtime, mounts laptop personal files on the approved
-Linux `sct` pilot, and opens a dormant remote TUI. An optional bounded native Pi bridge proof is not an ordinary user
-turn; the normal connection does not create or resume a saved Session. Guarded Session history and remote project
-workflows remain target behavior. _Avoid_: Personal Workspace, unattended worker, remote Session type
+**Remote SSH connection**: Connected-only Core execution started with `wld remote` in an existing directory on a remote
+Linux host. It prepares a matching runtime and personal mount, runs the normal TUI, Agents, project tools, and delivery
+workflows remotely, and uses laptop models, Memory, and authoritative Session saves. The first submitted message creates
+history, not connection alone. Personal MCP servers run on the laptop; project servers run remotely. Roots and paths are
+not rewritten. Connection cleanup stops owned descendants, including detached processes and adopted orphans, within
+[Core’s cleanup limits](prd/runwield-core-prd.md#remote-connection), without replaying uncertain effects.
+`wld remote sessions` reads laptop history offline without a composer or writer lock. Connected `/resume` continues only
+this target’s Sessions; local TUI, ACP, Workspace, and `/load-plan` lists hide them. macOS Ctrl+V reads current laptop
+clipboard image bytes; saved attachment references survive reconnect. Reviews use one laptop-loopback forward in the
+main SSH connection to the private remote `review.sock`; project assets stay remote. Plan and Code Review retain their
+URL through conversation, revision, and approval. Built-in Guided Review runs in memory with remote files and the laptop
+model; an explicit custom guide command remains a remote subprocess.
+
+The qualified live matrix is macOS arm64 laptop → Fedora Server x64 (`sct`), Pi `openai-codex/gpt-5.6-luna`. Linux ARM64
+remote runtimes use the synthetic-provider release gate. Other glibc distributions are untested; Windows laptops and CLI
+backends are unsupported. This is a tested matrix, not proof of universal recovery maturity. See
+[Core Remote connection](prd/runwield-core-prd.md#remote-connection). _Avoid_: Personal Workspace, unattended worker,
+remote Session type
+
+**Remote project locator**: The laptop history relationship between a Project and an exact remote host identity plus
+canonical remote project root. Host identity uses the effective OpenSSH hostname, user, port, and verified host key
+fingerprint; the SSH alias is only a display label. A certificate connection without a reported stable fingerprint uses
+`null`, with exact hostname, user, and port matching. With the same root and user, a matching non-null key but changed
+address, or a matching address but changed key, asks once whether it is the same server. Yes uses the saved project's
+identity; No keeps a separate target. Both answers are retained. An unconfirmed identity difference never reuses history.
+Two `null` fingerprints do not prove a shared key. The root is remote `primaryRoot`, or `gitRoot`, or `cwd` when the
+preceding value is absent. A worktree shares its primary checkout's project identity while the Session keeps execution
+cwd separately. Laptop paths and temporary mount paths are not remote project identity. A confirmed host also uses the
+saved project's Memory key; local-project Memory sharing remains a separate choice. _Avoid_: SSH alias identity, mount
+root, local checkout path
+
+**Remote Memory key**: The normalized resolved SSH hostname, user, port, and canonical remote primary project root. It
+excludes the host key and temporary mount paths. A confirmed host uses the saved project's key. A worktree uses its
+primary root. _Avoid_: Session identity, SSH alias
+
+**Remote Memory binding**: A saved laptop choice that maps a Remote Memory key to one Mnemoteca collection. The normal
+collection is `<folder>@<hostname>-<hash>`. An exact folder-name match to a saved local Session project asks whether it
+is the same project. Yes shares that local collection; No keeps the normal remote collection. Both answers are retained.
+Sharing a collection shares memories, never Sessions. _Avoid_: Project relink, Session merge
 
 **Remote personal mount**: A connection-owned SSHFS view of the laptop’s full `~/.wld` at a fresh private remote path.
 Personal file edits through it change laptop files directly, not a copied resource tree. The remote project’s `.wld`
 stays on the server. The path is private for normal use, but standard SFTP permits broad laptop-account access by the
-trusted remote host; this is not a sandbox. This mount is not the guarded operation-scoped Session writer mount. Direct
-bidirectional Skill file access was verified on the approved Linux `sct` pilot before the connection-only view. This
-does not qualify other hosts or saved Sessions. _Avoid_: Resource sync, copied profile, confined mount
+trusted remote host; this is not a sandbox and does not grant Session writer authority. Supported extra mounts are the
+agents root and installed package roots, not arbitrary personal roots. The
+[Core qualified matrix](prd/runwield-core-prd.md#remote-connection) bounds support; this term is not a proof record.
+_Avoid_: Resource sync, copied profile, confined mount
 
 **Project Runtime State**: Machine-owned RunWield state inside a Project checkout. The current reserved root is
 `.wld/internal/`. User-derived `.wld/settings.json`, `.wld/agents/`, `.wld/skills/`, and `.wld/prompts/` are not Project
-Runtime State. A Remote SSH connection can identify a remote checkout but does not enter or create its Project Runtime
-State; future remote project work would keep that state with the remote checkout. _Avoid_: project settings, project
-config, all of `.wld/`
+Runtime State. Remote location discovery alone does not enter or create Project Runtime State. Remote project-owned
+state stays with the remote checkout, not with laptop personal history. Delivery workflows use that remote state;
+artifacts, Plan Associations, review references, and Session segments are saved by the laptop owner.
+_Avoid_: project settings, project config, all of `.wld/`
 
-**Project Runtime Entry**: The shared migration-or-verification operation that runs before normal Project Runtime State
-access. It can adopt eligible legacy state, confirm the selected and primary checkout layout, or refuse access with a
-retryable reason and safe paths. It is not Session activation, path resolution, Workspace registration, or a
-command-only check. Doctor inspection can report pending adoption without performing Project Runtime Entry. _Avoid_:
-startup, activation, registration, path getter
+**Project Runtime Entry**: Action-owned admission before Project Runtime State mutation locks or writes. It can adopt
+eligible legacy state, recover returning input, verify primary/selected checkout ownership, or refuse with a retryable
+reason and safe paths. Each action rechecks authority independently of earlier reads. It is not Session activation,
+path resolution, Workspace registration, or passive inspection. _Avoid_: startup, activation, registration, path getter,
+read access
+
+**Project Runtime Inspection**: Checked passive access to existing local runtime authority. It distinguishes fresh,
+ready, pending, and blocked evidence without writes, writer-lock probes, migration, or recovery. A fresh Project needs
+no runtime storage; adopted authority stays readable when legacy recovery input returns. Inspection reuse ends with
+its bounded operation and never satisfies Project Runtime Entry. _Avoid_: entry, adoption, initialization, lock test
 
 **Project Internal Root**: The `.wld/internal/` directory in the checkout that owns a Project Runtime State item. It is
 a path contract only; it does not mean migration or writer cutover is complete. _Avoid_: `.wld`, runtime directory when
@@ -271,7 +408,17 @@ execution, Workflow Validation, and delivery as their real events occur. It is n
 sample project, or a substitute for validation. _Avoid_: Onboarding workflow, training Plan, Workspace tutorial
 
 **Plan**: A markdown file in `docs/plans/` describing the implementation strategy for a user request. Its YAML front
-matter records classification, complexity, status, timestamps, and origin. _Avoid_: Blueprint, spec, design doc
+matter records classification, complexity, status, timestamps, and origin when present. Plain Markdown without identity
+or metadata is a valid local draft; browsing does not adopt it. _Avoid_: Blueprint, spec, design doc
+
+**External Plan Adoption**: Deliberate preparation of an external Markdown Plan through selected load or an owning
+write. It persists identity and applicable defaults while preserving the body, original age, and existing decisions.
+It is distinct from project runtime-layout adoption. _Avoid_: discovery, listing, indexing, pending read
+
+**Plan Read Availability**: Read-result metadata (`ready` or `pending`) carried separately from Plan Front Matter.
+Pending means required workflow authority or preparation is unavailable, not that the Plan has changed lifecycle state,
+failed, or been adopted. Safe local documents can remain browseable by name; pending facts cannot authorize actions or
+stand in for current search evidence. _Avoid_: pending Plan status, migration complete, adoption status, approval
 
 **Work Record**: A small repo-local markdown retrospective planning-memory artifact that distills what completed planned
 work actually produced. It holds only facts that stay true after later changes: the delivered outcome, recorded Plan
@@ -307,7 +454,7 @@ file-level code evidence when constructed from existing code. _Avoid_: Line refe
 **Plan Status**: The lifecycle state of a Plan: `draft`, `approved`, `ready_for_decomposition`,
 `ready_for_work`, `in_progress`, `failed`, `implemented`, `reviewed`, `verified`, `user_verified`,
 `closed_without_verification`, or `on_hold`.
-_Avoid_: Phase, stage
+_Avoid_: Phase, stage, read availability
 
 **Plan Lifecycle**: The state machine that decides how Plan Events change Plan Status and recovery metadata; see
 `docs/plan-lifecycle.md`. _Avoid_: Status helper, plan status logic
@@ -316,9 +463,10 @@ _Avoid_: Phase, stage
 update
 
 **Plan Action Evidence Check**: The action-time reload of selected Plan status, Plan revision, and worktree registry
-evidence before a consequential Plan action runs under the Session Writer Lock. For a targeted Epic child, the selected
-Plan can be in a planning worktree before execution starts. _Avoid_: Plan ownership, durable Plan lock, separate
-ownership record
+evidence after required action-owned preparation and before a consequential Plan action runs under the Session Writer
+Lock. Earlier passive inspection and pending projections do not authorize the action. For a targeted Epic child, the
+selected Plan can be in a planning worktree before execution starts. _Avoid_: Plan ownership, durable Plan lock,
+separate ownership record, cached read approval
 
 **Approved Plan**: A Plan whose Review Loop ended in user approval but whose pre-execution preparation may still be
 unfinished. _Avoid_: Ready plan, executable plan
@@ -497,11 +645,14 @@ orchestrator, classifier, triager
 
 **Architect**: The planning Agent for PROJECT Epics. _Avoid_: Designer, lead
 
-**Guide**: The read-mostly Agent for `INQUIRY` work that answers directly without materializing artifacts or running a
-Socratic interview. _Avoid_: Explainer, investigator, researcher
+**Guide**: The read-mostly Agent for `INQUIRY` work that answers directly from project evidence without a Socratic
+interview. It can preserve an explanation as ordinary Markdown only when asked, or create a requested image when a
+suitable capability is available. It does not author workflow artifacts or implement changes. Guide is not Guided
+Review. _Avoid_: Explainer, investigator, researcher, Guided Review
 
 **Ideator**: The strategic product and research Agent that conducts Socratic interviews to sharpen vague ideas before
-planning or implementation. _Avoid_: General helper, explainer, guide
+planning or implementation, with requested PRD synthesis. In Connect, saving a PRD does not start planning.
+_Avoid_: General helper, explainer, guide, Guided Review
 
 **Slicer**: The Agent that helps decompose an approved PROJECT Epic into child PLANNED_CHANGE Plans and can materialize
 those plans under `docs/plans/<epic-name>/`. _Avoid_: Task planner, splitter
@@ -580,6 +731,10 @@ without becoming consumed during transfer. _Avoid_: Agent reload, message replay
 outcomes. _Avoid_: Agent-specific handler, special agent handler
 
 ### Execution & Tools
+
+**Codemode**: Pi-backed JavaScript composition of an Agent's authorized tools in a QuickJS sandbox. Scripts filter output,
+can call configured non-chat models, and retain successful small JSON stores on their Session branch. Codemode adds no
+tool authority; workflow decisions remain direct calls. _Avoid_: Shell, arbitrary host JavaScript, MCP connection host
 
 **Workflow Orchestrator**: The runtime coordinator that consumes workflow Custom Tool outcomes and starts the next Agent
 Session. _Avoid_: Router, dispatcher agent
@@ -678,11 +833,13 @@ express. Plan Status still selects the validation phase. Session workflow state 
 cleared when validation ends, review reopens, or the implementation attempt is replaced. _Avoid_: Second status, Session
 state
 
-**Session-Independent Validation Engine**: The Workflow Validation sequencing, convergence policy, and gate predicates
-run on a session-independent engine (`src/shared/workflow/validation-engine.ts` and its phase modules) that consumes
-Pi/session turn machinery only through a narrow `ValidationSessionPort`. The Core Session runtime's `validation.ts`
-builds that port over the HostedSession machinery; other runtimes can drive the same engine by implementing the port.
-_Avoid_: Second validation implementation, session-coupled engine
+**Session-Independent Validation Engine**: Workflow Validation sequencing, convergence policy, and gate predicates run
+on the shared engine (`src/shared/workflow/validation-engine.ts` and its phase modules). Its supervisor and local CI
+command runner also work without a Session. Core's `validation.ts` builds `ValidationSessionPort` over HostedSession;
+`validation-host-turn.ts` uses the same supervisor and engine but returns typed reviewer, repair, and decision requests
+instead of in-process waits. Request-bound outcomes resume from the Validation Checkpoint through the existing gates.
+Host-turn validation stops at `reviewed`, before delivery. _Avoid_: Second validation implementation, session-coupled
+engine
 
 **Mechanical Validation**: RunWield's automated command validation loop. In no-plan QUICK_FIX work it runs local CI only
 without semantic review or Plan status transitions; inside Workflow Validation for executable Plans it runs the
@@ -739,6 +896,9 @@ web search, local docs grep, package install lookup
 
 **MCP Server Configuration**: A trusted server declaration in `~/.wld/mcp.json`, project `.wld/mcp.json`, or an ACP
 Session request. RunWield starts stdio MCP servers from this configuration and exposes their tools to root Agents only.
+In a Remote SSH connection, personal servers run on the laptop with home cwd; project servers run remotely with the
+Session execution cwd. Project replacement/disable rules select entries before startup. One remote Pi integration
+handles both origins through native transports; Memory collection sharing does not map files or change cwd.
 _Avoid_: settings key, Custom Tool definition
 
 **MCP Tool**: A tool discovered from a trusted MCP server. Pi gives it a stable `mcp__<server>__<tool>` name and keeps
@@ -798,11 +958,14 @@ project truth or permission. _Avoid_: Critical memory, pinned memory, shared mem
 
 **Global Memory**: A Memory stored in the cross-project collection. _Avoid_: Shared memory, universal memory
 
-**Sleep**: A maintenance workflow that exports, analyzes, and improves the Mnemoteca collection. _Avoid_: Memory
-cleanup, memory maintenance
+**Trusted Branch**: A configured repository branch whose reviewed Team Memories may become active local Mnemoteca
+context. _Avoid_: Main branch, safe branch
 
-**Project Name**: The basename of the working directory used as the Mnemoteca collection identifier. _Avoid_:
-Collection, namespace
+**Sleep**: A local maintenance workflow that exports, analyzes, and improves the Mnemoteca collection. Remote `/sleep`
+reports that it is not available and starts no maintenance. _Avoid_: Memory cleanup, memory maintenance
+
+**Project Name**: For local Memory, the main checkout’s folder name, or the cwd folder name outside Git, with `global`
+reserved and mapped to `default`. Remote Memory uses its bound collection. _Avoid_: Collection, namespace
 
 **Cymbal**: The external code indexing and search system exposed to agents as codebase tools. _Avoid_: Search layer,
 indexer
@@ -837,11 +1000,17 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
 
 ## Relationships
 
-- A **Remote SSH connection** uses Core to display a remote TUI for an existing directory; the connection itself is not
-  a saved **Session** and does not yet start ordinary project execution or open **Project Runtime State**. Its **Remote
-  personal mount** gives direct access to laptop personal files on the approved `sct` pilot, while the project’s `.wld`
-  stays remote. The optional native Pi bridge proof is not an ordinary turn. Target remote Sessions add a separate
-  guarded writer for saved history and local authenticated model execution.
+- A **Remote SSH connection** uses Core for ordinary remote project execution, delivery workflows, and review. The
+  connection alone is not a saved **Session**. A **Remote personal mount** gives direct access to laptop personal files
+  while project `.wld` and **Project Runtime State** stay remote. The laptop is the authoritative Session writer under
+  its native **Session Writer Lock**; the mount is not writer authority. Saved context and lineage continue after
+  reconnect without automatic replay of uncertain effects.
+- **Project Runtime Inspection** reads checked existing authority; **Project Runtime Entry** admits deliberate
+  preparation and mutation. Path resolution and prior inspection do not substitute for entry.
+- **Plan Read Availability** describes available workflow evidence independently of **Plan Status** and **Plan
+  Lifecycle**. Pending inspection neither performs runtime adoption nor **External Plan Adoption**.
+- An ID-less **Plan** remains browseable by name on the **Plan Board**, but durable-ID search skips it without adoption.
+  Pending canonical authority withholds uncertain Plan facts from search while healthy Projects keep results.
 - A **Tutorial** explains one real **Planned Change** through normal **Plan Review** and **Workflow Validation**. It
   does not replace **Init** or own Plan lifecycle state.
 - One **Attached Workflow** governs one user request inside one **External Agent Host**.
@@ -849,6 +1018,10 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
   truth, review, validation, recovery evidence, Work Records, and organizational memory.
 - An **Attached Workflow** persists structured evidence and durable artifacts without copying the host conversation into
   a **Session Transcript**.
+- One **Attached Workflow Record** exists for each **Attached Workflow**. It is not a **Session**. Only the **Attached
+  Workflow Coordinator** writes it.
+- An **Attached Workflow Record** references **Plan** and worktree truth and never copies it. It stores the
+  **Compatibility Matrix** activation assessment as evidence, not authority.
 - An **Aggregate Transcript Projection** emits no part of a generation until every included **Sealed Session Transcript
   Segment** and the current committed segment prefix have verified.
 - A **Verified Plan** has the same meaning in **RunWield Connect** and **RunWield Core**, regardless of which

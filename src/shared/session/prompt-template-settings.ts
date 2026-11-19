@@ -1,16 +1,16 @@
-import { AGENTS } from "../../constants.js";
-import { loadAgentDef } from "./agents.js";
-import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.js";
+import { AGENTS } from "../../constants.ts";
+import { loadAgentDef } from "./agents.ts";
+import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.ts";
 import {
     assertThinkingLevelBackendSupportedForInvocation,
     assertThinkingLevelSupportedForInvocation,
     resolveExecutionThinkingLevel,
     resolveModel,
-} from "./session.js";
+} from "./session.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { formatProviderModelReference } from "../models/model-validation.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../workflow/execution-agent.ts";
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 import type { PromptTemplateInvocation, ThinkingLevel } from "./named-invocation.ts";
 import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 

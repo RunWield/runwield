@@ -14,7 +14,7 @@ import {
 import process from "node:process";
 import { join } from "node:path";
 
-import { RUNWIELD_ROOT } from "../runtime-root.js";
+import { RUNWIELD_ROOT } from "../runtime-root.ts";
 
 /**
  * Deno runs test modules concurrently inside one process, so `Deno.cwd()` is

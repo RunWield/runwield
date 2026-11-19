@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 import { tuiSessionSidebarProjection } from "../../ui/tui/session-sidebar.ts";
 

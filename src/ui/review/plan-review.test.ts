@@ -1,18 +1,20 @@
+import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
 import { fileURLToPath } from "node:url";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { startReviewWorkspaceServer } from "../workspace/server.ts";
 import { join } from "node:path";
-import { getStoredPlanPath, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import { getStoredPlanPath, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { submitPlanForReview } from "./plan-review.ts";
 import { createScriptedReviewBrowser, type ReviewDecisionBody } from "./review-test-fixture.ts";
-import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../../shared/worktree-registry.js";
+import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../../shared/worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { prepareSequenceReview } from "../../shared/workflow/sequence-review.ts";
 
@@ -31,11 +33,13 @@ const gitFixture = defineCommittedGitFixture({ ".gitignore": ".wld/\nwt-prior/\n
 async function makePlanFile(): Promise<PlanReviewFixture> {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-plan-review-"));
     await savePlan(dir, "plan", "# Plan\n\nDo the thing.\n", {
+        planId: "review-plan",
         classification: "PLANNED_CHANGE",
         status: "draft",
         summary: "Do the thing",
         affectedPaths: [],
     });
+    await preparePlanWorkflow(dir, "plan");
     return { dir, planPath: getStoredPlanPath(dir, "plan") };
 }
 
@@ -82,11 +86,13 @@ test("grouped Sequence chat preserves intermediate-round intent with its decisio
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-sequence-chat-"));
     try {
         await savePlan(dir, "sequence", "# Sequence\n", {
+            planId: "review-sequence",
             classification: "PROJECT",
             type: "sequence",
             status: "draft",
         });
         await savePlan(dir, "sequence/child", "# Child\n", {
+            planId: "review-sequence-child",
             classification: "PLANNED_CHANGE",
             status: "draft",
             parentPlan: "sequence",
@@ -415,8 +421,14 @@ test("submitPlanForReview exit does not write the Plan", async () => {
     }
 });
 
-test("submitPlanForReview cancellation stops the real review surface without writing", async () => {
+test("submitPlanForReview cancellation revokes the real review registration without writing", async () => {
     const { dir, planPath } = await makePlanFile();
+    const other = startReviewWorkspaceServer({
+        cwd: dir,
+        token: crypto.randomUUID(),
+        reviewPayload: { plan: "# Other review" },
+        reviewType: "plan",
+    });
     const originalPlan = await fsReadFile(planPath, "utf8");
     const controller = new AbortController();
     let openedUrl = "";
@@ -448,8 +460,13 @@ test("submitPlanForReview cancellation stops the real review surface without wri
         });
         assertStringIncludes(openedUrl, "/review/plan?token=");
         assertEquals(await fsReadFile(planPath, "utf8"), originalPlan);
-        await assertRejects(() => fetch(openedUrl));
+        assertEquals(new URL(openedUrl).origin, other.url);
+        const revoked = await fetch(openedUrl);
+        assertEquals(revoked.status, 401);
+        assertEquals(revoked.headers.get("cache-control"), "no-store");
+        await revoked.text();
     } finally {
+        await other.stop();
         await fsRm(dir, { recursive: true });
     }
 });

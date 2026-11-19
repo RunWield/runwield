@@ -6,13 +6,13 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { assertEquals } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { createGitPort } from "../git-port.ts";
 import { git as runGit, makeRepo } from "../worktree-test-helpers.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { LOOP_GUARD_MAX_MODEL_TURNS } from "../session/runaway-loop-guard.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.ts";
 import { createLedger } from "./review-ledger.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
@@ -46,7 +46,10 @@ async function makeReviewCheckout() {
     );
     await runGit(cwd, ["add", "probe.txt"]);
     await runGit(cwd, ["commit", "-m", "probe file"]);
-    await fsWriteFile(join(cwd, "example.ts"), "export const value = 2;\n");
+    await fsWriteFile(
+        join(cwd, "example.ts"),
+        Array.from({ length: 100 }, (_, index) => `export const value${index} = 2;\n`).join(""),
+    );
     await runGit(cwd, ["add", "example.ts"]);
     await runGit(cwd, ["commit", "-m", "reviewed change"]);
     const diffText = await runGit(cwd, ["diff", "--no-color", "HEAD~1", "HEAD"]);
@@ -179,6 +182,68 @@ test("one unfinished review keeps one cumulative model-turn budget across a retr
                 executions.map((record) => record.callCount),
                 [2, 56, 40],
             );
+        } finally {
+            hostedSession.dispose();
+        }
+    });
+});
+
+test("a reviewer that reads new diff chunks can continue past the protocol correction limit", async () => {
+    await withRuntimeCommandFixture("review-progress-", async (fixture) => {
+        const { diffText, hostedSession, args, context, state } = await makeReviewRound();
+        const responses = [fauxAssistantMessage(fauxToolCall("review_diff", { command: "list" }))];
+        for (let offsetBytes = 0; offsetBytes < 1280; offsetBytes += 256) {
+            responses.push(
+                fauxAssistantMessage(
+                    fauxToolCall("review_diff", {
+                        command: "show",
+                        path: "example.ts",
+                        offsetBytes,
+                        maxBytes: 256,
+                    }),
+                ),
+                fauxAssistantMessage(fauxText("Review remains incomplete. I continued reading the listed diffs.")),
+            );
+        }
+        responses.push(
+            fauxAssistantMessage(fauxToolCall("review_diff", { command: "show", path: "example.ts" })),
+            fauxAssistantMessage(fauxToolCall("review_complete", { approved: true, findings: [] })),
+        );
+        fixture.setModelResponseFactories(responses.map((message) => () => message));
+        try {
+            const result = await runReviewerRound(args, context, state, "discovery", diffText);
+            assertEquals(result.kind, "complete");
+        } finally {
+            hostedSession.dispose();
+        }
+    });
+});
+
+test("rereading the same diff chunk still spends the protocol correction allowance", async () => {
+    await withRuntimeCommandFixture("review-no-progress-", async (fixture) => {
+        const { diffText, hostedSession, args, context, state } = await makeReviewRound();
+        const responses = [fauxAssistantMessage(fauxToolCall("review_diff", { command: "list" }))];
+        for (let attempt = 0; attempt < 5; attempt++) {
+            responses.push(
+                fauxAssistantMessage(
+                    fauxToolCall("review_diff", {
+                        command: "show",
+                        path: "example.ts",
+                        offsetBytes: 0,
+                        maxBytes: 256,
+                    }),
+                ),
+                fauxAssistantMessage(fauxToolCall("read", { path: "probe.txt", offset: attempt + 1, limit: 1 })),
+                fauxAssistantMessage(fauxText("Review remains incomplete.")),
+            );
+        }
+        fixture.setModelResponseFactories(responses.map((message) => () => message));
+        try {
+            const result = await runReviewerRound(args, context, state, "discovery", diffText);
+            assertEquals(result.kind, "paused");
+            if (result.kind === "paused") {
+                assertEquals(result.result.reason?.includes("Protocol correction budget is spent"), true);
+            }
         } finally {
             hostedSession.dispose();
         }

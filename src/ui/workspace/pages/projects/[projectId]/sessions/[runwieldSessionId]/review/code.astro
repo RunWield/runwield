@@ -2,7 +2,11 @@
 import LoadingSurface from "../../../../../../components/LoadingSurface.astro";
 import ReviewLayout from "../../../../../../layouts/ReviewLayout.astro";
 import { CodeReviewSurface } from "../../../../../../react/CodeReviewSurface.tsx";
-import { getAstroOwnerWorkspaceSessionContinuation } from "../../../../../../server/astro-owner-data.js";
+import type { CodeReviewOptions } from "../../../../../../react/review-types.ts";
+
+import { getAstroOwnerWorkspaceSessionContinuation } from "../../../../../../server/astro-owner-data.ts";
+
+type LiveCodeReviewReference = Pick<CodeReviewOptions, "rawPatch" | "planTitle" | "planName">;
 
 const projectId = Astro.params.projectId ?? "";
 const runwieldSessionId = Astro.params.runwieldSessionId ?? "";
@@ -18,7 +22,7 @@ const liveReview = operationId && interactionId
     : null;
 
 if (!liveReview) Astro.response.status = 404;
-const codeReview = liveReview?.request?.codeReview || null;
+const codeReview = (liveReview?.request?.codeReview as LiveCodeReviewReference | undefined) || null;
 const sessionHref = `/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(runwieldSessionId)}`;
 const payload = codeReview
     ? {

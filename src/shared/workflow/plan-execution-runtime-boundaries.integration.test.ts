@@ -23,16 +23,17 @@ import {
 } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { SessionHost } from "../session/session-host.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
-import { RuntimeEventTypes } from "../session/session-runtime-events.js";
-import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
-import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.js";
+import { RuntimeEventTypes } from "../session/session-runtime-events.ts";
+import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { executePlan, executePreparedPlanSegmentHandoff } from "./plan-executor.ts";
+import { ReviewInspection } from "./review-inspection.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
 import { buildExecutionSegmentContinuation } from "./execution-segment-handoff.ts";
 
@@ -305,6 +306,8 @@ test("Plan Engineer reaches a real Pair checkpoint through production dispatch",
             assertEquals(result.executionContext?.executionAgent, "engineer");
             assertEquals(result.executionComplete, false);
             assertEquals(result.checkpointPending, true);
+            assertEquals(fixture.hostedSession.getRootAgentName(), "plan-engineer");
+            assertEquals(fixture.agentChanges.includes("engineer"), false);
             assertEquals((await loadPlan(projectRoot, "paired-feature"))?.attrs.executionAgent, "engineer");
         } finally {
             fixture.hostedSession.dispose();
@@ -396,6 +399,7 @@ test("managed Pair discussion restores the owner, tool, cwd, and checkpoint cont
                     },
                 });
                 assertEquals(execution.executionComplete, false);
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "plan-engineer");
                 assertEquals(
                     await runtime
                         .promptUserTurn(sessionId, {
@@ -715,7 +719,12 @@ for (const confirmed of [false, true]) {
                         userRequest:
                             "Code Review conversation turn: confirm keeping navigation instead of replacing it.",
                         cwd: projectRoot,
-                        customTools: [],
+                        review: {
+                            fullDiff: "",
+                            repairDiff: "",
+                            requiredScope: "full",
+                            inspection: new ReviewInspection([]),
+                        },
                     });
                     assertEquals(result.outcome, "completed");
                     if (result.outcome !== "completed") throw new Error("Expected conversation reply.");

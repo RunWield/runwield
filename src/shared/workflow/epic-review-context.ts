@@ -15,13 +15,13 @@ import {
     findPlansByParent,
     loadPlan,
     writePlanMarkdownWithRevisionLocked,
-} from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
-import { isPlannedChangeClassification } from "../../constants.js";
+} from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import { isGitRepository } from "../git.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
-import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
+import { prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
 import type { ReviewIntegrationNote } from "../../tools/review-complete.ts";
 import { isEpicPlan } from "../project-plan.ts";
 import { readPlanDeviations, formatPlanDeviationForPrompt } from "../plan-deviations.ts";
@@ -78,7 +78,7 @@ async function epicChildren(primaryRoot: string, epicPlanName: string, epic: Pla
     const branch = String(epic.targetBranch || "").trim();
     const family =
         branch && (await isGitRepository(primaryRoot))
-            ? await findTargetBranchPlansByParent(primaryRoot, branch, epicPlanName).catch(() => null)
+            ? await prepareTargetBranchPlansByParent(primaryRoot, branch, epicPlanName).catch(() => null)
             : null;
     return (family || (await findPlansByParent(primaryRoot, epicPlanName)))
         .filter((child) => isPlannedChangeClassification(child.attrs.classification))

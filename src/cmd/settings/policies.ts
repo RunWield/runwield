@@ -1,10 +1,11 @@
+import type { JsonRecord } from "../../shared/jsonc.ts";
 import {
     getCodeReviewMode,
     getCustomSetting,
     getGuidedReviewMode,
     setCustomSetting,
     shouldAutoMergePlansIntoTargetBranch,
-} from "../../shared/settings.js";
+} from "../../shared/settings.ts";
 
 interface PolicyOption {
     value: string;
@@ -111,7 +112,8 @@ export async function editPolicySetting(policy: PolicySetting, projectRoot: stri
     const label = policy.choices.find((choice) => choice.value === selection)!.label;
     const overridden = scope === "global" && !policy.globalOnly &&
         (isPlanMergePolicy
-            ? getCustomSetting("plans", "project", projectRoot)?.autoMergeIntoTargetBranch !== undefined
+            ? (getCustomSetting("plans", "project", projectRoot) as JsonRecord | null | undefined)
+                  ?.autoMergeIntoTargetBranch !== undefined
             : getCustomSetting(policy.key, "project", projectRoot) !== undefined);
     ui.appendSystemMessage(
         `${policy.title}: ${label} (${scope}).${

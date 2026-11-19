@@ -77,7 +77,7 @@ same loop.
 
 ### PRD
 
-[Core PRD → Project context and initialization](../prd/runwield-core-prd.md#project-context-and-initialization) lists
+[Core PRD → Project context and initialization](../../prd/runwield-core-prd.md#project-context-and-initialization) lists
 **Snip:** optional filtering of command output into compact diagnostics. `docs/domain-language.md` defines Snip as an
 optional, fail-open optimization for **eligible** agent shell commands. This Plan defines eligibility precisely and
 adds that clarification to the Core PRD Snip bullet. The glossary definition already fits and does not change.

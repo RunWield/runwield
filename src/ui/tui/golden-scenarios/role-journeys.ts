@@ -3,13 +3,13 @@
  * Composed Golden role journey scenarios.
  */
 
-import type { GoldenScenario } from "../testing/scenario-runner.js";
-import type { RuntimeInteractionRequest } from "../../../shared/session/session-runtime-interactions.js";
-import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
+import type { GoldenScenario } from "../testing/scenario-runner.ts";
+import type { RuntimeInteractionRequest } from "../../../shared/session/session-runtime-interactions.ts";
+import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 
 import { ok as assert } from "node:assert/strict";
-import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
-import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
+import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
+import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
 // The JavaScript runner exposes opaque evidence; retain the existing casts with named shapes.
 interface RecordedRoleInteraction {

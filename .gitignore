@@ -3,6 +3,7 @@
 bin/
 dist/
 .deno_compile*
+.*.bun-build
 node_modules/
 docs-site/src/content/docs/
 docs-site/public/docs-assets/
@@ -19,6 +20,11 @@ videos/
 .astro/
 src/ui/workspace/.astro/
 .agents/
+!/.agents/
+/.agents/*
+!/.agents/plugins/
+/.agents/plugins/*
+!/.agents/plugins/marketplace.json
 .claude/skills/
 .styleseed/
 STYLESEED.md

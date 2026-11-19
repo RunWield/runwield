@@ -1,17 +1,6 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { curateRows, getUnambiguousHumanSeed, isPureGreetingRow } from "./curate-router-judgement-csv.ts";
-
-test("isPureGreetingRow identifies greeting rows", () => {
-    assertEquals(isPureGreetingRow({ requestText: "hi there" }), true);
-    assertEquals(isPureGreetingRow({ requestText: "hello there who are you?" }), false);
-});
-
-test("getUnambiguousHumanSeed seeds clear current-intent mappings", () => {
-    assertEquals(getUnambiguousHumanSeed({ requestText: "is @ci.js used anywhere?" })?.intent, "INQUIRY");
-    assertEquals(getUnambiguousHumanSeed({ requestText: "commit the changes" })?.intent, "OPERATION");
-    assertEquals(getUnambiguousHumanSeed({ requestText: "help me flush this out more" }), null);
-});
+import { curateRows } from "./curate-router-judgement-csv.ts";
 
 test("curateRows collapses duplicate greetings and preserves existing human labels", () => {
     const result = curateRows([
@@ -29,4 +18,26 @@ test("curateRows collapses duplicate greetings and preserves existing human labe
     assertEquals(result.rows[0].humanJudgement, "INQUIRY");
     assertEquals(result.rows[1].humanJudgement, "FEATURE");
     assertEquals(result.rows[1].humanNotes, "manual");
+});
+
+test("curation keeps substantive requests and seeds only unambiguous unlabelled intent", () => {
+    const result = curateRows([
+        { decisionId: "greeting", requestText: "hi there" },
+        { decisionId: "question", requestText: "hello there who are you?" },
+        { decisionId: "inquiry", requestText: "is @ci.js used anywhere?" },
+        { decisionId: "operation", requestText: "commit the changes" },
+        { decisionId: "ambiguous", requestText: "help me flush this out more" },
+    ]);
+    assertEquals(result.removedGreetings, 0);
+    assertEquals(result.seededHumanJudgements, 4);
+    assertEquals(
+        result.rows.map((row) => [row.decisionId, row.humanJudgement ?? ""]),
+        [
+            ["greeting", "INQUIRY"],
+            ["question", "INQUIRY"],
+            ["inquiry", "INQUIRY"],
+            ["operation", "OPERATION"],
+            ["ambiguous", ""],
+        ],
+    );
 });

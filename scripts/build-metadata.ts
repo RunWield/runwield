@@ -17,6 +17,7 @@ const INPUTS = [
     "scripts",
     "third_party/plannotator/packages",
     "brand",
+    "packaging/remote/tested-dependencies.json",
     "dist/workspace-runtime",
     "package.json",
     "bun.lock",
@@ -24,7 +25,7 @@ const INPUTS = [
     "tsconfig.json",
     "tsconfig.bun.json",
     "config.schema.json",
-    "image-resize-worker.js",
+    "image-resize-worker.ts",
     "node_modules/@earendil-works/pi-coding-agent/dist/utils",
 ];
 const EXCLUDED = new Set([BUILD_IDENTITY_PATH, "src/shared/version.js"]);

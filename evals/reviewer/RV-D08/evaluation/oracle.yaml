@@ -38,11 +38,16 @@ variants:
                   - Repeated recovery after a consumed completion must not add another transition.
               proofCommand: bun run test:oracle single-consumer
               expectedFailureMarker: RV-D08-SINGLE-CONSUMER
+        validationOutcomes:
+            bun run test: fail
+        publicFailureMarker: Recorded repair must have one validation-owned consumption
     B:
         patch: variants/clean.patch
         patchBase: source
         expectedDecision: approve
         defects: []
+        validationOutcomes:
+            bun run test: pass
 cleanNearMisses:
     - General task completion still belongs to the application listener.
     - A persisted completion with a repairing phase must remain recoverable after restart.

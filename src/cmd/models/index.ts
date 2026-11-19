@@ -1,8 +1,10 @@
+import { AGY_CLI_MODEL_CHOICES } from "../../shared/models/agy-cli-catalog.ts";
 /**
  * @module cmd/models
  * Handler for the model listing and switching command.
  */
 
+import type { UiAPI } from "../../ui/tui/api.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
 import { parseProviderModel } from "../../shared/models/model-validation.ts";
 import { setDefaultModelSelection } from "../../shared/session/model-selection.ts";
@@ -12,9 +14,9 @@ import {
     parseUserModelSelection,
 } from "../../shared/session/user-selection.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getCwd } from "../../constants.js";
-import { COMMAND_NAMES } from "../registry.js";
-import { formatCommandHelp, printCommandHelp } from "../help/index.js";
+import { getCwd } from "../../constants.ts";
+import { COMMAND_NAMES } from "../registry.ts";
+import { formatCommandHelp, printCommandHelp } from "../help/index.ts";
 export { getModelCompletions } from "./getArgumentCompletions.ts";
 
 interface ModelSelectItem {
@@ -25,6 +27,7 @@ interface ModelSelectItem {
 interface ModelsCommandUi {
     appendSystemMessage(message: string, isError?: boolean): void;
     promptSelect(title: string, options: ModelSelectItem[]): Promise<string | null>;
+    showModelSelector?: UiAPI["showModelSelector"];
 }
 
 interface ModelsCommandEditor {
@@ -39,11 +42,7 @@ interface ModelsCommandOptions {
     sessionRuntime?: SessionRuntime;
 }
 
-async function activateModel(
-    options: ModelsCommandOptions,
-    model: string,
-    provider: string,
-) {
+async function activateModel(options: ModelsCommandOptions, model: string, provider: string) {
     if (!options.sessionRuntime || !options.sessionId) return null;
     const result = await applyUserModelSelection(options.sessionRuntime, options.sessionId, model, provider);
     const snapshot = options.sessionRuntime.getSessionSnapshot(options.sessionId);
@@ -72,6 +71,16 @@ export async function runModelsCommand(
         if (!uiAPI) {
             console.log("Usage: wld model <provider>/<model_id>");
             return;
+        }
+
+        if (uiAPI.showModelSelector) {
+            try {
+                const result = await uiAPI.showModelSelector();
+                return result?.selected ? "succeeded" : "canceled";
+            } finally {
+                editor?.setText("");
+                if (editor) editor.disableSubmit = false;
+            }
         }
 
         const available = await listUserModelOptions();
@@ -127,9 +136,10 @@ export async function runModelsCommand(
 
     const targetModel = modelRegistry.find(parsedArgs.provider, parsedArgs.id);
     if (!targetModel) {
-        const message = parsedArgs.provider === "agy-cli"
-            ? `Unsupported Antigravity CLI model: ${firstArg}. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.`
-            : `Unknown model: ${firstArg}. Use /model to switch.`;
+        const message =
+            parsedArgs.provider === "agy-cli"
+                ? `Unsupported Antigravity CLI model: ${firstArg}. Select ${AGY_CLI_MODEL_CHOICES}.`
+                : `Unknown model: ${firstArg}. Use /model to switch.`;
         if (uiAPI) uiAPI.appendSystemMessage(message, true);
         else console.log(parsedArgs.provider === "agy-cli" ? message : `Unknown model: ${firstArg}`);
         return "failed";

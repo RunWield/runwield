@@ -86,7 +86,7 @@ and target branch for each live review in `codeReviewRefreshContexts`.
 
 ### PRD
 
-The owning capability is [Core: Semantic review and repair](../prd/runwield-core-prd.md#semantic-review-and-repair). It
+The owning capability is [Core: Semantic review and repair](../../prd/runwield-core-prd.md#semantic-review-and-repair). It
 covers Code Review.
 
 - **Preserved:** "Requirement: Use one proposed branch patch." It says one shared comparison owner produces the patch

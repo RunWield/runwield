@@ -5,7 +5,7 @@
  */
 
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { PlanExecutionResult, PlanOutcomeResult } from "./workflow.js";
+import type { PlanExecutionResult, PlanOutcomeResult } from "./workflow.ts";
 
 export type WorkflowDecisionKind =
     "execute_plan" | "start_slicer" | "save_plan" | "run_validation" | "complete_session" | "stay_with_agent" | "halt";

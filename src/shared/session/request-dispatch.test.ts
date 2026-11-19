@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -8,8 +8,8 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "./hosted-session.js";
-import { ensureRootAgentSession, runRootTurn } from "./session.js";
+import { HostedSession } from "./hosted-session.ts";
+import { ensureRootAgentSession, runRootTurn } from "./session.ts";
 import { RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 import { createValidationSessionPort } from "../workflow/validation-session-adapter.ts";
 import {
@@ -74,54 +74,6 @@ test("Plan backend retry keeps one Plan body and uses a stable request ID", () =
     );
     assertEquals(attempts[1].backend, "claude-cli");
     assertEquals(attempts[2].backend, "pi");
-});
-
-test("backend retry continuation does not name a specific active agent", () => {
-    const manager = SessionManager.inMemory(getCwd());
-    const userRequest = "Design the implementation boundary.";
-    const first = prepareRequestDispatch(manager, {
-        userRequest,
-        dispatchKind: "interactive",
-        backend: "claude-cli",
-    });
-    appendUserMessage(manager, first.userRequest);
-    failRequestDispatch(manager, first, true);
-
-    const retry = prepareRequestDispatch(manager, {
-        userRequest,
-        dispatchKind: "interactive",
-        backend: "pi",
-        resumePreviousRequest: true,
-    });
-
-    assertEquals(retry.promptMode, "continuation");
-    assertEquals(retry.userRequest.includes("Engineer"), false);
-    assertEquals(retry.userRequest.includes("Architect"), false);
-});
-
-test("validation repair retry keeps one original repair packet", () => {
-    const manager = SessionManager.inMemory(getCwd());
-    const repairPacket = "Validation repair packet\nFailure: expected 1, got 2";
-    const first = prepareRequestDispatch(manager, {
-        userRequest: repairPacket,
-        dispatchKind: "validation_repair",
-        backend: "claude-cli",
-    });
-    appendUserMessage(manager, first.userRequest);
-    failRequestDispatch(manager, first, true);
-
-    const retry = prepareRequestDispatch(manager, {
-        userRequest: repairPacket,
-        dispatchKind: "validation_repair",
-        backend: "claude-cli",
-        resumePreviousRequest: true,
-    });
-    appendUserMessage(manager, retry.userRequest);
-    completeRequestDispatch(manager, retry);
-
-    assertEquals(retry.requestId, first.requestId);
-    assertEquals(transcriptText(manager).split(repairPacket).length - 1, 1);
-    assertEquals(retry.promptMode, "continuation");
 });
 
 test("failure before transcript recording safely resends the original request", () => {

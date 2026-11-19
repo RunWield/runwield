@@ -1,0 +1,85 @@
+{
+    "schemaVersion": 1,
+    "outcome": "pass",
+    "scope": "installed-protocol",
+    "surface": "desktop-runtime",
+    "hostVersion": "0.164.0-alpha.11.1",
+    "permissions": "protocol-tools-in-disposable-world",
+    "testDate": "2026-10-29T21:03:49.983Z",
+    "source": {
+        "commit": "a2ff2ef734760506e914938875279e3f959dacc3",
+        "dirty": false,
+        "digest": "6cb23082c7ed342e3216d5986d9e19f080aa58877c67ba72636cf319b388f697"
+    },
+    "adapterVersion": "0.1.0",
+    "adapterContract": 1,
+    "blockedPrerequisite": null,
+    "checks": [
+        {
+            "id": "native-install",
+            "outcome": "pass",
+            "detail": "The real Codex CLI installed the copied package in disposable configuration."
+        },
+        {
+            "id": "native-tool-discovery",
+            "outcome": "pass",
+            "detail": "Installed RunWield exposes the complete coordinator tool contract."
+        },
+        {
+            "id": "inactive-before",
+            "outcome": "pass",
+            "detail": "Installing the plugin does not activate a workflow."
+        },
+        {
+            "id": "activation",
+            "outcome": "pass",
+            "detail": "Actual Codex MCP activation reaches Core triage."
+        },
+        {
+            "id": "stale-revision",
+            "outcome": "pass",
+            "detail": "Core rejects stale lifecycle submissions from Codex."
+        },
+        {
+            "id": "transcript-rejection",
+            "outcome": "pass",
+            "detail": "Transcript-shaped input is rejected before durable storage."
+        },
+        {
+            "id": "planning-handoff",
+            "outcome": "pass",
+            "detail": "Core returns the Planner handoff through the installed Codex package."
+        },
+        {
+            "id": "fresh-process-restoration",
+            "outcome": "pass",
+            "detail": "A fresh host process restores the same workflow, revision, and action."
+        },
+        {
+            "id": "reinstallation-restoration",
+            "outcome": "pass",
+            "detail": "Removing and reinstalling the plugin preserves Core workflow state."
+        },
+        {
+            "id": "native-mcp-identity",
+            "outcome": "pass",
+            "detail": "The real Codex MCP handshake matches the executable version."
+        },
+        {
+            "id": "privacy",
+            "outcome": "pass",
+            "detail": "Rejected transcript sentinels are absent from durable files and Git objects."
+        },
+        {
+            "id": "source-stability",
+            "outcome": "pass",
+            "detail": "Runtime source and package catalog remained unchanged during the run."
+        }
+    ],
+    "limitations": [
+        "Native Codex app-server protocol only; no model calls, skill invocation, or desktop UI acceptance.",
+        "CLI skill execution and fresh independent reviewer coverage require separate live evidence.",
+        "This result cannot create a tested-version compatibility entry."
+    ],
+    "proposedMatrixEntry": null
+}

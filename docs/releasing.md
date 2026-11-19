@@ -55,8 +55,9 @@ bash install.sh vX.Y.Z-rc.N
 Release operators need:
 
 - `git` with push access to this repository.
-- Bun matching `.bun-version` (1.4.3) for source, Golden, executable and package qualification;
-  run `bun run install:locked` first.
+- Bun `^1.4.0` (at least 1.4.0 and below 2.0.0) for local release commands and checks;
+  run `bun run install:locked` first. CI and release builds use the exact version in `.bun-version`
+  for repeatable artifacts. Local commands do not require that exact version.
 - `gh` authenticated to GitHub with permission to read releases before tagging, verify Candidate releases during
   promotion, and edit release notes after CI publishes assets (`gh auth status` should pass for the target account).
 
@@ -124,7 +125,8 @@ bun run release:promote --candidate vX.Y.Z-rc.N [--dry-run]
 bun run release:stable --tag vX.Y.Z [--dry-run]
 bun run release:metadata --tag vX.Y.Z[-rc.N]
 bun run release:check --build-version vX.Y.Z[-rc.N]
-bun run package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag vA.B.C --output <dir>
+git clone https://github.com/RunWield/homebrew-tap.git <dir>
+bun run package:homebrew --wld-tag vX.Y.Z --output <dir>
 bun run package:homebrew:check --tap <dir>
 bun run package:windows --tag vX.Y.Z --binary <path-to-wld.exe> --output <dir>
 bun run package:windows:check --package <dir>/wld-vX.Y.Z-windows-x64.zip
@@ -201,27 +203,62 @@ build files such as `package.json` are not release assets.
 
 After Stable asset publication succeeds, the release workflow:
 
-1. Renders the Homebrew formulas from the published release assets.
-2. Runs the complete package check on macOS.
-3. Uploads the verified `runwield-homebrew-tap-<tag>` recovery artifact.
-4. Pushes the verified files to `gandazgul/homebrew-tap`.
+1. Checks out `RunWield/homebrew-tap` and records its revision.
+2. Copies package files to a separate disposable check tree, then refreshes only `wld` from published release assets.
+3. Runs the complete package check on macOS, including the installed Mnemoteca version against `mnemotecaTag`.
+4. Uploads the verified `runwield-homebrew-tap-<tag>` recovery artifact without Git metadata or credentials.
+5. Applies only `Formula/wld.rb` and the manifest's `wldTag`, `testOnly`, and `generatedAt` changes to the original
+   publication checkout. It verifies that Mnemoteca formula bytes and all other manifest values match the checked base.
+6. Pushes normally. A concurrent tap update rejects publication; no force-push, rebase, or automatic conflict resolution
+   replaces the independently released package.
 
-The `HOMEBREW_TAP_TOKEN` repository secret must contain a GitHub token with write access to `gandazgul/homebrew-tap`.
-Publication stops if the credential is absent or any package check fails. To reproduce the check locally, use:
+The `HOMEBREW_TAP_TOKEN` repository secret must contain a GitHub token with write access to `RunWield/homebrew-tap`.
+Publication stops if the credential is absent or any package check fails. To reproduce the check on disposable macOS
+infrastructure, use the following commands. Do not replace your working Homebrew tap or installed packages to run this check:
 
 ```bash
-bun run package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag v0.3.3 --output /tmp/runwield-tap
-bun run package:homebrew:check --tap /tmp/runwield-tap
+git clone https://github.com/RunWield/homebrew-tap.git /tmp/runwield-tap-base
+mkdir /tmp/runwield-tap-check
+cp -R /tmp/runwield-tap-base/Formula /tmp/runwield-tap-base/README.md \
+  /tmp/runwield-tap-base/runwield-homebrew-package.json /tmp/runwield-tap-check/
+bun run package:homebrew --wld-tag vX.Y.Z --output /tmp/runwield-tap-check
+bun run package:homebrew:check --tap /tmp/runwield-tap-check
 ```
 
 The checked formula installs metadata beside `libexec/wld`; a Homebrew-owned `wld update` prints
 `brew upgrade gandazgul/tap/wld` and must not run `install.sh`.
 
+Normal RunWield releases never read the local Mnemoteca input pin or download dependency assets during formula
+rendering. Single-package refresh preserves the other package and unrelated tap files. The checker stages and commits
+its input tree, so never run it on the publication checkout or the owner's installed tap.
+
+A concurrent tap update requires a fresh snapshot and full qualification against the immutable released assets.
+Repository concurrency groups do not serialize Mnemoteca's separate release workflow. A recovery artifact is evidence,
+not permission to copy an old whole manifest onto a newer tap. Source prevention and the issue #466 public dependency
+repair are separate outcomes; never downgrade a dependency that is already newer.
+
+Explicit two-package preparation remains available for an intentional replacement tree:
+
+```bash
+bun run package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag vA.B.C --output /tmp/new-runwield-tap
+```
+
+The manual preparation workflow requires either tag or both, with no default dependency tag. Single-package preparation
+clones the existing tap. Its archives contain package files only, not `.git` or checkout credentials.
+
 `mnemoteca` can be refreshed independently by omitting `--wld-tag` and passing a new `--mnemoteca-tag` against an
-existing tap tree. First update `packaging/homebrew/tested-dependencies.json` with the verified macOS URLs, SHA-256
+existing tap tree. Supplying both tags explicitly rebuilds both packages for preparation, not ordinary RunWield releases.
+First update `packaging/homebrew/tested-dependencies.json` with the verified macOS URLs, SHA-256
 values, license, homepage, and tested helper versions. Base URL overrides require `--test-only`; publishable output must
 point at immutable GitHub release URLs. Formula installation does not run Mnemoteca model setup or
 `agent-browser install`; those remain first-use operations.
+
+For recovery, dispatch `release-gate` from a default-branch revision that contains the packaging fix, with the existing
+release tag. Do not rerun an old workflow job that hardcodes Mnemoteca v0.3.3. Published asset bytes and tags stay unchanged.
+Before repairing a dependency rollback in the public tap, confirm the corrected workflow is active and no old publication
+job remains in flight. Verify the dependency archives against release checksums and asset digests, run the full macOS
+check on a disposable copy, then publish only its formula and owned manifest fields. Fetch the public tap to confirm the
+repair and that wld is unchanged. A local repair or recovery artifact is not confirmed publication.
 
 ## Windows ZIP and WinGet preparation
 
@@ -244,6 +281,12 @@ Ubuntu source shards are removed rather than repeated in release qualification.
 `release-gate` owns broad platform coverage after the Candidate or Stable tag is created. Its internal
 `release-unix.yml`, `release-windows.yml`, and `release-containers.yml` workflows are reusable and also support manual
 diagnostics at the selected workflow revision. Windows checks are paused.
+Linux and macOS source checks install the latest Stable Mnemoteca with `scripts/install-ci-mnemoteca.sh`.
+The script verifies the platform archive against the release checksum file. It installs ONNX Runtime 1.23.1
+native libraries from Microsoft's PyPI wheels, verifies their SHA-256 hashes against the versioned PyPI metadata,
+and runs `mnemoteca setup` before tests. This avoids the unavailable GitHub runtime archives without replacing
+Mnemoteca or skipping its model setup and integration checks.
+These checks use real Work Record indexing, not a placeholder command.
 Manual diagnostics use a synthetic Candidate identity; release calls pass the real version and resolved product SHA.
 No new mandatory pre-tag check is introduced. Product fixes belong on the Release Branch and are later explicitly
 forward-ported to `main` under the release policy above.
@@ -283,6 +326,16 @@ recoverably incomplete and retry with:
 gh release edit <tag> --notes-file <notes-file>
 ```
 
+## Connect plugin versions
+
+Bump `version` in `src/attached/claude/plugin/.claude-plugin/plugin.json` whenever plugin files change. Claude Code
+caches plugins by version. Bump `adapterContract` in `runwield-adapter.json` only when Core and the plugin can no
+longer use the same protocol; update Core's supported contracts and guidance in the same change.
+
+Add tested host versions to the Core Compatibility Matrix only with passing live acceptance results. Keep each saved
+result's source identity and disclosed limits. Do not treat a headless permissions-bypassed run as default-permissions
+proof. Update the [Claude guide](user-documentation/connect-claude-code.md) with the matrix.
+
 ## Stable documentation publication
 
 Stable docs are qualified release artifacts. Before publication, `docs-artifact` prepares one documentation commit,
@@ -319,6 +372,44 @@ For a new repository without `docs/stable`, the reconciliation script retains it
 review and push the printed commit to `docs/stable`, then dispatch deployment from that branch. The deployed site
 already has its Pages and DNS configuration. An older tag, an API failure, a failed build, or a rejected non-fast-forward
 push must leave the current Pages deployment unchanged.
+
+## Remote SSH package gate
+
+For unpublished releases, the Linux x64 and ARM64 `native-package-check` legs run `scripts/check-remote-ssh-package.ts`
+against the candidate release archives before publication. Published-release recovery keeps the existing native
+identity checks but does not retroactively require private remote helpers from immutable historical binaries. Each SSH check uses a disposable account, network-isolated loopback OpenSSH, real SSHFS, and a synthetic
+provider. The second model request must contain a remote-only sentinel read by the real tool. The gate checks one
+laptop-owned Session, no saved server transcript, private helpers and MIT notices, and normal process/mount cleanup.
+Missing FUSE fails the gate; it is not optional. The shared fixture uses `/tmp` so the disposable server account can
+traverse its ancestors. Only runner-owned diagnostic logs and results are uploaded, not account homes or SSH keys.
+Evidence is retained as `remote-ssh-<asset>-<attempt>` workflow artifacts.
+
+For local Linux qualification with passwordless sudo:
+
+```sh
+bun run install:locked
+bun scripts/check-remote-ssh-package.ts release-upload vMAJOR.MINOR.PATCH-rc.1
+```
+
+The gate installs system `openssh-server`, `sshfs`, `fuse3`, and `python3` packages. Run it only on a qualification
+machine. Normal remote connections do not install packages. Servers need glibc Linux x86-64 or ARM64, usable
+`/dev/fuse`, and OpenSSH terminal allocation plus TCP and Unix-socket forwarding. The launcher checks OS, CPU, and
+prerequisites before downloads or transfers and supplies `cymbal` and `ketch` privately. Verified archives and notices
+stay in laptop `~/.cache/runwield/remote/`; server runtime/helper entries stay in `~/.cache/runwield/runtime/` and
+`~/.cache/runwield/helpers/`. A warm laptop cache supports reconnect and empty-server setup without GitHub access.
+
+To qualify a pushed branch without publication:
+
+```sh
+gh workflow run release.yml --ref epic/remote-ssh-development -f qualification_only=true
+```
+
+Omit `tag`. This mode builds `v0.0.0-rc.1` bytes from the selected branch commit, runs native package checks, and blocks
+release publication, package publication, documentation publication, and release-branch integration. It skips the full
+source/Golden and other release lanes; normal publication still requires them. The unchanged recovery mode requires
+an immutable release `tag`. Deliver the changed workflow before dispatch, then compare Linux job durations and total
+qualification wall time with the previous release run. Live platform/provider qualification belongs to child 13, not
+this smoke check.
 
 ## Recovery
 

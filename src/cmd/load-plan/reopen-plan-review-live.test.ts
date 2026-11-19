@@ -2,8 +2,8 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 
 test("reopening a live review returns its address without opening another review", async () => {
     await withRuntimeCommandFixture("reopen-live-", async ({ homeDir, projectRoot }) => {

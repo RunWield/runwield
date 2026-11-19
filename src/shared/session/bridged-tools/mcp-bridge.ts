@@ -35,9 +35,9 @@ import {
     emitHostedSessionRuntimeEvent,
     normalizeRuntimeToolResult,
     RuntimeEventTypes,
-} from "../session-runtime-events.js";
-import type { HostedSession } from "../hosted-session.js";
-import { describeRuntimeTool } from "../tool-event-title.js";
+} from "../session-runtime-events.ts";
+import type { HostedSession } from "../hosted-session.ts";
+import { describeRuntimeTool } from "../tool-event-title.ts";
 
 /** Concrete JSON shapes crossing the MCP boundary. */
 type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;

@@ -1,10 +1,10 @@
 /** Boot summary printed at the top of an interactive session. */
 
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { recordSnipMissingWarningShown, shouldShowSnipMissingWarning } from "../../cmd/init/init-state.ts";
 import { hasSnipBinary } from "../../shared/runtime-preflight.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getSettingsManager } from "../../shared/settings.ts";
 
 interface PromptTemplate {
     name: string;
@@ -18,7 +18,7 @@ interface BootRuntimeToolsPort {
 }
 
 interface RenderBootBannerOptions {
-    uiAPI: import("./types.js").UiAPI;
+    uiAPI: import("./api.ts").UiAPI;
     invokablePromptTemplates: PromptTemplate[];
     blockedPromptTemplates: PromptTemplate[];
     chatPromptAgentName: string;

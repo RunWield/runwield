@@ -15,17 +15,17 @@ import {
     resolveSiblingChildPlanDependencyStates,
     updatePlanFrontMatter,
     writePlanMarkdownWithRevision,
-} from "../../plan-store.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
+} from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import { assertSharedPlanWriteAllowed } from "../collaboration/lock.ts";
 import { stripRuntimeFields } from "./controller-state.ts";
 import { isSequencePlan } from "../project-plan.ts";
-import { buildPlanEventUpdates } from "./plan-lifecycle.js";
+import { buildPlanEventUpdates } from "./plan-lifecycle.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { runSequenceReviewTransition } from "./state-transition.ts";
 import { reviewSourceStillMatches } from "./plan-review-actions.ts";
 import { publishWorkflowToolEvent } from "./workflow-tool-events.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import type { PlanApprovalAction } from "./plan-approval.ts";
 import type { PlanWrittenEventPayload } from "./workflow-tool-events.ts";
 

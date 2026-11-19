@@ -9,10 +9,10 @@ import {
     parsePlanFrontMatter,
     planDocumentMarkdown,
     savePlan,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { requestLocalReviewInteraction } from "../../shared/session/local-review-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import type { PlanReviewConversation } from "../../shared/session/plan-review-conversation.ts";

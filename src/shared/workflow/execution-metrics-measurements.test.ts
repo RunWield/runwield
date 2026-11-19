@@ -1,6 +1,8 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 
@@ -26,7 +28,12 @@ test("saved latency, retry, compaction, and multibyte result measurements keep t
         await recorder.recordResponseLatency("first_text");
         await recorder.recordToolStart("unicode-call", "read");
         await recorder.recordToolFinish("unicode-call", "read", {
-            result: { content: [{ type: "text", text: "é🙂" }, { type: "image", data: "secret-pixels" }] },
+            result: {
+                content: [
+                    { type: "text", text: "é🙂" },
+                    { type: "image", data: "secret-pixels" },
+                ],
+            },
             truncated: false,
         });
         await recorder.recordToolStart("unmeasured-call", "read");
@@ -62,32 +69,35 @@ test("saved latency, retry, compaction, and multibyte result measurements keep t
             totalLatencyMs,
         } = latency;
         assert(
-            typeof requestStartedAt === "number" && typeof firstResponseAt === "number" &&
-                typeof firstVisibleTextAt === "number" && typeof completedAt === "number" &&
-                typeof firstResponseLatencyMs === "number" && typeof firstVisibleTextLatencyMs === "number" &&
+            typeof requestStartedAt === "number" &&
+                typeof firstResponseAt === "number" &&
+                typeof firstVisibleTextAt === "number" &&
+                typeof completedAt === "number" &&
+                typeof firstResponseLatencyMs === "number" &&
+                typeof firstVisibleTextLatencyMs === "number" &&
                 typeof totalLatencyMs === "number",
         );
         assert(
-            requestStartedAt < firstResponseAt && firstResponseAt < firstVisibleTextAt &&
+            requestStartedAt < firstResponseAt &&
+                firstResponseAt < firstVisibleTextAt &&
                 firstVisibleTextAt < completedAt,
         );
         assert(
-            firstResponseLatencyMs > 0 && firstVisibleTextLatencyMs > firstResponseLatencyMs &&
+            firstResponseLatencyMs > 0 &&
+                firstVisibleTextLatencyMs > firstResponseLatencyMs &&
                 totalLatencyMs > firstVisibleTextLatencyMs,
         );
         const unicode = rows.find((row) => row.event === "tool_call_finished" && row.callId === "unicode-call");
-        assertEquals([unicode?.resultBytes, unicode?.resultTokens, unicode?.imageCount, unicode?.truncated], [
-            6,
-            1,
-            1,
-            false,
-        ]);
+        assertEquals(
+            [unicode?.resultBytes, unicode?.resultTokens, unicode?.imageCount, unicode?.truncated],
+            [6, 1, 1, false],
+        );
         const missing = rows.find((row) => row.event === "tool_call_finished" && row.callId === "unmeasured-call");
         assertEquals([missing?.resultBytes, missing?.resultTokens, missing?.truncated], [null, null, null]);
         assertEquals(
-            rows.filter((row) => row.event.startsWith("retry_")).map((
-                row,
-            ) => [row.event, row.retrySource, row.attempt, row.outcome]),
+            rows
+                .filter((row) => row.event.startsWith("retry_"))
+                .map((row) => [row.event, row.retrySource, row.attempt, row.outcome]),
             [
                 ["retry_started", "auto_retry", 2, undefined],
                 ["retry_finished", "auto_retry", 2, "canceled"],
@@ -95,10 +105,89 @@ test("saved latency, retry, compaction, and multibyte result measurements keep t
         );
         assertEquals(rows.find((row) => row.event === "compaction_started")?.beforeTokens, 150);
         assertEquals(rows.find((row) => row.event === "compaction_finished")?.afterTokens, 70);
-        const context = rows.find((row) =>
-            row.event === "context_snapshot" && row.samplingPoint === "after_compaction"
+        const context = rows.find(
+            (row) => row.event === "context_snapshot" && row.samplingPoint === "after_compaction",
         );
         assertEquals([context?.currentUsage, context?.usageState], [null, "unknown_after_compaction"]);
         assertEquals(JSON.stringify(rows).includes("secret-pixels"), false);
+    });
+});
+
+test("model recorder retains only valid observed edges and reasoning, never default write timing", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const recorder = new ExecutionMetricsRecorder({ projectRoot });
+        const startedAt = "2026-01-01T00:00:00.001Z";
+        const endedAt = "2026-01-01T00:00:01.002Z";
+        await recorder.recordModelUsage({
+            sourceId: "measured",
+            inputTokens: 2,
+            outputTokens: 12,
+            reasoningTokens: 7,
+            startedAt,
+            endedAt,
+        });
+        await recorder.recordModelUsage({ sourceId: "unmeasured", inputTokens: 2, outputTokens: 12 });
+        await recorder.recordModelUsage({
+            sourceId: "invalid",
+            inputTokens: 2,
+            outputTokens: 12,
+            startedAt: "2026-02-30T00:00:00.000Z",
+            endedAt: "private text",
+            reasoningTokens: 0,
+        });
+        const rows = await readMetrics();
+        assertEquals(
+            rows.map((row) => [row.startedAt, row.endedAt, row.reasoningTokens, row.outputTokens]),
+            [
+                [startedAt, endedAt, 7, 12],
+                [null, null, null, 12],
+                [null, null, 0, 12],
+            ],
+        );
+    });
+});
+
+test("Pi reconciliation keeps reasoning within output and does not borrow timing for unobserved entries", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const recorder = new ExecutionMetricsRecorder({ projectRoot });
+        const manager = SessionManager.inMemory(projectRoot);
+        const message = fauxAssistantMessage("Measured reply");
+        message.usage = { ...message.usage, input: 2, output: 12, reasoning: 7 };
+        await recorder.recordResponseLatency("turn_start");
+        recorder.recordPiAssistantMessageEnd(message);
+        manager.appendMessage(message);
+        manager.appendMessage({ ...message, usage: { ...message.usage, reasoning: undefined } });
+        manager.appendUsage("standalone", message.provider, message.model, message.usage);
+        manager.appendCompaction("summary", null, 10, undefined, false, message.usage);
+        manager.branchWithSummary(null, "branch", undefined, false, message.usage);
+        manager.appendMessage({
+            role: "toolResult",
+            toolCallId: "call",
+            toolName: "read",
+            content: [],
+            isError: false,
+            timestamp: Date.now(),
+            usage: message.usage,
+        });
+        await recorder.recordResponseLatency("turn_finish");
+        await recorder.reconcilePiEntries(manager.getEntries(), new Set());
+        const rows = (await readMetrics()).filter((row) => row.event === "model_usage");
+        assertEquals(
+            rows.map((row) => row.reasoningTokens),
+            [7, null, 7, 7, 7, 7],
+        );
+        assertEquals(
+            rows.map((row) => row.outputTokens),
+            [12, 12, 12, 12, 12, 12],
+        );
+        assertEquals(
+            rows.map((row) => row.usageKind),
+            ["turn", "turn", "standalone", "compaction", "summary", "request"],
+        );
+        assert(typeof rows[0].startedAt === "string" && typeof rows[0].endedAt === "string");
+        assertEquals(
+            rows.slice(1).map((row) => [row.startedAt, row.endedAt]),
+            Array.from({ length: 5 }, () => [null, null]),
+        );
     });
 });

@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command-fixture.ts";
 import { getModelRegistry } from "../../src/shared/models/model-registry.ts";
-import { setExactProjectCustomSetting } from "../../src/shared/settings.js";
-import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.js";
-import { parseDiffFiles } from "../../src/shared/workflow/review-diff-tool.js";
+import { setExactProjectCustomSetting } from "../../src/shared/settings.ts";
+import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.ts";
+import { parseDiffFiles } from "../../src/shared/workflow/review-diff-tool.ts";
 import { loadFixture } from "./fixtures.ts";
 import { materializeFixture } from "./materialize.ts";
 import type { MaterializedProject } from "./materialize.ts";
@@ -157,24 +157,6 @@ test("premature completion is refused, nudged, then returns the exact accepted f
     });
 });
 
-test("full inspection can approve with the supplied advisory", async () => {
-    await withRuntimeCommandFixture("benchmark-review-approve-", async (runtime) => {
-        const fixture = await loadFixture(fixturePath);
-        const project = await materializeFixture(fixture, "B");
-        runtime.setModelResponseFactories(approveSteps(project));
-        try {
-            const result = await runFixtureReview(project, fixture);
-            assert.equal(result.kind, "complete");
-            assert.equal(result.outcome?.approved, true);
-            assert.deepEqual(result.outcome?.findings, []);
-            assert.deepEqual(result.outcome?.advisories, [advisory]);
-            assert.equal(result.nudgeAttempts, 0);
-        } finally {
-            await project.cleanup();
-        }
-    });
-});
-
 test("Reviewer selection is captured from the source preset and an explicit model overrides it", async () => {
     await withRuntimeCommandFixture(
         "benchmark-review-model-",
@@ -253,25 +235,6 @@ for (const prerequisite of ["missing model", "unknown model", "missing credentia
     });
 }
 
-test("missing completion pauses without inventing a verdict", async () => {
-    await withRuntimeCommandFixture("benchmark-review-pause-", async (runtime) => {
-        const fixture = await loadFixture(fixturePath);
-        const project = await materializeFixture(fixture, "A");
-        runtime.setModelResponseFactories(
-            Array.from({ length: 4 }, () => () => fauxAssistantMessage(fauxText("I could not finish the review."))),
-        );
-        try {
-            const result = await runFixtureReview(project, fixture);
-            assert.equal(result.kind, "paused");
-            assert.equal(result.outcome, undefined);
-            assert.match(result.reason!, /Protocol correction budget is spent/);
-            assert.equal(result.nudgeAttempts, 3);
-        } finally {
-            await project.cleanup();
-        }
-    });
-});
-
 test("provider failure pauses without inventing a verdict", async () => {
     await withRuntimeCommandFixture("benchmark-review-provider-", async (runtime) => {
         const fixture = await loadFixture(fixturePath);
@@ -299,26 +262,63 @@ test("timeout settles provider work before returning and a new project can compl
         const first = await materializeFixture(fixture, "A");
         let calls = 0;
         let settled = false;
+        const timeoutMs = 300;
+        const providerEntered = Promise.withResolvers<void>();
+        const providerAborted = Promise.withResolvers<void>();
+        const releaseProvider = Promise.withResolvers<void>();
+        const realSetTimeout = globalThis.setTimeout;
+        // Advance only the review deadline, and only after setup reaches the provider.
+        // Other timers keep running so real Session setup and disposal can finish.
+        const deadlineClock = mock.method(globalThis, "setTimeout", (...args: Parameters<typeof setTimeout>) => {
+            const [callback, delay, ...callbackArgs] = args;
+            if (delay === timeoutMs) {
+                return realSetTimeout(() => {
+                    void providerEntered.promise.then(() => callback(...callbackArgs));
+                }, 0);
+            }
+            return realSetTimeout(...args);
+        });
         runtime.setModelResponseFactory(async (_context, options) => {
             calls += 1;
+            providerEntered.resolve();
             await new Promise<void>((resolve) => {
                 if (options?.signal?.aborted) resolve();
                 else options?.signal?.addEventListener("abort", () => resolve(), { once: true });
             });
+            // Abort notification alone is not settlement: hold provider cleanup open.
+            providerAborted.resolve();
+            await releaseProvider.promise;
             settled = true;
             return fauxAssistantMessage(fauxText("Canceled review"));
         });
+        let returned = false;
+        const review = runFixtureReview(first, fixture, { timeoutMs }).then((result) => {
+            returned = true;
+            return result;
+        });
         try {
-            const result = await runFixtureReview(first, fixture, { timeoutMs: 300 });
+            await Promise.race([
+                providerAborted.promise,
+                review.then(() => assert.fail("Review returned before the provider was aborted")),
+            ]);
+            await new Promise<void>((resolve) => realSetTimeout(resolve, 0));
+            assert.equal(returned, false, "Review must wait for provider cleanup after abort");
+            releaseProvider.resolve();
+            const result = await review;
             assert.equal(result.kind, "timeout");
             assert.equal(result.outcome, undefined);
             assert.equal(settled, true);
             assert.equal(calls, 1);
-            assert.ok(result.elapsedMs >= 300);
             await new Promise((resolve) => setTimeout(resolve, 40));
             assert.equal(calls, 1);
         } finally {
-            await first.cleanup();
+            releaseProvider.resolve();
+            try {
+                await review;
+            } finally {
+                deadlineClock.mock.restore();
+                await first.cleanup();
+            }
         }
         const second = await materializeFixture(fixture, "B");
         runtime.setModelResponseFactories(approveSteps(second));

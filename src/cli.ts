@@ -36,7 +36,7 @@ if (["--remote-preflight", "--remote-view", "--remote-supervisor", "--remote-mod
     try {
         const { runRemoteModelProofEntry, runRemotePreflight, runRemoteView } =
             await import("./shared/remote/entry.ts");
-        if (cliArgs.length !== (cliArgs[0] === "--remote-supervisor" ? 2 : 1)) {
+        if (cliArgs.length !== (cliArgs[0] === "--remote-supervisor" ? 3 : 1)) {
             throw new Error("Unexpected remote entry arguments");
         }
         if (cliArgs[0] === "--remote-preflight") await runRemotePreflight();
@@ -57,7 +57,12 @@ const { cleanupAgentBrowserSessionSync, initializeAgentBrowserSession } =
 const { exposeBundledHelpersSync } = await import("./shared/package-install.ts");
 
 function isProtocolOnlyStartup(argv: string[]): boolean {
-    return argv[0] === "mcp" || argv[0] === "remote" || (argv[0] === "--mode" && argv[1] === "acp");
+    return (
+        argv[0] === "mcp" ||
+        argv[0] === "remote" ||
+        argv[0] === "attached" ||
+        (argv[0] === "--mode" && argv[1] === "acp")
+    );
 }
 
 if (cliArgs[0] !== "remote") exposeBundledHelpersSync();
@@ -156,8 +161,8 @@ async function main(): Promise<void> {
     }
 
     const { COMMAND_NAMES, commandRegistry, getCommandDefinition, hasCommandSurface, requiresProjectDirectoryConsent } =
-        await import("./cmd/registry.js");
-    const { printCommandHelp, printGlobalHelp } = await import("./cmd/help/index.js");
+        await import("./cmd/registry.ts");
+    const { printCommandHelp, printGlobalHelp } = await import("./cmd/help/index.ts");
 
     const helpRequest = resolveHelpRequest(args, COMMAND_NAMES);
     if (helpRequest.requested) {
@@ -198,9 +203,9 @@ async function main(): Promise<void> {
 
     if (requiresProjectDirectoryConsent(firstPositional, normalizedArgs.slice(1))) {
         const { confirmProjectDirectory } = await import("./ui/tui/directory-warning.ts");
-        const { getCwd } = await import("./constants.js");
+        const { getCwd } = await import("./constants.ts");
         if (!(await confirmProjectDirectory(getCwd(), allowSystemDirectory))) return;
-        const { resolvePrimaryCheckoutRoot } = await import("./shared/primary-checkout.ts");
+        const { resolvePrimaryCheckoutRoot } = await import("./shared/project-checkout.ts");
         const primaryRoot = resolvePrimaryCheckoutRoot(getCwd());
         if (primaryRoot !== getCwd() && !(await confirmProjectDirectory(primaryRoot, allowSystemDirectory))) return;
     }

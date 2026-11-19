@@ -54,9 +54,9 @@ for decomposition.
 - Producer: [PROJECT later branch](../../src/tools/plan-written.ts#L759), in `createPlanWrittenTool`.
 - Consumer: [runPlanningAgent](../../src/shared/workflow/planning-agent.ts#L64) awaits the turn, claims the event, and
   maps an absent event to `no_call`.
-- Probe: [epic-save.probe.js](probes/epic-save.probe.js).
+- Probe: [epic-save.probe.ts](probes/epic-save.probe.ts).
 - Observed: `outcome="saved"`, `status="ready_for_decomposition"`, `events=[]`; required saved-event assertion fails.
-- Coverage gap: the existing [Plan tool test](../../src/tools/__tests__/plan-written.test.js) named “plan_written
+- Coverage gap: the existing [Plan tool test](../../src/tools/__tests__/plan-written.test.ts) named “plan_written
   project approval can save for later with session-complete guidance” checks the returned result, termination flag, and
   status messages, rather than this consumer-visible event.
 
@@ -139,7 +139,7 @@ together. Inject failures at actual external persistence/process boundaries and 
 
 ### A5 — The semantic diff gate proves a tool event, not sufficient inspection
 
-**Source-confirmed; contract concern.** [review_diff](../../src/shared/workflow/review-diff-tool.js#L349) emits an event
+**Source-confirmed; contract concern.** [review_diff](../../src/shared/workflow/review-diff-tool.ts#L349) emits an event
 for `list`, including the empty-diff result with `hasDiff:false`. The
 [adapter](../../src/shared/workflow/validation-session-adapter.ts#L279) records only `Boolean(diffEvent)`, and the
 [review consumer](../../src/shared/workflow/validation-semantic.ts#L522) accepts that or `trustedClaudeMcpReview`. The
@@ -214,7 +214,7 @@ later, and execution without the retired metadata.
 
 **Source-confirmed; consumer contract concern.** Publication stages
 [validation_passed](../../src/shared/workflow/validation-publication.ts#L542) before target integration. Meanwhile,
-[terminal/verified helpers](../../src/shared/workflow/plan-lifecycle.js#L185) include `validated`, as does
+[terminal/verified helpers](../../src/shared/workflow/plan-lifecycle.ts#L238) include `validated`, as does
 [Epic child selection](../../src/shared/workflow/epic-continuation.ts#L29). The ordinary successful continuation is
 attached to the post-publication result, but status-only readers do not independently consult publication evidence.
 

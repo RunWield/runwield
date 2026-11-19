@@ -1,3 +1,4 @@
+import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { resolvePlanQuestions, type PlanQuestionAnswer } from "../plan-questions.ts";
 import { projectPlanType } from "../project-plan.ts";
 import { resolve } from "node:path";
@@ -12,15 +13,15 @@ import {
     splitPlanMarkdownBody,
     StalePlanWriteError,
     writePlanMarkdownWithRevision,
-} from "../../plan-store.js";
-import { buildPlanEventUpdates, isPlanReviewableWithoutReopen, recordPlanEvent } from "./plan-lifecycle.js";
+} from "../../plan-store.ts";
+import { buildPlanEventUpdates, isPlanReviewableWithoutReopen, recordPlanEvent } from "./plan-lifecycle.ts";
 import { runPlanReviewDecisionTransition } from "./state-transition.ts";
 import { PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
 import { pickControllerState, stripRuntimeFields } from "./controller-state.ts";
 import { writeControllerState } from "./controller-registry.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import type { PlanApprovalAction } from "./plan-approval.ts";
 import type { PlanWorktreeExpectation } from "./plan-actions.ts";
 
@@ -48,6 +49,7 @@ export interface SharedPlanReviewActionOptions {
     planPath: string;
     planWithFrontMatter: string;
     planRevision: string;
+    expectedControllerRevision?: number;
     originalAttrs: PlanFrontMatter;
     trustedClassification?: PlanFrontMatter["classification"];
     trustedWorkKind?: PlanFrontMatter["workKind"];
@@ -170,6 +172,7 @@ export async function applySharedPlanReviewDecision({
     planPath,
     planWithFrontMatter,
     planRevision,
+    expectedControllerRevision,
     originalAttrs,
     trustedClassification,
     trustedWorkKind,
@@ -177,6 +180,7 @@ export async function applySharedPlanReviewDecision({
     reviewEvidence,
     decision,
 }: SharedPlanReviewActionOptions): Promise<SharedPlanReviewActionResult> {
+    await preparePlanWorkflow(cwd, planName);
     const location = await resolveWorkflowPlanLocation(cwd, planName);
     if (location.plan && resolve(location.plan.path) === resolve(planPath)) {
         cwd = location.documentRoot;
@@ -240,6 +244,7 @@ export async function applySharedPlanReviewDecision({
     let reviewedPlan = typeof decision.plan === "string" ? decision.plan : planWithFrontMatter;
     if (approved) reviewedPlan = resolvePlanQuestions(reviewedPlan, decision.questionAnswers);
     const canonicalReviewOverrides = {
+        planId: originalAttrs.planId,
         classification: canonicalClassification,
         type: originalAttrs.type,
         ...(trustedWorkKind ? { workKind: trustedWorkKind } : {}),
@@ -283,8 +288,10 @@ export async function applySharedPlanReviewDecision({
             decide: async ({ beforePlan }) => {
                 if (!beforePlan) throw new Error(`Plan not found: ${planName}`);
                 if (
-                    beforePlan.revision !== planRevision &&
-                    !reviewSourceStillMatches(beforePlan, originalAttrs, reviewBaseBody)
+                    (expectedControllerRevision !== undefined &&
+                        beforePlan.controllerRevision !== expectedControllerRevision) ||
+                    (beforePlan.revision !== planRevision &&
+                        !reviewSourceStillMatches(beforePlan, originalAttrs, reviewBaseBody))
                 ) {
                     throw new Error(
                         "Plan changed after review opened; reload the review before applying this decision.",

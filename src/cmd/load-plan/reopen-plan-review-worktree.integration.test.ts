@@ -9,23 +9,23 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { executePlan } from "../../shared/workflow/plan-executor.ts";
 import { join } from "node:path";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { preparePlanningWorktreeForPlan } from "../../shared/workflow/planning-worktree.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { WorkspaceSessionContinuationService } from "../../ui/workspace/server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "../../ui/workspace/server/session-continuation.ts";
 import {
     prepareSequenceReview,
     type SequenceReviewDocument,
     validateSequenceReviewDecision,
 } from "../../shared/workflow/sequence-review.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { reopenSavedPlanReview } from "./reopen-plan-review.ts";
 
@@ -184,7 +184,7 @@ test("Workspace accepts a live Sequence group decision from a registered plannin
         const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot: repo });
         const store = fixture.openStore();
         const service = new WorkspaceSessionContinuationService({ store });
-        const storeUrl = new URL("../../shared/owner-coordination/index.js", import.meta.url).href;
+        const storeUrl = new URL("../../shared/owner-coordination/index.ts", import.meta.url).href;
         const runtimeUrl = new URL("../../shared/session/session-runtime.ts", import.meta.url).href;
         const code = `
             import { openOwnerCoordinationStore } from ${JSON.stringify(storeUrl)};

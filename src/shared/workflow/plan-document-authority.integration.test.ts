@@ -21,11 +21,11 @@ import {
     updatePlanCollaborationMetadata,
     updatePlanFrontMatter,
     withPlanLock,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { COLLABORATION_LOCK_BYPASS } from "../collaboration/lock.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { addEntry } from "../worktree-registry.js";
-import { getCwd } from "../../constants.js";
+import { addEntry } from "../worktree-registry.ts";
+import { getCwd } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { runPlansArchiveCommand } from "../../cmd/plans/archive.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";

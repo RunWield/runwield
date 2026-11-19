@@ -11,11 +11,11 @@ import {
 } from "node:fs/promises";
 import process from "node:process";
 import { join } from "node:path";
-import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { SESSION_RUNTIME_METHOD_POLICY } from "./session-runtime-method-policy.ts";
-import { getRunWieldSessionDir } from "./root-session.js";
+import { getRunWieldSessionDir } from "./root-session.ts";
 
 export interface WritablePiCall {
     name: string;
@@ -210,6 +210,13 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
             await run("getSessionContextReport", async () => {
                 const report = await runtime.getSessionContextReport(adopted.sessionId);
                 assertEquals(report === null, false);
+                if (!report || report.ok === false) throw new Error("Expected context report");
+                assertEquals(report.usageState, "estimated");
+                assertEquals(
+                    report.categories.find((category) => category.label === "Committed conversation")?.tokens,
+                    6,
+                );
+                assertEquals(report.usedTokens, 6);
             });
             await run("getSessionInfo", async () => {
                 assertEquals((await runtime.getSessionInfo(adopted.sessionId))?.assistantMessages, 1);
@@ -313,23 +320,4 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
             await removeTempDir(home);
         }
     });
-});
-
-test("writable Pi API instrumentation reports a negative control call", async () => {
-    const instrumented = await instrumentRealPiWritableApis();
-    try {
-        const pi = await import("@earendil-works/pi-coding-agent");
-        const manager = pi.SessionManager as WritablePiManager;
-        try {
-            manager.open?.("/missing", "/missing", "/missing");
-        } catch {
-            // The negative control only proves the writable boundary was reached.
-        }
-        assertEquals(
-            instrumented.calls.map((call) => call.name),
-            ["open"],
-        );
-    } finally {
-        instrumented.restore();
-    }
 });

@@ -4,14 +4,14 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import {
     makeRecordedSession,
     makeUi,
     makeValidationProjectRoot,
     NO_ISOLATED_AGENT_PORT,
     runValidationLoop,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 function makeValidationUi() {
     const uiAPI = makeUi();

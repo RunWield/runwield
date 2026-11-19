@@ -2,7 +2,7 @@ import { basename, dirname, parse, resolve, win32 as windows, posix } from "node
 import { statSync, realpathSync, lstatSync } from "node:fs";
 import process from "node:process";
 import { createHmac, randomBytes } from "node:crypto";
-import { getHomeDir } from "../constants.js";
+import { getHomeDir } from "../constants.ts";
 
 export const DIRECTORY_WARNING = "System or home folder detected. Continue?";
 const POSIX_SYSTEM_DIRECTORIES =
