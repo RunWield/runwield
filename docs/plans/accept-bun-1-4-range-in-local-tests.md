@@ -28,6 +28,12 @@ routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "1db6a54e38af5afe70acff57a0e0880d570ac58c"
+workRecord:
+    status: "generated"
+    recordId: "90b5fbc5-2c27-4d77-887d-2c13ccce30da"
+    path: "docs/work-records/2026-11-19-bun-range-compatibility-and-reproducible-release-pins.md"
+    lastAttemptAt: "2026-11-19T15:27:44.426Z"
 ---
 
 # Accept the Bun 1.4 range in local tests and pin CI to Bun 1.4.4
