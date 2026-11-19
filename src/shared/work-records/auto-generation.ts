@@ -18,21 +18,21 @@ import { readPublishedDeliverySources } from "../../plan-store/index.ts";
  */
 
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 
 import { isChildFeaturePlan, isProjectPlan } from "../../plan-format.ts";
 import { findPlansByParent, listArchivedPlans, loadArchivedPlan } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.js";
+import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 import {
     attachEpicChildren,
     buildActiveWorkRecordSource,
     evaluateWorkRecordSource,
     generateWorkRecordForSource,
-} from "./generation.js";
+} from "./generation.ts";
 
-type WorkRecordSource = import("./generation.js").WorkRecordSource;
+type WorkRecordSource = import("./generation.ts").WorkRecordSource;
 type WorkRecordSupersessionCandidate = import("./schema.ts").WorkRecordSupersessionCandidate;
 
 export interface WorkRecordAutoGenerationResult {
@@ -54,7 +54,7 @@ export interface AutoGenerateWorkRecordArgs {
     planName: string;
     mnemotecaPort: WorkRecordMnemotecaPort;
     signal?: AbortSignal;
-    runRecorderStep?: import("./generation.js").GenerationOptions["runRecorderStep"];
+    runRecorderStep?: import("./generation.ts").GenerationOptions["runRecorderStep"];
 }
 
 interface TargetedWorkRecordSource {
@@ -214,7 +214,7 @@ async function generateTargetedWorkRecord(
             const manifest = await readRecordingPublication(cwd, planName, publishedReference);
             if (manifest.preparedRecord) {
                 const indexWarning = await settlePreparedPackageRecord(cwd, manifest, mnemotecaPort);
-                const record = await import("./markdown.js").then((module) =>
+                const record = await import("./markdown.ts").then((module) =>
                     module.parseWorkRecordMarkdown(manifest.preparedRecord!.text),
                 );
                 return withMessage({

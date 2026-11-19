@@ -1,15 +1,15 @@
 import type { McpIntegration } from "../../../mcp/integration.ts";
-import { calculateCost, type Usage } from "@earendil-works/pi-ai";
+import { calculateCost, validateToolCall, type Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { getExternalCliPriceModel, type RunWieldModel } from "../../../models/model-registry.ts";
-import type { HostedSession } from "../../hosted-session.js";
+import type { HostedSession } from "../../hosted-session.ts";
 import {
     emitHostedSessionRuntimeEvent,
     normalizeRuntimeToolResult,
     normalizeRuntimeUsage,
     RuntimeEventTypes,
-} from "../../session-runtime-events.js";
+} from "../../session-runtime-events.ts";
 import { describeRuntimeTool } from "../../tool-event-title.ts";
 import {
     cleanupAgyCustomAgent,
@@ -18,10 +18,21 @@ import {
     verifyAgyCustomAgentOwnership,
 } from "./custom-agent.ts";
 import type { AgyCustomAgentOwnership } from "./custom-agent.ts";
-import { prepareAgyCliAgentsCommand, prepareAgyCliStreamCommand } from "./command.ts";
-import { concreteAgyModel, thinkingLevelToEffort } from "./model-options.ts";
-import { DenoAgyCliProcessPort } from "./process.ts";
-import type { AgyCliProcessResult, AgyCliProcessStatus } from "./process.ts";
+import { runAgyAcpTurn, type AgyAcpPermissionRequest, type AgyAcpTurnResult } from "./acp-transport.ts";
+import { resolveInstalledWldExecutable } from "./mcp-setup.ts";
+import {
+    requestHostedSessionInteraction,
+    RuntimeInteractionTypes,
+    RuntimeInteractionOutcomes,
+} from "../../session-runtime-interactions.ts";
+import { type AgyCliEffort, concreteAgyModel, thinkingLevelToEffort } from "./model-options.ts";
+import type { ForegroundTermination } from "../../../foreground-process.ts";
+
+interface AgyCliProcessStatus {
+    success: boolean;
+    code: number | null;
+    terminatedBy: ForegroundTermination | null;
+}
 import {
     AgyCliBackendError,
     type AgyCliBackendStatusKind,
@@ -35,10 +46,11 @@ import {
     AGY_CLI_MCP_PROVENANCE,
     mcpAliasFor,
     type RunWieldMcpBridgeHandle,
+    type RunWieldMcpAuthorizationRequest,
     startRunWieldMcpBridge,
 } from "../../bridged-tools/mcp-bridge.ts";
 import { RUNWIELD_MCP_BRIDGE_TOKEN_ENV, RUNWIELD_MCP_BRIDGE_URL_ENV } from "../../bridged-tools/stdio-transport.ts";
-import { AgyCliStreamError, parseAgyCliStream } from "./stream-parser.ts";
+import { AgyCliStreamError } from "./stream-parser.ts";
 import type { AgyCliParseResult, AgyCliToolStep, AgyCliUsage } from "./stream-parser.ts";
 import { readExternalCliConversation, serializeExternalCliConversation } from "../../external-cli-conversation.ts";
 import { ExecutionMetricsRecorder } from "../../../workflow/execution-metrics.ts";
@@ -82,11 +94,6 @@ interface ClassifiedFailure {
     message?: string;
 }
 
-interface AgyParseOutcome {
-    parsed: AgyCliParseResult | null;
-    parseError: Error | null;
-}
-
 export class AgyCliExecutionSession {
     readonly kind = "agy-cli";
     readonly id: string;
@@ -103,8 +110,8 @@ export class AgyCliExecutionSession {
     private readonly mcpToolNames: Set<string>;
     private readonly thinkingLevel?: string;
     private readonly persistModelChange: boolean;
+    private readonly nativeTools: Set<string>;
     private messages: AgentMessage[] = [];
-    private activeProcess: AgyCliProcessResult | null = null;
     private turnAbortController: AbortController | null = null;
     private activeTurnDone: Promise<void> | null = null;
     private cleanupStatusEmitted = false;
@@ -125,10 +132,12 @@ export class AgyCliExecutionSession {
         this.thinkingLevel = options.thinkingLevel;
         this.persistModelChange = options.persistModelChange !== false;
         this.ownership = ownership;
+        this.nativeTools = new Set(resolveAgyNativeTools(options.declaredTools));
         this.messages = this.readMessages();
     }
 
     static async create(options: AgyCliExecutionSessionOptions): Promise<AgyCliExecutionSession> {
+        thinkingLevelToEffort(options.model.id, options.thinkingLevel);
         const selector = makeTemporaryAgentSelector(options.agentName);
         const nativeTools = resolveAgyNativeTools(options.declaredTools);
         const definition = formatAgyCustomAgentDefinition(
@@ -150,7 +159,6 @@ export class AgyCliExecutionSession {
         let ownership: AgyCustomAgentOwnership | null = null;
         try {
             ownership = await materializeAgyCustomAgent(selector, definition);
-            await verifyAgyCustomAgentListed(selector, options.cwd);
             return new AgyCliExecutionSession(options, ownership);
         } catch (error) {
             const failure = classifySetupFailure(error instanceof Error ? error : String(error));
@@ -188,7 +196,6 @@ export class AgyCliExecutionSession {
 
     abort(): void {
         this.turnAbortController?.abort();
-        this.activeProcess?.kill();
     }
 
     clearQueue(): void {}
@@ -285,7 +292,8 @@ export class AgyCliExecutionSession {
         let failureKind: string | undefined;
 
         let bridge: RunWieldMcpBridgeHandle | null = null;
-        let process: AgyCliProcessResult | null = null;
+        const terminalController = new AbortController();
+        const bridgeServerName = `runwield_turn_${crypto.randomUUID().replaceAll("-", "")}`;
         let bridgeDisconnected = false;
         this.turnAbortController = new AbortController();
         const combinedSignal = options.signal
@@ -294,8 +302,9 @@ export class AgyCliExecutionSession {
         this.isStreaming = true;
 
         let firstTextDeltaRecorded = false;
-        let parsed: AgyCliParseResult | null = null;
+        let parsed: AgyAcpTurnResult | null = null;
         let observedUsage: AgyCliUsage | null = null;
+        let settleInterruptedTools: (() => void) | undefined;
         try {
             try {
                 await this.verifyCustomAgentReady(combinedSignal);
@@ -311,6 +320,7 @@ export class AgyCliExecutionSession {
                 try {
                     bridge = await startRunWieldMcpBridge({
                         tools: bridgedTools,
+                        authorizeCall: (request) => this.authorizeBridgeCall(request, bridgedTools, combinedSignal),
                         cwd: this.cwd,
                         hostedSession: this.hostedSession,
                         sessionManager: this.sessionManager,
@@ -337,7 +347,7 @@ export class AgyCliExecutionSession {
                         onUnexpectedDisconnect: () => {
                             bridgeDisconnected = true;
                         },
-                        onTerminalAccepted: () => process?.kill(),
+                        onTerminalAccepted: () => terminalController.abort(),
                     });
                 } catch (error) {
                     executionOutcome = "failed";
@@ -352,48 +362,6 @@ export class AgyCliExecutionSession {
                 }
             }
 
-            const command = prepareAgyCliStreamCommand({
-                cwd: this.cwd,
-                agentName: this.ownership.name,
-                model: this.model.id,
-                userRequest: serializedConversation,
-                effort,
-                env: bridge
-                    ? {
-                          [RUNWIELD_MCP_BRIDGE_URL_ENV]: bridge.url,
-                          [RUNWIELD_MCP_BRIDGE_TOKEN_ENV]: bridge.token,
-                      }
-                    : undefined,
-            });
-            const processPort = new DenoAgyCliProcessPort();
-            try {
-                process = processPort.run(command, this.cwd, combinedSignal);
-                this.activeProcess = process;
-                if (process.pid === null) {
-                    executionOutcome = "canceled";
-                    failureKind = "canceled";
-                    const failure: ClassifiedFailure = { kind: "canceled", exitCode: null };
-                    emitFailure(failure, false);
-                    throw new AgyCliBackendError(failure.kind, { exitCode: failure.exitCode });
-                }
-            } catch (error) {
-                const failure = classifySetupFailure(error instanceof Error ? error : String(error));
-                executionOutcome = failure.kind === "canceled" || combinedSignal.aborted ? "canceled" : "failed";
-                failureKind = failure.kind;
-                emitFailure(failure, false);
-                throw new AgyCliBackendError(failure.kind, { exitCode: failure.exitCode, message: failure.message });
-            }
-
-            const userMessage = makeUserMessage(options.userRequest);
-            this.sessionManager.appendMessage(userMessage);
-            this.messages.push(userMessage as AgentMessage);
-            appendExecutionBackendEntry(this.sessionManager, this.model, {
-                requestId: options.requestId,
-                attemptId: options.attemptId,
-                thinkingLevel: this.thinkingLevel || "off",
-                effort,
-            });
-
             const messageId = `agy-cli-assistant:${crypto.randomUUID()}`;
             const nativeTools = new Map<
                 number,
@@ -402,7 +370,12 @@ export class AgyCliExecutionSession {
             const completedTools = new Set<number>();
             const onTool = (step: AgyCliToolStep): void => {
                 // The MCP bridge already records and emits its own calls.
-                if (step.name === "call_mcp_tool" || completedTools.has(step.stepIndex)) return;
+                if (
+                    step.name === "call_mcp_tool" ||
+                    step.name.startsWith(`mcp_${bridgeServerName}_`) ||
+                    completedTools.has(step.stepIndex)
+                )
+                    return;
                 const toolCallId = `${messageId}:tool:${step.stepIndex}`;
                 const previous = nativeTools.get(step.stepIndex);
                 const parameters = step.parameters || previous?.parameters;
@@ -461,52 +434,111 @@ export class AgyCliExecutionSession {
                     durationMs: step.durationMs ?? Math.max(0, Date.now() - started.startedAt),
                 });
             };
-            const parseOutcomePromise = parseAgyCliStream(process.stdout, {
-                onTool,
-                onUsage: (usage) => {
-                    observedUsage = usage;
-                    usageEndedAt = new Date().toISOString();
-                },
-                onToolInfo: (observation) => {
-                    observe(recorder.recordResponseLatency("first_response"));
-                    if (
-                        !observation.toolName?.startsWith("mcp__runwield__") &&
-                        !bridgedTools.some(
-                            (tool) =>
-                                observation.toolName === tool.name || observation.toolName === mcpAliasFor(tool.name),
-                        )
-                    ) {
-                        observe(recorder.recordNativeToolInfo(observation));
-                    }
-                },
-                onDelta: (delta) => {
-                    observe(recorder.recordResponseLatency("first_response"));
-                    if (!firstTextDeltaRecorded && delta.text) {
-                        firstTextDeltaRecorded = true;
-                        observe(recorder.recordResponseLatency("first_text"));
-                    }
-                    emitHostedSessionRuntimeEvent(this.hostedSession, {
-                        type: RuntimeEventTypes.ASSISTANT_TEXT_DELTA,
-                        messageId,
-                        delta: delta.text,
-                        agentName: this.agentDisplayName,
-                        messageKind: "assistant",
+            settleInterruptedTools = () => {
+                for (const [stepIndex, tool] of nativeTools) {
+                    if (completedTools.has(stepIndex)) continue;
+                    const warning =
+                        "Antigravity stopped before confirming this tool's result. Its effects are unknown. Inspect the affected state before retrying; do not repeat the action blindly.";
+                    onTool({
+                        stepIndex,
+                        name: tool.name,
+                        parameters: tool.parameters,
+                        state: "ERROR",
+                        output: warning,
                     });
-                },
-            }).then(
-                (parsed): AgyParseOutcome => ({ parsed, parseError: null }),
-                (error): AgyParseOutcome => ({
-                    parsed: null,
-                    parseError: error instanceof Error ? error : new Error(String(error)),
-                }),
-            );
-            const status = await waitForAgyProcessExit(process, parseOutcomePromise);
-            process.kill();
-            const [{ parsed: streamParsed, parseError }, stderrText] = await Promise.all([
-                parseOutcomePromise,
-                process.stderrText,
-            ]);
-            parsed = streamParsed;
+                    this.sessionManager.appendCustomEntry("runwield.interrupted_tool", {
+                        backend: "agy-cli",
+                        toolName: tool.name,
+                        outcome: "unknown",
+                        message: warning,
+                        requestId: options.requestId,
+                        attemptId: options.attemptId,
+                    });
+                }
+            };
+            let parseError: Error | null = null;
+            try {
+                parsed = await runAgyAcpTurn(
+                    {
+                        cwd: this.cwd,
+                        agentName: this.ownership.name,
+                        model: this.model.id,
+                        effort,
+                        userRequest: serializedConversation,
+                        onReady: () => {
+                            const userMessage = makeUserMessage(options.userRequest);
+                            this.sessionManager.appendMessage(userMessage);
+                            this.messages.push(userMessage as AgentMessage);
+                            appendExecutionBackendEntry(this.sessionManager, this.model, {
+                                requestId: options.requestId,
+                                attemptId: options.attemptId,
+                                thinkingLevel: this.thinkingLevel || "off",
+                                effort,
+                            });
+                        },
+                        signal: combinedSignal,
+                        terminalSignal: terminalController.signal,
+                        mcpServers: bridge
+                            ? [
+                                  {
+                                      name: bridgeServerName,
+                                      command: await resolveInstalledWldExecutable(),
+                                      args: ["mcp", "agy-cli"],
+                                      env: [
+                                          { name: RUNWIELD_MCP_BRIDGE_URL_ENV, value: bridge.url },
+                                          { name: RUNWIELD_MCP_BRIDGE_TOKEN_ENV, value: bridge.token },
+                                      ],
+                                  },
+                              ]
+                            : [],
+                        authorizePermission: (request) =>
+                            this.authorizePermission(request, bridgedTools, bridgeServerName, combinedSignal),
+                    },
+                    {
+                        onTool,
+                        onUsage: (usage) => {
+                            observedUsage = usage;
+                            usageEndedAt = new Date().toISOString();
+                        },
+                        onToolInfo: (observation) => {
+                            observe(recorder.recordResponseLatency("first_response"));
+                            if (
+                                !observation.toolName?.startsWith("mcp__runwield__") &&
+                                !observation.toolName?.startsWith(`mcp_${bridgeServerName}_`) &&
+                                !bridgedTools.some(
+                                    (tool) =>
+                                        observation.toolName === tool.name ||
+                                        observation.toolName === mcpAliasFor(tool.name),
+                                )
+                            ) {
+                                observe(recorder.recordNativeToolInfo(observation));
+                            }
+                        },
+                        onDelta: (delta) => {
+                            observe(recorder.recordResponseLatency("first_response"));
+                            if (!firstTextDeltaRecorded && delta.text) {
+                                firstTextDeltaRecorded = true;
+                                observe(recorder.recordResponseLatency("first_text"));
+                            }
+                            emitHostedSessionRuntimeEvent(this.hostedSession, {
+                                type: RuntimeEventTypes.ASSISTANT_TEXT_DELTA,
+                                messageId,
+                                delta: delta.text,
+                                agentName: this.agentDisplayName,
+                                messageKind: "assistant",
+                            });
+                        },
+                    },
+                );
+            } catch (error) {
+                parseError = error instanceof Error ? error : new Error(String(error));
+            }
+            const status: AgyCliProcessStatus = {
+                success: !parseError,
+                code: parseError ? null : 0,
+                terminatedBy: combinedSignal.aborted ? "abort" : null,
+            };
+            const stderrText = parseError?.message || "";
             const acceptedTerminal = bridge?.acceptedTerminal === true;
             const failure = classifyTurnFailure({
                 parsed,
@@ -527,11 +559,11 @@ export class AgyCliExecutionSession {
                     thinkingLevel: this.thinkingLevel || "off",
                     effort,
                     backendModel: parsed.metadata.model,
+                    modelSelectionSource: parsed.modelSelectionSource,
                 });
             }
             if (acceptedTerminal) return this.getMessages();
             if (failure) {
-                process.kill();
                 executionOutcome = combinedSignal.aborted ? "canceled" : "failed";
                 failureKind = failure.kind;
                 emitFailure(failure, false);
@@ -560,8 +592,8 @@ export class AgyCliExecutionSession {
             if (softFailure) emitFailure(softFailure, false);
             return this.getMessages();
         } finally {
+            settleInterruptedTools?.();
             if (bridge) await bridge.close();
-            this.activeProcess = null;
             this.isStreaming = false;
             this.turnAbortController = null;
             const usage = parsed?.metadata?.usage ?? observedUsage;
@@ -612,9 +644,111 @@ export class AgyCliExecutionSession {
         }
     }
 
+    private async authorizePermission(
+        request: AgyAcpPermissionRequest,
+        tools: ToolDefinition[],
+        bridgeServerName: string,
+        signal: AbortSignal,
+    ): Promise<boolean> {
+        if (signal.aborted) return false;
+        const definition = tools.find((tool) => request.name === `mcp_${bridgeServerName}_${mcpAliasFor(tool.name)}`);
+        // Vendor MCP permissions can omit all actual arguments. This only opens
+        // the exact owned transport envelope; authorizeBridgeCall gates effects.
+        if (definition) return true;
+        if (request.name.startsWith("mcp_")) return false;
+        // Do not ask for approval of an unspecified native effect. Unknown vendor
+        // schemas fail closed until their action details can be shown accurately.
+        const input = request.arguments;
+        const nonempty = (key: string) => typeof input[key] === "string" && input[key].trim().length > 0;
+        const fullWrite =
+            this.nativeTools.has("write_to_file") &&
+            ["write_file", "write_to_file"].includes(request.name) &&
+            (nonempty("Path") || nonempty("TargetFile")) &&
+            typeof input.Content === "string";
+        const fullCommand =
+            this.nativeTools.has("run_command") && request.name === "run_command" && nonempty("CommandLine");
+        const fullRead =
+            this.nativeTools.has("view_file") &&
+            ["read_file", "view_file"].includes(request.name) &&
+            (nonempty("Path") || nonempty("AbsolutePath"));
+        const fullEdit =
+            this.nativeTools.has("replace_file_content") &&
+            request.name === "replace_file_content" &&
+            nonempty("TargetFile") &&
+            typeof input.TargetContent === "string" &&
+            typeof input.ReplacementContent === "string";
+        const fullMultiEdit =
+            this.nativeTools.has("replace_file_content") &&
+            request.name === "multi_replace_file_content" &&
+            nonempty("TargetFile") &&
+            Array.isArray(input.ReplacementChunks) &&
+            input.ReplacementChunks.length > 0 &&
+            input.ReplacementChunks.every(
+                (chunk) =>
+                    chunk !== null &&
+                    typeof chunk === "object" &&
+                    !Array.isArray(chunk) &&
+                    typeof chunk.TargetContent === "string" &&
+                    typeof chunk.ReplacementContent === "string",
+            );
+        if (!fullWrite && !fullCommand && !fullRead && !fullEdit && !fullMultiEdit) return false;
+        return await this.askPermission(request, signal);
+    }
+
+    private async authorizeBridgeCall(
+        request: RunWieldMcpAuthorizationRequest,
+        tools: ToolDefinition[],
+        signal: AbortSignal,
+    ): Promise<boolean> {
+        if (signal.aborted) return false;
+        const definition = tools.find((tool) => tool.name === request.name);
+        if (!definition) return false;
+        const args = JSON.parse(JSON.stringify(request.arguments)) as typeof request.arguments;
+        try {
+            const submitted = JSON.stringify(args);
+            const validated = validateToolCall(
+                [{ name: definition.name, description: definition.description, parameters: definition.parameters }],
+                { type: "toolCall", id: request.toolCallId, name: definition.name, arguments: args },
+            );
+            if (JSON.stringify(validated) !== submitted) return false;
+        } catch {
+            return false;
+        }
+        // These owned lifecycle handlers enforce workflow identity/state themselves.
+        if (
+            ["plan_written", "task_completed", "review_complete", "triage_report", "pair_checkpoint"].includes(
+                definition.name,
+            )
+        )
+            return true;
+        return await this.askPermission(request, signal);
+    }
+
+    private async askPermission(request: RunWieldMcpAuthorizationRequest, signal: AbortSignal): Promise<boolean> {
+        if (!this.hostedSession) return false;
+        const response = await requestHostedSessionInteraction(
+            this.hostedSession,
+            {
+                type: RuntimeInteractionTypes.APPROVAL,
+                prompt: `Antigravity requests ${request.name}. Allow this action once?\n${JSON.stringify(request.arguments)}`,
+                toolCallId: request.toolCallId,
+                options: [
+                    { value: "approve", label: "Allow once" },
+                    { value: "deny", label: "Deny" },
+                ],
+            },
+            signal,
+            this.hostedSession.getManagedOperationCapability(),
+        );
+        return (
+            response.outcome === RuntimeInteractionOutcomes.ACCEPTED ||
+            (response.outcome === RuntimeInteractionOutcomes.SELECTED && response.value === "approve")
+        );
+    }
+
     private async verifyCustomAgentReady(signal: AbortSignal): Promise<void> {
         await verifyAgyCustomAgentOwnership(this.ownership);
-        await verifyAgyCustomAgentListed(this.ownership.name, this.cwd, signal);
+        if (signal.aborted) throw new AgyCliBackendError("canceled");
     }
 
     private emitCleanupWarning(error: Error | string): void {
@@ -632,18 +766,6 @@ export class AgyCliExecutionSession {
     }
 }
 
-async function waitForAgyProcessExit(
-    process: AgyCliProcessResult,
-    parseOutcomePromise: Promise<AgyParseOutcome>,
-): Promise<AgyCliProcessStatus> {
-    const first = await Promise.race([
-        process.completed.then((status) => ({ kind: "status" as const, status })),
-        parseOutcomePromise.then((outcome) => ({ kind: "parse" as const, outcome })),
-    ]);
-    if (first.kind === "status") return first.status;
-    return await process.completed;
-}
-
 function classifySetupFailure(error: Error | string): ClassifiedFailure {
     if (error instanceof AgyCliBackendError) {
         return {
@@ -656,47 +778,6 @@ function classifySetupFailure(error: Error | string): ClassifiedFailure {
     if (isAgyAuthFailure(message)) return { kind: "auth_failed", exitCode: null, message };
     if (isAgyMcpUnavailable(message)) return { kind: "mcp_unavailable", exitCode: null, message };
     return { kind: "custom_agent_invalid", exitCode: null };
-}
-
-async function verifyAgyCustomAgentListed(agentName: string, cwd: string, signal?: AbortSignal): Promise<void> {
-    const processPort = new DenoAgyCliProcessPort();
-    const result = processPort.run(prepareAgyCliAgentsCommand(), cwd, signal);
-    const stdoutTextPromise = new Response(result.stdout).text().catch(() => "");
-    const [status, stderrText, stdoutText] = await Promise.all([
-        result.completed,
-        result.stderrText,
-        stdoutTextPromise,
-    ]);
-    if (!status.success) {
-        const detail = stderrText || `agy /agents exited with code ${status.code}`;
-        if (signal?.aborted) {
-            throw new AgyCliBackendError("canceled", { exitCode: status.code });
-        }
-        if (status.terminatedBy === "timeout") {
-            throw new AgyCliBackendError("timeout", { exitCode: status.code });
-        }
-        if (isAgyAuthFailure(detail)) {
-            throw new AgyCliBackendError("auth_failed", { exitCode: status.code, message: detail });
-        }
-        if (status.terminatedBy === "abort") {
-            throw new AgyCliBackendError("canceled", { exitCode: status.code });
-        }
-        if (isAgyMcpUnavailable(detail)) {
-            throw new AgyCliBackendError("mcp_unavailable", { exitCode: status.code, message: detail });
-        }
-        throw new AgyCliBackendError("custom_agent_invalid", { exitCode: status.code, message: detail });
-    }
-    let parsed: JsonValue;
-    try {
-        parsed = JSON.parse(stdoutText) as JsonValue;
-    } catch {
-        throw new AgyCliBackendError("custom_agent_invalid", { message: "agy /agents did not return JSON" });
-    }
-    if (!agentListContainsExactName(parsed, agentName)) {
-        throw new AgyCliBackendError("custom_agent_invalid", {
-            message: "agy /agents did not list the expected RunWield custom agent",
-        });
-    }
 }
 
 function classifyTurnFailure(options: {
@@ -721,6 +802,8 @@ function classifyTurnFailure(options: {
         requestedModel,
         signalAborted,
     } = options;
+    if (parseError instanceof AgyCliBackendError)
+        return { kind: parseError.kind, exitCode: parseError.exitCode, message: parseError.message };
     if (status.terminatedBy === "abort" && signalAborted) return { kind: "canceled", exitCode: status.code };
     if (status.terminatedBy === "timeout") return { kind: "timeout", exitCode: status.code };
     const processDetail = stderrText || parsed?.metadata.errorText || parsed?.text || "";
@@ -848,7 +931,15 @@ function formatAgyCustomAgentDefinition(
             lines.push(`  - ${tool}`);
         }
     }
-    lines.push("---", "", systemPrompt.trim(), "");
+    lines.push(
+        "excludeDefaultComponents: true",
+        "inheritMcp: false",
+        "inheritCustomizations: false",
+        "---",
+        "",
+        systemPrompt.trim(),
+        "",
+    );
     return lines.join("\n");
 }
 
@@ -859,39 +950,6 @@ function makeTemporaryAgentSelector(agentName: string): string {
             .replace(/[^a-z0-9._-]+/g, "-")
             .replace(/^-+|-+$/g, "") || "agent";
     return `runwield-${sanitized}-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
-}
-
-type JsonScalar = string | number | boolean | null;
-type JsonArray = JsonValue[];
-interface JsonRecord {
-    [key: string]: JsonValue;
-}
-type JsonValue = JsonScalar | JsonArray | JsonRecord;
-
-function isJsonRecord(value: JsonValue | undefined): value is JsonRecord {
-    return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function readAgentList(value: JsonValue): JsonArray | null {
-    if (Array.isArray(value)) return value;
-    if (!isJsonRecord(value)) return null;
-    if (Array.isArray(value.agents)) return value.agents;
-    if (isJsonRecord(value.data) && Array.isArray(value.data.agents)) return value.data.agents;
-    if (isJsonRecord(value.command) && isJsonRecord(value.command.data) && Array.isArray(value.command.data.agents)) {
-        return value.command.data.agents;
-    }
-    return null;
-}
-
-function agentEntryMatchesName(value: JsonValue, expected: string): boolean {
-    if (typeof value === "string") return value === expected;
-    if (!isJsonRecord(value)) return false;
-    return value.name === expected;
-}
-
-function agentListContainsExactName(value: JsonValue, expected: string): boolean {
-    const agents = readAgentList(value);
-    return Boolean(agents?.some((agent) => agentEntryMatchesName(agent, expected)));
 }
 
 function makeUserMessage(text: string): SessionAppendMessage {
@@ -951,8 +1009,9 @@ function appendExecutionBackendEntry(
         attemptId?: string;
         externalConversationId?: string;
         thinkingLevel?: string;
-        effort?: "low" | "medium" | "high";
+        effort?: AgyCliEffort;
         backendModel?: string;
+        modelSelectionSource?: "config_options" | "models";
     },
 ): void {
     sessionManager.appendCustomEntry("runwield.execution_backend", {
@@ -960,10 +1019,11 @@ function appendExecutionBackendEntry(
         backend: "agy-cli",
         provider: model.provider,
         model: model.id,
-        outputFormat: "stream-json",
+        outputFormat: "acp",
         ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
         ...(options.effort ? { effort: options.effort } : {}),
         ...(options.backendModel ? { backendModel: options.backendModel } : {}),
+        ...(options.modelSelectionSource ? { modelSelectionSource: options.modelSelectionSource } : {}),
         ...(options.requestId ? { requestId: options.requestId } : {}),
         ...(options.attemptId ? { attemptId: options.attemptId } : {}),
         ...(options.externalConversationId ? { externalConversationId: options.externalConversationId } : {}),

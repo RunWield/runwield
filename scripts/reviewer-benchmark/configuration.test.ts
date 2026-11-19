@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command-fixture.ts";
 import { captureCheckoutIdentity, captureConfiguration, fixtureHash } from "./configuration.ts";
 import { defineGitFixture } from "../../src/shared/git-test-fixture.ts";
-import { setExactProjectCustomSetting, __resetSettingsForTests } from "../../src/shared/settings.js";
+import { setExactProjectCustomSetting, __resetSettingsForTests } from "../../src/shared/settings.ts";
 import { rawGit, withFixtureCopy } from "./test-fixtures.ts";
 
 test("configuration records this checkout and the exact production prompt bytes without a model call", async () => {

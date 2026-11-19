@@ -2,7 +2,7 @@ import {
     validateManagedRuntimeContinuations,
     activateManagedRuntimeContinuations,
 } from "./retained-managed-execution.ts";
-import { normalizeSecretStore, readSecretStore, writeSecretStore } from "../shared/collaboration/secrets.js";
+import { normalizeSecretStore, readSecretStore, writeSecretStore } from "../shared/collaboration/secrets.ts";
 import { DatabaseSync } from "../shared/sqlite.ts";
 /** Laptop-owned staging for managed personal runtime. Publication and source retirement are separate receipts. */
 import { join, dirname } from "node:path";

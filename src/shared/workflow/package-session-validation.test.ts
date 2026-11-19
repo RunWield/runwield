@@ -8,13 +8,13 @@ import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts"
 import { create, read } from "../testing/plan-package-fixture.ts";
 import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { continueWorkflowValidation } from "./validation.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { createGitPort } from "../git-port.ts";
-import { setExactProjectCustomSetting } from "../settings.js";
+import { setExactProjectCustomSetting } from "../settings.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { loadPlan } from "../../plan-store/index.ts";

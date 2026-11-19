@@ -5,8 +5,8 @@
 
 import process, { platform } from "node:process";
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN } from "../../constants.js";
-import { getOwnerCoordinationDatabasePath, openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { CLI_BIN } from "../../constants.ts";
+import { getOwnerCoordinationDatabasePath, openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { startMetricsExportScheduler } from "../../shared/workflow/metrics-export-scheduler.ts";
 import { isLoopbackHost, parsePort } from "../plans/ui.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
@@ -106,7 +106,7 @@ export async function runWorkspaceServeCommand(argv: string[]): Promise<void> {
     const store = openOwnerCoordinationStore();
     const stopMetricsExport = startMetricsExportScheduler({ signal: controller.signal });
     try {
-        const { startWorkspaceServer } = await import("../../ui/workspace/server.js");
+        const { startWorkspaceServer } = await import("../../ui/workspace/server.ts");
         const server = startWorkspaceServer({
             mode: "owner",
             host: parsed.host,

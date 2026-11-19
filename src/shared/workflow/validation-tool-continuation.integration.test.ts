@@ -19,9 +19,9 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
-import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.js";
+import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { runWorkflowValidationToStableBoundary } from "./validation.ts";
 import { createGitPort } from "../git-port.ts";
@@ -29,8 +29,8 @@ import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
 import { createTestWorktreeAttempt, git as runGit, makeRepo } from "../worktree-test-helpers.ts";
-import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.js";
-import { __getRootSessionMetadataForTests } from "../session/session.js";
+import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.ts";
+import { __getRootSessionMetadataForTests } from "../session/session.ts";
 import { runEpicChildContinuation } from "./epic-continuation.ts";
 
 test("publication repair completion never creates a validation checkpoint in either checkout", async () => {

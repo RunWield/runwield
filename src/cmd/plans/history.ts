@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { listPlanHistory, restorePlanMilestone, showPlanMilestone } from "../../plan-store/index.ts";
 
 export async function runPlansHistoryCommand(args: string[]): Promise<void> {

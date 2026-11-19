@@ -3,7 +3,7 @@ import {
     listPlans as listLocalPlans,
     loadPlanStrict as loadLocalPlanStrict,
     inspectPlanStrict as inspectLocalPlanStrict,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 import { managedPlanStoreActive, readManagedPlan, listManagedPlans } from "./managed.ts";
 export async function loadPlan(cwd: string, name: string) {
     return managedPlanStoreActive() ? await readManagedPlan(cwd, name) : await loadLocalPlan(cwd, name);
@@ -31,22 +31,22 @@ export async function inspectPlanStrict(cwd: string, name: string): ReturnType<t
 export async function findPlanEvidenceById(
     cwd: string,
     planId: string,
-): ReturnType<typeof import("../plan-store.js").findPlanEvidenceById> {
+): ReturnType<typeof import("../plan-store.ts").findPlanEvidenceById> {
     if (managedPlanStoreActive()) return await (await import("./managed.ts")).readManagedPlanResource(cwd, planId);
-    return await (await import("../plan-store.js")).findPlanEvidenceById(cwd, planId);
+    return await (await import("../plan-store.ts")).findPlanEvidenceById(cwd, planId);
 }
 export async function findPlanById(
     cwd: string,
     planId: string,
-): ReturnType<typeof import("../plan-store.js").findPlanById> {
+): ReturnType<typeof import("../plan-store.ts").findPlanById> {
     if (managedPlanStoreActive()) return await findPlanEvidenceById(cwd, planId);
-    return await (await import("../plan-store.js")).findPlanById(cwd, planId);
+    return await (await import("../plan-store.ts")).findPlanById(cwd, planId);
 }
 export async function loadPlanBodyById(
     cwd: string,
     planId: string,
-): ReturnType<typeof import("../plan-store.js").loadPlanBodyById> {
-    if (!managedPlanStoreActive()) return await (await import("../plan-store.js")).loadPlanBodyById(cwd, planId);
+): ReturnType<typeof import("../plan-store.ts").loadPlanBodyById> {
+    if (!managedPlanStoreActive()) return await (await import("../plan-store.ts")).loadPlanBodyById(cwd, planId);
     const resource = await findPlanById(cwd, planId);
     const { hashPlanBody } = await import("../plan-format.ts");
     return { ...resource, body: resource.markdown, bodyHash: await hashPlanBody(resource.markdown) };
@@ -54,27 +54,27 @@ export async function loadPlanBodyById(
 
 export async function readPlanResourceCatalog(
     cwd: string,
-): ReturnType<typeof import("../plan-store.js").readPlanResourceCatalog> {
+): ReturnType<typeof import("../plan-store.ts").readPlanResourceCatalog> {
     return managedPlanStoreActive()
         ? await (await import("./managed.ts")).readManagedResourceCatalog(cwd)
-        : await (await import("../plan-store.js")).readPlanResourceCatalog(cwd);
+        : await (await import("../plan-store.ts")).readPlanResourceCatalog(cwd);
 }
-export async function listPlanResources(cwd: string): ReturnType<typeof import("../plan-store.js").listPlanResources> {
-    if (!managedPlanStoreActive()) return await (await import("../plan-store.js")).listPlanResources(cwd);
+export async function listPlanResources(cwd: string): ReturnType<typeof import("../plan-store.ts").listPlanResources> {
+    if (!managedPlanStoreActive()) return await (await import("../plan-store.ts")).listPlanResources(cwd);
     const catalog = await readPlanResourceCatalog(cwd);
     if (catalog.diagnostics.length) throw new Error(catalog.diagnostics[0].message);
     return catalog.resources;
 }
-export async function listPlanDocuments(cwd: string): ReturnType<typeof import("../plan-store.js").listPlanDocuments> {
+export async function listPlanDocuments(cwd: string): ReturnType<typeof import("../plan-store.ts").listPlanDocuments> {
     return managedPlanStoreActive()
         ? await listPlans(cwd)
-        : await (await import("../plan-store.js")).listPlanDocuments(cwd);
+        : await (await import("../plan-store.ts")).listPlanDocuments(cwd);
 }
 export async function resolvePlan(
     cwd: string,
     reference: string,
-): ReturnType<typeof import("../plan-store.js").resolvePlan> {
-    if (!managedPlanStoreActive()) return await (await import("../plan-store.js")).resolvePlan(cwd, reference);
+): ReturnType<typeof import("../plan-store.ts").resolvePlan> {
+    if (!managedPlanStoreActive()) return await (await import("../plan-store.ts")).resolvePlan(cwd, reference);
     const { selectManagedPlan } = await import("./managed.ts");
     const selected = await selectManagedPlan(cwd, reference);
     const plan = await readManagedPlan(cwd, selected.planId);
@@ -84,8 +84,8 @@ export async function resolvePlan(
 export async function findPlansByParent(
     cwd: string,
     parentPlan: string,
-): ReturnType<typeof import("../plan-store.js").findPlansByParent> {
-    if (!managedPlanStoreActive()) return await (await import("../plan-store.js")).findPlansByParent(cwd, parentPlan);
+): ReturnType<typeof import("../plan-store.ts").findPlansByParent> {
+    if (!managedPlanStoreActive()) return await (await import("../plan-store.ts")).findPlansByParent(cwd, parentPlan);
     const { selectManagedPlan } = await import("./managed.ts");
     const selected = await selectManagedPlan(cwd, parentPlan);
     return (await listPlans(cwd)).filter(
@@ -93,12 +93,12 @@ export async function findPlansByParent(
     );
 }
 export async function savePlanBodyById(
-    ...args: Parameters<typeof import("../plan-store.js").savePlanBodyById>
-): ReturnType<typeof import("../plan-store.js").savePlanBodyById> {
-    if (!managedPlanStoreActive()) return await (await import("../plan-store.js")).savePlanBodyById(...args);
+    ...args: Parameters<typeof import("../plan-store.ts").savePlanBodyById>
+): ReturnType<typeof import("../plan-store.ts").savePlanBodyById> {
+    if (!managedPlanStoreActive()) return await (await import("../plan-store.ts")).savePlanBodyById(...args);
     const [cwd, planId, body, expectedBodyHash, options = {}] = args;
     const current = await loadPlanBodyById(cwd, planId);
-    const { StalePlanBodyError, StalePlanWriteError } = await import("../plan-store.js");
+    const { StalePlanBodyError, StalePlanWriteError } = await import("../plan-store.ts");
     if (current.bodyHash !== expectedBodyHash) throw new StalePlanBodyError(expectedBodyHash, current.bodyHash);
     if (options.expectedRevision !== current.revision)
         throw new StalePlanWriteError(options.expectedRevision || "required", current.revision);
@@ -107,47 +107,47 @@ export async function savePlanBodyById(
     return await loadPlanBodyById(cwd, planId);
 }
 
-export async function listArchivedPlans(cwd: string): ReturnType<typeof import("../plan-store.js").listArchivedPlans> {
+export async function listArchivedPlans(cwd: string): ReturnType<typeof import("../plan-store.ts").listArchivedPlans> {
     return managedPlanStoreActive()
         ? await (await import("./managed.ts")).listManagedArchives(cwd)
-        : await (await import("../plan-store.js")).listArchivedPlans(cwd);
+        : await (await import("../plan-store.ts")).listArchivedPlans(cwd);
 }
 export async function loadArchivedPlan(
     cwd: string,
     reference: string,
-): ReturnType<typeof import("../plan-store.js").loadArchivedPlan> {
+): ReturnType<typeof import("../plan-store.ts").loadArchivedPlan> {
     return managedPlanStoreActive()
         ? await (await import("./managed.ts")).readManagedArchive(cwd, reference)
-        : await (await import("../plan-store.js")).loadArchivedPlan(cwd, reference);
+        : await (await import("../plan-store.ts")).loadArchivedPlan(cwd, reference);
 }
 export async function archivePlan(
-    ...args: Parameters<typeof import("../plan-store.js").archivePlan>
-): ReturnType<typeof import("../plan-store.js").archivePlan> {
+    ...args: Parameters<typeof import("../plan-store.ts").archivePlan>
+): ReturnType<typeof import("../plan-store.ts").archivePlan> {
     return managedPlanStoreActive()
         ? await (await import("./managed.ts")).archiveManagedPlan(args[0], args[1], args[2] || {})
-        : await (await import("../plan-store.js")).archivePlan(...args);
+        : await (await import("../plan-store.ts")).archivePlan(...args);
 }
 export async function restoreArchivedPlan(
-    ...args: Parameters<typeof import("../plan-store.js").restoreArchivedPlan>
-): ReturnType<typeof import("../plan-store.js").restoreArchivedPlan> {
+    ...args: Parameters<typeof import("../plan-store.ts").restoreArchivedPlan>
+): ReturnType<typeof import("../plan-store.ts").restoreArchivedPlan> {
     return managedPlanStoreActive()
         ? await (await import("./managed.ts")).restoreManagedPlan(args[0], args[1], args[2]?.to)
-        : await (await import("../plan-store.js")).restoreArchivedPlan(...args);
+        : await (await import("../plan-store.ts")).restoreArchivedPlan(...args);
 }
 export async function deleteArchivedPlanUnit(
-    ...args: Parameters<typeof import("../plan-store.js").deleteArchivedPlanUnit>
-): ReturnType<typeof import("../plan-store.js").deleteArchivedPlanUnit> {
+    ...args: Parameters<typeof import("../plan-store.ts").deleteArchivedPlanUnit>
+): ReturnType<typeof import("../plan-store.ts").deleteArchivedPlanUnit> {
     if (managedPlanStoreActive()) throw new Error("Pruning home Plans requires a confirmed retention preview.");
-    return await (await import("../plan-store.js")).deleteArchivedPlanUnit(...args);
+    return await (await import("../plan-store.ts")).deleteArchivedPlanUnit(...args);
 }
 
 export async function ensurePlanIdentity(
     cwd: string,
     name: string,
-    options: Parameters<typeof import("../plan-store.js").ensurePlanIdentity>[2] = {},
+    options: Parameters<typeof import("../plan-store.ts").ensurePlanIdentity>[2] = {},
 ) {
     if (!managedPlanStoreActive())
-        return await (await import("../plan-store.js")).ensurePlanIdentity(cwd, name, options);
+        return await (await import("../plan-store.ts")).ensurePlanIdentity(cwd, name, options);
     const selected = await (await import("./managed.ts")).selectManagedPlan(cwd, name);
     return await findPlanEvidenceById(cwd, selected.planId);
 }

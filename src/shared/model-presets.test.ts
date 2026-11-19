@@ -14,8 +14,8 @@ import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { getBundledModelPresets, type ModelPresetsMap } from "./model-presets.ts";
 import { RunWieldCredentialStore, RunWieldModelRegistry } from "./models/model-registry.ts";
-import { getCustomSetting, getMergedCustomSetting, setCustomSetting } from "./settings.js";
-import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session/session.js";
+import { getCustomSetting, getMergedCustomSetting, setCustomSetting } from "./settings.ts";
+import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session/session.ts";
 
 test("bundled presets refresh disposable files and preserve personal settings", async () => {
     await withRuntimeCommandFixture("bundled-presets-", async ({ homeDir, projectRoot, settingsPath }) => {
@@ -36,8 +36,12 @@ test("bundled presets refresh disposable files and preserve personal settings", 
         ]);
         assertEquals(JSON.parse(await fsReadFile(join(directory, "codex.json"), "utf8")), presets.codex);
         assertEquals(
-            Array.from(readdirSync(directory, { withFileTypes: true })).map((entry) => entry.name).sort(),
-            Object.keys(presets).map((name) => `${name}.json`).sort(),
+            Array.from(readdirSync(directory, { withFileTypes: true }))
+                .map((entry) => entry.name)
+                .sort(),
+            Object.keys(presets)
+                .map((name) => `${name}.json`)
+                .sort(),
         );
         assertEquals(await fsReadFile(settingsPath, "utf8"), before);
         assertEquals(getCustomSetting("modelPresets", "global", projectRoot), undefined);
@@ -92,6 +96,42 @@ test("preset names layer project over personal over bundled without inheriting r
         assertEquals(getConfiguredAgentModel("router", projectRoot), "base/router");
         await setCustomSetting("activeModelPreset", "missing", "global", projectRoot);
         assertEquals(getConfiguredAgentModel("router", projectRoot), "base/router");
+    });
+});
+
+test("Agy preset resolves the Neon, Hydrogen and Argon split with unchanged thinking", async () => {
+    await withRuntimeCommandFixture("agy-presets-", async ({ projectRoot }) => {
+        await setCustomSetting("activeModelPreset", "agy", "global", projectRoot);
+        for (const [role, model, thinkingLevel] of [
+            ["planner", "agy-cli/gemini-4-argon", "high"],
+            ["ideator", "agy-cli/gemini-4-argon", "high"],
+            ["architect", "agy-cli/gemini-4-argon", "high"],
+            ["reviewer", "agy-cli/gemini-4-argon", "medium"],
+            ["operator", "agy-cli/gemini-4-hydrogen", "medium"],
+            ["router", "agy-cli/gemini-4-neon", "medium"],
+            ["slicer", "agy-cli/gemini-4-neon", "high"],
+            ["guide", "agy-cli/gemini-4-neon", "high"],
+            ["engineer", "agy-cli/gemini-4-neon", "high"],
+            ["frontend-engineer", "agy-cli/gemini-4-neon", "high"],
+            ["init", "agy-cli/gemini-4-neon", "high"],
+        ]) {
+            assertEquals(getConfiguredAgentModel(role, projectRoot), model);
+            assertEquals(getConfiguredAgentThinkingLevel(role, projectRoot), thinkingLevel);
+        }
+        await setCustomSetting(
+            "modelPresets",
+            { agy: { agents: { router: { model: "agy-cli/gemini-3.1-pro" } } } },
+            "global",
+            projectRoot,
+        );
+        assertEquals(getConfiguredAgentModel("router", projectRoot), "agy-cli/gemini-3.1-pro");
+        await setCustomSetting(
+            "modelPresets",
+            { agy: { agents: { router: { model: "agy-cli/gemini-4-carbon" } } } },
+            "project",
+            projectRoot,
+        );
+        assertEquals(getConfiguredAgentModel("router", projectRoot), "agy-cli/gemini-4-carbon");
     });
 });
 

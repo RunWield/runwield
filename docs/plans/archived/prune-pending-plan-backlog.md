@@ -8,7 +8,6 @@ affectedPaths:
     - "docs/plans/forge-change-request-delivery.md"
     - "docs/plans/epic-branch-publication-workflow.md"
     - "docs/plans/isolate-planning-and-reuse-worktrees.md"
-    - "docs/plans/finish-injection-seam-ownership-enforcement.md"
     - "docs/plans/archived/"
     - "docs/prd/plan-store-prd.md"
     - "docs/validation-authority.md"
@@ -88,9 +87,9 @@ are old snapshots, and the Epic merge replaces them:
 
 **Kept.** These stay as they are, apart from the reference repairs listed below:
 
-- `automatic-session-context-resilience`, `finish-injection-seam-ownership-enforcement`,
+- `automatic-session-context-resilience`,
   `require-login-session-context-for-post-login-setup`, `lazy-skill-catalog-retrieval`, and
-  `epic-branch-publication-workflow`. Owner decision: keep all five. Fix their stale commands when one of them is picked
+  `epic-branch-publication-workflow`. Owner decision: keep these Plans. Fix their stale commands when one of them is picked
   up.
 - `side-effect-free-plan-reads` and `isolate-planning-and-reuse-worktrees`. They are still valid, but must be re-planned
   against current main before execution.
@@ -116,7 +115,6 @@ docs/plans/
 ├── remote-session-save-proof.md                             # archive when Remote SSH closes
 ├── automatic-session-context-resilience.md
 ├── epic-branch-publication-workflow.md
-├── finish-injection-seam-ownership-enforcement.md
 ├── forge-change-request-delivery.md                         # draft, no children, Architect notice
 ├── isolate-planning-and-reuse-worktrees.md
 ├── lazy-skill-catalog-retrieval.md
@@ -183,8 +181,6 @@ the Verification Plan no longer proves the objective.
   replaced with a reference to the Plan Store PRD.
 - `docs/plans/isolate-planning-and-reuse-worktrees.md`: the Plan Packages link becomes plain text that says the Plan was
   removed.
-- `docs/plans/finish-injection-seam-ownership-enforcement.md`: references to `deep-semantic-source-modules.md` are
-  removed from `affectedPaths` and the body.
 - `docs/plans/archived/`: relative links in the newly archived Plans are repaired. The 4 broken links that already exist
   in `archived/epic-branches-and-integration-gate.md` are repaired. Its reference to Plan Packages becomes plain text.
 - `docs/prd/plan-store-prd.md`: the sequencing paragraph no longer depends on the deleted Plan Packages Epic.
@@ -229,9 +225,6 @@ Left out on purpose:
   [Plan Store PRD](../../prd/runwield-core-prd.md#plan-authoring-and-external-adoption) owns the Plan storage direction. Its other content is unchanged.
 - `docs/plans/isolate-planning-and-reuse-worktrees.md` has no link to `plan-packages-and-independent-validation.md`.
   The sentence names the removed Plan as plain text. Its other content is unchanged.
-- `docs/plans/finish-injection-seam-ownership-enforcement.md` has no `deep-semantic-source-modules` entry in
-  `affectedPaths` and no body sentence that depends on that Plan. Its other content and its front matter `status` are
-  unchanged.
 - `docs/prd/plan-store-prd.md` no longer links to the Plan Packages Epic. The sequencing paragraph says the Plan Store
   is planned through Architect, and does not claim that a later Epic will build packages in the Plan folder.
 - `TODO.md` items 9, 10, and 11 no longer list the deleted Plans as pending. Item 11 still names

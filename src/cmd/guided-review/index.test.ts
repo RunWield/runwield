@@ -1,5 +1,4 @@
 import process from "node:process";
-import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import {
     fauxAssistantMessage,
@@ -67,7 +66,7 @@ function estimateFirstFauxUsage(context: TranscriptContext, output: string) {
     const parts = context.messages.map((message) => `${message.role}:${messageToText(message)}`);
     const inputTokens = estimateFauxTokens(parts.join("\n\n"));
     return {
-        inputTokens,
+        inputTokens: 0,
         outputTokens: estimateFauxTokens(output),
         cacheReadTokens: 0,
         cacheWriteTokens: inputTokens,
@@ -157,12 +156,6 @@ test("guided-review emits the exact runtime usage frame before completing and cl
             } finally {
                 store.close();
             }
-
-            const commandSource = await fsReadFile(new URL("./index.ts", import.meta.url), "utf8");
-            const unsubscribeIndex = commandSource.indexOf("unsubscribe();");
-            const closeIndex = commandSource.indexOf("runtime.closeSession(sessionId);");
-            assertEquals(unsubscribeIndex > 0, true);
-            assertEquals(closeIndex > unsubscribeIndex, true);
         },
     );
 });

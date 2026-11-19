@@ -1,6 +1,6 @@
 import { captureScriptProcess } from "./script-process.ts";
 import process from "node:process";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { PUBLIC_DOCS } from "./public-docs.ts";
 
 const ALLOWED_PATHS = new Set([
@@ -43,7 +43,8 @@ export async function verifyDocsSource(cwd: string, documentedTag: string, sourc
     if (sourceSha !== currentTip) throw new Error("Documentation source is stale");
     await git(cwd, "merge-base", "--is-ancestor", documentedTag, sourceSha);
     const changed = (await git(cwd, "diff", "--name-only", `${documentedTag}..${sourceSha}`))
-        .split("\n").filter(Boolean);
+        .split("\n")
+        .filter(Boolean);
     const productPath = changed.find((path) => !isAllowed(path));
     if (productPath) throw new Error(`Docs branch changes product path: ${productPath}`);
 }

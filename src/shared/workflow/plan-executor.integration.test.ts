@@ -12,10 +12,10 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan } from "../../plan-store/index.ts";
 
 import { git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { setCustomSetting } from "../settings.js";
-import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.js";
-import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { setCustomSetting } from "../settings.ts";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
+import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.ts";
 import { executePlan } from "./plan-executor.ts";
 
 interface PlanExecutorSessionFixture {

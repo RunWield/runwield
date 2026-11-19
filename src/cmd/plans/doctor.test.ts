@@ -1,3 +1,4 @@
+import process from "node:process";
 import { seedPlan, seedPlanController } from "../../shared/testing/plan-state-fixture.ts";
 import { admitProjectIdentity } from "../../shared/project-identity.ts";
 import { withRetainedPlanReadFixture } from "../../shared/testing/retained-plan-fixture.ts";
@@ -14,28 +15,37 @@ import {
     stat as fsStat,
     utimes as fsUtimes,
     writeFile as fsWriteFile,
+    symlink as fsSymlink,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../constants.js";
-import process from "node:process";
+import { getCwd, getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { injectFrontMatter } from "../../plan-format.ts";
-import { listPlans, loadPlan } from "../../plan-store/index.ts";
-
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
-import { addEntry, findById, getWorktreeRegistryPath, listEntries } from "../../shared/worktree-registry.js";
+import {
+    listPlans,
+    loadPlan,
+    listTransitionRecoveryRecords,
+    runExecutionPreparationTransition,
+} from "../../plan-store/index.ts";
+import { addEntry, findById, getWorktreeRegistryPath, listEntries } from "../../shared/worktree-registry.ts";
 import { runValidationOutcomeTransition } from "../../plan-store/transitions.ts";
-import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "../../plan-store/index.ts";
 import { runPlansDoctor, runPlansDoctorCommand } from "./doctor.ts";
 import { runPlansCommand } from "./index.ts";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
+import {
+    enterProjectRuntime,
+    resolveProjectRuntimeLayout,
+    inspectProjectRuntimeReadAccess,
+    withProjectRuntimeReadScope,
+} from "../../shared/project-runtime-layout.ts";
 import { getLockHostname } from "../../shared/process-liveness.ts";
 import { inspectTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
+import { seedPlan as savePlan } from "../../shared/testing/plan-state-fixture.ts";
 
-type WorktreeRegistryEntry = import("../../shared/worktree-registry.js").WorktreeRegistryEntry;
+type WorktreeRegistryEntry = import("../../shared/worktree-registry.ts").WorktreeRegistryEntry;
+
 type WorktreeDeliveryEvidence = import("../../plan-format.ts").WorktreeDeliveryEvidence;
 
 interface DoctorCommandFixture {
@@ -156,6 +166,66 @@ const ancestryRepo = defineGitFixture(async (repo) => {
         await git(repo, ["checkout", "main"]);
     });
 });
+
+for (const changedEvidence of ["symlink", "marker", "tracked_runtime"]) {
+    test(
+        `doctor rechecks ${changedEvidence} between passive scans inside a caller scope`,
+        {
+            skip: changedEvidence === "symlink" && process.platform === "win32",
+        },
+        async () => {
+            const root = await ancestryRepo.checkout();
+            try {
+                await savePlan(root, "scope", "# Scope\n", { planId: "scope", status: "draft" });
+                const layout = await enterProjectRuntime(root);
+                const marker = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
+                const path =
+                    changedEvidence === "tracked_runtime"
+                        ? join(root, ".wld/internal/scope-evidence")
+                        : join(layout.primary.internalRoot, "scope-evidence");
+                await withProjectRuntimeReadScope(async () => {
+                    const initial = await runPlansDoctor(root, false);
+                    assertEquals(initial, { issues: [], repaired: 0 });
+                    // Prime the caller after doctor returns: its cached authority must
+                    // not be inherited by the next independent doctor scan.
+                    assertEquals((await inspectProjectRuntimeReadAccess(root)).kind, "ready");
+                    if (changedEvidence === "symlink") await fsSymlink(join(root, "file.txt"), path);
+                    else if (changedEvidence === "marker") {
+                        await fsWriteFile(layout.primary.layoutMarkerPath, JSON.stringify({ version: 999 }));
+                    } else {
+                        await fsMkdir(dirname(path), { recursive: true });
+                        await fsWriteFile(path, "runtime state\n");
+                        await git(root, ["add", "-f", ".wld/internal/scope-evidence"]);
+                    }
+                    const beforeMarker = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
+                    const beforeIndex = await git(root, ["write-tree"]);
+                    const report = await runPlansDoctor(root, false);
+                    assertEquals(report.repaired, 0);
+                    assertEquals(report.issues.length, 1);
+                    assertEquals(report.issues[0].kind, "runtime_migration_blocked");
+                    assertEquals(
+                        report.issues[0].message.includes(
+                            changedEvidence === "marker" ? "newer_layout" : changedEvidence,
+                        ),
+                        true,
+                    );
+                    assertEquals(await fsReadFile(layout.primary.layoutMarkerPath, "utf8"), beforeMarker);
+                    assertEquals(await git(root, ["write-tree"]), beforeIndex);
+                    if (changedEvidence === "marker") await fsWriteFile(layout.primary.layoutMarkerPath, marker);
+                    else {
+                        if (changedEvidence === "tracked_runtime") {
+                            await git(root, ["reset", "--", ".wld/internal/scope-evidence"]);
+                        }
+                        await fsRm(path);
+                    }
+                    assertEquals(await runPlansDoctor(root, false), initial);
+                });
+            } finally {
+                await fsRm(root, { recursive: true });
+            }
+        },
+    );
+}
 
 test("plans doctor reports missing worktree paths without abandoning attempts automatically", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-"));
@@ -637,26 +707,6 @@ test("plans doctor dispatch check and help never adopt raw legacy state", async 
                 await fsRm(cwd, { recursive: true }).catch(() => {});
             }
         });
-    });
-});
-
-test("plans doctor preserves unrelated files while adopting populated fallback worktrees", async () => {
-    await withDoctorCommandFixture(async ({ projectRoot }) => {
-        const fallbackRoot = join(getRunWieldRuntimeDir(await fsRealpath(projectRoot)), "worktrees");
-        await fsMkdir(fallbackRoot, { recursive: true });
-        await fsWriteFile(join(fallbackRoot, "preserve.txt"), "user work\n");
-
-        const output = await captureConsoleOutput(async () => {
-            await runPlansDoctorCommand(["--repair"]);
-        });
-
-        const adopted = await enterProjectRuntime(projectRoot);
-        assertEquals(output.includes("runtime_migration_blocked"), false, output);
-        assertEquals(output.includes("Move the project or runtime authority"), false);
-        assertEquals(
-            await fsReadFile(join(adopted.primary.fallbackWorktreesRoot, "preserve.txt"), "utf8"),
-            "user work\n",
-        );
     });
 });
 
@@ -1151,46 +1201,6 @@ test("plans doctor preserves a held native lock while repairing another abandone
     });
 });
 
-test("plans doctor clears a recently abandoned Plan lock", async () => {
-    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-lock-"));
-    return await withRetainedPlanReadFixture(cwd, async () => {
-        try {
-            await enterProjectRuntime(cwd);
-            const resolvedCwd = fsRealpathSync(cwd);
-            const lockDir = resolveProjectRuntimeLayout(cwd).selected.planLocksDir;
-            const lockPath = join(lockDir, "demo.lock");
-            const legacyLockPath = join(getRunWieldRuntimeDir(resolvedCwd), "plan-locks", "demo.lock");
-            await fsMkdir(lockDir, { recursive: true });
-            await fsWriteFile(
-                lockPath,
-                JSON.stringify({ pid: 2_147_483_647, hostname: getLockHostname(), updatedAtMs: 0 }),
-            );
-            const reported = await runPlansDoctor(cwd, false);
-            const stale = reported.issues.find((issue) => issue.kind === "stale_plan_lock");
-            assertEquals(Boolean(stale), true);
-            assertEquals(stale?.repairable, true);
-            assertEquals(await fsStat(lockPath).then(() => true), true, "report-only leaves it in place");
-
-            const repaired = await runPlansDoctor(cwd, true);
-            assertEquals(repaired.repaired >= 1, true);
-            assertEquals(
-                await fsStat(lockPath)
-                    .then(() => true)
-                    .catch(() => false),
-                false,
-            );
-            assertEquals(
-                await fsStat(legacyLockPath)
-                    .then(() => true)
-                    .catch(() => false),
-                false,
-            );
-        } finally {
-            await fsRm(cwd, { recursive: true }).catch(() => {});
-        }
-    });
-});
-
 test("doctor uses committed validation stamps without controller records and ignores superseded evidence", async () => {
     const cwd = await ancestryRepo.checkout({ prefix: "runwield-doctor-stamps-" });
     return await withRetainedPlanReadFixture(cwd, async () => {
@@ -1573,7 +1583,7 @@ test("Doctor check reports missing local target and publication evidence without
                 await seedPlan(cwd, "project", "# Project\n", {
                     planId: "trace-project",
                     classification: "PROJECT",
-                    status: "draft",
+                    status: "approved",
                     targetBranch: "topic/not-cached",
                 });
                 await seedPlan(cwd, "claim", "# Published claim\n", {
@@ -1815,3 +1825,187 @@ for (const source of ["snapshot", "active-copy", "live-attempt"]) {
         });
     });
 }
+
+for (const scenario of ["unstarted", "approved", "child", "attempt", "invalid-target", "unreadable"]) {
+    test(`Doctor checks a missing Epic target only when required: ${scenario}`, async () => {
+        const cwd = await ancestryRepo.checkout({ prefix: "runwield-doctor-draft-target-" });
+        return await withRetainedPlanReadFixture(cwd, async () => {
+            try {
+                await savePlan(cwd, "project", "# Project\n", {
+                    planId: "draft-project",
+                    classification: "PROJECT",
+                    status: scenario === "approved" ? "approved" : "draft",
+                    targetBranch: scenario === "invalid-target" ? "refs/heads/invalid" : "project/not-started",
+                });
+                if (scenario === "unreadable") {
+                    const refs = join(cwd, ".git/refs/heads/project");
+                    await fsMkdir(refs, { recursive: true });
+                    await fsWriteFile(join(refs, "not-started"), `${"a".repeat(40)}\n`);
+                }
+                if (scenario === "child") {
+                    await savePlan(cwd, "project/child", "# Child\n", {
+                        planId: "draft-child",
+                        classification: "PLANNED_CHANGE",
+                        status: "draft",
+                        parentPlan: "project",
+                    });
+                }
+                if (scenario === "attempt") {
+                    await git(cwd, ["add", "docs/plans/project.md"]);
+                    await git(cwd, ["commit", "-m", "Save Epic before its attempt"]);
+                    const path = join(cwd, "execution");
+                    await git(cwd, ["worktree", "add", "-b", "execution", path, "main"]);
+                    await addEntry(cwd, {
+                        id: "draft-attempt",
+                        planId: "draft-project",
+                        planName: "project",
+                        path,
+                        branch: "execution",
+                        baseBranch: "main",
+                        baseRef: "main",
+                        baseCommit: await git(cwd, ["rev-parse", "main"]),
+                        status: "active",
+                        createdAt: "now",
+                        updatedAt: "now",
+                    });
+                }
+                for (const repair of [false, true]) {
+                    const report = await runPlansDoctor(cwd, repair);
+                    assertEquals(
+                        report.issues.some(
+                            (issue) => issue.kind === "target_branch_inspection_error" && issue.planName === "project",
+                        ),
+                        scenario !== "unstarted",
+                    );
+                }
+            } finally {
+                await fsRm(cwd, { recursive: true, force: true });
+            }
+        });
+    });
+}
+
+for (const identity of ["missing-target-id", "explicit-target-id", "target-only"]) {
+    test(`Doctor retains assigned child identity across older target snapshots: ${identity}`, async () => {
+        const cwd = await ancestryRepo.checkout({ prefix: "runwield-doctor-child-identity-" });
+        return await withRetainedPlanReadFixture(cwd, async () => {
+            try {
+                await savePlan(cwd, "project", "# Project\n", {
+                    planId: "project-id",
+                    classification: "PROJECT",
+                    status: "draft",
+                    targetBranch: "epic/project",
+                });
+                const childPath = join(cwd, "docs/plans/project/child.md");
+                await fsMkdir(dirname(childPath), { recursive: true });
+                await fsWriteFile(
+                    childPath,
+                    `---\n${identity === "explicit-target-id" ? "planId: target-id\n" : ""}classification: PLANNED_CHANGE\nparentPlan: project\nstatus: draft\n---\n# Child\n`,
+                );
+                await git(cwd, ["add", "docs/plans"]);
+                await git(cwd, ["commit", "-m", "Save target child identity"]);
+                await git(cwd, ["branch", "epic/project"]);
+                if (identity === "target-only") {
+                    await fsRm(childPath);
+                } else {
+                    await fsWriteFile(
+                        childPath,
+                        "---\nplanId: local-id\nclassification: PLANNED_CHANGE\nparentPlan: project\nstatus: draft\n---\n# Current child\n",
+                    );
+                }
+                if (identity === "explicit-target-id") {
+                    await addEntry(cwd, {
+                        id: "historical-target-attempt",
+                        planId: "target-id",
+                        planName: "project/child",
+                        path: cwd,
+                        branch: "main",
+                        baseBranch: "main",
+                        baseRef: "main",
+                        baseCommit: await git(cwd, ["rev-parse", "main"]),
+                        status: "abandoned",
+                        createdAt: "now",
+                        updatedAt: "now",
+                    });
+                }
+                const before = await fsReadFile(childPath, "utf8").catch(() => null);
+                for (const repair of [false, true]) {
+                    const report = await runPlansDoctor(cwd, repair);
+                    assertEquals(
+                        report.issues.some(
+                            (issue) => issue.kind === "missing_plan_id" && issue.planName === "project/child",
+                        ),
+                        identity === "target-only",
+                    );
+                    assertEquals(
+                        report.issues.some((issue) => issue.kind === "registry_plan_id_not_found"),
+                        false,
+                    );
+                }
+                assertEquals(await fsReadFile(childPath, "utf8").catch(() => null), before);
+            } finally {
+                await fsRm(cwd, { recursive: true, force: true });
+            }
+        });
+    });
+}
+
+test("plans doctor preserves unrelated files while adopting populated fallback worktrees", async () => {
+    await withDoctorCommandFixture(async ({ projectRoot }) => {
+        const fallbackRoot = join(getRunWieldRuntimeDir(await fsRealpath(projectRoot)), "worktrees");
+        await fsMkdir(fallbackRoot, { recursive: true });
+        await fsWriteFile(join(fallbackRoot, "preserve.txt"), "user work\n");
+
+        const output = await captureConsoleOutput(async () => {
+            await runPlansDoctorCommand(["--repair"]);
+        });
+
+        const adopted = await enterProjectRuntime(projectRoot);
+        assertEquals(output.includes("runtime_migration_blocked"), false, output);
+        assertEquals(output.includes("Move the project or runtime authority"), false);
+        assertEquals(
+            await fsReadFile(join(adopted.primary.fallbackWorktreesRoot, "preserve.txt"), "utf8"),
+            "user work\n",
+        );
+    });
+});
+
+test("plans doctor clears a recently abandoned Plan lock", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-lock-"));
+    return await withRetainedPlanReadFixture(cwd, async () => {
+        try {
+            await enterProjectRuntime(cwd);
+            const resolvedCwd = fsRealpathSync(cwd);
+            const lockDir = resolveProjectRuntimeLayout(cwd).selected.planLocksDir;
+            const lockPath = join(lockDir, "demo.lock");
+            const legacyLockPath = join(getRunWieldRuntimeDir(resolvedCwd), "plan-locks", "demo.lock");
+            await fsMkdir(lockDir, { recursive: true });
+            await fsWriteFile(
+                lockPath,
+                JSON.stringify({ pid: 2_147_483_647, hostname: getLockHostname(), updatedAtMs: 0 }),
+            );
+            const reported = await runPlansDoctor(cwd, false);
+            const stale = reported.issues.find((issue) => issue.kind === "stale_plan_lock");
+            assertEquals(Boolean(stale), true);
+            assertEquals(stale?.repairable, true);
+            assertEquals(await fsStat(lockPath).then(() => true), true, "report-only leaves it in place");
+
+            const repaired = await runPlansDoctor(cwd, true);
+            assertEquals(repaired.repaired >= 1, true);
+            assertEquals(
+                await fsStat(lockPath)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
+            assertEquals(
+                await fsStat(legacyLockPath)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
+        } finally {
+            await fsRm(cwd, { recursive: true }).catch(() => {});
+        }
+    });
+});

@@ -19,7 +19,7 @@ import { listWorkRecords } from "../work-records/store.js";
 import { gitStatusPaths } from "../git-runtime-safety.ts";
 import { recoverSealedPlanFormatting } from "../../plan-store/index.ts";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
-import { retirePublicationForRevalidation, updatePublication } from "../worktree-registry.js";
+import { retirePublicationForRevalidation, updatePublication } from "../worktree-registry.ts";
 import type { PublicationAttempt } from "./publication-attempt.ts";
 
 import { candidateIdentity } from "./validation-scope.ts";

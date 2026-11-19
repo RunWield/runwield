@@ -1,14 +1,14 @@
-import { AGENTS } from "../../../constants.js";
-import { abortActiveSession as abortActiveSessionFn, steerRootSessionWithTarget } from ".././session.js";
+import { AGENTS } from "../../../constants.ts";
+import { abortActiveSession as abortActiveSessionFn, steerRootSessionWithTarget } from ".././session.ts";
 import { formatBackgroundTaskCompletion } from "../background-tasks.ts";
 import type { BackgroundTaskStatus } from "../background-tasks.ts";
 import { resolveNamedInvocation, withNamedInvocationDisplayMessage } from ".././named-invocation.ts";
-import { getRuntimeErrorMessage, RuntimeEventTypes } from ".././session-runtime-events.js";
+import { getRuntimeErrorMessage, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { rollSessionTranscriptSegment } from ".././segment-rollover.ts";
 import { promptTemplateWorkflowConflict, resolvePromptTemplateSettings } from "../prompt-template-settings.ts";
-import { recordManualModelSelection } from "../active-agent-session.js";
-import { getAgentDisplayName } from "../agents.js";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from ".././session-runtime-interactions.js";
+import { recordManualModelSelection } from "../active-agent-session.ts";
+import { getAgentDisplayName } from "../agents.ts";
+import { requestHostedSessionInteraction, RuntimeInteractionTypes } from ".././session-runtime-interactions.ts";
 
 import {
     getRuntimeRootAgentSession,
@@ -107,7 +107,7 @@ export class RuntimeTurns {
     >();
     private steeringCleanup = new Map<string, Promise<void>>();
 
-    clearBackgroundSteering(session: import("../hosted-session.js").HostedSession): Promise<void> {
+    clearBackgroundSteering(session: import("../hosted-session.ts").HostedSession): Promise<void> {
         const existing = this.steeringCleanup.get(session.id);
         if (existing) return existing;
         const cleanup = (async () => {
@@ -153,7 +153,7 @@ export class RuntimeTurns {
     }
 
     /** A recorded root input is stronger evidence than a lost queue notification. */
-    reconcileBackgroundResultConsumption(session: import("../hosted-session.js").HostedSession): void {
+    reconcileBackgroundResultConsumption(session: import("../hosted-session.ts").HostedSession): void {
         const steering = this.steeringResults.get(session.id);
         if (!steering) return;
         const manager = session.getRootSessionManager();

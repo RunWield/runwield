@@ -1,3 +1,8 @@
+import {
+    TargetBranchSnapshotUnavailableError,
+    resolveExistingTargetSnapshot,
+    prepareExistingTargetSnapshot,
+} from "../shared/workflow/planning-target.ts";
 import { managedPlanStoreActive, inspectManagedOwner, readManagedRetainedExecution } from "./managed.ts";
 import { currentPackageProject } from "./workflows.ts";
 import { readLocalHomeStore, withLocalProjectAction } from "./index.ts";
@@ -18,13 +23,14 @@ import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
  */
 
 import { join } from "node:path";
-import { CLI_BIN, isPlannedChangeClassification, WORKTREE_BRANCH_PREFIX } from "../constants.js";
-import { getPlanDocumentRoot, getPlansDir, inspectPlanFileStrict } from "../plan-store.js";
+import { CLI_BIN, isPlannedChangeClassification, WORKTREE_BRANCH_PREFIX } from "../constants.ts";
+import { getPlanDocumentRoot, getPlansDir, inspectPlanFileStrict } from "../plan-store.ts";
 import { isProjectPlan, parsePlanFrontMatter } from "../plan-format.ts";
 import { ensurePlanIdentity } from "./index.ts";
 import {
     enterProjectRuntime,
     inspectProjectRuntimeLayout,
+    withProjectRuntimeReadScope,
     ProjectRuntimeEntryRefusedError,
     type ProjectRuntimeLayout,
     type ProjectRuntimeMigrationBlockedResult,
@@ -43,7 +49,7 @@ import {
     prepareWorktreeRegistry,
     pruneEntry,
     reconcileEntryIdentity,
-} from "../shared/worktree-registry.js";
+} from "../shared/worktree-registry.ts";
 import { isEpicArtifactPlanName } from "../plan-format.ts";
 import {
     inspectTargetBranchPlansByParent,
@@ -629,15 +635,39 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
     const identityDocuments = (await inspectPlanIdentityDocuments(projectRoot, diagnosticEntries)).sort((left, right) =>
         left.name.localeCompare(right.name),
     );
-    for (const parent of currentPackageProject() || managedPlanStoreActive() ? [] : [...identityDocuments]) {
+    for (const parent of managedPlanStoreActive() ? [] : [...identityDocuments]) {
         const targetBranch = typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
         if (!targetBranch || !isProjectPlan(parent.attrs)) continue;
         let children: Awaited<ReturnType<typeof inspectTargetBranchPlansByParent>>;
         try {
+            if (currentPackageProject()) {
+                if (repair) await prepareExistingTargetSnapshot(projectRoot, targetBranch);
+                else await resolveExistingTargetSnapshot(projectRoot, targetBranch);
+                continue;
+            }
             children = repair
                 ? await prepareTargetBranchPlansByParent(projectRoot, targetBranch, parent.name)
                 : await inspectTargetBranchPlansByParent(projectRoot, targetBranch, parent.name);
-        } catch {
+        } catch (error) {
+            if (
+                error instanceof TargetBranchSnapshotUnavailableError &&
+                error.reason === "missing_ref" &&
+                parent.attrs.status === "draft" &&
+                !parent.attrs.worktreeId &&
+                !parent.attrs.validationCheckpoint &&
+                !parent.attrs.implementedAt &&
+                !parent.attrs.deliveryEvidence &&
+                !inspection.readError &&
+                inspection.integrityIssues.length === 0 &&
+                !identityDocuments.some((plan) => plan.attrs.parentPlan === parent.name) &&
+                !entries.some(
+                    (entry) =>
+                        entry.planName === parent.name ||
+                        entry.planName.startsWith(`${parent.name}/`) ||
+                        Boolean(parent.attrs.planId && entry.planId === parent.attrs.planId),
+                )
+            )
+                continue;
             issues.push({
                 kind: "target_branch_inspection_error",
                 planName: parent.name,
@@ -670,8 +700,17 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
                 (plan) =>
                     plan.name === child.name || Boolean(child.attrs.planId && plan.attrs.planId === child.attrs.planId),
             );
-            if (existing >= 0) identityDocuments.splice(existing, 1, child);
-            else identityDocuments.push(child);
+            if (existing >= 0) {
+                const current = identityDocuments[existing];
+                if (
+                    !child.attrs.planId &&
+                    current.attrs.planId &&
+                    current.attrs.parentPlan === child.attrs.parentPlan
+                ) {
+                    child.attrs.planId = current.attrs.planId;
+                }
+                identityDocuments.splice(existing, 1, child);
+            } else identityDocuments.push(child);
         }
     }
     if (repair) {
@@ -995,7 +1034,13 @@ export async function runPlansDoctor(
     }
     return await runPlansDoctorInProject(projectRoot, repair);
 }
-async function runPlansDoctorInProject(
+async function runPlansDoctorInProject(projectRoot: string, repair: boolean) {
+    return repair
+        ? await inspectDoctorPhases(projectRoot, true)
+        : await withProjectRuntimeReadScope(() => inspectDoctorPhases(projectRoot, false), { fresh: true });
+}
+
+async function inspectDoctorPhases(
     projectRoot: string,
     repair: boolean,
 ): Promise<{ issues: DoctorIssue[]; repaired: number }> {
@@ -1040,7 +1085,7 @@ async function runPlansDoctorInProject(
     for (let pass = 0; pass < 8; pass += 1) {
         const result = await runPlansDoctorPass(projectRoot, true, layout);
         repaired += result.repaired;
-        const remaining = await runPlansDoctorPass(projectRoot, false, layout);
+        const remaining = await runPlansDoctorInProject(projectRoot, false);
         if (remaining.issues.length === 0) return { issues: [], repaired };
         const issueKey = remaining.issues
             .map((issue) => `${issue.kind}:${issue.planName || ""}:${issue.worktreeId || ""}`)
@@ -1049,6 +1094,6 @@ async function runPlansDoctorInProject(
         if (result.repaired === 0 || issueKey === lastIssueKey) return { issues: remaining.issues, repaired };
         lastIssueKey = issueKey;
     }
-    const remaining = await runPlansDoctorPass(projectRoot, false, layout);
+    const remaining = await runPlansDoctorInProject(projectRoot, false);
     return { issues: remaining.issues, repaired };
 }

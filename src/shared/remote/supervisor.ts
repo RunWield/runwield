@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import process from "node:process";
 import type { Socket } from "node:net";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { isStandaloneExecutable } from "../runtime-identity.ts";
 import { listenSocket, readStreamInto, type SocketListener } from "../socket-listener.ts";
 import { type NativeProcess, spawnNativeProcess } from "../foreground-process.ts";
@@ -393,7 +393,7 @@ export async function runRemoteSupervisor(): Promise<void> {
             return;
         }
         // A missing mount or failed fresh read/write must never reach readiness.
-        const accountHome = await fsRealpath((await import("../../constants.js")).getHomeDir());
+        const accountHome = await fsRealpath((await import("../../constants.ts")).getHomeDir());
         if (accountHome !== header.remoteHome) throw new Error("Remote account home changed before mount");
         personalMount = await mountLaptopHome(header.remoteHome, header.mount);
         // Verified roots travel only through the private child header. HOME stays
@@ -508,6 +508,17 @@ export async function runRemoteSupervisor(): Promise<void> {
         process.on("SIGINT", onSignal);
         process.on("SIGTERM", onSignal);
         process.on("SIGHUP", onSignal);
+        // The view owns a detached group, outside the SSH tty foreground group.
+        const onResize = () => {
+            if (!childExited) {
+                try {
+                    process.kill(view.pid, "SIGWINCH");
+                } catch {
+                    /* The view exited before the resize. */
+                }
+            }
+        };
+        process.on("SIGWINCH", onResize);
         // Admit terminal input only after the pump is running. The launcher
         // waits for readiness before showing the view or forwarding input.
         if (
@@ -571,6 +582,7 @@ export async function runRemoteSupervisor(): Promise<void> {
             process.off("SIGINT", onSignal);
             process.off("SIGTERM", onSignal);
             process.off("SIGHUP", onSignal);
+            process.off("SIGWINCH", onResize);
             if (normalViewExit) {
                 confirmCleanup = () => control(header, "shutdown");
                 // Descendant grace and mount cleanup can exceed the laptop health deadline.

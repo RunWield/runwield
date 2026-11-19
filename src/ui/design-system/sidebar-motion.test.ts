@@ -1,12 +1,6 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { animateSidebarChange } from "./sidebar-motion.js";
-
-type TestTransition = {
-    ready: Promise<void>;
-    finished: Promise<void>;
-    skipTransition: () => void;
-};
+import { animateSidebarChange, type SidebarTransition } from "./sidebar-motion.ts";
 
 type TestDocument = {
     documentElement: {
@@ -16,7 +10,7 @@ type TestDocument = {
             contains: (name: string) => boolean;
         };
     };
-    startViewTransition?: (update: () => void) => TestTransition;
+    startViewTransition?: (update: () => void) => SidebarTransition;
 };
 
 function installBrowser(reducedMotion = false) {
@@ -63,7 +57,7 @@ test("sidebar changes stay immediate without animation support or with reduced m
                 };
             }
             let open = true;
-            animateSidebarChange(() => open = false);
+            animateSidebarChange(() => (open = false));
             assertEquals(open, false);
             assertEquals(fixture.classes.size, 0);
         } finally {
@@ -84,7 +78,7 @@ test("rapid sidebar toggles preserve order before and during the animation", asy
     try {
         const states: boolean[] = [];
         let open = true;
-        const toggle = () => states.push(open = !open);
+        const toggle = () => states.push((open = !open));
         animateSidebarChange(toggle);
         animateSidebarChange(toggle);
         assertEquals(states, []);
@@ -113,7 +107,7 @@ test("a skipped sidebar snapshot still applies the change and clears motion styl
     };
     try {
         let open = false;
-        animateSidebarChange(() => open = true);
+        animateSidebarChange(() => (open = true));
         commit();
         finished.resolve();
         await finished.promise;

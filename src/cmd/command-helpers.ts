@@ -3,15 +3,11 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import type { EditorAPI, TuiAPI, UiAPI } from "../ui/tui/types.js";
+import type { EditorAPI, TuiAPI, UiAPI } from "../ui/tui/api.ts";
 
 type FocusableEditor = EditorAPI & Component;
 
-export function resetTuiState(
-    editor: EditorAPI | undefined,
-    uiAPI: UiAPI | undefined,
-    tui: TuiAPI | undefined,
-) {
+export function resetTuiState(editor: EditorAPI | undefined, uiAPI: UiAPI | undefined, tui: TuiAPI | undefined) {
     if (editor) editor.disableSubmit = false;
     if (uiAPI?.setBusy) uiAPI.setBusy(false);
     if (uiAPI?.enableInput) uiAPI.enableInput();

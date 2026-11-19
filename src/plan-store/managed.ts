@@ -169,7 +169,7 @@ export async function withManagedPlan<T>(
     if (current.retainedAttemptId) {
         const retained = await readManagedRetainedExecution(cwd, current.planId, current.retainedAttemptId);
         if (!retained) throw new Error("Retained execution is unavailable.");
-        const { findById } = await import("../shared/worktree-registry.js");
+        const { findById } = await import("../shared/worktree-registry.ts");
         await enterProjectRuntime(cwd);
         const live = await findById(cwd, retained.attempt.id);
         if (
@@ -414,7 +414,7 @@ export async function settleManagedInPlace(planName: string): Promise<void> {
 export async function saveManagedValidationCheckpoint(
     cwd: string,
     name: string,
-    checkpoint: import("../plan-store.js").PlanFrontMatter["validationCheckpoint"],
+    checkpoint: import("../plan-store.ts").PlanFrontMatter["validationCheckpoint"],
     expectedRevision: string,
 ) {
     const plan = await readManagedPlan(cwd, name);
@@ -536,8 +536,8 @@ export async function readManagedRecordingContext(
 }
 function mountedRecordingSource(
     cwd: string,
-    source: import("../shared/work-records/generation.js").WorkRecordSource,
-): import("../shared/work-records/generation.js").WorkRecordSource {
+    source: import("../shared/work-records/generation.ts").WorkRecordSource,
+): import("../shared/work-records/generation.ts").WorkRecordSource {
     return {
         ...source,
         path: managedLocator(cwd, source.path),
@@ -564,9 +564,9 @@ export async function readManagedDeliverySources(
 }
 export async function generateManagedPreparedRecord(
     cwd: string,
-    source: import("../shared/work-records/generation.js").WorkRecordSource,
+    source: import("../shared/work-records/generation.ts").WorkRecordSource,
     attemptId: string,
-    options: import("../shared/work-records/generation.js").WorkRecordGenerationOptions,
+    options: import("../shared/work-records/generation.ts").WorkRecordGenerationOptions,
     reference: import("./packages.ts").PackagePublicationReference,
 ): ReturnType<typeof import("../shared/work-records/package-recording.ts").generatePreparedPackageRecord> {
     cwd = managedExecutionRoot();
@@ -581,7 +581,7 @@ export async function generateManagedPreparedRecord(
         attemptId,
     });
     if (!reserved.recordId) throw new Error("Recorder identity was not retained.");
-    const { generateRecorderSections } = await import("../shared/work-records/generation.js");
+    const { generateRecorderSections } = await import("../shared/work-records/generation.ts");
     const context = await readManagedRecordingContext(
         reference.planId,
         Boolean(source.pendingPublication),
@@ -739,7 +739,7 @@ export async function recordManagedHumanReview(
 export async function saveManagedEpicReview(
     cwd: string,
     name: string,
-    review: import("../plan-store.js").PlanFrontMatter["epicIntegrationReview"],
+    review: import("../plan-store.ts").PlanFrontMatter["epicIntegrationReview"],
     expectedRevision: string,
 ) {
     const selected = await selectManagedPlan(cwd, name);
@@ -757,7 +757,7 @@ export async function saveManagedEpicReview(
 
 export async function readManagedResourceCatalog(
     cwd: string,
-): ReturnType<typeof import("../plan-store.js").readPlanResourceCatalog> {
+): ReturnType<typeof import("../plan-store.ts").readPlanResourceCatalog> {
     const owner = await client(cwd);
     if (!owner) return { resources: [], diagnostics: [] };
     const result = (await owner.execute({ kind: "plan-resource-catalog" })).result;
@@ -776,7 +776,7 @@ export async function readManagedResourceCatalog(
 
 export async function listManagedArchives(
     cwd: string,
-): ReturnType<typeof import("../plan-store.js").listArchivedPlans> {
+): ReturnType<typeof import("../plan-store.ts").listArchivedPlans> {
     const owner = await client(cwd);
     if (!owner) return [];
     const result = (await owner.execute({ kind: "archive-catalog" })).result;
@@ -786,7 +786,7 @@ export async function listManagedArchives(
 export async function readManagedArchive(
     cwd: string,
     reference: string,
-): ReturnType<typeof import("../plan-store.js").loadArchivedPlan> {
+): ReturnType<typeof import("../plan-store.ts").loadArchivedPlan> {
     const owner = await client(cwd);
     if (!owner) return null;
     const result = (await owner.execute({ kind: "read-archive", reference })).result;
@@ -797,7 +797,7 @@ export async function archiveManagedPlan(
     cwd: string,
     name: string,
     options: import("./archiving.ts").ArchivePlanOptions,
-): ReturnType<typeof import("../plan-store.js").archivePlan> {
+): ReturnType<typeof import("../plan-store.ts").archivePlan> {
     const selected = await selectManagedPlan(cwd, name);
     const before = await readManagedPlan(cwd, selected.planId);
     if (!before) throw new Error("Archive source is unavailable.");
@@ -838,7 +838,7 @@ export async function restoreManagedPlan(
     cwd: string,
     reference: string,
     destination?: string,
-): ReturnType<typeof import("../plan-store.js").restoreArchivedPlan> {
+): ReturnType<typeof import("../plan-store.ts").restoreArchivedPlan> {
     let source = await readManagedArchive(cwd, reference);
     if (!source?.attrs.planId) throw new Error("Archived Plan is unavailable.");
     const planId = source.attrs.planId;
@@ -971,7 +971,7 @@ export async function generateManagedRetainedRecord(
         const reserved = await mutateManagedPlan(args.cwd, { ...command, sections: null });
         if (!("recordId" in reserved) || !reserved.recordId)
             throw new Error("Retained recording identity is unavailable.");
-        const { generateRecorderSections } = await import("../shared/work-records/generation.js");
+        const { generateRecorderSections } = await import("../shared/work-records/generation.ts");
         const sections =
             context.preparation?.sections ||
             (await generateRecorderSections(args.cwd, context.source, args, reserved.recordId));
@@ -1058,10 +1058,10 @@ export async function settleRetainedExecutionRecording(
 export async function authorManagedChildren(
     cwd: string,
     parentName: string,
-    children: import("../plan-store.js").ChildFeaturePlanDescriptor[],
-    options: import("../plan-store.js").PlanWriteOptions,
+    children: import("../plan-store.ts").ChildFeaturePlanDescriptor[],
+    options: import("../plan-store.ts").PlanWriteOptions,
     finalize: boolean,
-): Promise<import("../plan-store.js").SavedChildFeaturePlan[]> {
+): Promise<import("../plan-store.ts").SavedChildFeaturePlan[]> {
     const selected = await selectManagedPlan(cwd, parentName);
     const { onChildPlanWritten, collaborationLockBypass, ...preconditions } = options;
     if (collaborationLockBypass) throw new Error("Collaboration authorization must be handled by the personal owner.");

@@ -8,7 +8,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import type { ExtensionAPI, ContextEvent, SessionCompactEvent } from "@earendil-works/pi-coding-agent";
 import reAnchorExtension from "./index.ts";
 import type { ReAnchorOptions } from "./index.ts";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import type { ReviewLedger } from "../../shared/workflow/review-ledger.ts";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
@@ -24,7 +24,10 @@ import {
 interface ContextResult {
     messages?: AgentMessage[];
 }
-type Handler = (event: ContextEvent | SessionCompactEvent) => ContextResult | void | Promise<ContextResult | void>;
+type Handler = (
+    event: ContextEvent | SessionCompactEvent,
+    ctx?: { getSystemPrompt: () => string },
+) => ContextResult | void | Promise<ContextResult | void>;
 
 interface Harness {
     compact: (event?: { willRetry?: boolean; reason?: string }) => void;
@@ -34,7 +37,7 @@ interface Harness {
     injected: (messages?: AgentMessage[]) => Promise<string>;
 }
 
-function setup(options: ReAnchorOptions): Harness {
+function setup(options: ReAnchorOptions, systemPrompt = ""): Harness {
     const handlers = new Map<string, Handler>();
     const pi = {
         on(event: string, handler: Handler) {
@@ -51,7 +54,7 @@ function setup(options: ReAnchorOptions): Harness {
     };
 
     const context = async (messages: AgentMessage[] = [baseMessage()]): Promise<AgentMessage[]> => {
-        const result = await require("context")({ type: "context", messages });
+        const result = await require("context")({ type: "context", messages }, { getSystemPrompt: () => systemPrompt });
         return result?.messages ?? messages;
     };
 
@@ -77,6 +80,54 @@ function setup(options: ReAnchorOptions): Harness {
 function baseMessage(): Extract<AgentMessage, { role: "user" }> {
     return { role: "user", content: "Original request", timestamp: 1 };
 }
+
+test("compacted context gets the active system reminder without changing saved history", async () => {
+    const summary = {
+        role: "compactionSummary" as const,
+        summary: "Keep the task decisions.",
+        tokensBefore: 100,
+        timestamp: 1,
+    };
+    const source = [summary, baseMessage()];
+    const guide = setup(
+        { agentName: "guide" },
+        "Guide instructions\n\n## Compaction reminder\n\nGuide reminder.\n\n## Tools\nUnrelated tool instructions.",
+    );
+    const engineer = setup(
+        { agentName: "engineer" },
+        "Engineer instructions\n\n## Compaction reminder\n\nEngineer reminder.",
+    );
+    const expected = [
+        { ...summary, summary: "Keep the task decisions.\n\n## Compaction reminder\n\nGuide reminder." },
+        source[1],
+    ];
+
+    // A restored summary needs no session_compact event to recover the reminder.
+    assertEquals(await guide.context(source), expected);
+    assertEquals(await guide.context(source), expected);
+    guide.compact();
+    assertEquals(await guide.context(source), expected);
+    assertEquals(await engineer.context(source), [
+        { ...summary, summary: "Keep the task decisions.\n\n## Compaction reminder\n\nEngineer reminder." },
+        source[1],
+    ]);
+    assertEquals(summary.summary, "Keep the task decisions.");
+    assertEquals(await guide.context([baseMessage()]), [baseMessage()]);
+    assertEquals(await setup({ agentName: "guide" }, "Replacement role without a reminder.").context(source), source);
+    const overridden = setup(
+        { agentName: "guide" },
+        "## Compaction reminder\nOld reminder.\n\n## Compaction reminder\nProject reminder.\n\n# Other instructions\nUnrelated.",
+    );
+    assertEquals(await overridden.context(source), [
+        { ...summary, summary: "Keep the task decisions.\n\n## Compaction reminder\n\nProject reminder." },
+        source[1],
+    ]);
+    const disabled = setup(
+        { agentName: "guide" },
+        "## Compaction reminder\nOld reminder.\n\n## Compaction reminder\n\n## Other instructions\nUnrelated.",
+    );
+    assertEquals(await disabled.context(source), source);
+});
 
 const openSessions: HostedSession[] = [];
 const tempProjectRoots: string[] = [];
@@ -318,21 +369,4 @@ test("a missing hostedSession leaves the request untouched", async () => {
     harness.compact();
 
     assertEquals(await harness.injected(), "");
-});
-
-test("a throwing workflow lookup leaves the turn unmodified", async () => {
-    // Containment is about the failure a well-behaved HostedSession cannot
-    // produce, so this is the one place a hostile stand-in is the subject under
-    // test rather than a shortcut around real state.
-    const throwingSession = await hostedSession({ planName: "some-plan" });
-    throwingSession.getActiveExecutionWorkflow = () => {
-        throw new Error("session disposed mid-turn");
-    };
-    const harness = setup({ agentName: "plan-engineer", hostedSession: throwingSession });
-    harness.compact();
-
-    const messages = [baseMessage()];
-    const returned = await harness.context(messages);
-
-    assertEquals(returned, messages);
 });

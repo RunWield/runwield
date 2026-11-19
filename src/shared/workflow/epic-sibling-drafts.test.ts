@@ -7,8 +7,8 @@ import { dirname, join } from "node:path";
 
 import { loadPlan } from "../../plan-store/index.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { createWorktreeGitArtifacts, removeWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
-import { updateEntry } from "../worktree-registry.js";
+import { createWorktreeGitArtifacts, removeWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.ts";
+import { updateEntry } from "../worktree-registry.ts";
 import { prepareEditedSiblingPlans } from "../../plan-store/index.ts";
 
 type PlanFixtureAttribute = string | number | string[];

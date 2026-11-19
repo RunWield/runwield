@@ -11,17 +11,15 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-
 import { injectFrontMatter, parsePlanFrontMatter } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
-
 import { createGitPort } from "../git-port.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { addEntry, findById } from "../worktree-registry.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { addEntry, findById } from "../worktree-registry.ts";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
 import { continueWorkflowValidation } from "./validation.ts";
-import { attachRecorder, makeUi, makeValidationProjectRoot } from "./validation-test-helpers.js";
+import { attachRecorder, makeUi, makeValidationProjectRoot } from "./validation-test-helpers.ts";
 import { getCurrentValidationProgress } from "./validation-progress.ts";
 
 test("an interrupted validation clears running progress while retaining a resumable Plan", async () => {

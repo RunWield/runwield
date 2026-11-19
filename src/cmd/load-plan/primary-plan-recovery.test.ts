@@ -15,7 +15,7 @@ import { getDeclaredPlanStatus } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
 import { createTestWorktreeAttempt, makeRepo } from "../../shared/worktree-test-helpers.ts";
-import { removeWorktreeGitArtifacts } from "../../shared/worktree.js";
+import { removeWorktreeGitArtifacts } from "../../shared/worktree.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 
 test("load-plan reads the execution Plan without recreating a missing primary Plan", async () => {

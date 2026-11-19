@@ -4,10 +4,10 @@
  */
 
 import type { SettingsManager } from "@earendil-works/pi-coding-agent";
-import type { CommandContext } from "../registry.js";
+import type { CommandContext } from "../registry.ts";
 import type { MeasurementAvailability } from "../../shared/session/runtime-usage-totals.ts";
 
-import { theme } from "../../ui/theme/theme.js";
+import { theme } from "../../ui/theme/theme.ts";
 
 type SessionCompactionSettings = ReturnType<SettingsManager["getCompactionSettings"]>;
 

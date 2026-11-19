@@ -14,7 +14,7 @@ import {
     getExactProjectCustomSetting,
     setCustomSetting,
     setExactProjectCustomSetting,
-} from "../settings.js";
+} from "../settings.ts";
 import { spawnForegroundShell } from "../foreground-process.ts";
 import { captureValidationSettingsWrite, recordValidationSettingsWrite } from "../worktree-project-context.ts";
 import {
@@ -27,9 +27,9 @@ import {
     emitSystemStatus,
     normalizeRuntimeToolResult,
     RuntimeEventTypes,
-} from "../session/session-runtime-events.js";
+} from "../session/session-runtime-events.ts";
 import { describeRuntimeTool } from "../session/tool-event-title.ts";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.js";
+import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
 import { classifyValidationOperationalError } from "./validation-operational-errors.ts";
 
@@ -83,7 +83,7 @@ export async function saveValidationCommand(
 }
 
 async function askForValidationCommand(
-    hostedSession: import("../session/hosted-session.js").HostedSession,
+    hostedSession: import("../session/hosted-session.ts").HostedSession,
     projectRoot: string,
     settingsPolicy: ValidationCommandSettingsPolicy,
 ): Promise<string> {
@@ -131,11 +131,11 @@ export interface ValidationCommandOptions {
     settingsPolicy?: ValidationCommandSettingsPolicy;
     signal?: AbortSignal;
     /** Observe the selected command before it starts; this does not replace execution. */
-    onCommandStart?: (command: string) => void;
+    onCommandStart?: (command: string) => void | Promise<void>;
 }
 
 export interface LocalCIOptions {
-    hostedSession: import("../session/hosted-session.js").HostedSession;
+    hostedSession: import("../session/hosted-session.ts").HostedSession;
     cwd: string;
     settingsPolicy?: ValidationCommandSettingsPolicy;
 }
@@ -156,7 +156,8 @@ export async function runValidationCommand({
     if (signal?.aborted) return { kind: "canceled", output: "Validation canceled." };
     if (!command) return { kind: "command_missing" };
 
-    onCommandStart?.(command);
+    await onCommandStart?.(command);
+    if (signal?.aborted) return { kind: "canceled", output: "Validation canceled." };
     try {
         // The foreground-process module owns the wrapper shell's process group,
         // so cancellation terminates the whole CI tree and settles its pipes.

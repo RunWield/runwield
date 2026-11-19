@@ -5,7 +5,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 import { dirname, join } from "node:path";
-import { getPlanDocumentRoot } from "./plan-store.js";
+import { getPlanDocumentRoot } from "./plan-store.ts";
 import { parsePlanTextStrict } from "./plan-format.ts";
 import {
     findPlanById,
@@ -16,7 +16,7 @@ import {
     loadPlan,
     loadPlanBodyById,
 } from "./plan-store/index.ts";
-import { getRunWieldRuntimeDir } from "./constants.js";
+import { getRunWieldRuntimeDir } from "./constants.ts";
 import { defineGitFixture, git } from "./shared/git-test-fixture.ts";
 import {
     enterProjectRuntime,
@@ -330,7 +330,7 @@ for (const conflict of ["live-attempt", "candidate", "target", "delivery-candida
         const root = await fixture.checkout();
         try {
             await withRetainedPlanFixture(root, async () => {
-                const { addEntry } = await import("./shared/worktree-registry.js");
+                const { addEntry } = await import("./shared/worktree-registry.ts");
                 const receipt = {
                     validatedCommit: "a".repeat(40),
                     publishedCommit: "b".repeat(40),
@@ -397,7 +397,7 @@ for (const invalid of ["directory", "foreign-repository", "symlink", "document-s
         const foreign = await fixture.checkout();
         try {
             await withRetainedPlanFixture(root, async () => {
-                const { addEntry } = await import("./shared/worktree-registry.js");
+                const { addEntry } = await import("./shared/worktree-registry.ts");
                 const { resolveWorkflowPlanLocation } = await import("./plan-store/index.ts");
                 const { preparePlanController } = await import("./plan-store/index.ts");
                 const { assertAuthorizedPlanPath } = await import("./ui/workspace/server/project-artifacts.ts");
@@ -508,7 +508,7 @@ for (const proof of ["matching", "candidate", "published", "target"] as const) {
         const root = await fixture.checkout();
         try {
             await withRetainedPlanFixture(root, async () => {
-                const { addEntry } = await import("./shared/worktree-registry.js");
+                const { addEntry } = await import("./shared/worktree-registry.ts");
                 const { createPublicationAttempt } = await import("./shared/workflow/publication-attempt.ts");
                 const path = join(root, "execution");
                 await git(root, ["worktree", "add", "-b", "execution", path]);

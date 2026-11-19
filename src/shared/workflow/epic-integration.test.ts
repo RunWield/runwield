@@ -6,16 +6,16 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { git } from "../git-test-fixture.ts";
 import type { IsolatedAgentSessionOptions, SemanticReviewPort } from "./validation-session-adapter.ts";
 import { parseDiffFiles } from "./review-diff-tool.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { buildPlanEventUpdates } from "./plan-lifecycle.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { buildPlanEventUpdates } from "./plan-lifecycle.ts";
+import { HostedSession } from "../session/hosted-session.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
-import { checkpointExecutionWorktree } from "../worktree.js";
+import { checkpointExecutionWorktree } from "../worktree.ts";
 import { recordIntegrationNotes, syncEpicChildPlanDeviations } from "../../plan-store/index.ts";
 import { readEpicDeliveryState, reconcileEpicDelivery, runEpicIntegrationGate } from "./epic-integration.ts";
 import {

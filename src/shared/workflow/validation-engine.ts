@@ -17,7 +17,7 @@ import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
 
 import { canonicalPlanStatus, getDeclaredPlanStatus, PlanFrontMatterParseError } from "../../plan-format.ts";
 import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
-import { VALIDATION_PLAN_STATUSES } from "./plan-lifecycle.js";
+import { VALIDATION_PLAN_STATUSES } from "./plan-lifecycle.ts";
 import { getProjectRoot, resolvePhaseContext } from "./validation-context.ts";
 import { emitStatus } from "./validation-emit.ts";
 import { validationPhaseForStatus } from "./validation-checkpoint.ts";

@@ -4,7 +4,7 @@
  */
 
 import { currentWorkRecordOwner } from "./owner.ts";
-import { formatPlannedWorkLabel } from "../../constants.js";
+import { formatPlannedWorkLabel } from "../../constants.ts";
 import type { WorkRecordResource } from "./schema.ts";
 
 interface WorkRecordListOptions {

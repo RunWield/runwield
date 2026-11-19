@@ -17,7 +17,7 @@ import { loadPlan } from "../../plan-store/index.ts";
 
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "../work-records/markdown.js";
+import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "../work-records/markdown.ts";
 import { readPublishedRecordMarkdown } from "../../plan-store/index.ts";
 import { syncWorkRecordToIndex } from "../work-records/index-adapter.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";

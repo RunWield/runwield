@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { publicationFixture } from "./package-publication-fixture.ts";
 import { read } from "../../testing/plan-package-fixture.ts";
-import { inspectWorktreeRegistry } from "../../worktree-registry.js";
+import { inspectWorktreeRegistry } from "../../worktree-registry.ts";
 import { git } from "../../git-test-fixture.ts";
 import { readPlanPackagePublication } from "../../../plan-store/packages.ts";
 import { loadPublishedWorkRecordSource } from "../../../plan-store/index.ts";

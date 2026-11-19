@@ -19,9 +19,9 @@ import { loadPlan } from "../../plan-store/index.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
-import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
+import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
 
 type FixtureSettings = ReturnType<SettingsManager["getGlobalSettings"]>;
 type ResumeResponse = Pick<ReturnType<WorkspaceSessionContinuationService["getOperation"]>, "operationId">;

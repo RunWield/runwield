@@ -1,7 +1,7 @@
 import process from "node:process";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { createSessionRuntime } from "../session/session-runtime.ts";
-import { getAgentDisplayName } from "../session/agents.js";
+import { getAgentDisplayName } from "../session/agents.ts";
 import { formatCodeReviewAnnotations, runCodeReview } from "../../ui/review/code-review.ts";
 import {
     type ReviewConversation,
@@ -9,7 +9,7 @@ import {
     stopActiveReviewSurfaces,
 } from "../../ui/review/review-launcher.ts";
 import type { BrowserPort } from "../browser-port.ts";
-import { buildGuidedReviewPolicy, recommendGuidedReview } from "../workflow/guided-review.js";
+import { buildGuidedReviewPolicy, recommendGuidedReview } from "../workflow/guided-review.ts";
 import { ensureReviewWorktree, settleReviewWorktree } from "./review-worktree.ts";
 import { postForgeReview } from "./forge-review.ts";
 import { refreshPRTarget, type ReviewTarget } from "./review-target.ts";

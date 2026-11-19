@@ -2,7 +2,7 @@
 
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getHomeDir } from "../constants.js";
+import { getHomeDir } from "../constants.ts";
 
 function refreshDirectory() {
     return join(getHomeDir(), ".runwield-workspace-search-refresh");
@@ -22,8 +22,10 @@ export async function getWorkspaceSearchRefreshMarker(root: string) {
         // An unresolvable root still gets a stable marker key.
     }
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
-    const key = [...new Uint8Array(digest)].slice(0, 16)
-        .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const key = [...new Uint8Array(digest)]
+        .slice(0, 16)
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
     return join(refreshDirectory(), key);
 }
 

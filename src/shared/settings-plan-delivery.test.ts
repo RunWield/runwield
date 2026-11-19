@@ -1,14 +1,18 @@
 import { assertEquals } from "../testing/assertions.ts";
 import { test } from "node:test";
-import { setCustomSetting, shouldAutoMergePlansIntoTargetBranch } from "./settings.js";
+import { setCustomSetting, shouldAutoMergePlansIntoTargetBranch } from "./settings.ts";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 
 test("Plan auto-merge defaults off and accepts only a literal true", async () => {
     await withRuntimeCommandFixture("plan-merge-setting-", async ({ projectRoot }) => {
         assertEquals(shouldAutoMergePlansIntoTargetBranch(projectRoot), false);
-        for (
-            const plans of [true, "true", [], { autoMergeIntoTargetBranch: "true" }, { autoMergeIntoTargetBranch: 1 }]
-        ) {
+        for (const plans of [
+            true,
+            "true",
+            [],
+            { autoMergeIntoTargetBranch: "true" },
+            { autoMergeIntoTargetBranch: 1 },
+        ]) {
             await setCustomSetting("plans", plans, "project", projectRoot);
             assertEquals(shouldAutoMergePlansIntoTargetBranch(projectRoot), false);
         }

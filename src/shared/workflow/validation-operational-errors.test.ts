@@ -2,11 +2,7 @@ import { test } from "node:test";
 import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertLessOrEqual } from "../../testing/assertions.ts";
 
-import {
-    classifyValidationOperationalError,
-    parseBoundedRetryAfterMs,
-    sanitizeOperationalMessage,
-} from "./validation-operational-errors.ts";
+import { classifyValidationOperationalError } from "./validation-operational-errors.ts";
 
 test("classifies typed provider failures without retrying unknown legacy text", () => {
     const rateLimit = classifyValidationOperationalError({
@@ -30,11 +26,28 @@ test("classifies typed provider failures without retrying unknown legacy text", 
     assertEquals(legacy.recoveryClass, "fatal");
 });
 
-test("bounds Retry-After values", () => {
-    assertEquals(parseBoundedRetryAfterMs(5, 60_000), 5000);
-    assertEquals(parseBoundedRetryAfterMs(-1, 60_000), undefined);
-    assertEquals(parseBoundedRetryAfterMs(120, 60_000), undefined);
-    assertLessOrEqual(parseBoundedRetryAfterMs(new Date(Date.now() + 1000), 60_000) || 0, 1000);
+test("provider failure classification rejects unbounded retry delays", () => {
+    const originalNow = Date.now;
+    Date.now = () => 1_800_000_000_000;
+    try {
+        for (const [retryAfter, expected] of [
+            [5, 5000],
+            [-1, undefined],
+            [120, undefined],
+            [new Date(1_800_000_001_000), 1000],
+        ] as const) {
+            const failure = classifyValidationOperationalError({
+                source: "provider",
+                kind: "rate_limited",
+                operation: "semantic_review",
+                message: "rate limited",
+                retryAfter,
+            });
+            assertEquals(failure.retry?.retryAfterMs, expected);
+        }
+    } finally {
+        Date.now = originalNow;
+    }
 });
 
 test("classifies reviewer protocol, missing state, git, auth, permission, and policy failures", () => {
@@ -111,7 +124,12 @@ test("classifies reviewer protocol, missing state, git, auth, permission, and po
 });
 
 test("sanitizes operational text before metrics or user output", () => {
-    const message = sanitizeOperationalMessage(`token\n${"x".repeat(700)}`);
+    const { message } = classifyValidationOperationalError({
+        source: "provider",
+        kind: "rate_limited",
+        operation: "semantic_review",
+        message: `token\n${"x".repeat(700)}`,
+    });
     assertStrictEquals(message.includes("\n"), false);
     assertLessOrEqual(message.length, 500);
 });

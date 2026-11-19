@@ -1,6 +1,6 @@
 import { seedPlanState } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { writeFile as fsWriteFile, stat as fsStat } from "node:fs/promises";
 import { assertEquals, assertExists, assertRejects } from "../../testing/assertions.ts";

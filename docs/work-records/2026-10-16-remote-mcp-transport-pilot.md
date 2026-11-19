@@ -1,9 +1,30 @@
+---
+kind: "work_record"
+recordId: "77998851-9466-48aa-a904-49449b3d498b"
+status: "approved"
+scope: "planned_change"
+workKind: "FEATURE"
+origin: "internal"
+completionMode: "verified"
+createdAt: "2026-10-16T00:00:00.000Z"
+provenance:
+    sourcePlans:
+        - "5df960b5-5c59-41b7-935a-3dc7511ad917"
+---
+
 # Remote MCP transport pilot
+
+## Summary
+
+A bounded live SSH pilot verified personal MCP forwarding from macOS ARM64 to Linux x86-64, including discovery,
+tool calls, reconnect, cancellation, disconnect cleanup, and a fresh connection without replaying earlier calls.
+This evidence covers the transport path only; it does not establish release qualification, TUI behavior, or live
+model-provider compatibility.
 
 ## Scope
 
-[Child06](../plans/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md) adds personal MCP transport
-forwarding. This record covers a bounded live check on `sct`, not release qualification or a production-provider matrix.
+[Child06](../plans/archived/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md) adds personal MCP
+transport forwarding. This record covers a bounded live check on `sct`, not release qualification or a production-provider matrix.
 
 The pilot used matching compiled verification entrypoints on macOS ARM64 and Linux x86-64, built with Bun 1.4.3 through
 `scripts/compile-bun.ts`. They exercised production configuration resolution, the authenticated control listener,

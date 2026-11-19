@@ -8,13 +8,9 @@ import {
     readTranscriptEvidence,
 } from "../../testing/managed-session-fixture.ts";
 import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
-import { projectCommittedTranscript } from "./session-transcript-projection.js";
+import { projectCommittedTranscript } from "./session-transcript-projection.ts";
 
-async function writeSuccessorTranscript(
-    projectRoot: string,
-    piSessionId: string,
-    sessionDir: string,
-): Promise<string> {
+async function writeSuccessorTranscript(projectRoot: string, piSessionId: string, sessionDir: string): Promise<string> {
     const timestamp = "2026-01-01T00:02:00.000Z";
     const path = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
     const header = { type: "session", id: piSessionId, timestamp, cwd: projectRoot, name: "Successor" };
@@ -154,7 +150,10 @@ test("committed projection ignores transcript tail after the published byte leng
             limit: 20,
         });
         assertEquals(projection.events.length > 0, true);
-        assertEquals(projection.events.some((event) => event.text?.includes("invisible")), false);
+        assertEquals(
+            projection.events.some((event) => event.text?.includes("invisible")),
+            false,
+        );
     } finally {
         await fixture.cleanup();
     }

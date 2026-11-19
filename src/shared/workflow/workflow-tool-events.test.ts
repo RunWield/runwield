@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { assertEquals, assertExists, assertThrows } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { makeToolProjectFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import {
     claimWorkflowToolEvent,
     listPendingWorkflowToolEvents,
@@ -95,9 +95,9 @@ test("Workflow Tool Event is consume-once and settled through the root outbox", 
 
     settleWorkflowToolEvent(hostedSession, claimed, 1234);
     assertEquals(listPendingWorkflowToolEvents(hostedSession).length, 0);
-    const journalEntries = sessionManager.getBranch().filter((entry) =>
-        entry.type === "custom" && entry.customType === WORKFLOW_TOOL_EVENT_CUSTOM_TYPE
-    );
+    const journalEntries = sessionManager
+        .getBranch()
+        .filter((entry) => entry.type === "custom" && entry.customType === WORKFLOW_TOOL_EVENT_CUSTOM_TYPE);
     assertEquals(journalEntries.length, 2);
 });
 

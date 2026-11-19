@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { assertEquals, assertRejects } from "./testing/assertions.ts";
 import { ensurePlanIdentity, listPlans } from "./plan-store/index.ts";
 
-import { addEntry, listEntries } from "./shared/worktree-registry.js";
+import { addEntry, listEntries } from "./shared/worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
 import { resolveWorkflowPlanLocation } from "./plan-store/index.ts";
 

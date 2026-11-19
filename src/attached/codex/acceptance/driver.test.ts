@@ -117,7 +117,7 @@ test("unavailable host leaves blocked evidence and no tested-version claim", asy
             checkout: fileURLToPath(new URL("../../../../", import.meta.url)),
             keep: false,
         });
-        equal(result.outcome, "blocked");
+        equal(result.outcome, "blocked", JSON.stringify(result));
         equal(result.blockedPrerequisite, "codex-executable");
         equal(result.proposedMatrixEntry, null);
         equal(JSON.parse(await readFile(join(root, "summary.json"), "utf8")), result);

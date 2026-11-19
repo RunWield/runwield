@@ -6,7 +6,7 @@ import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWr
  */
 
 import { join } from "node:path";
-import { getCwd, getHomeDir, SNIP_FILTERS_DIR } from "../constants.js";
+import { getCwd, getHomeDir, SNIP_FILTERS_DIR } from "../constants.ts";
 
 export interface SnipFilterOptions {
     homeDir?: string;
@@ -51,7 +51,7 @@ const HARNS_MANAGED_SNIP_FILTER_MARKER = "# Managed by Harns. Remove with: hns s
 /** Return true when a write happened. */
 async function writeIfChanged(path: string, content: string): Promise<boolean> {
     try {
-        if (await fsReadFile(path, "utf8") === content) return false;
+        if ((await fsReadFile(path, "utf8")) === content) return false;
     } catch (error) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
@@ -66,8 +66,9 @@ function withManagedMarker(content: string): string {
 }
 
 function isRunWieldOrHarnsManaged(content: string): boolean {
-    return content.startsWith(RUNWIELD_MANAGED_SNIP_FILTER_MARKER) ||
-        content.startsWith(HARNS_MANAGED_SNIP_FILTER_MARKER);
+    return (
+        content.startsWith(RUNWIELD_MANAGED_SNIP_FILTER_MARKER) || content.startsWith(HARNS_MANAGED_SNIP_FILTER_MARKER)
+    );
 }
 
 /**

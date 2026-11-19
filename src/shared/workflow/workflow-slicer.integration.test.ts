@@ -8,10 +8,10 @@ import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-a
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
-import { HostedSession } from "../session/hosted-session.js";
-import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
-import { __resetSettingsForTests } from "../settings.js";
-import type { PlanStatus } from "./plan-lifecycle.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
+import { __resetSettingsForTests } from "../settings.ts";
+import type { PlanStatus } from "./plan-lifecycle.ts";
 import {
     beginSlicerContextPhase,
     createSlicerFinalizeTool,

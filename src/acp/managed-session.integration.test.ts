@@ -5,7 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../testing/managed-session-fixture.ts";
-import { startRunWieldAcpServer } from "./server.js";
+import { startRunWieldAcpServer } from "./server.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -127,6 +127,15 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
                         ...(await readTranscriptEvidence(successorPath)),
                     },
                 });
+
+                await sendMessage(server, {
+                    jsonrpc: "2.0",
+                    id: "initialize",
+                    method: "initialize",
+                    params: { protocolVersion: 1, clientCapabilities: {} },
+                });
+                const initialized = await readThroughResponse(server, "initialize");
+                assert(initialized.response.result, JSON.stringify(initialized.response));
 
                 const loadId = fixture.session.piSessionId;
                 await sendMessage(server, {

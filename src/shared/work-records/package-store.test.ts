@@ -5,12 +5,12 @@ import fs from "node:fs/promises";
 import { basename, join } from "node:path";
 import { packageFixture, create, read } from "../testing/plan-package-fixture.ts";
 import { withPlanAccess, selectPlanAccess } from "../../plan-store/index.ts";
-import { runWorkRecordBackfill } from "./generation.js";
+import { runWorkRecordBackfill } from "./generation.ts";
 import { loadArchivedPlan } from "../../plan-store/index.ts";
 import { withWorkRecordOwner, workRecordOwnerLayout, withWorkRecordMutation } from "./owner.ts";
 import { writeWorkRecord, listWorkRecords, readWorkRecord, replaceWorkRecord, deleteWorkRecord } from "./store.ts";
 import { recordAttrs, recordBody } from "./test-fixtures/package-records.ts";
-import { formatWorkRecordMarkdown } from "./markdown.js";
+import { formatWorkRecordMarkdown } from "./markdown.ts";
 import { applyWorkRecordSupersession } from "./supersession.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { importPlans } from "../../plan-store/index.ts";
@@ -248,7 +248,7 @@ test("Work Record retention keeps the count floor first and every record inside 
     const f = await packageFixture();
     try {
         const { previewRecordRetention } = await import("../../plan-store/index.ts");
-        const { setCustomSetting } = await import("../settings.js");
+        const { setCustomSetting } = await import("../settings.ts");
         await withWorkRecordOwner(f.root, f.identity, async () => {
             const dir = workRecordOwnerLayout()!.records;
             await fs.mkdir(dir, { recursive: true });
@@ -284,7 +284,7 @@ test("a new Recorder pin survives earlier confirmation and its release restores 
     const f = await packageFixture();
     try {
         const { previewRecordRetention, confirmRetention } = await import("../../plan-store/index.ts");
-        const { setCustomSetting } = await import("../settings.js");
+        const { setCustomSetting } = await import("../settings.ts");
         const { reservePreparedPackageRecord } = await import("./package-recording.ts");
         await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", f.root);
         await withWorkRecordOwner(f.root, f.identity, async () => {
@@ -328,7 +328,7 @@ test("retry after canonical unlink clears the old index and copy locations befor
     const f = await packageFixture();
     try {
         const { previewRecordRetention, confirmRetention } = await import("../../plan-store/index.ts");
-        const { setCustomSetting } = await import("../settings.js");
+        const { setCustomSetting } = await import("../settings.ts");
         const { importWorkRecords, readWorkRecordLocations } = await import("./import.ts");
         const options = { mnemotecaPort: createWorkRecordMnemotecaFixture() };
         await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", f.root);
@@ -392,7 +392,7 @@ test(
         try {
             const { previewRecordRetention, confirmPruneRequest, pendingPruneRequest } =
                 await import("../../plan-store/index.ts");
-            const { setCustomSetting } = await import("../settings.js");
+            const { setCustomSetting } = await import("../settings.ts");
             const { importWorkRecords } = await import("./import.ts");
             const port = createWorkRecordMnemotecaFixture();
             await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", f.root);
@@ -432,7 +432,7 @@ test("interrupted confirmation resumes its original set and skips unsafe, moved 
     try {
         const { previewRecordRetention, confirmPruneRequest, pendingPruneRequest } =
             await import("../../plan-store/index.ts");
-        const { setCustomSetting } = await import("../settings.js");
+        const { setCustomSetting } = await import("../settings.ts");
         const { retainWorkRecordLocation, workRecordDigest } = await import("./import.ts");
         const port = createWorkRecordMnemotecaFixture();
         await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", f.root);

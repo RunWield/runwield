@@ -4,7 +4,7 @@ import {
     getExactProjectCustomSetting,
     setCustomSetting,
     setExactProjectCustomSetting,
-} from "../settings.js";
+} from "../settings.ts";
 import { captureValidationSettingsWrite, recordValidationSettingsWrite } from "../worktree-project-context.ts";
 
 export interface PlannedVerificationCommand {
@@ -19,9 +19,8 @@ export async function rememberPlannedVerificationCommand(
     const command = selection.command;
     if (!command.trim()) throw new Error("The full project verification command must not be empty.");
     const exact = getExactProjectCustomSetting("verification_command", root);
-    const existing = typeof exact === "string" && exact.trim()
-        ? exact
-        : getCustomSetting("verification_command", "project", root);
+    const existing =
+        typeof exact === "string" && exact.trim() ? exact : getCustomSetting("verification_command", "project", root);
     // Discovery cannot replace a saved preference or a checkout-local repair.
     if (selection.intent !== "user_selected" && typeof existing === "string" && existing.trim()) return;
     if (exact === command && existing === command) return;

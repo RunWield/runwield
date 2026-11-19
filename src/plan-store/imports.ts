@@ -4,9 +4,9 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { inspectLocalHomeStore } from "./access.ts";
 import { importPlanPackages, withPlanPackageLocks } from "./packages.ts";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { writeJsonAtomically } from "../shared/private-json-file.ts";
-import { getExactProjectCustomSetting, setExactProjectCustomSetting } from "../shared/settings.js";
+import { getExactProjectCustomSetting, setExactProjectCustomSetting } from "../shared/settings.ts";
 
 /** Explicit admission and source-preserving import are one store operation. */
 export async function importPlans(cwd: string, selection: string) {

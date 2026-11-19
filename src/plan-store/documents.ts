@@ -9,7 +9,7 @@ import {
 } from "./workflows.ts";
 import { savePlanPackageDocument, listPlanPackages, type PackageResourceRole } from "./packages.ts";
 import { assertSharedPlanWriteAllowed, isSharedPlanLocked } from "../shared/collaboration/lock.ts";
-import { StalePlanWriteError } from "../plan-store.js";
+import { StalePlanWriteError } from "../plan-store.ts";
 
 /** Save an edit against the exact context shown by a retained review. Storage checks stay with the owner. */
 export async function saveReviewedPlanDocument(planName: string, before: string, after: string): Promise<void> {
@@ -110,7 +110,7 @@ export async function readPlanResource(cwd: string, identity: PlanDocumentIdenti
         async () => {
             if (currentPackageProject()) return await readPlanDocuments(identity.planId, resource);
             if (resource !== "context.md") throw new Error("This Plan has no separate document.");
-            const { loadPlan } = await import("../plan-store.js");
+            const { loadPlan } = await import("../plan-store.ts");
             const plan = await loadPlan(cwd, identity.planName);
             if (!plan || plan.attrs.planId !== identity.planId) throw new Error("The selected Plan is unavailable.");
             return {
@@ -132,7 +132,7 @@ export async function readPlanResource(cwd: string, identity: PlanDocumentIdenti
 /** Replace prose against an observed revision while preserving all owner metadata. */
 export async function savePlanProse(cwd: string, name: string, body: string, expectedRevision: string) {
     if (managedPlanStoreActive()) return await saveManagedProse(cwd, name, body, expectedRevision);
-    const { loadPlan, writePlanMarkdownWithRevisionLocked } = await import("../plan-store.js");
+    const { loadPlan, writePlanMarkdownWithRevisionLocked } = await import("../plan-store.ts");
     const { withLocalPlanWorkflow } = await import("./access.ts");
     const { splitPlanMarkdownBody } = await import("../plan-format.ts");
     return await withLocalPlanWorkflow(cwd, name, async () => {
@@ -150,7 +150,7 @@ export async function savePlanProse(cwd: string, name: string, body: string, exp
 export async function preparePlanRepairDraft(cwd: string, name: string) {
     const { resolveWorkflowPlanLocation } = await import("./location.ts");
     const { prepareSessionPlanningWorktree } = await import("../shared/workflow/session-planning-worktree.ts");
-    const { writePlanMarkdownWithRevisionLocked, loadPlan } = await import("../plan-store.js");
+    const { writePlanMarkdownWithRevisionLocked, loadPlan } = await import("../plan-store.ts");
     const source = await resolveWorkflowPlanLocation(cwd, name, { readOnly: true });
     if (!source.planningNotStarted) return source;
     const writable = await prepareSessionPlanningWorktree(cwd, name);

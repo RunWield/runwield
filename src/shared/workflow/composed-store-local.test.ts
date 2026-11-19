@@ -16,7 +16,7 @@ import {
 import { executionInput, completionInput } from "../attached/execution-test-fixture.ts";
 import { ensureReviewHosted, stopHostedAttachedReviews } from "../attached/review-host.ts";
 import { NO_OPEN_BROWSER_PORT } from "../browser-port.ts";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 
 const repository = defineCommittedGitFixture({ "README.md": "Composed migration\n" });
 

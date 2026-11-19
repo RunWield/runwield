@@ -27,6 +27,11 @@ export interface CompatibilityAssessment {
     message: string;
 }
 
+interface QualifiedReleaseFamily {
+    major: number;
+    minor?: number;
+}
+
 interface ParsedVersion {
     release: number[];
     prerelease: string[];
@@ -110,21 +115,23 @@ export const CLAUDE_COMPATIBILITY_MATRIX = {
     matrixVersion: 1,
     supportedAdapterContracts: [1],
     oldestTestedVersion: testedVersions.map((entry) => entry.version).sort(compareVersions)[0] ?? null,
+    qualifiedFamilies: [{ major: 2 }] satisfies QualifiedReleaseFamily[],
     testedVersions,
 };
 
 const codexTestedVersions: TestedHostVersion[] = [];
 
-/** Codex is available for qualification; protocol probes are not live workflow acceptance. */
+/** Policy coverage is separate from complete live workflow acceptance evidence. */
 export const CODEX_COMPATIBILITY_MATRIX = {
     host: "codex",
     matrixVersion: 1,
     supportedAdapterContracts: [1],
     oldestTestedVersion: null,
+    qualifiedFamilies: [{ major: 0, minor: 164 }] satisfies QualifiedReleaseFamily[],
     testedVersions: codexTestedVersions,
 };
 
-/** Assess host evidence before Core performs an operation. Unknown versions remain usable with a notice. */
+/** Assess host evidence before Core performs an operation. Unqualified versions remain usable; presentation suppresses routine assessments. */
 export function assessCompatibility(evidence: HostEvidence): CompatibilityAssessment {
     const host = attachedHost(evidence.host);
     const matrix = evidence.host === "codex" ? CODEX_COMPATIBILITY_MATRIX : CLAUDE_COMPATIBILITY_MATRIX;
@@ -147,7 +154,8 @@ export function assessCompatibility(evidence: HostEvidence): CompatibilityAssess
                     : "Update RunWield Core with your installer or package manager: rerun install.sh, brew upgrade gandazgul/tap/wld, or winget upgrade --id Gandazgul.RunWield --exact."),
         };
     }
-    if (!parseVersion(evidence.hostVersion)) {
+    const version = parseVersion(evidence.hostVersion);
+    if (!version) {
         return {
             status: "version_not_reported",
             matrixVersion: matrix.matrixVersion,
@@ -162,7 +170,13 @@ export function assessCompatibility(evidence: HostEvidence): CompatibilityAssess
             message: `${host.displayName} ${evidence.hostVersion} is older than the oldest tested version ${floor}. ${host.updateHost}`,
         };
     }
-    if (!matrix.testedVersions.some((entry) => compareVersions(entry.version, evidence.hostVersion) === 0)) {
+    const families: QualifiedReleaseFamily[] = matrix.qualifiedFamilies;
+    if (
+        !families.some(
+            (family) =>
+                family.major === version.release[0] && (family.major > 0 || family.minor === (version.release[1] ?? 0)),
+        )
+    ) {
         return {
             status: "untested_newer",
             matrixVersion: matrix.matrixVersion,
@@ -172,7 +186,7 @@ export function assessCompatibility(evidence: HostEvidence): CompatibilityAssess
     return {
         status: "compatible",
         matrixVersion: matrix.matrixVersion,
-        message: `${host.displayName} ${evidence.hostVersion} and adapter contract ${evidence.adapterContract} are tested with Core.`,
+        message: `${host.displayName} ${evidence.hostVersion} and adapter contract ${evidence.adapterContract} are covered by Core’s qualified release-family policy.`,
     };
 }
 

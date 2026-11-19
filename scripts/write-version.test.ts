@@ -1,24 +1,27 @@
+import { spawnSync } from "node:child_process";
+import process from "node:process";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { defineGitFixture, git } from "../src/shared/git-test-fixture.ts";
 import { makeTempFile } from "../src/testing/temp-file.ts";
-import { chmod as fsChmod, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    chmod as fsChmod,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 import { test } from "node:test";
 /**
  * @module scripts/write-version.test
  */
 
-import { assertEquals, assertThrows } from "../src/testing/assertions.ts";
-import { getExplicitBuildVersion, getGitHubTagName, resolveBuildVersion, writeVersionFile } from "./write-version.ts";
-
-import type { EnvReader, GitRunner } from "./write-version.ts";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
+import { writeVersionFile } from "./write-version.ts";
 
 type AsyncAction = () => Promise<void>;
-
-function env(values: Record<string, string | undefined>): EnvReader {
-    return (name) => values[name];
-}
-
-function git(values: Record<string, string | undefined>): GitRunner {
-    return (args) => values[args.join(" ")];
-}
 
 async function captureConsoleLogs(action: AsyncAction): Promise<string[]> {
     const logs: string[] = [];
@@ -32,91 +35,78 @@ async function captureConsoleLogs(action: AsyncAction): Promise<string[]> {
     return logs;
 }
 
-test("getGitHubTagName prefers the explicit GitHub tag ref name", () => {
-    const tag = getGitHubTagName(
-        env({
-            GITHUB_REF_TYPE: "tag",
-            GITHUB_REF_NAME: "v1.2.3",
-            GITHUB_REF: "refs/tags/ignored",
-        }),
+const versionFixture = defineGitFixture(async (root) => {
+    await fsMkdir(join(root, "src/shared"), { recursive: true });
+    await fsWriteFile(join(root, "README.md"), "Version fixture\n");
+    await git(root, ["add", "README.md"]);
+    await git(root, ["commit", "-m", "Initial"]);
+    await git(root, ["tag", "v1.2.3"]);
+});
+
+test("version generation honors explicit and CI identities before real exact tags and commit hashes", async () => {
+    const root = await versionFixture.checkout();
+    const bareDirectory = await fsMkdtemp(join(tmpdir(), "version-no-git-"));
+    const script = fileURLToPath(new URL("./write-version.ts", import.meta.url));
+    const baseEnv = Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => !key.startsWith("GITHUB_REF") && key !== "WLD_BUILD_VERSION"),
     );
-
-    assertEquals(tag, "v1.2.3");
-});
-
-test("getGitHubTagName falls back to parsing GITHUB_REF tag refs", () => {
-    const tag = getGitHubTagName(
-        env({
-            GITHUB_REF: "refs/tags/release/v1.2.3",
-        }),
-    );
-
-    assertEquals(tag, "release/v1.2.3");
-});
-
-test("getExplicitBuildVersion accepts stable and candidate release identities", () => {
-    assertEquals(getExplicitBuildVersion(env({ WLD_BUILD_VERSION: "v1.2.3" })), "v1.2.3");
-    assertEquals(getExplicitBuildVersion(env({ WLD_BUILD_VERSION: "v1.2.3-rc.1" })), "v1.2.3-rc.1");
-    assertEquals(getExplicitBuildVersion(env({ WLD_BUILD_VERSION: "   " })), undefined);
-});
-
-test("getExplicitBuildVersion rejects unsafe explicit identities", () => {
-    assertThrows(() => getExplicitBuildVersion(env({ WLD_BUILD_VERSION: "abc123" })), Error, "WLD_BUILD_VERSION");
-    assertThrows(() => getExplicitBuildVersion(env({ WLD_BUILD_VERSION: "v1.2.3-rc.0" })), Error, "WLD_BUILD_VERSION");
-    assertThrows(() => getExplicitBuildVersion(env({ WLD_BUILD_VERSION: "v01.2.3" })), Error, "WLD_BUILD_VERSION");
-    assertThrows(() => getExplicitBuildVersion(env({ WLD_BUILD_VERSION: "v1.2.3-rc.01" })), Error, "WLD_BUILD_VERSION");
-    assertThrows(() => getExplicitBuildVersion(env({ WLD_BUILD_VERSION: "v1.2.3/bad" })), Error, "WLD_BUILD_VERSION");
-});
-
-test("resolveBuildVersion uses explicit build version before GitHub tag and git metadata", () => {
-    const version = resolveBuildVersion({
-        readEnv: env({
-            WLD_BUILD_VERSION: "v2.0.0-rc.1",
-            GITHUB_REF_TYPE: "tag",
-            GITHUB_REF_NAME: "v2.0.0",
-        }),
-        runGit: git({
-            "describe --tags --exact-match HEAD": "v1.9.0",
-            "rev-parse --short HEAD": "abc1234",
-        }),
-    });
-
-    assertEquals(version, "v2.0.0-rc.1");
-});
-
-test("resolveBuildVersion uses GitHub tag before git metadata", () => {
-    const version = resolveBuildVersion({
-        readEnv: env({
-            GITHUB_REF_TYPE: "tag",
-            GITHUB_REF_NAME: "v2.0.0",
-        }),
-        runGit: git({
-            "describe --tags --exact-match HEAD": "v1.9.0",
-            "rev-parse --short HEAD": "abc1234",
-        }),
-    });
-
-    assertEquals(version, "v2.0.0");
-});
-
-test("resolveBuildVersion uses exact local tag before short hash", () => {
-    const version = resolveBuildVersion({
-        readEnv: env({}),
-        runGit: git({
-            "describe --tags --exact-match HEAD": "v1.2.3",
-            "rev-parse --short HEAD": "abc1234",
-        }),
-    });
-
-    assertEquals(version, "v1.2.3");
-});
-
-test("resolveBuildVersion falls back to short hash and then dev", () => {
-    assertEquals(
-        resolveBuildVersion({ readEnv: env({}), runGit: git({ "rev-parse --short HEAD": "abc1234" }) }),
-        "abc1234",
-    );
-    assertEquals(resolveBuildVersion({ readEnv: env({}), runGit: git({}) }), "dev");
+    const generate = async (cwd: string, overrides: Record<string, string> = {}) => {
+        const result = spawnSync(process.execPath, [script], {
+            cwd,
+            env: { ...baseEnv, ...overrides },
+            encoding: "utf8",
+        });
+        assertEquals(result.status, 0, result.stderr);
+        const module = await fsReadFile(join(cwd, "src/shared/version.js"), "utf8");
+        const match = /export const VERSION = (".*");/.exec(module);
+        return match ? JSON.parse(match[1]) : null;
+    };
+    try {
+        assertEquals(
+            await generate(root, {
+                WLD_BUILD_VERSION: "v2.0.0-rc.1",
+                GITHUB_REF_TYPE: "tag",
+                GITHUB_REF_NAME: "v2.0.0",
+            }),
+            "v2.0.0-rc.1",
+        );
+        assertEquals(await generate(root, { WLD_BUILD_VERSION: "v2.0.0" }), "v2.0.0");
+        assertEquals(
+            await generate(root, {
+                GITHUB_REF_TYPE: "tag",
+                GITHUB_REF_NAME: "v2.0.0",
+                GITHUB_REF: "refs/tags/ignored",
+            }),
+            "v2.0.0",
+        );
+        assertEquals(await generate(root, { GITHUB_REF: "refs/tags/release/v2.0.0" }), "release/v2.0.0");
+        assertEquals(
+            await generate(root, { WLD_BUILD_VERSION: "   ", GITHUB_REF_TYPE: "branch", GITHUB_REF_NAME: "main" }),
+            "v1.2.3",
+        );
+        const before = await fsReadFile(join(root, "src/shared/version.js"), "utf8");
+        for (const invalid of ["abc123", "v1.2.3-rc.0", "v01.2.3", "v1.2.3-rc.01", "v1.2.3/bad"]) {
+            const result = spawnSync(process.execPath, [script], {
+                cwd: root,
+                env: { ...baseEnv, WLD_BUILD_VERSION: invalid },
+                encoding: "utf8",
+            });
+            assertEquals(result.status, 1);
+            assertStringIncludes(result.stderr, "WLD_BUILD_VERSION");
+            assertEquals(await fsReadFile(join(root, "src/shared/version.js"), "utf8"), before);
+        }
+        await git(root, ["commit", "--allow-empty", "-m", "Past the release tag"]);
+        const head = await git(root, ["rev-parse", "HEAD"]);
+        const version = await generate(root);
+        assertEquals(typeof version, "string");
+        assertEquals(/^[a-f0-9]{7,40}$/.test(version), true);
+        assertEquals(head.startsWith(version), true);
+        await fsMkdir(join(bareDirectory, "src/shared"), { recursive: true });
+        assertEquals(await generate(bareDirectory), "dev");
+    } finally {
+        await fsRm(root, { recursive: true, force: true });
+        await fsRm(bareDirectory, { recursive: true, force: true });
+    }
 });
 
 test("writeVersionFile leaves matching files untouched", async () => {

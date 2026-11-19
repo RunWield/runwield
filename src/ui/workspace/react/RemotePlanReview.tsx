@@ -2,9 +2,9 @@
 import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createCollaborationClient } from "../../../shared/collaboration/client.js";
+import { createCollaborationClient } from "../../../shared/collaboration/client.ts";
 import { decryptJsonPayload, encryptJsonPayload, importContentKey } from "../../../shared/collaboration/crypto.ts";
-import { normalizeEncryptedPlanPayload } from "../../../shared/collaboration/protocol.js";
+import { normalizeEncryptedPlanPayload } from "../../../shared/collaboration/protocol.ts";
 import { parseCollaborationUrl } from "../../../shared/collaboration/urls.ts";
 import { ThemeProvider } from "@plannotator/ui/components/ThemeProvider.tsx";
 import { TooltipProvider } from "@plannotator/ui/components/Tooltip.tsx";
@@ -17,7 +17,7 @@ import {
     buildRemoteCommentPayload,
     normalizeRemoteCommentPayload,
     remoteCommentToPlannotatorAnnotation,
-} from "./remote-review-payload.js";
+} from "./remote-review-payload.ts";
 import "./plannotator.css";
 
 const DISPLAY_NAME_KEY = "runwield.remoteReview.displayName";
@@ -52,8 +52,10 @@ export function RemotePlanReview({ spaceId }) {
             frontmatter: frontmatterResult.frontmatter,
         };
     }, [markdown]);
-    const planTitle = plan?.title?.trim() ||
-        parsed.blocks.find((block) => block.type === "heading" && block.level === 1)?.content.trim() || "Untitled plan";
+    const planTitle =
+        plan?.title?.trim() ||
+        parsed.blocks.find((block) => block.type === "heading" && block.level === 1)?.content.trim() ||
+        "Untitled plan";
     useEffect(() => {
         if (plan) document.title = `Plan Review - ${planTitle}`;
     }, [plan, planTitle]);
@@ -65,48 +67,57 @@ export function RemotePlanReview({ spaceId }) {
             const parsedUrl = parseCollaborationUrl(globalThis.location.href);
             if (parsedUrl.spaceId !== spaceId) throw new Error("Collaboration URL does not match this Shared Space.");
             setRole(parsedUrl.role);
-            setClient(createCollaborationClient({
-                serverUrl: parsedUrl.apiBaseUrl,
-                bearerCapability: parsedUrl.bearerCapability,
-                fetch: globalThis.fetch.bind(globalThis),
-            }));
-            importContentKey(parsedUrl.contentKey).then(setContentKey).catch(() => {
-                setError("The link contains an invalid content key. Ask the maintainer for a fresh Shared Space URL.");
-                setLoading(false);
-            });
+            setClient(
+                createCollaborationClient({
+                    serverUrl: parsedUrl.apiBaseUrl,
+                    bearerCapability: parsedUrl.bearerCapability,
+                    fetch: globalThis.fetch.bind(globalThis),
+                }),
+            );
+            importContentKey(parsedUrl.contentKey)
+                .then(setContentKey)
+                .catch(() => {
+                    setError(
+                        "The link contains an invalid content key. Ask the maintainer for a fresh Shared Space URL.",
+                    );
+                    setLoading(false);
+                });
         } catch (caught) {
             setError(safeMessage(caught) || "The collaboration link is missing key, capability, or role details.");
             setLoading(false);
         }
     }, [spaceId]);
 
-    const loadRevision = useCallback(async (targetRevision) => {
-        if (!client || !contentKey) return;
-        setLoading(true);
-        setError("");
-        setStatus("");
-        try {
-            const metadata = await client.getSharedSpace(spaceId);
-            const nextSpace = normalizeSpace(metadata);
-            const revisionNumber = targetRevision || nextSpace.latestRevision;
-            const revisionResponse = await client.getRevision(spaceId, revisionNumber);
-            const nextRevision = normalizeRevisionResponse(revisionResponse);
-            const decryptedPlan = normalizeEncryptedPlanPayload(
-                await decryptJsonPayload(nextRevision.payloadCiphertext, contentKey),
-            );
-            const commentResponse = await client.listComments(spaceId, revisionNumber);
-            const nextComments = await decryptComments(commentResponse, contentKey);
-            setSpace(nextSpace);
-            setSelectedRevision(revisionNumber);
-            setPlan(decryptedPlan);
-            setComments(nextComments);
-            setSelectedCommentId(null);
-        } catch (caught) {
-            setError(messageForFailure(caught));
-        } finally {
-            setLoading(false);
-        }
-    }, [client, contentKey, spaceId]);
+    const loadRevision = useCallback(
+        async (targetRevision) => {
+            if (!client || !contentKey) return;
+            setLoading(true);
+            setError("");
+            setStatus("");
+            try {
+                const metadata = await client.getSharedSpace(spaceId);
+                const nextSpace = normalizeSpace(metadata);
+                const revisionNumber = targetRevision || nextSpace.latestRevision;
+                const revisionResponse = await client.getRevision(spaceId, revisionNumber);
+                const nextRevision = normalizeRevisionResponse(revisionResponse);
+                const decryptedPlan = normalizeEncryptedPlanPayload(
+                    await decryptJsonPayload(nextRevision.payloadCiphertext, contentKey),
+                );
+                const commentResponse = await client.listComments(spaceId, revisionNumber);
+                const nextComments = await decryptComments(commentResponse, contentKey);
+                setSpace(nextSpace);
+                setSelectedRevision(revisionNumber);
+                setPlan(decryptedPlan);
+                setComments(nextComments);
+                setSelectedCommentId(null);
+            } catch (caught) {
+                setError(messageForFailure(caught));
+            } finally {
+                setLoading(false);
+            }
+        },
+        [client, contentKey, spaceId],
+    );
 
     useEffect(() => {
         loadRevision(null);
@@ -176,7 +187,7 @@ export function RemotePlanReview({ spaceId }) {
             const response = await client.setCommentState(spaceId, commentId, { action });
             const updated = normalizeCommentRecord(response?.comment || response);
             setComments((items) =>
-                items.map((item) => item.id === commentId ? { ...item, resolved: updated.resolved } : item)
+                items.map((item) => (item.id === commentId ? { ...item, resolved: updated.resolved } : item)),
             );
             const metadata = await client.getSharedSpace(spaceId);
             setSpace(normalizeSpace(metadata));
@@ -212,43 +223,49 @@ export function RemotePlanReview({ spaceId }) {
                         <div>
                             <p className="eyebrow">Shared Space Review · {role}</p>
                             <h1>{plan?.title || "Remote Plan Review"}</h1>
-                            {space
-                                ? <p>Space {space.spaceId} · Plan {space.planId}</p>
-                                : <p>Decrypting Shared Space…</p>}
+                            {space ? (
+                                <p>
+                                    Space {space.spaceId} · Plan {space.planId}
+                                </p>
+                            ) : (
+                                <p>Decrypting Shared Space…</p>
+                            )}
                         </div>
                         <div className="rw-remote-review-actions">
-                            {saving
-                                ? (
-                                    <span className="badge warning">
-                                        <RunWieldThinkingDots label="Saving encrypted comment" />
-                                    </span>
-                                )
-                                : null}
-                            {space?.status
-                                ? <span className={closed ? "badge warning" : "badge success"}>{space.status}</span>
-                                : null}
+                            {saving ? (
+                                <span className="badge warning">
+                                    <RunWieldThinkingDots label="Saving encrypted comment" />
+                                </span>
+                            ) : null}
+                            {space?.status ? (
+                                <span className={closed ? "badge warning" : "badge success"}>{space.status}</span>
+                            ) : null}
                         </div>
                     </header>
 
-                    {error ? <p className="rw-review-error" role="alert">{error}</p> : null}
-                    {status ? <p className="notice" role="status">{status}</p> : null}
-                    {closed
-                        ? (
-                            <p className="notice muted">
-                                This Shared Space is closed. You can read comments, but cannot create, resolve, or
-                                reopen them.
-                            </p>
-                        )
-                        : null}
-                    {expiresAt
-                        ? (
-                            <p className="notice warning" role="status">
-                                Inactivity retention is enabled. This Shared Space currently expires at{" "}
-                                {expiresAt}. New revisions, comments, resolve/reopen, or close actions refresh the
-                                expiry; viewing alone does not.
-                            </p>
-                        )
-                        : null}
+                    {error ? (
+                        <p className="rw-review-error" role="alert">
+                            {error}
+                        </p>
+                    ) : null}
+                    {status ? (
+                        <p className="notice" role="status">
+                            {status}
+                        </p>
+                    ) : null}
+                    {closed ? (
+                        <p className="notice muted">
+                            This Shared Space is closed. You can read comments, but cannot create, resolve, or reopen
+                            them.
+                        </p>
+                    ) : null}
+                    {expiresAt ? (
+                        <p className="notice warning" role="status">
+                            Inactivity retention is enabled. This Shared Space currently expires at {expiresAt}. New
+                            revisions, comments, resolve/reopen, or close actions refresh the expiry; viewing alone does
+                            not.
+                        </p>
+                    ) : null}
 
                     <div className="rw-remote-review-toolbar">
                         <label>
@@ -259,7 +276,9 @@ export function RemotePlanReview({ spaceId }) {
                                 onChange={(event) => loadRevision(Number(event.currentTarget.value))}
                             >
                                 {(space?.revisions || []).map((item) => (
-                                    <option key={item.revision} value={item.revision}>Revision {item.revision}</option>
+                                    <option key={item.revision} value={item.revision}>
+                                        Revision {item.revision}
+                                    </option>
                                 ))}
                             </select>
                         </label>
@@ -286,42 +305,38 @@ export function RemotePlanReview({ spaceId }) {
                         </div>
                     </div>
 
-                    {loading
-                        ? (
-                            <p className="notice">
-                                <RunWieldThinkingDots label="Loading encrypted Shared Space" />
-                            </p>
-                        )
-                        : null}
+                    {loading ? (
+                        <p className="notice">
+                            <RunWieldThinkingDots label="Loading encrypted Shared Space" />
+                        </p>
+                    ) : null}
 
                     <div className="rw-remote-review-grid rw-remote-plannotator-grid">
                         <article className="rw-remote-plan-card rw-remote-plannotator-plan-card">
-                            {plan?.body
-                                ? (
-                                    <Viewer
-                                        ref={viewerHandleRef}
-                                        blocks={parsed.blocks}
-                                        markdown={markdown}
-                                        frontmatter={parsed.frontmatter}
-                                        annotations={annotations}
-                                        onAddAnnotation={addRemoteAnnotation}
-                                        onSelectAnnotation={selectComment}
-                                        selectedAnnotationId={selectedCommentId}
-                                        mode={closed ? "selection" : annotationMode}
-                                        inputMethod={inputMethod}
-                                        taterMode={false}
-                                        stickyActions
-                                        gridEnabled
-                                        maxWidth={920}
-                                        copyLabel="Copy Plan"
-                                        actionsLabelMode="full"
-                                    />
-                                )
-                                : (
-                                    <div className="markdown-view rw-remote-plan-document">
-                                        <p className="empty">No Plan body content.</p>
-                                    </div>
-                                )}
+                            {plan?.body ? (
+                                <Viewer
+                                    ref={viewerHandleRef}
+                                    blocks={parsed.blocks}
+                                    markdown={markdown}
+                                    frontmatter={parsed.frontmatter}
+                                    annotations={annotations}
+                                    onAddAnnotation={addRemoteAnnotation}
+                                    onSelectAnnotation={selectComment}
+                                    selectedAnnotationId={selectedCommentId}
+                                    mode={closed ? "selection" : annotationMode}
+                                    inputMethod={inputMethod}
+                                    taterMode={false}
+                                    stickyActions
+                                    gridEnabled
+                                    maxWidth={920}
+                                    copyLabel="Copy Plan"
+                                    actionsLabelMode="full"
+                                />
+                            ) : (
+                                <div className="markdown-view rw-remote-plan-document">
+                                    <p className="empty">No Plan body content.</p>
+                                </div>
+                            )}
                         </article>
 
                         <RemoteCommentPanel
@@ -344,30 +359,34 @@ export function RemotePlanReview({ spaceId }) {
 
 async function decryptComments(response, contentKey) {
     const records = Array.isArray(response?.comments) ? response.comments : [];
-    return await Promise.all(records.map(async (record) => {
-        const normalized = normalizeCommentRecord(record);
-        try {
-            const payload = normalizeRemoteCommentPayload(await decryptJsonPayload(normalized.ciphertext, contentKey));
-            return {
-                ...normalized,
-                ...payload,
-                anchorMissing: hasLegacyInlineAnchorWithoutMetadata(payload),
-                unreadable: false,
-            };
-        } catch {
-            return {
-                ...normalized,
-                schemaVersion: 1,
-                type: "global_comment",
-                displayName: "",
-                body: "",
-                originalText: "",
-                anchor: null,
-                anchorMissing: false,
-                unreadable: true,
-            };
-        }
-    }));
+    return await Promise.all(
+        records.map(async (record) => {
+            const normalized = normalizeCommentRecord(record);
+            try {
+                const payload = normalizeRemoteCommentPayload(
+                    await decryptJsonPayload(normalized.ciphertext, contentKey),
+                );
+                return {
+                    ...normalized,
+                    ...payload,
+                    anchorMissing: hasLegacyInlineAnchorWithoutMetadata(payload),
+                    unreadable: false,
+                };
+            } catch {
+                return {
+                    ...normalized,
+                    schemaVersion: 1,
+                    type: "global_comment",
+                    displayName: "",
+                    body: "",
+                    originalText: "",
+                    anchor: null,
+                    anchorMissing: false,
+                    unreadable: true,
+                };
+            }
+        }),
+    );
 }
 
 function hasLegacyInlineAnchorWithoutMetadata(payload) {

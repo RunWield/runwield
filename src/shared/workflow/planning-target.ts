@@ -10,7 +10,10 @@ export interface PlanningPlanAttributes {
 }
 
 export class TargetBranchSnapshotUnavailableError extends Error {
-    constructor(targetBranch: string) {
+    constructor(
+        targetBranch: string,
+        readonly reason: "missing_ref" | "unreadable" = "unreadable",
+    ) {
         super(`Local target branch evidence is unavailable: ${targetBranch}.`);
         this.name = "TargetBranchSnapshotUnavailableError";
     }
@@ -49,7 +52,9 @@ export async function gitRefExists(projectRoot: string, ref: string): Promise<bo
         env: { GIT_NO_LAZY_FETCH: "1" },
         args: ["rev-parse", "--verify", "--quiet", ref],
     });
-    return result.success;
+    if (result.success) return true;
+    if (result.code === 1) return false;
+    throw new TargetBranchSnapshotUnavailableError(ref);
 }
 
 /** Preserve cached origin history for read-only lookups without overriding an explicit local remote. */
@@ -79,7 +84,7 @@ export async function resolveExistingTargetSnapshot(projectRoot: string, targetB
             : (await gitRefExists(projectRoot, `refs/heads/${branch}`))
               ? `refs/heads/${branch}`
               : "";
-    if (!baseRef) throw new TargetBranchSnapshotUnavailableError(targetBranch);
+    if (!baseRef) throw new TargetBranchSnapshotUnavailableError(targetBranch, "missing_ref");
     const commit = (await runGit(projectRoot, ["rev-parse", `${baseRef}^{commit}`])).trim();
     return { baseRef: commit, baseBranch: branch, targetRef: baseRef };
 }
@@ -104,7 +109,7 @@ export async function prepareExistingTargetSnapshot(projectRoot: string, targetB
         if (!fetched.success) {
             // A removed remote branch must not leave a stale remote-tracking ref authoritative.
             if (!(await gitRefExists(projectRoot, `refs/heads/${branch}`))) {
-                throw new TargetBranchSnapshotUnavailableError(targetBranch);
+                throw new TargetBranchSnapshotUnavailableError(targetBranch, "missing_ref");
             }
             const commit = (await runGit(projectRoot, ["rev-parse", `refs/heads/${branch}^{commit}`])).trim();
             return { baseRef: commit, baseBranch: branch, targetRef: `refs/heads/${branch}` };
@@ -112,7 +117,8 @@ export async function prepareExistingTargetSnapshot(projectRoot: string, targetB
         return await resolveExistingTargetSnapshot(projectRoot, targetBranch);
     }
     const localRef = `refs/heads/${branch}`;
-    if (!(await gitRefExists(projectRoot, localRef))) throw new TargetBranchSnapshotUnavailableError(targetBranch);
+    if (!(await gitRefExists(projectRoot, localRef)))
+        throw new TargetBranchSnapshotUnavailableError(targetBranch, "missing_ref");
     const commit = (await runGit(projectRoot, ["rev-parse", `${localRef}^{commit}`])).trim();
     return { baseRef: commit, baseBranch: branch, targetRef: localRef };
 }

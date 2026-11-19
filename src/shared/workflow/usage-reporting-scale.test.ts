@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 import process from "node:process";
 import { assertEquals } from "../../testing/assertions.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { UsageReporter } from "./usage-reporting.ts";
 
 test("a long report period handles retained legacy rows without repeated daily scans", async () => {

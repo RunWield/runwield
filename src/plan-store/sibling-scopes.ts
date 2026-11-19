@@ -15,15 +15,15 @@ import { realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile } from "no
  * session can reshape it again. A started or finished sibling stays as it is.
  */
 
-import { updatePlanFrontMatter, withPlanCatalogLock, withPlanLock } from "../plan-store.js";
+import { updatePlanFrontMatter, withPlanCatalogLock, withPlanLock } from "../plan-store.ts";
 import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../plan-format.ts";
 import { loadPlan } from "./index.ts";
-import { savePlan } from "../plan-store.js";
+import { savePlan } from "../plan-store.ts";
 import { join } from "node:path";
 import type { PlanFrontMatter } from "./index.ts";
 import { EPIC_ARTIFACT_FILE_NAMES } from "../plan-format.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
-import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.js";
+import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
+import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.ts";
 import { assertControllerDocumentAvailable, listControllerDocumentWorktrees } from "./controllers.ts";
 
 /** Sibling statuses Planner may still reshape. */

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { join } from "node:path";
 import { git, makeRepo } from "./worktree-test-helpers.ts";
-import { createWorktreeGitArtifacts, removeWorktreeGitArtifacts } from "./worktree.js";
+import { createWorktreeGitArtifacts, removeWorktreeGitArtifacts } from "./worktree.ts";
 import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
 
 async function write(root: string, path: string, content: string) {

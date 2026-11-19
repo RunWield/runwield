@@ -5,7 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../../testing/assertions.ts";
 import { join } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
-import { runGoldenScenarioChildProcess } from "./child-protocol.js";
+import { runGoldenScenarioChildProcess, type GoldenChildFailure } from "./child-protocol.ts";
 import { GOLDEN_CHILD_READY_MARKER } from "./subprocess-runner.ts";
 
 interface CleanupChildFailure extends Error {
@@ -118,9 +118,6 @@ test("expected-clean-exit scenarios reject a nonzero child exit after the pre-ex
     }
 });
 
-interface DiagnosticChildFailure extends Error {
-    childPayload?: { artifactDir?: string };
-}
 interface NativeFailureDiagnostics {
     concurrentSessions: Record<string, { runtime: { id: string }; screenText: string }>;
     errorStack: string;
@@ -155,7 +152,7 @@ test("composed Golden child failures retain read-only native evidence for their 
                 }),
             Error,
             "intentional native evidence failure",
-        )) as DiagnosticChildFailure;
+        )) as GoldenChildFailure;
         const artifact = error.childPayload?.artifactDir;
         assert(artifact, "Expected the composed child's retained diagnostic directory");
         const diagnostic: NativeFailureDiagnostics = JSON.parse(

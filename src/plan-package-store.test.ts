@@ -5,7 +5,7 @@ import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, driver, packageFixture, tree, documents } from "./shared/testing/plan-package-fixture.ts";
-import { getPlansDir } from "./plan-store.js";
+import { getPlansDir } from "./plan-store.ts";
 import {
     readPlanPackage,
     listPlanPackages,

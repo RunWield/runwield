@@ -8,11 +8,11 @@ import { withWorkRecordOwner, workRecordOwnerLayout } from "./owner.ts";
 import { importWorkRecords, readWorkRecordLocations } from "./import.ts";
 import { listWorkRecords } from "./store.ts";
 import { recordAttrs, recordBody } from "./test-fixtures/package-records.ts";
-import { formatWorkRecordMarkdown } from "./markdown.js";
+import { formatWorkRecordMarkdown } from "./markdown.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { runWorkRecordsCommand } from "../../cmd/wr/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 
 test("explicit command directory import preserves exact status bytes and repeat identity", async () => {
     await withProcessGlobalTestLock(async () => {

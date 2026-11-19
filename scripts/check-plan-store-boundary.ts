@@ -10,9 +10,9 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const configuration = ts.readConfigFile(resolve(root, "tsconfig.bun.json"), ts.sys.readFile);
 const compilerOptions = ts.parseJsonConfigFileContent(configuration.config, ts.sys, root).options;
 const privateMembers = new Set([
-    "src/plan-store.js",
+    "src/plan-store.ts",
     // Existing retained-copy implementation. Its operations are public only through the owner interface.
-    "src/shared/workflow/execution-plan-file.js",
+    "src/shared/workflow/execution-plan-file.ts",
 ]);
 const pureSurface = "src/plan-format.ts";
 const publicSurface = "src/plan-store/index.ts";

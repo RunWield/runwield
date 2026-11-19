@@ -6,12 +6,12 @@ import {
     readPersistedManualModelState,
     recordManualModelSelection,
     resolveResumeAgentName,
-} from ".././active-agent-session.js";
-import { isPathInside, openPersistedRootSession } from ".././root-session.js";
-import { RuntimeEventTypes } from ".././session-runtime-events.js";
-import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.js";
+} from ".././active-agent-session.ts";
+import { isPathInside, openPersistedRootSession } from ".././root-session.ts";
+import { RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.ts";
 import { openLiveSessionConnection } from ".././live-session-connection.ts";
-import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
+import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
 import { parseProviderModel } from "../../models/model-validation.ts";
 import { sessionDirForCheckout } from ".././file-session-storage.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -96,7 +96,7 @@ export class RuntimeManagedOperations {
     private activeManagedOperation = new AsyncLocalStorage<import("./support.ts").ManagedOperationContext>();
     private pendingManagedCreations = new Map<
         string,
-        import("../../owner-coordination/session-activations.js").ActivationProof
+        import("../../owner-coordination/session-activations.ts").ActivationProof
     >();
     private currentManagedOperations = new Map<string, import("../managed-operation.ts").ManagedOperationCapability>();
     private currentManagedOperationSettlements = new Map<string, Promise<void>>();
@@ -116,8 +116,8 @@ export class RuntimeManagedOperations {
     steerSession(
         sessionId: string,
         text: string,
-        images: import("../types.js").ImageAttachment[],
-        inputSurface?: import("../session-runtime-events.js").NotificationSurface,
+        images: import("../image-attachments.ts").ImageAttachment[],
+        inputSurface?: import("../session-runtime-events.ts").NotificationSurface,
     ) {
         return this.queues.steerSession(sessionId, text, images, inputSurface);
     }
@@ -158,7 +158,7 @@ export class RuntimeManagedOperations {
 
     setPendingCreationProof(
         sessionId: string,
-        proof: import("../../owner-coordination/session-activations.js").ActivationProof,
+        proof: import("../../owner-coordination/session-activations.ts").ActivationProof,
     ) {
         this.pendingManagedCreations.set(sessionId, proof);
     }
@@ -168,14 +168,14 @@ export class RuntimeManagedOperations {
     }
 
     async acquirePendingCreation(
-        hostedSession: import("../hosted-session.js").HostedSession,
+        hostedSession: import("../hosted-session.ts").HostedSession,
         projectId: string,
         sessionManager: RuntimeRootSessionManager,
         transcriptPath: string,
         name?: string,
     ) {
         const sessionStore = this.services.sessionStoreOwner.ensure();
-        let proof: import("../../owner-coordination/session-activations.js").ActivationProof | null = null;
+        let proof: import("../../owner-coordination/session-activations.ts").ActivationProof | null = null;
         try {
             const acquired = await sessionStore.ensureSessionCatalogRecordAndAcquire({
                 locator: {
@@ -200,7 +200,7 @@ export class RuntimeManagedOperations {
                 lineageGroupKey: acquired.segment.segmentId,
                 kind: "planning",
             });
-            const managed: import("../hosted-session.js").ManagedSessionMetadata = {
+            const managed: import("../hosted-session.ts").ManagedSessionMetadata = {
                 runwieldSessionId: acquired.session.runwieldSessionId,
                 projectId: acquired.session.projectId,
                 piSessionId: acquired.session.piSessionId,
@@ -235,8 +235,8 @@ export class RuntimeManagedOperations {
     }
 
     async runPendingCreation<T>(
-        hostedSession: import("../hosted-session.js").HostedSession,
-        pendingCreation: import("../../owner-coordination/session-activations.js").ActivationProof,
+        hostedSession: import("../hosted-session.ts").HostedSession,
+        pendingCreation: import("../../owner-coordination/session-activations.ts").ActivationProof,
         body: (capability: import("../managed-operation.ts").ManagedOperationCapability) => Promise<T>,
     ): Promise<T> {
         if (!this.services.sessionStore) throw new Error("Session coordination is unavailable");
@@ -331,7 +331,7 @@ export class RuntimeManagedOperations {
     }
 
     rejectManagedPublicMutation(
-        hostedSession: import(".././hosted-session.js").HostedSession | null | undefined,
+        hostedSession: import(".././hosted-session.ts").HostedSession | null | undefined,
         operation: string,
         capability: import(".././managed-operation.ts").ManagedOperationCapability | null = null,
     ) {
@@ -351,7 +351,7 @@ export class RuntimeManagedOperations {
         sessionId: string,
         name: import(".././managed-operation.ts").ManagedOperationName,
         operation: (
-            session: import(".././hosted-session.js").HostedSession,
+            session: import(".././hosted-session.ts").HostedSession,
             capability: import(".././managed-operation.ts").ManagedOperationCapability | null,
         ) => T | Promise<T>,
         options: { activateAgent?: boolean; hydrate?: boolean } = {},

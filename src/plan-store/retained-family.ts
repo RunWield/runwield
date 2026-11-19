@@ -2,11 +2,11 @@
 import { readFile, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import type { HomeProjectOwner } from "../shared/project-identity.ts";
-import type { WorktreeRegistryEntry } from "../shared/worktree-registry.js";
+import type { WorktreeRegistryEntry } from "../shared/worktree-registry.ts";
 import type { ManagedRuntimeTransfer } from "../shared/project-runtime-managed.ts";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
 import { parsePlanFrontMatter, canonicalizeStoredPlanName } from "../plan-format.ts";
-import { getStoredPlanPath } from "../plan-store.js";
+import { getStoredPlanPath } from "../plan-store.ts";
 import {
     pickControllerState,
     CONTROLLER_STATE_FIELDS,

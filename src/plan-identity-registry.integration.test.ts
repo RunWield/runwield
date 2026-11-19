@@ -9,7 +9,7 @@ import { injectFrontMatter, mergeFrontMatterText } from "./plan-format.ts";
 import { ensurePlanIdentity, listPlans, listPlanResources, loadPlan } from "./plan-store/index.ts";
 
 import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
-import { addEntry, getWorktreeRegistryPath, listEntries } from "./shared/worktree-registry.js";
+import { addEntry, getWorktreeRegistryPath, listEntries } from "./shared/worktree-registry.ts";
 import { findTargetBranchPlansByParent } from "./shared/workflow/planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "./plan-store/index.ts";
 import { loadPlanActionEvidence } from "./shared/workflow/plan-actions.ts";

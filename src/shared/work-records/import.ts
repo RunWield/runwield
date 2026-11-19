@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { basename, join, relative, resolve, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
 import { writeJsonAtomically } from "../private-json-file.ts";
-import { parseWorkRecordMarkdown } from "./markdown.js";
+import { parseWorkRecordMarkdown } from "./markdown.ts";
 import { listWorkRecords, writeWorkRecord } from "./store.ts";
 import { assertWorkRecordPath, workRecordOwnerLayout, withWorkRecordMutation } from "./owner.ts";
 import { syncWorkRecordToIndex, type WorkRecordIndexOptions } from "./index-adapter.ts";

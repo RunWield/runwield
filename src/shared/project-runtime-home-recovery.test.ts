@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
-import { getHomeDir, getRunWieldRuntimeDir } from "../constants.js";
+import { getHomeDir, getRunWieldRuntimeDir } from "../constants.ts";
 import {
     enterProjectRuntime,
     resolveProjectRuntimeLayout,

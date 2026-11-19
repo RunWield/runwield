@@ -2,7 +2,7 @@ import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import {
     lstat as fsLstat,
@@ -20,13 +20,13 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
-import { updatePlanFrontMatter } from "../../plan-store.js";
-import { type PlanDocumentMetadata } from "../../plan-store.js";
+import { updatePlanFrontMatter } from "../../plan-store.ts";
+import { type PlanDocumentMetadata } from "../../plan-store.ts";
 import { injectFrontMatter, mergeFrontMatterText } from "../../plan-format.ts";
 import { ensurePlanIdentity, listPlanResources, loadPlan } from "../../plan-store/index.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { addEntry, getWorktreeRegistryPath, pruneEntry, updateEntry } from "../worktree-registry.js";
+import { addEntry, getWorktreeRegistryPath, pruneEntry, updateEntry } from "../worktree-registry.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { PLAN_RUNTIME_FIELDS } from "./controller-state.ts";

@@ -8,8 +8,8 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan } from "../../plan-store/index.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { setCustomSetting } from "../settings.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { setCustomSetting } from "../settings.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { startActiveExecutionWorkflow } from "./workflow.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";

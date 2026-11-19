@@ -1,6 +1,6 @@
 /** @module cmd/workspace */
 
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import { runWorkspacePairCommand } from "./pair.ts";
 import { runWorkspaceServeCommand } from "./serve.ts";
 

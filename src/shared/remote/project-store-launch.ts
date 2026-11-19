@@ -1,6 +1,6 @@
 import { validateManagedRuntimeTransfer, type ManagedRuntimeTransfer } from "../project-runtime-managed.ts";
 import { basename } from "node:path";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { fixedPythonCommand } from "./target.ts";
 import {

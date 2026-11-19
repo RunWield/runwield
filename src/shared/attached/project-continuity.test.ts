@@ -19,7 +19,7 @@ import {
 } from "./attached-test-fixture.ts";
 import { locateAttachedWorkflows } from "./record-store.ts";
 import { implementing, completionInput, executionInput } from "./execution-test-fixture.ts";
-import { git } from "../git-test-fixture.ts";
+import { configureFixtureIdentity, git } from "../git-test-fixture.ts";
 
 import { applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 
@@ -202,7 +202,10 @@ test("accepted clone discovers bound workflows while a declined clone cannot res
             const one = join(home, "one"),
                 two = join(home, "two"),
                 declined = join(home, "declined");
-            for (const root of [one, two, declined]) await git(source, ["clone", source, root]);
+            for (const root of [one, two, declined]) {
+                await git(source, ["clone", source, root]);
+                await configureFixtureIdentity(root);
+            }
             const workflow = pendingTriage(await runOperation("activate", one, activateInput()));
             const admitted = await admitProjectIdentity(one);
             ok(admitted.kind === "existing");
@@ -251,7 +254,10 @@ test("linked-clone visibility cannot transfer a live execution attempt or its pe
         try {
             const one = join(home, "one"),
                 two = join(home, "two");
-            for (const root of [one, two]) await git(source, ["clone", source, root]);
+            for (const root of [one, two]) {
+                await git(source, ["clone", source, root]);
+                await configureFixtureIdentity(root);
+            }
             const active = await implementing(one);
             ok(active.ok);
             const entered = await admitProjectIdentity(one);
@@ -298,7 +304,10 @@ test("planning in a linked clone binds first execution there without transferrin
                 two = join(home, "two"),
                 three = join(home, "three"),
                 foreign = join(home, "foreign");
-            for (const root of [one, two, three, foreign]) await git(source, ["clone", source, root]);
+            for (const root of [one, two, three, foreign]) {
+                await git(source, ["clone", source, root]);
+                await configureFixtureIdentity(root);
+            }
             const pending = pendingTriage(await runOperation("activate", one, activateInput()));
             const admitted = await admitProjectIdentity(one);
             ok(admitted.kind === "existing");

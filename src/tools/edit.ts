@@ -9,7 +9,7 @@
  */
 
 import { createEditToolDefinition, type EditToolDetails, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type, type Static } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 const singleEditSchema = Type.Object(
     {
         path: Type.String({ description: "Path to the file to edit (relative or absolute)." }),

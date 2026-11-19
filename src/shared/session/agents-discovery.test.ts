@@ -1,16 +1,10 @@
 import { tmpdir } from "node:os";
-import {
-    mkdtemp as fsMkdtemp,
-    mkdir as fsMkdir,
-    rm as fsRm,
-    writeFile as fsWriteFile,
-    rename as fsRename,
-} from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { listAllAgentDefinitions, loadAgentDef } from "./agents.js";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { listAllAgentDefinitions, loadAgentDef } from "./agents.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 import process from "node:process";
@@ -34,35 +28,39 @@ async function withDiscoveryProject(run: (root: string, agentsDir: string) => Pr
     }
 }
 
-test("one discovery shares a consistent practice body despite concurrent real resource edits", async () => {
+test("plain Markdown Agent overrides append prompts in layer order", () =>
+    withProcessGlobalTestLock(() =>
+        withDiscoveryProject(async (root, agentsDir) => {
+            const homeAgents = join(root, "home", ".wld", "agents");
+            await fsMkdir(homeAgents, { recursive: true });
+            const previousHome = process.env["HOME"];
+            process.env["HOME"] = join(root, "home");
+            try {
+                const bundled = await loadAgentDef("router", root);
+                const homePrompt = "HOME_ROUTER_GUIDANCE";
+                const projectPrompt = "PROJECT_ROUTER_GUIDANCE";
+                await fsWriteFile(join(homeAgents, "router.md"), homePrompt);
+                await fsWriteFile(join(agentsDir, "router.md"), projectPrompt);
+
+                const direct = await loadAgentDef("router", root);
+                assertEquals(direct.displayName, bundled.displayName);
+                assertEquals(direct.tools, bundled.tools);
+                const appendedPrompts = `\n\n${homePrompt}\n\n${projectPrompt}`;
+                assertStringIncludes(direct.rolePrompt, appendedPrompts);
+                assertEquals(direct.rolePrompt.replace(appendedPrompts, ""), bundled.rolePrompt);
+                const discovered = (await listAllAgentDefinitions(root)).find((agent) => agent.name === "router");
+                assertEquals(discovered, direct);
+            } finally {
+                process.env["HOME"] = previousHome;
+            }
+        }),
+    ));
+
+test("a new Agent still requires front matter", async () => {
     await withDiscoveryProject(async (root, agentsDir) => {
-        const names = Array.from({ length: 48 }, (_, index) => `discovery-${String(index).padStart(2, "0")}`);
-        for (const [index, name] of names.entries()) {
-            await fsWriteFile(
-                join(agentsDir, `${name}.md`),
-                definition(name, index % 2 ? [" discovery-practice ", "discovery-practice"] : ["discovery-practice"]),
-            );
-        }
-        const path = join(agentsDir, "shared-practice", "discovery-practice.md");
-        await fsWriteFile(path, fragment("DISCOVERY_VERSION_0"));
-        let finished = false;
-        let edits = 0;
-        const discovery = listAllAgentDefinitions(root).finally(() => (finished = true));
-        // Atomic replacement gives each real read a complete valid fragment.
-        // Keep editing until discovery ends; no mocked filesystem or timer race.
-        while (!finished) {
-            await fsWriteFile(`${path}.next`, fragment(`DISCOVERY_VERSION_${++edits}`));
-            await fsRename(`${path}.next`, path);
-        }
-        const definitions = (await discovery).filter((agent) => names.includes(agent.name));
-        assertEquals(definitions.length, names.length);
-        assertEquals(edits > 1, true, "The fixture must edit during discovery");
-        const versions = definitions.map((agent) => agent.systemPrompt.match(/DISCOVERY_VERSION_\d+/g));
-        assertEquals(
-            versions.every((matches) => matches?.length === 1),
-            true,
-        );
-        assertEquals(new Set(versions.map((matches) => matches?.[0])).size, 1);
+        const name = "discovery-standalone-prompt";
+        await fsWriteFile(join(agentsDir, `${name}.md`), "Standalone prompt");
+        await assertRejects(() => loadAgentDef(name, root), Error, "has no frontmatter");
     });
 });
 

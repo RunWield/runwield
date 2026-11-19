@@ -8,9 +8,9 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { loadPlan } from "../../plan-store/index.ts";
 
 import { git } from "../git-test-fixture.ts";
-import { addEntry } from "../worktree-registry.js";
+import { addEntry } from "../worktree-registry.ts";
 import { withRuntimeCommandFixture as withBaseRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { listWorkRecords, writeWorkRecord } from "./store.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { autoGenerateWorkRecordForCompletedPlan } from "./auto-generation.ts";

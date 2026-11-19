@@ -3,8 +3,8 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "../shared/session/hosted-session.js";
-import { runIsolatedAgentSession } from "../shared/session/session.js";
+import { HostedSession } from "../shared/session/hosted-session.ts";
+import { runIsolatedAgentSession } from "../shared/session/session.ts";
 import { createDelegateAgentTool } from "./delegate-agent.ts";
 
 test("background delegates share shell slots and synchronous reader leases and release them on cancellation", async () => {
@@ -15,10 +15,12 @@ test("background delegates share shell slots and synchronous reader leases and r
             const gate = new Promise<void>((resolve) => {
                 release = resolve;
             });
-            setModelResponseFactories(Array.from({ length: 3 }, () => async () => {
-                await gate;
-                return fauxAssistantMessage(fauxText("reader done"));
-            }));
+            setModelResponseFactories(
+                Array.from({ length: 3 }, () => async () => {
+                    await gate;
+                    return fauxAssistantMessage(fauxText("reader done"));
+                }),
+            );
             const session = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
             const synchronous = session.acquireDelegatedAgentLease("read");
             const tool = createDelegateAgentTool({
@@ -38,9 +40,8 @@ test("background delegates share shell slots and synchronous reader leases and r
                 return response.details;
             };
             try {
-                const shells = Array.from(
-                    { length: 3 },
-                    () => session.backgroundTasks.startShell({ command: "sleep 20", cwd: projectRoot }),
+                const shells = Array.from({ length: 3 }, () =>
+                    session.backgroundTasks.startShell({ command: "sleep 20", cwd: projectRoot }),
                 );
                 const first = await start();
                 const second = await start();

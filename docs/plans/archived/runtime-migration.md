@@ -32,7 +32,7 @@ archivedFromPath: "docs/plans/runtime-migration.md"
 Current contributor commands retain the original task names; use `bun run compile --output <path>` and `bun run ci`.
 Dated checkpoints below record the transitional names used at the time. See [the task compatibility audit](../../bun-task-compatibility.md).
 Carlos subsequently approved Bun-only test container definitions without equivalent Deno permissions; see
-[the phase-2 plan](bun-only-toolchain.md) for the current container scope.
+[the phase-2 plan](https://github.com/RunWield/runwield/blob/4f5732749dbb0bf86a1f55de61728948efb14faa/docs/plans/archived/bun-only-toolchain.md) for the current container scope.
 
 ## Context and recovered decisions
 
@@ -57,7 +57,7 @@ production and tests subsystem by subsystem; qualify and switch distribution. Th
 ## Objective and scope
 
 Preserve current Session identity, files, recovery, writer exclusion, CLI/TUI behavior and Workspace journeys while
-replacing Deno-specific runtime dependencies. Follow [ADR-015](../../adr/015-file-authoritative-session-bundles.md) and the
+replacing Deno-specific runtime dependencies. Follow [ADR-014](../../adr/014-file-authoritative-session-bundles.md) and the
 Core [execution, validation and recovery requirements](../../prd/runwield-core-prd.md#execution-validation-and-recovery).
 No current PRD requirement is added or removed by the first portable storage slice.
 
@@ -231,7 +231,7 @@ its own Deno stat/remove calls, not the converted readers. Writer exclusion, loc
 remain on the existing Deno implementation.
 
 The unchanged directory-name encoder now has a small portable module, re-exported from its old location. The two
-transcript domain types live with the Session-store contracts and are aliased from their previous JSDoc location. The
+transcript domain types live with the Session-store contracts. The
 held-lock resource contract names only its existing release/close operations; this permits type-checking portable
 storage without importing the complete Deno application. It does not add a lock factory or injection seam.
 
@@ -590,8 +590,8 @@ embedded image worker explicitly. Deno remains the default release lane.
 The Bun type gate now includes the production application graph, preserving the previously checked foundation/tests. SDK
 aliases use their shipped declarations for type checking; the runtime alias map remains unchanged. The pinned
 proper-lockfile declaration package is recorded in both lockfiles. Third-party declaration checking is skipped because
-the installed Bun/Node/Astro declarations conflict; application source checking remains strict. Existing JSDoc modules
-now export their types explicitly; stale UI fixture values now use the actual runtime event contract.
+the installed Bun/Node/Astro declarations conflict; application source checking remains strict. Modules
+export their TypeScript types explicitly; stale UI fixture values now use the actual runtime event contract.
 
 The isolated Bun registry first expanded from 103 to 255 files. The initial run passed 227; shared fixtures still used
 Deno APIs. After porting those fixtures, all 255 pass under macOS and Linux ARM64

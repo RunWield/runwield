@@ -5,10 +5,10 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../../plan-store/index.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { ensureRootAgentSession } from "../session/session.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { ensureRootAgentSession } from "../session/session.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
-import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.js";
+import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.ts";
 
 type RepairRunOptions = {
     reportCompletion: boolean;
@@ -70,7 +70,7 @@ async function runCiRepair({ reportCompletion }: RepairRunOptions) {
 
         const plan = await loadPlan(projectRoot, "p");
         hostedSession.dispose();
-        return { ciRuns, plan, prompts, result };
+        return { ciRuns, plan, prompts, result, projectRoot };
     });
 }
 test("PLANNED_CHANGE CI repair parks when Engineer does not call task_completed", async () => {
@@ -84,6 +84,18 @@ test("PLANNED_CHANGE CI repair parks when Engineer does not call task_completed"
     assertEquals(run.plan?.attrs.status, "implemented");
     assertEquals(run.plan?.attrs.validationCiAttempts, 1);
     assertEquals(typeof run.plan?.attrs.failureReason, "string");
+    const prompt = run.prompts[0];
+    assertStringIncludes(prompt, run.projectRoot);
+    assertStringIncludes(prompt, "type error");
+    assertStringIncludes(prompt, ".wld/settings.json");
+    assertStringIncludes(prompt, "verification_command");
+    assertStringIncludes(prompt, "command can be the thing that is broken");
+    assertStringIncludes(prompt, "Run focused checks for the reported failure");
+    assertStringIncludes(prompt, "only when needed to diagnose the failure or explicitly requested by the user");
+    assertStringIncludes(prompt, "before you call `task_completed`");
+    assertStringIncludes(prompt, "RunWield will independently reload `.wld/settings.json`");
+    assertStringIncludes(prompt, "run the complete command after Task Completion");
+    assertStringIncludes(prompt, "report that full validation as pending");
 });
 
 test("PLANNED_CHANGE CI repair continues after Engineer calls task_completed", async () => {

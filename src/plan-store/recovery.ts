@@ -13,8 +13,8 @@ import {
     getStoredPlanPath,
     writePlanMarkdownWithRevision,
     type PlanFrontMatter,
-} from "../plan-store.js";
-import { buildPlanEventUpdates, type PlanStatus } from "../shared/workflow/plan-lifecycle.js";
+} from "../plan-store.ts";
+import { buildPlanEventUpdates, type PlanStatus } from "../shared/workflow/plan-lifecycle.ts";
 import { writeControllerState } from "./controllers.ts";
 import { currentPackageProject, readRecoveryExecution } from "./workflows.ts";
 import { currentHomeProjectOwner } from "../shared/project-identity.ts";
@@ -184,10 +184,10 @@ export async function retainUserVerifiedPlan(
     expectedRevision: string,
     attemptId?: string,
 ): Promise<void> {
-    const { resolvePrimaryCheckoutRoot } = await import("../shared/primary-checkout.ts");
+    const { resolvePrimaryCheckoutRoot } = await import("../shared/project-checkout.ts");
     const { resolveWorkflowPlanLocation } = await import("./location.ts");
     const { runRecoveryTransition } = await import("./transitions.ts");
-    const { updateEntry } = await import("../shared/worktree-registry.js");
+    const { updateEntry } = await import("../shared/worktree-registry.ts");
     const root = resolvePrimaryCheckoutRoot(cwd);
     if (managedPlanStoreActive()) {
         const accepted = await (await import("./queries.ts")).loadPlan(cwd, name);

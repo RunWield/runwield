@@ -1,5 +1,5 @@
 import { recordWorkflowOutcome } from "../../shared/workflow/outcome-observations.ts";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 
 import { closeTransitionRecordByAttestation, runPlanRecoveryEffects } from "../../plan-store/index.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";
@@ -21,13 +21,13 @@ import {
     executeReadyPlanWithRepair,
     validateCompletedExecution,
 } from "./plan-execution.ts";
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
-import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.js";
+import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.ts";
 import {
     findById as findWorktreeRegistryEntry,
     restoreEntryFromPlanEvidence,
     updateEntry as updateWorktreeRegistryEntry,
-} from "../../shared/worktree-registry.js";
+} from "../../shared/worktree-registry.ts";
 import { markPlanUserVerified, putPlanOnHold } from "./plan-hold.ts";
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { transitionFailureError } from "./transition-failure.ts";
@@ -36,7 +36,7 @@ import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { ProjectRuntimeEntryRefusedError } from "../../shared/project-runtime-layout.ts";
 
 import { resetPlanExecutionMetadata } from "../../plan-store/index.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
 import type { RecoveryFlowPlan, UnresolvedTransitionRecord } from "./plan-recovery-flow.ts";
 

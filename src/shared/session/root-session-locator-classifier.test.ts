@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { classifyRootSessionLocator, getRunWieldSessionDir } from "./root-session.js";
+import { classifyRootSessionLocator, getRunWieldSessionDir } from "./root-session.ts";
 
 async function makeRoot(name: string): Promise<string> {
     return await mkdtemp(join(tmpdir(), `${name}-`));
@@ -162,10 +162,10 @@ test("classifyRootSessionLocator silently catalogs Projects and legacy transcrip
     const root = await makeRoot("classifier-automatic-root");
     const store = openFileSessionStore();
     try {
-        assertEquals(
-            await classifyRootSessionLocator({ cwd: root, ownerCoordinationStore: store }),
-            { kind: "uncataloged", reason: "session_project_absent" },
-        );
+        assertEquals(await classifyRootSessionLocator({ cwd: root, ownerCoordinationStore: store }), {
+            kind: "uncataloged",
+            reason: "session_project_absent",
+        });
         const project = store.ensureRuntimeProject({ root });
         const sessionPath = await writeTranscript(root, "legacy-pi");
         const result = await classifyRootSessionLocator({

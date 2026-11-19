@@ -7,7 +7,7 @@ import type { ManagedRuntimeTransfer } from "../shared/project-runtime-managed.t
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
 import { operationHash } from "./operation-receipts.ts";
 import type { ControllerRecord } from "./controllers.ts";
-import type { WorktreeRegistryEntry } from "../shared/worktree-registry.js";
+import type { WorktreeRegistryEntry } from "../shared/worktree-registry.ts";
 import { ensurePrivateDir, writeJsonAtomically, writeTextAtomically } from "../shared/private-json-file.ts";
 import { assertPublicationAttempt, type PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
 import { recoverLegacyPlanControllers } from "./runtime-recovery.ts";

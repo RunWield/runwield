@@ -10,7 +10,7 @@ import type {
 } from "../session/file-session-store-types.ts";
 import type { ProjectIdentity } from "../project-identity.ts";
 import { openFileSessionStore, type RemoteSessionOwner } from "../session/file-session-store.ts";
-import { getRunWieldSessionsBaseDir } from "../session/root-session.js";
+import { getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import {
     ensurePrivateDir,
     ensureRemoteProject,
@@ -21,7 +21,7 @@ import {
     sessionDirForProject,
     writeTextAtomically,
 } from "../session/file-session-storage.ts";
-import { buildProjectedSessionInfo, summarizeResumableTranscript } from "../session/session-transcript-projection.js";
+import { buildProjectedSessionInfo, summarizeResumableTranscript } from "../session/session-transcript-projection.ts";
 import {
     REMOTE_SESSION_IDENTITY_ENTRY,
     sessionDigest,

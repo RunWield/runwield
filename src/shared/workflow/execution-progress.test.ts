@@ -1,9 +1,7 @@
-import { planFixtureJournalDirectory } from "../testing/plan-state-fixture.ts";
-import { seedPlan, seedPlanState } from "../testing/plan-state-fixture.ts";
+import process from "node:process";
+import { planFixtureJournalDirectory, seedPlan, seedPlanState } from "../testing/plan-state-fixture.ts";
 import { savePlanWithReadiness } from "../testing/ready-plan-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
-
-import process from "node:process";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -20,10 +18,9 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-
 import { type PlanFrontMatter } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import {
     checkpointExecutionPreparation,
@@ -31,18 +28,19 @@ import {
     hasExecutionChangesSince,
     removeWorktreeGitArtifacts,
     settleWorktreeAttempt,
-} from "../worktree.js";
-import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.js";
+} from "../worktree.ts";
+import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.ts";
 import { executePlan, startActiveExecutionWorkflow } from "./workflow.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { captureWorktreeTree } from "./git-snapshot.ts";
-
 import { runInitCommand } from "../../cmd/init/index.ts";
 import { createSessionRuntime } from "../session/session-runtime.ts";
 import { recordTutorialContext } from "../session/tutorial-context-session.ts";
 import { createInitialTutorialContext } from "../../ui/tui/onboarding-content.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../runwield-owned-paths.ts";
+import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { seedPlan as savePlan } from "../testing/plan-state-fixture.ts";
 
 interface RuntimeStatusEvent {
     type?: string;
@@ -56,6 +54,7 @@ interface TestPlanDescriptor {
 }
 
 const workflowRepo = defineCommittedGitFixture();
+
 const PLAN_ID = "execution-progress-plan";
 
 function messagesFrom(events: RuntimeStatusEvent[]): string[] {
@@ -166,6 +165,52 @@ test("execution preparation progress reports fresh worktree setup before launchi
             }
         });
     });
+});
+
+test("execution from a linked worktree checkpoints the selected Plan even when Git excludes it", async () => {
+    const projectRoot = await makeWorkflowProject([]);
+    const planName = "excluded-plan";
+    const planPath = `docs/plans/${planName}.md`;
+    const sourceCwd = join(projectRoot, ".worktrees", "planning");
+    const hostedSession = makeHostedSession(planName, sourceCwd, []);
+    let executionCwd = "";
+    try {
+        await git(projectRoot, ["worktree", "add", "-b", "planning", sourceCwd]);
+        await fsWriteFile(join(projectRoot, ".git", "info", "exclude"), `/${planPath}\n`);
+        await savePlan(sourceCwd, planName, "# Excluded Plan", {
+            classification: "PLANNED_CHANGE",
+            status: "ready_for_work",
+            summary: "Excluded Plan",
+            planId: PLAN_ID,
+        });
+        assertEquals(await git(sourceCwd, ["check-ignore", planPath]), planPath);
+
+        const workflow = await startActiveExecutionWorkflow({
+            planName,
+            triageMeta: { planId: PLAN_ID, classification: "PLANNED_CHANGE" },
+            currentStatus: "ready_for_work",
+            hostedSession,
+            ports: createExecutionStartPorts(),
+        });
+        assert(workflow.executionCwd);
+        executionCwd = workflow.executionCwd;
+        assertEquals((await loadPlan(executionCwd, planName))?.attrs.status, "in_progress");
+        assertEquals(
+            parsePlanFrontMatter(await git(executionCwd, ["show", `HEAD:${planPath}`])).attrs.status,
+            "in_progress",
+        );
+        assertEquals(
+            parsePlanFrontMatter(await git(executionCwd, ["show", `${workflow.baselineTree}:${planPath}`])).attrs
+                .status,
+            "ready_for_work",
+        );
+        assertEquals(await git(sourceCwd, ["check-ignore", planPath]), planPath);
+        assertEquals(await git(sourceCwd, ["ls-files", "--", planPath]), "");
+    } finally {
+        hostedSession.dispose();
+        if (executionCwd) await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true });
+        await fsRm(projectRoot, { recursive: true, force: true });
+    }
 });
 
 test("execution preparation progress reports reused worktree without claiming creation", async () => {

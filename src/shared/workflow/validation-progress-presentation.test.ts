@@ -6,7 +6,7 @@ import {
     validationProgressHeading,
     validationStageLabel,
 } from "./validation-progress-presentation.ts";
-import type { RuntimeValidationProgress } from "../session/session-runtime-events.js";
+import type { RuntimeValidationProgress } from "../session/session-runtime-events.ts";
 
 const BASE_CHECKS: RuntimeValidationProgress["checks"] = {
     ci: "pending",
@@ -16,9 +16,8 @@ const BASE_CHECKS: RuntimeValidationProgress["checks"] = {
 };
 
 function progress(
-    patch:
-        & Pick<RuntimeValidationProgress, "kind" | "outcome" | "stage">
-        & Partial<Omit<RuntimeValidationProgress, "kind" | "outcome" | "stage">>,
+    patch: Pick<RuntimeValidationProgress, "kind" | "outcome" | "stage"> &
+        Partial<Omit<RuntimeValidationProgress, "kind" | "outcome" | "stage">>,
 ): RuntimeValidationProgress {
     return {
         checks: BASE_CHECKS,
@@ -82,21 +81,20 @@ test("validation progress headings hide raw stages and counters", () => {
 });
 
 test("validation check summary uses shared labels without raw check names", () => {
-    const summary = validationProgressCheckSummary(progress({
-        kind: "workflow",
-        outcome: "running",
-        stage: "merge",
-        checks: {
-            ci: "passed",
-            semanticReview: "passed",
-            humanReview: "skipped",
-            merge: "running",
-        },
-    }));
-
-    assertEquals(
-        summary,
-        "Verification Command done, AI review passed, Code review skipped, Merge worktree running",
+    const summary = validationProgressCheckSummary(
+        progress({
+            kind: "workflow",
+            outcome: "running",
+            stage: "merge",
+            checks: {
+                ci: "passed",
+                semanticReview: "passed",
+                humanReview: "skipped",
+                merge: "running",
+            },
+        }),
     );
+
+    assertEquals(summary, "Verification Command done, AI review passed, Code review skipped, Merge worktree running");
     assertEquals(summary.includes("semanticReview"), false);
 });

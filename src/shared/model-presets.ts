@@ -1,6 +1,6 @@
 import { lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { getHomeDir, MODEL_PRESETS_DIR } from "../constants.js";
+import { getHomeDir, MODEL_PRESETS_DIR } from "../constants.ts";
 import type { ImageGenerationSettings } from "./image-generation-settings.ts";
 
 export interface ModelPresetAgentOverride {

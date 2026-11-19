@@ -3,9 +3,9 @@
  * Implementation of the reload command.
  */
 
-import { discoverAndRegisterThemes, setTheme } from "../../ui/theme/theme.js";
-import { clearMascotEnabledCache, getSettingsManager } from "../../shared/settings.js";
-import type { CommandContext } from "../registry.js";
+import { discoverAndRegisterThemes, setTheme } from "../../ui/theme/theme.ts";
+import { clearMascotEnabledCache, getSettingsManager } from "../../shared/settings.ts";
+import type { CommandContext } from "../registry.ts";
 
 /**
  * Executed when /reload is called.

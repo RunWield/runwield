@@ -12,7 +12,7 @@ import {
  */
 
 import { dirname, join } from "node:path";
-import { AGENT_DEFS_DIR, getHomeDir, SKILLS_DIR } from "../../constants.js";
+import { AGENT_DEFS_DIR, getHomeDir, SKILLS_DIR } from "../../constants.ts";
 import { directoryExists, fileExists } from "../helpers.ts";
 
 function bundledAgentDefsCacheDir(): string | null {
@@ -122,10 +122,11 @@ export async function ensureBundledAgentDefFile(relativePath: string): Promise<s
         } catch (error) {
             if (await fileExists(targetPath)) return targetPath;
             lastError = error instanceof Error ? error : String(error);
-            if (
-                !((error instanceof Error && "code" in error && error.code === "ENOENT") ||
-                    (error instanceof Error && "code" in error && error.code === "EEXIST"))
-            ) break;
+            if (!(
+                (error instanceof Error && "code" in error && error.code === "ENOENT") ||
+                (error instanceof Error && "code" in error && error.code === "EEXIST")
+            ))
+                break;
             await delay(20 * (attempt + 1));
         }
     }

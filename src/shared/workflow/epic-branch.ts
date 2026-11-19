@@ -18,14 +18,14 @@ import { join, relative } from "node:path";
 import { parsePlanFrontMatter } from "../../plan-format.ts";
 import { ensurePlanIdentity, findPlansByParent, loadPlan } from "../../plan-store/index.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import { projectPlanType } from "../project-plan.ts";
 import { isGitRepository } from "../git.ts";
-import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.js";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { listPlanExecutionDocuments } from "../../plan-store/index.ts";
-import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.js";
+import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.ts";
 
 /** Prefix for the branch RunWield names for an Epic when the author did not choose one. */
 export const EPIC_BRANCH_PREFIX = "epic/";

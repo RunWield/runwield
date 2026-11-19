@@ -1,14 +1,14 @@
 import process from "node:process";
-import { initRunWieldTheme } from "../theme/theme.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
 import { Key, matchesKey } from "@earendil-works/pi-tui";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import {
     DIRECTORY_WARNING,
     type DirectoryInspection,
     inspectMissingManagedProjectDirectory,
     inspectProjectDirectory,
 } from "../../shared/project-directory.ts";
-import { PromptSelectBlock } from "./blocks.js";
+import { PromptSelectBlock } from "./blocks.ts";
 import { getTUI, initTUI, stopTUI } from "./tui.ts";
 
 const acknowledgedRoots = new Set<string>();

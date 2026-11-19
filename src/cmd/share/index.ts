@@ -2,7 +2,7 @@ import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { renderSessionExportHtml } from "../../ui/session-export/session-export-html.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { rm as fsRm } from "node:fs/promises";
 /**
@@ -10,7 +10,7 @@ import { rm as fsRm } from "node:fs/promises";
  * Share the complete Session as HTML and JSON in one secret GitHub Gist.
  */
 
-import { theme } from "../../ui/theme/theme.js";
+import { theme } from "../../ui/theme/theme.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 
 interface CommandResult {
@@ -24,7 +24,7 @@ export interface GitHubCliPort {
 }
 
 export interface ShareCommandOptions {
-    uiAPI?: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage">;
+    uiAPI?: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage">;
     sessionRuntime?: SessionRuntime;
     sessionId?: string;
     githubCli: GitHubCliPort;

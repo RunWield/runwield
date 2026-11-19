@@ -1,20 +1,20 @@
-// @ts-nocheck: local review bridge forwards JS Runtime interaction metadata to review launchers.
+// @ts-nocheck: Local review interaction metadata has implicit types.
 /**
  * @module shared/session/local-review-interactions
  * Runs local browser review surfaces for adapter-neutral Runtime interactions.
  */
 
 import { NO_OPEN_BROWSER_PORT } from "../browser-port.ts";
-import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "./session-runtime-interactions.js";
+import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import { runCodeReview } from "../../ui/review/code-review.ts";
 import { submitPlanForReview } from "../../ui/review/plan-review.ts";
 import { startArtifactReadSurface } from "../../ui/review/review-launcher.ts";
 
 /**
- * @param {import('./session-runtime-interactions.js').RuntimeInteractionRequest} request
+ * @param {import('./session-runtime-interactions.ts').RuntimeInteractionRequest} request
  * @param {AbortSignal | undefined} signal
- * @param {{ onSurfaceReady?: (url: string) => void | Promise<void>, requestArtifactDecision?: (url: string) => Promise<import('./session-runtime-interactions.js').RuntimeInteractionResponse> }} [options]
- * @returns {Promise<import('./session-runtime-interactions.js').RuntimeInteractionResponse>}
+ * @param {{ onSurfaceReady?: (url: string) => void | Promise<void>, requestArtifactDecision?: (url: string) => Promise<import('./session-runtime-interactions.ts').RuntimeInteractionResponse> }} [options]
+ * @returns {Promise<import('./session-runtime-interactions.ts').RuntimeInteractionResponse>}
  */
 export async function requestLocalReviewInteraction(request, signal, options = {}) {
     const meta = /** @type {Record<string, any>} */ request._meta || {};

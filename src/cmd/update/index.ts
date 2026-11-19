@@ -20,7 +20,7 @@ import {
     isNewerRunWieldVersion,
     normalizeRunWieldVersion,
     parseRunWieldReleaseVersion,
-} from "../../shared/update-check.js";
+} from "../../shared/update-check.ts";
 
 export interface UpdateNetworkPort {
     fetch: FetchRequest;
@@ -34,7 +34,7 @@ export interface ProcessExitPort {
     exit(code: number): void;
 }
 
-export type UpdateCommandOptions = import("../registry.js").CommandContext & {
+export type UpdateCommandOptions = import("../registry.ts").CommandContext & {
     networkPort: UpdateNetworkPort;
     installerPort: InstallerProcessPort;
     exitPort: ProcessExitPort;

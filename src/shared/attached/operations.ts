@@ -15,8 +15,8 @@ import {
 } from "../workflow/implementation-report.ts";
 import type { CompatibilityAssessment } from "./compatibility.ts";
 import type { CodexRoleDispatch } from "./codex-role-settings.ts";
-import type { ActiveExecutionWorkflow } from "../session/hosted-session.js";
-import { ROUTING_INTENTS, WORK_KINDS } from "../../constants.js";
+import type { ActiveExecutionWorkflow } from "../session/hosted-session.ts";
+import { ROUTING_INTENTS, WORK_KINDS } from "../../constants.ts";
 import { TRIAGE_COMPLEXITIES, type TriageOutcome, type TriageOutcomeInput } from "../workflow/triage-outcome.ts";
 
 export type AttachedJsonValue = string | number | boolean | null | AttachedJsonValue[] | AttachedJsonObject;
@@ -25,9 +25,11 @@ export type AttachedJsonObject = { [key: string]: AttachedJsonValue };
 /** Lifecycle operations keep their Core tool names; `activate`, `status`, and `start_execution` have no Core tool equivalent. */
 export type AttachedOperationName =
     | "activate"
+    | "get_role_instructions"
     | "triage_report"
     | "status"
     | "plan_written"
+    | "start_planning"
     | "start_execution"
     | "task_completed"
     | "start_validation"
@@ -40,7 +42,30 @@ export type AttachedOperationName =
 
 export type AttachedReadOperationName =
     "get_instructions" | "get_artifact" | "get_pending_chat" | "read_plan" | "work_record_read" | "work_record_search";
-export type AttachedLifecycleOperationName = Exclude<AttachedOperationName, AttachedReadOperationName>;
+export type AttachedLifecycleOperationName = Exclude<
+    AttachedOperationName,
+    AttachedReadOperationName | "get_role_instructions"
+>;
+
+export type AttachedConversationalRole = "ideator" | "guide";
+export const ATTACHED_CONVERSATION_CONTRACT_VERSION = "runwield.attached.conversation/1";
+
+export interface AttachedRoleReadEnvelope {
+    role: AttachedConversationalRole;
+    evidence: HostEvidence;
+}
+
+/** Stateless success is distinct from a lifecycle result, which always has a workflow. */
+export type AttachedRoleReadResult =
+    | {
+          ok: true;
+          operation: "get_role_instructions";
+          instructions: AttachedRoleInstructions;
+          compatibility: CompatibilityAssessment;
+          workflow?: never;
+          reviewReply?: never;
+      }
+    | Extract<AttachedOperationResult, { ok: false }>;
 
 export interface AttachedActionReadEnvelope extends StatusEnvelope {
     evidence: HostEvidence;
@@ -123,7 +148,19 @@ export interface AttachedOperationEnvelope<Payload> {
 export interface ActivatePayload {
     requestText: string;
     hostRequestId: string;
+    existingPlan?: ExistingPlanningPlan;
 }
+
+/** User-selected identity; filesystem authority is always resolved by Core. */
+export interface ExistingPlanningPlan extends AttachedPlanReference {
+    targetBranch?: string;
+}
+
+export interface StartPlanningPayload {
+    actionId: string;
+    existingPlan?: ExistingPlanningPlan;
+}
+export type StartPlanningEnvelope = WorkflowOperationEnvelope<StartPlanningPayload>;
 
 export interface TriageReportPayload {
     actionId: string;
@@ -243,6 +280,8 @@ export interface AttachedReviewRound {
 /** The RunWield roles a host plays in Attached Mode. */
 export const ATTACHED_HOST_ROLES = [
     "router",
+    "ideator",
+    "guide",
     "planner",
     "engineer",
     "frontend-engineer",
@@ -261,9 +300,26 @@ export interface PendingHostAction {
     imagePaths?: string[];
 }
 
+export interface AttachedPlanningAction extends PendingHostAction {
+    kind: "plan";
+    projectSetup: string[];
+    planningRequired: boolean;
+    planningCwd?: string;
+    planPath?: string;
+    planName?: string;
+    planId?: string;
+}
+
+export interface AttachedValidationProgress {
+    phase: import("../workflow/validation-checkpoint.ts").ValidationCheckpointPhase;
+    checkpointState: import("../workflow/validation-checkpoint.ts").ValidationCheckpointState;
+    updatedAt: string;
+}
+
 export type AttachedNextAction = (
     | ({ kind: "triage" } & PendingHostAction)
-    | ({ kind: "plan"; projectSetup: string[] } & PendingHostAction)
+    | AttachedPlanningAction
+    | { kind: "role_handoff"; role: AttachedConversationalRole }
     | { kind: "review"; round: number; planName: string; chat?: AttachedChatTurn }
     | { kind: "plan_ready"; planName: string; guidance: string }
     | { kind: "plan_saved"; planName: string; guidance: string }
@@ -284,6 +340,14 @@ export type AttachedNextAction = (
           kind: "validation";
           actionId: string;
           request: import("../workflow/validation-host-contract.ts").ValidationHostRequest;
+      }
+    | {
+          kind: "validation_running";
+          operationId?: string;
+          operation?: AttachedOperationName;
+          startedAt?: string;
+          progress?: AttachedValidationProgress;
+          guidance: string;
       }
     | {
           kind: "validation_recovery";
@@ -324,7 +388,7 @@ export interface AttachedPlanReference {
     planName: string;
 }
 
-/** The effective role instructions Core returns with a pending host action. Never saved. */
+/** Effective instructions for a pending action or stateless conversational entry. Never saved. */
 export interface AttachedRoleInstructions {
     role: AttachedHostRole;
     contractVersion: string;
@@ -333,6 +397,7 @@ export interface AttachedRoleInstructions {
 }
 
 export type AttachedWorkflowClosure =
+    | { reason: "role_handoff"; routingIntent: "IDEATION" | "INQUIRY"; role: AttachedConversationalRole }
     | { reason: "unsupported_in_preview"; routingIntent: string }
     | { reason: "plan_advanced_in_core"; message: string }
     | {
@@ -503,6 +568,16 @@ function parse<Envelope>(input: AttachedJsonValue | undefined, read: () => Envel
     }
 }
 
+/** Conversational entry accepts no workflow identity or conversation content. */
+export function parseAttachedRoleReadInput(input: AttachedJsonValue | undefined) {
+    return parse(input, (): AttachedRoleReadEnvelope => {
+        const value = readObject(input, "", ["role", "evidence"]);
+        const role = readText(value, "role", "role", MAX_SHORT_TEXT_LENGTH);
+        if (role !== "ideator" && role !== "guide") reject("invalid_input", "role", "Use ideator or guide.");
+        return { role, evidence: readEvidence(value) };
+    });
+}
+
 /** Parse evidence once at the common boundary before dispatching any evidence-carrying operation. */
 export function parseHostEvidence(input: AttachedJsonValue | undefined) {
     return parse(input, () =>
@@ -513,7 +588,7 @@ export function parseHostEvidence(input: AttachedJsonValue | undefined) {
 export function parseActivateInput(projectRoot: string, input: AttachedJsonValue | undefined) {
     return parse(input, (): ActivateEnvelope => {
         const object = readObject(input, "", ["operationId", "evidence", "payload"]);
-        const payload = readObject(object.payload, "payload", ["requestText", "hostRequestId"]);
+        const payload = readObject(object.payload, "payload", ["requestText", "hostRequestId", "existingPlan"]);
         return {
             projectRoot,
             operationId: readIdentifier(object, "operationId", "operationId"),
@@ -521,9 +596,34 @@ export function parseActivateInput(projectRoot: string, input: AttachedJsonValue
             payload: {
                 requestText: readText(payload, "requestText", "payload.requestText", MAX_REQUEST_TEXT_LENGTH),
                 hostRequestId: readIdentifier(payload, "hostRequestId", "payload.hostRequestId"),
+                existingPlan: readExistingPlanningPlan(payload.existingPlan),
             },
         };
     });
+}
+
+function readExistingPlanningPlan(value: AttachedJsonValue | undefined): ExistingPlanningPlan | undefined {
+    if (value === undefined) return undefined;
+    const plan = readObject(value, "payload.existingPlan", ["planName", "planId", "targetBranch"]);
+    return {
+        planName: readText(plan, "planName", "payload.existingPlan.planName", MAX_SHORT_TEXT_LENGTH),
+        planId: readIdentifier(plan, "planId", "payload.existingPlan.planId"),
+        targetBranch: readOptionalText(
+            plan,
+            "targetBranch",
+            "payload.existingPlan.targetBranch",
+            MAX_SHORT_TEXT_LENGTH,
+        ),
+    };
+}
+
+export function parseStartPlanningInput(projectRoot: string, input: AttachedJsonValue | undefined) {
+    return parse(input, (): StartPlanningEnvelope =>
+        readWorkflowEnvelope(projectRoot, input, ["actionId", "existingPlan"], (payload) => ({
+            actionId: readIdentifier(payload, "actionId", "payload.actionId"),
+            existingPlan: readExistingPlanningPlan(payload.existingPlan),
+        })),
+    );
 }
 
 function readWorkflowEnvelope<Payload>(
@@ -841,7 +941,42 @@ export interface AttachedOperationDescriptor {
 }
 
 /** Host-facing descriptions and JSON Schemas. `parse*Input` above stays the authority. */
+const EXISTING_PLANNING_PLAN_SCHEMA = {
+    type: "object",
+    additionalProperties: false,
+    required: ["planName", "planId"],
+    properties: {
+        planName: {
+            type: "string",
+            maxLength: MAX_SHORT_TEXT_LENGTH,
+            description: "Existing Plan name relative to docs/plans/, without .md.",
+        },
+        planId: IDENTIFIER_SCHEMA,
+        targetBranch: { type: "string", maxLength: MAX_SHORT_TEXT_LENGTH },
+    },
+};
+
 export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
+    {
+        name: "get_role_instructions",
+        description:
+            "Read current Ideator or Guide instructions without starting or resuming a workflow. The host owns the conversation.",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["role", "evidence"],
+            properties: { role: { type: "string", enum: ["ideator", "guide"] }, evidence: EVIDENCE_SCHEMA },
+        },
+    },
+    {
+        name: "start_planning",
+        description:
+            "Prepare the pending Planner action through Core before dispatch or edits. For an existing Plan, supply its name and Plan ID (also when continuing an older unbound workflow). Core binds it and prepares its authoritative directory. Retries reuse preparation; passive reads never prepare.",
+        inputSchema: workflowOperationSchema(["actionId"], {
+            actionId: IDENTIFIER_SCHEMA,
+            existingPlan: EXISTING_PLANNING_PLAN_SCHEMA,
+        }),
+    },
     {
         name: "activate",
         description:
@@ -860,6 +995,7 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
                     properties: {
                         requestText: { type: "string", maxLength: MAX_REQUEST_TEXT_LENGTH },
                         hostRequestId: IDENTIFIER_SCHEMA,
+                        existingPlan: EXISTING_PLANNING_PLAN_SCHEMA,
                     },
                 },
             },
@@ -1178,7 +1314,7 @@ for (const name of ["start_validation", "review_diff", "review_complete", "valid
             name === "start_validation"
                 ? "Continue shared Core validation and publication or recover an interrupted call."
                 : name === "review_diff"
-                  ? "Read the pending reviewer candidate. Only show records coverage; list does not."
+                  ? "Read the pending reviewer candidate or the current repair checkout's full diff. Only reviewer show calls record coverage; repair reads and list calls do not."
                   : name === "review_complete"
                     ? "Submit the fresh reviewer's structured outcome. Core checks coverage and candidate identity."
                     : "Submit the user's answer to the pending Core validation decision.",
@@ -1311,7 +1447,7 @@ ATTACHED_OPERATIONS.push(
     {
         name: "get_artifact",
         description:
-            "Read a bounded UTF-8 page of the current action's prompt, execution report, or repair report. Continue with nextOffsetBytes until truncated is false. Use review_diff for diff inspection receipts.",
+            "Read a bounded UTF-8 page of the current action's prompt, execution report, or repair report. Continue with nextOffsetBytes until truncated is false. Use review_diff for diff inspection; only reviewer reads record coverage.",
         inputSchema: {
             type: "object",
             additionalProperties: false,

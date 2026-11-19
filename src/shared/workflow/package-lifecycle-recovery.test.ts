@@ -4,15 +4,15 @@ import { loadPlan } from "../../plan-store/index.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { planPackageJournalDirectory } from "../../plan-store/packages.ts";
 import { importPlanPackages } from "../../plan-store/packages.ts";
-import { addEntry } from "../worktree-registry.js";
+import { addEntry } from "../worktree-registry.ts";
 
 import { listPlanHistory, showPlanMilestone, preparePlanWorkflow } from "../../plan-store/index.ts";
 import { currentPackageSelection } from "../../plan-store/workflows.ts";
 import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "../../plan-store/retained-source.ts";
 import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
-import { inspectWorktreeRegistry } from "../worktree-registry.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { git } from "../git-test-fixture.ts";
 import { test } from "node:test";
 import { equal, deepEqual, ok } from "node:assert/strict";

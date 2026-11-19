@@ -13,7 +13,7 @@ import {
 } from "./managed.ts";
 import { isHomeProjectOwner, projectStoreLocation, currentHomeProjectOwner } from "../shared/project-identity.ts";
 import type { WorkRecordMnemotecaPort } from "../shared/work-records/mnemoteca-port.ts";
-import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../shared/settings.js";
+import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../shared/settings.ts";
 import { preparedPackageRecordCopy, settlePreparedPackageRecord } from "../shared/work-records/package-recording.ts";
 /** Package input and settlement at the existing publication state-machine boundary. */
 import {
@@ -51,7 +51,7 @@ import {
     updatePackageWorkflowMetadata,
 } from "./workflows.ts";
 import type { PublicationAttempt, PublicationPhaseEvidence } from "../shared/workflow/publication-attempt.ts";
-import { checkpointExecutionWorktree } from "../shared/worktree.js";
+import { checkpointExecutionWorktree } from "../shared/worktree.ts";
 import { gitStatusPaths } from "../shared/git-runtime-safety.ts";
 import { isRunWieldOwnedRuntimePath } from "../shared/runwield-owned-paths.ts";
 

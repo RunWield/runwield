@@ -10,18 +10,18 @@ import {
 import { readLockFileSnapshot, lockFileSnapshotMatches, type LockFileSnapshot } from "./lock-file-snapshot.ts";
 import { DatabaseSync } from "./sqlite.ts";
 import { isLockHolderGone } from "./process-liveness.ts";
-import { getRunWieldRuntimeDir } from "../constants.js";
+import { getRunWieldRuntimeDir } from "../constants.ts";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import { basename, dirname, join, relative, isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { realpathSync, type Stats } from "node:fs";
 import { admitProjectIdentity, inspectProjectIdentity, type ProjectIdentity } from "./project-identity.ts";
-import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
 import { openNativeFileLock, type NativeFileLock } from "./native-file-lock.ts";
 import { ensurePrivateDir, syncParentDirectory } from "./private-json-file.ts";
 import { isRunWieldOwnedRuntimePath, LEGACY_PROJECT_RUNTIME_HAZARD_PATHS } from "./runwield-owned-paths.ts";
-import { inspectWorktreeRegistryAtPath } from "./worktree-registry.js";
+import { inspectWorktreeRegistryAtPath } from "./worktree-registry.ts";
 import { recoverLegacyRuntimeFiles } from "./project-runtime-recovery.ts";
 import {
     ProjectRuntimeEntryRefusedError,
@@ -58,6 +58,7 @@ interface RuntimeTransfer {
 }
 interface HomeMarker {
     version: 2;
+    checkoutIds?: string[];
     projectId: string;
     repositoryId: string;
     owner: string;
@@ -125,7 +126,7 @@ function git(root: string, args: string[]): string {
     return result.stdout.trim();
 }
 export function homeProjectRuntimeLayout(identity: ProjectIdentity): ProjectRuntimeLayout {
-    const primaryRoot = resolvePrimaryCheckoutRoot(identity.checkoutRoot);
+    const primaryRoot = canonicalRuntimeReference(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
     const home = projectHome(identity);
     const owner = ownerKey(identity);
     const internal = join(home, "internal", "legacy", identity.repositoryId, owner);
@@ -362,6 +363,11 @@ async function readMarker(layout: ProjectRuntimeLayout, identity: ProjectIdentit
     if (marker.version > 2)
         refuse("newer_layout", [layout.primary.layoutMarkerPath], "Home runtime requires a newer RunWield version.");
     if (
+        Object.keys(marker).some(
+            (key) => !["version", "projectId", "repositoryId", "owner", "roots", "checkoutIds"].includes(key),
+        ) ||
+        (marker.checkoutIds !== undefined &&
+            (!Array.isArray(marker.checkoutIds) || marker.checkoutIds.some((id) => typeof id !== "string" || !id))) ||
         marker.version !== 2 ||
         marker.projectId !== identity.projectId ||
         marker.repositoryId !== identity.repositoryId ||
@@ -671,7 +677,11 @@ export async function inspectHomeProjectRuntime(identity: ProjectIdentity): Prom
         const pending =
             Boolean(journal) ||
             (!marker && files.length > 0) ||
-            Boolean(marker && !marker.roots.includes(identity.checkoutRoot));
+            Boolean(
+                marker &&
+                !marker.roots.includes(identity.checkoutRoot) &&
+                (!marker.checkoutIds?.includes(identity.checkoutId) || files.length > 0),
+            );
         return {
             kind: pending ? "pending" : marker ? "ready" : "fresh",
             layout,
@@ -1041,6 +1051,9 @@ export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promis
             repositoryId: identity.repositoryId,
             owner: ownerKey(identity),
             roots: [...new Set([...(marker?.roots ?? []), ...roots])],
+            checkoutIds: [
+                ...new Set([...(marker?.checkoutIds ?? []), ...identities.map(({ checkoutId }) => checkoutId)]),
+            ],
         });
         await fs.rm(layout.primary.layoutMigrationJournalPath);
         syncParentDirectory(layout.primary.layoutMigrationJournalPath);

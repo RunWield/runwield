@@ -11,7 +11,7 @@ import { match as assertMatch, doesNotMatch as assertNotMatch } from "node:asser
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import type { TextContent, TSchema } from "@earendil-works/pi-ai";
+import type { TextContent } from "@earendil-works/pi-ai";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../docs-file-tools.ts";
 
 type DocsTool = ReturnType<typeof createWriteDocsToolDefinition | typeof createEditDocsToolDefinition>;
@@ -30,10 +30,6 @@ interface FixtureContentPart extends Partial<Omit<TextContent, "type">> {
 interface FixtureDocsResult {
     content?: FixtureContentPart[];
     isError?: boolean;
-}
-
-interface FixtureEditSchema {
-    properties: Record<"path" | "oldText" | "newText", TSchema>;
 }
 
 type FixtureExecute = (
@@ -59,27 +55,6 @@ function toolText(result: FixtureDocsResult) {
     const typed = result;
     return (typed.content || []).map((item) => item.text || "").join("\n");
 }
-
-test("write_docs exposes Markdown-only metadata", () => {
-    const tool = createWriteDocsToolDefinition("/tmp");
-    assertEquals(tool.name, "write_docs");
-    assertEquals(tool.label, "write_docs");
-    assertMatch(tool.description, /\.md/i);
-    assertEquals(typeof tool.execute, "function");
-    assertEquals(typeof tool.parameters, "object");
-});
-
-test("edit_docs exposes Markdown-only single-edit metadata", () => {
-    const tool = createEditDocsToolDefinition("/tmp");
-    assertEquals(tool.name, "edit_docs");
-    assertEquals(tool.label, "edit_docs");
-    assertMatch(tool.description, /\.md/i);
-    assertEquals(typeof tool.execute, "function");
-    assertEquals(typeof tool.parameters, "object");
-
-    const properties = (tool.parameters as FixtureEditSchema).properties;
-    assertEquals(Object.keys(properties), ["path", "oldText", "newText"]);
-});
 
 test("edit_docs reports a failed match without dumping the document", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));

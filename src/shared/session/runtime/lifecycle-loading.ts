@@ -1,4 +1,4 @@
-import { resolveResumeAgentName } from ".././active-agent-session.js";
+import { resolveResumeAgentName } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
 import {
     classifyRootSessionLocator,
@@ -6,12 +6,12 @@ import {
     isPathInside,
     listPersistedRootSessions,
     openPersistedRootSession,
-} from ".././root-session.js";
-import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.js";
-import { createReplayEvents as createProjectedReplayEvents } from ".././session-transcript-projection.js";
-import { requestHostedSessionInteraction } from ".././session-runtime-interactions.js";
+} from ".././root-session.ts";
+import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { createReplayEvents as createProjectedReplayEvents } from ".././session-transcript-projection.ts";
+import { requestHostedSessionInteraction } from ".././session-runtime-interactions.ts";
 import { sessionDirForCheckout } from ".././file-session-storage.ts";
-import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
+import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
 import { isAbsolute } from "node:path";
 
 import { enterGitProjectRuntime, isRuntimeRootSessionManager } from "./support.ts";
@@ -86,7 +86,7 @@ export class RuntimeLifecycleLoading {
     }
     async replaceSessionForExecutionFollowUp(
         oldSessionId: string,
-        workflow: import("../../types.js").ActiveExecutionWorkflow,
+        workflow: import("../execution-workflow-session.ts").ActiveExecutionWorkflow,
     ) {
         const oldSession = this.services.sessionHost.getSession(oldSessionId);
         if (!oldSession) throw new Error("SessionRuntime.replaceSessionForExecutionFollowUp: old session not found");
@@ -388,7 +388,7 @@ export class RuntimeLifecycleLoading {
 
     setInteractionAdapter(
         sessionId: string,
-        adapter: import(".././session-runtime-interactions.js").RuntimeInteractionAdapter | null,
+        adapter: import(".././session-runtime-interactions.ts").RuntimeInteractionAdapter | null,
     ) {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return { ok: false, error: "not_found" };
@@ -399,7 +399,7 @@ export class RuntimeLifecycleLoading {
     answerInteraction(
         sessionId: string,
         interactionId: string,
-        response: import("../session-runtime-interactions.js").RuntimeInteractionResponse,
+        response: import("../session-runtime-interactions.ts").RuntimeInteractionResponse,
     ) {
         const record = this.services.sessionHost.getSession(sessionId)?.getActiveInteractions().get(interactionId);
         if (!record?.answer || !["select", "text", "approval"].includes(record.request?.type || "")) return false;
@@ -413,7 +413,7 @@ export class RuntimeLifecycleLoading {
 
     async requestInteraction(
         sessionId: string,
-        request: import(".././session-runtime-interactions.js").RuntimeInteractionRequest,
+        request: import(".././session-runtime-interactions.ts").RuntimeInteractionRequest,
         signal?: AbortSignal,
     ): Promise<import("./types.ts").RuntimeInteractionResult> {
         const session = this.services.sessionHost.getSession(sessionId);

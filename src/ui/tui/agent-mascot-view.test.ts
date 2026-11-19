@@ -1,6 +1,6 @@
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { test } from "node:test";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -9,7 +9,7 @@ import { createChatView } from "./chat-view.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { mascotForAgent } from "../mascot/mascot.ts";
 import { createValidationSessionPort } from "../../shared/workflow/validation-session-adapter.ts";
-import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
+import { attachTuiRuntimeAdapter } from "./runtime-adapter.ts";
 
 test("publication shows Base and default working text without an active Agent", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session }) => {

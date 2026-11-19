@@ -1,51 +1,31 @@
 import { assertEquals } from "../src/testing/assertions.ts";
-import { test } from "node:test";
-import { extractRelativeLinks, findBrokenLinks, headingSlug, headingSlugs } from "./check-doc-links.ts";
+import { test, type TestContext } from "node:test";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { findBrokenLinks } from "./check-doc-links.ts";
 
-function fakeRepo(files: Record<string, string>) {
+async function documentRepo(t: TestContext, files: Record<string, string>) {
+    const root = await mkdtemp(join(tmpdir(), "wld-doc-links-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    for (const [path, contents] of Object.entries(files)) {
+        await mkdir(dirname(join(root, path)), { recursive: true });
+        await writeFile(join(root, path), contents);
+    }
     return {
-        readTextFile: (path: string) => {
-            if (!(path in files)) throw Object.assign(new Error(path), { code: "ENOENT" });
-            return Promise.resolve(files[path]);
-        },
-        pathExists: (path: string) => Promise.resolve(path in files),
+        readTextFile: (path: string) => readFile(join(root, path), "utf8"),
+        pathExists: (path: string) =>
+            stat(join(root, path)).then(
+                () => true,
+                () => false,
+            ),
     };
 }
 
-test("extractRelativeLinks ignores absolute, anchor-only, front matter, and fenced links", () => {
-    const markdown = [
-        "---",
-        'failureReason: "[captured](docs/not-documentation.md)"',
-        "---",
-        "[relative](docs/thing.md)",
-        "[external](https://example.com/x.md)",
-        "[anchor](#section)",
-        "[mail](mailto:a@b.c)",
-        "```",
-        "[fenced](docs/nope.md)",
-        "```",
-    ].join("\n");
-
-    assertEquals(extractRelativeLinks(markdown), [{ line: 4, target: "docs/thing.md" }]);
-});
-
-test("headingSlug matches GitHub-style anchors", () => {
-    assertEquals(headingSlug("## Plan Workflow Model"), "-plan-workflow-model");
-    assertEquals(headingSlug("Execution, Validation, and Delivery Model"), "execution-validation-and-delivery-model");
-    assertEquals(headingSlug("`code` and *emphasis*"), "code-and-emphasis");
-});
-
-test("headingSlugs skips front matter, fenced code, and disambiguates duplicates", () => {
-    const slugs = headingSlugs(
-        ["---", 'summary: "# Not A Heading"', "---", "# Title", "```", "# Not A Heading", "```", "## Title"].join("\n"),
-    );
-    assertEquals([...slugs], ["title", "title-1"]);
-});
-
-test("findBrokenLinks resolves relative to the linking file, not the repo root", async () => {
+test("findBrokenLinks resolves relative to the linking file, not the repo root", async (t) => {
     // The exact defect this ratchet exists for: docs/architecture.md linking
     // "docs/entity-model.md" resolves to docs/docs/entity-model.md.
-    const repo = fakeRepo({
+    const repo = await documentRepo(t, {
         "docs/architecture.md": "[model](docs/entity-model.md)",
         "docs/entity-model.md": "# Model",
     });
@@ -55,22 +35,22 @@ test("findBrokenLinks resolves relative to the linking file, not the repo root",
     assertEquals(broken[0].reason, "no such file: docs/docs/entity-model.md");
 });
 
-test("findBrokenLinks accepts a correctly resolved sibling link", async () => {
-    const repo = fakeRepo({
+test("findBrokenLinks accepts a correctly resolved sibling link", async (t) => {
+    const repo = await documentRepo(t, {
         "docs/architecture.md": "[model](entity-model.md)",
         "docs/entity-model.md": "# Model",
     });
     assertEquals(await findBrokenLinks(["docs/architecture.md"], repo.readTextFile, repo.pathExists), []);
 });
 
-test("findBrokenLinks ignores tracked files deleted from the working tree", async () => {
-    const repo = fakeRepo({ "docs/present.md": "# Present" });
+test("findBrokenLinks ignores tracked files deleted from the working tree", async (t) => {
+    const repo = await documentRepo(t, { "docs/present.md": "# Present" });
 
     assertEquals(await findBrokenLinks(["docs/deleted.md", "docs/present.md"], repo.readTextFile, repo.pathExists), []);
 });
 
-test("historical Plan references do not relax links in lasting documentation", async () => {
-    const repo = fakeRepo({
+test("historical Plan references do not relax links in lasting documentation", async (t) => {
+    const repo = await documentRepo(t, {
         "docs/plans/completed.md":
             "[proposal](../prd/retired.md)\n[code](../../src/missing.ts)\n[current](../prd/current.md#missing)",
         "docs/user-guide.md": "[proposal](prd/retired.md)",
@@ -91,8 +71,8 @@ test("historical Plan references do not relax links in lasting documentation", a
     );
 });
 
-test("findBrokenLinks rejects a fragment with no matching heading", async () => {
-    const repo = fakeRepo({
+test("findBrokenLinks rejects a fragment with no matching heading", async (t) => {
+    const repo = await documentRepo(t, {
         "docs/a.md": "[gone](b.md#removed-section)",
         "docs/b.md": "# Present Section",
     });
@@ -102,18 +82,50 @@ test("findBrokenLinks rejects a fragment with no matching heading", async () => 
     assertEquals(broken[0].reason, 'no heading "#removed-section" in docs/b.md');
 });
 
-test("findBrokenLinks accepts a fragment that matches a heading", async () => {
-    const repo = fakeRepo({
+test("findBrokenLinks accepts a fragment that matches a heading", async (t) => {
+    const repo = await documentRepo(t, {
         "docs/a.md": "[there](b.md#present-section)",
         "docs/b.md": "# Present Section",
     });
     assertEquals(await findBrokenLinks(["docs/a.md"], repo.readTextFile, repo.pathExists), []);
 });
 
-test("findBrokenLinks flags links that escape the repository", async () => {
-    const repo = fakeRepo({ "docs/a.md": "[out](../../elsewhere.md)" });
+test("findBrokenLinks flags links that escape the repository", async (t) => {
+    const repo = await documentRepo(t, { "docs/a.md": "[out](../../elsewhere.md)" });
     const broken = await findBrokenLinks(["docs/a.md"], repo.readTextFile, repo.pathExists);
 
     assertEquals(broken.length, 1);
     assertEquals(broken[0].reason, "resolves outside the repository");
+});
+
+test("document validation ignores examples and resolves formatted and duplicate heading anchors", async (t) => {
+    const repo = await documentRepo(t, {
+        "docs/source.md": [
+            "---",
+            'summary: "[metadata](missing-metadata.md)"',
+            "---",
+            "[external](https://example.com)",
+            "[anchor](#local)",
+            "[mail](mailto:a@b.c)",
+            "```md",
+            "[example](missing-example.md)",
+            "```",
+            "[formatted](target.md#code-and-emphasis)",
+            "[punctuation](target.md#execution-validation-and-delivery-model)",
+            "[duplicate](target.md#title-1)",
+        ].join("\n"),
+        "docs/target.md": [
+            "---",
+            'summary: "# Title"',
+            "---",
+            "# Title",
+            "```md",
+            "# Title",
+            "```",
+            "## `code` and *emphasis*",
+            "## Execution, Validation, and Delivery Model",
+            "## Title",
+        ].join("\n"),
+    });
+    assertEquals(await findBrokenLinks(["docs/source.md"], repo.readTextFile, repo.pathExists), []);
 });

@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.js";
+import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.ts";
 import { sameReviewedMarkdown } from "./review.ts";
 import { settleSequenceHistory } from "./transitions.ts";
 import { readLocalHomeStore } from "./access.ts";
-import { StalePlanWriteError } from "../plan-store.js";
+import { StalePlanWriteError } from "../plan-store.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import {
     commitPlanPackageBatch,

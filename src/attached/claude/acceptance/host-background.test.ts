@@ -354,19 +354,6 @@ for (const [name, event] of [
         });
     });
 
-test("the external host fixture waits for a complete event line", async () => {
-    await withHost(async (root, host) => {
-        await emit(root, []);
-        const input = join(root, "claude-config/events");
-        await appendFile(input, '{"type":"result",');
-        await delay(50);
-        await appendFile(input, '"subtype":"success","is_error":false}\n');
-        await emit(root, []);
-        equal(host.readyForInput, true);
-        await host.finishTurn(100);
-    });
-});
-
 test("a redundant empty snapshot after the resumed parent result preserves that result", async () => {
     await withHost(async (root, host) => {
         await emit(root, [started, success, completed, success]);

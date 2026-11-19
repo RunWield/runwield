@@ -4,7 +4,7 @@ import { lstat as fsLstat, realpath as fsRealpath, stat as fsStat } from "node:f
 import { platform } from "node:process";
 import { dirname, isAbsolute, join, normalize, relative } from "node:path";
 import type { ProjectPersonalOwner } from "../project-identity.ts";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 
 /** Resource roots for one explicitly activated remote connection. Never set during connection-only startup. */
 export interface RemotePersonalResources {

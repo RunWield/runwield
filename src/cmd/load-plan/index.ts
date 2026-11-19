@@ -3,7 +3,7 @@ import { continueMissingPlanExecution } from "../../plan-store/index.ts";
 import { selectPlanAccess } from "../../plan-store/index.ts";
 import { capturePlanAccess, withPlanAccess } from "../../plan-store/index.ts";
 import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
-import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 import process from "node:process";
 import {
     confirmMissingManagedProjectDirectory,
@@ -19,7 +19,7 @@ import { isEpicPlan, projectPlanType } from "../../shared/project-plan.ts";
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { AGENTS, CLI_BIN, getCwd } from "../../constants.js";
+import { AGENTS, CLI_BIN, getCwd } from "../../constants.ts";
 import { canonicalPlanStatus, isRecoverableWorktreeStatus } from "../../plan-format.ts";
 import {
     archivePlan,
@@ -32,7 +32,7 @@ import {
 } from "../../plan-store/index.ts";
 import { isPlanArchivePending, startBackgroundArchive } from "./archive-background.ts";
 import { decidePostPlanning } from "../../shared/workflow/decisions.ts";
-import { buildPlannerReReviewRequest, buildResumeRequest } from "./plan-presentation.ts";
+import { buildPlanningReReviewRequest, buildResumeRequest } from "./plan-presentation.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { handlePlanRecovery, SYSTEM_RECOVERY_FLOW_PORTS } from "./plan-recovery-flow.ts";
 import {
@@ -58,14 +58,14 @@ import {
     putPlanOnHold,
 } from "./plan-hold.ts";
 import { completeUserVerification } from "./user-verification-completion.ts";
-import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import { confirmChildFeatureDependencies, formatTopLevelPlanOption } from "./plan-epic-children.ts";
 import { reopenPlanForReview, resolveRecoveryWorktree } from "./plan-recovery-worktree.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";
-import { isExecutablePlanStatus, isInValidation } from "../../shared/workflow/plan-lifecycle.js";
+import { isExecutablePlanStatus, isInValidation } from "../../shared/workflow/plan-lifecycle.ts";
 import { getPlanContentStatus } from "../../shared/workflow/validation-engine.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
-import { printCommandHelp } from "../help/index.js";
+import { printCommandHelp } from "../help/index.ts";
 import { startInteractiveSession } from "../../ui/tui/chat-session.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import {
@@ -78,8 +78,8 @@ import {
     PlanningNotStartedError,
     resolveWorkflowPlanLocation,
 } from "../../plan-store/index.ts";
-import type { CommandContext } from "../registry.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { CommandContext } from "../registry.ts";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import {
     buildPlanRecoveryUserMessage,
     buildValidationRecoveryNotice,
@@ -109,7 +109,7 @@ async function finishSavedPublicationCleanup(projectRoot: string, uiAPI: UiAPI, 
  * Handle `load-plan` command.
  *
  * @param {string[]} argv
- * @param {import('../registry.js').CommandContext} [options]
+ * @param {import('../registry.ts').CommandContext} [options]
  */
 export async function runLoadPlanCommand(argv: string[], options: CommandContext = {}): Promise<void> {
     let sessionRuntime = options.sessionRuntime;
@@ -572,6 +572,44 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             if (result === "handled") return;
         }
 
+        const sendBackForReReview = async () => {
+            restoreAgentName = planFlowRestoreAgent;
+            await prepareSession();
+            const preReviewStatus = plan.attrs.status;
+            await reopenPlanForReview({
+                projectRoot,
+                plan,
+                currentStatus: preReviewStatus,
+                session,
+            });
+            await switchPlanAgent(agentName, { cwd: planDocumentRoot, forceRebuild: true });
+
+            const outcome = await runPlanningAgent({
+                agentName,
+                initialRequest: buildPlanningReReviewRequest(plan.planName, agentName),
+                triageMeta: plan.attrs,
+                planName: plan.planName,
+                cwd: planDocumentRoot,
+            });
+
+            const planningDecision = decidePostPlanning(outcome, {
+                planningAgentName: agentName,
+                fallbackTriageMeta: plan.attrs,
+            });
+            const postPlanningResult = await executePostPlanningDecision({
+                decision: planningDecision,
+                fallbackPlanContent: plan.markdown || plan.body || "",
+                uiAPI,
+                executePlan,
+                continueWorkflowValidation,
+                runSlicerAgent,
+                session,
+            });
+            if (postPlanningResult === "verified" || shouldKeepPlanningAgentActive(planningDecision)) {
+                skipRouterRestore = true;
+            }
+        };
+
         const epicResult = await handleEpicPlan({
             projectRoot,
             plan,
@@ -580,6 +618,10 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             loadChildPlan: loadAnotherPlan,
             session,
         });
+        if (epicResult === "architect_re_review") {
+            await sendBackForReReview();
+            return;
+        }
         if (epicResult === "direct_review") {
             restoreAgentName = planFlowRestoreAgent;
             await prepareSession();
@@ -794,41 +836,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 }
 
                 if (answer === "planner_re_review") {
-                    restoreAgentName = planFlowRestoreAgent;
-                    await prepareSession();
-                    const preReviewStatus = plan.attrs.status;
-                    await reopenPlanForReview({
-                        projectRoot,
-                        plan,
-                        currentStatus: preReviewStatus,
-                        session,
-                    });
-                    await switchPlanAgent(agentName, { cwd: planDocumentRoot, forceRebuild: true });
-
-                    const outcome = await runPlanningAgent({
-                        agentName,
-                        initialRequest: buildPlannerReReviewRequest(plan.planName),
-                        triageMeta: plan.attrs,
-                        planName: plan.planName,
-                        cwd: planDocumentRoot,
-                    });
-
-                    const planningDecision = decidePostPlanning(outcome, {
-                        planningAgentName: agentName,
-                        fallbackTriageMeta: plan.attrs,
-                    });
-                    const postPlanningResult = await executePostPlanningDecision({
-                        decision: planningDecision,
-                        fallbackPlanContent: plan.markdown || plan.body || "",
-                        uiAPI,
-                        executePlan,
-                        continueWorkflowValidation,
-                        runSlicerAgent,
-                        session,
-                    });
-                    if (postPlanningResult === "verified" || shouldKeepPlanningAgentActive(planningDecision)) {
-                        skipRouterRestore = true;
-                    }
+                    await sendBackForReReview();
                     return;
                 }
 

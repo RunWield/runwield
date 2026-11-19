@@ -107,7 +107,7 @@ import {
     getStoredPlanPath,
     type PlanFrontMatterInput,
     type PlanFrontMatter,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 
 /** A diagnostic/edit reference follows the selected storage owner even when loading the document failed. */
 export async function planDocumentReference(cwd: string, reference: string): Promise<string> {

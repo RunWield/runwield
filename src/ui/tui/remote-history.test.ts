@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { initRunWieldTheme } from "../theme/theme.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
 import { RunWieldTui } from "./tui.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";
 import { remoteHistoryFooter, showRemoteHistory } from "./remote-history.ts";

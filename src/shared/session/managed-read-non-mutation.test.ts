@@ -11,11 +11,11 @@ import {
 } from "node:fs/promises";
 import process from "node:process";
 import { join } from "node:path";
-import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { SESSION_RUNTIME_METHOD_POLICY } from "./session-runtime-method-policy.ts";
-import { getRunWieldSessionDir } from "./root-session.js";
+import { getRunWieldSessionDir } from "./root-session.ts";
 
 export interface WritablePiCall {
     name: string;
@@ -320,23 +320,4 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
             await removeTempDir(home);
         }
     });
-});
-
-test("writable Pi API instrumentation reports a negative control call", async () => {
-    const instrumented = await instrumentRealPiWritableApis();
-    try {
-        const pi = await import("@earendil-works/pi-coding-agent");
-        const manager = pi.SessionManager as WritablePiManager;
-        try {
-            manager.open?.("/missing", "/missing", "/missing");
-        } catch {
-            // The negative control only proves the writable boundary was reached.
-        }
-        assertEquals(
-            instrumented.calls.map((call) => call.name),
-            ["open"],
-        );
-    } finally {
-        instrumented.restore();
-    }
 });

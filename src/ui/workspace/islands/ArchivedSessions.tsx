@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { SessionList, type SessionListData } from "../components/SessionList.jsx";
+import { SessionList, type SessionListData } from "../components/SessionList.tsx";
 
 interface ArchivedSessionsProps {
     projectId: string;

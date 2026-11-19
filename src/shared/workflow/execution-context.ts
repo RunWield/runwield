@@ -3,13 +3,13 @@ import { executionWorktreePathExists } from "./execution-worktree-rescue.ts";
 import { preparePlanController } from "../../plan-store/index.ts";
 import { resolve } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { realpath as fsRealpath } from "node:fs/promises";
+import { findExistingProjectPath } from "../project-checkout.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 /**
  * Fail-closed resolver for Workflow Validation execution context.
  */
 
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 
 import { normalizeExecutionMode } from "../../plan-format.ts";
 import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
@@ -21,14 +21,14 @@ import {
     reconcileEntryGitLocation,
     restoreEntryFromPlanEvidence,
     updateEntry as updateWorktreeRegistryEntry,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 import { prepareExecutionPlanFile } from "../../plan-store/index.ts";
 import { enterProjectRuntime, withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
-import { resolveTargetBranchName } from "../worktree.js";
+import { resolveTargetBranchName } from "../worktree.ts";
 import { getWorkflowDiff } from "./git-snapshot.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { recordWorkflowMetric } from "./metrics.js";
-import { isInValidation } from "./plan-lifecycle.js";
+import { recordWorkflowMetric } from "./metrics.ts";
+import { isInValidation } from "./plan-lifecycle.ts";
 import { hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
 import type { ValidationRecoveryNotice } from "./validation-user-messages.ts";
 
@@ -151,10 +151,6 @@ async function listAttachedWorktrees(projectRoot: string): Promise<AttachedWorkt
         .filter((entry) => entry.path.length > 0);
 }
 
-function isNonEmptyString(value: ScalarValue): value is string {
-    return typeof value === "string" && value.trim().length > 0;
-}
-
 function asString(value: ScalarValue): string | undefined {
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -175,15 +171,6 @@ function planIdentityMatches(left: ScalarValue, right: ScalarValue): boolean {
 
 function blocked(reason: string, message: string): BlockedValidationContext {
     return { kind: "blocked", reason, message };
-}
-
-async function realPath(value: string | undefined): Promise<string | undefined> {
-    if (!isNonEmptyString(value)) return undefined;
-    try {
-        return await fsRealpath(String(value));
-    } catch {
-        return undefined;
-    }
 }
 
 function selectCandidateContext({
@@ -417,10 +404,13 @@ async function resolveValidationExecutionContextInScope({
             "Git could not verify the recorded execution worktree. Recovery was left unchanged.",
         );
     }
-    const primaryPath = await realPath(attachedWorktrees[0]?.path);
-    const recordedPath = await realPath(worktreePath);
+    const primaryPath = await findExistingProjectPath(attachedWorktrees[0]?.path);
+    const recordedPath = await findExistingProjectPath(worktreePath);
     const branchCheckout = attachedWorktrees.find((entry) => entry.branch === worktreeBranch);
-    if (primaryPath && (recordedPath === primaryPath || (await realPath(branchCheckout?.path)) === primaryPath)) {
+    if (
+        primaryPath &&
+        (recordedPath === primaryPath || (await findExistingProjectPath(branchCheckout?.path)) === primaryPath)
+    ) {
         return blocked(
             "primary_checkout_is_not_execution_worktree",
             "Recovery cannot use the primary checkout as an execution worktree. Its branch and files were left unchanged.",
@@ -517,10 +507,10 @@ async function resolveValidationExecutionContextInScope({
         );
     }
     const attachedForBranch = attachedWorktrees.filter((entry) => entry.branch === worktreeBranch);
-    let canonicalRegistryPath = await realPath(registryEntry.path);
-    let canonicalWorktreePath = await realPath(worktreePath);
+    let canonicalRegistryPath = await findExistingProjectPath(registryEntry.path);
+    let canonicalWorktreePath = await findExistingProjectPath(worktreePath);
     if (attachedForBranch.length === 1) {
-        const gitPath = await realPath(attachedForBranch[0].path);
+        const gitPath = await findExistingProjectPath(attachedForBranch[0].path);
         if (gitPath && (!canonicalRegistryPath || canonicalRegistryPath !== gitPath)) {
             registryEntry = await reconcileEntryGitLocation(projectRoot, worktreeId, {
                 path: attachedForBranch[0].path,
@@ -552,7 +542,7 @@ async function resolveValidationExecutionContextInScope({
             // Git admin record removes no files and lets Git attach it again.
             await runGit(projectRoot, ["worktree", "prune"]);
             await runGit(projectRoot, ["worktree", "add", registryEntry.path, worktreeBranch]);
-            canonicalRegistryPath = await realPath(registryEntry.path);
+            canonicalRegistryPath = await findExistingProjectPath(registryEntry.path);
             canonicalWorktreePath = canonicalRegistryPath;
             selfHealNotices.push({ kind: "worktree_restored", planName, branch: worktreeBranch });
         }
@@ -562,14 +552,15 @@ async function resolveValidationExecutionContextInScope({
     }
     const projectCommonDir = await runGit(projectRoot, ["rev-parse", "--git-common-dir"]);
     const worktreeCommonDir = await runGit(canonicalWorktreePath, ["rev-parse", "--git-common-dir"]);
-    const projectCommonReal = await realPath(resolve(projectRoot, projectCommonDir));
-    const worktreeCommonReal = await realPath(resolve(canonicalWorktreePath, worktreeCommonDir));
+    const projectCommonReal = await findExistingProjectPath(resolve(projectRoot, projectCommonDir));
+    const worktreeCommonReal = await findExistingProjectPath(resolve(canonicalWorktreePath, worktreeCommonDir));
     if (!projectCommonReal || !worktreeCommonReal || projectCommonReal !== worktreeCommonReal) {
         return blocked(
             "git_common_dir_mismatch",
             `Execution worktree ${worktreeId} is not attached to the Project repository.`,
         );
     }
+    await enterProjectRuntime(canonicalWorktreePath);
     let checkedOutBranch = await runGit(canonicalWorktreePath, ["branch", "--show-current"]);
     const recordedBranchExists = await runGit(projectRoot, ["rev-parse", "--verify", `refs/heads/${worktreeBranch}`])
         .then(() => true)

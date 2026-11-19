@@ -8,10 +8,10 @@ import {
     createRootSessionManager,
     getRemoteSessionSaveBridge,
     getRunWieldSessionsBaseDir,
-} from "../session/root-session.js";
+} from "../session/root-session.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { recordManualModelSelection } from "../session/active-agent-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { recordManualModelSelection } from "../session/active-agent-session.ts";
 import { configureRemotePersonalResources } from "./personal-resources.ts";
 import {
     listPendingWorkflowToolEvents,

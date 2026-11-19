@@ -6,23 +6,23 @@
  * staleness baseline so the Resume Check can tell what moved underneath it.
  */
 
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import { findPlansByParent } from "../../plan-store/index.ts";
-import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";
 import { runPlanRecoveryEffects } from "../../plan-store/index.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
 import {
     autoGenerateWorkRecordForCompletedPlan,
     formatWorkRecordAutoGenerationResult,
-} from "../../shared/work-records/auto-generation.js";
+} from "../../shared/work-records/auto-generation.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mnemoteca-port.ts";
 import {
     discardWorktreeGitArtifacts,
     getWorktreeStatus,
     inspectExecutionWorktreeMergeRisk,
     validateWorktreeDiscard,
-} from "../../shared/worktree.js";
+} from "../../shared/worktree.ts";
 import { formatCommitHeadsUp } from "./plan-presentation.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";
@@ -32,9 +32,9 @@ import { detachPlanExecution } from "../../plan-store/index.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { completeUserVerification } from "./user-verification-completion.ts";
-import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 
 /** A Plan the hold flow reads Front Matter from. */
@@ -139,7 +139,7 @@ export function hasRecordedWorktreeMetadata(attrs: PlanFrontMatter): boolean {
 }
 
 /**
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @param {string} message
  * @returns {Promise<boolean>}
  */
@@ -156,7 +156,7 @@ export async function confirmHoldWarning(uiAPI: UiAPI, message: string): Promise
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
 export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldOptions): Promise<boolean> {
@@ -212,7 +212,7 @@ export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldO
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
 export async function markPlanUserVerified({
@@ -308,7 +308,7 @@ export async function markPlanUserVerified({
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<{ status: "pass" | "warn" | "fail", messages: string[] }>}
  */
 export async function runResumeCheck({
@@ -398,7 +398,7 @@ export async function runResumeCheck({
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
 export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHeldPlanOptions): Promise<boolean> {
@@ -500,7 +500,7 @@ export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHe
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter, body: string, markdown?: string }} opts.plan
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface} opts.session
  * @returns {Promise<"resume" | "handled">}
  */

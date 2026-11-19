@@ -22,7 +22,7 @@ test("a failed Recorder leaves no copy and backfill after cleanup uses retained 
         const head = await git(f.remote, ["rev-parse", "main"]);
         await fs.writeFile(join(f.p.path, "context.md"), "# New live Plan\n");
         await f.scope(async () => {
-            const { runWorkRecordBackfill } = await import("../work-records/generation.js");
+            const { runWorkRecordBackfill } = await import("../work-records/generation.ts");
             const { createWorkRecordMnemotecaFixture } =
                 await import("../work-records/test-fixtures/mnemoteca-port.ts");
             const backfill = await runWorkRecordBackfill(f.root, {
@@ -66,7 +66,7 @@ test("pending records require proof and no-copy recovery survives execution clea
         await git(f.root, ["worktree", "remove", "--force", f.workflow.executionCwd!]);
         await f.scope(async () => {
             const { replaceWorkRecord } = await import("../work-records/store.ts");
-            const { formatWorkRecordMarkdown } = await import("../work-records/markdown.js");
+            const { formatWorkRecordMarkdown } = await import("../work-records/markdown.ts");
             const record = (await listWorkRecords(f.root))[0];
             await replaceWorkRecord(
                 f.root,
@@ -76,7 +76,7 @@ test("pending records require proof and no-copy recovery survives execution clea
                     record.body + "\nEditor note.\n",
                 ),
             );
-            const { recordPlanEvent } = await import("./plan-lifecycle.js");
+            const { recordPlanEvent } = await import("./plan-lifecycle.ts");
             await recordPlanEvent({
                 cwd: f.root,
                 planName: "one",

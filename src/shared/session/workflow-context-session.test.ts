@@ -1,7 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { WorkflowContext } from "./workflow-context-session.js";
+import type { WorkflowContext } from "./workflow-context-session.ts";
 import type { WorkflowProgressFact } from "../workflow/workflow-presentation.ts";
 import {
     deriveWorkflowContextFromExecutionWorkflow,
@@ -12,7 +12,7 @@ import {
     recordWorkflowPlanName,
     recordWorkflowTriageContext,
     WORKFLOW_CONTEXT_CUSTOM_TYPE,
-} from "./workflow-context-session.js";
+} from "./workflow-context-session.ts";
 
 interface FixtureWorkflowEntry {
     type: "custom";

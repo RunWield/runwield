@@ -138,7 +138,7 @@ export async function runRemoteView(): Promise<void> {
     try {
         const { configureRemoteModelConnection } = await import("../models/model-registry.ts");
         clearModels = await configureRemoteModelConnection(config.connection);
-        const { configureGuideRunner } = await import("../../ui/workspace/routes/api/review-agent-handlers.js");
+        const { configureGuideRunner } = await import("../../ui/workspace/routes/api/review-agent-handlers.ts");
         const { runRemoteGuideCommand } = await import("./guide-runner.ts");
         clearGuideRunner = configureGuideRunner(runRemoteGuideCommand);
         const tuiModule = await import("../../ui/tui/tui.ts");
@@ -199,7 +199,7 @@ export async function runRemoteProjectAdmission(): Promise<void> {
         throw new Error("Invalid managed Project admission.");
     const [{ admitProjectIdentity, inspectProjectIdentity }, { getHomeDir }] = await Promise.all([
         import("../project-identity.ts"),
-        import("../../constants.js"),
+        import("../../constants.ts"),
     ]);
     const options = {
         context: {
@@ -215,7 +215,7 @@ export async function runRemoteProjectAdmission(): Promise<void> {
         return;
     }
     if (result.kind !== "existing") throw new Error("Managed Project identity admission is unavailable.");
-    const { resolvePrimaryCheckoutRoot } = await import("../primary-checkout.ts");
+    const { resolvePrimaryCheckoutRoot } = await import("../project-checkout.ts");
     console.log(
         JSON.stringify({
             ...result.identity,
@@ -269,7 +269,7 @@ export async function runRemotePublicationProof(): Promise<void> {
         recordingSource?: boolean;
         retained?: import("../workflow/publication-attempt.ts").PublicationAttempt;
     } = JSON.parse(await readPrivateProbeRequest());
-    const { getHomeDir } = await import("../../constants.js");
+    const { getHomeDir } = await import("../../constants.ts");
     const { inspectProjectIdentity, withProjectLaunchContext } = await import("../project-identity.ts");
     if (
         !input ||
@@ -339,7 +339,7 @@ export async function runRemotePublicationProof(): Promise<void> {
             ).inspectExecutionRecoveryEvidence(input.cwd, input.recovery);
             if (input.family) {
                 const entry = await (
-                    await import("../worktree-registry.js")
+                    await import("../worktree-registry.ts")
                 ).findById(input.cwd, input.recovery.attemptId);
                 if (!entry) throw new Error("Original family execution is unavailable.");
                 console.log(
@@ -405,7 +405,7 @@ export async function runRemoteRuntimeTransfer(): Promise<void> {
         (input.retire !== undefined && !/^[a-f0-9]{64}$/.test(input.retire))
     )
         throw new Error("Invalid managed runtime transfer request.");
-    const { getHomeDir } = await import("../../constants.js");
+    const { getHomeDir } = await import("../../constants.ts");
     const { inspectProjectIdentity, withProjectLaunchContext } = await import("../project-identity.ts");
     const context = {
         executionAccountHome: getHomeDir(),

@@ -519,9 +519,9 @@ Sources: [publication loop](../src/shared/workflow/validation-publication.ts),
 [stored publication and reconciliation](../src/shared/workflow/publication-machine.ts),
 [remote/local Git publication](../src/shared/isolated-publication.ts),
 [repair dispatch/finalization](../src/shared/workflow/validation-merge-repair.ts),
-[Git worktree operations](../src/shared/worktree.js),
+[Git worktree operations](../src/shared/worktree.ts),
 [QA/Work Record handoffs](../src/shared/workflow/validation-helpers.ts),
-[Recorder event consumer](../src/shared/work-records/generation.js).
+[Recorder event consumer](../src/shared/work-records/generation.ts).
 
 ## X — Epic decomposition and next-child continuation
 
@@ -566,7 +566,7 @@ Sources: [Slicer tool and runner](../src/shared/workflow/workflow-slicer.ts),
 [child selection](../src/cmd/load-plan/plan-epic-flow.ts),
 [continuation resolver/runner](../src/shared/workflow/epic-continuation.ts),
 [Session continuation](../src/shared/session/runtime/workflows.ts),
-[parent lifecycle handling](../src/shared/workflow/plan-lifecycle.js),
+[parent lifecycle handling](../src/shared/workflow/plan-lifecycle.ts),
 [auto-generation selection](../src/shared/work-records/auto-generation.ts).
 
 ## O — Shared operational failure and retry branches

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
 import { requestRemoteMemory } from "../../shared/remote/memory-bridge.ts";
 import { resolveMemoryCollection } from "../../shared/memory-collection.ts";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HelperBinaryExec } from "../helper-binary-exec.ts";
 

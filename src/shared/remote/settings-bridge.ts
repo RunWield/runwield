@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { parse as parseJsonc } from "../jsonc.ts";
+import { parse as parseJsonc, type JsonValue } from "../jsonc.ts";
 import { join } from "node:path";
 import { personalGlobalRoot } from "./personal-resources.ts";
 
@@ -7,8 +7,6 @@ export interface RemoteSettingsConnection {
     port: number;
     credential: string;
 }
-
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 export type SettingsUpdate =
     | { kind: "set"; key: string; value: JsonValue }

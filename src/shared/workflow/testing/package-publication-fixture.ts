@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { packageFixture, create, read } from "../../testing/plan-package-fixture.ts";
 import { loadPackageWorkflowPlan, type PackageWorkflowSelection } from "../../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
-import { recordPlanEvent } from "../plan-lifecycle.js";
+import { recordPlanEvent } from "../plan-lifecycle.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../execution-start.ts";
 import { finalizePlanImplementation } from "../implementation-checkpoint.ts";
 import { git } from "../../git-test-fixture.ts";

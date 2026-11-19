@@ -6,13 +6,13 @@ import { packageFixture, create } from "../../shared/testing/plan-package-fixtur
 import { inspectProjectIdentity } from "../../shared/project-identity.ts";
 import { readPlanPackage } from "../../plan-store/packages.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { writeWorkRecord, listWorkRecords } from "../../shared/work-records/store.ts";
 import { recordAttrs, recordBody } from "../../shared/work-records/test-fixtures/package-records.ts";
 import { prepareSequenceReview, validateSequenceReviewDecision } from "../../plan-store/index.ts";
 import { startPlanReviewSurface } from "../review/review-launcher.ts";
 import { submitPlanForReview } from "../review/plan-review.ts";
-import { startWorkspaceServer } from "./server.js";
+import { startWorkspaceServer } from "./server.ts";
 
 const sequence = process.argv.includes("--sequence");
 const directory = process.argv[2];

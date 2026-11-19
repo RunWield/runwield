@@ -12,11 +12,11 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { getExternalCliPriceModel, getModelRegistry } from "../../models/model-registry.ts";
-import { setCustomSetting } from "../../settings.js";
-import { getWorkflowMetricsFilePath } from "../../workflow/metrics.js";
-import { HostedSession } from "../hosted-session.js";
-import { createRootSessionManager } from "../root-session.js";
-import type { RuntimeUsage, SessionRuntimeEvent } from "../session-runtime-events.js";
+import { setCustomSetting } from "../../settings.ts";
+import { getWorkflowMetricsFilePath } from "../../workflow/metrics.ts";
+import { HostedSession } from "../hosted-session.ts";
+import { createRootSessionManager } from "../root-session.ts";
+import type { RuntimeUsage, SessionRuntimeEvent } from "../session-runtime-events.ts";
 import { ClaudeCliExecutionSession } from "./claude-cli/execution-session.ts";
 import { AgyCliExecutionSession } from "./agy-cli/execution-session.ts";
 
@@ -98,18 +98,44 @@ async function withCliFixture(fixture: UsageFixture, callback: (root: string) =>
                 script,
                 `
 const args = (await import("node:process")).argv.slice(2);
-if (args.includes("/agents")) {
-    const names = [];
-    for await (const entry of await (await import("node:fs/promises")).readdir(${JSON.stringify(join(home, ".gemini/config/agents"))}, {withFileTypes:true})) {
-        if (entry.isDirectory()) names.push({ name: entry.name });
+if (args[0] === "acp") {
+    if (args.includes("-p") || args.includes("--dangerously-skip-permissions")) throw new Error("unsafe legacy invocation");
+    const lines = (await import("node:readline")).createInterface({ input: (await import("node:process")).stdin });
+    const send = (frame) => console.log(JSON.stringify({ jsonrpc: "2.0", ...frame }));
+    const sessionId = "usage-session";
+    const selected = { mode: "default", model: ${JSON.stringify(fixture.modelId || "gemini-3.8-flash")}, thought_level: "low" };
+    const config = () => ({ configOptions: Object.entries(selected).map(([id,currentValue]) => ({ id,currentValue })) });
+    const update = (value) => send({ method: "session/update", params: { sessionId, update: value } });
+    for await (const line of lines) {
+        const request = JSON.parse(line);
+        const respond = (result) => send({ id: request.id, result });
+        if (request.method === "initialize") respond({ protocolVersion: 1 });
+        else if (request.method === "session/new") respond({ sessionId, ...config() });
+        else if (request.method === "session/set_config_option") {
+            selected[request.params.configId] = request.params.value;
+            respond(config());
+        } else if (request.method === "session/prompt") {
+            const frames = (await (await import("node:fs/promises")).readFile(${JSON.stringify(streamPath)}, "utf8")).trim().split("\\n").map(JSON.parse);
+            const resultFrame = frames.find((frame) => (frame.event || frame.type) === "result");
+            const result = typeof resultFrame.result === "object" ? resultFrame.result : resultFrame;
+            const usage = result.usage || {};
+            update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: result.response || (typeof result.result === "string" ? result.result : "reply") } });
+            for (const frame of frames) {
+                const step = frame.step_update;
+                if (step?.step_type !== "tool") continue;
+                update({ sessionUpdate: "tool_call_update", toolCallId: String(step.step_index), name: step.tool_name || step.tool_info?.name || "read_file", status: step.state === "ACTIVE" ? "in_progress" : step.state === "ERROR" ? "failed" : "completed", rawInput: step.tool_info?.parameters || {} });
+            }
+            // Translate captured legacy measurements into ACP fields without
+            // supplying defaults: missing and measured zero remain distinct.
+            respond({ stopReason: "end_turn", usage: {
+                inputTokens: usage.input_tokens, outputTokens: usage.output_tokens,
+                cachedReadTokens: usage.cache_read_tokens, cachedWriteTokens: usage.cache_write_tokens,
+                thoughtTokens: usage.thinking_tokens,
+            } });
+        } else if (request.method === "session/close") { respond({}); lines.close(); break; }
+        else throw new Error("Unexpected ACP request: " + request.method);
     }
-    console.log(JSON.stringify({ agents: names }));
 } else {
-    if (args.includes("--agent")) {
-        console.log(JSON.stringify({ type: "init", agent: args[args.indexOf("--agent") + 1], model: ${JSON.stringify(
-            (fixture.modelId || "gemini-3.8-flash") + "-low",
-        )} }));
-    } else {
         const lines = (await import("node:readline")).createInterface({ input: (await import("node:process")).stdin });
         await new Promise((resolve) => lines.once("line", resolve));
         lines.close();
@@ -118,7 +144,6 @@ if (args.includes("/agents")) {
         )}) console.log(JSON.stringify({ type: "assistant", message: { id: "cli-assistant", content: [{ type: "text", text: "reply" }], usage: ${JSON.stringify(
             fixture.assistantUsage,
         )} } }));
-    }
     console.log(await (await import("node:fs/promises")).readFile(${JSON.stringify(streamPath)}, "utf8"));
     if (${Boolean(fixture.vendorStream)}) await new Promise((resolve) => setTimeout(resolve, 30));
 }

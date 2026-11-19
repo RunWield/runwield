@@ -1,5 +1,5 @@
 import { env } from "node:process";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 import { captureForegroundProcess } from "./captured-process.ts";
 /**
  * @module shared/runtime-preflight
@@ -62,17 +62,17 @@ function missingBinaryError(displayName: string): Error {
 
 /** Ensure Mnemoteca is available in PATH. */
 export async function ensureMnemotecaBinary(): Promise<void> {
-    if (!await hasRequiredBinary("mnemoteca")) throw missingBinaryError("Mnemoteca");
+    if (!(await hasRequiredBinary("mnemoteca"))) throw missingBinaryError("Mnemoteca");
 }
 
 /** Ensure Cymbal is available in PATH. */
 export async function ensureCymbalBinary(): Promise<void> {
-    if (!await hasRequiredBinary("cymbal")) throw missingBinaryError("Cymbal");
+    if (!(await hasRequiredBinary("cymbal"))) throw missingBinaryError("Cymbal");
 }
 
 /** Ensure Ketch is available in PATH. */
 export async function ensureKetchBinary(): Promise<void> {
-    if (!await hasRequiredBinary("ketch")) throw missingBinaryError("Ketch");
+    if (!(await hasRequiredBinary("ketch"))) throw missingBinaryError("Ketch");
 }
 
 /** Check whether optional Snip is available in PATH without caching. */

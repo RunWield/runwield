@@ -1,4 +1,4 @@
-// @ts-nocheck: server module uses the repository's JSDoc JavaScript style while keeping the TypeScript production extension.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 import { capturePlanReadContext } from "../../../plan-store/index.ts";
 /** @module ui/workspace/server/workspace-search */
 
@@ -7,7 +7,7 @@ import { readdir, stat as fsStat } from "node:fs/promises";
 import { clearInterval, clearTimeout, setInterval, setTimeout } from "node:timers";
 import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { dirname, join, relative } from "node:path";
-import { getHomeDir } from "../../../constants.js";
+import { getHomeDir } from "../../../constants.ts";
 import { listPlanResources, readPlanResourceCatalog } from "../../../plan-store/index.ts";
 import { getWorkRecordsDir, listWorkRecords } from "../../../shared/work-records/store.ts";
 import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-records/list.ts";
@@ -238,7 +238,7 @@ async function scanProjectDocuments(root) {
     return documents;
 }
 
-/** @param {import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore} store @param {string} projectId @param {string} root */
+/** @param {import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore} store @param {string} projectId @param {string} root */
 async function scanSessionDocuments(store, projectId, root) {
     const documents = [];
     let page = 0;
@@ -473,7 +473,7 @@ async function hydrateCandidate(root, row, store, catalogs) {
     };
 }
 
-/** @param {{ store: import('../../../shared/owner-coordination/index.js').OwnerCoordinationStore, dbPath?: string, scanIntervalMs?: number }} options */
+/** @param {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore, dbPath?: string, scanIntervalMs?: number }} options */
 export function createWorkspaceSearchService(options) {
     const packageAccess = capturePlanReadContext();
     const dbPath =

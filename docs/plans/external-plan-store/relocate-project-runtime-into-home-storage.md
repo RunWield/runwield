@@ -15,8 +15,8 @@ affectedPaths:
     - "src/shared/work-records/index-adapter.ts"
     - "docs/domain-language.md"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/017-project-runtime-state-under-wld-internal.md"
-    - "docs/adr/0020-home-project-state-and-launch-mode-ownership.md"
+    - "docs/adr/016-project-runtime-state-under-wld-internal.md"
+    - "docs/adr/019-home-project-state-and-launch-mode-ownership.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-01"
@@ -121,8 +121,8 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   failure recovery, real lock contention, and usable relocated Git state
 - `docs/domain-language.md` — Project Runtime State and Internal Root definitions
 - `docs/prd/runwield-core-prd.md` — initialization and work protection
-- `docs/adr/017-project-runtime-state-under-wld-internal.md` — reconcile the old physical-location rule
-- `docs/adr/0020-home-project-state-and-launch-mode-ownership.md` and `docs/prd/plan-store-prd.md` — reference the
+- `docs/adr/016-project-runtime-state-under-wld-internal.md` — reconcile the old physical-location rule
+- `docs/adr/019-home-project-state-and-launch-mode-ownership.md` and `docs/prd/plan-store-prd.md` — reference the
   accepted ordinary-runtime decision without presenting the remaining proposal as implemented
 
 ## Reuse Opportunities

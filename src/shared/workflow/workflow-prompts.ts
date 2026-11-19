@@ -7,7 +7,7 @@ import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 import type { TicketReference } from "../ticket-references.ts";
 
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { projectEngineerPlanBody } from "./engineer-plan-projection.ts";
 
 export interface TriageReportContext {
@@ -92,26 +92,11 @@ export function buildTriageReport(triage: TriageReportContext, options: TriageRe
 }
 
 /**
- * Build the first user message after Router dispatch. A single persisted
- * transcript can contain assistant reasoning from several RunWield Agents, so
- * name the newly active Agent explicitly instead of asking the model to infer
- * its role from the conversation history.
+ * Carry the user's request and routing facts after Router dispatch.
+ * Agent identity belongs to the selected Agent's system prompt.
  */
-export function buildAgentHandoffRequest(
-    agentDisplayName: string,
-    userRequest: string,
-    triage: TriageReportContext,
-): string {
-    return [
-        "## Active RunWield Agent",
-        `You are now ${agentDisplayName}. Follow the ${agentDisplayName} instructions in the system prompt.`,
-        "Earlier assistant messages and tool results may belong to a previous RunWield Agent; they are context, not your current role.",
-        "",
-        "## User Request",
-        userRequest,
-        "",
-        buildTriageReport(triage),
-    ].join("\n");
+export function buildPostTriageRequest(userRequest: string, triage: TriageReportContext): string {
+    return ["## User Request", userRequest, "", buildTriageReport(triage)].join("\n");
 }
 
 /**
@@ -128,10 +113,6 @@ export function buildSlicerRequest(input: SlicerRequest | string, legacyTriageMe
     const lines = [
         `## Epic Slicer Session: ${planName}`,
         `## Slice Plan: ${planName}`,
-        "",
-        "You are resuming an interactive Slicer conversation for this PROJECT Epic.",
-        "First propose or refine child planned-change boundaries conversationally. Do not finalize or write child files unless the user explicitly confirms finalization.",
-        "Follow the Slicer system prompt: discuss planned-change boundaries first; use the workflow tool for materialization/finalization only when explicitly requested.",
         "",
         "## Epic Lifecycle State",
         `- Plan: docs/plans/${planName}.md`,

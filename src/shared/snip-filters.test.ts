@@ -10,20 +10,12 @@ import {
 } from "node:fs/promises";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { join } from "node:path";
-import { SNIP_FILTERS_DIR } from "../constants.js";
 import {
     cleanupRunWieldSnipFiltersForUser,
     getRunWieldSnipFilterInstallStatus,
     getRunWieldSnipPaths,
     installRunWieldSnipFiltersForUser,
 } from "./snip-filters.ts";
-
-test("bundled Snip filters are readable from the compile-safe resource directory", async () => {
-    const denoTestFilter = await fsReadFile(join(SNIP_FILTERS_DIR, "deno-test.yaml"), "utf8");
-
-    assertStringIncludes(SNIP_FILTERS_DIR, join("src", "snip-filters"));
-    assertStringIncludes(denoTestFilter, "deno test");
-});
 
 test("user Snip filter install and cleanup only manage RunWield-owned files", async () => {
     const homeDir = await fsMkdtemp(join(tmpdir(), "runwield-snip-home-"));

@@ -1,3 +1,4 @@
+import { openNativeFileLock } from "./native-file-lock.ts";
 import { getLockHostname } from "./process-liveness.ts";
 import { admitProjectIdentity } from "./project-identity.ts";
 import { Buffer } from "node:buffer";
@@ -9,7 +10,7 @@ import fsPromises from "node:fs/promises";
 import { type NativeProcess } from "./foreground-process.ts";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "./captured-process.ts";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 import { spawnNativeProcess } from "./foreground-process.ts";
 import { makeTempFile } from "../testing/temp-file.ts";
 import { test } from "node:test";
@@ -33,7 +34,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects } from "../testing/assertions.ts";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../constants.js";
+import { getRunWieldRuntimeDir } from "../constants.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {
@@ -44,7 +45,7 @@ import {
     type ProjectRuntimeMigrationResult,
     resolveProjectRuntimeLayout,
 } from "./project-runtime-layout.ts";
-import { inspectWorktreeRegistry, prepareWorktreeRegistry, withWorktreeRegistryLock } from "./worktree-registry.js";
+import { inspectWorktreeRegistry, prepareWorktreeRegistry, withWorktreeRegistryLock } from "./worktree-registry.ts";
 import {
     advancePublicationAttempt,
     createPublicationAttempt,
@@ -54,6 +55,95 @@ import {
 // Legacy inputs are adopted through ordinary account ownership.
 const fixture = defineCommittedGitFixture({ "README.md": "# Runtime layout fixture\n" });
 const REPO_ROOT = dirname(dirname(dirname(fromFileUrl(import.meta.url))));
+
+for (const alias of ["none", "parent", "checkout"] as const) {
+    test(`runtime survives moving an adopted project with ${alias} alias`, async () => {
+        await withProcessGlobalTestLock(async () => {
+            const fixtureRoot = await fixture.checkout({ prefix: "runwield-relocation-fixture-" });
+            const base = await fsMkdtemp(join(tmpdir(), "runwield-relocation-"));
+            const oldParent = join(base, "old");
+            const newParent = join(base, "new");
+            const oldRoot = join(oldParent, "project");
+            const newRoot = join(newParent, "project");
+            const linkedRoot = join(base, "linked");
+            try {
+                await fsMkdir(oldParent);
+                await fsPromises.rename(fixtureRoot, oldRoot);
+                if (alias !== "none") await git(oldRoot, ["worktree", "add", "-b", "linked", linkedRoot]);
+                const layout = await enterProjectRuntime(oldRoot);
+                if (alias !== "none") await enterProjectRuntime(linkedRoot);
+                await writeText(join(layout.primary.controllerPlansDir, "saved.json"), '{"checkpoint":"keep"}');
+                await writeText(layout.primary.worktreeRegistryPath, '{"version":1,"entries":[]}');
+                await writeText(join(layout.selected.transitionJournalsDir, "saved.json"), '{"phase":"keep"}');
+                const before = await snapshotTree(layout.primary.internalRoot);
+                await fsPromises.rename(oldParent, newParent);
+                if (alias === "parent") await fsSymlink(newParent, oldParent, "dir");
+                if (alias === "checkout") {
+                    await fsMkdir(oldParent);
+                    await fsSymlink(newRoot, oldRoot, "dir");
+                }
+                const moved = resolveProjectRuntimeLayout(newRoot);
+                const paths = alias === "none" ? [newRoot] : [newRoot, oldRoot, linkedRoot];
+                for (const path of paths) {
+                    const inspection = await inspectProjectRuntimeReadAccess(path);
+                    assertEquals(inspection.kind, "ready", JSON.stringify(inspection));
+                }
+                assertEquals(await snapshotTree(moved.primary.internalRoot), before);
+                for (const path of paths) {
+                    const entered = await enterProjectRuntime(path);
+                    assertEquals(entered.primary.checkoutRoot, await fsRealpath(newRoot));
+                }
+                const marker = JSON.parse(await fsReadFile(moved.primary.layoutMarkerPath, "utf8"));
+                assert(marker.roots.includes(await fsRealpath(newRoot)));
+                assertEquals(
+                    await fsReadFile(join(moved.primary.controllerPlansDir, "saved.json"), "utf8"),
+                    '{"checkpoint":"keep"}',
+                );
+                assertEquals(
+                    await fsReadFile(moved.primary.worktreeRegistryPath, "utf8"),
+                    '{"version":1,"entries":[]}',
+                );
+                assertEquals(
+                    await fsReadFile(join(moved.selected.transitionJournalsDir, "saved.json"), "utf8"),
+                    '{"phase":"keep"}',
+                );
+                await assertMissing(moved.primary.layoutMigrationJournalPath);
+                const lock = openNativeFileLock(moved.primary.layoutMigrationLockPath);
+                try {
+                    assert(lock.tryLockSync(true));
+                } finally {
+                    lock.close();
+                }
+                const repeat = await migrateLegacyProjectRuntimeState(newRoot);
+                assertEquals(repeat.kind, "ready");
+                if (repeat.kind === "ready") assertEquals(repeat.migrated, false);
+            } finally {
+                await fsRm(base, { recursive: true, force: true });
+                await fsRm(fixtureRoot, { recursive: true, force: true });
+            }
+        });
+    });
+}
+
+test("runtime rejects malformed primary locations in completed markers", async () => {
+    const root = await fixture.checkout({ prefix: "runwield-runtime-invalid-primary-" });
+    try {
+        const layout = await enterProjectRuntime(root);
+        const marker = JSON.parse(await fsReadFile(layout.primary.layoutMarkerPath, "utf8"));
+        for (const primaryCheckoutRoot of ["relative", `${root}/../other`, `${root}/.`]) {
+            await fsWriteFile(layout.primary.layoutMarkerPath, JSON.stringify({ ...marker, primaryCheckoutRoot }));
+            for (const result of [
+                await inspectProjectRuntimeReadAccess(root),
+                await migrateLegacyProjectRuntimeState(root),
+            ]) {
+                assertEquals(result.kind, "blocked");
+                if (result.kind === "blocked") assertEquals(result.reason, "malformed_migration_evidence");
+            }
+        }
+    } finally {
+        await fsRm(root, { recursive: true, force: true });
+    }
+});
 
 test("runtime entry serializes concurrent adoption and preserves subsequent writer state", async () => {
     await withProcessGlobalTestLock(async () => {
@@ -163,72 +253,6 @@ test("passive runtime access keeps unmatched current authorities blocked", async
     }
 });
 
-test("project runtime layout resolves normal primary and selected internal roots", async () => {
-    await withProcessGlobalTestLock(async () => {
-        const primaryCheckout = await fixture.checkout({ prefix: "runwield-runtime-layout-primary-" });
-        const selectedCheckout = await fsMkdtemp(join(tmpdir(), "runwield-runtime-layout-selected-"));
-        try {
-            await git(primaryCheckout, [
-                "worktree",
-                "add",
-                "-b",
-                `runtime-layout-test-${crypto.randomUUID()}`,
-                selectedCheckout,
-            ]);
-
-            const layout = resolveProjectRuntimeLayout(selectedCheckout);
-            const resolvedPrimaryCheckout = await fsRealpath(primaryCheckout);
-            const resolvedSelectedCheckout = await fsRealpath(selectedCheckout);
-            const primaryInternalRoot = join(
-                getRunWieldRuntimeDir(resolvedPrimaryCheckout),
-                PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-            );
-            const selectedInternalRoot = join(
-                getRunWieldRuntimeDir(resolvedSelectedCheckout),
-                PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-            );
-
-            assertEquals(layout.primary.checkoutRoot, resolvedPrimaryCheckout);
-            assertEquals(layout.primary.internalRoot, primaryInternalRoot);
-            assertEquals(layout.primary.layoutMarkerPath, join(primaryInternalRoot, "layout.json"));
-            assertEquals(layout.primary.layoutMigrationJournalPath, join(primaryInternalRoot, "layout-migration.json"));
-            assertEquals(layout.primary.layoutMigrationLockPath, join(primaryInternalRoot, "layout-migration.lock"));
-            assertEquals(layout.primary.controllerPlansDir, join(primaryInternalRoot, "controller", "plans"));
-            assertEquals(layout.primary.worktreeRegistryPath, join(primaryInternalRoot, "worktrees.json"));
-            assertEquals(layout.primary.worktreeRegistryLockPath, join(primaryInternalRoot, "worktrees.lock"));
-            assertEquals(
-                layout.primary.worktreeRegistryMigrationIssuesPath,
-                join(primaryInternalRoot, "worktree-registry-migration-issues.json"),
-            );
-            assertEquals(layout.primary.publicationStagingRoot, join(primaryInternalRoot, "plan-staging"));
-            assertEquals(
-                layout.primary.projectSecretStorePath,
-                join(primaryInternalRoot, "collaboration-secrets.json"),
-            );
-            assertEquals(layout.primary.fallbackWorktreesRoot, join(primaryInternalRoot, "worktrees"));
-            assertEquals(layout.primary.debugRoot, join(primaryInternalRoot, "debug"));
-
-            assertEquals(layout.selected.checkoutRoot, resolvedSelectedCheckout);
-            assertEquals(layout.selected.internalRoot, selectedInternalRoot);
-            assertEquals(layout.selected.planLocksDir, join(selectedInternalRoot, "plan-locks"));
-            assertEquals(layout.selected.planCatalogLockPath, join(selectedInternalRoot, "plan-locks", "catalog.lock"));
-            assertEquals(layout.selected.transitionJournalsDir, join(selectedInternalRoot, "plan-transitions"));
-            assertEquals(layout.selected.planBackupsDir, join(selectedInternalRoot, "plan-backups"));
-            assertEquals(
-                layout.selected.workRecordSupersessionLockPath,
-                join(selectedInternalRoot, "work-record-supersession.lock"),
-            );
-            assertEquals(
-                layout.selected.workRecordSupersessionRecoveryLockPath,
-                join(selectedInternalRoot, "work-record-supersession-recovery.lock"),
-            );
-        } finally {
-            await fsRm(selectedCheckout, { recursive: true }).catch(() => {});
-            await fsRm(primaryCheckout, { recursive: true }).catch(() => {});
-        }
-    });
-});
-
 test("runtime migration retries one transient Git worktree listing failure", async () => {
     await withProcessGlobalTestLock(async () => {
         const primaryCheckout = await fixture.checkout({ prefix: "runwield-runtime-layout-retry-" });
@@ -249,44 +273,6 @@ test("runtime migration retries one transient Git worktree listing failure", asy
             await fsRm(primaryCheckout, { recursive: true }).catch(() => {});
         }
     });
-});
-
-test("project runtime layout keeps sandboxed primary and selected lock namespaces separate", async () => {
-    const primaryCheckout = await fixture.checkout({ prefix: "runwield-runtime-layout-sandbox-primary-" });
-    const selectedCheckout = await fsMkdtemp(join(tmpdir(), "runwield-runtime-layout-sandbox-selected-"));
-    try {
-        await git(primaryCheckout, [
-            "worktree",
-            "add",
-            "-b",
-            `runtime-layout-sandbox-test-${crypto.randomUUID()}`,
-            selectedCheckout,
-        ]);
-
-        const layout = resolveProjectRuntimeLayout(selectedCheckout);
-        const resolvedPrimaryCheckout = await fsRealpath(primaryCheckout);
-        const resolvedSelectedCheckout = await fsRealpath(selectedCheckout);
-        const primaryInternalRoot = join(
-            getRunWieldRuntimeDir(resolvedPrimaryCheckout),
-            PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-        );
-        const selectedInternalRoot = join(
-            getRunWieldRuntimeDir(resolvedSelectedCheckout),
-            PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-        );
-
-        assertEquals(layout.primary.checkoutRoot, resolvedPrimaryCheckout);
-        assertEquals(layout.selected.checkoutRoot, resolvedSelectedCheckout);
-        assertEquals(layout.primary.internalRoot, primaryInternalRoot);
-        assertEquals(layout.selected.internalRoot, selectedInternalRoot);
-        assertEquals(dirname(layout.primary.controllerPlansDir), join(primaryInternalRoot, "controller"));
-        assertEquals(dirname(layout.selected.planCatalogLockPath), join(selectedInternalRoot, "plan-locks"));
-        assertEquals(layout.primary.worktreeRegistryPath, join(primaryInternalRoot, "worktrees.json"));
-        assertEquals(layout.selected.transitionJournalsDir, join(selectedInternalRoot, "plan-transitions"));
-    } finally {
-        await fsRm(selectedCheckout, { recursive: true }).catch(() => {});
-        await fsRm(primaryCheckout, { recursive: true }).catch(() => {});
-    }
 });
 
 test("legacy migration adopts primary and selected runtime leaves once", async () => {

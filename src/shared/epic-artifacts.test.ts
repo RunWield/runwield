@@ -17,7 +17,7 @@ import {
     moveEpicArtifactsFromArchive,
     moveEpicArtifactsToArchive,
 } from "../plan-store/artifacts.ts";
-import { isEpicArtifactPlanName } from "../plan-format.ts";
+
 import { appendEpicManualQaSection } from "../plan-store/index.ts";
 
 async function makeEpicFixture() {
@@ -35,14 +35,6 @@ async function makeEpicFixture() {
     });
     return projectRoot;
 }
-
-test("Epic Artifact recognition is exact", () => {
-    assertEquals(isEpicArtifactPlanName("epic/manual-qa"), true);
-    assertEquals(isEpicArtifactPlanName("epic/manual-qa.md"), true);
-    assertEquals(isEpicArtifactPlanName("manual-qa"), false);
-    assertEquals(isEpicArtifactPlanName("epic/01-manual-qa-support"), false);
-    assertEquals(isEpicArtifactPlanName("epic/deeper/manual-qa"), false);
-});
 
 test("appendEpicManualQaSection preserves user edits on duplicate", async () => {
     const projectRoot = await makeEpicFixture();

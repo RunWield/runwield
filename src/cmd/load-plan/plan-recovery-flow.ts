@@ -20,8 +20,8 @@ import {
     buildValidationUserMessage,
     validationUserMessage,
 } from "../../shared/workflow/validation-user-messages.ts";
-import { isInValidation } from "../../shared/workflow/plan-lifecycle.js";
-import { recordWorkflowMetric } from "../../shared/workflow/metrics.js";
+import { isInValidation } from "../../shared/workflow/plan-lifecycle.ts";
+import { recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";
 import { verifyRecordedPublication } from "../../shared/workflow/validation-merge-verification.ts";
 import { isUserVerifiableStatus } from "./plan-hold.ts";
@@ -48,7 +48,7 @@ import { resetRecoveryPlan } from "./plan-recovery-reset.ts";
 
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type {
     RecoveryActionContext,
     RecoveryActionName,

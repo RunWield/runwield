@@ -11,13 +11,13 @@ import { managedPlanStoreActive, projectManagedEpic } from "./managed.ts";
  * Verification Plan, which the Integration Reviewer reads as places to look.
  */
 
-import { writePlanMarkdownWithRevisionLocked } from "../plan-store.js";
+import { writePlanMarkdownWithRevisionLocked } from "../plan-store.ts";
 import { compareChildPlansByOrder } from "../plan-format.ts";
 import { findPlansByParent, loadPlan } from "./index.ts";
 import type { PlanFrontMatter } from "./index.ts";
-import { isPlannedChangeClassification } from "../constants.js";
+import { isPlannedChangeClassification } from "../constants.ts";
 import { isGitRepository } from "../shared/git.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
 import { prepareTargetBranchPlansByParent } from "../shared/workflow/planning-worktree.ts";
 import type { ReviewIntegrationNote } from "../tools/review-complete.ts";

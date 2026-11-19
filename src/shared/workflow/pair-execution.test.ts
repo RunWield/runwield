@@ -1,9 +1,9 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { type PlanExecutionPolicy } from "../../plan-format.ts";
 import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-format.ts";
-import { HostedSession, type ActiveExecutionWorkflow } from "../session/hosted-session.js";
+import { HostedSession, type ActiveExecutionWorkflow } from "../session/hosted-session.ts";
 import { decidePostExecution, type PostExecutionOptions } from "./decisions.ts";
 import { resolveExecutionOwner, supportsPairExecution } from "./workflow.ts";
 import { selectRuntimeCollaborationStyle } from "./execution-collaboration.ts";

@@ -2,12 +2,12 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { test } from "node:test";
-import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, rm as fsRm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { makeValidationProjectRoot } from "../../shared/workflow/validation-test-helpers.js";
+import { makeValidationProjectRoot } from "../../shared/workflow/validation-test-helpers.ts";
 
 test("Astro dev serves local and owner Plan Boards with canonical Plan data", async () => {
     const projectRoot = await makeValidationProjectRoot("dev-import-regression", {
@@ -16,12 +16,15 @@ test("Astro dev serves local and owner Plan Boards with canonical Plan data", as
     });
     const scratch = await fsMkdtemp(join(tmpdir(), "workspace-astro-dev-test-"));
     const repoRoot = new URL("../../../", import.meta.url);
+    const config = JSON.parse(await readFile(new URL("package.json", repoRoot), "utf8"));
+    const launchRoute = config.scripts["workspace:dev"].match(/--open\s+(\S+)/)?.[1];
+    assertEquals(typeof launchRoute, "string");
     const script = `
         import { dev } from ${JSON.stringify(new URL("node_modules/astro/dist/core/index.js", repoRoot).href)};
         import { assertEquals, assertStringIncludes } from ${JSON.stringify(import.meta.resolve("../../testing/assertions.ts"))};
         const server = await dev({
             root: ${JSON.stringify(fileURLToPath(new URL("src/ui/workspace/", repoRoot)))},
-            configFile: "astro.config.mjs",
+            configFile: "astro.config.ts",
             cacheDir: ${JSON.stringify(`${scratch}/astro`)},
             server: { host: "127.0.0.1", port: 0, open: false },
             vite: { cacheDir: ${JSON.stringify(`${scratch}/vite`)} },
@@ -33,6 +36,12 @@ test("Astro dev serves local and owner Plan Boards with canonical Plan data", as
                 const html = await response.text();
                 assertEquals(response.status, 200, route + "\\n" + html.slice(0, 3000));
                 assertStringIncludes(html, "dev-import-regression", route);
+            }
+            const catalog = await fetch(\`http://127.0.0.1:\${server.address.port}\` + ${JSON.stringify(launchRoute)}, { headers: { accept: "text/html" } });
+            assertEquals(catalog.status, 200);
+            const html = await catalog.text();
+            for (const route of ["/projects/dev-project/plans", "/dev/plan-review", "/dev/workspace/plan-review", "/dev/code-review", "/dev/workspace/code-review"]) {
+                assertStringIncludes(html, 'href="' + route);
             }
         } finally {
             await server.stop();
@@ -62,7 +71,7 @@ test("Astro dev reads remote mode from Bun's environment for Shared Space pages"
         import { assertEquals, assertStringIncludes } from ${JSON.stringify(import.meta.resolve("../../testing/assertions.ts"))};
         const server = await dev({
             root: ${JSON.stringify(fileURLToPath(new URL("src/ui/workspace/", repoRoot)))},
-            configFile: "astro.config.mjs",
+            configFile: "astro.config.ts",
             cacheDir: ${JSON.stringify(`${scratch}/astro`)},
             server: { host: "127.0.0.1", port: 0, open: false },
             vite: { cacheDir: ${JSON.stringify(`${scratch}/vite`)} },

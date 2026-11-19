@@ -124,18 +124,20 @@ async function fixture(emittedEvents: AssistantMessageEvent[] = events) {
         });
         return output;
     };
-    source.registerNativeProvider(createProvider({
-        id: model.provider,
-        models: [model],
-        auth: {
-            apiKey: {
-                name: "Laptop",
-                check: () => Promise.resolve({ type: "api_key" }),
-                resolve: () => Promise.resolve({ auth: {} }),
+    source.registerNativeProvider(
+        createProvider({
+            id: model.provider,
+            models: [model],
+            auth: {
+                apiKey: {
+                    name: "Laptop",
+                    check: () => Promise.resolve({ type: "api_key" }),
+                    resolve: () => Promise.resolve({ auth: {} }),
+                },
             },
-        },
-        api: { stream, streamSimple: stream },
-    }));
+            api: { stream, streamSimple: stream },
+        }),
+    );
     await source.refresh({ allowNetwork: false });
     const service = control(source);
     return { ...service, options: () => receivedOptions, context: () => receivedContext };
@@ -148,14 +150,19 @@ test("remote Pi streams preserve thinking, tool calls, usage, and image input", 
         const runtime = await createRemoteModelRuntime(test.connection, catalog);
         const projected = runtime.getModel(model.provider, model.id)!;
         const context = {
-            messages: [{
-                role: "user" as const,
-                content: [{ type: "image" as const, data: "aGVsbG8=", mimeType: "image/png" }, {
-                    type: "text" as const,
-                    text: "describe",
-                }],
-                timestamp: 1,
-            }],
+            messages: [
+                {
+                    role: "user" as const,
+                    content: [
+                        { type: "image" as const, data: "aGVsbG8=", mimeType: "image/png" },
+                        {
+                            type: "text" as const,
+                            text: "describe",
+                        },
+                    ],
+                    timestamp: 1,
+                },
+            ],
         };
         for (const simple of [false, true]) {
             const result = simple ? runtime.streamSimple(projected, context) : runtime.stream(projected, context);
@@ -175,16 +182,18 @@ test("remote Pi streams preserve thinking, tool calls, usage, and image input", 
 });
 
 test("remote model errors retain a safe unsupported-temperature reason", async () => {
-    const test = await fixture([{
-        type: "error",
-        reason: "error",
-        error: {
-            ...completed,
-            content: [],
-            stopReason: "error",
-            errorMessage: "temperature not supported at https://private.invalid/secret",
+    const test = await fixture([
+        {
+            type: "error",
+            reason: "error",
+            error: {
+                ...completed,
+                content: [],
+                stopReason: "error",
+                errorMessage: "temperature not supported at https://private.invalid/secret",
+            },
         },
-    }]);
+    ]);
     try {
         const catalog = await fetchRemoteModelCatalog(test.connection);
         const runtime = await createRemoteModelRuntime(test.connection, catalog);
@@ -203,6 +212,11 @@ test("Pi streams forward approved reasoning, sampling, caching, and timeout opti
         const runtime = await createRemoteModelRuntime(test.connection, await fetchRemoteModelCatalog(test.connection));
         const projected = runtime.getModel(model.provider, model.id)!;
         const common = {
+            identity: {
+                userAgent: "short" as const,
+                version: "1.5.0",
+                attribution: { name: "RunWield", url: "https://runwield.com", categories: ["cli-agent"] },
+            },
             temperature: 0.4,
             maxTokens: 42,
             timeoutMs: 2500,
@@ -231,28 +245,34 @@ test("catalog projects Pi availability without exposing laptop endpoint or auth"
     const test = await fixture();
     try {
         const catalog = await fetchRemoteModelCatalog(test.connection);
-        assertEquals(catalog.providers.find((item) => item.id === model.provider), {
-            id: model.provider,
-            name: model.provider,
-            available: true,
-            oauth: false,
-            subscription: false,
-        });
+        assertEquals(
+            catalog.providers.find((item) => item.id === model.provider),
+            {
+                id: model.provider,
+                name: model.provider,
+                available: true,
+                oauth: false,
+                subscription: false,
+            },
+        );
         assertEquals(catalog.available, [{ provider: model.provider, id: model.id }]);
-        assertEquals(catalog.models.find((item) => item.id === model.id), {
-            id: model.id,
-            name: model.name,
-            api: model.api,
-            provider: model.provider,
-            reasoning: true,
-            thinkingLevelMap: model.thinkingLevelMap,
-            input: model.input,
-            inputLimits: model.inputLimits,
-            cost: model.cost,
-            promptCache: model.promptCache,
-            contextWindow: model.contextWindow,
-            maxTokens: model.maxTokens,
-        });
+        assertEquals(
+            catalog.models.find((item) => item.id === model.id),
+            {
+                id: model.id,
+                name: model.name,
+                api: model.api,
+                provider: model.provider,
+                reasoning: true,
+                thinkingLevelMap: model.thinkingLevelMap,
+                input: model.input,
+                inputLimits: model.inputLimits,
+                cost: model.cost,
+                promptCache: model.promptCache,
+                contextWindow: model.contextWindow,
+                maxTokens: model.maxTokens,
+            },
+        );
         const wire = JSON.stringify(catalog);
         for (const secret of ["private.invalid", "private-header", "secret", "baseUrl", "headers"]) {
             assert(!wire.includes(secret));
@@ -260,7 +280,10 @@ test("catalog projects Pi availability without exposing laptop endpoint or auth"
         const runtime = await createRemoteModelRuntime(test.connection, catalog);
         assertEquals(runtime.hasConfiguredAuth(model.provider), true);
         assertEquals(runtime.isUsingSubscription(model.provider), false);
-        assertEquals(runtime.getAvailableSnapshot().map((item) => item.id), [model.id]);
+        assertEquals(
+            runtime.getAvailableSnapshot().map((item) => item.id),
+            [model.id],
+        );
     } finally {
         await test.close();
     }
@@ -273,7 +296,10 @@ test("empty laptop catalog cannot activate ambient Pi providers", async () => {
         for (const provider of ["anthropic", "openai", "laptop-synthetic"]) {
             assertEquals(runtime.hasConfiguredAuth(provider), false);
             assertEquals(await runtime.getAuth(provider), undefined);
-            assertEquals(runtime.getAvailableSnapshot().filter((item) => item.provider === provider), []);
+            assertEquals(
+                runtime.getAvailableSnapshot().filter((item) => item.provider === provider),
+                [],
+            );
         }
         assertEquals(runtime.getAvailableSnapshot(), []);
     } finally {
@@ -283,23 +309,27 @@ test("empty laptop catalog cannot activate ambient Pi providers", async () => {
 
 test("malformed callbacks settle with a safe terminal error on both Pi streams", async () => {
     const test = await fixture();
+    const malformedIdentity = { version: "1.5.0" };
+    Reflect.set(malformedIdentity, "version", () => "1.5.0");
     try {
         const runtime = await createRemoteModelRuntime(test.connection, await fetchRemoteModelCatalog(test.connection));
         const projected = runtime.getModel(model.provider, model.id)!;
         for (const simple of [false, true]) {
-            for (
-                const options of [
-                    { onPayload: () => undefined },
-                    { samplingParams: { top_p: Number.NaN } },
-                    { headers: { Authorization: "private-header" } },
-                ]
-            ) {
+            for (const options of [
+                { onPayload: () => undefined },
+                { samplingParams: { top_p: Number.NaN } },
+                { identity: malformedIdentity },
+                { headers: { Authorization: "private-header" } },
+            ]) {
                 const output = simple
                     ? runtime.streamSimple(projected, { messages: [] }, options)
                     : runtime.stream(projected, { messages: [] }, options);
                 const received: AssistantMessageEvent[] = [];
                 for await (const event of output) received.push(event);
-                assertEquals(received.map((event) => event.type), ["error"]);
+                assertEquals(
+                    received.map((event) => event.type),
+                    ["error"],
+                );
                 const result = await output.result();
                 assertEquals(result.stopReason, "error");
                 assertStringIncludes(result.errorMessage ?? "", "Unsupported remote model option");
@@ -330,27 +360,34 @@ test("laptop OAuth renewal stays on laptop and projects subscription status", as
         });
         return output;
     };
-    source.registerNativeProvider(createProvider({
-        id: model.provider,
-        models: [model],
-        auth: {
-            oauth: {
-                name: "Synthetic subscription",
-                isSubscription: true,
-                login: () =>
-                    Promise.resolve({ type: "oauth", access: "expired-token", refresh: "refresh-secret", expires: 1 }),
-                refresh: () =>
-                    Promise.resolve({
-                        type: "oauth",
-                        access: "renewed-token",
-                        refresh: "next-secret",
-                        expires: Date.now() + 3_600_000,
-                    }),
-                toAuth: (credential) => Promise.resolve({ apiKey: credential.access }),
+    source.registerNativeProvider(
+        createProvider({
+            id: model.provider,
+            models: [model],
+            auth: {
+                oauth: {
+                    name: "Synthetic subscription",
+                    isSubscription: true,
+                    login: () =>
+                        Promise.resolve({
+                            type: "oauth",
+                            access: "expired-token",
+                            refresh: "refresh-secret",
+                            expires: 1,
+                        }),
+                    refresh: () =>
+                        Promise.resolve({
+                            type: "oauth",
+                            access: "renewed-token",
+                            refresh: "next-secret",
+                            expires: Date.now() + 3_600_000,
+                        }),
+                    toAuth: (credential) => Promise.resolve({ apiKey: credential.access }),
+                },
             },
-        },
-        api: { stream: send, streamSimple: send },
-    }));
+            api: { stream: send, streamSimple: send },
+        }),
+    );
     await source.login(model.provider, "oauth", { prompt: () => Promise.resolve(""), notify: () => {} });
     await source.refresh({ allowNetwork: false });
     const test = control(source);

@@ -1,248 +1,84 @@
 import { test } from "node:test";
-import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { createTuiManager } from "./tui-manager.ts";
+import { createTuiCrashGuards } from "./tui-crash-guards.ts";
+import { RunWieldTui } from "./tui.ts";
+import { VirtualTerminal } from "./testing/virtual-terminal.ts";
+import { Text } from "@earendil-works/pi-tui";
 
-type InputHandler = (data: string) => void;
-
-test("createTuiManager initializes once and returns the same running TUI", () => {
-    const events: string[] = [];
-
-    class FakeTerminal {
-        constructor() {
-            events.push("terminal");
-        }
-
-        write(_data: string): void {}
-        start(_onInput: InputHandler): void {}
-    }
-
-    class FakeTui {
-        terminal: FakeTerminal;
-        starts = 0;
-
-        constructor(terminal: FakeTerminal) {
-            this.terminal = terminal;
-            events.push("tui");
-        }
-
-        start(): void {
-            this.starts++;
-            events.push("start");
-        }
-    }
-
-    const manager = createTuiManager({
-        TerminalCtor: FakeTerminal,
-        TuiCtor: FakeTui,
-        installCrashGuards: () => events.push("install"),
-        uninstallCrashGuards: () => events.push("uninstall"),
-        restoreTitle: () => events.push("restoreTitle"),
-    });
-
-    const first = manager.initTUI();
-    const second = manager.initTUI();
-    const current = manager.getTUI();
-
-    assertStrictEquals(first, second);
-    assertStrictEquals(current.tui, first);
-    assertStrictEquals(current.terminal, first.terminal);
-    assertEquals(first.starts, 1);
-    assertEquals(events, ["terminal", "tui", "start", "install"]);
-});
-
-test("createTuiManager throws before initialization and clears state on stop", () => {
-    const events: string[] = [];
-
-    class FakeTerminal {
-        write(_data: string): void {}
-        start(_onInput: InputHandler): void {}
-    }
-
-    class FakeTui {
-        start(): void {
-            events.push("start");
-        }
-
-        stop(): void {
-            events.push("stop");
-        }
-    }
-
-    const manager = createTuiManager({
-        TerminalCtor: FakeTerminal,
-        TuiCtor: FakeTui,
-        installCrashGuards: () => events.push("install"),
-        uninstallCrashGuards: () => events.push("uninstall"),
-        restoreTitle: () => events.push("restoreTitle"),
-    });
-
-    assertThrows(() => manager.getTUI(), Error, "TUI not initialized. Call initTUI() first.");
-
-    manager.initTUI();
-    manager.stopTUI();
-
-    assertThrows(() => manager.getTUI(), Error, "TUI not initialized. Call initTUI() first.");
-    assertEquals(events, ["start", "install", "restoreTitle", "uninstall", "stop"]);
-});
-
-test("createTuiManager stop is safe before init and with TUI lacking stop", () => {
-    const events: string[] = [];
-
-    class FakeTerminal {
-        write(_data: string): void {}
-        start(_onInput: InputHandler): void {}
-    }
-
-    class FakeTui {
-        start(): void {
-            events.push("start");
-        }
-    }
-
-    const manager = createTuiManager({
-        TerminalCtor: FakeTerminal,
-        TuiCtor: FakeTui,
-        installCrashGuards: () => events.push("install"),
-        uninstallCrashGuards: () => events.push("uninstall"),
-        restoreTitle: () => events.push("restoreTitle"),
-    });
-
-    manager.stopTUI();
-    manager.initTUI();
-    manager.stopTUI();
-
-    assertEquals(events, ["restoreTitle", "start", "install", "restoreTitle", "uninstall"]);
-});
-
-test("createTuiManager clears partial state when TUI start fails", () => {
-    const events: string[] = [];
-
-    class FakeTerminal {
-        write(_data: string): void {}
-        start(_onInput: InputHandler): void {}
-    }
-
-    class FakeTui {
-        start(): void {
-            events.push("start");
-            throw new Error("boom");
-        }
-
-        stop(): void {
-            events.push("stop");
-        }
-    }
-
-    const manager = createTuiManager({
-        TerminalCtor: FakeTerminal,
-        TuiCtor: FakeTui,
-        installCrashGuards: () => events.push("install"),
-        uninstallCrashGuards: () => events.push("uninstall"),
-        restoreTitle: () => events.push("restoreTitle"),
-    });
-
-    assertThrows(() => manager.initTUI(), Error, "boom");
-    assertThrows(() => manager.getTUI(), Error, "TUI not initialized");
-    manager.stopTUI();
-    assertEquals(events, ["start", "stop", "restoreTitle"]);
-});
-
-test("createTuiManager enables focus reporting inside the alternate screen", () => {
-    const writes: string[] = [];
-
-    class FakeTerminal {
-        write(data: string): void {
-            writes.push(data);
-        }
-
-        start(_onInput: InputHandler): void {}
-    }
-
-    class FakeTui {
-        constructor(private readonly terminal: FakeTerminal) {}
-
-        start(): void {
-            this.terminal.write("enter alternate screen");
-        }
-
-        stop(): void {
-            this.terminal.write("leave alternate screen");
-        }
-    }
-
-    const manager = createTuiManager({
-        TerminalCtor: FakeTerminal,
-        TuiCtor: FakeTui,
-        installCrashGuards: () => {},
-        uninstallCrashGuards: () => {},
-        restoreTitle: () => {},
-    });
-
-    manager.initTUI();
-    manager.stopTUI();
-
-    assertEquals(writes, ["enter alternate screen", "\x1b[?1004h", "\x1b[?1004l", "leave alternate screen"]);
-});
-
-test("createTuiManager enables and disables production terminal focus reporting", () => {
-    const writes: string[] = [];
-
-    class FakeTerminal {
-        write(data: string): void {
-            writes.push(data);
-        }
-
-        start(_onInput: InputHandler): void {}
-    }
-
-    class FakeTui {
-        start(): void {}
-        stop(): void {}
-    }
-
-    const manager = createTuiManager({
-        TerminalCtor: FakeTerminal,
-        TuiCtor: FakeTui,
-        installCrashGuards: () => {},
-        uninstallCrashGuards: () => {},
-        restoreTitle: () => {},
-    });
-
-    manager.initTUI();
-    manager.stopTUI();
-
-    assertEquals(writes, ["\x1b[?1004h", "\x1b[?1004l"]);
-});
-
-test("createTuiManager disables focus reporting when crash-guard cleanup fails", () => {
-    const writes: string[] = [];
-
-    class FakeTerminal {
-        write(data: string): void {
-            writes.push(data);
-        }
-
-        start(_onInput: InputHandler): void {}
-    }
-
-    class FakeTui {
-        start(): void {}
-        stop(): void {}
-    }
-
-    const manager = createTuiManager({
-        TerminalCtor: FakeTerminal,
-        TuiCtor: FakeTui,
-        installCrashGuards: () => {},
-        uninstallCrashGuards: () => {
-            throw new Error("cleanup failed");
+function makeManager(TerminalCtor = VirtualTerminal) {
+    const events = new EventTarget();
+    const signalTarget = new EventTarget();
+    const guards = createTuiCrashGuards({
+        stop: () => manager.stopTUI(),
+        eventTarget: events,
+        signalRuntime: {
+            addSignalListener: (signal, listener) => signalTarget.addEventListener(signal, listener),
+            removeSignalListener: (signal, listener) => signalTarget.removeEventListener(signal, listener),
         },
-        restoreTitle: () => {},
+        os: "linux",
+        exit: () => {
+            throw new Error("unexpected exit");
+        },
     });
+    const manager = createTuiManager({
+        TerminalCtor,
+        TuiCtor: RunWieldTui,
+        installCrashGuards: guards.install,
+        uninstallCrashGuards: guards.uninstall,
+        restoreTitle: () => {}, // Terminal control output is the external boundary.
+    });
+    return { manager, events, guards };
+}
 
-    manager.initTUI();
-    manager.stopTUI();
+test("TUI manager keeps one live terminal, restores it on crash, and can restart", async () => {
+    const { manager, events, guards } = makeManager();
+    assertThrows(() => manager.getTUI(), Error, "TUI not initialized");
+    try {
+        const tui = manager.initTUI();
+        assertEquals(manager.initTUI(), tui);
+        const { terminal } = manager.getTUI();
+        tui.addChild(new Text("Session remains visible", 0, 0));
+        tui.requestRender(true);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        await terminal.flush();
+        assertEquals(terminal.getScreenText().includes("Session remains visible"), true);
+        assertEquals(guards.isInstalled(), true);
+        events.dispatchEvent(new Event("error"));
+        assertEquals(terminal.stopped, true);
+        assertEquals(guards.isInstalled(), false);
+        assertThrows(() => manager.getTUI(), Error, "TUI not initialized");
+        const restarted = manager.initTUI();
+        assertEquals(restarted === tui, false);
+        assertEquals(manager.getTUI().terminal.started, true);
+        manager.stopTUI();
+        manager.stopTUI();
+        assertEquals(guards.isInstalled(), false);
+    } finally {
+        manager.stopTUI();
+    }
+});
 
-    assertEquals(writes, ["\x1b[?1004h", "\x1b[?1004l"]);
+test("TUI manager recovers from a terminal startup failure without publishing a partial TUI", () => {
+    let first = true;
+    class UnavailableTerminal extends VirtualTerminal {
+        start(...args: Parameters<VirtualTerminal["start"]>) {
+            if (first) {
+                first = false;
+                throw new Error("terminal disconnected");
+            }
+            super.start(...args);
+        }
+    }
+    const { manager, guards } = makeManager(UnavailableTerminal);
+    try {
+        assertThrows(() => manager.initTUI(), Error, "terminal disconnected");
+        assertThrows(() => manager.getTUI(), Error, "TUI not initialized");
+        assertEquals(guards.isInstalled(), false);
+        manager.initTUI();
+        assertEquals(manager.getTUI().terminal.started, true);
+        assertEquals(guards.isInstalled(), true);
+    } finally {
+        manager.stopTUI();
+    }
 });

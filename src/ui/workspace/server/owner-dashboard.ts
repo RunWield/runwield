@@ -2,9 +2,9 @@ import type { PlanReadAvailability } from "../../../plan-store/index.ts";
 /** @module ui/workspace/server/owner-dashboard */
 
 import { compareChildPlansByOrder, isSequencePlan } from "../../../plan-format.ts";
-import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
+import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
-import { loadPlanSummaries, loadPlanSummaryCatalog } from "./plan-adapter.js";
+import { loadPlanSummaries, loadPlanSummaryCatalog } from "./plan-adapter.ts";
 import type { OwnerProjectHealth, OwnerProjectRecord, OwnerProjectView } from "./owner-projects.ts";
 import { requireOwnerProjectRoot, serializeOwnerProject } from "./owner-projects.ts";
 import { readLiveSessionConnection } from "../../../shared/session/live-session-connection.ts";
@@ -81,7 +81,7 @@ type SessionSummary = {
     name?: string;
     href?: string;
     state?: string;
-    headerTimestamp?: string;
+    headerTimestamp?: string | null;
     archivedAt?: string | null;
 };
 
@@ -148,7 +148,7 @@ type DashboardInteractionRequest = {
 
 type WorkspaceOperation = {
     projectId?: string;
-    runwieldSessionId?: string;
+    runwieldSessionId?: string | null;
     status?: string;
     liveInteraction?: { interactionId?: string; request?: DashboardInteractionRequest };
     error?: string;
@@ -367,7 +367,7 @@ function dashboardItem(
     };
 }
 
-function latestTimestamp(...values: Array<string | undefined>): string {
+function latestTimestamp(...values: Array<string | null | undefined>): string {
     return (
         values
             .filter((value): value is string => Boolean(value && Number.isFinite(Date.parse(value))))

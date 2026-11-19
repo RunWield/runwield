@@ -1,13 +1,13 @@
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
-// @ts-nocheck: owner Workspace app and managed fixture expose JavaScript records.
+// @ts-nocheck: Owner-service result records have implicit types.
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { ensurePlanIdentity } from "../../plan-store/index.ts";
 
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 
 test("owner Plan review command opens a saved review through the authorized route without a user turn", async () => {
     await withRuntimeCommandFixture(

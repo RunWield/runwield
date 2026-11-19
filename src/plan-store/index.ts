@@ -21,7 +21,7 @@ export {
     StalePlanBodyError,
     PlanNotFoundError,
     PlanFileIssueError,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 export type {
     ChildFeaturePlanDescriptor,
     DeliveryEvidence,
@@ -31,6 +31,9 @@ export type {
     PlanExecutionPolicySuccess,
     PlanFrontMatter,
     PlanFrontMatterInput,
+    ParsePlanFrontMatterResult,
+    PlanBodyResource,
+    PlanResource,
     PlanReadAvailability,
     PlanTextLoaded,
     PlanTextMalformed,
@@ -39,7 +42,7 @@ export type {
     WorktreeDeliveryEvidence,
     PlanDocumentDiagnostic,
     SavedChildFeaturePlan,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 export { authorPackageChildren, saveChildFeaturePlans } from "./children.ts";
 export { readLocalHomeStore, withLocalPlanWorkflow, withLocalProjectAction } from "./access.ts";
 export { continueMissingPlanExecution } from "./access.ts";
@@ -57,7 +60,7 @@ export {
     ensureExecutionPlanFile,
     prepareExecutionPlanFile,
     restoreExecutionPlanFromBaseline,
-} from "../shared/workflow/execution-plan-file.js";
+} from "../shared/workflow/execution-plan-file.ts";
 export { requiresPlanWorkflow } from "./access.ts";
 export { capturePackageWorkflowAccess as capturePlanReadContext } from "./workflows.ts";
 export {
@@ -161,7 +164,7 @@ export {
     resumePlanAttempt,
     type PlanAccess,
 } from "./handles.ts";
-export type { TransitionResult } from "./transitions.ts";
+export type { TransitionResult, TransitionResource } from "./transitions.ts";
 
 export { loadReviewPlanDocument, isCurrentPlan, planControllerRoot } from "./resources.ts";
 export {
@@ -205,7 +208,7 @@ export {
     reconcileTransitionRecoveryRecords,
 } from "./transitions.ts";
 export type { EffectProver, TransitionReconciliation } from "./transitions.ts";
-export { PlanLockTimeoutError } from "../plan-store.js";
+export { PlanLockTimeoutError } from "../plan-store.ts";
 export { StaleControllerWriteError, RegisteredPlanDocumentUnavailableError } from "./controllers.ts";
 
 export {

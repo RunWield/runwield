@@ -2,7 +2,7 @@ import { captureForegroundProcess } from "../shared/captured-process.ts";
 /** Recover formatting-only drift left by older controller writes after sealing. */
 import { extractYaml } from "../shared/front-matter.ts";
 import { isDeepStrictEqual } from "node:util";
-import { withPlanLock, writePlanMarkdownWithRevision } from "../plan-store.js";
+import { withPlanLock, writePlanMarkdownWithRevision } from "../plan-store.ts";
 import { planDocumentMarkdown, splitPlanMarkdownBody } from "../plan-format.ts";
 import { loadPlanStrict } from "./index.ts";
 

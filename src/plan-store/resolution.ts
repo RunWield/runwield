@@ -16,14 +16,14 @@ import { executionWorktreePathExists } from "../shared/workflow/execution-worktr
 import { listControllerDocumentWorktrees } from "./controllers.ts";
 import { preparePlanWorkflow } from "./index.ts";
 import { realpath as fsRealpath } from "node:fs/promises";
-import { updatePlanFrontMatter } from "../plan-store.js";
+import { updatePlanFrontMatter } from "../plan-store.ts";
 import { canonicalizeStoredPlanName, canonicalPlanStatus, getDeclaredPlanStatus } from "../plan-format.ts";
 import { findPlanEvidenceById, loadPlan, resolvePlan } from "./index.ts";
 import { type MissingExecutionWorktreeRecovery } from "./location.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
-import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
-import { listEntries, prepareWorktreeRegistry } from "../shared/worktree-registry.js";
+import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
+import { listEntries, prepareWorktreeRegistry } from "../shared/worktree-registry.ts";
 import { cleanupStoredPublication, loadPublicationAttempt } from "../shared/workflow/publication-machine.ts";
 import { isPublicationCleanupPending } from "../shared/workflow/publication-attempt.ts";
 

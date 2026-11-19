@@ -1,28 +1,28 @@
-// @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 import { readFrozenPlanExecutionDocuments, planDocumentReference } from "../../plan-store/index.ts";
 import { type PlanAccess } from "../../plan-store/index.ts";
 import { withPlanAccess } from "../../plan-store/index.ts";
 import { isEpicPlan } from "../project-plan.ts";
-import { AGENTS, CLI_BIN } from "../../constants.js";
+import { AGENTS, CLI_BIN } from "../../constants.ts";
 import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
 
-import { emitSystemStatus } from "../session/session-runtime-events.js";
-import { getAgentDisplayName } from "../session/agents.js";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
+import { getAgentDisplayName } from "../session/agents.ts";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../session/session-runtime-interactions.js";
-import { isExecutablePlanStatus, isProjectPlan, recordPlanEvent } from "./plan-lifecycle.js";
+} from "../session/session-runtime-interactions.ts";
+import { isExecutablePlanStatus, isProjectPlan, recordPlanEvent } from "./plan-lifecycle.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
 import {
     appendSessionCompleteGuidance,
     requestPlanReviewRetryConfirmation,
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
-} from "./plan-review-recovery.js";
+} from "./plan-review-recovery.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { recordWorkflowMetric } from "./metrics.js";
+import { recordWorkflowMetric } from "./metrics.ts";
 import { CollaborationStyles, selectRuntimeCollaborationStyle } from "./execution-collaboration.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { runPlanningAgent } from "./planning-agent.ts";
@@ -36,7 +36,7 @@ import { emitLaunchingExecutionAgent } from "./execution-preparation-progress.ts
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
-import type { ActiveExecutionWorkflow, HostedSession } from "../session/hosted-session.js";
+import type { ActiveExecutionWorkflow, HostedSession } from "../session/hosted-session.ts";
 
 function isPlanReviewRetryAccepted(response) {
     if (!response || typeof response !== "object") return false;
@@ -88,7 +88,7 @@ export interface ExecuteSingleEngineerPlanOptions {
     approvalEvidence?: PlanActionEvidence;
     triageMeta: Partial<PlanFrontMatter>;
     sessionManager?: SessionManager;
-    currentStatus: import("./plan-lifecycle.js").PlanStatus;
+    currentStatus: import("./plan-lifecycle.ts").PlanStatus;
     hostedSession: HostedSession;
     routerMessage?: string;
     reviewFeedback?: string;

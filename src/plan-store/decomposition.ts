@@ -9,7 +9,7 @@ import {
     type SavedChildFeaturePlan,
     type ChildFeaturePlanDescriptor,
     type PlanWriteOptions,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 import { isPlannedChangeClassification } from "../plan-format/classification.ts";
 import { isEpicPlan } from "../shared/project-plan.ts";
 import { recordPlanEvent } from "./events.ts";

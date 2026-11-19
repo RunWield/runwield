@@ -15,7 +15,7 @@ interface GitHubInvocation {
 
 interface ShareUi {
     messages: Array<{ message: string; error?: boolean }>;
-    uiAPI: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage">;
+    uiAPI: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage">;
 }
 
 function createUi(): ShareUi {

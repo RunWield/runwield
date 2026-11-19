@@ -6,7 +6,7 @@ import {
 } from "../project-identity.ts";
 import type { Dirent } from "node:fs";
 import { writeJsonAtomically } from "../private-json-file.ts";
-import { realpathSync } from "node:fs";
+import { realpathSync, readdirSync, readFileSync } from "node:fs";
 import {
     readdir as fsReaddir,
     writeFile as fsWriteFile,
@@ -15,10 +15,10 @@ import {
     stat as fsStat,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
+import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
 import { getLockHostname, isLockHolderGone, isLockHolderUnattributable } from "../process-liveness.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { type TriageOutcome } from "../workflow/triage-outcome.ts";
 import {
@@ -70,7 +70,7 @@ export interface AttachedWorkflowRecord {
     schemaVersion: 1;
     workflowId: string;
     revision: number;
-    /** Canonical primary checkout root: binding evidence, compared on every load. */
+    /** Original primary checkout binding; a surviving alias keeps the same storage and locks. */
     projectRoot: string;
     request: { text: string; hostRequestId: string };
     evidence: RecordedEvidence;
@@ -79,6 +79,8 @@ export interface AttachedWorkflowRecord {
     acceptedOperations: Record<string, AcceptedOperation>;
     triageOutcome: TriageOutcome | null;
     plan: AttachedPlanReference | null;
+    /** Marks explicit preparation of this Planner action; paths remain Core-resolved. */
+    planningActionId?: string;
     review: AttachedReviewRound | null;
     execution: AttachedExecution | null;
     pendingConsent: AttachedPendingConsent | null;
@@ -122,7 +124,7 @@ export function locateAttachedWorkflows(projectRoot: string): AttachedWorkflowLo
     const homeBaseDir = join(homeDir, RUNWIELD_DIR_NAME, ATTACHED_DIR_NAME);
     const bindings = inspectProjectStorage(primaryRoot);
     const identity = inspectProjectIdentity(primaryRoot);
-    return {
+    const location: AttachedWorkflowLocation = {
         bindings,
         foreignStorageRoot: !bindings.length && isProjectStorageRootClaimed(primaryRoot),
         repositoryId: identity.kind === "existing" ? identity.identity.repositoryId : undefined,
@@ -132,6 +134,67 @@ export function locateAttachedWorkflows(projectRoot: string): AttachedWorkflowLo
             join(homeBaseDir, encodeCwdForSessionDir(primaryRoot), WORKFLOWS_DIR_NAME),
         homeBaseDir,
     };
+    if (location.bindings?.length || location.foreignStorageRoot) return location;
+    return findAliasedLocation(location) ?? location;
+}
+
+/**
+ * A retained old-path alias proves that the saved binding still names this checkout.
+ * Keep its record directory, root spelling, operation identities, locks and holder receipts
+ * together. Reads do not migrate records or create a competing namespace.
+ */
+function findAliasedLocation(location: AttachedWorkflowLocation): AttachedWorkflowLocation | null {
+    let selected: AttachedWorkflowLocation | null = null;
+    for (const directory of directoryEntries(location.homeBaseDir)) {
+        if (!directory.isDirectory()) continue;
+        const workflowsDir = join(location.homeBaseDir, directory.name, WORKFLOWS_DIR_NAME);
+        for (const file of directoryEntries(workflowsDir)) {
+            if (!file.isFile() || !file.name.endsWith(".json")) continue;
+            let record: AttachedWorkflowRecord;
+            try {
+                record = JSON.parse(readFileSync(join(workflowsDir, file.name), "utf8"));
+            } catch (error) {
+                // A malformed record in an unrelated project cannot claim this project.
+                // Reading that record itself still reports its original parse error.
+                if (error instanceof SyntaxError || (error instanceof Error && isMissingPath(error))) continue;
+                throw error;
+            }
+            if (
+                !record ||
+                record.schemaVersion !== 1 ||
+                typeof record.projectRoot !== "string" ||
+                encodeCwdForSessionDir(record.projectRoot) !== directory.name
+            )
+                continue;
+            let savedRoot: string;
+            try {
+                savedRoot = realpathSync(record.projectRoot);
+            } catch (error) {
+                if (error instanceof Error && isMissingPath(error)) continue;
+                throw error;
+            }
+            if (savedRoot !== location.projectRoot) continue;
+            if (selected && selected.workflowsDir !== workflowsDir) {
+                throw new Error("project_alias_conflict: Multiple Attached record directories claim this checkout.");
+            }
+            selected = { ...location, projectRoot: record.projectRoot, workflowsDir };
+            break;
+        }
+    }
+    return selected;
+}
+
+function isMissingPath(error: Error): boolean {
+    return "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR");
+}
+
+function directoryEntries(path: string): Dirent[] {
+    try {
+        return readdirSync(path, { withFileTypes: true });
+    } catch (error) {
+        if (error instanceof Error && isMissingPath(error)) return [];
+        throw error;
+    }
 }
 
 function recordPath(workflowsDir: string, workflowId: string): string {
@@ -459,6 +522,7 @@ export interface AttachedValidationCheckpoint {
 
 export interface AttachedValidationHolder {
     token?: string;
+    startedAt?: string;
     pid: number;
     hostname: string;
 }

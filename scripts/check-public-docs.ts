@@ -1,6 +1,6 @@
 import { readdir as fsReaddir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import { PUBLIC_DOCS, routeFor } from "./public-docs.ts";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { join } from "node:path";
 
 export async function checkPublicDocs(root = getCwd()): Promise<void> {

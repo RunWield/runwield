@@ -5,7 +5,7 @@ import { captureForegroundProcess } from "../shared/captured-process.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { inspectPlanTextStrict, getStoredPlanPath, withPlanCatalogLock } from "../plan-store.js";
+import { inspectPlanTextStrict, getStoredPlanPath, withPlanCatalogLock } from "../plan-store.ts";
 import {
     canonicalizeStoredPlanName,
     isHiddenPlanName,
@@ -14,9 +14,9 @@ import {
     parsePlanFrontMatter,
 } from "../plan-format.ts";
 import { loadPlan } from "./index.ts";
-import { listEntries as listWorktreeRegistryEntries } from "../shared/worktree-registry.js";
+import { listEntries as listWorktreeRegistryEntries } from "../shared/worktree-registry.ts";
 
-import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { ensureExecutionPlanFile } from "./index.ts";
 import {
     assertControllerDocumentAvailable,
@@ -329,7 +329,7 @@ export async function withPlanningPlanIdentity<T>(
 }
 
 export async function assertPlanningDocumentAvailable(cwd: string, attemptId: string): Promise<void> {
-    const { findById } = await import("../shared/worktree-registry.js");
+    const { findById } = await import("../shared/worktree-registry.ts");
     const entry = await findById(cwd, attemptId);
     if (!entry) throw new Error("Planning execution is no longer registered.");
     const [checked] = await inspectControllerDocumentWorktrees(cwd, [entry]);
@@ -342,7 +342,7 @@ export async function bindPlanningDocument(
     planId: string,
     attemptId: string,
 ): Promise<void> {
-    const { findById } = await import("../shared/worktree-registry.js");
+    const { findById } = await import("../shared/worktree-registry.ts");
     const entry = await findById(cwd, attemptId);
     if (!entry || entry.planId !== planId || entry.planName !== name || entry.status !== "planning")
         throw new Error("Planning document execution identity changed.");

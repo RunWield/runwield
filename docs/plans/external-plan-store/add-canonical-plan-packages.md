@@ -13,7 +13,7 @@ affectedPaths:
     - "src/shared/private-json-file.ts"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/plan-store-prd.md"
-    - "docs/adr/0020-home-project-state-and-launch-mode-ownership.md"
+    - "docs/adr/019-home-project-state-and-launch-mode-ownership.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-01"
@@ -131,7 +131,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - New package behavior, concurrency, recovery, and snapshot tests; `scripts/bun-test-files.json` — register concrete
   isolated-runner coverage in the normal inventory.
 - `docs/prd/runwield-core-prd.md`, `docs/prd/plan-store-prd.md`, and
-  `docs/adr/0020-home-project-state-and-launch-mode-ownership.md` — explain the preparatory contract and remaining target
+  `docs/adr/019-home-project-state-and-launch-mode-ownership.md` — explain the preparatory contract and remaining target
   scope. Update affected references without promoting the broader proposed ADR or unfinished journeys to current.
 
 No UI redesign, public command activation, managed-remote transport, Work Record relocation, or Plan glossary replacement

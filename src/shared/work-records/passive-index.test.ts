@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
 import { mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { inspectProjectIdentity } from "../project-identity.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";

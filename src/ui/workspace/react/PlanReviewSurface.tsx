@@ -1,4 +1,4 @@
-// @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+// @ts-nocheck: Component props and event-handler types are implicit.
 import { ArtifactReadSurface } from "./ArtifactReadSurface.tsx";
 import { RunWieldPanelIcon } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { PlanQuestionBlocks } from "./PlanQuestionBlocks.tsx";
@@ -87,9 +87,10 @@ function usePlanDocumentLinks(payload) {
             const contextPath = payload.planName
                 ? `docs/plans/${payload.planName}.md`
                 : payload.planPath || "docs/plans/plan.md";
-            const projectPath = contextPath.includes("/docs/plans/")
-                ? `docs/plans/${contextPath.split("/docs/plans/").pop()}`
-                : contextPath;
+            const normalizedContextPath = contextPath.replaceAll("\\", "/");
+            const projectPath = normalizedContextPath.includes("/docs/plans/")
+                ? `docs/plans/${normalizedContextPath.split("/docs/plans/").pop()}`
+                : normalizedContextPath;
             const base = projectPath.startsWith("docs/plans/")
                 ? projectPath.slice(0, projectPath.lastIndexOf("/"))
                 : "docs/plans";

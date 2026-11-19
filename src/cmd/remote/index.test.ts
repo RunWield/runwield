@@ -20,7 +20,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:url";
 import { join } from "node:path";
 import { parseRemoteDestination } from "./index.ts";
@@ -48,6 +48,7 @@ interface RemoteFixture {
     sshLog: string;
     run: (args: string[], proof?: string) => Promise<CliResult>;
     runWithOpenStdin: () => Promise<OpenStdinCliResult>;
+    runWithTerminal: () => Promise<CliResult>;
 }
 
 /** Real CLI with disposable homes: POSIX runs remote Python; Windows uses a native SSH protocol boundary. */
@@ -91,6 +92,7 @@ async function withRemoteFixture(
                 `
 import { existsSync, readFileSync, appendFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { execFileSync } from "node:child_process";
 const args = process.argv.slice(2);
 const readyFile = process.env.SSH_LOG + ".ready";
 if (args[0] === "-G") {
@@ -115,6 +117,16 @@ if (args[0] === "-tt") {
         await new Promise(resolve => setTimeout(resolve, 10));
     }
     process.stdout.write("REMOTE_CONNECTED\\n");
+    if (process.env.SSH_TERMINAL_TEST === "1") {
+        const size = () => execFileSync("stty", ["size"], { stdio: [0, "pipe", "pipe"] }).toString().trim();
+        writeFileSync(process.env.SSH_LOG + ".initial-size", process.stdin.isTTY ? size() : "not a terminal");
+        process.on("SIGWINCH", () => {
+            writeFileSync(process.env.SSH_LOG + ".resized", size());
+            process.exit(0);
+        });
+        setInterval(() => {}, 1000);
+        await new Promise(() => {});
+    }
     const lines = createInterface({ input: process.stdin });
     for await (const line of lines) {
         if (line !== "terminal-input") throw new Error("Unexpected terminal input");
@@ -322,6 +334,46 @@ plugin({ name: "fixture-build-boundary", setup(build) {
                     stderr: decoder.decode(output.stderr),
                 };
             },
+            runWithTerminal: async () => {
+                const program = String.raw`import fcntl, json, os, pty, select, signal, struct, subprocess, sys, termios, time
+master, slave = pty.openpty()
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 54, 180, 0, 0))
+child = subprocess.Popen(json.loads(sys.argv[1]), stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
+os.close(slave)
+output = b''
+try:
+    deadline = time.monotonic() + 20
+    while not os.path.exists(os.environ['SSH_LOG'] + '.initial-size'):
+        if time.monotonic() > deadline: raise RuntimeError('initial size timeout: ' + repr(output))
+        if select.select([master], [], [], .05)[0]: output += os.read(master, 65536)
+    fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 62, 212, 0, 0))
+    os.kill(child.pid, signal.SIGWINCH)
+    deadline = time.monotonic() + 3
+    while not os.path.exists(os.environ['SSH_LOG'] + '.resized'):
+        if time.monotonic() > deadline: break
+        time.sleep(.02)
+    initial = open(os.environ['SSH_LOG'] + '.initial-size').read()
+    resized = open(os.environ['SSH_LOG'] + '.resized').read() if os.path.exists(os.environ['SSH_LOG'] + '.resized') else 'no resize'
+    print(json.dumps([initial, resized]))
+finally:
+    if child.poll() is None: child.terminate()
+    try: child.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait()
+    os.close(master)
+`;
+                const output = await captureForegroundProcess("python3", {
+                    args: ["-c", program, JSON.stringify([executable, ...cliArgs(["remote-alias"])])],
+                    cwd: local,
+                    env: { ...cliEnv(), SSH_TERMINAL_TEST: "1" },
+                });
+                return {
+                    code: output.code,
+                    stdout: decoder.decode(output.stdout),
+                    stderr: decoder.decode(output.stderr),
+                };
+            },
             runWithOpenStdin: async () => {
                 const child = spawn(executable, cliArgs(["remote-alias"]), {
                     cwd: local,
@@ -404,12 +456,6 @@ test("remote destination separates a directory from an SSH host without changing
     assertEquals(parseRemoteDestination("alias:"), { host: "alias", path: null });
 });
 
-test("remote destination rejects option-like and malformed hosts", () => {
-    for (const destination of ["", "-oProxyCommand=bad", "-oBad:/repo", ":/repo", "alias name", "[unfinished"]) {
-        assertThrows(() => parseRemoteDestination(destination), Error, "Invalid SSH destination");
-    }
-});
-
 test("remote CLI help and invalid arity do not contact SSH", async () => {
     await withRemoteFixture(async ({ run, sshLog }) => {
         const help = await run(["--help"]);
@@ -442,7 +488,7 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/socket-listener.ts",
             "src/shared/stdin-stream.ts",
             "src/shared/jsonc.ts",
-            "src/shared/remote/runtime.js",
+            "src/shared/remote/runtime.ts",
             "src/shared/remote/target.ts",
             "src/shared/remote/host-prerequisites.ts",
             "src/shared/remote/control.ts",
@@ -451,10 +497,10 @@ test("source remote help works without a generated identity and connection expla
             "packaging/remote/tested-dependencies.json",
             "src/shared/remote/sftp-mount.ts",
             "src/shared/remote/model-proof-config.ts",
-            "src/constants.js",
+            "src/constants.ts",
             "src/shared/cli-name.ts",
             "src/plan-format/classification.ts",
-            "runtime-root.js",
+            "runtime-root.ts",
             "scripts/build-metadata.ts",
             "src/shared/version.js",
         ])
@@ -501,12 +547,14 @@ test("remote CLI refuses malformed LIVE proof before contacting SSH", async () =
     });
 });
 
-test("remote CLI rejects an option-like host before invoking SSH", async () => {
+test("remote CLI rejects malformed and option-like hosts before invoking SSH", async () => {
     await withRemoteFixture(async ({ run, sshLog }) => {
-        const result = await run(["-oProxyCommand=bad"]);
-        assertEquals(result.code, 1);
-        assertStringIncludes(result.stderr, "Invalid SSH destination");
-        assertEquals(await exists(sshLog), false);
+        for (const destination of ["", "-oProxyCommand=bad", "-oBad:/repo", ":/repo", "alias name", "[unfinished"]) {
+            const result = await run([destination]);
+            assertEquals(result.code, 1);
+            assertStringIncludes(result.stderr, "Invalid SSH destination");
+            assertEquals(await exists(sshLog), false);
+        }
     });
 });
 
@@ -684,3 +732,15 @@ test("remote CLI rejects a local release bundle with changed executable bytes", 
         assertStringIncludes(result.stderr, "checksum");
     }, true);
 });
+
+test(
+    "remote SSH uses the full terminal size at startup and after resize",
+    { skip: process.platform === "win32" },
+    async () => {
+        await withRemoteFixture(async ({ runWithTerminal }) => {
+            const result = await runWithTerminal();
+            assertEquals(result.code, 0, result.stderr);
+            assertEquals(JSON.parse(result.stdout), ["54 180", "62 212"]);
+        }, true);
+    },
+);

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { createSessionRuntime } from "../session/session-runtime.ts";
 import { git } from "./git.ts";
 export interface ApprovalPublicationState {

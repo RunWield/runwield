@@ -1,4 +1,4 @@
-// @ts-nocheck: owner Workspace routes and the fixture expose JavaScript records.
+// @ts-nocheck: Owner-service result records have implicit types.
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
@@ -9,7 +9,7 @@ import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
 
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 
 async function withOpenReview(run) {
     await withRuntimeCommandFixture(

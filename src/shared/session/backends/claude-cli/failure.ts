@@ -1,6 +1,6 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../../hosted-session.js";
-import { emitSystemStatus } from "../../session-runtime-events.js";
+import type { HostedSession } from "../../hosted-session.ts";
+import { emitSystemStatus } from "../../session-runtime-events.ts";
 
 export type ClaudeCliBackendErrorKind =
     | "missing_executable"
@@ -80,10 +80,11 @@ export function sanitizeStderrForDisplay(stderr: string): string {
     const lines = stderr
         .split(/\r?\n/)
         .map((line) => line.trim())
-        .filter((line) =>
-            line && !SECRET_LINE.test(line) && (!SETTINGS_LINE.test(line) || CLAUDE_USAGE_REFERENCE.test(line))
+        .filter(
+            (line) =>
+                line && !SECRET_LINE.test(line) && (!SETTINGS_LINE.test(line) || CLAUDE_USAGE_REFERENCE.test(line)),
         )
-        .map((line) => line.replace(URL, (url) => CLAUDE_USAGE_URL.test(url) ? url : "[redacted-url]"));
+        .map((line) => line.replace(URL, (url) => (CLAUDE_USAGE_URL.test(url) ? url : "[redacted-url]")));
     const joined = lines.join("\n");
     return joined.length > MAX_MESSAGE_LENGTH ? `${joined.slice(0, MAX_MESSAGE_LENGTH)}…` : joined;
 }

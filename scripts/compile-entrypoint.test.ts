@@ -19,7 +19,7 @@ test("diagnostic entrypoints compile with the real embedded runtime payload", as
             `
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { RUNWIELD_ROOT } from "../../runtime-root.js";
+import { RUNWIELD_ROOT } from "../../runtime-root.ts";
 console.log(JSON.stringify({ marker: "real-diagnostic-entry", logo: readFileSync(join(RUNWIELD_ROOT, "brand/logo.svg"), "utf8") }));
 `,
         );

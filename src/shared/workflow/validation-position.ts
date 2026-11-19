@@ -8,7 +8,7 @@
  * skip Mechanical Validation, or override a checkpoint.
  */
 
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 
 /** The phase currently shown for a live validation run. */
 export type ValidationPhaseName = "mechanical" | "semantic" | "delivery";
@@ -53,10 +53,7 @@ export function getValidationPosition(
  * Called when a run reaches a terminal outcome. Leaving a stale position behind
  * would make the next live UI projection show the middle of the last run.
  */
-export function clearValidationPosition(
-    hostedSession: HostedSession | undefined,
-    planName: string,
-): void {
+export function clearValidationPosition(hostedSession: HostedSession | undefined, planName: string): void {
     if (!hostedSession || !planName) return;
     POSITIONS.get(hostedSession)?.delete(planName);
 }

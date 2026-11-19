@@ -8,7 +8,7 @@
  * editor, TUI, session), plus the project root that scopes settings.
  */
 
-import { COMMAND_NAMES, commandRegistry } from "../../cmd/registry.js";
+import { COMMAND_NAMES, commandRegistry } from "../../cmd/registry.ts";
 import {
     detectModelAvailability,
     getConfiguredModelAvailability,
@@ -20,9 +20,9 @@ import {
 } from "../../shared/session/model-readiness.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import type { Editor, TUI } from "@earendil-works/pi-tui";
-import { theme } from "../theme/theme.js";
+import { theme } from "../theme/theme.ts";
 import { runSharedModelSetup } from "./model-setup.ts";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 
 export {
     detectModelAvailability,
@@ -89,7 +89,9 @@ export async function maybeShowModelWelcome(options: MaybeShowModelWelcomeOption
         "Choose how you'd like to connect your model.",
         "RunWield needs a configured model before chat submissions can run.",
         initialAvailability.error ? `Model registry note: ${initialAvailability.error}` : "",
-    ].filter(Boolean).join("\n");
+    ]
+        .filter(Boolean)
+        .join("\n");
 
     const setupResult = await runSharedModelSetup({
         uiAPI: options.uiAPI,

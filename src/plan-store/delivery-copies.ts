@@ -2,7 +2,7 @@ import { opendir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:
 import { join } from "node:path";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
 import { mergeFrontMatterText, parsePlanFrontMatter } from "../plan-format.ts";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "../shared/work-records/markdown.js";
+import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "../shared/work-records/markdown.ts";
 async function git(cwd: string, args: string[]): Promise<string> {
     const result = await captureForegroundProcess("git", { cwd, args });
     if (!result.success) throw new Error(new TextDecoder().decode(result.stderr));

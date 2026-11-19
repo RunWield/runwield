@@ -5,7 +5,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
 /** Child completion combines current definitions with already-published branch history. */
 import { join } from "node:path";
 import { findPlansByParent, loadArchivedPlan, loadPlan } from "./index.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { listControllerDocumentWorktrees } from "./controllers.ts";
 
 export async function findCompletionSiblings(cwd: string, parentPlan: string) {

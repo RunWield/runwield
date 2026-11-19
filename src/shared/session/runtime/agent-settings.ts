@@ -1,24 +1,24 @@
+import { AGY_CLI_MODEL_CHOICES } from "../../models/agy-cli-catalog.ts";
 import { mkdirSync } from "node:fs";
-import { AGENTS } from "../../../constants.js";
-import { recordManualModelSelection } from ".././active-agent-session.js";
+import { AGENTS } from "../../../constants.ts";
+import { recordManualModelSelection } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
-import { getAgentBusyLines, getAgentDisplayName } from ".././agents.js";
-import { switchActiveAgent } from ".././agent-switching.js";
+import { getAgentBusyLines, getAgentDisplayName } from ".././agents.ts";
+import { switchActiveAgent } from ".././agent-switching.ts";
 import {
     drainSessionCompactionMetrics,
     getConfiguredAgentModel,
     getRootSessionRebuildOptions,
     runIsolatedAgentSession,
-} from ".././session.js";
-import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.js";
+} from ".././session.ts";
+import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { assertModelExecutionBackendSupported } from "../../models/model-execution.ts";
 import { getModelRegistry } from "../../models/model-registry.ts";
 import { parseProviderModel } from "../../models/model-validation.ts";
-import { clearMascotEnabledCache, getSettingsManager, setGlobalCompactionSetting } from "../../settings.js";
+import { clearMascotEnabledCache, getSettingsManager, setGlobalCompactionSetting } from "../../settings.ts";
 import { getSessionKeyboardHelp } from ".././session-help.ts";
 import { resolveMcpConfig } from "../../mcp/config.ts";
 import { startMcpIntegration } from "../../mcp/integration.ts";
-import { ensureAgyCliMcpSetup } from ".././backends/agy-cli/mcp-setup.ts";
 import { readCurrentPairCheckpoint, recordPairCheckpointSnapshot } from ".././pair-checkpoint-session.ts";
 import { recordExecutionWorkflowSnapshot } from "../execution-workflow-session.ts";
 import { resolvePersistedExecutionRootConfiguration } from "./support.ts";
@@ -41,7 +41,7 @@ interface RuntimeMutationResult {
     error?: string;
     deferred?: boolean;
     enabled?: boolean;
-    thinkingLevel?: import("../hosted-session.js").ThinkingLevel;
+    thinkingLevel?: import("../hosted-session.ts").ThinkingLevel;
     agentName?: string;
     model?: string;
     provider?: string;
@@ -56,7 +56,7 @@ interface TutorialContextMutationResult {
 interface RuntimeThinkingResult {
     ok: boolean;
     error?: string;
-    thinkingLevel?: import("../hosted-session.js").ThinkingLevel;
+    thinkingLevel?: import("../hosted-session.ts").ThinkingLevel;
 }
 
 type RuntimeCompactionResult = Awaited<
@@ -186,7 +186,7 @@ export class RuntimeAgentSettings {
         const targetModel = parsedModel.ok ? registry.find(parsedModel.provider, parsedModel.id) : undefined;
         if (parsedModel.ok && parsedModel.provider === "agy-cli" && !targetModel) {
             throw new Error(
-                `Unsupported Antigravity CLI model: agy-cli/${parsedModel.id}. Select agy-cli/gemini-3.8-flash or agy-cli/gemini-3.1-pro.`,
+                `Unsupported Antigravity CLI model: agy-cli/${parsedModel.id}. Select ${AGY_CLI_MODEL_CHOICES}.`,
             );
         }
         assertModelExecutionBackendSupported(targetModel);
@@ -198,9 +198,6 @@ export class RuntimeAgentSettings {
             !promptReadySession.getManagedMetadata?.()
         ) {
             promptReadySession.setActiveModelState(model, provider, true);
-            if (parsedModel.ok && parsedModel.provider === "agy-cli") {
-                await ensureAgyCliMcpSetup({ hostedSession: promptReadySession });
-            }
             promptReadySession.mergePendingManagedTurnIntent?.({ model, provider, manualModel: true });
             this.events.emitSessionEvent(sessionId, { type: RuntimeEventTypes.MODEL_CHANGED, model, provider });
             return { ok: true, model, provider };
@@ -301,11 +298,11 @@ export class RuntimeAgentSettings {
                 id: import(".././subagent-definitions.ts").SubAgentDefinitionId;
                 options?: import(".././subagent-definitions.ts").LoadSubAgentDefinitionOptions;
             };
-            images?: import(".././types.js").ImageAttachment[];
+            images?: import(".././image-attachments.ts").ImageAttachment[];
             toolNames?: string[];
             customTools?: import("@earendil-works/pi-coding-agent").ToolDefinition[];
             modelOverride?: string;
-            thinkingLevelOverride?: import("../hosted-session.js").ThinkingLevel;
+            thinkingLevelOverride?: import("../hosted-session.ts").ThinkingLevel;
             temperatureOverride?: number;
         },
     ): Promise<Awaited<ReturnType<typeof runIsolatedAgentSession>> | RuntimeMutationResult | ManagedOperationFailure> {
@@ -343,7 +340,7 @@ export class RuntimeAgentSettings {
 
     async setActiveExecutionWorkflow(
         sessionId: string,
-        workflow: import("../hosted-session.js").ActiveExecutionWorkflow,
+        workflow: import("../hosted-session.ts").ActiveExecutionWorkflow,
     ) {
         return await this.managedOperations.runManagedStandaloneMutation(
             sessionId,
@@ -398,10 +395,10 @@ export class RuntimeAgentSettings {
     cycleSessionThinkingLevel(
         sessionId: string,
     ): RuntimeThinkingResult | Promise<RuntimeThinkingResult | ManagedOperationFailure> {
-        /** @param {import('.././hosted-session.js').HostedSession} session */
-        const run = (session: import(".././hosted-session.js").HostedSession): RuntimeThinkingResult => {
+        /** @param {import('.././hosted-session.ts').HostedSession} session */
+        const run = (session: import(".././hosted-session.ts").HostedSession): RuntimeThinkingResult => {
             const rootAgentSession = getRuntimeRootAgentSession(session);
-            const levels: import("../hosted-session.js").ThinkingLevel[] = [
+            const levels: import("../hosted-session.ts").ThinkingLevel[] = [
                 "off",
                 "minimal",
                 "low",
@@ -518,9 +515,9 @@ export class RuntimeAgentSettings {
 
     setSessionThinkingLevel(
         sessionId: string,
-        thinkingLevel: import(".././hosted-session.js").ThinkingLevel,
+        thinkingLevel: import(".././hosted-session.ts").ThinkingLevel,
     ): RuntimeMutationResult | Promise<RuntimeMutationResult> {
-        const run = (session: import(".././hosted-session.js").HostedSession) => {
+        const run = (session: import(".././hosted-session.ts").HostedSession) => {
             const root = getRuntimeRootAgentSession(session);
             root?.setThinkingLevel?.(thinkingLevel);
             session.setThinkingLevel(thinkingLevel);
@@ -543,7 +540,7 @@ export class RuntimeAgentSettings {
     }
 
     async refreshMcpTools(
-        hostedSession: import(".././hosted-session.js").HostedSession,
+        hostedSession: import(".././hosted-session.ts").HostedSession,
         requestServers?: import("../../mcp/config.ts").McpServerDefinition[],
         forceReload = false,
     ) {
@@ -586,8 +583,8 @@ export class RuntimeAgentSettings {
     }
 
     async activateSessionAgent(
-        hostedSession: import(".././hosted-session.js").HostedSession,
-        options: import(".././agent-switching.js").AgentSwitchOptions,
+        hostedSession: import(".././hosted-session.ts").HostedSession,
+        options: import(".././agent-switching.ts").AgentSwitchOptions,
     ) {
         let pendingCreation = this.managedOperations.getPendingCreationProof(hostedSession.id);
         if (!pendingCreation && this.lifecycle.hasPendingProject(hostedSession.id)) {
@@ -636,7 +633,7 @@ export class RuntimeAgentSettings {
         }
     }
 
-    async alignActiveExecutionWorkflowOwner(hostedSession: import(".././hosted-session.js").HostedSession) {
+    async alignActiveExecutionWorkflowOwner(hostedSession: import(".././hosted-session.ts").HostedSession) {
         // A focused semantic repair retains its Agent while the execution owner stays durable.
         if (hostedSession.getRootAgentName?.() === AGENTS.REVIEWER_FEEDBACK_ENGINEER) return;
         const workflow = hostedSession.getActiveExecutionWorkflow?.() || null;

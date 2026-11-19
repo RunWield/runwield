@@ -2,7 +2,7 @@ import process from "node:process";
 import { runAgyCliMcpSetupPrompt } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
 import { runRunWieldMcpStdioTransport } from "../../shared/session/bridged-tools/stdio-transport.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 interface McpCommandContext {
     sessionId?: string;
@@ -17,16 +17,18 @@ function usageError(message: string): never {
 }
 
 function printMcpHelp(): void {
-    console.log([
-        "MCP",
-        "",
-        "Run a protocol-only MCP stdio adapter for an external CLI backend.",
-        "",
-        "Usage:",
-        "  wld mcp agy-cli",
-        "  wld mcp agy-cli --setup",
-        "  wld mcp --help",
-    ].join("\n"));
+    console.log(
+        [
+            "MCP",
+            "",
+            "Run a protocol-only MCP stdio adapter for an external CLI backend.",
+            "",
+            "Usage:",
+            "  wld mcp agy-cli",
+            "  wld mcp agy-cli --setup",
+            "  wld mcp --help",
+        ].join("\n"),
+    );
 }
 
 export async function runMcpCommand(argv: string[], context: McpCommandContext = {}): Promise<void> {

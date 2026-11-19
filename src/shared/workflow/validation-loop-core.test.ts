@@ -1,7 +1,7 @@
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
+import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import { hostname } from "node:os";
 import { test } from "node:test";
 import { lstatSync } from "node:fs";
@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { parsePlanFrontMatter } from "../../plan-format.ts";
 import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
 
@@ -28,10 +28,10 @@ import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { removeWorktreeGitArtifacts } from "../worktree.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { createTestWorktreeAttempt, makeRepo } from "../worktree-test-helpers.ts";
-import { createEngineValidationArgs, shouldContinueParentEpicAfterValidation } from "./validation.ts";
+import { createEngineValidationArgs } from "./validation.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { runPublicationPhase } from "./validation-publication.ts";
 import { continueWorkflowValidation } from "./validation.ts";
@@ -52,7 +52,7 @@ import {
     NO_ISOLATED_AGENT_PORT,
     runValidationLoop,
     runValidationPhase,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 const footerExecutionRepo = defineGitFixture((repoPath) =>
     withRetainedPlanFixture(repoPath, async () => {
@@ -617,12 +617,6 @@ test("startActiveExecutionWorkflow seeds footer workflow context from Plan front
         );
         assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "engineer");
     });
-});
-
-test("shouldContinueParentEpicAfterValidation detects parent epic linkage", () => {
-    assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE" }), false);
-    assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE", parentPlan: "" }), false);
-    assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE", parentPlan: "epic" }), true);
 });
 
 test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE plans", async () => {

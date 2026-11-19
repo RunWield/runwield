@@ -1,4 +1,4 @@
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { ActiveExecutionWorkflow } from "../session/execution-workflow-session.ts";
 /** Subprocess fault injection at actual filesystem boundaries; package machinery remains real. */
 import fs from "node:fs";
 import promises from "node:fs/promises";
@@ -196,7 +196,7 @@ try {
             case "execution": {
                 if (!current || current.kind !== "loaded") throw new Error("Missing package");
                 const { withPackageWorkflow, loadPackageWorkflowPlan } = await import("../../plan-store/workflows.ts");
-                const { recordPlanEvent } = await import("../workflow/plan-lifecycle.js");
+                const { recordPlanEvent } = await import("../workflow/plan-lifecycle.ts");
                 const { preparePlanWorkflow } = await import("../../plan-store/index.ts");
                 result = await withPackageWorkflow(
                     request.identity.checkoutRoot,

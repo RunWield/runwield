@@ -1,10 +1,10 @@
 import { retrySessionWorkRecord } from "./work-record-retry.ts";
 import { buildPlanConversationRequest } from "../../workflow/plan-review-conversation.ts";
-import { AGENTS, SUBAGENTS } from "../../../constants.js";
+import { AGENTS, SUBAGENTS } from "../../../constants.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../../workflow/execution-agent.ts";
-import { runActiveAgentTurn } from ".././agent-switching.js";
-import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.js";
-import { readPersistedPendingSegmentContinuationEntry } from ".././workflow-context-session.js";
+import { runActiveAgentTurn } from ".././agent-switching.ts";
+import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { readPersistedPendingSegmentContinuationEntry } from ".././workflow-context-session.ts";
 import { prepareSessionPlanningWorktree } from "../../workflow/session-planning-worktree.ts";
 import { executePlanAction } from "../../workflow/plan-actions.ts";
 
@@ -102,7 +102,7 @@ export class RuntimeWorkflows {
     }
 
     async runWorkflowOperation<T>(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         _operationName: string,
         options: RuntimeWorkflowOptions,
         operation: () => Promise<T>,
@@ -315,7 +315,7 @@ export class RuntimeWorkflows {
         return result;
     }
 
-    async restoreDormantManagedInvariant(session: import(".././hosted-session.js").HostedSession) {
+    async restoreDormantManagedInvariant(session: import(".././hosted-session.ts").HostedSession) {
         const managed = session.getManagedMetadata?.();
         if (
             !managed ||
@@ -461,7 +461,7 @@ ${outcome.feedback || ""}`,
                 session.getManagedOperationCapability?.()?.assertLive();
                 const { executePlan } = await import("../../workflow/workflow.ts");
                 const { resolveWorkflowPlanLocation } = await import("../../../plan-store/index.ts");
-                const { recordPlanEvent } = await import("../../workflow/plan-lifecycle.js");
+                const { recordPlanEvent } = await import("../../workflow/plan-lifecycle.ts");
                 const location = await resolveWorkflowPlanLocation(session.cwd, options.planName || "", {
                     readOnly: true,
                 });
@@ -505,7 +505,7 @@ ${outcome.feedback || ""}`,
     }
 
     async resumePendingExecutionSegmentHandoff(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         options: RuntimeExecutePlanOptions,
     ): Promise<RuntimeValidationResult | null> {
         const managed = session.getManagedMetadata?.();
@@ -723,7 +723,7 @@ ${outcome.feedback || ""}`,
 
     async runSemanticRepairContinuation(
         sessionId: string,
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         options: RuntimeSemanticRepairOptions,
         continuation: SemanticRepairContinuation,
         alreadyManaged: boolean = false,
@@ -854,7 +854,7 @@ ${outcome.feedback || ""}`,
     }
 
     async continueEpicAfterValidation(
-        oldSession: import(".././hosted-session.js").HostedSession,
+        oldSession: import(".././hosted-session.ts").HostedSession,
         validationResult: RuntimeValidationResult | undefined | null,
     ): Promise<{ replaced: boolean; sessionId?: string }> {
         let currentContinuation = validationResult?.epicContinuation || null;

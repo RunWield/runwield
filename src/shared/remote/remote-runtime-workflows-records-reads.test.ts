@@ -10,7 +10,7 @@ import {
     buildExecutionSegmentContinuation,
     resolvePendingSegmentHandoff,
 } from "../workflow/execution-segment-handoff.ts";
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { ActiveExecutionWorkflow } from "../session/execution-workflow-session.ts";
 
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 
@@ -22,7 +22,7 @@ import {
     readPersistedPendingSegmentContinuationEntry,
     recordPendingSegmentContinuation,
     recordNormalizedWorkflowContext,
-} from "../session/workflow-context-session.js";
+} from "../session/workflow-context-session.ts";
 import { recordTutorialContext } from "../session/tutorial-context-session.ts";
 import { appendExecutionWorkflowSnapshot } from "../session/execution-workflow-session.ts";
 import { parseRemoteSessionTranscript } from "./session-protocol.ts";

@@ -13,7 +13,7 @@ import { StaleControllerWriteError } from "../../plan-store/index.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
 import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";
 import { getLockHostname } from "../process-liveness.ts";
-import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
+import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.ts";
 import { hostSemanticRepairPrompt, requestHostRepair } from "./validation-host-state.ts";
 import { runValidationLoop } from "./validation-engine.ts";
 import { type ValidationLoopArgs, type WorkflowValidationResult } from "./validation-types.ts";
@@ -31,9 +31,9 @@ import { validationUserMessage } from "./validation-user-messages.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { claimReviewFixes, renderOpenItems } from "./review-ledger.ts";
-import { PLAN_STATUSES } from "./plan-lifecycle.js";
+import { PLAN_STATUSES } from "./plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import {
     sameHostIdentity,
     ValidationHostRejected,

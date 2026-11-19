@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { archivePlan, loadArchivedPlan } from "../../plan-store/index.ts";
 
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import type { WorkRecordFrontMatter } from "../../shared/work-records/schema.ts";
 import { runPlansPruneCommand } from "./prune.ts";
@@ -133,7 +133,7 @@ test("canonical archived families retain records and remove only confirmed, cove
         assertEquals(before.milestones.length, 1);
         const { readLocalHomeStore } = await import("../../plan-store/index.ts");
         const { workRecordOwnerLayout } = await import("../../shared/work-records/owner.ts");
-        const { formatWorkRecordMarkdown } = await import("../../shared/work-records/markdown.js");
+        const { formatWorkRecordMarkdown } = await import("../../shared/work-records/markdown.ts");
         const { mkdir, writeFile, unlink, stat } = await import("node:fs/promises");
         const { join } = await import("node:path");
         const pinPath = await readLocalHomeStore(

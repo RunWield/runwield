@@ -5,11 +5,11 @@
  * active workflow.
  */
 
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.js";
-import { AGENTS } from "../constants.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
+import { AGENTS } from "../constants.ts";
 import { recordAcceptedTaskCompletion } from "../shared/session/task-completion-session.ts";
 import { readRequestAttemptEntries } from "../shared/session/request-dispatch.ts";
 import {
@@ -19,7 +19,7 @@ import {
     recordPairCheckpointReport,
 } from "../shared/session/pair-checkpoint-session.ts";
 import { emitTaskCompletedMessage } from "../shared/session/workflow-messages.ts";
-import { recordWorkflowMetric } from "../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../shared/workflow/execution-agent.ts";
 
 import {
@@ -33,9 +33,9 @@ const FRONTEND_ENGINEER_MESSAGE_DESCRIPTION =
     ENGINEER_MESSAGE_DESCRIPTION +
     " Include final URL/route, headed-browser checks, relevant viewports/states, diagnostics, and visible evidence; Pair checkpoint acceptance is not verification evidence.";
 
-type BrowserPreflightOutcome = "succeeded" | "failed" | "externally_blocked";
-type ActiveExecutionWorkflow = import("../shared/session/hosted-session.js").ActiveExecutionWorkflow;
-type TaskCompletedDetails =
+export type BrowserPreflightOutcome = "succeeded" | "failed" | "externally_blocked";
+type ActiveExecutionWorkflow = import("../shared/session/hosted-session.ts").ActiveExecutionWorkflow;
+export type TaskCompletedDetails =
     | {
           outcome: "rejected";
           reason:
@@ -151,6 +151,7 @@ export function createTaskCompletedTool({
     const PARAMETERS = buildToolParams(agentName);
     return defineTool<typeof PARAMETERS, TaskCompletedDetails>({
         name: "task_completed",
+        exposure: "model-only",
         label: "Task Completed",
         description: buildToolDescription(),
         parameters: PARAMETERS,

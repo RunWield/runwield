@@ -73,7 +73,7 @@ export async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 /** Identity for fixture commits, so a developer's own Git config cannot change results. */
-async function configureFixtureIdentity(cwd: string) {
+export async function configureFixtureIdentity(cwd: string) {
     await git(cwd, ["config", "user.email", "fixture@runwield.test"]);
     await git(cwd, ["config", "user.name", "RunWield Fixture"]);
     // Fixtures own their byte format; CRLF-specific tests opt in explicitly.

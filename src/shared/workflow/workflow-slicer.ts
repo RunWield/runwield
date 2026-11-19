@@ -1,4 +1,4 @@
-// @ts-nocheck: structural TypeScript migration; public shapes are tightened below while legacy tool schemas retain inference.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 /**
  * @module shared/workflow/workflow-slicer
  * Slicer pseudo-agent orchestration for PROJECT plans.
@@ -6,24 +6,24 @@
 
 import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.ts";
 import {
     findPlansByParent,
     loadPlan,
     finalizePlanDecomposition,
     materializePlanChildren,
 } from "../../plan-store/index.ts";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
-import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.js";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
+import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.ts";
 import { SUBAGENT_DEFINITIONS } from "../session/subagent-definitions.ts";
 import { buildSlicerRequest } from "./workflow-prompts.ts";
 import { isEpicPlan } from "../project-plan.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 
 export interface RunSlicerAgentOptions {
     planName: string;
@@ -76,7 +76,7 @@ function isActiveSlicerContextBoundary(entry) {
  *
  * @param {Object} opts
  * @param {string} opts.planName
- * @param {import('../session/hosted-session.js').HostedSession} opts.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} opts.hostedSession
  * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} opts.sessionManager
  * @returns {{ manager: import('@earendil-works/pi-coding-agent').SessionManager, previousLeafId: string | null } | null}
  */
@@ -216,6 +216,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
     if (!cwd) throw new Error("createSlicerFinalizeTool: cwd is required");
     return defineTool({
         name: "slicer_finalize_decomposition",
+        exposure: "model-only",
         label: "Finalize Epic Decomposition",
         description:
             "Materialize child planned change draft plans and finalize the current Epic decomposition after explicit user confirmation.",
@@ -338,7 +339,7 @@ function createSlicerCustomTools(planName, cwd) {
  * @param {import('../../tools/plan-written.ts').TriageMeta} [opts.triageMeta]
  * @param {string} [opts.reviewFeedback]
  * @param {Array<{base64: string, mimeType: string}>} [opts.reviewImages]
- * @param {import('../session/hosted-session.js').HostedSession} opts.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} opts.hostedSession
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} [opts.sessionManager]
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
@@ -416,7 +417,7 @@ export async function runSlicerAgent({
  * @param {string} opts.planName
  * @param {string} opts.planPath - Absolute path to the plan markdown file.
  * @param {import('../../tools/plan-written.ts').TriageMeta} [opts.triageMeta]
- * @param {import('../session/hosted-session.js').HostedSession} opts.hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} opts.hostedSession
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} [opts.sessionManager]
  * @returns {Promise<{ ok: true, slicerInvoked: boolean } | { ok: false, error: string, stage: "slicer" | "validation" }>}
  */

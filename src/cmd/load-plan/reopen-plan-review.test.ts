@@ -1,16 +1,16 @@
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { renamePlan } from "../../plan-store/index.ts";
 import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
 
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 
 test("an idle Session reopens the complete saved Sequence and saves approval without a model turn", async () => {

@@ -9,8 +9,8 @@ import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWr
 import process from "node:process";
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
 
-import { checkpointExecutionWorktree } from "../../worktree.js";
-import { findById } from "../../worktree-registry.js";
+import { checkpointExecutionWorktree } from "../../worktree.ts";
+import { findById } from "../../worktree-registry.ts";
 import {
     advanceStoredPublication,
     cleanupStoredPublication,

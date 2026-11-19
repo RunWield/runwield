@@ -1,12 +1,13 @@
 import { getModelRegistry, getModelRuntime } from "../../shared/models/model-registry.ts";
-import type { CommandCompletionItem } from "../registry.js";
+import type { CommandCompletionItem } from "../registry.ts";
 
 export async function getModelCompletions(argumentPrefix: string): Promise<CommandCompletionItem[]> {
     await getModelRuntime();
     const modelRegistry = getModelRegistry();
-    const models = typeof modelRegistry.getSelectable === "function"
-        ? modelRegistry.getSelectable()
-        : modelRegistry.getAvailable();
+    const models =
+        typeof modelRegistry.getSelectable === "function"
+            ? modelRegistry.getSelectable()
+            : modelRegistry.getAvailable();
 
     await Promise.resolve();
 
@@ -23,11 +24,15 @@ export async function getModelCompletions(argumentPrefix: string): Promise<Comma
                 id: model.id,
             };
         })
-        .filter((item) =>
-            item.value.toLowerCase().startsWith(lowerPrefix) ||
-            item.id.toLowerCase().startsWith(lowerPrefix) ||
-            item.provider.toLowerCase().startsWith(lowerPrefix) ||
-            // Handle OpenRouter-style IDs with slashes (e.g., google/gemini-flash)
-            item.id.toLowerCase().split("/").some((part) => part.startsWith(lowerPrefix))
+        .filter(
+            (item) =>
+                item.value.toLowerCase().startsWith(lowerPrefix) ||
+                item.id.toLowerCase().startsWith(lowerPrefix) ||
+                item.provider.toLowerCase().startsWith(lowerPrefix) ||
+                // Handle OpenRouter-style IDs with slashes (e.g., google/gemini-flash)
+                item.id
+                    .toLowerCase()
+                    .split("/")
+                    .some((part) => part.startsWith(lowerPrefix)),
         );
 }

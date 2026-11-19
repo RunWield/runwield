@@ -36,23 +36,23 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     },
     "src/plan-package-store.test.ts": {
         reason: "Qualify low-level durable package create/CAS/rename/archive/resource semantics.",
-        modules: ["src/plan-store.js", "src/plan-store/packages.ts"],
+        modules: ["src/plan-store.ts", "src/plan-store/packages.ts"],
     },
     "src/plan-store-archive-preparation.test.ts": {
         reason: "Qualify owner-private archived metadata and retained source preparation.",
-        modules: ["src/plan-store.js"],
+        modules: ["src/plan-store.ts"],
     },
     "src/plan-store-locks.test.ts": {
         reason: "Qualify real catalog and Plan lock contention, stale holders and reentrancy.",
-        modules: ["src/plan-store.js"],
+        modules: ["src/plan-store.ts"],
     },
     "src/plan-store-passive-reads.test.ts": {
         reason: "Qualify private controller diagnostics and retained reads without preparation or filesystem mutation.",
-        modules: ["src/plan-store.js", "src/plan-store/controllers.ts"],
+        modules: ["src/plan-store.ts", "src/plan-store/controllers.ts"],
     },
-    "src/plan-store.test.js": {
+    "src/plan-store.test.ts": {
         reason: "Legacy owner unit qualification for parsing, journaled writes, identity, locks and archive persistence.",
-        modules: ["src/plan-store.js", "src/plan-store/controllers.ts"],
+        modules: ["src/plan-store.ts", "src/plan-store/controllers.ts"],
     },
     "src/shared/attached/document-host-fixture.ts": {
         reason: "Separate-process MCP fixture admits a known real package and checks durable host-read evidence.",
@@ -68,7 +68,7 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     },
     "src/shared/local-home-store.integration.test.ts": {
         reason: "Only archived metadata helper is private; author/import/archive/restore journeys exercise public commands.",
-        modules: ["src/plan-store.js"],
+        modules: ["src/plan-store.ts"],
     },
     "src/shared/testing/plan-controller-fixture.ts": {
         reason: "Arrange historical controller facts separately from prose for canonical versus retained fixture states.",
@@ -85,7 +85,7 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     "src/shared/testing/plan-state-fixture.ts": {
         reason: "Arrange historical/interrupted states and observe controllers/journals for consumer tests; never production API.",
         modules: [
-            "src/plan-store.js",
+            "src/plan-store.ts",
             "src/plan-store/controllers.ts",
             "src/plan-store/packages.ts",
             "src/plan-store/transitions.ts",
@@ -98,7 +98,7 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     },
     "src/shared/workflow/controller-registry.integration.test.ts": {
         reason: "Owner qualification for controller/registry authority, interrupted migration and execution document binding.",
-        modules: ["src/plan-store.js", "src/plan-store/controllers.ts", "src/plan-store/transitions.ts"],
+        modules: ["src/plan-store.ts", "src/plan-store/controllers.ts", "src/plan-store/transitions.ts"],
     },
     "src/shared/workflow/epic-review-context.test.ts": {
         reason: "Direct unit tests of private Integration Notes formatting; context reads and persistence use public operations.",
@@ -156,9 +156,9 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         reason: "Inspect durable publication manifests across interrupted Work Record copy/recording recovery.",
         modules: ["src/plan-store/packages.ts"],
     },
-    "src/shared/workflow/state-transition.test.js": {
+    "src/shared/workflow/state-transition.test.ts": {
         reason: "Owner unit qualification for transition lock sets, revisions, compensation and interrupted effects.",
-        modules: ["src/plan-store.js", "src/plan-store/transitions.ts"],
+        modules: ["src/plan-store.ts", "src/plan-store/transitions.ts"],
     },
     "src/shared/workflow/testing/package-publication-boundaries.ts": {
         reason: "Publication fault-process fixture reads exact immutable manifests at retained crash boundaries.",
@@ -188,9 +188,9 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         reason: "Real validation fixture observes private controller/package evidence around external host turns.",
         modules: ["src/plan-store/workflows.ts"],
     },
-    "src/shared/workflow/validation-test-helpers.js": {
+    "src/shared/workflow/validation-test-helpers.ts": {
         reason: "Arrange real executed Plans and historical checkpoints for validation qualification; no fake Plan store.",
-        modules: ["src/plan-store.js"],
+        modules: ["src/plan-store.ts"],
     },
     "src/shared/workflow/workflow-transition-attribution.test.ts": {
         reason: "Owner unit qualification proves each named semantic transition attributes journal writes to its operation.",
@@ -204,9 +204,9 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         reason: "Golden fixture selects retained versus canonical historical delivery evidence before public presentation.",
         modules: ["src/plan-store/access.ts", "src/plan-store/workflows.ts"],
     },
-    "src/ui/tui/testing/scenario-runner.js": {
+    "src/ui/tui/testing/scenario-runner.ts": {
         reason: "Golden fixture seeds lifecycle states and inspects persisted metadata for terminal scenario assertions.",
-        modules: ["src/plan-store.js", "src/plan-store/access.ts", "src/plan-store/packages.ts"],
+        modules: ["src/plan-store.ts", "src/plan-store/access.ts", "src/plan-store/packages.ts"],
     },
     "src/ui/workspace/package-surface-qa.ts": {
         reason: "Disposable headed-browser launcher creates real packages, stale checkout copies and malformed-package fixtures.",
@@ -256,18 +256,18 @@ export const PLAN_TEST_SUPPORT = new Set([
     "src/shared/workflow/testing/publication-outcome-process-driver.ts",
     "src/shared/workflow/testing/publication-process-driver.ts",
     "src/shared/workflow/testing/validation-host-fixture.ts",
-    "src/shared/workflow/validation-test-helpers.js",
+    "src/shared/workflow/validation-test-helpers.ts",
     "src/testing/usage-export-journey-workflows.ts",
     "src/testing/validation-session-script.ts",
     "src/ui/tui/golden-scenarios/catalog.ts",
     "src/ui/tui/golden-scenarios/concurrent-workflow.ts",
-    "src/ui/tui/golden-scenarios/initial-scenarios.js",
+    "src/ui/tui/golden-scenarios/initial-scenarios.ts",
     "src/ui/tui/golden-scenarios/load-plan-epic-workflow.ts",
     "src/ui/tui/golden-scenarios/load-plan-workflow.ts",
-    "src/ui/tui/golden-scenarios/planned-change-workflow.js",
+    "src/ui/tui/golden-scenarios/planned-change-workflow.ts",
     "src/ui/tui/golden-scenarios/presentation-and-terminal.ts",
     "src/ui/tui/golden-scenarios/project-routing-workflow.ts",
-    "src/ui/tui/golden-scenarios/project-workflow.js",
+    "src/ui/tui/golden-scenarios/project-workflow.ts",
     "src/ui/tui/golden-scenarios/role-journeys.ts",
     "src/ui/tui/golden-scenarios/session-resume-workflow.ts",
     "src/ui/tui/golden-scenarios/slash-command-test-runner.ts",
@@ -284,12 +284,12 @@ export const PLAN_TEST_SUPPORT = new Set([
     "src/ui/tui/golden-scenarios/validation-workflow-tree-mechanical.ts",
     "src/ui/tui/golden-scenarios/validation-workflow-tree-semantic.ts",
     "src/ui/tui/golden-scenarios/validation-workflow-tree.ts",
-    "src/ui/tui/testing/child-protocol.js",
+    "src/ui/tui/testing/child-protocol.ts",
     "src/ui/tui/testing/coverage-matrix.ts",
     "src/ui/tui/testing/mod.ts",
-    "src/ui/tui/testing/portfolio-assertions.js",
+    "src/ui/tui/testing/portfolio-assertions.ts",
     "src/ui/tui/testing/published-plan-fixture.ts",
-    "src/ui/tui/testing/scenario-runner.js",
+    "src/ui/tui/testing/scenario-runner.ts",
     "src/ui/tui/testing/shared-environment-child.ts",
     "src/ui/workspace/package-surface-qa.ts",
 ]);

@@ -1,8 +1,8 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { appendEpicManualQaSection } from "../plan-store/index.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 
 const TOOL_PARAMS = Type.Object(
     {
@@ -34,6 +34,7 @@ export type QaChecklistGeneratedToolOptions = {
 export function createQaChecklistGeneratedTool(options: QaChecklistGeneratedToolOptions) {
     const tool = defineTool<typeof TOOL_PARAMS, QaChecklistGeneratedDetails>({
         name: "qa_checklist_generated",
+        exposure: "model-only",
         label: "QA Checklist Generated",
         description:
             "Record this Epic child's Manual QA checklist in the Epic artifact. This tool is advisory only: failure never changes verification status.",

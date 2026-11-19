@@ -6,15 +6,10 @@ import { join, relative } from "node:path";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
-
-// Seed the checkout contract still owned by the managed remote runtime.
-const savePlan: typeof saveOwnedPlan = (root, ...args) =>
-    withRetainedPlanFixture(root, () => saveOwnedPlan(root, ...args));
-import { git } from "../workflow/validation-test-helpers.js";
+import { git } from "../workflow/validation-test-helpers.ts";
 import { assertRemoteStorageAbsent, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
-import type { BackgroundTaskStatus } from "../session/background-tasks.ts";
+import { type BackgroundTaskStatus } from "../session/background-tasks.ts";
 import { scriptReviewAndRecord } from "./remote-runtime-workflows-fixture.ts";
 
 interface ScenarioReport {
@@ -211,7 +206,7 @@ for (const boundary of ["handoff", "validation", "repair", "publication"] as con
     test(`a local Session still performs ${boundary} effects through the same workflow boundary`, async () => {
         await withRemoteRuntimeFixture(async (f) => {
             await withRetainedPlanFixture(f.remoteProject, async () => {
-                const { Type } = await import("@earendil-works/pi-ai");
+                const { Type } = await import("typebox");
                 const { SessionRuntime } = await import("../session/session-runtime.ts");
                 const { SessionHost } = await import("../session/session-host.ts");
                 const { openFileSessionStore } = await import("../session/file-session-store.ts");
@@ -340,3 +335,7 @@ for (const boundary of ["handoff", "validation", "repair", "publication"] as con
         });
     });
 }
+
+// Seed the checkout contract still owned by the managed remote runtime.
+const savePlan: typeof saveOwnedPlan = (root, ...args) =>
+    withRetainedPlanFixture(root, () => saveOwnedPlan(root, ...args));

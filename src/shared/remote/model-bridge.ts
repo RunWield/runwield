@@ -51,6 +51,7 @@ interface StreamRequest {
     options: StreamOptions;
 }
 const optionKeys = new Set([
+    "identity",
     "temperature",
     "maxTokens",
     "timeoutMs",

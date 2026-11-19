@@ -3,7 +3,7 @@
 FROM oven/bun:1.4.3 AS builder
 WORKDIR /app
 
-COPY .bun-version bunfig.toml package.json bun.lock runtime-root.js tsconfig*.json ./
+COPY .bun-version bunfig.toml package.json bun.lock runtime-root.ts tsconfig*.json ./
 COPY scripts ./scripts
 COPY src ./src
 COPY third_party ./third_party

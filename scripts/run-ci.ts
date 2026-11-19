@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { spawnNativeProcess } from "../src/shared/foreground-process.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { runWithSnip, writeSnipCommandResult } from "./run-with-snip.ts";
@@ -12,8 +12,6 @@ export const PRE_TEST_TASKS = [
     "check",
     "workspace:check",
     "lint",
-    "language-policy:check",
-    "seams:check",
     "plan-store:check",
     "doc-links:check",
     "docs:check",

@@ -1,12 +1,12 @@
-import { realpath as fsRealpath } from "node:fs/promises";
+import { findExistingProjectPath } from "../shared/project-checkout.ts";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
-import { loadPlan, type PlanFrontMatter } from "../plan-store.js";
-import { slugify } from "../shared/worktree.js";
-import { WORKTREE_BRANCH_PREFIX } from "../constants.js";
+import { loadPlan, type PlanFrontMatter } from "../plan-store.ts";
+import { slugify } from "../shared/worktree.ts";
+import { WORKTREE_BRANCH_PREFIX } from "../constants.ts";
 import {
     findActiveByPlanName as findWorktreeByPlanName,
     findById as findWorktreeById,
-} from "../shared/worktree-registry.js";
+} from "../shared/worktree-registry.ts";
 export interface PlanRecoveryIdentity {
     planName: string;
     attrs: PlanFrontMatter;
@@ -27,14 +27,6 @@ export interface RecoveryWorktreeContext {
 interface AttachedWorktreeRecord {
     path: string;
     branch: string;
-}
-
-async function canonicalPath(path: string): Promise<string | null> {
-    try {
-        return await fsRealpath(path);
-    } catch {
-        return null;
-    }
 }
 
 async function listAttachedWorktrees(projectRoot: string): Promise<AttachedWorktreeRecord[]> {
@@ -68,7 +60,7 @@ async function discoverAttachedPlanWorktree(
     projectRoot: string,
     plan: PlanRecoveryIdentity,
 ): Promise<RecoveryWorktreeContext | null> {
-    const projectPath = await canonicalPath(projectRoot);
+    const projectPath = await findExistingProjectPath(projectRoot);
     const matches: RecoveryWorktreeContext[] = [];
     // Execution branches are created only as `worktree/<plan-slug>-<attempt-id>`, a
     // prefix target branches may not use, and attempt IDs contain no dash. A child
@@ -80,7 +72,7 @@ async function discoverAttachedPlanWorktree(
         branch.startsWith(executionBranchPrefix) && !branch.slice(executionBranchPrefix.length).includes("-");
     for (const record of await listAttachedWorktrees(projectRoot)) {
         if (!isOwnExecutionBranch(record.branch)) continue;
-        const recordPath = await canonicalPath(record.path);
+        const recordPath = await findExistingProjectPath(record.path);
         if (!recordPath || recordPath === projectPath) continue;
         const executionPlan = await loadPlan(record.path, plan.planName).catch(() => null);
         if (!executionPlan || executionPlan.attrs.executionMode !== "worktree") continue;
@@ -94,7 +86,7 @@ async function discoverAttachedPlanWorktree(
         )
             continue;
         if (plan.attrs.planId && plan.attrs.planId !== attrs.planId) continue;
-        if ((await canonicalPath(attrs.worktreePath)) !== recordPath) continue;
+        if ((await findExistingProjectPath(attrs.worktreePath)) !== recordPath) continue;
         if (record.branch !== `refs/heads/${attrs.worktreeBranch}`) continue;
         if (!["in_progress", "failed", "implemented", "validated_ci", "reviewed", "validated"].includes(attrs.status))
             continue;

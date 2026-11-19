@@ -589,8 +589,8 @@ export function optionalStringValue(
 export function optionalExecutionPolicyValue(
     overrides: Partial<PlanFrontMatter>,
     existingFm: Partial<PlanFrontMatter>,
-    key: keyof PlanFrontMatter,
-): PlanMetadataValue {
+    key: "executionAgent" | "collaborationRecommendation",
+): PlanFrontMatter[typeof key] {
     if (Object.hasOwn(overrides, key)) return overrides[key] ?? undefined;
     return existingFm[key] ?? undefined;
 }
@@ -783,7 +783,7 @@ export function normalizeWorkRecordBacklink(value: PlanMetadataValue): PlanFront
  * @param {Partial<PlanFrontMatter>} overrides - Fields to inject/override
  * @returns {string} The markdown with front matter
  */
-export function injectFrontMatter(markdown: string, overrides: Partial<PlanFrontMatter> = {}): string {
+export function injectFrontMatter(markdown: string, overrides: StoredPlanTypes.PlanFrontMatterInput = {}): string {
     /** @type {Partial<PlanFrontMatter>} */
     let existingFm: Partial<PlanFrontMatter> = {};
     let body = markdown;
@@ -941,7 +941,7 @@ export function normalizeCreatedAt(value: string | Date | undefined): string {
 export function parsePlanFrontMatter(
     markdown: string,
     opts: { missingOrigin?: string } = {},
-): { attrs: PlanFrontMatter; body: string } {
+): StoredPlanTypes.ParsePlanFrontMatterResult {
     const missingOrigin =
         /** @type {PlanFrontMatter["origin"]} */ opts.missingOrigin ||
         (DEFAULT_FRONT_MATTER.origin as PlanFrontMatter["origin"]);
@@ -1561,7 +1561,7 @@ export function resolveSiblingChildPlanDependencyStates(
  * @param {{ attrs: PlanFrontMatter }} plan
  * @returns {boolean}
  */
-export function isChildFeaturePlan(plan: { attrs: PlanFrontMatter }): boolean {
+export function isChildFeaturePlan(plan: { attrs: Partial<PlanFrontMatter> }): boolean {
     return isChildPlannedChangePlan(plan);
 }
 
@@ -1586,7 +1586,7 @@ export function isChildPlannedChangePlan(plan: { attrs: Partial<PlanFrontMatter>
  * @param {T[]} plans
  * @returns {{ epics: T[], childrenByParent: Map<string, T[]>, standalone: T[], orphanChildren: T[] }}
  */
-export function groupPlanHierarchy<T extends { name: string; attrs: PlanFrontMatter }>(
+export function groupPlanHierarchy<T extends { name: string; attrs: Partial<PlanFrontMatter> }>(
     plans: T[],
 ): { epics: T[]; childrenByParent: Map<string, T[]>; standalone: T[]; orphanChildren: T[] } {
     const epics = plans.filter((plan) => isProjectPlan(plan.attrs));

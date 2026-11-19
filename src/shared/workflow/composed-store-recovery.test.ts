@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { importPlans, loadPlan, listPlans } from "../../plan-store/index.ts";
 import { admitProjectIdentity } from "../project-identity.ts";

@@ -9,8 +9,8 @@ import { mkdir as fsMkdir } from "node:fs/promises";
  */
 
 import { dirname } from "node:path";
-import { DEFAULT_REMOTE_MAX_REQUEST_BYTES } from "./routes/remote-api.js";
-import { createRemoteWorkspaceApp } from "./server.js";
+import { DEFAULT_REMOTE_MAX_REQUEST_BYTES } from "./routes/remote-api.ts";
+import { createRemoteWorkspaceApp } from "./server.ts";
 
 export const DEFAULT_REMOTE_HOST = "0.0.0.0";
 export const DEFAULT_REMOTE_PORT = 8080;
@@ -46,10 +46,7 @@ export function parsePort(value: string | undefined, fallback = DEFAULT_REMOTE_P
     return port;
 }
 
-export function parseMaxRequestBytes(
-    value: string | undefined,
-    fallback = DEFAULT_REMOTE_MAX_REQUEST_BYTES,
-): number {
+export function parseMaxRequestBytes(value: string | undefined, fallback = DEFAULT_REMOTE_MAX_REQUEST_BYTES): number {
     if (value === undefined || value.trim() === "") return fallback;
     const bytes = Number(value);
     if (!Number.isSafeInteger(bytes) || bytes < 1024 || bytes > 100 * 1024 * 1024) {
@@ -75,7 +72,9 @@ export function readRemoteServerConfig(env: ServerEnvironment): RemoteServerConf
     return {
         host: env.get("RUNWIELD_REMOTE_HOST") || env.get("HOST") || DEFAULT_REMOTE_HOST,
         port: parsePort(env.get("RUNWIELD_REMOTE_PORT") || env.get("PORT"), DEFAULT_REMOTE_PORT),
-        dbPath: env.get("RUNWIELD_REMOTE_DB_PATH") || env.get("RUNWIELD_WORKSPACE_REMOTE_DB_PATH") ||
+        dbPath:
+            env.get("RUNWIELD_REMOTE_DB_PATH") ||
+            env.get("RUNWIELD_WORKSPACE_REMOTE_DB_PATH") ||
             DEFAULT_REMOTE_DB_PATH,
         maxRequestBytes: parseMaxRequestBytes(env.get("RUNWIELD_REMOTE_MAX_REQUEST_BYTES")),
         retentionDays: parseRetentionDays(env.get("RUNWIELD_REMOTE_RETENTION_DAYS")),
@@ -131,12 +130,15 @@ export async function runRemoteWorkspaceServer(
                 }
             }, REMOTE_CLEANUP_INTERVAL_MS);
         }
-        const server = serveHttp({
-            hostname: config.host,
-            port: config.port,
-            signal,
-            automaticCompression: true,
-        }, app.handler());
+        const server = serveHttp(
+            {
+                hostname: config.host,
+                port: config.port,
+                signal,
+                automaticCompression: true,
+            },
+            app.handler(),
+        );
         const actualPort = server.addr.port;
         log(`[RunWield] Remote Workspace Plan Server listening on http://${config.host}:${actualPort}`);
         log(`[RunWield] SQLite database: ${config.dbPath}`);

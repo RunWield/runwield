@@ -1,6 +1,6 @@
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { isInitDone } from "./init-state.ts";
 
 export const INIT_DOMAIN_LANGUAGE_PATH = "docs/domain-language.md";
@@ -17,7 +17,7 @@ export async function hasProjectInitArtifact(projectRoot = getCwd()): Promise<bo
 }
 
 export async function isProjectInitComplete(projectRoot = getCwd()): Promise<boolean> {
-    return await isInitDone(projectRoot) && await hasProjectInitArtifact(projectRoot);
+    return (await isInitDone(projectRoot)) && (await hasProjectInitArtifact(projectRoot));
 }
 
 export async function requireProjectInitArtifact(projectRoot = getCwd()): Promise<void> {

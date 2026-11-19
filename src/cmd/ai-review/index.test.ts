@@ -4,9 +4,9 @@ import { fauxAssistantMessage, fauxText, getSystemMessageText } from "@earendil-
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { parseGuidedReviewMetadataLine, parseGuidedReviewUsageEventLine } from "../guided-review/protocol.ts";
-import { AGENTS } from "../../constants.js";
-import { listAvailableAgents, loadAgentDef } from "../../shared/session/agents.js";
-import { getCliCommandDefinitions, requiresProjectDirectoryConsent } from "../registry.js";
+import { AGENTS } from "../../constants.ts";
+import { listAvailableAgents, loadAgentDef } from "../../shared/session/agents.ts";
+import { getCliCommandDefinitions, requiresProjectDirectoryConsent } from "../registry.ts";
 import { runAiReviewCommand } from "./index.ts";
 
 test("ai-review runs the read-only AI Reviewer and emits usage, metadata, and final JSON", async () => {
@@ -42,7 +42,8 @@ test("ai-review runs the read-only AI Reviewer and emits usage, metadata, and fi
         const frames = stderr.trim().split("\n");
         const usage = frames.map(parseGuidedReviewUsageEventLine).find(Boolean);
         const metadata = frames.map(parseGuidedReviewMetadataLine).find(Boolean);
-        assertEquals((usage?.usage.inputTokens || 0) > 0, true);
+        assertEquals(usage?.usage.inputTokens, 0);
+        assertEquals((usage?.usage.cacheWriteTokens || 0) > 0, true);
         assertEquals((usage?.usage.outputTokens || 0) > 0, true);
         assertEquals(metadata?.provider, "runtime-command-fixture");
         assertEquals(metadata?.model, "fixture-model");
@@ -79,7 +80,7 @@ test("AI Reviewer is workflow-only with read tools and read-only git commands", 
     );
     for (const tool of definition.tools) {
         assertEquals(
-            ["read", "grep", "find", "ls", "bash", "web_fetch", "set_session_name"].includes(tool) ||
+            ["codemode", "read", "grep", "find", "ls", "bash", "web_fetch", "set_session_name"].includes(tool) ||
                 tool.startsWith("code_"),
             true,
             tool,

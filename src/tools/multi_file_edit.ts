@@ -9,9 +9,9 @@ import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from
 
 import { defineTool, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { isAbsolute, join } from "node:path";
-import { getHomeDir } from "../constants.js";
+import { getHomeDir } from "../constants.ts";
 import { operatePlanFile } from "../plan-store/index.ts";
 
 const fileEditSchema = Type.Object(

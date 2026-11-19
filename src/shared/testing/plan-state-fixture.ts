@@ -4,7 +4,7 @@ import { requireProjectCheckout } from "../project-identity.ts";
  * Consumer journeys use these only to arrange evidence; exercise behavior through plan-store/index.ts.
  * This module is an explicit test-only member of the Plan persistence boundary, never a production API.
  */
-import { savePlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { readControllerRecord, writeControllerState } from "../../plan-store/controllers.ts";
 
 export async function seedPlan(...args: Parameters<typeof savePlan>) {
@@ -23,7 +23,7 @@ export async function inspectPlanFixtureController(...args: Parameters<typeof re
     return await readControllerRecord(...args);
 }
 
-import { getStoredPlanPath, getPlanDocumentRoot, withPlanLock, withPlanCatalogLock } from "../../plan-store.js";
+import { getStoredPlanPath, getPlanDocumentRoot, withPlanLock, withPlanCatalogLock } from "../../plan-store.ts";
 import { getTransitionJournalDir, getTransitionJournalPath } from "../../plan-store/transitions.ts";
 import { controllerRecordPath } from "../../plan-store/controllers.ts";
 /** Locate a deliberately retained legacy document for filesystem corruption/recovery fixtures. */

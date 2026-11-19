@@ -1,11 +1,12 @@
 ---
 name: run
-description: Start or resume one RunWield Connect workflow in Codex, including planning, browser review, implementation, validation, and delivery.
+description: Explicitly route a request to Ideator, Guide, or a RunWield delivery workflow in Codex, or resume delivery.
 ---
 
 # RunWield Connect
 
-Use the RunWield MCP tools for this explicitly requested workflow. Codex owns every model call; RunWield Core owns the
+Use the RunWield MCP tools only for this explicitly requested work. Retain the original user request in host context
+through Router and any role handoff. Codex owns every model call; RunWield Core owns the
 Plan, execution directory, workflow gates, recovery, and publication. Stay in Codex and the browser. Do not operate the
 RunWield CLI or TUI for the user. Ordinary Codex tools and permissions remain available and unchanged.
 
@@ -17,6 +18,10 @@ Use the user's intent to choose:
   `payload: { requestText, hostRequestId }`. Put only this request in `requestText`. Use a request identifier supplied
   by Codex when available, otherwise generate a UUID. Keep those IDs when retrying an activation that returned no
   result. The installed MCP server supplies host and adapter evidence; do not construct or override it.
+- **Start planning an existing Plan or Epic child:** use `activate` with the explicit request and
+  `payload.existingPlan: { planName, planId, targetBranch? }`. Use the selected Plan's name relative to `docs/plans/`
+  without `.md`, and its actual Plan ID. Select only the child the user named. Do not encode the selection solely in
+  request prose or choose another child. If a workflow already exists for that request, continue it instead.
 - **Continue existing work**, such as `$runwield:run resume` or `$runwield:run implement the saved Plan`: first call `status`
   with `inspectOnly: true` and the known `workflowId`, or only `{ inspectOnly: true }` to inspect the most recent open
   workflow in this repository without continuing it. Do not activate a new
@@ -33,7 +38,7 @@ start checks, or dispatch a worker before showing this summary. A workflow start
 in Codex with the same Plan, action, revision, and execution directory. The explicit resume already authorizes that
 handoff; no additional host-switch confirmation is needed. Do not import the other host's conversation.
 
-Show any returned `compatibility` notice before continuing. For `unsupported_host`, `incompatible_adapter`, or
+Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core. For `unsupported_host`, `incompatible_adapter`, or
 `unsupported_host_version`, show Core's explanation and update guidance and stop. Never claim a host version is tested
 when Core describes it as untested.
 
@@ -42,15 +47,21 @@ when Core describes it as untested.
 After every tool result, follow `workflow.nextAction`, including a result that rejects a stale call. Read the relevant
 reference before handling its actions; move to another reference when the returned action changes.
 
-| Current action                                                                             | Reference                                           |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `triage`, `plan`, `review`                                                                 | [Planning and Plan review](references/planning.md)  |
-| `plan_ready`, `plan_saved`, `consent`, `implementation`                                    | [Implementation](references/implementation.md)      |
-| `implemented`, `validation_recovery`, `validation`, `code_review`, `recorder`, `delivered` | [Validation and delivery](references/validation.md) |
+| Current action                                                                                                   | Reference                                                    |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `role_handoff`                                                                                                   | [Ideator and Guide conversation](references/conversation.md) |
+| `triage`, `plan`, `review`                                                                                       | [Planning and Plan review](references/planning.md)           |
+| `plan_ready`, `plan_saved`, `consent`, `implementation`                                                          | [Implementation](references/implementation.md)               |
+| `implemented`, `validation_running`, `validation_recovery`, `validation`, `code_review`, `recorder`, `delivered` | [Validation and delivery](references/validation.md)          |
+
+For `role_handoff`, use the shared conversation reference: call stateless `get_role_instructions` for the returned
+role, resolve `instructions.dispatch`, and answer the original request. Do not resume or complete the closed routing
+record. Conversation replies stay in Codex, not Core.
 
 For `return_to_host`, report Core's outcome and return to ordinary Codex work. Unsupported request types do not become
-FEATURE workflows by changing their classification. An unrecognized action or role contract is a recoverable
-compatibility problem: report it and leave the workflow open.
+FEATURE workflows by changing their classification. An unknown MCP tool, action, or role contract is a recoverable
+compatibility problem: show the diagnostic, tell the user to update local RunWield Core and the Codex RunWield plugin to
+compatible versions, and stop without substitution. Leave any delivery workflow open.
 
 ## Operation identity and recovery
 
@@ -69,7 +80,10 @@ compatibility problem: report it and leave the workflow open.
 
 ## Fresh Codex workers
 
-Before every role dispatch, read `workflow.nextAction.dispatch`, available even in compact status without reviewer
+For Ideator and Guide, use the conversation reference's `instructions.dispatch` procedure for both dedicated and
+routed entry. The workflow dispatch rules below apply only to delivery roles.
+
+Before every delivery role dispatch, read `workflow.nextAction.dispatch`, available even in compact status without reviewer
 instructions. It reflects saved `connect.codex.roles` preferences for the current Codex caller. Apply these rules to
 Router, Planner, implementation, independent review, repair, and Recorder workers:
 
@@ -112,3 +126,8 @@ These tools supply content through Core without host filesystem access to home. 
 `revision_conflict`; do not combine pages from different revisions. Search pages contain JSON; parse only after all
 pages arrive. Host denial of these tools is still denial: stop dependent work if no authorized route remains. Do not
 create a repository copy or symlink, request broad home access, or treat a path as a grant.
+
+For planning, use Core's `planningCwd` and `planPath`. Follow the planning reference's `start_planning` step before
+dispatch. If preparation fails or authority is missing, stop dependent work, repair the integration, and retry the same
+workflow. Do not use temporary Core scripts, manual HTTP approvals, coordinator-proxied worker instructions, or manually
+created planning worktrees to bypass the native handoff.

@@ -14,15 +14,15 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { CLI_BIN, getHomeDir } from "../../../../constants.js";
-import type { HostedSession } from "../../hosted-session.js";
+import { CLI_BIN, getHomeDir } from "../../../../constants.ts";
+import type { HostedSession } from "../../hosted-session.ts";
 import {
     isApprovalAcceptedValue,
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
     supportsHostedSessionInteraction,
-} from "../../session-runtime-interactions.js";
+} from "../../session-runtime-interactions.ts";
 
 const WLD_EXECUTABLE = process.platform === "win32" ? `${CLI_BIN}.exe` : CLI_BIN;
 

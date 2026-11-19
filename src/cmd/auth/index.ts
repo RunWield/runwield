@@ -3,14 +3,14 @@
  * Login/logout/status commands for RunWield-owned model authentication.
  */
 
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import {
     getModelRegistry,
     isExternalCliProvider,
     type RunWieldModelRegistry,
 } from "../../shared/models/model-registry.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 export interface AuthUiPort {
     abortActivePrompt: NonNullable<UiAPI["abortActivePrompt"]>;
@@ -69,11 +69,7 @@ async function getStoredCredentialType(
     return await registry.getStoredCredentialType(providerId);
 }
 
-async function setProviderApiKey(
-    registry: RunWieldModelRegistry,
-    providerId: string,
-    apiKey: string,
-): Promise<void> {
+async function setProviderApiKey(registry: RunWieldModelRegistry, providerId: string, apiKey: string): Promise<void> {
     await registry.setProviderApiKey(providerId, apiKey);
 }
 
@@ -111,10 +107,12 @@ function parseAuthType(value: string): "oauth" | "api_key" | null {
 }
 
 function formatClickableTerminalUrl(url: string): string {
-    const safeUrl = Array.from(url).filter((char) => {
-        const code = char.charCodeAt(0);
-        return code >= 32 && code !== 127;
-    }).join("");
+    const safeUrl = Array.from(url)
+        .filter((char) => {
+            const code = char.charCodeAt(0);
+            return code >= 32 && code !== 127;
+        })
+        .join("");
     return `\x1b]8;;${safeUrl}\x07${safeUrl}\x1b]8;;\x07`;
 }
 
@@ -141,9 +139,9 @@ async function promptForProvider(
         mode === "login" ? "Select provider to configure:" : "Select provider to logout:",
         options.allowBack
             ? [
-                { value: LOGIN_BACK_VALUE, label: "Back", description: "Choose a different authentication method" },
-                ...providerOptions,
-            ]
+                  { value: LOGIN_BACK_VALUE, label: "Back", description: "Choose a different authentication method" },
+                  ...providerOptions,
+              ]
             : providerOptions,
     );
     if (selected === LOGIN_BACK_VALUE || (selected === null && options.allowBack)) return "back";
@@ -164,7 +162,9 @@ async function loginWithSubscription(
                             `Open this URL to login to ${provider.name}:`,
                             formatClickableTerminalUrl(event.url),
                             event.instructions || "",
-                        ].filter(Boolean).join("\n"),
+                        ]
+                            .filter(Boolean)
+                            .join("\n"),
                     );
                 } else if (event.type === "progress" || event.type === "info") {
                     uiAPI.appendSystemMessage(event.message);
@@ -257,9 +257,8 @@ export async function runLoginCommand(argv: string[], options: AuthCommandOption
 
         const providers = getLoginProviderOptions(registry, authType);
         if (providers.length === 0) {
-            const message = authType === "oauth"
-                ? "No subscription providers available."
-                : "No API key providers available.";
+            const message =
+                authType === "oauth" ? "No subscription providers available." : "No API key providers available.";
             uiAPI.appendSystemMessage(message);
             return { status: "failed", message };
         }
@@ -361,10 +360,7 @@ async function formatAuthStatusForRuntime(registry: RunWieldModelRegistry): Prom
     return await formatAuthStatusLinesAsync(registry, providerIds);
 }
 
-async function formatAuthStatusLinesAsync(
-    registry: RunWieldModelRegistry,
-    providerIds: Set<string>,
-): Promise<string> {
+async function formatAuthStatusLinesAsync(registry: RunWieldModelRegistry, providerIds: Set<string>): Promise<string> {
     const lines = [`Available models: ${registry.getAvailable().length}`, "Providers:"];
     if (providerIds.size === 0) {
         lines.push("- none configured");

@@ -18,7 +18,7 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../../plan-
  */
 
 import { assertSharedPlanWriteAllowed } from "../../shared/collaboration/lock.ts";
-import { isAnsweredPlanReview } from "../../shared/workflow/plan-review-recovery.js";
+import { isAnsweredPlanReview } from "../../shared/workflow/plan-review-recovery.ts";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { startPlanReviewSurface } from "./review-launcher.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";

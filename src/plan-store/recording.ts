@@ -18,7 +18,7 @@ import { projectStoreLocation } from "../shared/project-identity.ts";
 import { currentPackageSelection, selectedPackage, withPackageWorkflow } from "./workflows.ts";
 import { readPlanPackage, readPlanPackagePublication, type PackagePublicationReference } from "./packages.ts";
 import { loadPublishedWorkRecordSource, verifyPackageRecordingDelivery } from "./published-source.ts";
-import { getPlanDocumentRoot } from "../plan-store.js";
+import { getPlanDocumentRoot } from "../plan-store.ts";
 
 export interface PlanRecordingContext {
     preparation?: PackagePublicationReference;
@@ -93,13 +93,13 @@ export interface PlanRecordingSource {
 export async function recordPlanWorkRecord(
     cwd: string,
     source: PlanRecordingSource,
-    workRecord: import("../plan-store.js").PlanFrontMatter["workRecord"],
+    workRecord: import("../plan-store.ts").PlanFrontMatter["workRecord"],
 ): Promise<void> {
     const { recordRetainedRecordingBacklink } = await import("./retained-recording.ts");
     if (await recordRetainedRecordingBacklink(source, workRecord)) return;
     const { withLocalProjectAction } = await import("./access.ts");
     const { withPlanLock, loadPlan, loadArchivedPlan, updateArchivedPlanFrontMatter } =
-        await import("../plan-store.js");
+        await import("../plan-store.ts");
     const { runPlanFrontMatterTransition } = await import("./transitions.ts");
     await withLocalProjectAction(cwd, () =>
         withPlanLock(cwd, source.name, async () => {
@@ -133,7 +133,7 @@ export async function recordPlanWorkRecord(
 
 /** Assign an identity to an explicit retained archive before recording its provenance. */
 export async function ensureArchivedPlanIdentity(cwd: string, name: string) {
-    const { withPlanCatalogLock, loadArchivedPlan, updateArchivedPlanFrontMatter } = await import("../plan-store.js");
+    const { withPlanCatalogLock, loadArchivedPlan, updateArchivedPlanFrontMatter } = await import("../plan-store.ts");
     return await withPlanCatalogLock(cwd, async () => {
         const plan = await loadArchivedPlan(cwd, name);
         if (!plan) throw new Error(`Archived Plan not found: ${name}`);

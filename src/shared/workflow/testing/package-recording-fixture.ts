@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { publicationFixture } from "./package-publication-fixture.ts";
-import { setExactProjectCustomSetting } from "../../settings.js";
+import { setExactProjectCustomSetting } from "../../settings.ts";
 import { captureForegroundProcess } from "../../captured-process.ts";
 import type { ValidationHostResume, HostTurnValidationResult } from "../validation-host-contract.ts";
 

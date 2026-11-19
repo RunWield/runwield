@@ -6,7 +6,7 @@ import { packageFixture } from "../testing/plan-package-fixture.ts";
 import { withWorkRecordOwner } from "./owner.ts";
 import { writeWorkRecord, replaceWorkRecord } from "./store.ts";
 import { recordAttrs, recordBody } from "./test-fixtures/package-records.ts";
-import { formatWorkRecordMarkdown } from "./markdown.js";
+import { formatWorkRecordMarkdown } from "./markdown.ts";
 import { getWorkRecordIndexCollectionName, rebuildWorkRecordIndex } from "./index-adapter.ts";
 import { searchWorkRecords } from "./search.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";

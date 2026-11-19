@@ -1,5 +1,5 @@
-import { AGENTS } from "../../../constants.js";
-import { normalizeRuntimeToolResult, RuntimeEventTypes } from ".././session-runtime-events.js";
+import { AGENTS } from "../../../constants.ts";
+import { normalizeRuntimeToolResult, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { describeRuntimeTool } from ".././tool-event-title.ts";
 import { spawnForegroundShell } from "../../foreground-process.ts";
 
@@ -93,7 +93,7 @@ export class RuntimeLocalShell {
     }
 
     async runLocalShellCommandInSession(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         options: { command: string; userRequest?: string; persist?: boolean },
         capability: import(".././managed-operation.ts").ManagedOperationCapability | null,
     ) {
@@ -169,13 +169,9 @@ export class RuntimeLocalShell {
 
             // The streams settle when the process tree dies, so final output and
             // active-interaction cleanup never race a still-running descendant.
-            const [outcome] = await Promise.all([
-                shell.done,
-                readStream(shell.stdout),
-                readStream(shell.stderr),
-            ]);
+            const [outcome] = await Promise.all([shell.done, readStream(shell.stdout), readStream(shell.stderr)]);
             if (outcome.terminatedBy) canceled = true;
-            exitCode = canceled ? 130 : outcome.exitCode ?? 1;
+            exitCode = canceled ? 130 : (outcome.exitCode ?? 1);
         } catch (error) {
             if (!canceled) {
                 output += `Error starting process: ${error instanceof Error ? error.message : String(error)}\n`;
@@ -216,7 +212,7 @@ export class RuntimeLocalShell {
     }
 
     recordLocalToolExchange(
-        session: import(".././hosted-session.js").HostedSession,
+        session: import(".././hosted-session.ts").HostedSession,
         exchange: {
             userRequest: string;
             toolCallId: string;

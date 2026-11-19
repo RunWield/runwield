@@ -1,10 +1,10 @@
 /** Boot summary printed at the top of an interactive session. */
 
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { recordSnipMissingWarningShown, shouldShowSnipMissingWarning } from "../../cmd/init/init-state.ts";
 import { hasSnipBinary } from "../../shared/runtime-preflight.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getSettingsManager } from "../../shared/settings.ts";
 
 interface PromptTemplate {
     name: string;
@@ -18,7 +18,7 @@ interface BootRuntimeToolsPort {
 }
 
 interface RenderBootBannerOptions {
-    uiAPI: import("./types.js").UiAPI;
+    uiAPI: import("./api.ts").UiAPI;
     invokablePromptTemplates: PromptTemplate[];
     blockedPromptTemplates: PromptTemplate[];
     chatPromptAgentName: string;
@@ -103,23 +103,21 @@ export async function renderBootBanner({
 
     const agentMdFiles = await sessionRuntime.listSessionContextFiles(sessionId);
     if (agentMdFiles.length > 0) {
-        const lines = agentMdFiles
-            .map((file) => `- ${toUserFacingAgentMdPath(file, projectRoot)}`)
-            .join("\n");
+        const lines = agentMdFiles.map((file) => `- ${toUserFacingAgentMdPath(file, projectRoot)}`).join("\n");
         uiAPI.appendSystemMessage(`\n${lines}`, false, "Context:", headerStyle);
     }
 
     for (const blocked of blockedPromptTemplates) {
         if (blocked.source === "bundled") continue;
         uiAPI.appendSystemMessage(
-            `Warning: ${
-                toUserFacingPromptPath(blocked)
-            } command can't be invoked because it would override RunWield built-in commands. Please rename it.`,
+            `Warning: ${toUserFacingPromptPath(
+                blocked,
+            )} command can't be invoked because it would override RunWield built-in commands. Please rename it.`,
             true,
         );
     }
 
-    if (!snipAvailable && await shouldShowSnipMissingWarning()) {
+    if (!snipAvailable && (await shouldShowSnipMissingWarning())) {
         uiAPI.appendSystemMessage(
             [
                 "[RunWield] Snip is not installed. RunWield will still work, but agent shell command output will be noisier.",

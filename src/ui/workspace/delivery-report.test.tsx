@@ -3,7 +3,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { buildDeliveryReport } from "../../shared/workflow/delivery-report.ts";
-import { reduceSessionEvents, SessionTimeline } from "./components/SessionTimeline.jsx";
+import { reduceSessionEvents, SessionTimeline } from "./components/SessionTimeline.tsx";
 import { createPublicationAttempt } from "../../shared/workflow/publication-attempt.ts";
 
 test("Plan Branch completion card names the landing and the user's next merge", () => {
@@ -30,12 +30,14 @@ test("Plan Branch completion card names the landing and the user's next merge", 
         workRecordFailed: false,
         semanticRequired: true,
     });
-    const items = reduceSessionEvents([{
-        type: "system_status",
-        eventId: "off-path",
-        message: "Delivered",
-        validationProgress: { deliveryReport: report },
-    }]);
+    const items = reduceSessionEvents([
+        {
+            type: "system_status",
+            eventId: "off-path",
+            message: "Delivered",
+            validationProgress: { deliveryReport: report },
+        },
+    ]);
     const html = renderToStaticMarkup(createElement(SessionTimeline, { items, sessionPath: "/projects/p/sessions/s" }));
     assertStringIncludes(html, "<h3>Ready for your merge/PR</h3>");
     assertStringIncludes(html, "<dt>Landing branch</dt><dd>plan/example</dd>");
@@ -52,12 +54,14 @@ test("delivery report survives replay as an inline Session card with safe artifa
         semanticRequired: true,
     });
     report.artifacts[0].artifactId = "id/with?characters";
-    const events = [{
-        type: "system_status",
-        eventId: "receipt-1",
-        message: "Delivered",
-        validationProgress: { deliveryReport: report },
-    }];
+    const events = [
+        {
+            type: "system_status",
+            eventId: "receipt-1",
+            message: "Delivered",
+            validationProgress: { deliveryReport: report },
+        },
+    ];
     const items = reduceSessionEvents(events);
     assertEquals(items[0].kind, "delivery-report");
     const html = renderToStaticMarkup(createElement(SessionTimeline, { items, sessionPath: "/projects/p/sessions/s" }));

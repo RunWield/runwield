@@ -1,8 +1,8 @@
 import { managedPlanStoreActive, recoverManagedExecution, readManagedPlan } from "./managed.ts";
 /** Repairs bind execution evidence through the same Plan owner that persists normal transitions. */
-import { loadPlan, updatePlanFrontMatter, withPlanLock } from "../plan-store.js";
+import { loadPlan, updatePlanFrontMatter, withPlanLock } from "../plan-store.ts";
 import { withLocalPlanWorkflow } from "./access.ts";
-import { findById } from "../shared/worktree-registry.js";
+import { findById } from "../shared/worktree-registry.ts";
 
 export async function restoreNonGitPlanExecution(cwd: string, planName: string, expectedRevision: string) {
     if (managedPlanStoreActive()) return await recoverManagedExecution(cwd, planName, "non-git", expectedRevision);

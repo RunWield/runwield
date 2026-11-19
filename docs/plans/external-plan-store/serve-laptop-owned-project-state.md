@@ -11,7 +11,7 @@ affectedPaths:
     - "src/shared/work-records/"
     - "src/shared/private-json-file.ts"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/0020-home-project-state-and-launch-mode-ownership.md"
+    - "docs/adr/019-home-project-state-and-launch-mode-ownership.md"
     - "docs/domain-language.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
@@ -50,7 +50,7 @@ the durable recovery required here. Session control and save already have separa
 The requirements added here are authenticated owner-side Plan/record access, stale-write refusal and reconcilable
 interrupted operations. Preserve [Plan lifecycle](../../prd/runwield-core-prd.md#plan-lifecycle),
 [Work Records](../../prd/runwield-core-prd.md#work-records), passive reads and ordinary local operation.
-The owning [ADR](../../adr/0020-home-project-state-and-launch-mode-ownership.md) already selects this host partition.
+The owning [ADR](../../adr/019-home-project-state-and-launch-mode-ownership.md) already selects this host partition.
 This child prepares it; the next child activates it for `wld remote`, including remote-only Projects.
 
 ## Objective
@@ -122,7 +122,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/work-records/` — reuse canonical record/index ownership, confidence rules and Plan backlinks
 - `src/shared/private-json-file.ts` — reuse private durable replacement; change only if a demonstrated gap requires it
 - `scripts/check-plan-store-boundary.ts`, qualification and test inventory — retain enforcement for the new consumers
-- `docs/prd/runwield-core-prd.md`, `docs/adr/0020-home-project-state-and-launch-mode-ownership.md`,
+- `docs/prd/runwield-core-prd.md`, `docs/adr/019-home-project-state-and-launch-mode-ownership.md`,
   `docs/domain-language.md` and the store README — describe the prepared contract and preserve activation as target
 
 Launcher, supervisor, runtime layout selection, saved Session continuation and live managed-remote cutover belong to

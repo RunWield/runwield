@@ -6,7 +6,7 @@ auto = "disable"
 exact = true
 ignoreScripts = true
 minimumReleaseAge = 86400
-minimumReleaseAgeExcludes = ["@earendil-works/pi-tui", "@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@earendil-works/pi-agent-core", "@earendil-works/pi-mcp", "@earendil-works/chord", "@earendil-works/pi-codemode", "@earendil-works/pi-telemetry"]
+minimumReleaseAgeExcludes = ["@earendil-works/pi-tui", "@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@earendil-works/pi-agent-core", "@earendil-works/pi-mcp", "@earendil-works/pi-schema", "@earendil-works/pi-codemode", "@earendil-works/pi-telemetry"]
 [test]
 preload = ["./scripts/bun-test-sandbox.ts"]
 pathIgnorePatterns = ["third_party/**", "node_modules/**", "prototypes/**", ".ci-cache/**"]

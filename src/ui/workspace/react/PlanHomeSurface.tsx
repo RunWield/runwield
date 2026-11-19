@@ -1,6 +1,6 @@
-// @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+// @ts-nocheck: Component props and event-handler types are implicit.
 import { CodeFilePopout } from "@plannotator/ui/components/CodeFilePopout.tsx";
-import { PlanBodyEditor } from "../islands/PlanBodyEditor.jsx";
+import { PlanBodyEditor } from "../islands/PlanBodyEditor.tsx";
 import { submitWorkflowAction } from "../browser/workflow-action.ts";
 
 import { useEffect, useMemo, useState } from "react";

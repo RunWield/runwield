@@ -29,8 +29,10 @@ first-party plugins. A Connect plugin lets users explicitly invoke RunWield work
 while that host retains the conversation and makes every model call. _Avoid_: Plugin mode, always-on RunWield, trial
 mode
 
-**Compatibility Matrix**: Core-owned, versioned data of tested External Agent Host versions, adapter contracts,
-capabilities, and limits for a Connect adapter. Activation checks it; only acceptance evidence adds tested entries.
+**Compatibility Matrix**: Core-owned, versioned qualified release families, adapter contracts, minimum versions, and
+separate exact acceptance-run evidence for a Connect adapter. Stable hosts share coverage within a major; pre-1.0 hosts
+share coverage within a minor. New families require qualification. Policy coverage does not claim an individual run.
+Every evidence-carrying operation checks compatibility; nonblocking assessments stay internal and work continues quietly.
 _Avoid_: support list, capability manifest
 
 **Attached Mode**: The internal architecture underlying RunWield Connect, in which an External Agent Host makes every
@@ -66,9 +68,12 @@ RunWield's registry and baseline evidence; it does not own a second worktree lif
 report to the coordinating conversation, which submits Core's `task_completed` contract. With remembered non-Git
 consent, the directory is the current checkout rather than a worktree. _Avoid_: worker session, host worktree
 
-**Attached Role Instructions**: The effective layered agent instructions Core returns with a pending host action. They
-are resolved for each response from project, home, and bundled definitions and are not saved in the Attached Workflow
-Record. _Avoid_: generated Skill, role contract copy
+**Attached Role Instructions**: The effective layered Agent instructions Core returns either for a pending workflow
+action through `get_instructions` or for explicit stateless Ideator/Guide entry through `get_role_instructions`. Each
+response resolves current project, home, and bundled definitions, shared practices, and applicable Skills. Conversation
+instructions use `runwield.attached.conversation/1` without a workflow; the host owns replies and resume. A Router
+`role_handoff` closes only its routing record, not the discussion or delivery. Instructions are not saved in the
+Attached Workflow Record; handoff receipts also omit conversation dispatch settings. _Avoid_: generated Skill, role contract copy, conversation store
 
 **Headless Mode**: The non-interactive RunWield execution surface that emits machine-readable Agent Session events for
 external hosts. _Avoid_: TUI mode, batch wrapper, remote UI
@@ -679,11 +684,14 @@ orchestrator, classifier, triager
 
 **Architect**: The planning Agent for PROJECT Epics. _Avoid_: Designer, lead
 
-**Guide**: The read-mostly Agent for `INQUIRY` work that answers directly without materializing artifacts or running a
-Socratic interview. _Avoid_: Explainer, investigator, researcher
+**Guide**: The read-mostly Agent for `INQUIRY` work that answers directly from project evidence without a Socratic
+interview. It can preserve an explanation as ordinary Markdown only when asked, or create a requested image when a
+suitable capability is available. It does not author workflow artifacts or implement changes. Guide is not Guided
+Review. _Avoid_: Explainer, investigator, researcher, Guided Review
 
 **Ideator**: The strategic product and research Agent that conducts Socratic interviews to sharpen vague ideas before
-planning or implementation. _Avoid_: General helper, explainer, guide
+planning or implementation, with requested PRD synthesis. In Connect, saving a PRD does not start planning.
+_Avoid_: General helper, explainer, guide, Guided Review
 
 **Slicer**: The Agent that helps decompose an approved PROJECT Epic into child PLANNED_CHANGE Plans and can materialize
 those plans under `docs/plans/<epic-name>/`. _Avoid_: Task planner, splitter
@@ -762,6 +770,10 @@ without becoming consumed during transfer. _Avoid_: Agent reload, message replay
 outcomes. _Avoid_: Agent-specific handler, special agent handler
 
 ### Execution & Tools
+
+**Codemode**: Pi-backed JavaScript composition of an Agent's authorized tools in a QuickJS sandbox. Scripts filter output,
+can call configured non-chat models, and retain successful small JSON stores on their Session branch. Codemode adds no
+tool authority; workflow decisions remain direct calls. _Avoid_: Shell, arbitrary host JavaScript, MCP connection host
 
 **Workflow Orchestrator**: The runtime coordinator that consumes workflow Custom Tool outcomes and starts the next Agent
 Session. _Avoid_: Router, dispatcher agent

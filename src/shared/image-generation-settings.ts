@@ -1,4 +1,4 @@
-import { getCustomSetting, getMergedCustomSetting } from "./settings.js";
+import { getCustomSetting, getMergedCustomSetting } from "./settings.ts";
 
 export interface ImageGenerationSettings {
     model: string;
@@ -40,8 +40,10 @@ export function resolveImageGenerationSettings(cwd: string): ImageGenerationSett
     }
     if (
         settings.temperature !== undefined &&
-        (typeof settings.temperature !== "number" || !Number.isFinite(settings.temperature) ||
-            settings.temperature < 0 || settings.temperature > 2)
+        (typeof settings.temperature !== "number" ||
+            !Number.isFinite(settings.temperature) ||
+            settings.temperature < 0 ||
+            settings.temperature > 2)
     ) {
         throw new Error("imageGeneration.temperature must be a finite number between 0 and 2.");
     }

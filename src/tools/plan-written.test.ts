@@ -17,7 +17,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import { HostedSession } from "../shared/session/hosted-session.js";
+import { HostedSession } from "../shared/session/hosted-session.ts";
 import { createPlanWrittenTool } from "./plan-written.ts";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
@@ -26,9 +26,9 @@ import { loadPlan } from "../plan-store/index.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
 import { defineCommittedGitFixture, git } from "../shared/git-test-fixture.ts";
 import { makeManagedSessionFixture } from "../testing/managed-session-fixture.ts";
-import { inspectWorktreeRegistry } from "../shared/worktree-registry.js";
+import { inspectWorktreeRegistry } from "../shared/worktree-registry.ts";
 import { existsSync } from "node:fs";
-import { WORKTREE_REGISTRY_FILE } from "../constants.js";
+import { WORKTREE_REGISTRY_FILE } from "../constants.ts";
 
 const LINKED_REVIEW_GIT = defineCommittedGitFixture();
 
@@ -145,7 +145,7 @@ test("plan_written rejects the reserved Epic Artifact name before review", async
 
 test("direct Plan retains explicit verification through skipped Init, reload, and deliberate changes", async () => {
     await withRuntimeCommandFixture("plan-command-", async ({ projectRoot }) => {
-        const { getExactProjectCustomSetting, setExactProjectCustomSetting } = await import("../shared/settings.js");
+        const { getExactProjectCustomSetting, setExactProjectCustomSetting } = await import("../shared/settings.ts");
         const { runLocalCI } = await import("../shared/workflow/validation-local-ci.ts");
         const session = new HostedSession({ id: "plan-command", cwd: projectRoot });
         try {

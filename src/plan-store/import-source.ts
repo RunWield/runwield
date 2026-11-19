@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { extractYaml, type FrontMatterRecord } from "../shared/front-matter.ts";
 import { EPIC_ARTIFACT_FILE_NAMES } from "../plan-format.ts";
-import { canonicalPlanStatus, getPlanDocumentRoot, normalizePlanId, parsePlanFrontMatter } from "../plan-store.js";
+import { canonicalPlanStatus, getPlanDocumentRoot, normalizePlanId, parsePlanFrontMatter } from "../plan-store.ts";
 import { PlanPackageError } from "./packages.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";
 import {
@@ -18,8 +18,8 @@ import {
     inspectWorktreeRegistry,
     getWorktreeRegistryPath,
     type WorktreeRegistryEntry,
-} from "../shared/worktree-registry.js";
-import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
+} from "../shared/worktree-registry.ts";
+import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { checkedProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
 import type { ProjectIdentity } from "../shared/project-identity.ts";
 import type { PackageDocuments, PlanPackageMetadata, PackageDefinition } from "./packages.ts";

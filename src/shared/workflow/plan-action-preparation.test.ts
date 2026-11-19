@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { strictEqual } from "node:assert/strict";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { getPlanRevisionForText } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";

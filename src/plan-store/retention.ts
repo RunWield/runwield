@@ -16,12 +16,12 @@ import { currentPackageProject } from "./workflows.ts";
 import { readLocalHomeStore } from "./access.ts";
 import { collectArchivedPlanUnits, type ArchivedPlanUnit } from "./archive-retention.ts";
 import { selectArchivedPlansForPrune, type ArchiveRetentionPolicy } from "./retention-selection.ts";
-import { getPlanArchiveRetentionPolicy, getWorkRecordRetentionPolicy } from "../shared/settings.js";
+import { getPlanArchiveRetentionPolicy, getWorkRecordRetentionPolicy } from "../shared/settings.ts";
 import { deleteWorkRecord, listLocalWorkRecords } from "../shared/work-records/store.ts";
 import { unfinishedRecordingPins } from "../shared/work-records/package-recording.ts";
 import { assertWorkRecordPath, withWorkRecordMutation } from "../shared/work-records/owner.ts";
 import { forgetWorkRecordLocations, readWorkRecordLocations } from "../shared/work-records/import.ts";
-import { withPlanCatalogLock, deleteArchivedPlanUnit } from "../plan-store.js";
+import { withPlanCatalogLock, deleteArchivedPlanUnit } from "../plan-store.ts";
 import {
     isHomeProjectOwner,
     inspectHomeProjectOwner,
@@ -68,7 +68,7 @@ export function retentionPolicies(cwd: string): RetentionPolicies {
 }
 export async function readExecutionRetention(cwd: string) {
     const policy = retentionPolicies(cwd);
-    const registry = await (await import("../shared/worktree-registry.js")).inspectWorktreeRegistry(cwd);
+    const registry = await (await import("../shared/worktree-registry.ts")).inspectWorktreeRegistry(cwd);
     if (registry.readError || registry.integrityIssues.length)
         throw new Error("Cannot verify retention while the execution registry needs repair.");
     const { isPublicationAttemptCleanupComplete } = await import("../shared/workflow/publication-attempt.ts");

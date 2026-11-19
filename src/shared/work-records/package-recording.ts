@@ -10,8 +10,8 @@ import {
     generateWorkRecordForSource,
     normalizeRecorderOutput,
     validateRecorderProposals,
-} from "./generation.js";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.js";
+} from "./generation.ts";
+import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.ts";
 import { approveWorkRecord } from "./lifecycle.ts";
 import { applyWorkRecordSupersession } from "./supersession.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
@@ -19,9 +19,9 @@ import { retainWorkRecordLocation, workRecordDigest } from "./import.ts";
 import type { DeliveryCopy, PackagePublicationManifest } from "../../plan-store/index.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 
-type Source = import("./generation.js").WorkRecordSource;
-type Options = import("./generation.js").WorkRecordGenerationOptions;
-type Sections = import("./generation.js").GeneratedWorkRecordSections;
+type Source = import("./generation.ts").WorkRecordSource;
+type Options = import("./generation.ts").WorkRecordGenerationOptions;
+type Sections = import("./generation.ts").GeneratedWorkRecordSections;
 export interface RecordingPreparation {
     version: 1;
     attemptId: string;

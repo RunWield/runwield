@@ -270,7 +270,7 @@ export function settleBatchOperation(directory: string, intent: BatchOperationIn
 }
 
 /** Keep the authoring result beside its receipt before the batch can publish any child. */
-export function retainChildAuthoringResult(children: import("../plan-store.js").SavedChildFeaturePlan[]): void {
+export function retainChildAuthoringResult(children: import("../plan-store.ts").SavedChildFeaturePlan[]): void {
     const scope = operations.getStore();
     if (!scope) return;
     const path = join(scope.directory, "child-authoring-results", `${scope.receipt.operationId}.json`);
@@ -281,7 +281,7 @@ export function readChildAuthoringResult(
     directory: string,
     operationId: string,
     planId: string,
-): import("../plan-store.js").SavedChildFeaturePlan[] {
+): import("../plan-store.ts").SavedChildFeaturePlan[] {
     const receipt = inspectOperationReceipt(directory, operationId, planId);
     if (receipt.status !== "completed") throw new Error("Child authoring has not committed.");
     const path = join(directory, "child-authoring-results", `${operationId}.json`);

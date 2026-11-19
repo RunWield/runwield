@@ -1,13 +1,13 @@
-// @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+// @ts-nocheck: Callback parameters and result shapes are implicit.
 import { withPlanImplementationCompletion } from "../../plan-store/index.ts";
 import { capturePlanAccess } from "../../plan-store/index.ts";
 import { resumePlanAttempt } from "../../plan-store/index.ts";
 import { getPlanRevisionForText } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
-import { checkpointExecutionWorktree } from "../worktree.js";
+import { checkpointExecutionWorktree } from "../worktree.ts";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
-import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.js";
-import { isInValidation, recordPlanEvent } from "./plan-lifecycle.js";
+import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.ts";
+import { isInValidation, recordPlanEvent } from "./plan-lifecycle.ts";
 import { restoreExecutionPlanFromBaseline } from "../../plan-store/index.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { runImplementationCheckpointTransition } from "../../plan-store/index.ts";
@@ -15,12 +15,12 @@ import { runImplementationCheckpointTransition } from "../../plan-store/index.ts
 interface FinalizePlanImplementationOptions {
     projectRoot: string;
     planName: string;
-    triageMeta?: import("../session/hosted-session.js").ActiveExecutionWorkflow["triageMeta"];
-    executionContext: import("../session/hosted-session.js").ActiveExecutionWorkflow | null | undefined;
+    triageMeta?: import("../session/hosted-session.ts").ActiveExecutionWorkflow["triageMeta"];
+    executionContext: import("../session/hosted-session.ts").ActiveExecutionWorkflow | null | undefined;
     executionReport?: string;
     expectedPlanRevision?: string;
     expectedPlanBodyRevision?: string;
-    hostedSession?: import("../session/hosted-session.js").HostedSession;
+    hostedSession?: import("../session/hosted-session.ts").HostedSession;
 }
 
 /**

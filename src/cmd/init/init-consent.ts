@@ -1,5 +1,5 @@
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 export const INIT_FILE_CONFIRMATION = `Init will create or update these project files:
 

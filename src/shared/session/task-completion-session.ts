@@ -6,7 +6,7 @@
  * the lifecycle/validation code that acts on it.
  */
 
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 import {
     claimWorkflowToolEvent,
     publishWorkflowToolEvent,
@@ -16,7 +16,7 @@ import {
 
 export const TASK_COMPLETION_CUSTOM_TYPE = "runwield.task_completion";
 
-type ActiveExecutionWorkflow = import("./hosted-session.js").ActiveExecutionWorkflow;
+type ActiveExecutionWorkflow = import("./hosted-session.ts").ActiveExecutionWorkflow;
 type OwningSession = ReturnType<HostedSession["getRootAgentSession"]>;
 
 type AcceptedTaskCompletionEvent = {
@@ -83,12 +83,18 @@ function getEntries(sessionManager: TaskCompletionSessionManager | null): TaskCo
 }
 
 function isAcceptedEvent(event: TaskCompletionJournalEvent | null | undefined): event is AcceptedTaskCompletionEvent {
-    return event?.version === 1 && event.state === "accepted" && typeof event.completionId === "string" &&
+    return (
+        event?.version === 1 &&
+        event.state === "accepted" &&
+        typeof event.completionId === "string" &&
         (event.validationGeneration === undefined || typeof event.validationGeneration === "string") &&
-        typeof event.agentName === "string" && typeof event.report === "string" &&
-        typeof event.timestampMs === "number" && event.owner === "root" &&
+        typeof event.agentName === "string" &&
+        typeof event.report === "string" &&
+        typeof event.timestampMs === "number" &&
+        event.owner === "root" &&
         typeof event.workflow?.planName === "string" &&
-        (event.workflow.executionAgent === "engineer" || event.workflow.executionAgent === "frontend-engineer");
+        (event.workflow.executionAgent === "engineer" || event.workflow.executionAgent === "frontend-engineer")
+    );
 }
 
 function isConsumedEvent(event: TaskCompletionJournalEvent | null | undefined): event is ConsumedTaskCompletionEvent {
@@ -120,9 +126,11 @@ export function workflowAttemptKey(workflow: ActiveExecutionWorkflow): string {
 function matchesActiveWorkflow(event: AcceptedTaskCompletionEvent, activeWorkflow: ActiveExecutionWorkflow): boolean {
     if (event.workflow.planName !== activeWorkflow.planName) return false;
     if (
-        event.validationGeneration && activeWorkflow.validationGeneration &&
+        event.validationGeneration &&
+        activeWorkflow.validationGeneration &&
         event.validationGeneration !== activeWorkflow.validationGeneration
-    ) return false;
+    )
+        return false;
     if (Boolean(event.workflow.validationContinuation) !== Boolean(activeWorkflow.validationContinuation)) return false;
     const acceptedAttempt = workflowAttemptKey(event.workflow);
     const activeAttempt = workflowAttemptKey(activeWorkflow);
@@ -210,12 +218,14 @@ export function claimPendingTaskCompletion(
     });
     if (workflowEvent?.kind === "task_completed") {
         const eventWorkflow = workflowEvent.workflow;
-        const payload = workflowEvent
-            .payload as import("../workflow/workflow-tool-events.ts").TaskCompletedEventPayload;
+        const payload =
+            workflowEvent.payload as import("../workflow/workflow-tool-events.ts").TaskCompletedEventPayload;
         if (
-            !activeWorkflow || !eventWorkflow ||
+            !activeWorkflow ||
+            !eventWorkflow ||
             eventWorkflow.planName === activeWorkflow.planName ||
-            (!workflowPlanName || eventWorkflow.planName === workflowPlanName)
+            !workflowPlanName ||
+            eventWorkflow.planName === workflowPlanName
         ) {
             hostedSession.consumePendingTaskCompletion(owningSession);
             return {
@@ -275,9 +285,9 @@ export function acknowledgeTaskCompletion(
     const sessionManager = getCompletionSessionManager(hostedSession);
     if (completion.workflowToolEvent) {
         settleWorkflowToolEvent(hostedSession, completion.workflowToolEvent, timestampMs);
-        const legacy = readUnconsumedAcceptedEvents(sessionManager).filter((event) =>
-            event.agentName === completion.agentName && event.report === completion.report
-        ).at(-1);
+        const legacy = readUnconsumedAcceptedEvents(sessionManager)
+            .filter((event) => event.agentName === completion.agentName && event.report === completion.report)
+            .at(-1);
         if (legacy && sessionManager?.appendCustomEntry) {
             sessionManager.appendCustomEntry(TASK_COMPLETION_CUSTOM_TYPE, {
                 version: 1,

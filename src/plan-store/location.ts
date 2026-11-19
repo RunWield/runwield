@@ -14,8 +14,8 @@ import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
 /** Locate the editable document independently from the shared controller files. */
 import { canonicalizeStoredPlanName, isCompletedPlanStatus } from "../plan-format.ts";
 import { loadPlan } from "./index.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
-import { findActiveByPlanName } from "../shared/worktree-registry.js";
+import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
+import { findActiveByPlanName, listEntries } from "../shared/worktree-registry.ts";
 import { isGitRepository } from "../shared/git.ts";
 import { isSequencePlan } from "../shared/project-plan.ts";
 import { inspectProjectRuntimeReadAccess, withProjectRuntimeReadScope } from "../shared/project-runtime-layout.ts";
@@ -48,12 +48,38 @@ type PlanningAttributes = NonNullable<Awaited<ReturnType<typeof loadPlan>>>["att
 /** A target-backed unfinished Plan starts or refreshes its isolated document at session start. */
 export function needsSessionPlanningWorktree(attrs: PlanningAttributes): boolean {
     if (currentPackageProject() || managedPlanStoreActive()) return false;
+    return requiresTargetCheckout(attrs);
+}
+
+function requiresTargetCheckout(attrs: PlanningAttributes): boolean {
     return Boolean(
         effectiveDeliveryBranch(attrs) &&
         (attrs.parentPlan || attrs.deliveryBranch) &&
         !isCompletedPlanStatus(attrs.status) &&
         attrs.worktreeStatus !== "active",
     );
+}
+
+async function packagePlanningSource(
+    cwd: string,
+    planName: string,
+    plan: Awaited<ReturnType<typeof loadPackageWorkflowPlan>>,
+    requested?: boolean,
+) {
+    if (!requested || !requiresTargetCheckout(plan.attrs) || !(await isGitRepository(cwd)))
+        return { documentRoot: cwd };
+    const entries = await listEntries(cwd);
+    const matches = entries.filter((entry) => entry.planId === plan.attrs.planId && entry.status === "planning");
+    if (matches.length > 1) throw new Error("Multiple planning worktrees are registered for this Plan.");
+    const [entry] = matches;
+    const planning =
+        entry &&
+        entry.planName === planName &&
+        entry.baseBranch === effectiveDeliveryBranch(plan.attrs) &&
+        (await executionWorktreePathExists(entry.path))
+            ? entry
+            : undefined;
+    return { documentRoot: planning?.path || cwd, planningNotStarted: !planning };
 }
 
 export class PlanningNotStartedError extends Error {
@@ -96,7 +122,7 @@ export async function resolveWorkflowPlanLocation(
                 const plan = await loadPackageWorkflowPlan({ planId: selection!.planId });
                 return {
                     registryRoot: requireProjectCheckout(store.identity).checkoutRoot,
-                    documentRoot: cwd,
+                    ...(await packagePlanningSource(cwd, planName, plan, options.loadFromTarget)),
                     plan: plan.attrs.archivedAt ? null : plan,
                     archived: Boolean(plan.attrs.archivedAt),
                     packageSelection: selection,
@@ -124,7 +150,7 @@ async function resolveWorkflowPlanLocationInScope(
         const plan = await loadPackageWorkflowPlan(planName);
         return {
             registryRoot: requireProjectCheckout(currentPackageSelection()!.identity).checkoutRoot,
-            documentRoot: cwd,
+            ...(await packagePlanningSource(cwd, planName, plan, options.loadFromTarget)),
             plan: plan.attrs.archivedAt ? null : plan,
             archived: Boolean(plan.attrs.archivedAt),
             packageSelection: currentPackageSelection(),

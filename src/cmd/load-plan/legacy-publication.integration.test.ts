@@ -1,6 +1,6 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import {
     realpath as fsRealpath,
@@ -17,7 +17,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -26,8 +26,8 @@ import {
     createPublicationAttempt,
     recordPublicationFailure,
 } from "../../shared/workflow/publication-attempt.ts";
-import { findById } from "../../shared/worktree-registry.js";
-import type { EditorAPI, UiAPI } from "../../ui/tui/types.js";
+import { findById } from "../../shared/worktree-registry.ts";
+import type { EditorAPI, UiAPI } from "../../ui/tui/api.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 

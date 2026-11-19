@@ -1,43 +1,16 @@
+import process from "node:process";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
-import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { withLocalPlanWorkflow, loadPlan } from "../../plan-store/index.ts";
+import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
-import process from "node:process";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { loadPlan } from "../../plan-store/index.ts";
-
 import { loadPlanActionEvidence, type PlanActionRequest } from "../../shared/workflow/plan-actions.ts";
 import { makeManagedSessionFixture, type ManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { runOwnerPlanAction, type OwnerPlanActionServiceRequest } from "./server/owner-plan-actions.ts";
-
-async function withActionFixture(body: (fixture: ManagedSessionFixture) => Promise<void>) {
-    await withProcessGlobalTestLock(async () => {
-        const home = await realpath(await mkdtemp(join(tmpdir(), "runwield-owner-plan-action-")));
-        const previousHome = process.env.HOME;
-        process.env.HOME = home;
-        try {
-            const fixture = await makeManagedSessionFixture({ home });
-            try {
-                await seedPlan(fixture.projectRoot, "demo", "# Demo\n", {
-                    planId: "plan-demo",
-                    status: "draft",
-                    classification: "FEATURE",
-                });
-                await body(fixture);
-            } finally {
-                await fixture.cleanup();
-            }
-        } finally {
-            if (previousHome === undefined) delete process.env.HOME;
-            else process.env.HOME = previousHome;
-            await rm(home, { recursive: true, force: true });
-        }
-    });
-}
 
 async function makeAction(root: string): Promise<PlanActionRequest> {
     const evidence = await loadPlanActionEvidence(root, "plan-demo");
@@ -48,18 +21,6 @@ async function makeAction(root: string): Promise<PlanActionRequest> {
         expectedStatus: evidence.evidence.status,
         expectedWorktree: evidence.evidence.worktree,
         action: "put_on_hold",
-    };
-}
-
-function makeRequest(fixture: ManagedSessionFixture, action: PlanActionRequest): OwnerPlanActionServiceRequest {
-    return {
-        projectId: fixture.project.projectId,
-        runwieldSessionId: fixture.session.runwieldSessionId,
-        deviceId: "device-1",
-        requestId: "req-1",
-        requestHash: "hash-1",
-        expectedGeneration: 0,
-        action,
     };
 }
 
@@ -154,3 +115,40 @@ test("conflicts when a request id is reused with different input", async () => {
         assertEquals(conflict.body.result.kind, "invalid_action");
     });
 });
+
+async function withActionFixture(body: (fixture: ManagedSessionFixture) => Promise<void>) {
+    await withProcessGlobalTestLock(async () => {
+        const home = await realpath(await mkdtemp(join(tmpdir(), "runwield-owner-plan-action-")));
+        const previousHome = process.env.HOME;
+        process.env.HOME = home;
+        try {
+            const fixture = await makeManagedSessionFixture({ home });
+            try {
+                await seedPlan(fixture.projectRoot, "demo", "# Demo\n", {
+                    planId: "plan-demo",
+                    status: "draft",
+                    classification: "FEATURE",
+                });
+                await body(fixture);
+            } finally {
+                await fixture.cleanup();
+            }
+        } finally {
+            if (previousHome === undefined) delete process.env.HOME;
+            else process.env.HOME = previousHome;
+            await rm(home, { recursive: true, force: true });
+        }
+    });
+}
+
+function makeRequest(fixture: ManagedSessionFixture, action: PlanActionRequest): OwnerPlanActionServiceRequest {
+    return {
+        projectId: fixture.project.projectId,
+        runwieldSessionId: fixture.session.runwieldSessionId,
+        deviceId: "device-1",
+        requestId: "req-1",
+        requestHash: "hash-1",
+        expectedGeneration: 0,
+        action,
+    };
+}

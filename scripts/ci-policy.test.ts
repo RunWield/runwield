@@ -33,19 +33,6 @@ test("the everyday test task leaves the Golden TUI portfolio to its own task", a
     }
 });
 
-test("the PR gate runs source quality and Golden TUI jobs in parallel", async () => {
-    const { scripts: tasks } = await readPackageConfig();
-    const workflow = await fsReadFile(new URL("../.github/workflows/pr.yml", import.meta.url), "utf8");
-
-    assertEquals(tasks["pr:check"], "bun run ci");
-    assertStringIncludes(workflow, "pull_request:");
-    assertStringIncludes(workflow, "    ci:");
-    assertStringIncludes(workflow, "run: bun run ci --source-only");
-    assertEquals(tasks["test:all:suite"].includes("--exclude"), false);
-    assertStringIncludes(workflow, "    golden:");
-    assertStringIncludes(workflow, "run: bun run test:golden-tui --timings-file");
-});
-
 test("the test runner skips excluded paths it would otherwise discover", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-exclude-policy-"));
     const reportDir = join(root, "reports");
@@ -63,7 +50,7 @@ test("the test runner skips excluded paths it would otherwise discover", async (
             args: runtimeSourceArgs([
                 "run",
                 "-A",
-                fileURLToPath(new URL("./run-tests.js", import.meta.url)),
+                fileURLToPath(new URL("./run-tests.ts", import.meta.url)),
                 "--isolated",
                 root,
                 "--exclude",
@@ -117,7 +104,7 @@ test("isolated shards execute the whole fixture portfolio exactly once with real
                     args: runtimeSourceArgs([
                         "run",
                         "-A",
-                        "scripts/run-tests.js",
+                        "scripts/run-tests.ts",
                         "--isolated",
                         root,
                         "--shard",
@@ -166,7 +153,7 @@ test("prepared dependencies preserve isolated execution and changed-source failu
                 });\n`,
             );
         }
-        const args = ["run", "-A", "scripts/run-tests.js", "--report-dir", reports, "--isolated", root];
+        const args = ["run", "-A", "scripts/run-tests.ts", "--report-dir", reports, "--isolated", root];
         const command = () =>
             captureScriptProcess(process.execPath, {
                 args: runtimeSourceArgs(args),

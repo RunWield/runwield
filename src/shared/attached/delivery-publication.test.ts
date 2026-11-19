@@ -11,7 +11,7 @@ import { type CliRun, DENO_CONFIG_PATH, EVIDENCE, readRecordBytes, spawnAttached
 import { captureForegroundProcess } from "../captured-process.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { findById } from "../worktree-registry.js";
+import { findById } from "../worktree-registry.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import process from "node:process";
 import type { AttachedNextAction, AttachedOperationResult } from "./operations.ts";
@@ -199,7 +199,9 @@ test("status polling preserves the live Recorder claim after publication cleanup
             const status = await fixture.status();
             assertEquals(status.state, "validating");
             assertEquals(status.revision, claim.record.revision);
-            assertEquals(status.nextAction.kind, "validation_recovery");
+            assert(status.nextAction.kind === "validation_running");
+            assertEquals(status.nextAction.operationId, input.operationId);
+            assertEquals(status.nextAction.operation, "work_record_completed");
             assertEquals(await readRecordBytes(fixture.root, fixture.workflowId), bytes);
         }
         const concurrent = await fixture.call("start_validation", await fixture.status());

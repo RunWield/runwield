@@ -96,12 +96,25 @@ test("wld wr defaults to current Work Records from the project store", async () 
         process.chdir(projectRoot);
         await writeFixtureRecords(projectRoot);
 
+        await writeWorkRecord(
+            projectRoot,
+            {
+                ...recordAttrs("c3333333-3333-4333-8333-333333333333", "plan-old"),
+                status: "superseded",
+                supersededBy: CURRENT_RECORD_ID,
+            },
+            "# Superseded Record\n\n## Summary\n\nOld work.",
+        );
         const output = await captureCommand([]);
 
         assertStringIncludes(output, "Current Record");
         assertStringIncludes(output, "completionMode: verified");
         assertStringIncludes(output, "sourcePlans: plan-current");
         assertEquals(output.includes("Archived Record"), false);
+        assertEquals(output.includes("Superseded Record"), false);
+        const all = await captureCommand(["list", "--all"]);
+        assertStringIncludes(all, "Superseded Record");
+        assertStringIncludes(all, `WARNING: superseded by ${CURRENT_RECORD_ID}.`);
     });
 });
 
@@ -114,17 +127,6 @@ test("wld wr list --all includes archived project records with warnings", async 
 
         assertStringIncludes(output, "Archived Record");
         assertStringIncludes(output, "WARNING: archived at 2026-07-15T00:00:00.000Z.");
-    });
-});
-
-test("wld wr --help uses the registered command documentation", async () => {
-    await withRuntimeCommandFixture("wr-help-", async ({ projectRoot }) => {
-        process.chdir(projectRoot);
-
-        const output = await captureCommand(["--help"]);
-
-        assertStringIncludes(output, "wr read <recordId> [--no-open]");
-        assertStringIncludes(output, "backfill --dry-run");
     });
 });
 
@@ -417,8 +419,8 @@ test("listing, preview and decline preserve an imported record and its committed
         const { join } = await import("node:path");
         const fs = await import("node:fs/promises");
         const { git } = await import("../../shared/git-test-fixture.ts");
-        const { setCustomSetting } = await import("../../shared/settings.js");
-        const { formatWorkRecordMarkdown } = await import("../../shared/work-records/markdown.js");
+        const { setCustomSetting } = await import("../../shared/settings.ts");
+        const { formatWorkRecordMarkdown } = await import("../../shared/work-records/markdown.ts");
         const { admitProjectIdentity } = await import("../../shared/project-identity.ts");
         await git(projectRoot, ["init", "-q"]);
         await admitProjectIdentity(projectRoot);

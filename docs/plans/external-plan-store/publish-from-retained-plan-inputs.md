@@ -17,7 +17,7 @@ affectedPaths:
     - "src/shared/work-records/published-source.ts"
     - "src/shared/settings.js"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/016-proof-bearing-publication-state-machine.md"
+    - "docs/adr/015-proof-bearing-publication-state-machine.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-01"
@@ -174,7 +174,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/settings.js` — internal independent copy-policy resolution if needed; no public/default legacy switch.
 - Package fixtures and publication process drivers — real store, Git and fresh-process failure coverage listed below.
 - `docs/prd/runwield-core-prd.md`, `docs/prd/plan-store-prd.md`, `docs/plan-lifecycle.md`, ADR-016 and the bounded contract
-  notes in `docs/adr/0020-home-project-state-and-launch-mode-ownership.md` — qualify legacy Git metadata rules, document the
+  notes in `docs/adr/019-home-project-state-and-launch-mode-ownership.md` — qualify legacy Git metadata rules, document the
   delivered internal package slice and leave the broader proposal/public activation distinct.
 
 ## Reuse Opportunities

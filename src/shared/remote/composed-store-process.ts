@@ -28,7 +28,7 @@ try {
     if (command === "manual-prune-seed" || command === "managed-prune" || command === "manual-prune-list") {
         const { runWorkRecordsCommand } = await import("../../cmd/wr/index.ts");
         const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
-        const { setExactProjectCustomSetting } = await import("../settings.js");
+        const { setExactProjectCustomSetting } = await import("../settings.ts");
         if (!managed) process.env.SSH_CONNECTION = "192.0.2.2 54321 192.0.2.1 22";
         if (command === "manual-prune-seed") {
             const { writeWorkRecord } = await import("../work-records/store.ts");
@@ -145,7 +145,7 @@ try {
             const { startPublicationAttempt, advanceStoredPublication, cleanupStoredPublication } =
                 await import("../workflow/publication-machine.ts");
             const { publishExecutionWorktreeIsolated } = await import("../isolated-publication.ts");
-            const { setExactProjectCustomSetting } = await import("../settings.js");
+            const { setExactProjectCustomSetting } = await import("../settings.ts");
             setExactProjectCustomSetting("plans", { deliveryCopies: false }, input.cwd);
             setExactProjectCustomSetting("workRecords", { deliveryCopies: false }, input.cwd);
             const execution = await withLocalPlanWorkflow(input.cwd, "family/first", async () => {

@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import { readFile, realpath } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
-import { PLANS_DIR_NAME } from "../constants.js";
+import { PLANS_DIR_NAME } from "../constants.ts";
 import { readPlanResourceCatalog } from "./queries.ts";
 import { managedPlanStoreActive } from "./managed.ts";
 import { readPlanResource } from "./documents.ts";

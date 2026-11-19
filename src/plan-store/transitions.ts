@@ -25,7 +25,7 @@ import { mkdir as fsMkdir, readdir as fsReaddir, readFile as fsReadFile, rm as f
 
 import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { CLI_BIN } from "../constants.js";
+import { CLI_BIN } from "../constants.ts";
 import {
     pickControllerState,
     type WorkflowControllerState,
@@ -54,10 +54,10 @@ import {
     withPlanCatalogLock,
     withPlanLock,
     writePlanMarkdownWithRevision,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 import { atomicWriteTextFile } from "../shared/atomic-text-file.ts";
 import { SharedPlanLockError } from "../shared/collaboration/lock.ts";
-import { findById as findWorktreeRegistryEntryById } from "../shared/worktree-registry.js";
+import { findById as findWorktreeRegistryEntryById } from "../shared/worktree-registry.ts";
 import { recordWorkflowOutcome } from "../shared/workflow/outcome-observations.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";
 
@@ -1344,7 +1344,7 @@ async function runPlanTransition<T>({
 }
 
 /**
- * Semantic boundary for lifecycle Plan Events owned by plan-lifecycle.js.
+ * Semantic boundary for lifecycle Plan Events owned by plan-lifecycle.ts.
  */
 export async function runPlanLifecycleEventTransition<T>(
     opts: TransitionOptionsBase & {

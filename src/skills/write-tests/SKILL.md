@@ -1,12 +1,14 @@
 ---
 name: write-tests
-description: Use this skill to write, update, or repair automated tests for existing code. Use when the task involves adding test coverage, fixing flaky tests, or creating regression tests for bugs. Language/framework-agnostic. For test-driven development, use the tdd skill. For general QA and behavioral verification, use the tester agent.
+description: Decide whether automated tests contribute meaningful protection, then write, update, repair, or prune them. Use for test coverage, flaky tests, regression tests, and test-value reviews. Language/framework-agnostic. For an explicitly requested test-driven workflow, also use a TDD skill if available.
+license: MIT; complete terms in LICENSE
 ---
 
 # Write Tests
 
-Use this skill to write or update automated tests for existing code. It is language- and framework-agnostic; adapt its
-principles to the project's installed test stack.
+Use this skill to decide which automated tests are worth creating or retaining, then write or update them. It is
+language- and framework-agnostic; adapt its principles to the project's installed test stack.
+Use the target repository's terminology, requirements, fixtures, commands, and validation workflow.
 
 ## Philosophy
 
@@ -14,12 +16,46 @@ principles to the project's installed test stack.
 does, not _how_ it does it. Bad tests are coupled to internal structure and break on refactors that don't change
 behavior.
 
+## Decide Whether a Test Is Warranted
+
+Before creating a test, ask:
+
+> What meaningful failure would this test catch, through a supported interface, against an expectation established
+> independently of the implementation?
+
+Check four things:
+
+- **Promise:** Name the user outcome or substantive caller contract. Derive expected behavior from requirements,
+  acceptance scenarios, a reported bug, a protocol, or an explicit invariant before reading how the code implements it.
+  Copying the algorithm or capturing today's output can preserve the same mistake in both code and test.
+- **Reality:** Exercise the relevant product-owned machinery through a meaningful module or system interface, with
+  real internal collaborators. An exported helper is not automatically a meaningful boundary.
+- **Sensitivity:** Name a plausible wrong implementation the assertions would detect. A test that only proves its
+  setup or its mocks worked contributes no protection.
+- **Contribution:** Inspect existing coverage. Identify the distinct failure or condition this test adds, and weigh
+  that protection against setup, runtime, flakiness, and maintenance cost. Extend an existing scenario when that
+  expresses the missing protection clearly.
+
+**You may skip creating a test when it adds no meaningful protection.** A changed function, more assertions, a coverage
+percentage, or the ease of generating a test is not sufficient justification. Trivial delegation, implementation-only
+refactors already covered through a public contract, and duplicate happy paths usually need no new test. Briefly state
+the reason and identify existing protection when relying on it; no approval is needed for this judgment unless the
+user explicitly requires that test. Skipping a new test does not waive applicable validation or justify leaving a
+meaningful new behavior unverified because its fixture is difficult.
+
+Small tests can earn their place by protecting a substantive contract. Large end-to-end tests must earn theirs too;
+test size, abstraction height, and the unit/integration label are not measures of value.
+
+When pruning tests within the requested scope, apply the same questions. Delete tests with no meaningful contribution.
+If a poorly structured test is the only protection for an important behavior, replace that protection through the
+appropriate interface before removing it. Preserve distinct failure conditions when consolidating tests.
+
 ### Signs of a good test
 
 - Tests behavior users or callers care about (the "what")
 - Uses the module's public API only
 - Survives internal refactors (rename a private helper? test shouldn't care)
-- One logical assertion per test
+- One coherent behavior or journey per test, with the assertions needed to establish its outcome
 - Deterministic: same input always produces the same pass/fail
 - Fast enough to run frequently
 
@@ -43,8 +79,9 @@ behavior.
       load them for detailed guidance.
 
 2. **Understand what to test**
-    - Read the implementation code. Identify the public API or module contract.
-    - Prioritize: happy path first, then edge cases, then error handling.
+    - Apply the warrant questions above before writing. Establish expectations, then inspect the implementation to
+      locate the supported interface and build realistic fixtures.
+    - Prioritize meaningful uncovered outcomes and failure conditions, not a test for every function or branch.
     - Do not invent tests for behaviors that were not requested unless they protect against evidenced regression risk.
     - One test = one focused behavior. Do not combine multiple scenarios into a single assertion block.
 
@@ -63,6 +100,23 @@ behavior.
     - Third-party library behavior (assume the library works, test that your code uses it correctly)
 
 ## How to Write Tests
+
+### Choose a meaningful observation boundary
+
+- **Module contracts:** Exercise a complete capability through the interface its callers use, keeping internal
+  persistence, transactions, locks, and state transitions real. Prefer this level when it can establish the promise
+  without driving an entire application.
+- **Golden journeys:** Map each scenario to a user journey or acceptance scenario. Drive the real entry points and
+  assert observable outcomes at meaningful checkpoints and completion. Golden output needs independently justified
+  expectations; a transcript snapshot alone does not prove the journey succeeded.
+- **Robustness scenarios:** Deliberately damage real fixtures or introduce adverse conditions: truncated files,
+  inconsistent records, interrupted operations, contention, or unavailable external services. Assert the contract
+  under those conditions: what survives, what can resume, what remains isolated, and what the caller is told. An
+  assertion that merely expects an error is insufficient when preservation or recovery is part of the promise.
+
+For example, interrupt a resumable file upload, restart it, and verify the completed file has the expected content
+without reporting success for partial data. Keep storage and recovery real; control only genuine external boundaries.
+Select conditions from the contract and credible failure modes rather than generating every imaginable permutation.
 
 ### Fake the environment, never your own machinery
 
@@ -85,19 +139,20 @@ uses — is a signal the test needs a real fixture, not a more elaborate fake.
 Order of preference:
 
 1. **The real object.** Use it wherever practical.
-2. **Fakes** — lightweight in-memory implementations of the same interface (e.g. an in-memory database instead of
-   mocking the database client).
+2. **Fakes at genuine external boundaries** — controlled implementations of services outside the product. Keep the
+   product's own adapters and storage behavior real; an in-memory substitute cannot prove durability or locking.
 3. **Mocks only at system boundaries** — external APIs you don't control, paid services, hardware, the network.
 
 ### Faking an external boundary, and what you still owe
 
-Faking a genuine boundary is correct and usually necessary: it is slow, it is not yours, and you are not testing it. The
-obligation that comes with it is to test everything derived from it — the happy path _and_ every failure it can hand
-you. A faked boundary is a way to reach your own error handling cheaply, not a reason to skip it.
+Faking a genuine boundary is correct and usually necessary: it is slow, it is not yours, and you are not testing it.
+Cover materially different outcomes your code derives from it, including consequential failures. Apply the contribution
+check to these scenarios too. A faked boundary is a way to reach your own error handling cheaply, not a reason to skip it.
 
-For each check, test three cases: a positive yes, a positive no, and could not tell. Empty, unreadable, timed-out,
-truncated, or unknown output means "could not tell". In that test, assert that the code takes the safe path: it keeps
-the item and does not report success.
+When a decision depends on external evidence, distinguish confirmation, refusal, and inability to determine the answer.
+Empty, unreadable, timed-out, or truncated output can mean "could not tell". Assert the contract's safe behavior under
+uncertainty, such as preserving work and withholding a success claim. Use representative cases unless different causes
+require different observable behavior.
 
 But faking a boundary cannot verify that you are _calling_ it correctly. A wrong flag, a reversed argument, or a misread
 exit code stays wrong forever behind a fake, because the fake answers the question you assumed rather than the one you
@@ -114,19 +169,11 @@ Signs you owe a contract test:
 That last one is the test to run on your own tests: if the boundary call were subtly wrong, would anything fail? Verify
 it directly by breaking the call on purpose and confirming a test goes red.
 
-### Enforce it, do not just advise it
+### Respect the project's boundary policy
 
-Guidance loses to convenience. If a project cares about this, the rule belongs in CI as a ratchet, not only in a style
-guide:
-
-- Freeze today's seams per module by name — not just a count, or one seam can be swapped for another at a flat total.
-- Fail the build on any new seam, on any seam that replaces code the project owns, and on any seam whose value depends
-  on whether anything was injected at all.
-- Let the baseline tighten and never loosen, so "re-baseline it" cannot make a failure disappear.
-- Put the reasoning in the failure output. Whoever hits it — person or agent — is reading the error, not the docs.
-
-Check whether the project already has such a check before adding seams, and if it does, tighten its baseline in the same
-change that removes one.
+Check whether the repository enforces dependency-injection boundaries in CI. Follow its existing policy; do not weaken
+a check or re-baseline a violation to make a test pass. A repository without such enforcement does not need a new CI
+system merely to add tests. Keep product-owned machinery real using its existing fixtures and interfaces.
 
 Before reaching for a fake on cost grounds, measure. "Real is too slow" is usually true of the _setup_ rather than the
 operations, and those have very different fixes. One worked example: individual Git commands measured 5–30ms each, while
@@ -202,12 +249,23 @@ test("calls validateExpiry on the payment service");
 
 ### Regression tests for bugs
 
-When a real bug is found, write the smallest test that reproduces the failure before fixing it. A regression test
-should:
+**Reproduce the bug with a failing test, then fix the bug and make that test pass.** A confirmed bug is concrete evidence
+of regression risk; the contribution check chooses the right coverage rather than excusing reproduction. First run an
+existing test that should expose it. If none does, extend a scenario or add a regression test through the smallest
+meaningful public boundary that reproduces the failure. An existing test that already fails on the bug supplies the
+red phase; a duplicate adds nothing.
+
+Establish the expected outcome from the bug report and intended contract, and confirm the failure is caused by the bug,
+not broken setup. Preserve the assertion while fixing the implementation. If an automated reproduction is infeasible,
+state the concrete limitation, use the strongest repeatable reproduction available, and report the remaining coverage
+gap rather than calling the test unnecessary.
+
+The regression coverage should:
 
 1. Prove the bug exists (test fails before fix)
 2. Prove the bug is fixed (test passes after fix)
-3. Stay in the suite as a permanent guard
+3. Remain while the contract is relevant and the coverage contributes distinct protection; consolidate or replace it
+   when equivalent protection exists elsewhere
 
 ## After Writing
 
@@ -223,9 +281,10 @@ should:
     whose assertion was quietly satisfied by the setup will pass forever and protect nothing, and the only cheap way to
     find out is to make the code wrong once.
 
-3. **Run focused tests, then full validation** — in a RunWield-managed implementation or repair, RunWield runs the full
-   configured suite after `task_completed`; leave that result pending instead of duplicating the run. Outside that
-   workflow, run the full suite yourself. Run it earlier when diagnosis or an explicit user instruction requires it.
+3. **Run focused tests, then required validation** — use the repository's supported commands and follow the active
+   workflow's validation requirements. If that workflow explicitly assigns full validation to an orchestrator after
+   handoff, report it as pending instead of duplicating the run or claiming success. Otherwise run the required
+   validation yourself. Run it earlier when diagnosis or an explicit user instruction requires it.
 4. **Iterate** — if a test fails because your test code is flawed, fix the test. If the test reveals an implementation
    bug, fix the implementation. If the fix is outside your assigned scope, document the failure clearly.
 

@@ -34,6 +34,13 @@ export interface SessionSegmentLineageEvidence {
     lineageGroupKey?: string | null;
     kind?: "planning" | "execution" | "semantic_repair";
 }
+
+export interface SessionLineageDiagnostic {
+    code: "valid" | "missing_lineage" | "ambiguous_lineage" | "orphaned_lineage" | "cyclic_lineage";
+    segmentId: string | null;
+    message: string;
+}
+
 export type SessionPhase = "bootstrap" | "preparing" | "hydrated" | "turning" | "checkpointing";
 export type ProcessKind = "workspace" | "tui" | "acp" | "test";
 

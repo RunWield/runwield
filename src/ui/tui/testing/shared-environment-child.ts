@@ -24,7 +24,7 @@ async function main(): Promise<void> {
     if (!runwieldDir) throw new Error("Shared Golden child requires RUNWIELD_HOME.");
     _setTestStatePath(join(runwieldDir, "init-state.json"));
 
-    const { runGoldenScenario } = await import("./scenario-runner.js");
+    const { runGoldenScenario } = await import("./scenario-runner.ts");
     const moduleUrl = request.scenarioModule.startsWith("file:")
         ? request.scenarioModule
         : toFileUrl(join(repoRoot, request.scenarioModule)).href;

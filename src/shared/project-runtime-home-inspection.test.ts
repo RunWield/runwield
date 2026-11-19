@@ -4,7 +4,7 @@ import { chmod, lstat, mkdir, readFile, realpath, rm, symlink, writeFile } from 
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { getRunWieldRuntimeDir } from "../constants.js";
+import { getRunWieldRuntimeDir } from "../constants.ts";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
 import { defineCommittedGitFixture } from "./git-test-fixture.ts";
 import { enterProjectRuntime, inspectProjectRuntimeReadAccess } from "./project-runtime-layout.ts";

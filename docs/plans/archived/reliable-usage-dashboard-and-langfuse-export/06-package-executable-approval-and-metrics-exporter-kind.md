@@ -204,7 +204,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/cmd/install/index.test.ts` — real local fixtures, saved state before consent, interruption, both prompts, and
   fresh loading.
 - `src/cmd/remove/index.ts` and its test — delete approvals for the removed source.
-- `src/shared/extensions/metrics-exporter.ts` (new, TypeScript per the JS-to-TS ratchet) and its test — declaration,
+- `src/shared/extensions/metrics-exporter.ts` (new) and its test — declaration,
   approval record, user-scope lookup.
 - `src/shared/extensions/wld-extension-manifest.js` — a small change for candidate inspection of disabled resources is
   acceptable. `isWldCompatibleExtensionManifest` and the runtime enabled-only gate do not get weaker or wider.

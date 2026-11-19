@@ -8,9 +8,9 @@ import type { ManagedSessionFixture } from "../../testing/managed-session-fixtur
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { ownerSessionOperationStreamApi } from "./routes/owner-session-api.js";
+import { ownerSessionOperationStreamApi } from "./routes/owner-session-api.ts";
 import { createOwnerConnectionRegistry, type OwnerConnectionRegistry } from "./server/owner-connections.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 
 type Workspace = {
     fixture: ManagedSessionFixture;
@@ -75,9 +75,7 @@ test("completed create and continuation operations discard live payloads but kee
     await withWorkspace(async ({ fixture, service, environment }) => {
         let turn = 0;
         environment.setModelResponseFactory(() =>
-            fauxAssistantMessage(
-                fauxText(`payload-${turn++}-` + "x".repeat(turn <= 20 ? 1024 : 10240)),
-            )
+            fauxAssistantMessage(fauxText(`payload-${turn++}-` + "x".repeat(turn <= 20 ? 1024 : 10240))),
         );
         const createdOptions = { projectId: fixture.project.projectId, requestId: "create-memory", text: "Start." };
         const created = await service.createSession(createdOptions);
@@ -107,7 +105,10 @@ test("completed create and continuation operations discard live payloads but kee
                 toolName: "read",
                 title: "Fixture output",
                 kind: "read",
-                content: [{ type: "text", text: tag }, { type: "image", data: btoa(tag), mimeType: "image/png" }],
+                content: [
+                    { type: "text", text: tag },
+                    { type: "image", data: btoa(tag), mimeType: "image/png" },
+                ],
                 output: tag,
                 details: null,
             });
@@ -255,12 +256,27 @@ test("abort, cancel and owner revocation release streams; late events do not reo
             text: "Start.",
         });
         const abort = new AbortController();
-        const abortedReader = stream(service, connections, started.operationId, abort.signal, "abort-owner").body!
-            .getReader();
-        const canceledReader = stream(service, connections, started.operationId, undefined, "cancel-owner").body!
-            .getReader();
-        const revokedReader = stream(service, connections, started.operationId, undefined, "revoke-owner").body!
-            .getReader();
+        const abortedReader = stream(
+            service,
+            connections,
+            started.operationId,
+            abort.signal,
+            "abort-owner",
+        ).body!.getReader();
+        const canceledReader = stream(
+            service,
+            connections,
+            started.operationId,
+            undefined,
+            "cancel-owner",
+        ).body!.getReader();
+        const revokedReader = stream(
+            service,
+            connections,
+            started.operationId,
+            undefined,
+            "revoke-owner",
+        ).body!.getReader();
         try {
             await inModel;
             assertEquals(service.operationChanges.get(started.operationId)?.size, 3);
@@ -303,9 +319,9 @@ test("abort, cancel and owner revocation release streams; late events do not reo
 test("a loopback client disconnect releases the owner stream while its operation continues", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         let entered!: () => void;
-        const inModel = new Promise<void>((resolve) => entered = resolve);
+        const inModel = new Promise<void>((resolve) => (entered = resolve));
         let release!: () => void;
-        const gate = new Promise<void>((resolve) => release = resolve);
+        const gate = new Promise<void>((resolve) => (release = resolve));
         environment.setModelResponseFactory(async () => {
             entered();
             await gate;
@@ -316,18 +332,16 @@ test("a loopback client disconnect releases the owner stream while its operation
             requestId: "loopback-disconnect",
             text: "Start.",
         });
-        const server = serveHttp(
-            { hostname: "127.0.0.1", port: 0, onListen() {} },
-            (req) =>
-                ownerSessionOperationStreamApi({
-                    req,
-                    params: { operationId: started.operationId },
-                    state: {
-                        sessionContinuation: service,
-                        ownerConnections: connections,
-                        ownerDevice: { deviceId: "loopback" },
-                    },
-                }),
+        const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, (req) =>
+            ownerSessionOperationStreamApi({
+                req,
+                params: { operationId: started.operationId },
+                state: {
+                    sessionContinuation: service,
+                    ownerConnections: connections,
+                    ownerDevice: { deviceId: "loopback" },
+                },
+            }),
         );
         const controller = new AbortController();
         const port = server.addr.transport === "tcp" ? server.addr.port : 0;
@@ -364,9 +378,9 @@ test("a loopback client disconnect releases the owner stream while its operation
 test("a slow loopback client receives completion and EOF after the owner turn", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         let entered!: () => void;
-        const inModel = new Promise<void>((resolve) => entered = resolve);
+        const inModel = new Promise<void>((resolve) => (entered = resolve));
         let release!: () => void;
-        const gate = new Promise<void>((resolve) => release = resolve);
+        const gate = new Promise<void>((resolve) => (release = resolve));
         environment.setModelResponseFactory(async () => {
             entered();
             await gate;
@@ -377,18 +391,16 @@ test("a slow loopback client receives completion and EOF after the owner turn", 
             requestId: "loopback-slow",
             text: "Start.",
         });
-        const server = serveHttp(
-            { hostname: "127.0.0.1", port: 0, onListen() {} },
-            (req) =>
-                ownerSessionOperationStreamApi({
-                    req,
-                    params: { operationId: started.operationId },
-                    state: {
-                        sessionContinuation: service,
-                        ownerConnections: connections,
-                        ownerDevice: { deviceId: "slow-loopback" },
-                    },
-                }),
+        const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, (req) =>
+            ownerSessionOperationStreamApi({
+                req,
+                params: { operationId: started.operationId },
+                state: {
+                    sessionContinuation: service,
+                    ownerConnections: connections,
+                    ownerDevice: { deviceId: "slow-loopback" },
+                },
+            }),
         );
         const controller = new AbortController();
         const port = server.addr.transport === "tcp" ? server.addr.port : 0;
@@ -416,9 +428,10 @@ test("a slow loopback client receives completion and EOF after the owner turn", 
                 remaining += new TextDecoder().decode(next.value);
             }
             assert(ended, "the connected client did not reach EOF");
-            const frames = remaining.split("\n\n").filter(Boolean).map((line) =>
-                JSON.parse(line.slice(6)) as OperationFrame
-            );
+            const frames = remaining
+                .split("\n\n")
+                .filter(Boolean)
+                .map((line) => JSON.parse(line.slice(6)) as OperationFrame);
             assertEquals(frames.at(-1)?.status, "completed");
             assertEquals(frames.at(-1)?.events.length, 0);
             assertEquals(service.operationListeners.size, 0);
@@ -472,7 +485,7 @@ test("a subscribed operation stream reports a new owner turn without a polling d
                 const next = await Promise.race([
                     frame(reader),
                     new Promise<OperationFrame>((_, reject) =>
-                        setTimeout(() => reject(new Error("Stream did not notify promptly")), 200)
+                        setTimeout(() => reject(new Error("Stream did not notify promptly")), 200),
                     ),
                 ]);
                 assertEquals(next.status, "running");
@@ -513,9 +526,9 @@ test("a completed owner subscription sends its final frame and detaches synchron
 test("a stopped agent retains one compact attention event after the owner turn", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         let entered!: () => void;
-        const inModel = new Promise<void>((resolve) => entered = resolve);
+        const inModel = new Promise<void>((resolve) => (entered = resolve));
         let release!: () => void;
-        const gate = new Promise<void>((resolve) => release = resolve);
+        const gate = new Promise<void>((resolve) => (release = resolve));
         environment.setModelResponseFactory(async () => {
             entered();
             await gate;
@@ -542,9 +555,10 @@ test("a stopped agent retains one compact attention event after the owner turn",
             let final = await frame(reader);
             for (let index = 0; index < 3 && final.status === "running"; index++) final = await frame(reader);
             assertEquals(final.status, "completed");
-            assertEquals(final.events.map((event) => ({ type: event.type, reason: event.reason })), [
-                { type: "attention_requested", reason: "agentStopped" },
-            ]);
+            assertEquals(
+                final.events.map((event) => ({ type: event.type, reason: event.reason })),
+                [{ type: "attention_requested", reason: "agentStopped" }],
+            );
             assertEquals((await reader.read()).done, true);
             assertEquals(service.operationListeners.size, 0);
             assertEquals(service.operationChanges.size, 0);
@@ -558,9 +572,9 @@ test("a stopped agent retains one compact attention event after the owner turn",
 test("three differently paced owner readers see bounded updates and the same final state", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         let entered!: () => void;
-        const inModel = new Promise<void>((resolve) => entered = resolve);
+        const inModel = new Promise<void>((resolve) => (entered = resolve));
         let release!: () => void;
-        const gate = new Promise<void>((resolve) => release = resolve);
+        const gate = new Promise<void>((resolve) => (release = resolve));
         environment.setModelResponseFactory(async () => {
             entered();
             await gate;
@@ -572,7 +586,7 @@ test("three differently paced owner readers see bounded updates and the same fin
             text: "Start.",
         });
         const readers = ["fast", "throttled", "unread"].map((device) =>
-            stream(service, connections, started.operationId, undefined, device).body!.getReader()
+            stream(service, connections, started.operationId, undefined, device).body!.getReader(),
         );
         try {
             await inModel;
@@ -640,7 +654,7 @@ test("a request rejected before Session creation does not retain a stream or reu
                 projectId: "project-not-registered",
                 requestId: "rejected-before-session",
                 text: "Start.",
-            })
+            }),
         );
         assertEquals(service.pendingCreateRequests.size, 0);
         const reader = stream(service, connections, "operation-never-created").body!.getReader();

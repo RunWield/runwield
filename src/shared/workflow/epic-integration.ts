@@ -26,21 +26,21 @@ import { savePlanProse, preparePlanRepairDraft } from "../../plan-store/index.ts
 import { compareChildPlansByOrder, parsePlanFrontMatter } from "../../plan-format.ts";
 import { findPlansByParent, loadPlan, saveChildFeaturePlans } from "../../plan-store/index.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { isGitRepository } from "../git.ts";
-import { getCodeReviewMode, getCustomSetting, getExactProjectCustomSetting } from "../settings.js";
+import { getCodeReviewMode, getCustomSetting, getExactProjectCustomSetting } from "../settings.ts";
 import { spawnForegroundShell } from "../foreground-process.ts";
 import {
     captureProcessStreamTail,
     formatCapturedProcessOutput,
     PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
 } from "./process-output.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { EPIC_INTEGRATION_REPORT_FILE_NAME } from "../../plan-format.ts";
 import { resolveEpicArtifactPath, saveEpicArtifact } from "../../plan-store/index.ts";
-import type { HostedSession } from "../session/hosted-session.js";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import type { HostedSession } from "../session/hosted-session.ts";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 
 import { findTargetBranchPlansByParent, prepareTargetBranchPlansByParent } from "./planning-worktree.ts";

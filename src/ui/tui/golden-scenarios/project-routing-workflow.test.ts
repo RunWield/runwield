@@ -2,18 +2,16 @@ import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
 import { projectRoutingWorkflowScenarios, routerArchitectSlicerScenario } from "./project-routing-workflow.ts";
 
-const scenarioExportNames = new Map([
-    [routerArchitectSlicerScenario, "routerArchitectSlicerScenario"],
-]);
+const scenarioExportNames = new Map([[routerArchitectSlicerScenario, "routerArchitectSlicerScenario"]]);
 
 for (const scenario of projectRoutingWorkflowScenarios) {
     test(`golden PROJECT routing: ${scenario.name}`, async () => {
-        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
         const result = await runGoldenScenarioChildProcess({
             scenarioModule: "src/ui/tui/golden-scenarios/project-routing-workflow.ts",
             exportName: scenarioExportNames.get(scenario) || "",
             timeoutMs: scenario.timeoutMs || 90000,
         });
-        assertEquals(result.result.actor.remaining, []);
+        assertEquals(result.result?.actor.remaining, []);
     });
 }

@@ -36,7 +36,7 @@ async function fixture() {
         "tsconfig.json",
         "tsconfig.bun.json",
         "config.schema.json",
-        "image-resize-worker.js",
+        "image-resize-worker.ts",
         "src/cli.ts",
         "packaging/remote/tested-dependencies.json",
         "src/shared/version.js",

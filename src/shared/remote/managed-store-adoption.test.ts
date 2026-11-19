@@ -1,10 +1,10 @@
-import { readSecretStore } from "../collaboration/secrets.js";
+import { readSecretStore } from "../collaboration/secrets.ts";
 import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, stat, symlink, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { getHomeDir, getRunWieldRuntimeDir } from "../../constants.js";
+import { getHomeDir, getRunWieldRuntimeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { admitProjectIdentity } from "../project-identity.ts";

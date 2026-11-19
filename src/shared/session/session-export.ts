@@ -4,14 +4,14 @@ import type {
     ManifestPlanAssociation,
     FileSessionManifest,
 } from "./file-session-store-types.ts";
-import type { SessionRuntimeEvent } from "./session-runtime-events.js";
+import type { SessionRuntimeEvent } from "./session-runtime-events.ts";
 import {
     readVerifiedTranscriptSegments,
     projectSegmentReplayEvents,
     type TranscriptEntry,
     type VerifiedTranscriptSegment,
 } from "./session-transcript-manifest.ts";
-import { summarizeProjectedEntries } from "./session-transcript-projection.js";
+import { summarizeProjectedEntries } from "./session-transcript-projection.ts";
 
 export type SessionExportSegment = {
     ordinal: number;

@@ -9,7 +9,7 @@ import {
     type PlanEvent,
     type PlanStatus,
     type PlanEventDetails,
-} from "../shared/workflow/plan-lifecycle.js";
+} from "../shared/workflow/plan-lifecycle.ts";
 import { selectPlanAccess, withPlanAccess, type PlanAccess } from "./handles.ts";
 import {
     selectedPackage,
@@ -20,8 +20,8 @@ import {
 } from "./workflows.ts";
 import { preparePlanWorkflow } from "./preparation.ts";
 import { loadPlan as queryPlan } from "./queries.ts";
-import { getPlanDocumentRoot, updatePlanFrontMatter, loadPlan, type PlanFrontMatter } from "../plan-store.js";
-import { isPlannedChangeClassification } from "../constants.js";
+import { getPlanDocumentRoot, updatePlanFrontMatter, loadPlan, type PlanFrontMatter } from "../plan-store.ts";
+import { isPlannedChangeClassification } from "../constants.ts";
 import {
     getDeclaredPlanStatus,
     isPlanDependencySatisfiedStatus,

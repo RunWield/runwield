@@ -1,7 +1,7 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import { getHomeDir } from "../../../../constants.js";
-import type { HostedSession } from "../../hosted-session.js";
-import { emitSystemStatus } from "../../session-runtime-events.js";
+import { getHomeDir } from "../../../../constants.ts";
+import type { HostedSession } from "../../hosted-session.ts";
+import { emitSystemStatus } from "../../session-runtime-events.ts";
 
 export type AgyCliBackendStatusKind =
     | "missing_executable"
@@ -114,9 +114,9 @@ export function emitAgyBackendStatus(
     emitSystemStatus(hostedSession, entry.message, { level: agyBackendStatusLevel(entry) });
 }
 
-export function agyBackendStatusLevel(entry: Pick<AgyCliBackendStatusEntry, "kind" | "afterAcceptedTerminal">):
-    | "warning"
-    | "error" {
+export function agyBackendStatusLevel(
+    entry: Pick<AgyCliBackendStatusEntry, "kind" | "afterAcceptedTerminal">,
+): "warning" | "error" {
     if (entry.afterAcceptedTerminal) return "warning";
     return entry.kind === "canceled" || entry.kind === "bridge_disconnected" || entry.kind === "cleanup_failed"
         ? "warning"
@@ -151,8 +151,10 @@ export function isAgyPermissionDenied(text: string): boolean {
 }
 
 export function isAgyMcpUnavailable(text: string): boolean {
-    return /\b(mcp|model context protocol|runwield bridge|tool server|stdio)\b/i.test(text) &&
-        /\b(unavailable|failed|disconnect|connection|refused|not found|missing|permission)\b/i.test(text);
+    return (
+        /\b(mcp|model context protocol|runwield bridge|tool server|stdio)\b/i.test(text) &&
+        /\b(unavailable|failed|disconnect|connection|refused|not found|missing|permission)\b/i.test(text)
+    );
 }
 
 function redactHomePath(message: string): string {

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import { ATTACHED_HOST_ROLES, type AttachedHostRole, type AttachedOperationResult } from "./operations.ts";
 import {

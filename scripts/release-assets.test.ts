@@ -15,17 +15,26 @@ import {
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import { join } from "node:path";
-import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.ts";
-import { expectedReleaseAssetNames } from "./release.js";
+import { prepareReleaseAssets } from "./release-assets.ts";
 import { sha256File } from "./build-metadata.ts";
 
 type ArchiveTargetMap = Record<string, ArtifactMetadata["target"] | undefined>;
+
+// Publication contract: four Unix architectures, both archive encodings and
+// checksums, shared schema/manifest, with documentation only on Stable.
+function expectedUploadFiles(tag: string): string[] {
+    const archives = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"].flatMap((target) =>
+        ["tar.gz", "tar.zst"].map((extension) => `wld-${tag}-${target}.${extension}`),
+    );
+    if (!tag.includes("-rc.")) archives.push(`runwield-docs-${tag}.tar.gz`);
+    return ["config.schema.json", "SHA256SUMS", ...archives.flatMap((name) => [name, `${name}.sha256`])];
+}
 
 async function fixture(tag: string = "v1.2.3") {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     const input = join(root, "input");
     await fsMkdir(input);
-    const names = releaseAssetNames(tag);
+    const names = expectedUploadFiles(tag);
     for (const name of names.filter((name) => !name.endsWith(".sha256") && name !== "SHA256SUMS")) {
         if (/-(darwin-(arm64|x64)|linux-(arm64|x64))\.tar\.gz$/.test(name)) {
             const suffix = name.slice(`wld-${tag}-`.length, -".tar.gz".length);
@@ -80,7 +89,7 @@ test("release assets exclude incidental package JSON and produce a unique flat s
         await fsWriteFile(join(f.input, "other/package.json"), "{}");
         await prepareReleaseAssets(f.input, f.output, f.tag);
         const names = Array.fromAsync(await fsReaddir(f.output, { withFileTypes: true }), (entry) => entry.name);
-        assertEquals((await names).sort(), releaseAssetNames(f.tag).sort());
+        assertEquals((await names).sort(), expectedUploadFiles(f.tag).sort());
     } finally {
         await fsRm(f.root, { recursive: true });
     }
@@ -131,7 +140,7 @@ for (const corruptMetadata of [false, true]) {
         try {
             await prepareReleaseAssets(f.input, f.output, f.tag);
             const assets: PublishedAsset[] = [];
-            for (const name of releaseAssetNames(f.tag)) {
+            for (const name of expectedUploadFiles(f.tag)) {
                 const bytes = await fsReadFile(join(f.output, name));
                 const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
                     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -150,7 +159,7 @@ for (const corruptMetadata of [false, true]) {
                 );
             } else {
                 await prepareReleaseAssets(f.output, recovered, f.tag, true, metadata);
-                for (const name of releaseAssetNames(f.tag)) {
+                for (const name of expectedUploadFiles(f.tag)) {
                     assertEquals(await fsReadFile(join(recovered, name)), await fsReadFile(join(f.output, name)));
                 }
             }
@@ -202,24 +211,12 @@ test("published release recovery requires independent asset digests", async () =
     }
 });
 
-for (const tag of ["v1.2.3", "v1.2.3-rc.1"]) {
-    test(`${tag} upload set includes docs only for Stable`, () => {
-        const expected = [...expectedReleaseAssetNames(tag)];
-        if (tag === "v1.2.3") expected.push(`runwield-docs-${tag}.tar.gz`, `runwield-docs-${tag}.tar.gz.sha256`);
-        assertEquals(releaseAssetNames(tag).sort(), expected.sort());
-        assertEquals(
-            releaseAssetNames(tag).some((name) => name.includes("windows")),
-            false,
-        );
-    });
-}
-
 test("Candidate publication does not need or stage docs assets", async () => {
     const f = await fixture("v1.2.3-rc.1");
     try {
         await fsWriteFile(join(f.input, `runwield-docs-${f.tag}.tar.gz`), "incidental docs");
         await prepareReleaseAssets(f.input, f.output, f.tag);
-        assertEquals((await fsReaddir(f.output)).sort(), releaseAssetNames(f.tag).sort());
+        assertEquals((await fsReaddir(f.output)).sort(), expectedUploadFiles(f.tag).sort());
     } finally {
         await fsRm(f.root, { recursive: true });
     }
@@ -250,7 +247,7 @@ test("Stable SHA256SUMS covers all archives including the docs archive", async (
         await prepareReleaseAssets(f.input, f.output, f.tag);
         const sums = (await fsReadFile(join(f.output, "SHA256SUMS"), "utf8")).trim().split("\n").sort();
         const checksums = await Promise.all(
-            releaseAssetNames(f.tag)
+            expectedUploadFiles(f.tag)
                 .filter((name) => name.endsWith(".sha256"))
                 .map(async (name) => (await fsReadFile(join(f.output, name), "utf8")).trim()),
         );
@@ -406,7 +403,7 @@ test("published Stable recovery verifies the independent docs digest", async () 
         await prepareReleaseAssets(f.input, f.output, f.tag);
         const docs = `runwield-docs-${f.tag}.tar.gz`;
         const assets: PublishedAsset[] = [];
-        for (const name of releaseAssetNames(f.tag)) {
+        for (const name of expectedUploadFiles(f.tag)) {
             assets.push({
                 name,
                 digest: `sha256:${name === docs ? "a".repeat(64) : await sha256File(join(f.output, name))}`,

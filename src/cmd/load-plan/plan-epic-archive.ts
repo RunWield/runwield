@@ -4,7 +4,7 @@ import { archiveEpicPlanFamily } from "../../plan-store/index.ts";
  * Archive a terminal Epic with its child Plans.
  */
 
-import { CLI_BIN } from "../../constants.js";
+import { CLI_BIN } from "../../constants.ts";
 import {
     compareChildPlansByOrder,
     isRecoverableWorktreeStatus,
@@ -14,7 +14,7 @@ import { findPlansByParent, loadPlan } from "../../plan-store/index.ts";
 import { startBackgroundArchive } from "./archive-background.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 export interface ArchiveEpicPlanRef {
     planName: string;

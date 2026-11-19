@@ -1,9 +1,9 @@
-// @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
-import { switchActiveAgent } from "../session/agent-switching.js";
+// @ts-nocheck: Callback parameters and result shapes are implicit.
+import { switchActiveAgent } from "../session/agent-switching.ts";
 import { runRootTurnUntilRootWorkflowEvent } from "../session/root-workflow-turn.ts";
 import { claimWorkflowToolEvent, settleWorkflowToolEvent } from "./workflow-tool-events.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { AssociationPurpose } from "../session/plan-association.ts";
 

@@ -1,10 +1,10 @@
 import { test } from "node:test";
-import { deepEqual, equal, rejects } from "node:assert/strict";
+import { ok, deepEqual, equal, rejects } from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { runGoldenScenarioChildProcess } from "./child-protocol.js";
+import { runGoldenScenarioChildProcess } from "./child-protocol.ts";
 
 const cases = [
     { mode: "removed", name: "waits for fresh authority when publication removes a checkout", error: null },
@@ -31,7 +31,7 @@ for (const scenarioCase of cases)
 import fs from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { getCwd } from ${JSON.stringify(new URL("../../../constants.js", import.meta.url).href)};
+import { getCwd } from ${JSON.stringify(new URL("../../../constants.ts", import.meta.url).href)};
 import { git } from ${JSON.stringify(new URL("../../../shared/git-test-fixture.ts", import.meta.url).href)};
 import { enterProjectRuntime } from ${JSON.stringify(new URL("../../../shared/project-runtime-layout.ts", import.meta.url).href)};
 const root = await fs.realpath(getCwd());
@@ -78,8 +78,11 @@ export const scenario = {
             if (scenarioCase.error) await rejects(run, scenarioCase.error);
             else {
                 const result = await run();
+                ok(result.result);
                 equal(result.result.actor.remaining.length, 0);
-                deepEqual(result.result.state.projectState.registryEntries, []);
+                const projectState = result.result.state.projectState;
+                ok(projectState && typeof projectState === "object" && !Array.isArray(projectState));
+                deepEqual(projectState.registryEntries, []);
             }
         } finally {
             await rm(directory, { recursive: true, force: true });

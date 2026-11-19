@@ -5,7 +5,7 @@ import {
     getSelectedDefaultModelAvailability,
 } from "../../shared/session/model-readiness.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 
 type SetupChoice = "claude-cli" | "agy-cli" | "subscription" | "api-key";
 type SetupStatus = "ready" | "canceled" | "failed";
@@ -116,10 +116,7 @@ async function runLogin(options: RunSharedModelSetupOptions, argv: string[]): Pr
     });
 }
 
-async function runModelSelection(
-    options: RunSharedModelSetupOptions,
-    initialSearchInput?: string,
-): Promise<boolean> {
+async function runModelSelection(options: RunSharedModelSetupOptions, initialSearchInput?: string): Promise<boolean> {
     const result = await options.uiAPI.showModelSelector(initialSearchInput);
     return isModelSelectionOutcome(result) ? result.selected : false;
 }

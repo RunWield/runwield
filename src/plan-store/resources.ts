@@ -108,8 +108,8 @@ export interface PlanReviewPresentation {
     planId: string;
     plan: string;
     planName: string;
-    frontmatter: import("../plan-store.js").PlanFrontMatter;
-    classification: import("../plan-store.js").PlanFrontMatter["classification"];
+    frontmatter: import("../plan-store.ts").PlanFrontMatter;
+    classification: import("../plan-store.ts").PlanFrontMatter["classification"];
     documentRevision: string;
     linkedFiles: Record<string, string>;
 }
@@ -139,7 +139,7 @@ export async function loadReviewPlanDocument(path: string) {
     const { currentPackageSelection } = await import("./workflows.ts");
     const selection = currentPackageSelection();
     if (selection) return await loadPackageWorkflowPlan({ planId: selection.planId });
-    const { loadPlanFileStrict } = await import("../plan-store.js");
+    const { loadPlanFileStrict } = await import("../plan-store.ts");
     return await loadPlanFileStrict(path);
 }
 
@@ -157,7 +157,7 @@ export function planControllerRoot(fallback: string): string {
 /** Render metadata only for retained legacy review documents; canonical prose stays metadata-free. */
 export function renderPlanReviewMarkdown(
     body: string,
-    attrs: Partial<import("../plan-store.js").PlanFrontMatter>,
+    attrs: Partial<import("../plan-store.ts").PlanFrontMatter>,
 ): string {
     return currentPackageSelection() || currentManagedPlanSelection()
         ? body

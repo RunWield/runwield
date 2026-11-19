@@ -1,14 +1,14 @@
 import { managedPersonalStoreActive, pullManagedPlan } from "../managed.ts";
 import { currentHomeProjectOwner } from "../../shared/project-identity.ts";
 import { prepareCollaborationPlan as preparePlanWorkflow } from "./operations.ts";
-import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
  * @module cmd/plans/pull
  * Pull encrypted remote Shared Space feedback into a local locked Plan.
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN, getCwd } from "../../constants.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
 import { hashPlanBody } from "../../plan-format.ts";
 import {
     createPulledCollaborationPlan,
@@ -16,7 +16,7 @@ import {
     updatePlanCollaborationMetadata,
 } from "../../plan-store/index.ts";
 import { MAINTAINER_SCOPE, redactSecrets } from "../../shared/collaboration/capabilities.ts";
-import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.js";
+import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
 import { decryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";
 import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
 import {
@@ -25,7 +25,7 @@ import {
     normalizeEncryptedPlanPayload,
     normalizeRevisionMetadata,
     normalizeSharedSpaceMetadata,
-} from "../../shared/collaboration/protocol.js";
+} from "../../shared/collaboration/protocol.ts";
 import {
     assertCompatiblePullSecretRecord,
     ensureProjectSecretStoreIgnored,
@@ -34,7 +34,7 @@ import {
     putCompatibleSecretRecord,
     resolvePullSecretRecord,
     secretRecordKey,
-} from "../../shared/collaboration/secrets.js";
+} from "../../shared/collaboration/secrets.ts";
 import { parseCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
 import { SessionRuntime } from "../../shared/session/session-runtime.ts";

@@ -6,15 +6,15 @@ import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "
  */
 
 import { isAbsolute, relative, resolve, sep as SEPARATOR } from "node:path";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 import type { SessionArtifactKind, SessionArtifactReference } from "../shared/session/file-session-store-types.ts";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 
 const TOOL_PARAMS = Type.Object(
     {
@@ -104,6 +104,7 @@ function assertKindPath(kind: SessionArtifactKind, path: string): void {
 export function createArtifactWrittenTool(options: ArtifactWrittenOptions = {}) {
     return defineTool<typeof TOOL_PARAMS, ArtifactWrittenDetails>({
         name: "artifact_written",
+        exposure: "model-only",
         label: "Artifact Written",
         description:
             "Register a completed, meaningful Markdown artifact with the current RunWield Session. " +

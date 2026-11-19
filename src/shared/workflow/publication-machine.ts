@@ -1,5 +1,5 @@
 import type { PackagePublicationManifest } from "../../plan-store/index.ts";
-import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.js";
+import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.ts";
 import {
     retainPublicationCompletion,
     recordPublicationObservation,
@@ -38,14 +38,15 @@ import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT, type WorkRecordMnemotecaPort } from 
 import { hasFinalizedPublicationLifecycle, indexPublishedWorkRecords } from "../publication-lifecycle.ts";
 import { canonicalizeStoredPlanName, isChildFeaturePlan, parsePlanFrontMatter } from "../../plan-format.ts";
 import { isTerminalWorkRecordParent } from "../work-records/auto-generation.ts";
-import { enterProjectRuntime, resolveProjectRoot, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { findById, pruneEntry, updatePublication } from "../worktree-registry.js";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRoot } from "../project-checkout.ts";
+import { findById, pruneEntry, updatePublication } from "../worktree-registry.ts";
 import { existingPublicationSavedFiles, preserveUnregisteredPublicationFiles } from "./publication-leftover-files.ts";
 import {
     deleteMergedWorktreeBranch,
     deleteRemotelyPublishedWorktreeBranch,
     removeWorktreeGitArtifacts,
-} from "../worktree.js";
+} from "../worktree.ts";
 
 import { type JournalResult } from "./metrics-journal.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";

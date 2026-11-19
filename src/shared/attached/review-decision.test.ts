@@ -6,9 +6,9 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 
 import { loadPlan } from "../../plan-store/index.ts";
-import { listEntries } from "../worktree-registry.js";
+import { listEntries } from "../worktree-registry.ts";
 import { executionInput } from "./execution-test-fixture.ts";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import { readAttachedAction, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import {

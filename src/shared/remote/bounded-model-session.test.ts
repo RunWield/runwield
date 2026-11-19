@@ -24,7 +24,7 @@ import {
     type ProviderStreams,
 } from "@earendil-works/pi-ai";
 import { getModelRegistry, getModelRuntime } from "../models/model-registry.ts";
-import { expandPromptTemplate, listPromptTemplates, resolveModel } from "../session/session.js";
+import { expandPromptTemplate, listPromptTemplates, resolveModel } from "../session/session.ts";
 import { expandSkillRecord, listSkills } from "../session/skill-catalog.ts";
 import { createBoundedRemoteModelSession, resolveBoundedRemoteModelSelection } from "./bounded-model-session.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";

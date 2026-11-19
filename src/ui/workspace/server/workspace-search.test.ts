@@ -1,7 +1,6 @@
 import { seedPlan } from "../../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../../shared/testing/retained-plan-fixture.ts";
 import { serveHttp } from "../../../shared/http-server.ts";
-// @ts-nocheck: focused service tests use the repository's JavaScript-style owner store.
 import { constants as fsConstants, readdirSync as fsReaddirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { test } from "node:test";
@@ -17,19 +16,17 @@ import {
     stat as fsStat,
     symlink as fsSymlink,
     writeFile as fsWriteFile,
+    type FileHandle,
 } from "node:fs/promises";
-import type { FileHandle } from "node:fs/promises";
 import { platform, tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { join } from "node:path";
 import { DatabaseSync } from "../../../shared/sqlite.ts";
-import { authorLocalPlan, savePlanProse } from "../../../plan-store/index.ts";
-import { loadPlan } from "../../../plan-store/index.ts";
-
-import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.js";
+import { authorLocalPlan, savePlanProse, loadPlan } from "../../../plan-store/index.ts";
+import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
-import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.js";
-import { formatWorkRecordMarkdown } from "../../../shared/work-records/markdown.js";
+import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.ts";
+import { formatWorkRecordMarkdown } from "../../../shared/work-records/markdown.ts";
 import { replaceWorkRecord, writeWorkRecord } from "../../../shared/work-records/store.ts";
 import {
     getWorkspaceSearchRefreshMarker,
@@ -37,9 +34,9 @@ import {
 } from "../../../shared/workspace-search-refresh.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../../testing/managed-session-fixture.ts";
 import { readProjectArtifact } from "./project-artifacts.ts";
-import { loadWorkspaceDetail } from "./plan-adapter.js";
+import { loadWorkspaceDetail } from "./plan-adapter.ts";
 import { createWorkspaceSearchService, WORKSPACE_SEARCH_SCAN_INTERVAL_MS } from "./workspace-search.ts";
-import { createOwnerWorkspaceApp, startWorkspaceServer } from "../server.js";
+import { createOwnerWorkspaceApp, startWorkspaceServer } from "../server.ts";
 
 async function waitFor(condition: () => Promise<boolean>, timeoutMs = 60_000) {
     const deadline = Date.now() + timeoutMs;
@@ -366,29 +363,28 @@ test("production Workspace HTTP server closes and restarts Search", async () => 
     }
 });
 
-test("nested and execution-worktree Plan writes request refresh for the primary Project", async () => {
-    const dir = await defineCommittedGitFixture().checkout();
+test("nested and execution-worktree Plan writes refresh searchable content before the periodic scan", async () => {
+    const fixture = await searchFixture("plan-write-refresh", { scanIntervalMs: 60_000 });
+    const repository = await executionAuthorityFixture.checkout();
+    const executionRoot = join(fixture.dir, "execution");
+    const found = (query: string) => waitFor(async () => (await fixture.search.search({ query })).total === 1, 5000);
     try {
-        await authorLocalPlan(dir, { planName: "epic/child", contextMarkdown: "# Child Plan\n" });
-        const marker = await getWorkspaceSearchRefreshMarker(dir);
-        assertEquals((await fsStat(marker)).isFile(), true);
-        await fsRm(marker);
-        const current = await loadPlan(dir, "epic/child");
-        await savePlanProse(dir, "epic/child", "# Updated child\n", current!.revision);
-        assertEquals((await fsStat(marker)).isFile(), true);
-        await fsRm(marker);
-        const executionRoot = join(dir, "execution-worktree");
-        await git(dir, ["worktree", "add", "-b", "execution-refresh", executionRoot]);
-        const updated = await loadPlan(dir, "epic/child");
-        await authorLocalPlan(executionRoot, {
-            planName: "epic/child",
-            contextMarkdown: "# Execution update\n",
-            expectedRevision: updated!.revision,
-        });
-        assertEquals((await loadPlan(executionRoot, "epic/child"))?.markdown, "# Execution update\n");
-        assertEquals((await fsStat(marker)).isFile(), true);
+        await fsCp(repository, fixture.root, { recursive: true });
+        const name = "epic/child";
+        await authorLocalPlan(fixture.root, { planName: name, contextMarkdown: "# Fallow refresh\n" });
+        assertEquals(await found("Fallow refresh"), true);
+        const first = await loadPlan(fixture.root, name);
+        if (!first) throw new Error("Missing authored child Plan.");
+        await savePlanProse(fixture.root, name, "# Marigold refresh\n", first.revision);
+        assertEquals(await found("Marigold refresh"), true);
+        await git(fixture.root, ["worktree", "add", "--detach", executionRoot, "HEAD"]);
+        const current = await loadPlan(executionRoot, name);
+        if (!current) throw new Error("The linked worktree could not resolve the child Plan.");
+        await savePlanProse(executionRoot, name, "# Mica refresh\n", current.revision);
+        assertEquals(await found("Mica refresh"), true);
     } finally {
-        await fsRm(dir, { recursive: true });
+        await fixture.close();
+        await fsRm(repository, { recursive: true, force: true });
     }
 });
 
@@ -424,7 +420,7 @@ test("a refresh request triggers an earlier scan than the interval", async () =>
         await fsWriteFile(join(fixture.root, "docs", "prd", "marker.md"), "# Marker Doc\n\nMarker needle.\n");
         assertEquals(await found(), false);
         await requestWorkspaceSearchRefresh(fixture.root);
-        assertEquals(await waitFor(found), true);
+        assertEquals(await waitFor(found, 5000), true);
     } finally {
         await fixture.close();
     }
@@ -895,6 +891,32 @@ test("Workspace search uses current authoritative Plan evidence", async () => {
         assertEquals(payload.results[0].freshness, "changed");
     } finally {
         await fixture.close();
+    }
+});
+
+test("nested and execution-worktree Plan writes request refresh for the primary Project", async () => {
+    const dir = await defineCommittedGitFixture().checkout();
+    try {
+        await authorLocalPlan(dir, { planName: "epic/child", contextMarkdown: "# Child Plan\n" });
+        const marker = await getWorkspaceSearchRefreshMarker(dir);
+        assertEquals((await fsStat(marker)).isFile(), true);
+        await fsRm(marker);
+        const current = await loadPlan(dir, "epic/child");
+        await savePlanProse(dir, "epic/child", "# Updated child\n", current!.revision);
+        assertEquals((await fsStat(marker)).isFile(), true);
+        await fsRm(marker);
+        const executionRoot = join(dir, "execution-worktree");
+        await git(dir, ["worktree", "add", "-b", "execution-refresh", executionRoot]);
+        const updated = await loadPlan(dir, "epic/child");
+        await authorLocalPlan(executionRoot, {
+            planName: "epic/child",
+            contextMarkdown: "# Execution update\n",
+            expectedRevision: updated!.revision,
+        });
+        assertEquals((await loadPlan(executionRoot, "epic/child"))?.markdown, "# Execution update\n");
+        assertEquals((await fsStat(marker)).isFile(), true);
+    } finally {
+        await fsRm(dir, { recursive: true });
     }
 });
 

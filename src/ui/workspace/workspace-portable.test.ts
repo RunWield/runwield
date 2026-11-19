@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { request as httpRequest } from "node:http";
 import { versions } from "node:process";
 import { test } from "node:test";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
-import { startWorkspaceServer } from "./server.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { startWorkspaceServer } from "./server.ts";
 
 test("portable Workspace renders pairing, serves assets and enforces owner authentication over HTTP", async () => {
     const directory = await mkdtemp(join(tmpdir(), "runwield-workspace-portable-"));
@@ -20,25 +20,32 @@ test("portable Workspace renders pairing, serves assets and enforces owner authe
         return new Promise<Response>((resolve, reject) => {
             const headers = new Headers(options.headers);
             if (!headers.has("host")) headers.set("host", "127.0.0.1:8787");
-            const outgoing = httpRequest(`${base}${path}`, {
-                method: options.method || "GET",
-                headers: Object.fromEntries(headers),
-                signal: AbortSignal.timeout(10_000),
-            }, async (incoming) => {
-                try {
-                    const chunks: Uint8Array[] = [];
-                    for await (const chunk of incoming) chunks.push(chunk);
-                    const responseHeaders = new Headers();
-                    for (let i = 0; i < incoming.rawHeaders.length; i += 2) {
-                        responseHeaders.append(incoming.rawHeaders[i], incoming.rawHeaders[i + 1]);
+            const outgoing = httpRequest(
+                `${base}${path}`,
+                {
+                    method: options.method || "GET",
+                    headers: Object.fromEntries(headers),
+                    signal: AbortSignal.timeout(10_000),
+                },
+                async (incoming) => {
+                    try {
+                        const chunks: Uint8Array[] = [];
+                        for await (const chunk of incoming) chunks.push(chunk);
+                        const responseHeaders = new Headers();
+                        for (let i = 0; i < incoming.rawHeaders.length; i += 2) {
+                            responseHeaders.append(incoming.rawHeaders[i], incoming.rawHeaders[i + 1]);
+                        }
+                        resolve(
+                            new Response(Buffer.concat(chunks), {
+                                status: incoming.statusCode,
+                                headers: responseHeaders,
+                            }),
+                        );
+                    } catch (error) {
+                        reject(error);
                     }
-                    resolve(
-                        new Response(Buffer.concat(chunks), { status: incoming.statusCode, headers: responseHeaders }),
-                    );
-                } catch (error) {
-                    reject(error);
-                }
-            });
+                },
+            );
             outgoing.on("error", reject);
             outgoing.end(options.body);
         });
@@ -84,7 +91,9 @@ test("portable Workspace renders pairing, serves assets and enforces owner authe
         equal(pending.status, 201);
         const pairing = await pending.json();
         equal(pairing.state, "pending");
-        const proofCookie = pending.headers.getSetCookie().find((value) => value.startsWith("rw_pairing_proof="))
+        const proofCookie = pending.headers
+            .getSetCookie()
+            .find((value) => value.startsWith("rw_pairing_proof="))
             ?.split(";")[0];
         ok(proofCookie);
         store.approvePairingRequest(pairing.code);

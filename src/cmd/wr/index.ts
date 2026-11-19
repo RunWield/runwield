@@ -13,7 +13,7 @@ import { importWorkRecords } from "../../shared/work-records/import.ts";
 
 import { retryWorkRecordForPlan } from "../../shared/work-records/auto-generation.ts";
 import { parseArgs } from "../../shared/cli-args.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import {
     confirmWorkRecordSupersessionProposal,
     formatWorkRecordBackfillOutcomes,
@@ -33,7 +33,7 @@ import {
 import type { WorkRecordMnemotecaPort } from "../../shared/work-records/mnemoteca-port.ts";
 import { NO_OPEN_BROWSER_PORT, SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { startArtifactReadSurface } from "../../ui/review/review-launcher.ts";
-import { printCommandHelp } from "../help/index.js";
+import { printCommandHelp } from "../help/index.ts";
 import {
     resolveWorkRecordSupersessionProposals,
     type WorkRecordSupersessionDecision,
@@ -41,7 +41,7 @@ import {
 import type { WorkRecordSupersessionCandidate } from "../../shared/work-records/schema.ts";
 
 export interface WorkRecordCommandOptions {
-    uiAPI?: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage" | "promptSelect">;
+    uiAPI?: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage" | "promptSelect">;
     mnemotecaPort: WorkRecordMnemotecaPort;
 }
 

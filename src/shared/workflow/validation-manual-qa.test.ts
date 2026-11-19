@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../../plan-store/index.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { runManualQaChecklistPrompt } from "./validation.ts";
 
 test("Manual QA runs the bundled isolated Operator and persists its visible checklist", async () => {
@@ -21,8 +21,6 @@ test("Manual QA runs the bundled isolated Operator and persists its visible chec
         });
         const sessionManager = SessionManager.inMemory(projectRoot);
         const hostedSession = new HostedSession({ id: "manual-qa-persist", cwd: projectRoot });
-        // HostedSession's legacy minimal-manager JSDoc widens appendMessage beyond
-        // Pi's real SessionManager signature; the concrete manager is the runtime object.
         hostedSession.setRootSessionManager(sessionManager);
 
         const messages = await runManualQaChecklistPrompt({
@@ -60,7 +58,7 @@ import {
     makeUi,
     makeValidationProjectRoot,
     runValidationLoop,
-} from "./validation-test-helpers.js";
+} from "./validation-test-helpers.ts";
 
 test("Epic child Manual QA failure does not block verified delivery or continuation", async () => {
     const projectRoot = await makeValidationProjectRoot("epic", { classification: "PROJECT", status: "draft" });

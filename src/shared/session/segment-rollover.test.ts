@@ -5,19 +5,19 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
-import { type SessionManagerExtensions, HostedSession } from "./hosted-session.js";
-import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.js";
+import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
+import { type SessionManagerExtensions, HostedSession } from "./hosted-session.ts";
+import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.ts";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
 import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
-import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.js";
+import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.ts";
 import {
     readPersistedPendingSegmentContinuation,
     recordPendingSegmentContinuation,
     recordSegmentLineageEvidence,
-} from "./workflow-context-session.js";
+} from "./workflow-context-session.ts";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { ActiveExecutionWorkflow } from "./execution-workflow-session.ts";
 import { type TutorialContext, readPersistedTutorialContext } from "./tutorial-context-session.ts";
 
 type ManagedFixture = Awaited<ReturnType<typeof createManagedFixture>>;
@@ -219,19 +219,17 @@ test("segment rollover does not dehydrate a hosted manager when activation acqui
     await withProcessGlobalTestLock(async () => {
         const fixture = await createManagedFixture();
         try {
-            let disposed = false;
             const managed = fixture.hosted.getManagedMetadata();
             assert(managed);
+            const { sessionManager } = await openPersistedRootSession({
+                cwd: fixture.root,
+                sessionId: managed.piSessionId,
+                sessionPath: managed.transcriptPath,
+            });
             const hosted = new HostedSession({
                 id: "runtime-session-with-manager",
                 cwd: fixture.root,
-                sessionManager: {
-                    getSessionId: () => managed.piSessionId,
-                    getCwd: () => fixture.root,
-                    dispose: () => {
-                        disposed = true;
-                    },
-                },
+                sessionManager,
                 managed,
             });
             await assertRejects(
@@ -246,8 +244,9 @@ test("segment rollover does not dehydrate a hosted manager when activation acqui
                         expectedGeneration: 99,
                     }),
             );
-            assertEquals(disposed, false);
-            assert(hosted.getRootSessionManager());
+            assertEquals(hosted.getRootSessionManager(), sessionManager);
+            assertEquals(hosted.getRootSessionManager()?.getSessionId?.(), managed.piSessionId);
+            await hosted.dispose();
         } finally {
             await cleanupFixture(fixture);
         }

@@ -7,10 +7,10 @@ import { hostname } from "node:os";
 import { openNativeFileLock } from "./shared/native-file-lock.ts";
 import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { withPlanCatalogLock, withPlanLock } from "./plan-store.js";
+import { withPlanCatalogLock, withPlanLock } from "./plan-store.ts";
 import { injectFrontMatter } from "./plan-format.ts";
 import { ensurePlanIdentity, listPlanResources } from "./plan-store/index.ts";
-import { savePlan } from "./plan-store.js";
+import { savePlan } from "./plan-store.ts";
 import { resolveProjectRuntimeLayout } from "./shared/project-runtime-layout.ts";
 
 async function promptly<T>(operation: Promise<T>): Promise<T> {

@@ -15,9 +15,9 @@ import {
     writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import { getHomeDir } from "../constants.js";
+import { getHomeDir } from "../constants.ts";
 import { encodeCwdForSessionDir } from "./project-directory-key.ts";
-import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
 import { openNativeFileLock, type NativeFileLock } from "./native-file-lock.ts";
 import { ensurePrivateDir, syncParentDirectory, writeJsonAtomically } from "./private-json-file.ts";
 import { remoteProjectOwner } from "./remote/personal-resources.ts";

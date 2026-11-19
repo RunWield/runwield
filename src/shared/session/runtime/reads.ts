@@ -1,4 +1,4 @@
-import { getAgentDisplayName } from ".././agents.js";
+import { getAgentDisplayName } from ".././agents.ts";
 import {
     expandPromptTemplate,
     expandSkillCommand,
@@ -7,14 +7,14 @@ import {
     listLoadedAgentMdFiles,
     listPromptTemplates,
     listSkills,
-} from ".././session.js";
+} from ".././session.ts";
 import { buildActiveConversationSubmissionMessage } from ".././session-user-messages.ts";
 import {
     classifyRootSessionLocator,
     getRootSessionBranchEntries,
     getRunWieldSessionMemoryBackupDir,
     listCatalogSafeRootSessionLocators,
-} from ".././root-session.js";
+} from ".././root-session.ts";
 import {
     buildProjectedSessionContextProjection,
     buildProjectedSessionInfo,
@@ -24,7 +24,7 @@ import {
     getCommittedTranscriptAuthorityFacts,
     inspectProjectedTranscript,
     toProjectionFailure,
-} from ".././session-transcript-projection.js";
+} from ".././session-transcript-projection.ts";
 import {
     projectAggregateTranscript,
     type TranscriptEntry,
@@ -38,7 +38,7 @@ import {
 } from "../session-export.ts";
 import { listRecentResumableSessions } from ".././session-resume-list.ts";
 import { buildSessionContextReport } from ".././session-context-report.ts";
-import { deriveWorkflowContextFromExecutionWorkflow } from ".././workflow-context-session.js";
+import { deriveWorkflowContextFromExecutionWorkflow } from ".././workflow-context-session.ts";
 import { dirname, isAbsolute } from "node:path";
 
 import {
@@ -58,7 +58,7 @@ type ManagedProjectionSuccess = Extract<ManagedProjection, { ok: true }>;
 type TranscriptEntries = Awaited<ReturnType<typeof captureTranscriptEvidence>>["entries"];
 interface ManagedCommittedProjection {
     ok: true;
-    managed: import("../hosted-session.js").ManagedSessionMetadata;
+    managed: import("../hosted-session.ts").ManagedSessionMetadata;
     entries: TranscriptEntries;
     projection: ManagedProjectionSuccess;
 }
@@ -87,7 +87,7 @@ type ProjectedSessionInfo = Omit<
 > & {
     ok?: true;
     compactionSettings?: import("./types.ts").RuntimeCompactionSettings | null;
-    contextUsage?: import("../../types.js").ContextUsageSnapshot | null;
+    contextUsage?: import("./types.ts").ContextUsageSnapshot | null;
 };
 type SessionInfoResult = ProjectedSessionInfo | ManagedProjectionFailure | null;
 type SessionContextReportResult =
@@ -110,7 +110,7 @@ export class RuntimeReads {
         this.lifecycle = lifecycle;
     }
     private activeSessionInfoCache = new WeakMap<
-        import("../hosted-session.js").MinimalSessionManagerLike,
+        import("../hosted-session.ts").MinimalSessionManagerLike,
         { leafId: string | null; info: ReturnType<typeof buildProjectedSessionInfo> }
     >();
     getSessionBackgroundTaskState(sessionId: string) {
@@ -125,8 +125,8 @@ export class RuntimeReads {
     }
 
     getActiveSessionInfo(
-        session: import(".././hosted-session.js").HostedSession,
-        sessionManager: import(".././hosted-session.js").MinimalSessionManagerLike,
+        session: import(".././hosted-session.ts").HostedSession,
+        sessionManager: import(".././hosted-session.ts").MinimalSessionManagerLike,
     ) {
         const fallbackEntries = sessionManager.getLeafId ? null : sessionManager.getEntries?.() || [];
         const fallbackLeaf = fallbackEntries?.at(-1);

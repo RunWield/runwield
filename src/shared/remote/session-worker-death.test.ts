@@ -1,7 +1,7 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { test } from "node:test";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { join } from "node:path";
@@ -16,8 +16,8 @@ test("Worker startup death faults at the total deadline without a main-thread ca
     await fsMkdir(directory, { recursive: true });
     try {
         await fsWriteFile(
-            join(runtimeRoot, "runtime-root.js"),
-            await fsReadFile(new URL("../../../runtime-root.js", import.meta.url), "utf8"),
+            join(runtimeRoot, "runtime-root.ts"),
+            await fsReadFile(new URL("../../../runtime-root.ts", import.meta.url), "utf8"),
         );
         for (const name of ["session-protocol.ts", "session-save-bridge.ts", "session-save-worker.ts"]) {
             const source = await fsReadFile(new URL(name, import.meta.url), "utf8");

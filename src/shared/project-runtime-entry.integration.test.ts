@@ -20,7 +20,7 @@ import {
     ProjectRuntimeEntryRefusedError,
     resolveProjectRuntimeLayout,
 } from "./project-runtime-layout.ts";
-import { listEntries, prepareWorktreeRegistry } from "./worktree-registry.js";
+import { listEntries, prepareWorktreeRegistry } from "./worktree-registry.ts";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# runtime entry\n" });
 

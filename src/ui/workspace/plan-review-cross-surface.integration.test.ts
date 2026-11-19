@@ -1,7 +1,7 @@
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-// @ts-nocheck: The live session and owner service expose JavaScript records.
+// @ts-nocheck: Owner-service result records have implicit types.
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../../shared/foreground-process.ts";
@@ -13,7 +13,7 @@ import { loadPlan } from "../../plan-store/index.ts";
 
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 
 function stopChild(child) {
     try {
@@ -38,7 +38,7 @@ async function withRemoteReview(changePlan, expectDecision) {
         });
         const serviceStore = fixture.openStore();
         const service = new WorkspaceSessionContinuationService({ store: serviceStore });
-        const storeUrl = new URL("../../shared/owner-coordination/index.js", import.meta.url).href;
+        const storeUrl = new URL("../../shared/owner-coordination/index.ts", import.meta.url).href;
         const runtimeUrl = new URL("../../shared/session/session-runtime.ts", import.meta.url).href;
         const code = `
             import { openOwnerCoordinationStore } from ${JSON.stringify(storeUrl)};

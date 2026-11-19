@@ -1,4 +1,4 @@
-import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
+import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 
 type GoldenResult = Parameters<typeof assertEventIncludes>[0];
 
@@ -8,11 +8,7 @@ export const slashHelpScenario = {
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
-    actions: [
-        { type: "type", text: "/help" },
-        { type: "enter" },
-        { type: "waitForIdle" },
-    ],
+    actions: [{ type: "type", text: "/help" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [
         (result: GoldenResult) => assertEventIncludes(result, "terminal:type:/help"),
         (result: GoldenResult) => assertScreenIncludes(result, "Global flags:"),

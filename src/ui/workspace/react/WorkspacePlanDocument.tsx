@@ -2,6 +2,20 @@
 import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import { lazy, Suspense, useEffect } from "react";
+import type { LocalLinkResolver } from "@plannotator/ui/components/LocalLinkContext";
+import type { MarkdownEditorProps } from "@plannotator/markdown-editor";
+
+export type { MarkdownEditorHandle } from "@plannotator/markdown-editor";
+export type WorkspacePlanDocumentMode = "read" | "edit";
+
+export interface WorkspacePlanDocumentProps extends Pick<
+    MarkdownEditorProps,
+    "markdown" | "documentId" | "editorHandleRef" | "onMarkdownChange"
+> {
+    mode: WorkspacePlanDocumentMode;
+    resolveLocalLink?: LocalLinkResolver;
+    fragment?: string;
+}
 import { RenderedMarkdown } from "@plannotator/ui/components/RenderedMarkdown.tsx";
 import "./plannotator.css";
 
@@ -15,7 +29,7 @@ export default function WorkspacePlanDocument({
     onMarkdownChange,
     resolveLocalLink,
     fragment,
-}) {
+}: WorkspacePlanDocumentProps) {
     useEffect(() => {
         if (mode !== "edit" && fragment) document.getElementById(decodeURIComponent(fragment))?.scrollIntoView();
     }, [mode, markdown, fragment]);

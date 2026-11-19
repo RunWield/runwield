@@ -16,7 +16,7 @@ import {
 import { archivePlan } from "./plan-store/index.ts";
 import { git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
-import { addEntry, getWorktreeRegistryPath, updateEntry } from "./shared/worktree-registry.js";
+import { addEntry, getWorktreeRegistryPath, updateEntry } from "./shared/worktree-registry.ts";
 
 import { createPublicationAttempt } from "./shared/workflow/publication-attempt.ts";
 import { validationCheckpointCanResume, type ValidationCheckpoint } from "./shared/workflow/validation-checkpoint.ts";
@@ -206,7 +206,7 @@ test("sealed publication evidence and repair content remain byte-for-byte unchan
     const f = await execution();
     try {
         // Replace the same registry entry via its owner with a real sealed attempt.
-        const { updatePublication } = await import("./shared/worktree-registry.js");
+        const { updatePublication } = await import("./shared/worktree-registry.ts");
         const repair = join(f.root, "publication");
         await fs.mkdir(repair);
         await fs.writeFile(join(repair, "repair.txt"), "preserve repair");

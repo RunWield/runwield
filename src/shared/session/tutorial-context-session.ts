@@ -28,7 +28,7 @@ type TutorialSessionEntry = {
 };
 
 type TutorialSessionManager = Pick<
-    import("./hosted-session.js").MinimalSessionManagerLike,
+    import("./hosted-session.ts").MinimalSessionManagerLike,
     "getBranch" | "getEntries" | "appendCustomEntry"
 >;
 
@@ -57,7 +57,7 @@ export function normalizeTutorialContext(value: TutorialContextCandidate | null 
 function getEntries(sessionManager: TutorialSessionManager | null | undefined): TutorialSessionEntry[] {
     if (!sessionManager) return [];
     const entries = sessionManager.getBranch?.() || sessionManager.getEntries?.() || [];
-    return Array.isArray(entries) ? entries as TutorialSessionEntry[] : [];
+    return Array.isArray(entries) ? (entries as TutorialSessionEntry[]) : [];
 }
 
 /** Latest matching entry is authoritative. An invalid latest entry fails closed. */
@@ -99,9 +99,11 @@ export function applyTutorialContextUpdate(
 }
 
 export function tutorialContextsEqual(left: TutorialContext | null, right: TutorialContext | null): boolean {
-    return left?.version === right?.version &&
+    return (
+        left?.version === right?.version &&
         left?.guidanceEnabled === right?.guidanceEnabled &&
         left?.recapShown === right?.recapShown &&
         left?.planId === right?.planId &&
-        JSON.stringify(left?.shownExplanationIds || []) === JSON.stringify(right?.shownExplanationIds || []);
+        JSON.stringify(left?.shownExplanationIds || []) === JSON.stringify(right?.shownExplanationIds || [])
+    );
 }

@@ -7,9 +7,9 @@ import {
     createRootSessionManager,
     resolveCreatedRootSessionPath,
     openPersistedRootSession,
-} from "../session/root-session.js";
+} from "../session/root-session.ts";
 import { listRecentResumableSessions } from "../session/session-resume-list.ts";
-import { captureTranscriptEvidence } from "../session/session-transcript-projection.js";
+import { captureTranscriptEvidence } from "../session/session-transcript-projection.ts";
 import { sessionBelongsToOwnerProject } from "../../ui/workspace/server/owner-projects.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import {
@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "../sqlite.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
-import { openOwnerCoordinationStore } from "./index.js";
+import { openOwnerCoordinationStore } from "./index.ts";
 
 function countRows(database: DatabaseSync, table: string) {
     const row = database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get();

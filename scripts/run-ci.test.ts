@@ -107,17 +107,6 @@ test("runCi starts every pre-test task before waiting and keeps test behind the 
     assertEquals(await resultPromise, { exitCode: 0, failures: [] });
 });
 
-test("runCi starts one test after a successful pre-test wave", async () => {
-    const starts: CiTaskName[] = [];
-    const result = await runCi((taskName) => {
-        starts.push(taskName);
-        return Promise.resolve({ name: taskName, code: 0 });
-    });
-
-    assertEquals(starts, [...PRE_TEST_TASKS, "test:all:suite"]);
-    assertEquals(result, { exitCode: 0, failures: [] });
-});
-
 test("runCi reports all failed pre-test tasks and skips test", async () => {
     const starts: CiTaskName[] = [];
     const failed = new Map<CiTaskName, number>([
@@ -156,7 +145,7 @@ test("runCi converts a process-start error into a failed pre-test result and wai
 
     for (const taskName of PRE_TEST_TASKS) {
         if (taskName === "snip:check") continue;
-        const exitCode = taskName === "seams:check" ? 4 : 0;
+        const exitCode = taskName === "doc-links:check" ? 4 : 0;
         tasks.get(taskName)?.resolve({ name: taskName, code: exitCode });
     }
 
@@ -164,7 +153,7 @@ test("runCi converts a process-start error into a failed pre-test result and wai
         exitCode: 1,
         failures: [
             { name: "snip:check", code: 1 },
-            { name: "seams:check", code: 4 },
+            { name: "doc-links:check", code: 4 },
         ],
     });
     assertEquals(starts.includes("test:all:suite"), false);

@@ -7,7 +7,7 @@ import {
     recordManagedHumanReview,
     saveManagedEpicReview,
 } from "./managed.ts";
-import { updatePlanFrontMatter, type PlanFrontMatter } from "../plan-store.js";
+import { updatePlanFrontMatter, type PlanFrontMatter } from "../plan-store.ts";
 
 const definitionFields = [
     "classification",
@@ -77,7 +77,7 @@ export async function saveEpicIntegrationReview(
     return await updatePlanFrontMatter(cwd, name, { epicIntegrationReview: review }, {}, precondition);
 }
 
-import { loadPlan, withPlanLock, StalePlanWriteError } from "../plan-store.js";
+import { loadPlan, withPlanLock, StalePlanWriteError } from "../plan-store.ts";
 import { withLocalPlanWorkflow } from "./access.ts";
 import { appendPlanDeviation, type PlanDeviationProposal } from "../shared/plan-deviations.ts";
 /** Persist a confirmed requirement replacement against the exact Plan that was shown for confirmation. */

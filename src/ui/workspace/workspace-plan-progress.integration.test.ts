@@ -1,6 +1,5 @@
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
-// @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
 import {
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
@@ -13,8 +12,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { parsePlanFrontMatter } from "../../plan-format.ts";
-
-import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.js";
+import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.ts";
 import { createPublicationAttempt, recordPublicationFailure } from "../../shared/workflow/publication-attempt.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
 import { loadOwnerPlanProgress } from "./server/owner-plan-progress.ts";
@@ -23,30 +21,6 @@ import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 
 const publicationFixture = defineCommittedGitFixture({ "README.md": "Before publication\n" });
-
-type StoreProject = { currentRoot: string };
-type StoreSession = { runwieldSessionId: string; projectId: string; displayName: string; transcriptCwd: string };
-
-function makeStore(projectRoot: string) {
-    return {
-        getProjectById(projectId: string): StoreProject | null {
-            return projectId === "project-1" ? { currentRoot: projectRoot } : null;
-        },
-        requireEnabledProjectRoot(projectId: string): string {
-            if (projectId !== "project-1") throw new Error("Project not found.");
-            return projectRoot;
-        },
-        getSessionById(_runwieldSessionId: string): StoreSession | null {
-            return null;
-        },
-        inspectSessionActivation(_runwieldSessionId: string) {
-            return {};
-        },
-        listSessionTranscriptSegments(_runwieldSessionId: string) {
-            return [];
-        },
-    };
-}
 
 async function readIfExists(path: string) {
     try {
@@ -331,7 +305,7 @@ test("Workspace progress retains saved publication proof after cleanup and inval
     return await withRetainedPlanFixture(projectRoot, async () => {
         try {
             const { seedPlanController } = await import("../../shared/testing/plan-state-fixture.ts");
-            const { recordPlanEvent } = await import("../../shared/workflow/plan-lifecycle.js");
+            const { recordPlanEvent } = await import("../../shared/workflow/plan-lifecycle.ts");
             await seedPlan(projectRoot, "receipt", "# Saved publication", {
                 planId: "receipt-id",
                 classification: "PLANNED_CHANGE",

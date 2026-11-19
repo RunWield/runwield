@@ -19,7 +19,7 @@ import {
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import type { HostTurnValidationResult, ValidationHostResume } from "./validation-host-turn.ts";
-import { setExactProjectCustomSetting } from "../settings.js";
+import { setExactProjectCustomSetting } from "../settings.ts";
 import { retryWorkRecordForPlan } from "../work-records/auto-generation.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 

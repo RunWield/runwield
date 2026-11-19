@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { join } from "node:path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
-import { addEntry, removeEntry, restoreEntryFromPlanEvidence } from "./worktree-registry.js";
-import type { WorktreeRegistryEntry, WorktreeRestoreEvidence } from "./worktree-registry.js";
+import { addEntry, removeEntry, restoreEntryFromPlanEvidence } from "./worktree-registry.ts";
+import type { WorktreeRegistryEntry, WorktreeRestoreEvidence } from "./worktree-registry.ts";
 
 type LiveWorktreeEntry = WorktreeRegistryEntry & WorktreeRestoreEvidence;
 

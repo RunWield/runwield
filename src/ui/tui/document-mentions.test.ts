@@ -7,8 +7,8 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { getCapabilities, setCapabilities, visibleWidth } from "@earendil-works/pi-tui";
 import stripAnsi from "strip-ansi";
 import { DocumentLinkHost } from "../review/document-link-host.ts";
-import { initRunWieldTheme } from "../theme/theme.js";
-import { AgentMessageBlock, SystemMessageBlock, ToolExecutionBlock, UserPromptBlock } from "./blocks.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
+import { AgentMessageBlock, SystemMessageBlock, ToolExecutionBlock, UserPromptBlock } from "./blocks.ts";
 
 initRunWieldTheme();
 
@@ -104,26 +104,24 @@ test("streamed partial mentions become links only when the path is complete", as
 
 test("code, images, external and incomplete paths never gain local reader targets", async () => {
     await withDocuments((host) => {
-        for (
-            const text of [
-                "```\nREADME.md\n```",
-                "    docs/file.md",
-                "![docs/file.md](docs/file.md)",
-                "https://example.org/docs/file.md",
-                "http://example.org/README.md",
-                "[mail](mailto:README.md)",
-                "[file](file:README.md)",
-                "[section](#details)",
-                "src/file.ts",
-                "missing.md",
-                "README.md\\_backup",
-                "README.md*backup*",
-                "docs/file.md.txt",
-                "docs/file.md:12",
-                "`read docs/file.md please`",
-                "docs/file.m",
-            ]
-        ) {
+        for (const text of [
+            "```\nREADME.md\n```",
+            "    docs/file.md",
+            "![docs/file.md](docs/file.md)",
+            "https://example.org/docs/file.md",
+            "http://example.org/README.md",
+            "[mail](mailto:README.md)",
+            "[file](file:README.md)",
+            "[section](#details)",
+            "src/file.ts",
+            "missing.md",
+            "README.md\\_backup",
+            "README.md*backup*",
+            "docs/file.md.txt",
+            "docs/file.md:12",
+            "`read docs/file.md please`",
+            "docs/file.m",
+        ]) {
             const block = new AgentMessageBlock("", host);
             block.appendText(text);
             assertEquals(targets(block.render(120).join("\n")), [], text);
@@ -135,15 +133,13 @@ for (const markers of ["**", "*", "~~", "***", "**~~"]) {
     const closing = markers === "**~~" ? "~~**" : markers;
     test(`Agent mentions respect visible word boundaries across ${markers} formatting`, async () => {
         await withDocuments((host) => {
-            for (
-                const source of [
-                    `${markers}README.md${closing}.txt`,
-                    `prefix${markers}README.md${closing}`,
-                    `${markers}README.md${closing}backup`,
-                    `${markers}README.md.${closing}txt`,
-                    `${markers}README.md${closing}.${markers}txt${closing}`,
-                ]
-            ) {
+            for (const source of [
+                `${markers}README.md${closing}.txt`,
+                `prefix${markers}README.md${closing}`,
+                `${markers}README.md${closing}backup`,
+                `${markers}README.md.${closing}txt`,
+                `${markers}README.md${closing}.${markers}txt${closing}`,
+            ]) {
                 const block = new AgentMessageBlock("", host);
                 const baseline = new AgentMessageBlock("", null);
                 block.appendText(source);
@@ -151,13 +147,11 @@ for (const markers of ["**", "*", "~~", "***", "**~~"]) {
                 assertEquals(block.render(120), baseline.render(120), source);
                 assertEquals(targets(block.render(120).join("\n")), [], source);
             }
-            for (
-                const source of [
-                    `(${markers}README.md${closing}).`,
-                    `Read ${markers}README.md${closing}. Next`,
-                    `prefix${markers} read README.md please${closing}suffix`,
-                ]
-            ) {
+            for (const source of [
+                `(${markers}README.md${closing}).`,
+                `Read ${markers}README.md${closing}. Next`,
+                `prefix${markers} read README.md please${closing}suffix`,
+            ]) {
                 const block = new AgentMessageBlock("", host);
                 const baseline = new AgentMessageBlock("", null);
                 block.appendText(source);

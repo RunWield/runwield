@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 /**
  * Dev server entry for Astro/Vite mode with HMR.
  * Exports the Workspace server wrapper for local development.
@@ -6,7 +6,7 @@ import { getCwd } from "../../constants.js";
  */
 
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mnemoteca-port.ts";
-import { createWorkspaceApp, type LocalWorkspaceAppOptions } from "./server.js";
+import { createWorkspaceApp, type LocalWorkspaceAppOptions } from "./server.ts";
 
 export const app = createWorkspaceApp({
     // Astro dev-server entry module, never loaded by the test suite.

@@ -10,6 +10,7 @@ temperature: 0.3
 sharedPractice:
     - user-authority
 tools:
+    - codemode
     - read
     - grep
     - find

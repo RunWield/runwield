@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { assertEquals } from "../../testing/assertions.ts";
 
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { __resetSettingsForTests } from "../settings.js";
+import { __resetSettingsForTests } from "../settings.ts";
 import { configureRemotePersonalResources } from "../remote/personal-resources.ts";
 import { listInstalledMetricsExporters, resolveApprovedMetricsExporters } from "./metrics-exporter.ts";
 

@@ -12,7 +12,7 @@ async function executeManagedFixture() {
         collaborationUrl: string;
     } = JSON.parse((await lines.read()).value || "{}");
     await lines.cancel();
-    const { getRunWieldRuntimeDir, getHomeDir } = await import("../../constants.js");
+    const { getRunWieldRuntimeDir, getHomeDir } = await import("../../constants.ts");
     const { mkdir: seedDirectory, writeFile: seedFile, rename: moveSeed } = await import("node:fs/promises");
     const { join: seedPath } = await import("node:path");
     const { withProjectLaunchContext } = await import("../project-identity.ts");
@@ -161,7 +161,7 @@ async function executeManagedFixture() {
             }
             if (!refused) throw new Error("Active original attempt was detached without abandonment proof.");
             await (
-                await import("../worktree-registry.js")
+                await import("../worktree-registry.ts")
             ).updateEntry(input.cwd, seededAttempts.abandoned.id, { status: "abandoned" });
             await detachPlanExecution(input.cwd, "abandoned-original", abandonedPlanId);
         });
@@ -245,8 +245,8 @@ async function executeManagedFixture() {
                 if (!refusedConfidence || (await loadPlan(input.cwd, "retained"))?.attrs.verifiedAt)
                     throw new Error("A retained client verdict was accepted without independent Git publication.");
                 await seedFile(seedPath(retainedAttempt.path, "resumed-sentinel.txt"), "Original execution resumed.\n");
-                const { checkpointExecutionWorktree } = await import("../worktree.js");
-                const { stageValidationPassedInExecutionWorktree } = await import("../workflow/plan-lifecycle.js");
+                const { checkpointExecutionWorktree } = await import("../worktree.ts");
+                const { stageValidationPassedInExecutionWorktree } = await import("../workflow/plan-lifecycle.ts");
                 const { startPublicationAttempt, advanceStoredPublication, cleanupStoredPublication } =
                     await import("../workflow/publication-machine.ts");
                 const { publishExecutionWorktreeIsolated } = await import("../isolated-publication.ts");
@@ -919,7 +919,7 @@ async function executeManagedFixture() {
         if (pushed.revision !== 2 || (await pullPlanForRevision(collaborationOptions)).revision !== 2)
             throw new Error("Managed push did not publish the owner's actual edited bytes.");
         const { parseCollaborationUrl } = await import("../collaboration/urls.ts");
-        const { CollaborationClient, SYSTEM_COLLABORATION_FETCH } = await import("../collaboration/client.js");
+        const { CollaborationClient, SYSTEM_COLLABORATION_FETCH } = await import("../collaboration/client.ts");
         const { importContentKey, encryptJsonPayload } = await import("../collaboration/crypto.ts");
         const remoteMaintainer = parseCollaborationUrl(shared.maintainerUrl);
         const remoteEditor = new CollaborationClient({
@@ -1020,7 +1020,7 @@ async function executeManagedFixture() {
             action: "recreate",
             expectedRevision: recreateSource.revision,
             recover: async () => {
-                const entry = await (await import("../worktree-registry.js")).findById(input.cwd, recoveryAttempt);
+                const entry = await (await import("../worktree-registry.ts")).findById(input.cwd, recoveryAttempt);
                 if (!entry) throw new Error("Original recreation attempt is unavailable.");
                 await fixtureGit(input.cwd, ["worktree", "remove", "--force", entry.path]);
                 await fixtureGit(input.cwd, ["worktree", "add", entry.path, entry.branch]);
@@ -1078,7 +1078,7 @@ async function executeManagedFixture() {
             refusedActiveDetach = true;
         }
         if (!refusedActiveDetach) throw new Error("Owner released an execution without abandonment evidence.");
-        const { updateEntry } = await import("../worktree-registry.js");
+        const { updateEntry } = await import("../worktree-registry.ts");
         await updateEntry(input.cwd, recoveryAttempt, { status: "abandoned" });
         await detachPlanExecution(input.cwd, "recovery", recoveredReview.attrs.planId);
         await recordPlanEvent({

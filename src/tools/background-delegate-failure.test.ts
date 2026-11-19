@@ -2,17 +2,19 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "../shared/session/hosted-session.js";
-import { runIsolatedAgentSession } from "../shared/session/session.js";
+import { HostedSession } from "../shared/session/hosted-session.ts";
+import { runIsolatedAgentSession } from "../shared/session/session.ts";
 import { createDelegateAgentTool } from "./delegate-agent.ts";
 
 test("a failed background model turn reports failure and releases its reader lease", async () => {
     await withRuntimeCommandFixture(
         "background-delegate-failure-",
         async ({ projectRoot, setModelResponseFactories }) => {
-            setModelResponseFactories([() => {
-                throw Error("model failed");
-            }]);
+            setModelResponseFactories([
+                () => {
+                    throw Error("model failed");
+                },
+            ]);
             const session = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
             const tool = createDelegateAgentTool({
                 hostedSession: session,

@@ -16,10 +16,10 @@ import {
     type ProjectCloneChoice,
 } from "./project-identity.ts";
 import { enterProjectRuntime } from "./project-runtime-layout.ts";
-import { getRunWieldSessionDir } from "./session/root-session.js";
+import { getRunWieldSessionDir } from "./session/root-session.ts";
 import { locateAttachedWorkflows } from "./attached/record-store.ts";
 import { encodeCwdForSessionDir } from "./project-directory-key.ts";
-import { getHomeDir } from "../constants.js";
+import { getHomeDir } from "../constants.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 const fixture = defineCommittedGitFixture();
 function admitted(result: ProjectIdentityAdmission): ProjectIdentity {
@@ -284,8 +284,8 @@ test("ordinary manual SSH startup retains execution-account ownership", async ()
 });
 
 test("Workspace registration keeps its registration ID while associating admitted Core identity", async () => {
-    const { openOwnerCoordinationDatabase } = await import("./owner-coordination/database.js");
-    const { registerProject, getProjectById } = await import("./owner-coordination/projects.js");
+    const { openOwnerCoordinationDatabase } = await import("./owner-coordination/database.ts");
+    const { registerProject, getProjectById } = await import("./owner-coordination/projects.ts");
     const home = await mkdtemp(join(tmpdir(), "identity-workspace-"));
     const root = await fixture.checkout();
     const database = openOwnerCoordinationDatabase({ dbPath: join(home, "owner.sqlite3") });
@@ -387,7 +387,7 @@ test("activated managed owner never falls back after its verified mount is detac
     try {
         const identityModule = new URL("./project-identity.ts", import.meta.url).href;
         const resourcesModule = new URL("./remote/personal-resources.ts", import.meta.url).href;
-        const constantsModule = new URL("../constants.js", import.meta.url).href;
+        const constantsModule = new URL("../constants.ts", import.meta.url).href;
         const code = `
             import { deepEqual, equal, match } from "node:assert/strict";
             import { mkdir, rename, readdir, readFile, lstat } from "node:fs/promises";

@@ -33,7 +33,7 @@ import {
 /** File-backed controller state shared by all worktrees of one project. */
 import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import {
     enterProjectRuntime,
     checkedProjectRuntimeLayout,
@@ -45,9 +45,9 @@ import {
     inspectWorktreeRegistry,
     inspectWorktreeRegistryAtPath,
     type WorktreeRegistryEntry,
-} from "../shared/worktree-registry.js";
+} from "../shared/worktree-registry.ts";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
-import { parsePlanFrontMatter } from "../plan-store.js";
+import { parsePlanFrontMatter } from "../plan-store.ts";
 import { isPublicationCleanupPending } from "../shared/workflow/publication-attempt.ts";
 import {
     CONTROLLER_STATE_FIELDS,

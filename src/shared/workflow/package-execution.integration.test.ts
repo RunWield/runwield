@@ -1,12 +1,12 @@
 import { updatePlanPackageMetadata } from "../../plan-store/packages.ts";
-import { getWorktreeRegistryPath } from "../worktree-registry.js";
+import { getWorktreeRegistryPath } from "../worktree-registry.ts";
 import { settleDiscardedRecoveryAttempt } from "../../cmd/load-plan/plan-recovery-discard.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { createGitPort } from "../git-port.ts";
 import { systemLocalCIPort } from "./validation-local-ci.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { executePlan } from "./plan-executor.ts";
@@ -20,9 +20,9 @@ import { join } from "node:path";
 import { create, read, packageFixture, startDriver } from "../testing/plan-package-fixture.ts";
 import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
-import { inspectWorktreeRegistry } from "../worktree-registry.js";
+import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { git } from "../git-test-fixture.ts";
 
 test("package execution prepares an isolated code worktree without materializing the Plan", async () => {

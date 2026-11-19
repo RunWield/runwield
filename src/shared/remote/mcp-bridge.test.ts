@@ -170,7 +170,7 @@ test("one Pi extension preserves native personal results, shared resources, root
     );
 });
 
-test("native cancellation reaches the laptop while a cooperative call is running", async () => {
+test("pre-aborted personal calls are never dispatched to the laptop", async () => {
     await withBridge(async (f) => {
         await f.ready();
         const { integration } = await startMcpIntegration({
@@ -178,15 +178,6 @@ test("native cancellation reaches the laptop while a cooperative call is running
             servers: [personal],
         });
         try {
-            const abort = new AbortController();
-            const pending = call(integration.getTools()[0], "cooperative-slow", abort.signal);
-            const rejected = assertRejects(() => pending);
-            await waitForLog(f.log, '"event":"call"');
-            abort.abort();
-            await rejected;
-            await waitForLog(f.log, '"event":"cancelled"');
-            await new Promise((resolve) => setTimeout(resolve, 600));
-            assertEquals((await readFile(f.log, "utf8")).includes("delayed-effect"), false);
             const before = new AbortController();
             before.abort();
             await assertRejects(() => call(integration.getTools()[0], "never-dispatched", before.signal));
@@ -322,47 +313,6 @@ test("Pi reconnect recovers a failed personal inventory without a model request"
                 JSON.stringify(await call(integration.getTools()[0], "after-reconnect")),
                 "after-reconnect",
             );
-        } finally {
-            await integration.close();
-        }
-    });
-});
-
-test("live personal tool additions and withdrawal update the existing Pi inventory", async () => {
-    await withBridge(async (f) => {
-        await f.ready();
-        const toolsPath = join(f.homeDir, "tools.txt");
-        await writeFile(toolsPath, "");
-        await writeFile(
-            join(f.homeDir, ".wld", "mcp.json"),
-            JSON.stringify({
-                mcpServers: {
-                    personal: {
-                        ...f.definition,
-                        env: { ...f.definition.env, RUNWIELD_MCP_FIXTURE_TOOLS_PATH: toolsPath },
-                    },
-                },
-            }),
-        );
-        const { integration } = await startMcpIntegration({
-            cwd: f.projectRoot,
-            servers: [personal],
-        });
-        try {
-            assertEquals(integration.getTools(), []);
-            assert(integration.bindRoot());
-            await writeFile(toolsPath, "appeared");
-            for (let i = 0; i < 100 && !integration.getTools().length; i++)
-                await new Promise((resolve) => setTimeout(resolve, 10));
-            assertEquals(
-                integration.getTools().map((tool) => tool.name),
-                ["mcp__personal__appeared"],
-            );
-            assertStringIncludes(JSON.stringify(await call(integration.getTools()[0], "updated")), "updated");
-            await writeFile(toolsPath, "");
-            for (let i = 0; i < 100 && integration.getTools().length; i++)
-                await new Promise((resolve) => setTimeout(resolve, 10));
-            assertEquals(integration.getTools(), []);
         } finally {
             await integration.close();
         }

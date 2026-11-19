@@ -16,7 +16,7 @@ affectedPaths:
     - "src/plan-package-import-evidence.test.ts"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/plan-store-prd.md"
-    - "docs/adr/0020-home-project-state-and-launch-mode-ownership.md"
+    - "docs/adr/019-home-project-state-and-launch-mode-ownership.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-01"
@@ -59,7 +59,7 @@ path-loading, store-only discovery and the delivery-copy question remain target 
 
 Child 6 owns package lifecycle/controller routing, child 7 owns new-format publication, and child 10 owns public local
 activation. This child neither changes those boundaries nor edits their Plans. The proposed broader
-[home-state ADR](../../adr/0020-home-project-state-and-launch-mode-ownership.md) remains proposed.
+[home-state ADR](../../adr/019-home-project-state-and-launch-mode-ownership.md) remains proposed.
 
 ## Objective
 
@@ -128,7 +128,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   `src/plan-package-import-evidence.test.ts`, plus `src/shared/testing/plan-package-process-driver.ts` and its fixture —
   behavioral import, restart, concurrent-reader and evidence tests through real boundaries.
 - `docs/prd/runwield-core-prd.md`, `docs/prd/plan-store-prd.md` and
-  `docs/adr/0020-home-project-state-and-launch-mode-ownership.md` — record the internal import guarantee and schema/
+  `docs/adr/019-home-project-state-and-launch-mode-ownership.md` — record the internal import guarantee and schema/
   transaction rationale while retaining deferred public behavior and the ADR's proposed broader decision.
 
 CLI, browser surfaces, Agent prompts, managed-remote transport, Work Record import, public glossary changes and delivery

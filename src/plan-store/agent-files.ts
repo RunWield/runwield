@@ -16,7 +16,7 @@ import {
     withPlanCatalogLock,
     withPlanLock,
     writePlanMarkdownWithRevisionLocked,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 import { atomicWriteTextFileIfAbsent } from "../shared/atomic-text-file.ts";
 
 export interface PlanFileCommand {

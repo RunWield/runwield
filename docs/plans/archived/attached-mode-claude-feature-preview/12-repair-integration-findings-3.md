@@ -19,7 +19,7 @@ affectedPaths:
     - "src/shared/session/session.js"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/runwield-connect-prd.md"
-    - "docs/adr/014-attached-workflow-coordination-boundary.md"
+    - "docs/adr/013-attached-workflow-coordination-boundary.md"
     - "docs/user-documentation/connect-claude-code.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
@@ -259,7 +259,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/session/skill-catalog.ts`, `session.js`, `src/shared/attached/role-instructions.ts` — one Skill catalog
   rule for both runtimes (#8).
 - `src/attached/claude/plugin/commands/*.md` — the compatibility stop line names `unsupported_host` too (#7).
-- `docs/prd/runwield-core-prd.md`, `docs/prd/runwield-connect-prd.md`, `docs/adr/014-attached-workflow-coordination-boundary.md`,
+- `docs/prd/runwield-core-prd.md`, `docs/prd/runwield-connect-prd.md`, `docs/adr/013-attached-workflow-coordination-boundary.md`,
   `docs/user-documentation/connect-claude-code.md` — delivered behavior.
 - Tests named in the Verification Plan.
 

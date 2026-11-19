@@ -4,13 +4,13 @@ import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixt
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { fileURLToPath } from "node:url";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { startReviewWorkspaceServer } from "../workspace/server.js";
+import { startReviewWorkspaceServer } from "../workspace/server.ts";
 import { join } from "node:path";
 
 import { parsePlanFrontMatter } from "../../plan-format.ts";
@@ -20,7 +20,7 @@ import type { PlanFrontMatter } from "../../plan-format.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { submitPlanForReview } from "./plan-review.ts";
 import { createScriptedReviewBrowser, type ReviewDecisionBody } from "./review-test-fixture.ts";
-import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../../shared/worktree-registry.js";
+import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../../shared/worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { prepareSequenceReview } from "../../plan-store/index.ts";
 

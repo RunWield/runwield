@@ -16,7 +16,7 @@ import { resolvePlanQuestions, type PlanQuestionAnswer } from "../shared/plan-qu
 import { projectPlanType } from "../shared/project-plan.ts";
 import { resolve } from "node:path";
 import { Marked } from "marked";
-import { getStoredPlanPath, loadPlanFileStrict, writePlanMarkdownWithRevision } from "../plan-store.js";
+import { getStoredPlanPath, loadPlanFileStrict, writePlanMarkdownWithRevision } from "../plan-store.ts";
 import {
     injectFrontMatter,
     parsePlanFrontMatter,
@@ -28,7 +28,7 @@ import {
     buildPlanEventUpdates,
     isPlanReviewableWithoutReopen,
     recordPlanEvent,
-} from "../shared/workflow/plan-lifecycle.js";
+} from "../shared/workflow/plan-lifecycle.ts";
 import { runPlanReviewDecisionTransition } from "./transitions.ts";
 import { PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";
 import { pickControllerState, stripRuntimeFields } from "../shared/workflow/controller-state.ts";

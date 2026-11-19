@@ -18,7 +18,7 @@ affectedPaths:
     - "src/ui/workspace/server/session-continuation.js"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/runwield-connect-prd.md"
-    - "docs/adr/015-file-authoritative-session-bundles.md"
+    - "docs/adr/014-file-authoritative-session-bundles.md"
     - "docs/domain-language.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"

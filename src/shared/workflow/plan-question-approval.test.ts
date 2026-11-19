@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { makeValidationProjectRoot } from "./validation-test-helpers.js";
+import { makeValidationProjectRoot } from "./validation-test-helpers.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";

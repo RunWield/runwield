@@ -9,7 +9,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { getHomeDir } from "../../../../constants.js";
+import { getHomeDir } from "../../../../constants.ts";
 
 export interface AgyCustomAgentPaths {
     agentsRootPath: string;
@@ -57,10 +57,7 @@ async function chmodBestEffort(path: string, mode: number): Promise<void> {
     }
 }
 
-export async function materializeAgyCustomAgent(
-    name: string,
-    definition: string,
-): Promise<AgyCustomAgentOwnership> {
+export async function materializeAgyCustomAgent(name: string, definition: string): Promise<AgyCustomAgentOwnership> {
     const trimmedDefinition = definition.trim();
     if (!trimmedDefinition) throw new Error("Agy custom agent definition is required");
     const paths = resolveAgyCustomAgentPaths(name);
@@ -161,7 +158,7 @@ export async function cleanupAgyCustomAgent(ownership: AgyCustomAgentOwnership):
             `Refusing cleanup because agent directory is no longer the owned directory: ${ownership.agentDirectoryPath}`,
         );
     }
-    for await (const _entry of (await readdir(ownership.agentDirectoryPath))) {
+    for await (const _entry of await readdir(ownership.agentDirectoryPath)) {
         throw new Error(`Refusing cleanup because agent directory changed: ${ownership.agentDirectoryPath}`);
     }
     await rmdir(ownership.agentDirectoryPath);

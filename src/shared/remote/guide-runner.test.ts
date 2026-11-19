@@ -21,7 +21,8 @@ test("in-process guide returns model output and usage without creating a managed
         assert.equal(result.provider, "runtime-command-fixture");
         assert.equal(result.model, "fixture-model");
         assert.equal(events.length, 1);
-        assert.ok(events[0].inputTokens !== null && events[0].inputTokens > 0);
+        assert.equal(events[0].inputTokens, 0);
+        assert.ok(events[0].cacheWriteTokens !== null && events[0].cacheWriteTokens > 0);
         assert.deepEqual(result.usage, events[0]);
         assert.equal(result.cost?.usd, events[0].costUsd);
         const store = openFileSessionStore();
@@ -44,13 +45,16 @@ test("explicit guide command keeps subprocess output and failures", async () => 
     await withRuntimeCommandFixture("custom-remote-guide-", async ({ projectRoot }) => {
         const previous = process.env.RUNWIELD_GUIDED_REVIEW_COMMAND;
         try {
-            process.env.RUNWIELD_GUIDED_REVIEW_COMMAND = "printf custom-guide";
-            const result = await runRemoteGuideCommand("Explain.", new AbortController().signal, projectRoot);
+            // A custom provider may deliberately ignore stdin. Exceed the pipe buffer so
+            // closing it always interrupts delivery, rather than racing a tiny prompt.
+            const prompt = "Explain the diff.\n".repeat(131072);
+            process.env.RUNWIELD_GUIDED_REVIEW_COMMAND = "exec 0<&-; printf custom-guide";
+            const result = await runRemoteGuideCommand(prompt, new AbortController().signal, projectRoot);
             assert.equal(result.stdout, "custom-guide");
             assert.equal(result.provider, "custom");
-            process.env.RUNWIELD_GUIDED_REVIEW_COMMAND = "echo guide-command-failed >&2; exit 7";
+            process.env.RUNWIELD_GUIDED_REVIEW_COMMAND = "exec 0<&-; echo guide-command-failed >&2; exit 7";
             await assert.rejects(
-                () => runRemoteGuideCommand("Explain.", new AbortController().signal, projectRoot),
+                () => runRemoteGuideCommand(prompt, new AbortController().signal, projectRoot),
                 /guide-command-failed/,
             );
         } finally {

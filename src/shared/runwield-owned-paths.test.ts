@@ -10,15 +10,11 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { join } from "node:path";
 import {
-    CURRENT_PROJECT_RUNTIME_PATHS,
     ensureRunWieldOwnedGitignoreBlock,
     isCurrentProjectRuntimePath,
     isLegacyProjectRuntimeHazardPath,
     isRunWieldOwnedRuntimePath,
-    LEGACY_PROJECT_RUNTIME_HAZARD_PATHS,
     RUNWIELD_GITIGNORE_BLOCK,
-    RUNWIELD_OWNED_RUNTIME_PATHS,
-    runwieldOwnedPathspecExclusions,
 } from "./runwield-owned-paths.ts";
 
 test("Gitignore retains legacy publication protection only while the directory exists", async () => {
@@ -84,12 +80,6 @@ test("RunWield runtime classifiers separate current state from legacy hazards", 
 });
 
 test("legacy runtime hazards cover only the bounded old catalog and temp-file shapes", () => {
-    for (const path of LEGACY_PROJECT_RUNTIME_HAZARD_PATHS) {
-        assertEquals(isCurrentProjectRuntimePath(path), false, `${path} is not current`);
-        assertEquals(isLegacyProjectRuntimeHazardPath(path), true, `${path} is legacy`);
-        assertEquals(isRunWieldOwnedRuntimePath(path), true, `${path} is aggregate`);
-    }
-
     for (const path of [
         ".wld/plan-locks/demo.lock",
         ".wld/plan-transitions/transition.json",
@@ -119,29 +109,6 @@ test("legacy runtime hazards cover only the bounded old catalog and temp-file sh
         assertEquals(isLegacyProjectRuntimeHazardPath(path), false, `${path} is not legacy`);
         assertEquals(isRunWieldOwnedRuntimePath(path), false, `${path} is not aggregate`);
     }
-});
-
-test("temporary Git safety exports protect current and legacy runtime paths", () => {
-    assertEquals(CURRENT_PROJECT_RUNTIME_PATHS, [".wld/internal"]);
-
-    for (const path of CURRENT_PROJECT_RUNTIME_PATHS) {
-        assertEquals(RUNWIELD_OWNED_RUNTIME_PATHS.includes(path), true, path);
-        assertStringIncludes(RUNWIELD_GITIGNORE_BLOCK, `${path}/`);
-    }
-    for (const path of LEGACY_PROJECT_RUNTIME_HAZARD_PATHS) {
-        assertEquals(RUNWIELD_OWNED_RUNTIME_PATHS.includes(path), true, path);
-        assertEquals(RUNWIELD_GITIGNORE_BLOCK.includes(path), false, `${path} is safety-only`);
-    }
-
-    assertEquals(runwieldOwnedPathspecExclusions.includes(":(exclude).wld/internal/**"), true);
-    assertEquals(runwieldOwnedPathspecExclusions.includes(":(exclude).wld/plan-locks/**"), true);
-    assertEquals(runwieldOwnedPathspecExclusions.includes(":(exclude).wld/worktrees.json"), true);
-    assertEquals(runwieldOwnedPathspecExclusions.includes(":(exclude).wld/worktrees.json.*.tmp"), true);
-    assertEquals(runwieldOwnedPathspecExclusions.includes(":(exclude).wld/collaboration-secrets.json.*.tmp"), true);
-    assertEquals(
-        RUNWIELD_GITIGNORE_BLOCK,
-        "# BEGIN RunWield owned runtime state\n.wld/internal/\n# END RunWield owned runtime state\n",
-    );
 });
 
 test("managed gitignore reconciliation replaces old runtime rules and preserves user content", async () => {

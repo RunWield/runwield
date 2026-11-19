@@ -13,7 +13,7 @@ import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { loadPlan } from "../../plan-store/index.ts";
 
-import { buildPlanEventUpdates } from "./plan-lifecycle.js";
+import { buildPlanEventUpdates } from "./plan-lifecycle.ts";
 import { createGitPort } from "../git-port.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";

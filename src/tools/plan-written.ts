@@ -25,35 +25,35 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../plan-sto
 import { rememberPlannedVerificationCommand } from "../shared/workflow/planned-verification-command.ts";
 
 import { pathToFileURL as toFileUrl } from "node:url";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
-import { CLI_BIN, normalizePlanClassification, normalizeWorkKind } from "../constants.js";
+import { CLI_BIN, normalizePlanClassification, normalizeWorkKind } from "../constants.ts";
 import { planDocumentMarkdown, resolvePlanExecutionPolicy } from "../plan-format.ts";
 import { ensurePlanIdentity, loadPlan } from "../plan-store/index.ts";
 import { assertNotReservedEpicArtifactPlanName } from "../plan-format.ts";
-import { recordPlanEvent } from "../shared/workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../shared/workflow/plan-lifecycle.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../plan-store/index.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";
-import { recordWorkflowMetric } from "../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
     RuntimeEventTypes,
-} from "../shared/session/session-runtime-events.js";
+} from "../shared/session/session-runtime-events.ts";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.js";
+} from "../shared/session/session-runtime-interactions.ts";
 import {
     appendSessionCompleteGuidance,
     requestPlanReviewRetryConfirmation,
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
-} from "../shared/workflow/plan-review-recovery.js";
+} from "../shared/workflow/plan-review-recovery.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 import type { PlanFrontMatter } from "../plan-store/index.ts";
 
 export interface TriageMeta extends Partial<PlanFrontMatter> {
@@ -126,7 +126,7 @@ interface PlanWrittenOptions {
     hostedSession?: HostedSession;
 }
 
-type ToolResult = AgentToolResult<ToolResultDetails | null>;
+export type PlanWrittenToolResult = AgentToolResult<ToolResultDetails | null>;
 type InteractionMeta = NonNullable<Awaited<ReturnType<typeof requestHostedSessionInteraction>>["_meta"]>;
 
 function parsePlanReviewMeta(meta: InteractionMeta | undefined): PlanReviewMeta {
@@ -266,8 +266,8 @@ function textResult(
     details: ToolResultDetails | null = null,
     terminate = false,
     images: ReviewImage[] = [],
-): ToolResult {
-    const result: ToolResult = {
+): PlanWrittenToolResult {
+    const result: PlanWrittenToolResult = {
         content: [{ type: "text" as const, text }, ...images.map(toToolImageContent)],
         details: details ?? null,
     };
@@ -295,7 +295,10 @@ function buildPlanWrittenToolOutput({
     return `${lines.join("\n")}\n`;
 }
 
-function emitToolUpdate(onUpdate: ((result: ToolResult) => void) | undefined, result: ToolResult): void {
+function emitToolUpdate(
+    onUpdate: ((result: PlanWrittenToolResult) => void) | undefined,
+    result: PlanWrittenToolResult,
+): void {
     if (typeof onUpdate !== "function") return;
     try {
         onUpdate(result);
@@ -372,7 +375,7 @@ async function resolveTriageMeta(
  * @param {{
  *   triageMeta?: TriageMeta,
  *   agentName?: string,
- *   hostedSession?: import('../shared/session/hosted-session.js').HostedSession,
+ *   hostedSession?: import('../shared/session/hosted-session.ts').HostedSession,
  * }} opts
  * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition}
  */
@@ -380,7 +383,8 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
     if (!hostedSession) throw new Error("createPlanWrittenTool: hostedSession is required");
     const cwd = hostedSession.cwd;
     const reviewPlanVersions = new Map<string, PlanReviewVersion[]>();
-    return defineTool({
+    return defineTool<typeof TOOL_PARAMS, ToolResultDetails | null>({
+        exposure: "model-only",
         name: "plan_written",
         label: "Plan Written",
         description:
@@ -765,13 +769,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     });
                     const details = { ...params, outcome: "canceled" as const, reason: recoverableReview.reason };
                     publishAcceptedPlanOutcome(details);
-                    return textResult(
-                        appendPlanAssociationFailure(
-                            `${SESSION_COMPLETE_GUIDANCE}\n\nYour role as ${agentName} is complete. Do not generate any further text.`,
-                        ),
-                        details,
-                        true,
-                    );
+                    return textResult(appendPlanAssociationFailure(`${SESSION_COMPLETE_GUIDANCE}`), details, true);
                 }
                 const reviewResponse = recoverableReview.response;
                 reviewUrl = "";
@@ -1010,7 +1008,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                         return textResult(
                             appendPlanAssociationFailure(
                                 appendSessionCompleteGuidance(
-                                    `Plan "${planName}" approved and saved for later decomposition. Your role as ${agentName} is complete. Do not generate any further text.${savedFeedbackSuffix}`,
+                                    `Plan "${planName}" approved and saved for later decomposition.${savedFeedbackSuffix}`,
                                 ),
                             ),
                             details,
@@ -1102,7 +1100,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     return textResult(
                         appendPlanAssociationFailure(
                             appendSessionCompleteGuidance(
-                                `Plan "${planName}" approved and saved for later execution. Your role as ${agentName} is complete. Do not generate any further text.${savedFeedbackSuffix}`,
+                                `Plan "${planName}" approved and saved for later execution.${savedFeedbackSuffix}`,
                             ),
                         ),
                         details,

@@ -12,7 +12,7 @@ import {
     type ChildFeaturePlanDescriptor,
     type PlanWriteOptions,
     type SavedChildFeaturePlan,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 import { authoredPackageDefinition, withLocalProjectAction } from "./access.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import {
@@ -22,7 +22,7 @@ import {
     type PlanPackageBatchWrite,
 } from "./packages.ts";
 import { currentPackageProject, packageController, packageWorkflowRevision } from "./workflows.ts";
-import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.js";
+import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.ts";
 import { pickControllerState } from "../shared/workflow/controller-state.ts";
 import { writePackageControllerEvidence } from "./controllers.ts";
 import { isEpicPlan, isProjectPlan } from "../shared/project-plan.ts";
@@ -195,5 +195,5 @@ export async function saveChildFeaturePlans(
 ): Promise<SavedChildFeaturePlan[]> {
     return managedPlanStoreActive()
         ? await authorManagedChildren(cwd, parentName, children, options, false)
-        : await (await import("../plan-store.js")).saveChildFeaturePlans(cwd, parentName, children, options);
+        : await (await import("../plan-store.ts")).saveChildFeaturePlans(cwd, parentName, children, options);
 }

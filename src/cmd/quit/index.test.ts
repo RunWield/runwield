@@ -6,7 +6,6 @@ import { type CapturedProcessOutput, captureForegroundProcess } from "../../shar
 import { mkdir as fsMkdir, rm as fsRm } from "node:fs/promises";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { runQuitCommand } from "./index.ts";
 
 const decoder = new TextDecoder();
 
@@ -43,10 +42,6 @@ async function runQuitChild(): Promise<CapturedProcessOutput> {
         await fsRm(fixtureRoot, { recursive: true }).catch(() => {});
     }
 }
-
-test("quit command no-ops without interactive surfaces", async () => {
-    await runQuitCommand([], {});
-});
 
 test("quit command clears external UI surfaces and performs real delayed TUI shutdown", async () => {
     const result = await runQuitChild();

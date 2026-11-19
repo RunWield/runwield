@@ -602,15 +602,7 @@ for (const repo of ["gandazgul/mnemoteca", "RunWield/mnemoteca"]) {
     });
 }
 
-test("package:homebrew requires at least one tag and accepts either or both", async () => {
-    for (const selection of [
-        ["--wld-tag", "v1.2.3"],
-        ["--mnemoteca-tag", "v0.3.4"],
-        ["--wld-tag", "v1.2.3", "--mnemoteca-tag", "v0.3.4"],
-    ]) {
-        const options = parsePackageHomebrewArgs([...selection, "--output", "tap"]);
-        assertEquals(Boolean(options.wldTag || options.mnemotecaTag), true);
-    }
+test("package:homebrew rejects empty package selection and dependency overrides without selection", async () => {
     assertThrows(() => parsePackageHomebrewArgs(["--output", "tap"]), Error, "at least one tag");
     await assertRejects(
         () =>

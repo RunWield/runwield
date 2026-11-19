@@ -3,7 +3,7 @@ import {
     PROJECT_INTERNAL_RUNTIME_DIR_NAME,
     PROJECT_SECRET_STORE_RELATIVE_PATH,
     RUNWIELD_DIR_NAME,
-} from "../constants.js";
+} from "../constants.ts";
 import { isRunWieldOwnedRuntimePath } from "./runwield-owned-paths.ts";
 import { recordedProjectContextPaths } from "./worktree-project-context.ts";
 
@@ -24,12 +24,15 @@ export class RunWieldRuntimeGitSafetyError extends Error {
     }
 }
 
-const CURRENT_PROJECT_SECRET_STORE_PATH =
-    `${RUNWIELD_DIR_NAME}/${PROJECT_INTERNAL_RUNTIME_DIR_NAME}/collaboration-secrets.json`;
+const CURRENT_PROJECT_SECRET_STORE_PATH = `${RUNWIELD_DIR_NAME}/${PROJECT_INTERNAL_RUNTIME_DIR_NAME}/collaboration-secrets.json`;
 
 function isCollaborationSecretPath(path: string): boolean {
-    return path === PROJECT_SECRET_STORE_RELATIVE_PATH || path.startsWith(`${PROJECT_SECRET_STORE_RELATIVE_PATH}.`) ||
-        path === CURRENT_PROJECT_SECRET_STORE_PATH || path.startsWith(`${CURRENT_PROJECT_SECRET_STORE_PATH}.`);
+    return (
+        path === PROJECT_SECRET_STORE_RELATIVE_PATH ||
+        path.startsWith(`${PROJECT_SECRET_STORE_RELATIVE_PATH}.`) ||
+        path === CURRENT_PROJECT_SECRET_STORE_PATH ||
+        path.startsWith(`${CURRENT_PROJECT_SECRET_STORE_PATH}.`)
+    );
 }
 
 function runtimeRemovalWarning(paths: string[]): string {
@@ -64,10 +67,7 @@ function parseNulPaths(output: string): string[] {
 async function treeRuntimePaths(cwd: string, ref: string): Promise<string[]> {
     const result = await runGitResult(cwd, ["ls-tree", "-rz", "--name-only", "-r", ref]);
     if (result.code !== 0) {
-        throw new RunWieldRuntimeGitSafetyError(
-            `RunWield could not inspect ${ref} for Project Runtime State.`,
-            [],
-        );
+        throw new RunWieldRuntimeGitSafetyError(`RunWield could not inspect ${ref} for Project Runtime State.`, []);
     }
     return parseNulPaths(result.stdout).filter(isRunWieldOwnedRuntimePath).sort();
 }
@@ -107,14 +107,10 @@ export async function assertNoRuntimePathsInNewHistory(
         }
     }
 
-    const revListArgs = baseRef ? ["rev-list", "--topo-order", candidateRef, "--not", baseRef] : [
-        "rev-list",
-        "--topo-order",
-        candidateRef,
-    ];
-    const commits = (await runGit(cwd, revListArgs))
-        .split("\n")
-        .filter((commit) => commit.length > 0);
+    const revListArgs = baseRef
+        ? ["rev-list", "--topo-order", candidateRef, "--not", baseRef]
+        : ["rev-list", "--topo-order", candidateRef];
+    const commits = (await runGit(cwd, revListArgs)).split("\n").filter((commit) => commit.length > 0);
     const paths = new Set<string>();
     for (const commit of commits) {
         for (const path of await treeRuntimePaths(cwd, commit)) paths.add(path);
@@ -150,13 +146,16 @@ export async function stageGitChangesExcludingRuntime(cwd: string): Promise<void
     // Only recorded versionable setup paths may override broad user ignore rules.
     const contextPaths = await recordedProjectContextPaths(cwd);
     if (contextPaths.length > 0) await runGit(cwd, ["add", "-f", "--", ...contextPaths]);
-    const tracked = parseNulPaths(await runGit(cwd, ["diff", "--name-only", "-z", "--no-renames", "HEAD", "--"]))
-        .filter((path) => !isRunWieldOwnedRuntimePath(path));
-    const untracked = parseNulPaths(await runGit(cwd, ["ls-files", "--others", "--exclude-standard", "-z"]))
-        .filter((path) => !isRunWieldOwnedRuntimePath(path));
-    const indexed = tracked.length > 0
-        ? new Set(parseNulPaths(await runGit(cwd, ["ls-files", "--cached", "-z", "--", ...tracked])))
-        : new Set<string>();
+    const tracked = parseNulPaths(
+        await runGit(cwd, ["diff", "--name-only", "-z", "--no-renames", "HEAD", "--"]),
+    ).filter((path) => !isRunWieldOwnedRuntimePath(path));
+    const untracked = parseNulPaths(await runGit(cwd, ["ls-files", "--others", "--exclude-standard", "-z"])).filter(
+        (path) => !isRunWieldOwnedRuntimePath(path),
+    );
+    const indexed =
+        tracked.length > 0
+            ? new Set(parseNulPaths(await runGit(cwd, ["ls-files", "--cached", "-z", "--", ...tracked])))
+            : new Set<string>();
     const trackedUpdates = tracked.filter((path) => indexed.has(path));
     if (trackedUpdates.length > 0) await runGit(cwd, ["add", "-u", "--", ...trackedUpdates]);
     if (untracked.length > 0) await runGit(cwd, ["add", "--", ...untracked]);

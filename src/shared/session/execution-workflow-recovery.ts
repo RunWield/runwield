@@ -1,13 +1,13 @@
 import { captureForegroundProcess } from "../captured-process.ts";
 import { realpath as fsRealpath } from "node:fs/promises";
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { ActiveExecutionWorkflow } from "./execution-workflow-session.ts";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
-import { readPersistedActiveAgentName } from "./active-agent-session.js";
-import { readPersistedWorkflowContext } from "./workflow-context-session.js";
+import { readPersistedActiveAgentName } from "./active-agent-session.ts";
+import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
 import { readPlanAssociations } from "./plan-association.ts";
-import { listEntries } from "../worktree-registry.js";
+import { listEntries } from "../worktree-registry.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
 import { readCurrentPairCheckpoint } from "./pair-checkpoint-session.ts";

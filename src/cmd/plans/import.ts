@@ -1,5 +1,5 @@
 import process from "node:process";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { importPlans, importedPlanCopyChoice } from "../../plan-store/index.ts";
 import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 

@@ -1,11 +1,11 @@
 import { Container, isViewportTUI, Key, matchesKey, ScrollView, Text, type TUI, VStack } from "@earendil-works/pi-tui";
 import type { SavedRemoteSession } from "../../shared/remote/laptop-session-control.ts";
 import { parseRemoteSessionTranscript } from "../../shared/remote/session-protocol.ts";
-import { createReplayEvents } from "../../shared/session/session-transcript-projection.js";
-import { createUiApi } from "./api.js";
-import { SpinnerBlock } from "./blocks.js";
+import { createReplayEvents } from "../../shared/session/session-transcript-projection.ts";
+import { createUiApi } from "./api.ts";
+import { SpinnerBlock } from "./blocks.ts";
 import { createTuiDisplayConsumer } from "./runtime-display.ts";
-import { theme } from "../theme/theme.js";
+import { theme } from "../theme/theme.ts";
 
 function safeLabel(value: string): string {
     // deno-lint-ignore no-control-regex -- Durable host labels must not send terminal controls.

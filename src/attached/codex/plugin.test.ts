@@ -101,6 +101,7 @@ test("Codex routes every workflow phase to its packaged action instructions", as
         if (reference) for (const action of row.matchAll(/`([^`]+)`/g)) routes.set(action[1], reference);
     }
     assert.deepEqual(Object.fromEntries(routes), {
+        role_handoff: "references/conversation.md",
         triage: "references/planning.md",
         plan: "references/planning.md",
         review: "references/planning.md",
@@ -110,6 +111,7 @@ test("Codex routes every workflow phase to its packaged action instructions", as
         implementation: "references/implementation.md",
         implemented: "references/validation.md",
         validation_recovery: "references/validation.md",
+        validation_running: "references/validation.md",
         validation: "references/validation.md",
         code_review: "references/validation.md",
         recorder: "references/validation.md",
@@ -118,7 +120,7 @@ test("Codex routes every workflow phase to its packaged action instructions", as
     includesContracts(source.replace(/\s+/g, " "), [
         "For `return_to_host`, report Core's outcome and return to ordinary Codex work",
         "Unsupported request types do not become FEATURE workflows",
-        "unrecognized action or role contract is a recoverable compatibility problem",
+        "unknown MCP tool, action, or role contract is a recoverable compatibility problem",
     ]);
     const planning = await readGuidance("references/planning.md");
     includesContracts(planning, [
@@ -131,6 +133,11 @@ test("Codex routes every workflow phase to its packaged action instructions", as
         "`plan_written`",
         "`payload.actionId`",
         "`payload.planName`",
+        "`start_planning`",
+        "`payload.existingPlan: { planName, planId, targetBranch? }`",
+        "`workflow.nextAction.planningRequired: false`",
+        "`context.planningCwd`",
+        "`context.planPath`",
         "Browser edits are already saved; do not apply them twice",
         "For `plan_saved` after Approve for Later",
         "saved for later, then stop",
@@ -285,6 +292,7 @@ test("the Codex repository marketplace resolves the native package without insta
     assert.equal(entry.policy.installation, "AVAILABLE");
     assert.equal(manifest.skills, "./skills/");
     assert.equal(manifest.mcpServers, "./.mcp.json");
+    assert.equal(manifest.interface.websiteURL, "https://runwield.dev/downloads");
     assert.equal(adapter.adapterContract, 1);
 });
 
@@ -295,8 +303,20 @@ test("the installed Codex package remains self-contained and leaves project cwd 
         await cp(PLUGIN, installed, { recursive: true });
         const files = await readdir(installed, { recursive: true });
         const skills = files.filter((path) => path.endsWith("SKILL.md"));
-        assert.deepEqual(skills, ["skills/run/SKILL.md"]);
-        const entrypoint = join(installed, skills[0]);
+        assert.deepEqual(skills.sort(), ["skills/guide/SKILL.md", "skills/ideator/SKILL.md", "skills/run/SKILL.md"]);
+        for (const role of ["guide", "ideator"]) {
+            const path = join(installed, "skills", role, "SKILL.md");
+            const text = await readFile(path, "utf8");
+            assert.equal(extractYaml(text).attrs.name, role);
+            assert.equal(
+                attachedHost("codex")?.[role === "guide" ? "guideEntrypoint" : "ideatorEntrypoint"],
+                `$${manifest.name}:${role}`,
+            );
+            assert.deepEqual(loadYaml(await readFile(join(dirname(path), "agents/openai.yaml"), "utf8")), {
+                policy: { allow_implicit_invocation: false },
+            });
+        }
+        const entrypoint = join(installed, "skills/run/SKILL.md");
         const source = await readFile(entrypoint, "utf8");
         const metadata = extractYaml(source).attrs;
         assert.equal(metadata.name, "run");
@@ -308,7 +328,7 @@ test("the installed Codex package remains self-contained and leaves project cwd 
             policy: { allow_implicit_invocation: false },
         });
         const visited = new Set<string>();
-        const pending = [entrypoint];
+        const pending = skills.map((path) => join(installed, path));
         while (pending.length) {
             const path = pending.pop()!;
             if (visited.has(path)) continue;
@@ -422,9 +442,11 @@ test("Codex can install and remove the repository package in an isolated configu
         const workflowSkills = skills.filter((entry) => entry.pluginId === installed.pluginId);
         assert.deepEqual(
             workflowSkills.map(({ name, enabled }) => ({ name, enabled })),
-            [{ name: "runwield:run", enabled: true }],
+            ["guide", "ideator", "run"].map((role) => ({ name: `runwield:${role}`, enabled: true })),
         );
-        assert.equal(workflowSkills[0].path, join(installed.installedPath, "skills/run/SKILL.md"));
+        for (const skill of workflowSkills) {
+            assert.equal(skill.path, join(installed.installedPath, "skills", skill.name.split(":")[1], "SKILL.md"));
+        }
         assert.equal((await readdir(home)).includes(".wld"), false);
         run(["plugin", "remove", "runwield@runwield", "--json"]);
         const removed: PluginListing = JSON.parse(run(["plugin", "list", "--marketplace", marketplace.name, "--json"]));
@@ -433,4 +455,16 @@ test("Codex can install and remove the repository package in an isolated configu
     } finally {
         await rm(temporary, { recursive: true, force: true });
     }
+});
+
+test("Codex guidance suppresses routine compatibility notices including older Core", async () => {
+    const text = await readFile(new URL("./plugin/skills/run/SKILL.md", import.meta.url), "utf8");
+    assert(
+        text.includes(
+            "Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core.",
+        ),
+    );
+    assert(text.includes("`unsupported_host`"));
+    assert(text.includes("`incompatible_adapter`"));
+    assert(text.includes("`unsupported_host_version`"));
 });

@@ -2,7 +2,7 @@ import { seedPlanState, seedPlan } from "../../testing/plan-state-fixture.ts";
 import { rememberNonGitExecutionConsent } from "../../non-git-execution-consent.ts";
 import { withLocalPlanWorkflow } from "../../../plan-store/index.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "../execution-start.ts";
-import { recordPlanEvent } from "../plan-lifecycle.js";
+import { recordPlanEvent } from "../plan-lifecycle.ts";
 import { finalizePlanImplementation } from "../implementation-checkpoint.ts";
 import { runtimeSourceArgs } from "../../../testing/runtime-source-args.ts";
 import { tmpdir } from "node:os";
@@ -17,7 +17,7 @@ import {
     rm as fsRm,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 import { captureForegroundProcess } from "../../captured-process.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists } from "../../../testing/assertions.ts";
@@ -27,7 +27,7 @@ import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { loadPlan } from "../../../plan-store/index.ts";
 
 import { selectedPackage, packageController } from "../../../plan-store/workflows.ts";
-import { setCustomSetting, setExactProjectCustomSetting } from "../../settings.js";
+import { setCustomSetting, setExactProjectCustomSetting } from "../../settings.ts";
 import { parseDiffFiles } from "../review-diff.ts";
 import {
     type HostTurnValidationResult,
@@ -36,7 +36,7 @@ import {
 } from "../validation-host-contract.ts";
 import { continueHostTurnValidation } from "../validation-host-turn.ts";
 import { readDeliveryEvidence } from "../delivery-evidence.ts";
-import { getWorkflowMetricsFilePath } from "../metrics.js";
+import { getWorkflowMetricsFilePath } from "../metrics.ts";
 
 import process from "node:process";
 

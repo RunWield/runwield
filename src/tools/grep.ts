@@ -8,9 +8,9 @@ import { stat as fsStat } from "node:fs/promises";
  */
 
 import { createGrepToolDefinition, type GrepToolDetails, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type, type Static } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
-import { getHomeDir } from "../constants.js";
+import { getHomeDir } from "../constants.ts";
 
 const grepSchema = Type.Object({
     pattern: Type.String({ description: "Search pattern (regex or literal string)." }),

@@ -1,20 +1,20 @@
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { existsSync } from "node:fs";
 import { readFile, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { WORKTREE_REGISTRY_FILE } from "../../constants.js";
+import { WORKTREE_REGISTRY_FILE } from "../../constants.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
 import { assertEquals } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { inspectWorktreeRegistry } from "../worktree-registry.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 
 const fixture = defineCommittedGitFixture({ "sentinel.txt": "original\n" });

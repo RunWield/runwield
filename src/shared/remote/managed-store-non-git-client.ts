@@ -21,7 +21,7 @@ import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../work
 import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import { runValidationAttempt } from "../workflow/validation-supervisor.ts";
 import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
-import { setExactProjectCustomSetting } from "../settings.js";
+import { setExactProjectCustomSetting } from "../settings.ts";
 import { retryWorkRecordForPlan } from "../work-records/auto-generation.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 

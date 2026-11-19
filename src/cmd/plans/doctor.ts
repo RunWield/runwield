@@ -11,12 +11,12 @@ import { confirmMissingManagedProjectDirectory, confirmProjectDirectory } from "
 
 import { parseArgs } from "../../shared/cli-args.ts";
 
-import { CLI_BIN, getCwd } from "../../constants.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
 
 import { inspectProjectRuntimeLayout, resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 
 import { doctorCheckMessage, doctorCleanMessage, doctorNeedsHelpMessage } from "./doctor-messages.ts";
-import { inspectWorktreeRegistryAtPath } from "../../shared/worktree-registry.js";
+import { inspectWorktreeRegistryAtPath } from "../../shared/worktree-registry.ts";
 
 interface IssueGuidance {
     category: string;

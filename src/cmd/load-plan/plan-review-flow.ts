@@ -11,12 +11,12 @@ import { applySequenceReviewDecision, prepareSequenceReview } from "../../plan-s
  * lifecycle, planning, execution, and Slicer handoffs.
  */
 
-import { AGENTS, CLI_BIN } from "../../constants.js";
+import { AGENTS, CLI_BIN } from "../../constants.ts";
 import { type PlanFrontMatter } from "../../plan-store/index.ts";
 import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { decidePostExecution, decidePostPlanning } from "../../shared/workflow/decisions.ts";
-import { isPlanReviewableWithoutReopen, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { isPlanReviewableWithoutReopen, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../../shared/workflow/plan-approval.ts";
@@ -24,9 +24,9 @@ import {
     appendSessionCompleteGuidance,
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
-} from "../../shared/workflow/plan-review-recovery.js";
-import { RuntimeInteractionOutcomes } from "../../shared/session/session-runtime-interactions.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+} from "../../shared/workflow/plan-review-recovery.ts";
+import { RuntimeInteractionOutcomes } from "../../shared/session/session-runtime-interactions.ts";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import { buildReReviewRevisionRequest } from "./plan-presentation.ts";
 import {
     confirmAffectedPathChangesBeforeExecution,

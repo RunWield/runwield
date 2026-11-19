@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 import { runPlansCommand } from "./index.ts";
 import { listPlans } from "../../plan-store/index.ts";
-import { getDeliveryCopyPolicy, getExactProjectCustomSetting } from "../../shared/settings.js";
+import { getDeliveryCopyPolicy, getExactProjectCustomSetting } from "../../shared/settings.ts";
 
 test("public Plan import preserves sources and retries without duplicate packages or implicit copy consent", async () => {
     await withPlanCommandFixture("public-plan-import-", async ({ projectRoot }) => {
@@ -30,7 +30,7 @@ test("public Plan import preserves sources and retries without duplicate package
 for (const answer of ["", "yes", "no", null] as const) {
     test(`folder import records only an actual delivery-copy answer ${JSON.stringify(answer)}`, async () => {
         await withPlanCommandFixture("plan-import-consent-", async ({ projectRoot }) => {
-            const { setExactProjectCustomSetting } = await import("../../shared/settings.js");
+            const { setExactProjectCustomSetting } = await import("../../shared/settings.ts");
             const process = (await import("node:process")).default;
             const tty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
             const originalPrompt = globalThis.prompt;

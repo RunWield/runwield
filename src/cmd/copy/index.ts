@@ -4,8 +4,8 @@ import { copyToClipboard } from "../../shared/clipboard-text.ts";
  * Command to copy the last assistant message to the clipboard.
  */
 
-import { theme } from "../../ui/theme/theme.js";
-import type { CommandContext } from "../registry.js";
+import { theme } from "../../ui/theme/theme.ts";
+import type { CommandContext } from "../registry.ts";
 
 /**
  * Handle the /copy command.

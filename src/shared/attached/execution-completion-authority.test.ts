@@ -5,7 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { loadPlan } from "../../plan-store/index.ts";
-import { findById } from "../worktree-registry.js";
+import { findById } from "../worktree-registry.ts";
 import { spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { completionInput, implementing } from "./execution-test-fixture.ts";
 

@@ -12,8 +12,8 @@ import { startReviewWorkspaceServer } from "../../review-workspace-server.ts";
 import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-format.ts";
 import type { PlanExecutionPolicy, PlanFrontMatter } from "../../plan-store/index.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
-import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.js";
-import type { ReviewDecisionSink } from "../workspace/routes/api/review-handlers.js";
+import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.ts";
+import type { ReviewDecisionSink } from "../workspace/routes/api/review-handlers.ts";
 
 export type ReviewDecisionValue =
     string | number | boolean | null | undefined | ReviewDecisionValue[] | { [key: string]: ReviewDecisionValue };
@@ -296,7 +296,7 @@ function registerReviewSurface<TDecision>(
     };
 }
 
-interface CodeReviewStatus {
+export interface CodeReviewStatus {
     stagedFiles: string[];
     unstagedFiles: string[];
     untrackedFiles: string[];

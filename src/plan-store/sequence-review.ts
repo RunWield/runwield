@@ -23,7 +23,7 @@ import { resolvePlanQuestions, type PlanQuestionAnswer } from "../shared/plan-qu
 import { loadReviewFeedbackImages, type ReviewImageDecision } from "../shared/workflow/review-feedback-images.ts";
 /** A Sequence review is one decision over an ordinary PROJECT and its complete child set. */
 import { join, relative } from "node:path";
-import { updatePlanFrontMatter, writePlanMarkdownWithRevision } from "../plan-store.js";
+import { updatePlanFrontMatter, writePlanMarkdownWithRevision } from "../plan-store.ts";
 import {
     getPlanRevisionForText,
     injectFrontMatter,
@@ -37,12 +37,12 @@ import type { PlanFrontMatter } from "./index.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import { stripRuntimeFields } from "../shared/workflow/controller-state.ts";
 import { isSequencePlan } from "../shared/project-plan.ts";
-import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.js";
+import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { runSequenceReviewTransition } from "./transitions.ts";
 import { reviewSourceStillMatches } from "./review.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 import type { PlanApprovalAction } from "../shared/workflow/plan-approval.ts";
 import type { PlanWrittenEventPayload } from "../shared/workflow/workflow-tool-events.ts";
 

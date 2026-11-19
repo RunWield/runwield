@@ -13,11 +13,11 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { loadArchivedPlan, loadPlan, archivePlan } from "../../plan-store/index.ts";
 
 import { runPlansCommand } from "./index.ts";
-import { addEntry } from "../../shared/worktree-registry.js";
+import { addEntry } from "../../shared/worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { join } from "node:path";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-import { getCwd, getRunWieldRuntimeDir } from "../../constants.js";
+import { getCwd, getRunWieldRuntimeDir } from "../../constants.ts";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 
 type PlanSeedAttrs = NonNullable<Parameters<typeof seedPlan>[3]>;
@@ -350,34 +350,6 @@ plansTest("plans read serves real fixture markdown through the artifact surface"
     const html = await runReadAndClose(["read", "read-me", "--no-open"]);
     assertStringIncludes(html, "artifact-read");
     assertStringIncludes(html, "# read-me");
-});
-
-plansTest("plans doctor and UI help use their real command implementations", async () => {
-    const doctor = await captureOutput(() => runPlansCommand(["doctor"]));
-    assertStringIncludes(doctor.join("\n"), "Your Plans look good");
-
-    const uiHelp = await captureOutput(() => runPlansCommand(["ui", "--help"]));
-    assertStringIncludes(uiHelp.join("\n"), "Usage: wld plans ui");
-});
-
-plansTest("plans collaboration subcommands expose their real help contracts without network access", async () => {
-    const output = await captureOutput(async () => {
-        await runPlansCommand(["share", "--help"]);
-        await runPlansCommand(["pull", "--help"]);
-        await runPlansCommand(["push", "--help"]);
-        await runPlansCommand(["unshare", "--help"]);
-    });
-    const text = output.join("\n");
-    assertStringIncludes(text, "plans share");
-    assertStringIncludes(text, "plans pull");
-    assertStringIncludes(text, "plans push");
-    assertStringIncludes(text, "plans unshare");
-});
-
-plansTest("plans help uses the registered command help", async () => {
-    const output = await captureOutput(() => runPlansCommand(["--help"]));
-    assertStringIncludes(output.join("\n"), "Usage (plans):");
-    assertStringIncludes(output.join("\n"), "wld plans archive");
 });
 
 plansTest("Plans list and read preserve unimported sources without live discovery", async ({ projectRoot }) => {

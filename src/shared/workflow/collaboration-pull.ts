@@ -1,11 +1,11 @@
 import { isEpicPlan } from "../project-plan.ts";
 /** @module shared/workflow/collaboration-pull */
 
-import { AGENTS, CLI_BIN, normalizePlanClassification } from "../../constants.js";
+import { AGENTS, CLI_BIN, normalizePlanClassification } from "../../constants.ts";
 import { redactSecrets } from "../collaboration/capabilities.ts";
 
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
-import type { DecryptedReviewCommentPayload } from "../collaboration/protocol.js";
+import type { DecryptedReviewCommentPayload } from "../collaboration/protocol.ts";
 
 export interface PullReviewComment {
     id: string;

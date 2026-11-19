@@ -3,8 +3,8 @@
  * Routes built-in slash commands, prompt templates, and skill macros.
  */
 
-import type { EditorAPI, TuiAPI, UiAPI } from "./types.js";
-import type { ImageAttachment } from "../../shared/session/types.js";
+import type { EditorAPI, TuiAPI, UiAPI } from "./api.ts";
+import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import type { GenerationGuard } from "./generation-guard.ts";
 import { setTerminalTitleForName } from "./terminal-title.ts";
@@ -80,11 +80,15 @@ export interface SlashContext {
     generationGuard: GenerationGuard;
 }
 
-type CommandRegistry = typeof import("../../cmd/registry.js").commandRegistry;
+type CommandRegistry = typeof import("../../cmd/registry.ts").commandRegistry;
 
 function isNotificationEventName(eventName: string): eventName is NotificationEventName {
-    return eventName === "agentStopped" || eventName === "planWritten" || eventName === "userInterview" ||
-        eventName === "compactionFinished";
+    return (
+        eventName === "agentStopped" ||
+        eventName === "planWritten" ||
+        eventName === "userInterview" ||
+        eventName === "compactionFinished"
+    );
 }
 
 export function isImmediateBuiltinSlashCommandWhileStreaming(userRequest: string): boolean {
@@ -105,7 +109,7 @@ export async function handleSlashCommand(ctx: SlashContext): Promise<boolean> {
     const [rawCommand, ...args] = userRequest.slice(1).split(" ");
     const command = rawCommand.trim();
     const thisGen = ctx.generationGuard.bump();
-    const registryModule = await import("../../cmd/registry.js");
+    const registryModule = await import("../../cmd/registry.ts");
     const builtinCommand = registryModule.getSlashCommandDefinition(command);
 
     if (builtinCommand?.name === "init" && !ctx.initCommandAvailable) {
@@ -188,34 +192,36 @@ async function dispatchBuiltin(
     const projectRoot = ctx.sessionRuntime.getSessionSnapshot?.(ctx.sessionId)?.cwd;
     const tracker = projectRoot
         ? new SlashCommandMetricsTracker({
-            command,
-            alias,
-            kind: "builtin",
-            surface: "tui",
-            projectRoot,
-            sessionId: ctx.sessionId,
-        })
+              command,
+              alias,
+              kind: "builtin",
+              surface: "tui",
+              projectRoot,
+              sessionId: ctx.sessionId,
+          })
         : null;
     const picker = (command === "agent" || command === "model") && args.length === 0;
     await tracker?.recordStart(picker ? "opened" : "start");
     if (!picker) await tracker?.recordDispatched();
     const commandUiAPI: SlashContext["uiAPI"] = picker
         ? {
-            ...ctx.uiAPI,
-            async promptSelect(...selectionArgs) {
-                const selection = await ctx.uiAPI.promptSelect(...selectionArgs);
-                if (selection) await tracker?.recordDispatched();
-                return selection;
-            },
-        }
+              ...ctx.uiAPI,
+              async promptSelect(...selectionArgs) {
+                  const selection = await ctx.uiAPI.promptSelect(...selectionArgs);
+                  if (selection) await tracker?.recordDispatched();
+                  return selection;
+              },
+          }
         : ctx.uiAPI;
     let outcome: "succeeded" | "failed" | "canceled" | "rejected" = "succeeded";
     let errorReason: string | null = null;
     try {
-        const notifyRunWieldEvent = ctx.notifyRunWieldEvent || ((eventName: string, options?: NotificationOptions) => {
-            if (!isNotificationEventName(eventName)) return;
-            return notifyRunWieldEventQuietly(eventName, options);
-        });
+        const notifyRunWieldEvent =
+            ctx.notifyRunWieldEvent ||
+            ((eventName: string, options?: NotificationOptions) => {
+                if (!isNotificationEventName(eventName)) return;
+                return notifyRunWieldEventQuietly(eventName, options);
+            });
         const result = await commandRegistry[command].execute(args, {
             uiAPI: commandUiAPI,
             editor: ctx.editor,

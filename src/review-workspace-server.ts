@@ -3,7 +3,7 @@
  * Composition adapter connecting shared review workflows to the Workspace UI.
  */
 
-import { startReviewWorkspaceServer as startWorkspaceServer } from "./ui/workspace/server.js";
+import { startReviewWorkspaceServer as startWorkspaceServer } from "./ui/workspace/server.ts";
 
 export function startReviewWorkspaceServer(
     options: Parameters<typeof startWorkspaceServer>[0],

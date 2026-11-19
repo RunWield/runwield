@@ -1,7 +1,7 @@
 import process from "node:process";
 import { Key, matchesKey, TuiAltScreen } from "@earendil-works/pi-tui";
-import { initRunWieldTheme } from "../theme/theme.js";
-import { PromptSelectBlock } from "./blocks.js";
+import { initRunWieldTheme } from "../theme/theme.ts";
+import { PromptSelectBlock } from "./blocks.ts";
 import { getTUI, initTUI, stopTUI } from "./tui.ts";
 import {
     ProjectIdentityEntryRequired,

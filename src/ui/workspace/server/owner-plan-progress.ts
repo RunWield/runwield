@@ -1,14 +1,14 @@
 import { hasApplicablePublicationReceipt } from "../../../shared/workflow/publication-receipt.ts";
 import type { PlanReadAvailability } from "../../../plan-store/index.ts";
 import { findPlanById } from "../../../plan-store/index.ts";
-import { findByPlanId, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
+import { findByPlanId, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import {
     isValidationCheckpoint,
     type ValidationCheckpoint,
     validationCheckpointCanResume,
     type ValidationCheckpointPhase,
 } from "../../../shared/workflow/validation-checkpoint.ts";
-import { getRunWieldSessionDir } from "../../../shared/session/root-session.js";
+import { getRunWieldSessionDir } from "../../../shared/session/root-session.ts";
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import { validationStageLabel } from "../../../shared/workflow/validation-progress-presentation.ts";
@@ -45,7 +45,7 @@ type PlanEvidence = {
 type OwnerSession = {
     runwieldSessionId: string;
     projectId: string;
-    displayName?: string;
+    displayName?: string | null;
     transcriptCwd: string;
 };
 type OwnerStore = {
@@ -53,14 +53,14 @@ type OwnerStore = {
     requireEnabledProjectRoot: (projectId: string) => string;
     getSessionById: (runwieldSessionId: string) => OwnerSession | null;
     inspectSessionActivation: (runwieldSessionId: string) => {
-        activation?: { state?: string; ownerProcessKind?: string; activeAgentName?: string };
+        activation?: { state?: string; ownerProcessKind?: string | null; activeAgentName?: string } | null;
         generation?: {
             generation: number;
             byteLength: number;
             terminalEntryId: string | null;
             digestHex: string;
             currentSegmentId: string | null;
-        };
+        } | null;
     };
     listSessionTranscriptSegments: (runwieldSessionId: string) => Array<{
         segmentId: string;

@@ -11,19 +11,19 @@ import {
 import { registerApiProvider, unregisterApiProviders } from "@earendil-works/pi-ai/compat";
 import { assertEquals } from "./assertions.ts";
 import { writeRuntimeExecutableFixture } from "./runtime-executable-fixture.ts";
-import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
 import { getModelRegistry } from "../shared/models/model-registry.ts";
-import { createRootSessionManager } from "../shared/session/root-session.js";
+import { createRootSessionManager } from "../shared/session/root-session.ts";
 import { ClaudeCliExecutionSession } from "../shared/session/backends/claude-cli/execution-session.ts";
 import { AgyCliExecutionSession } from "../shared/session/backends/agy-cli/execution-session.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
 import type { MetricsJournalRow } from "../shared/workflow/metrics-export-record.ts";
 import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
-} from "../ui/workspace/routes/api/review-agent-handlers.js";
-import { createOwnerWorkspaceApp } from "../ui/workspace/server.js";
+} from "../ui/workspace/routes/api/review-agent-handlers.ts";
+import { createOwnerWorkspaceApp } from "../ui/workspace/server.ts";
 import type { OwnerUsageReport } from "../ui/workspace/server/owner-usage.ts";
 
 export const PRIVATE_TEXT = "journey-private-prompt-and-code";
@@ -91,16 +91,47 @@ export async function runJourneyCli(home: string, root: string, backend: "claude
         script,
         `
 const args = process.argv.slice(2);
-if (args.includes("/agents")) {
-    const {readdir} = await import("node:fs/promises");
-    console.log(JSON.stringify({agents: (await readdir(${JSON.stringify(join(home, ".gemini/config/agents"))}, {withFileTypes:true})).filter(e=>e.isDirectory()).map(e=>({name:e.name}))}));
-} else {
-    if (args.includes("--agent")) console.log(JSON.stringify({type:"init",agent:args[args.indexOf("--agent")+1],model:"gemini-3.8-flash-low"}));
-    else {
-        const lines = (await import("node:readline")).createInterface({input:process.stdin});
-        await new Promise(resolve=>lines.once("line",resolve));
-        lines.close();
+if (args[0] === "acp") {
+    if (args.includes("-p") || args.includes("--dangerously-skip-permissions")) throw new Error("unsafe legacy invocation");
+    const lines = (await import("node:readline")).createInterface({ input: (await import("node:process")).stdin });
+    const send = (frame) => console.log(JSON.stringify({ jsonrpc: "2.0", ...frame }));
+    const sessionId = "usage-session";
+    const selected = { mode: "default", model: "gemini-3.8-flash", thought_level: "low" };
+    const config = () => ({ configOptions: Object.entries(selected).map(([id,currentValue]) => ({ id,currentValue })) });
+    const update = (value) => send({ method: "session/update", params: { sessionId, update: value } });
+    for await (const line of lines) {
+        const request = JSON.parse(line);
+        const respond = (result) => send({ id: request.id, result });
+        if (request.method === "initialize") respond({ protocolVersion: 1 });
+        else if (request.method === "session/new") respond({ sessionId, ...config() });
+        else if (request.method === "session/set_config_option") {
+            selected[request.params.configId] = request.params.value;
+            respond(config());
+        } else if (request.method === "session/prompt") {
+            const frames = ${JSON.stringify(vendor)}.trim().split("\\n").map(JSON.parse);
+            const resultFrame = frames.find((frame) => (frame.event || frame.type) === "result");
+            const result = typeof resultFrame.result === "object" ? resultFrame.result : resultFrame;
+            const usage = result.usage || {};
+            update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: result.response || (typeof result.result === "string" ? result.result : "reply") } });
+            for (const frame of frames) {
+                const step = frame.step_update;
+                if (step?.step_type !== "tool") continue;
+                update({ sessionUpdate: "tool_call_update", toolCallId: String(step.step_index), name: step.tool_name || step.tool_info?.name || "read_file", status: step.state === "ACTIVE" ? "in_progress" : step.state === "ERROR" ? "failed" : "completed", rawInput: step.tool_info?.parameters || {} });
+            }
+            // Translate captured legacy measurements into ACP fields without
+            // supplying defaults: missing and measured zero remain distinct.
+            respond({ stopReason: "end_turn", usage: {
+                inputTokens: usage.input_tokens, outputTokens: usage.output_tokens,
+                cachedReadTokens: usage.cache_read_tokens, cachedWriteTokens: usage.cache_write_tokens,
+                thoughtTokens: usage.thinking_tokens,
+            } });
+        } else if (request.method === "session/close") { respond({}); lines.close(); break; }
+        else throw new Error("Unexpected ACP request: " + request.method);
     }
+} else {
+    const lines = (await import("node:readline")).createInterface({input:process.stdin});
+    await new Promise(resolve=>lines.once("line",resolve));
+    lines.close();
     console.log(${JSON.stringify(vendor)});
 }
 `,

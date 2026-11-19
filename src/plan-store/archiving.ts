@@ -3,7 +3,7 @@ import { isChildFeaturePlan, compareChildPlansByOrder } from "../plan-format.ts"
 import { managedPlanStoreActive, archiveManagedPlan, restoreManagedPlan, readManagedArchive } from "./managed.ts";
 import { rmdir } from "node:fs/promises";
 import { relative } from "node:path";
-import { archivePlan, restoreArchivedPlan, loadArchivedPlan, getPlanDocumentRoot } from "../plan-store.js";
+import { archivePlan, restoreArchivedPlan, loadArchivedPlan, getPlanDocumentRoot } from "../plan-store.ts";
 import { loadPlan, listPlans } from "./queries.ts";
 import { runArchiveTransition, type TransitionResult } from "./transitions.ts";
 import { currentPackageProject } from "./workflows.ts";
@@ -100,14 +100,14 @@ export async function archiveEpicPlanFamily(cwd: string, epicName: string, child
 
 export async function archivePlansByStatus(
     cwd: string,
-    status: import("../plan-store.js").PlanFrontMatter["status"],
+    status: import("../plan-store.ts").PlanFrontMatter["status"],
     options: ArchivePlanOptions = {},
-): Promise<import("../plan-store.js").BulkArchivePlansResult> {
+): Promise<import("../plan-store.ts").BulkArchivePlansResult> {
     if (!PLAN_STATUSES.has(status)) {
         throw new Error(`Unknown Plan status for bulk archive: ${status}`);
     }
 
-    if (!managedPlanStoreActive()) await (await import("../shared/worktree-registry.js")).prepareWorktreeRegistry(cwd);
+    if (!managedPlanStoreActive()) await (await import("../shared/worktree-registry.ts")).prepareWorktreeRegistry(cwd);
     const { preparePlanWorkflow } = await import("./preparation.ts");
     for (const plan of await listPlans(cwd)) await preparePlanWorkflow(cwd, plan.name);
     const plans = await listPlans(cwd);
@@ -130,8 +130,8 @@ export async function archivePlansByStatus(
         relativePath: relative(cwd, plan.path).replaceAll("\\", "/"),
     }));
     const now = options.now || new Date().toISOString();
-    const archived: import("../plan-store.js").BulkArchivePlansResult["archived"] = [];
-    const failed: import("../plan-store.js").BulkArchivePlansResult["failed"] = [];
+    const archived: import("../plan-store.ts").BulkArchivePlansResult["archived"] = [];
+    const failed: import("../plan-store.ts").BulkArchivePlansResult["failed"] = [];
 
     for (const parentPlan of matchingParentPlans) {
         try {

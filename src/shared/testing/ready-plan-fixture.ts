@@ -2,7 +2,7 @@ import { seedPlan } from "./plan-state-fixture.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
 
 /** Establish real review and readiness evidence for a fixture's saved proposal. */
 export async function approvePlanForExecution(root: string, name: string): Promise<void> {

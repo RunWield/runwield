@@ -1,6 +1,6 @@
 import { type JsonRpcMessage, type McpTransport, parseJsonRpcMessage, StdioTransport } from "@earendil-works/pi-mcp";
 import { getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { type JsonMap, readPersonalMcpConfig } from "../mcp/config.ts";
 import type { RemoteSettingsConnection } from "./settings-bridge.ts";
 

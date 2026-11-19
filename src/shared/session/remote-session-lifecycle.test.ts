@@ -1,7 +1,7 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { decodeTextStream } from "../../testing/decode-text-stream.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { test } from "node:test";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
@@ -9,7 +9,7 @@ import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { customEntry, makeSessionFixture, within } from "../remote/session-save-test-fixture.ts";
 import { parseRemoteSessionTranscript, sessionDigest } from "../remote/session-protocol.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { dirname, join } from "node:path";
 import { lockPath, manifestPath, writeJsonAtomically, writeTextAtomically } from "./file-session-storage.ts";

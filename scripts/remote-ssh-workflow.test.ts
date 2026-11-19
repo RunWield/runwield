@@ -62,7 +62,7 @@ test("qualification dispatch is opt-in and recovery tag is optional only for qua
         match(mixed.stderr, /does not accept a recovery tag/);
         // Validation script writes metadata.json in cwd, so use the actual release metadata CLI separately.
         const candidate = JSON.parse(
-            execFileSync(process.execPath, ["scripts/release.js", "metadata", "--tag", "v0.0.0-rc.1"], {
+            execFileSync(process.execPath, ["scripts/release.ts", "metadata", "--tag", "v0.0.0-rc.1"], {
                 encoding: "utf8",
             }),
         );
@@ -90,10 +90,8 @@ test("qualification selects github.sha without resolving or recovering a release
                 RELEASE_TAG: "this-tag-must-not-be-fetched",
             },
         });
-        match(
-            await readFile(output, "utf8"),
-            new RegExp(`sha=${sha}\\nbun_version=1\\.4\\.3\\nlegacy_containers=false`),
-        );
+        const bunVersion = execFileSync("git", ["show", `${sha}:.bun-version`], { encoding: "utf8" }).trim();
+        equal(await readFile(output, "utf8"), `sha=${sha}\nbun_version=${bunVersion}\nlegacy_containers=false\n`);
         match(source, /else\s+git fetch --no-recurse-submodules --no-tags origin "refs\/tags\/\$RELEASE_TAG"/);
         equal(step("metadata", "existing").if, "${{ !inputs.qualification_only }}");
         match(workflow.jobs.metadata.outputs!.published, /\|\| 'false'/);

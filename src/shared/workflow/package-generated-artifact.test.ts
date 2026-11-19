@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { strictEqual, deepStrictEqual, rejects } from "node:assert/strict";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { makeValidationProjectRoot } from "./validation-test-helpers.js";
+import { makeValidationProjectRoot } from "./validation-test-helpers.ts";
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
 import {
     assertPackageWorkflowInput,

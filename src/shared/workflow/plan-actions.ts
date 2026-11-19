@@ -9,10 +9,10 @@ import {
     prepareWorktreeRegistry,
     readPlanActionWorktreeEvidence,
     WorktreeRegistryAmbiguityError,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 import { RegisteredPlanDocumentUnavailableError } from "../../plan-store/index.ts";
-import { getPlanLifecycleActionMetadata, recordPlanEvent } from "./plan-lifecycle.js";
-import type { PlanEvent, PlanStatus } from "./plan-lifecycle.js";
+import { getPlanLifecycleActionMetadata, recordPlanEvent } from "./plan-lifecycle.ts";
+import type { PlanEvent, PlanStatus } from "./plan-lifecycle.ts";
 import { PlanningNotStartedError } from "../../plan-store/index.ts";
 
 export type PlanActionName =

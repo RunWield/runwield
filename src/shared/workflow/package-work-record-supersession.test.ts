@@ -87,7 +87,7 @@ test("interrupted declared supersession preserves a later explicit relationship 
         await f.scope(async () => {
             const { writeWorkRecord, replaceWorkRecord, findWorkRecordById } = await import("../work-records/store.ts");
             const { recordAttrs, recordBody } = await import("../work-records/test-fixtures/package-records.ts");
-            const { formatWorkRecordMarkdown } = await import("../work-records/markdown.js");
+            const { formatWorkRecordMarkdown } = await import("../work-records/markdown.ts");
             const later = await writeWorkRecord(f.root, recordAttrs(), recordBody);
             const predecessor = await findWorkRecordById(f.root, predecessorId);
             ok(predecessor);

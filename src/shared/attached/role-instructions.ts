@@ -1,16 +1,16 @@
 /**
  * @module shared/attached/role-instructions
- * Attached Role Instructions: the effective Router, Planner, or implementer prompt Core returns with a
- * pending host action.
+ * Attached Role Instructions: the effective prompt for a pending host action or
+ * an explicit Ideator or Guide conversation.
  *
  * The text is resolved on every response from the project, home, and bundled agent
  * definitions, so a project override applies to the next response with no other step.
- * Nothing here is saved or copied into the host.
+ * Nothing here is saved in a workflow record.
  */
 
 import { getBundledAgentDefsPath } from "../session/agent-assets.ts";
 import { listVisibleSkillCatalog } from "../session/skill-catalog.ts";
-import { loadAgentDef } from "../session/agents.js";
+import { loadAgentDef } from "../session/agents.ts";
 import { buildBridgedToolPromptAppendix } from "../session/bridged-tools/prompt.ts";
 import type { AttachedHostRole } from "./operations.ts";
 import { ATTACHED_HOSTS, type AttachedHostId } from "./hosts.ts";
@@ -54,7 +54,20 @@ const PLANNING_WORKER_ADDENDUM = [
     "- Make no lifecycle calls, commits, merges, pushes or publication actions. The coordinator submits your result and handles the next action. If blocked, return the blocker instead of claiming completion.",
 ].join("\n");
 
+const CONVERSATION_ADDENDUM = [
+    "## Connect conversation — overrides Core-only tool, handoff, and registration instructions above and in loaded document formats",
+    "- Continue the current user request in {{HOST_NAME}}. The host owns all model calls, questions, replies, and conversation resume. This is not a delivery action or a Core Session. Do not call completion or workflow tools for this discussion.",
+    "- Use host-native file, search, web, and delegation tools for equivalent work. Ask questions in plain text. Use available Skills and their exact read paths. Read Work Records as project artifacts when no retrieval tool exists; preserve their status and notices. Keep artifact citations and separate intent from delivered behavior.",
+    "- Use an already available host/MCP Memory or image capability only if it provides the requested function. Otherwise state the relevant limit; do not claim Memory persistence or an image file that was not created. No new bridge is supplied by this entry.",
+    "- Native file tools replace write_docs/edit_docs only for the Guide\'s explicitly requested ordinary Markdown preservation. All Guide write boundaries still apply; read-mostly does not mean universally read-only. These instructions are not a host permission sandbox.",
+    "- Ideator keeps the interview, research, questioning, and requested PRD synthesis rules. Load the current PRD format when asked to synthesize. Report a saved PRD with its path. Do not call artifact_written or claim Core artifact registration, including when a loaded document format requires it. Saving a document does not start planning.",
+    "- Replace Core /agent handoffs with actual Connect entrypoints: {{IDEATOR_ENTRYPOINT}} for Ideator, {{GUIDE_ENTRYPOINT}} for Guide, and {{REQUEST_ENTRYPOINT}} for a new routed planning or implementation request. Other Agent switches have no direct Connect command; explain the limit instead of inventing one.",
+    "- Start planning only after an explicit user request. Submit a new normal Connect request with the agreed task and relevant artifact references, not the host transcript. Retain Router, start_planning, Plan review, and execution gates. Never submit INQUIRY or IDEATION to plan_written, write a Plan as these roles, or start implementation automatically. Do not commit, push, or publish.",
+].join("\n");
+
 const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
+    ideator: CONVERSATION_ADDENDUM,
+    guide: CONVERSATION_ADDENDUM,
     recorder: [
         "## Attached Recorder — overrides Core lifecycle instructions above",
         "- You are a fresh {{HOST_LABEL}} subagent. Read only the canonical Plan, implementation diff and validation evidence. Do not copy the host conversation.",
@@ -73,7 +86,8 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
         "## Attached repair worker — overrides Core lifecycle instructions above",
         "- You are a fresh {{HOST_LABEL}}-hosted repair worker. Use only the handed-off checkout and focused repair packet. Do not repeat the original implementation or create host worktree isolation.",
         "- Never edit, clean, stash, reset, or relocate the invoking checkout. Do not commit, push, merge, or publish.",
-        "- Do not call any RunWield lifecycle tool, CLI, or TUI, including task_completed. Read-only MCP get_instructions, get_artifact, read_plan, work_record_search and work_record_read are allowed. Return a per-item Markdown bullet report to the coordinating conversation; it submits task_completed.message.",
+        "- Do not call any RunWield lifecycle tool, CLI, or TUI, including task_completed. Read-only MCP get_instructions, get_artifact, read_plan, work_record_search, work_record_read, and review_diff are allowed. Use review_diff directly with scope full to inspect the current repair checkout's target-relative diff. Follow nextOffsetBytes through every truncated read before editing; repair reads do not count as reviewer coverage.",
+        "- Use the handed-off workflowId, revision and actionId in each review_diff envelope. Each read returns the next revision; use it for the next call. Return a per-item Markdown bullet report and the latest workflow revision to the coordinating conversation; it submits task_completed.message.",
         "- A blocked item is not completion. Return its identity, blocker, and needed recovery in plain text.",
     ].join("\n"),
     engineer: WORKER_ADDENDUM,
@@ -82,6 +96,8 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
         "- Report Triage with `triage_report`. Put the Core `triage_report` arguments (`routingIntent`, " +
         "`complexity`, `summary`, `workKind`, `sessionName`) in `payload.outcome`.",
     planner: [
+        "- Before Planner dispatch or edits, the coordinator calls start_planning with the current action ID. For an existing Plan, activation or start_planning supplies existingPlan with its planName and planId (and targetBranch when specified). Never infer authority from request prose alone.",
+        "- Fetch your own get_instructions. Require context.planningRequired to be false and use context.planningCwd for source inspection and edits. Read the canonical Plan with read_plan and submit its Markdown with plan_written. An existing Plan also requires matching context.planId, context.planName, and context.planPath. If missing, stop and return the preparation blocker. Do not create worktrees, edit the invoking checkout, or use proxy instructions or temporary Core scripts.",
         "- Before you write the Plan, fetch current instructions with `get_instructions` and show the user the returned `context.projectSetup` paths: `plan_written` " +
             "creates them in the repository. When the list is empty, nothing new is created.",
         "- Submit with `plan_written`. Put `planName`, and optionally `executionAgent` and " +
@@ -103,6 +119,9 @@ function adaptHostText(text: string, hostId: AttachedHostId): string {
         .replaceAll("{{HOST_LABEL}}", host.agentLabel)
         .replaceAll("{{IMPLEMENT_ENTRYPOINT}}", host.implementEntrypoint)
         .replaceAll("{{REVIEW_ENTRYPOINT}}", host.reviewEntrypoint)
+        .replaceAll("{{REQUEST_ENTRYPOINT}}", host.requestEntrypoint)
+        .replaceAll("{{IDEATOR_ENTRYPOINT}}", host.ideatorEntrypoint)
+        .replaceAll("{{GUIDE_ENTRYPOINT}}", host.guideEntrypoint)
         .replaceAll(
             "{{READ_TOOL}}",
             hostId === "codex" ? "Codex's file-reading or shell tools" : "Claude Code's Read tool",
@@ -135,7 +154,11 @@ export async function resolveAttachedRoleInstructions(
             agent.rolePrompt.replaceAll("{{BUNDLED_AGENT_DEFS_DIR}}", bundledAgentDefsPath),
             buildBridgedToolPromptAppendix([], ATTACHED_HOSTS[hostId].displayName, agent.tools).trim(),
             ...(skillsSection ? [skillsSection] : []),
-            ...(role === "engineer" || role === "frontend-engineer" || role === "reviewer-feedback-engineer"
+            ...(role === "ideator" ||
+            role === "guide" ||
+            role === "engineer" ||
+            role === "frontend-engineer" ||
+            role === "reviewer-feedback-engineer"
                 ? []
                 : [ENVELOPE_ADDENDUM]),
             DOCUMENT_ACCESS,

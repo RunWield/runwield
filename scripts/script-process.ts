@@ -21,6 +21,10 @@ export interface ScriptProcessOutput {
     stdout: Uint8Array;
     stderr: Uint8Array;
 }
+export interface ScriptProcessTextOutput extends Pick<ScriptProcessOutput, "success" | "code"> {
+    stdout: string;
+    stderr: string;
+}
 function stdio(value: "null" | "inherit" | "piped") {
     return value === "null" ? "ignore" : value === "piped" ? "pipe" : "inherit";
 }

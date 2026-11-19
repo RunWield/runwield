@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 
 import { archivePlan, listPlans } from "../../plan-store/index.ts";
-import { listEntries, refreshPlanningWorktreeBase, updateEntry } from "../worktree-registry.js";
+import { listEntries, refreshPlanningWorktreeBase, updateEntry } from "../worktree-registry.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { inspectPlanFixtureView } from "../testing/plan-state-fixture.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";

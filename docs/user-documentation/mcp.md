@@ -102,3 +102,14 @@ warnings, but server tool results, resources, and logs can contain secrets. Forw
 
 MCP tools don't say reliably whether they only read data or also change it, so treat every configured server as able to
 change things.
+
+## Composing calls with codemode
+
+Pi-backed root Agents can call their authorized MCP tools from [codemode](customization.md#codemode), as well as directly.
+Use `ALL_TOOLS` or `searchTools()` to discover the current names. MCP results retain `content`, `structuredContent`, and
+`isError`; check error flags before using structured values. Tool additions, withdrawal, and root Agent replacement
+share the same Session-owned connection. Delegated and isolated Agents receive no root MCP connections.
+
+Pi 1.5 validates MCP JSON schemas with coercion: a numeric string can become a number, and a scalar can become a
+single-element array when required by the schema. Invalid values and missing required fields fail before invocation.
+The same validation applies to direct calls and script calls.

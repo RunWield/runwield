@@ -3,7 +3,7 @@ import { equal, ok, rejects } from "node:assert/strict";
 import { rename, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { admitProjectIdentity } from "../project-identity.ts";
 import { git } from "../git-test-fixture.ts";
 import { composedRemoteFixture } from "./composed-store-fixture.ts";

@@ -35,7 +35,7 @@ one updated Session. Long history, previous workflow context, and an idle open s
 While work runs, the phone can steer it, answer its questions, queue a follow-up, or stop it.
 
 Product intent: [Workspace PRD](../../prd/runwield-workspace-prd.md). Architecture:
-[ADR-015](../../adr/015-file-authoritative-session-bundles.md).
+[ADR-014](../../adr/014-file-authoritative-session-bundles.md).
 
 ## Resolved Gaps
 

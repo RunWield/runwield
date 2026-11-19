@@ -3,7 +3,7 @@ import { ok as assert } from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals } from "../../testing/assertions.ts";
-import { git } from "../workflow/validation-test-helpers.js";
+import { git } from "../workflow/validation-test-helpers.ts";
 import { assertRemoteStorageAbsent, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 import {
     ciRuns,

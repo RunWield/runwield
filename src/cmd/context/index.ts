@@ -3,9 +3,9 @@
  * TUI command to inspect active Agent Session context-window usage.
  */
 
-import { theme } from "../../ui/theme/theme.js";
-import { getHomeDir } from "../../constants.js";
-import type { CommandContext } from "../registry.js";
+import { theme } from "../../ui/theme/theme.ts";
+import { getHomeDir } from "../../constants.ts";
+import type { CommandContext } from "../registry.ts";
 import type { ContextProjectionItem, SessionContextReport } from "../../shared/session/session-context-report.ts";
 
 const SOURCE_ORDER = ["local", "home", "bundled", "external", "mnemoteca", "runtime", "agent"];
@@ -38,11 +38,12 @@ export function renderUsageBar(percent: number | null | undefined, width = 24): 
 export function formatContextReport(report: SessionContextReport): string {
     const lines = [];
     const model = [report.provider, report.model].filter(Boolean).join("/") || "model unavailable";
-    const usageLabel = report.usageState === "last_known"
-        ? "last known"
-        : report.usageState === "unknown_after_compaction"
-        ? "unknown after compaction"
-        : "estimated";
+    const usageLabel =
+        report.usageState === "last_known"
+            ? "last known"
+            : report.usageState === "unknown_after_compaction"
+              ? "unknown after compaction"
+              : "estimated";
 
     lines.push(theme.bold("Context Usage"));
     lines.push(
@@ -51,9 +52,9 @@ export function formatContextReport(report: SessionContextReport): string {
     lines.push(`${theme.fg("dim", "Model:")} ${model}`);
     lines.push(`${theme.fg("dim", "Usage:")} ${renderUsageBar(report.percent)}`);
     lines.push(
-        `${theme.fg("dim", "Tokens:")} ${formatContextTokens(report.usedTokens)}/${
-            formatContextTokens(report.contextWindow)
-        } (${usageLabel})`,
+        `${theme.fg("dim", "Tokens:")} ${formatContextTokens(report.usedTokens)}/${formatContextTokens(
+            report.contextWindow,
+        )} (${usageLabel})`,
     );
     lines.push(`${theme.fg("dim", "Free space:")} ${formatContextTokens(report.freeTokens)}`);
     lines.push("");

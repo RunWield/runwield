@@ -1,10 +1,6 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import {
-    buildSessionContextReport,
-    createSessionContextProjection,
-    estimateContextTextTokens,
-} from "./session-context-report.ts";
+import { buildSessionContextReport, createSessionContextProjection } from "./session-context-report.ts";
 
 function makeProjection() {
     return createSessionContextProjection([
@@ -13,11 +9,6 @@ function makeProjection() {
         { id: "instruction_files", label: "Instruction files", tokens: 5, items: [] },
     ]);
 }
-
-test("estimateContextTextTokens follows chars over four convention", () => {
-    assertEquals(estimateContextTextTokens("12345"), 2);
-    assertEquals(estimateContextTextTokens(""), 0);
-});
 
 test("buildSessionContextReport uses local estimates before provider usage exists", () => {
     const report = buildSessionContextReport({

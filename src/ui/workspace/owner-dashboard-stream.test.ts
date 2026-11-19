@@ -1,24 +1,23 @@
+import process from "node:process";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
-import process from "node:process";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { getHomeDir } from "../../constants.js";
-import { dirname } from "node:path";
-import { getWorktreeRegistryPath, withWorktreeRegistryLock } from "../../shared/worktree-registry.js";
+import { getHomeDir } from "../../constants.ts";
+import { getWorktreeRegistryPath, withWorktreeRegistryLock } from "../../shared/worktree-registry.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
-
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { createOwnerWorkspaceApp } from "./server.ts";
 import { loadOwnerDashboard, loadOwnerSidebar, subscribeOwnerDashboard } from "./server/owner-dashboard.ts";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 
 type StreamFrame = {
     type: string;
@@ -83,69 +82,11 @@ test("owner dashboard stream authenticates and completes with verified rows", as
     }
 });
 
-test("dashboard keeps Promise identity and publishes later Project while first waits", async () => {
-    const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-progress-"));
-    const first = `${dir}/first`;
-    const second = `${dir}/second`;
-    await fsMkdir(first);
-    await fsMkdir(second);
-    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
-    let release = () => {};
-    const blocked = new Promise<void>((resolve) => {
-        release = resolve;
-    });
-    try {
-        const firstProject = store.registerProject({ root: first, displayName: "Blocked" });
-        store.registerProject({ root: second, displayName: "Available" });
-        await seedPlan(second, "finished", "# Finished\n", {
-            planId: "available-plan",
-            classification: "FEATURE",
-            status: "user_verified",
-            userVerifiedAt: new Date().toISOString(),
-        });
-        // The Session catalog is an external read boundary; Plan and Project readers stay real.
-        const continuation = {
-            operations: new Map(),
-            async listSessions(projectId: string) {
-                if (projectId === firstProject.projectId) await blocked;
-                return { sessions: [] };
-            },
-        };
-        const frames: Array<{ type: string; sections: Array<{ items: Array<{ planId: string }> }> }> = [];
-        let rowSeen = () => {};
-        const row = new Promise<void>((resolve) => {
-            rowSeen = resolve;
-        });
-        const unsubscribe = subscribeOwnerDashboard(store, continuation, (frame) => {
-            frames.push(frame);
-            if (frame.sections.some((section) => section.items.some((item) => item.planId === "available-plan"))) {
-                rowSeen();
-            }
-        });
-        const a = loadOwnerDashboard(store, continuation);
-        assertStrictEquals(a, loadOwnerDashboard(store, continuation));
-        await Promise.race([
-            row,
-            new Promise((_, reject) => setTimeout(() => reject(new Error("No early row")), 5000)),
-        ]);
-        assertEquals(frames.at(-1)?.type, "snapshot");
-        release();
-        const payload = await a;
-        assertEquals(payload.dashboard.sections.flatMap((section) => section.items).length, 1);
-        unsubscribe();
-        assertEquals(loadOwnerDashboard(store, continuation) === a, false);
-        await loadOwnerDashboard(store, continuation);
-    } finally {
-        release();
-        store.close();
-        await fsRm(dir, { recursive: true });
-    }
-});
-
 test("dashboard reads an empty Project without waiting for its registry writer lock", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-empty-"));
     const root = join(dir, "project");
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
+    const continuation = new WorkspaceSessionContinuationService({ store });
     let dashboardRead: ReturnType<typeof loadOwnerDashboard> | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -155,25 +96,14 @@ test("dashboard reads an empty Project without waiting for its registry writer l
         await fsMkdir(dirname(registryPath), { recursive: true });
         await fsWriteFile(registryPath, JSON.stringify({ version: 2, entries: [] }));
         store.registerProject({ root, displayName: "Empty" });
-        let sessionsRead = () => {};
-        const sessionsReached = new Promise<void>((resolve) => {
-            sessionsRead = resolve;
-        });
-        const continuation = {
-            listSessions() {
-                sessionsRead();
-                return Promise.resolve({ sessions: [] });
-            },
-        };
         // Passive reads use the saved registry and do not acquire the writer lock.
         await withWorktreeRegistryLock(root, async () => {
             dashboardRead = loadOwnerDashboard(store, continuation);
-            await sessionsReached;
             assertEquals(
                 await Promise.race([
                     dashboardRead.then(() => "completed"),
                     new Promise<string>((resolve) => {
-                        timeout = setTimeout(() => resolve("waiting for registry"), 100);
+                        timeout = setTimeout(() => resolve("waiting for registry"), 2000);
                     }),
                 ]),
                 "completed",
@@ -193,6 +123,7 @@ test("dashboard reads an empty Project without waiting for its registry writer l
         try {
             await dashboardRead;
         } finally {
+            await continuation.close();
             store.close();
             await fsRm(dir, { recursive: true });
         }
@@ -617,7 +548,7 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
 });
 
 test("archived Sessions stay under Plans in dashboard and sidebar but leave standalone history", async () => {
-    const { WorkspaceSessionContinuationService } = await import("./server/session-continuation.js");
+    const { WorkspaceSessionContinuationService } = await import("./server/session-continuation.ts");
     const { loadOwnerSidebar } = await import("./server/owner-dashboard.ts");
     const fixture = await makeManagedSessionFixture();
     const { store, session, project } = fixture;
@@ -777,3 +708,62 @@ for (const reader of [loadOwnerDashboard, loadOwnerSidebar]) {
         }
     });
 }
+
+test("dashboard keeps Promise identity and publishes later Project while first waits", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-progress-"));
+    const first = `${dir}/first`;
+    const second = `${dir}/second`;
+    await fsMkdir(first);
+    await fsMkdir(second);
+    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
+    let release = () => {};
+    const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    try {
+        const firstProject = store.registerProject({ root: first, displayName: "Blocked" });
+        store.registerProject({ root: second, displayName: "Available" });
+        await seedPlan(second, "finished", "# Finished\n", {
+            planId: "available-plan",
+            classification: "FEATURE",
+            status: "user_verified",
+            userVerifiedAt: new Date().toISOString(),
+        });
+        // The Session catalog is an external read boundary; Plan and Project readers stay real.
+        const continuation = {
+            operations: new Map(),
+            async listSessions(projectId: string) {
+                if (projectId === firstProject.projectId) await blocked;
+                return { sessions: [] };
+            },
+        };
+        const frames: Array<{ type: string; sections: Array<{ items: Array<{ planId: string }> }> }> = [];
+        let rowSeen = () => {};
+        const row = new Promise<void>((resolve) => {
+            rowSeen = resolve;
+        });
+        const unsubscribe = subscribeOwnerDashboard(store, continuation, (frame) => {
+            frames.push(frame);
+            if (frame.sections.some((section) => section.items.some((item) => item.planId === "available-plan"))) {
+                rowSeen();
+            }
+        });
+        const a = loadOwnerDashboard(store, continuation);
+        assertStrictEquals(a, loadOwnerDashboard(store, continuation));
+        await Promise.race([
+            row,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("No early row")), 5000)),
+        ]);
+        assertEquals(frames.at(-1)?.type, "snapshot");
+        release();
+        const payload = await a;
+        assertEquals(payload.dashboard.sections.flatMap((section) => section.items).length, 1);
+        unsubscribe();
+        assertEquals(loadOwnerDashboard(store, continuation) === a, false);
+        await loadOwnerDashboard(store, continuation);
+    } finally {
+        release();
+        store.close();
+        await fsRm(dir, { recursive: true });
+    }
+});

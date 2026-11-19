@@ -9,11 +9,11 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 
 import { archivePlan, loadPlan } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
-import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
+import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
+import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.ts";
 import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import { listTransitionRecoveryRecords } from "../../plan-store/index.ts";
-import { findById, listEntries, updateEntry } from "../worktree-registry.js";
+import { findById, listEntries, updateEntry } from "../worktree-registry.ts";
 import {
     EVIDENCE,
     reachPlanning,

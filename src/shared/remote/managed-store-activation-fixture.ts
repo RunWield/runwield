@@ -1,13 +1,13 @@
-import { createRemoteWorkspaceApp } from "../../ui/workspace/server.js";
+import { createRemoteWorkspaceApp } from "../../ui/workspace/server.ts";
 import { serveHttp } from "../http-server.ts";
-import { parseWorkRecordMarkdown } from "../work-records/markdown.js";
+import { parseWorkRecordMarkdown } from "../work-records/markdown.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { equal, ok, deepEqual, rejects } from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, chmod, readdir, stat, readFile, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { startRemoteControlService } from "./control.ts";

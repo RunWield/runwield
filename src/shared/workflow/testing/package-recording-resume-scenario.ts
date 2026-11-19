@@ -7,7 +7,7 @@ import { readPlanPackagePublication } from "../../../plan-store/packages.ts";
 import { listWorkRecords } from "../../work-records/store.ts";
 import { withWorkRecordOwner } from "../../work-records/owner.ts";
 import { git } from "../../git-test-fixture.ts";
-import { setExactProjectCustomSetting } from "../../settings.js";
+import { setExactProjectCustomSetting } from "../../settings.ts";
 
 export async function assertRecordingResumes(boundary: string) {
     const f = await recordingFixture();

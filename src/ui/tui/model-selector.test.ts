@@ -2,8 +2,9 @@ import { test } from "node:test";
 import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Editor, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { getModelRegistry } from "../../shared/models/model-registry.ts";
-import { getEditorTheme, initRunWieldTheme } from "../theme/theme.js";
+import { getModelRegistry, RunWieldModelRegistry } from "../../shared/models/model-registry.ts";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { getEditorTheme, initRunWieldTheme } from "../theme/theme.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 import { RunWieldModelSelectorComponent } from "./model-selector.ts";
 
@@ -55,7 +56,6 @@ test("^TUI model selector exposes Pi, Claude CLI, and Agy CLI models without API
 
             const initialScreen = selector.render(120).join("\n");
             assertStringIncludes(initialScreen, "runtime-command-fixture/fixture-model");
-            assertStringIncludes(initialScreen, "claude-cli/sonnet");
             assertStringIncludes(initialScreen, "Claude CLI");
             assertStringIncludes(initialScreen, "agy-cli/gemini-3.8-flash");
             assertStringIncludes(initialScreen, "agy-cli/gemini-3.1-pro");
@@ -63,6 +63,12 @@ test("^TUI model selector exposes Pi, Claude CLI, and Agy CLI models without API
             assertStringIncludes(initialScreen, "Use /login for API providers");
             assertStringIncludes(initialScreen, "External CLI choices require their CLI installed and signed in");
             assertStringIncludes(initialScreen, "current");
+            assertStringIncludes(initialScreen, "agy-cli/gemini-4-neon");
+
+            // Sonnet is beyond the first page of the expanded model catalog.
+            selector.handleInput("\x1b[A");
+            selector.handleInput("\x1b[A");
+            assertStringIncludes(selector.render(120).join("\n"), "claude-cli/sonnet");
 
             selector.handleInput("flash");
             const filteredScreen = selector.render(120).join("\n");
@@ -106,3 +112,120 @@ test("TUI model selector cancellation leaves selection callbacks untouched", asy
         }
     });
 });
+
+for (const [outcome, action] of [
+    ["success", "row"],
+    ["failure", "row"],
+    ["timeout", "row"],
+    ["success", "shortcut"],
+    ["success", "empty-row"],
+] as const) {
+    test(
+        `TUI catalog refresh via ${action} bypasses a fresh cache and handles ${outcome}`,
+        { timeout: 25_000 },
+        async () => {
+            await withRuntimeCommandFixture(`model-selector-refresh-${outcome}-`, async ({ homeDir }) => {
+                let latest = false;
+                let serverRequests = 0;
+                const server = Bun.serve({
+                    hostname: "127.0.0.1",
+                    port: 0,
+                    fetch(request) {
+                        serverRequests += 1;
+                        const provider = new URL(request.url).pathname.split("/").at(-1);
+                        if (provider !== "openai") return Response.json([]);
+                        if (latest && outcome === "failure")
+                            return new Response("Catalog unavailable", { status: 401 });
+                        if (latest && outcome === "timeout") return new Promise<Response>(() => {});
+                        return Response.json(
+                            [
+                                {
+                                    id: latest ? "new-catalog-model" : "cached-catalog-model",
+                                    name: "Catalog fixture",
+                                    api: "openai-responses",
+                                    provider: "openai",
+                                    baseUrl: "https://api.openai.com/v1",
+                                    reasoning: false,
+                                    input: ["text"],
+                                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                                    contextWindow: 128000,
+                                    maxTokens: 4096,
+                                },
+                            ],
+                            { headers: { "last-modified": "Fri, 01 Jan 2100 00:00:00 GMT" } },
+                        );
+                    },
+                });
+                const { tui, terminal, container, editor } = makeTui();
+                try {
+                    const runtime = await ModelRuntime.create({
+                        authPath: `${homeDir}/catalog-auth.json`,
+                        modelsPath: null,
+                        modelsStorePath: `${homeDir}/catalog-store.json`,
+                        catalogBaseUrl: server.url.origin,
+                    });
+                    await runtime.setRuntimeApiKey("openai", "fixture-key");
+                    await runtime.refresh({ providers: ["openai"], allowNetwork: true, force: true });
+                    latest = true;
+                    serverRequests = 0;
+                    const registry = new RunWieldModelRegistry({ runtime, configDir: homeDir });
+                    const selected: string[] = [];
+                    const search = action === "empty-row" ? "new-catalog-model" : "catalog-model";
+                    const selector = new RunWieldModelSelectorComponent({
+                        tui,
+                        modelRegistry: registry,
+                        initialSearchInput: search,
+                        onSelect: (model) => {
+                            selected.push(model.id);
+                        },
+                        onCancel: () => {},
+                    });
+                    container.children.splice(container.children.indexOf(editor), 1, selector);
+                    tui.setFocus(selector);
+                    tui.start();
+                    const screen = () => selector.render(120).join("\n");
+                    const waitFor = async (message: string) => {
+                        for (let attempt = 0; attempt < 2000 && !screen().includes(message); attempt++) {
+                            await new Promise((resolve) => setTimeout(resolve, 10));
+                        }
+                        assertStringIncludes(screen(), message);
+                    };
+                    assertEquals(screen().includes("Refreshing Pi model catalogs…"), false);
+                    assertEquals(screen().includes("Pi model catalogs refreshed."), false);
+                    assertStringIncludes(
+                        screen(),
+                        action === "empty-row" ? "No matching models" : "cached-catalog-model",
+                    );
+                    assertEquals(serverRequests, 0);
+                    assertEquals(screen().includes("openai/new-catalog-model"), false);
+                    assertStringIncludes(screen(), "Refresh catalog");
+                    if (action !== "shortcut") {
+                        terminal.input("\x1b[A");
+                        assertStringIncludes(screen(), "→ Refresh catalog");
+                        terminal.input("\r");
+                        assertEquals(selected, []);
+                    } else {
+                        terminal.input("\x12");
+                    }
+                    assertStringIncludes(screen(), "Refreshing Pi model catalogs…");
+                    if (outcome === "success") {
+                        await waitFor("openai/new-catalog-model");
+                        assertStringIncludes(screen(), "Pi model catalogs refreshed.");
+                    } else {
+                        await waitFor("Could not refresh model catalogs; showing cached models.");
+                        assertStringIncludes(screen(), "cached-catalog-model");
+                        assertEquals(screen().includes("Pi model catalogs refreshed."), false);
+                        assertStringIncludes(screen(), outcome === "timeout" ? "timed out" : "openai:");
+                    }
+                    assertEquals(selector.getSearchInput().getValue(), search);
+                    if (action !== "shortcut") terminal.input("\x1b[B");
+                    terminal.input("\r");
+                    assertEquals(selected, [outcome === "success" ? "new-catalog-model" : "cached-catalog-model"]);
+                } finally {
+                    tui.stop();
+                    await server.stop(true);
+                }
+            });
+        },
+    );
+}

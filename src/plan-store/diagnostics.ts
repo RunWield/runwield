@@ -5,7 +5,7 @@ import { listPlans } from "./index.ts";
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 /** Read-only identity evidence for repairing a registry that cannot route normal reads. */
 import { join } from "node:path";
-import { getPlansDir } from "../plan-store.js";
+import { getPlansDir } from "../plan-store.ts";
 import { type PlanFrontMatter } from "./index.ts";
 import { parsePlanFrontMatter } from "../plan-format.ts";
 import { isEpicArtifactPlanName } from "../plan-format.ts";

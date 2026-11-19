@@ -13,10 +13,10 @@ import { seedPlanState } from "../testing/plan-state-fixture.ts";
 import { type PlanFrontMatterInput } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { presentEpicChildPlan, resolveEpicContinuation } from "./epic-continuation.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 
-import type { HostedSession } from "../session/hosted-session.js";
-import type { RuntimeSystemStatusEvent } from "../session/session-runtime-events.js";
+import type { HostedSession } from "../session/hosted-session.ts";
+import type { RuntimeSystemStatusEvent } from "../session/session-runtime-events.ts";
 
 type CapturedStatusEvent = Pick<RuntimeSystemStatusEvent, "type" | "message" | "header" | "level">;
 type CapturedStatusSession = Pick<HostedSession, "cwd" | "getEventSink">;

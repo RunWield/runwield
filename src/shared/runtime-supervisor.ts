@@ -33,7 +33,7 @@ export async function superviseRuntime(command: string, args: string[]): Promise
     });
     child.stderr?.pipe(process.stderr, { end: false });
     const signals: NodeJS.Signals[] =
-        process.platform === "win32" ? ["SIGINT", "SIGTERM"] : ["SIGINT", "SIGTERM", "SIGHUP"];
+        process.platform === "win32" ? ["SIGINT", "SIGTERM"] : ["SIGINT", "SIGTERM", "SIGHUP", "SIGWINCH"];
     const forward = (signal: NodeJS.Signals) => {
         try {
             child.kill(signal);

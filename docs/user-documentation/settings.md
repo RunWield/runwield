@@ -190,19 +190,27 @@ Type: object.
 
 Defines named groups of agent overrides. RunWield includes these presets without requiring a `modelPresets` setting:
 
-| Preset         | Model assignments                                                                                              | Required access                |
-| -------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `codex`        | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GPT-6 Astra for planning/review                     | Codex account                  |
-| `agy`          | Gemini 3.8 Flash for execution; Gemini 3.1 Pro for Router, Slicer, planning/review                             | Antigravity CLI sign-in        |
-| `opencode`     | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GLM 5.3 for Slicer/planning; GPT-6 Astra for review | OpenCode Zen API key           |
-| `claude-mixed` | Sonnet for Router/execution; Opus for planning/review                                                          | Claude Code sign-in            |
-| `claude-opus`  | Opus for every Agent, including Router                                                                         | Claude Code sign-in            |
-| `codex-claude` | Codex Luna/Sol for Router/execution; Claude Opus for planning/review                                           | Codex and Claude Code accounts |
+| Preset         | Model assignments                                                                                              | Required access                                          |
+| -------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `codex`        | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GPT-6 Astra for planning/review                     | Codex account                                            |
+| `agy`          | Gemini 4 Neon for most Agents; Hydrogen for Operator; Argon for planning/review                                | Antigravity sign-in with Neon, Hydrogen and Argon access |
+| `opencode`     | GPT-6 Luna for Router/Operator; GPT-6.1 Sol for execution; GLM 5.3 for Slicer/planning; GPT-6 Astra for review | OpenCode Zen API key                                     |
+| `claude-mixed` | Sonnet for Router/execution; Opus for planning/review                                                          | Claude Code sign-in                                      |
+| `claude-opus`  | Opus for every Agent, including Router                                                                         | Claude Code sign-in                                      |
+| `codex-claude` | Codex Luna/Sol for Router/execution; Claude Opus for planning/review                                           | Codex and Claude Code accounts                           |
 
 Planning means Ideator, Planner, and Architect; review means Reviewer. Execution includes Guide, Engineer, Frontend
-Engineer, and Init. Slicer uses Sol in the Codex presets and Sonnet in `claude-mixed`. Operator uses Flash in `agy`,
+Engineer, and Init. Slicer uses Sol in the Codex presets and Sonnet in `claude-mixed`. Operator uses Hydrogen in `agy`,
 Sonnet in `claude-mixed`, and Opus in `claude-opus`. Validation Repair Engineer inherits Engineer's model and thinking
 level unless separately configured.
+
+The bundled `agy` preset uses Neon for Router, Slicer, Guide, Engineer, Frontend Engineer, and Init; Hydrogen for
+Operator; and Argon for Architect, Planner, Ideator, and Reviewer. Thinking levels stay unchanged: Router, Operator,
+and Reviewer use medium; all other Agents use high. The preset needs Neon, Hydrogen, and Argon access. Neon requires
+Google AI Ultra, paid Google AI Pro, Gemini Enterprise, or `GEMINI_API_KEY` sign-in; Free and Plus plans do not include
+it. RunWield reports access failures and does not fall back. Select an available model or a personal preset. Saved Pro
+selections and personal or project presets stay unchanged. See [Antigravity CLI](providers.md#antigravity-cli) for all
+six families and effort mapping.
 
 Select a preset in `/settings` → **Model Presets**, or set `activeModelPreset` to its name. Nothing is activated
 automatically. Configure the listed provider access before using its models; selecting a preset does not sign you in.
@@ -369,7 +377,7 @@ Supported providers:
 | OpenRouter      | `openrouter/<image model>` | OpenRouter credentials through `/login`       |
 | OpenCode        | `opencode/<model>`         | OpenCode credentials through `/login`         |
 | Codex           | `codex-cli/<model>`        | Codex CLI signed in with your ChatGPT account |
-| Antigravity CLI | `agy-cli/<model>`          | `agy` installed and signed in to Antigravity  |
+| Antigravity CLI | `agy-cli/<model>`          | Antigravity CLI with ACP support and sign-in  |
 
 See [Login commands](providers.md#login-commands) for `/login`.
 
@@ -431,15 +439,17 @@ an accepted alias for `codex-cli/<model>`.
 ```jsonc
 {
     "imageGeneration": {
-        "model": "agy-cli/gemini-3.8-flash",
-        "thinkingLevel": "medium",
+        "model": "agy-cli/gemini-4-argon",
+        "thinkingLevel": "low",
     },
 }
 ```
 
-Install `agy` and sign in to Antigravity. Supported models are `agy-cli/gemini-3.8-flash` and `agy-cli/gemini-3.1-pro`.
-`thinkingLevel` maps to Antigravity effort as in the [Antigravity CLI](providers.md#antigravity-cli) table.
-`temperature` is not supported. Antigravity picks the image model itself.
+This uses a separate Antigravity ACP session. Choose a supervising model from the
+[Antigravity CLI families](providers.md#antigravity-cli). Antigravity chooses the image model. Image access depends on
+your CLI version and account; a listed chat model does not guarantee a generated image. `thinkingLevel` uses the
+same effort mapping as chat. `temperature` is not supported. If generation fails, RunWield reports the failure
+without switching providers or falling back to print mode.
 
 #### Where to set it
 
@@ -1195,3 +1205,22 @@ RunWield and Pi migrate a few older key shapes while loading settings:
 - `websockets: true` becomes `transport: "websocket"`; `websockets: false` becomes `transport: "sse"`.
 - Old object-shaped `skills` settings become `enableSkillCommands` and/or a `skills` path array.
 - `retry.maxDelayMs` becomes `retry.provider.maxRetryDelayMs` when the provider field is not already set.
+
+## codemode
+
+Pi-backed Agents read `codemode` through the usual RunWield settings files; project fields override global fields.
+There is no separate codemode `.pi` configuration. Availability is controlled by the Agent's tool list, as described
+under [customization](customization.md#codemode).
+
+```jsonc
+{
+    "codemode": {
+        "mode": "on",
+        "inlineBudget": 3000,
+    },
+}
+```
+
+`mode: "on"` keeps ordinary tool declarations alongside codemode. `"only"` presents callable tools through codemode,
+while workflow decisions remain directly declared. `inlineBudget` is the nonnegative estimated-token budget for inline
+tool declarations; `0` relies on script discovery. Neither setting expands tool authority.

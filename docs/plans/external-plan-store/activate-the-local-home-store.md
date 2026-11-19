@@ -16,7 +16,7 @@ affectedPaths:
     - "src/shared/work-records/owner.ts"
     - "src/cmd/wr/"
     - "src/shared/attached/"
-    - "docs/adr/0020-home-project-state-and-launch-mode-ownership.md"
+    - "docs/adr/019-home-project-state-and-launch-mode-ownership.md"
     - "docs/domain-language.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/user-documentation/"
@@ -132,7 +132,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/attached/`, `src/acp/`, `src/ui/workspace/` and `src/ui/review/` — connect normal public entry to child 9's
   resource/revision contracts, preserving independent request authorization
 - settings and command-help owners — persist the one-time folder-import answer and separate delivery-copy settings
-- `docs/adr/0020-home-project-state-and-launch-mode-ownership.md` and affected ADR-004/015/016/017/018 clauses — reconcile
+- `docs/adr/019-home-project-state-and-launch-mode-ownership.md` and affected ADR-004/015/016/017/018 clauses — reconcile
   accepted local ownership while leaving managed-remote proposals explicitly separate
 - `docs/domain-language.md` — Plan, Plan Metadata, Epic Artifact and external adoption definitions
 - `docs/prd/runwield-core-prd.md` — same-change authoring/lifecycle/initialization requirements

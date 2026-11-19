@@ -31,10 +31,10 @@ import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
 import { join } from "node:path";
 import { canonicalizeStoredPlanName, isChildFeaturePlan, isProjectPlan, parsePlanFrontMatter } from "../plan-format.ts";
 import { loadPlan } from "./index.ts";
-import { savePlan } from "../plan-store.js";
+import { savePlan } from "../plan-store.ts";
 import { findRecordingControllerByName, inspectControllerView, writeControllerState } from "./controllers.ts";
 import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
-import { attachEpicChildren, buildActiveWorkRecordSource } from "../shared/work-records/generation.js";
+import { attachEpicChildren, buildActiveWorkRecordSource } from "../shared/work-records/generation.ts";
 import { isTerminalWorkRecordParent } from "../shared/work-records/auto-generation.ts";
 
 const confirmedDeliveries = new AsyncLocalStorage<PublicationAttempt>();
@@ -43,7 +43,7 @@ export async function withConfirmedPublication<T>(attempt: PublicationAttempt, r
     return await confirmedDeliveries.run(attempt, run);
 }
 
-type WorkRecordSource = import("../shared/work-records/generation.js").WorkRecordSource;
+type WorkRecordSource = import("../shared/work-records/generation.ts").WorkRecordSource;
 
 async function git(root: string, args: string[]): Promise<string> {
     const result = await captureForegroundProcess("git", { cwd: root, args });
@@ -376,7 +376,7 @@ async function packageDeliverySources(
                 parentPlan: metadata.parentPlanId ? name(metadata.parentPlanId) : undefined,
                 dependencies: metadata.dependencyPlanIds.map(name),
                 status: (delivered || completedParent) && proved ? "verified" : metadata.definition.status,
-            } as import("../plan-store.js").PlanFrontMatter,
+            } as import("../plan-store.ts").PlanFrontMatter,
         });
         const recordingOwnerId =
             manifest.members.find((item) => item.metadata.planId === manifest.planId)?.metadata.parentPlanId ||
@@ -384,7 +384,7 @@ async function packageDeliverySources(
         if (manifest.recordingOutcome && metadata.planId === recordingOwnerId)
             source.attrs.workRecord = manifest.recordingOutcome;
         if (manifest.preparedRecord) {
-            const { parseWorkRecordMarkdown } = await import("../shared/work-records/markdown.js");
+            const { parseWorkRecordMarkdown } = await import("../shared/work-records/markdown.ts");
             const record = parseWorkRecordMarkdown(manifest.preparedRecord.text);
             if (record.attrs.provenance?.sourcePlans?.includes(metadata.planId))
                 source.attrs.workRecord = {

@@ -1,7 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { makeTempFile } from "../../testing/temp-file.ts";
 import { tmpdir } from "node:os";
 import {
@@ -15,7 +15,7 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { addEntry, findById } from "../worktree-registry.js";
+import { addEntry, findById } from "../worktree-registry.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
 import { publicationRootForAttempt } from "./publication-machine.ts";
 

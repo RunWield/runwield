@@ -8,7 +8,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { openFileSessionStore } from "../session/file-session-store.ts";
-import { encodeCwdForSessionDir } from "../session/root-session.js";
+import { encodeCwdForSessionDir } from "../session/root-session.ts";
 import { startRemoteControlService } from "./control.ts";
 import { type RemoteSessionRequest, sessionDigest } from "./session-protocol.ts";
 

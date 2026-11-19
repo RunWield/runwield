@@ -6,16 +6,16 @@ import { ok as assert } from "node:assert/strict";
 import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 // Tripwire. The suite writes to ~/.wld through both a live Deno.env.get("HOME")
-// and a HOME_DIR snapshot taken when each test realm loads src/constants.js, so
+// and a HOME_DIR snapshot taken when each test realm loads src/constants.ts, so
 // running it against a real home silently rewrites the developer's global
-// settings, sessions and workflow metrics. scripts/run-tests.js sandboxes HOME;
+// settings, sessions and workflow metrics. scripts/run-tests.ts sandboxes HOME;
 // this fails loudly when the suite is launched some other way.
 
 test("suite runs against a sandboxed HOME", async () => {
     const sandbox = process.env["WLD_TEST_SANDBOX_HOME"];
     assert(
         sandbox,
-        "Tests must run via `bun run test` (or scripts/run-tests.js), which points HOME at a sandbox. " +
+        "Tests must run via `bun run test` (or scripts/run-tests.ts), which points HOME at a sandbox. " +
             "Running `deno test` directly lets tests write to the real ~/.wld.",
     );
 
@@ -27,7 +27,12 @@ test("suite runs against a sandboxed HOME", async () => {
             sandbox,
             "HOME escaped the sandbox — a test swapped HOME and did not restore it.",
         );
-        assertEquals(await fsStat(sandbox).then((s) => s.isDirectory()).catch(() => false), true);
+        assertEquals(
+            await fsStat(sandbox)
+                .then((s) => s.isDirectory())
+                .catch(() => false),
+            true,
+        );
     });
 });
 
@@ -40,8 +45,5 @@ test("mnemoteca is pointed at a sandbox database", () => {
     const dbPath = process.env["MNEMOTECA_DB_PATH"];
     assert(sandbox, "Expected the suite to be sandboxed.");
     assert(dbPath, "MNEMOTECA_DB_PATH must be set so tests never touch the real memory database.");
-    assert(
-        dbPath.startsWith(sandbox),
-        `MNEMOTECA_DB_PATH (${dbPath}) must live inside the sandbox (${sandbox}).`,
-    );
+    assert(dbPath.startsWith(sandbox), `MNEMOTECA_DB_PATH (${dbPath}) must live inside the sandbox (${sandbox}).`);
 });

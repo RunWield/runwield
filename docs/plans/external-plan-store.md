@@ -80,7 +80,7 @@ excluded by the proposal's one-copy and plain-Markdown requirements.
 
 The durable commitment is separating Project identity from checkout location and Git history. Reversing it would
 require exporting documents and metadata, rebuilding repository ownership rules, and migrating Session references.
-The [proposed Project-state ADR](../adr/0020-home-project-state-and-launch-mode-ownership.md) records the trade-offs.
+The [proposed Project-state ADR](../adr/019-home-project-state-and-launch-mode-ownership.md) records the trade-offs.
 Accepted ADRs still describe the existing implementation; the implementing work must reconcile their ownership clauses.
 
 ### Ownership and interfaces

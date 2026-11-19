@@ -14,8 +14,8 @@ affectedPaths:
     - "src/shared/worktree-registry.js"
     - "src/shared/workflow/"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/018-remote-ssh-local-personal-authority.md"
-    - "docs/adr/0020-home-project-state-and-launch-mode-ownership.md"
+    - "docs/adr/017-remote-ssh-local-personal-authority.md"
+    - "docs/adr/019-home-project-state-and-launch-mode-ownership.md"
     - "docs/domain-language.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
@@ -125,7 +125,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/worktree-registry.js` — personal-owner scoped attempts and repository-level Git coordination
 - `src/shared/workflow/` — cross-host lifecycle/publication reconciliation
 - `docs/prd/runwield-core-prd.md` — managed remote acceptance and project runtime scope
-- `docs/adr/018-remote-ssh-local-personal-authority.md`, `0020-home-project-state-and-launch-mode-ownership.md` and
+- `docs/adr/017-remote-ssh-local-personal-authority.md`, `019-home-project-state-and-launch-mode-ownership.md` and
   affected ADR-017/ADR-016 clauses — reconcile host placement, adoption and proof without competing current guidance
 - `src/plan-store/README.md` and the transient Plan Store PRD references — document activated operations and remaining scope
 - `docs/domain-language.md` — remote personal authority and Project Runtime State relationships

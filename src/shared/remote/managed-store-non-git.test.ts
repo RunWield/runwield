@@ -3,7 +3,7 @@ import { equal, ok, rejects } from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, chmod, stat, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { startRemoteControlService } from "./control.ts";

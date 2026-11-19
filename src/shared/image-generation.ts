@@ -51,8 +51,8 @@ interface OpenRouterImagePayload {
 
 /** Verified mappings, not a claim that all image models accept chat options. */
 function piOptions(provider: string, id: string, settings: ImageGenerationSettings): ImagesOptions {
-    const gemini = provider === "openrouter" &&
-        ["google/gemini-2.5-flash-image", "google/gemini-3.1-flash-image"].includes(id);
+    const gemini =
+        provider === "openrouter" && ["google/gemini-2.5-flash-image", "google/gemini-3.1-flash-image"].includes(id);
     if (settings.temperature !== undefined && !gemini) {
         throw new Error(`temperature is not supported by create_image for ${provider}/${id}. Remove it.`);
     }
@@ -123,18 +123,21 @@ export function encodeCreatedImage(image: ImageContent, mimeType: string) {
     const actualMimeType = signature.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
         ? "image/png"
         : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
-        ? "image/jpeg"
-        : signature.toString("ascii", 0, 4) === "RIFF" && signature.toString("ascii", 8, 12) === "WEBP"
-        ? "image/webp"
-        : ["GIF87a", "GIF89a"].includes(signature.toString("ascii", 0, 6))
-        ? "image/gif"
-        : undefined;
+          ? "image/jpeg"
+          : signature.toString("ascii", 0, 4) === "RIFF" && signature.toString("ascii", 8, 12) === "WEBP"
+            ? "image/webp"
+            : ["GIF87a", "GIF89a"].includes(signature.toString("ascii", 0, 6))
+              ? "image/gif"
+              : undefined;
     if (!actualMimeType || actualMimeType !== image.mimeType) {
         throw new Error("Provider returned image bytes that do not match their MIME type.");
     }
     const dimensions = getImageDimensions(image.data, image.mimeType);
     if (
-        bytes.length > 32 * 1024 * 1024 || !dimensions || dimensions.widthPx < 1 || dimensions.heightPx < 1 ||
+        bytes.length > 32 * 1024 * 1024 ||
+        !dimensions ||
+        dimensions.widthPx < 1 ||
+        dimensions.heightPx < 1 ||
         dimensions.widthPx * dimensions.heightPx > 40_000_000
     ) {
         throw new Error("Provider returned an invalid or oversized raster image.");
@@ -143,13 +146,14 @@ export function encodeCreatedImage(image: ImageContent, mimeType: string) {
     try {
         const width = decoded.get_width();
         const height = decoded.get_height();
-        const output = image.mimeType === mimeType
-            ? bytes
-            : mimeType === "image/png"
-            ? decoded.get_bytes()
-            : mimeType === "image/jpeg"
-            ? decoded.get_bytes_jpeg(95)
-            : decoded.get_bytes_webp();
+        const output =
+            image.mimeType === mimeType
+                ? bytes
+                : mimeType === "image/png"
+                  ? decoded.get_bytes()
+                  : mimeType === "image/jpeg"
+                    ? decoded.get_bytes_jpeg(95)
+                    : decoded.get_bytes_webp();
         return { bytes: output, width, height };
     } finally {
         decoded.free();
@@ -196,7 +200,7 @@ export async function createImage(request: CreateImageRequest): Promise<CreatedI
             model: selected.id,
             settings,
             prompt: request.prompt,
-            referencePaths: references,
+            referenceImages: input.filter((content): content is ImageContent => content.type === "image"),
             signal: request.signal,
         });
     } else if (["codex-cli", "openai-codex"].includes(selected.provider)) {

@@ -1,4 +1,4 @@
-// @ts-nocheck: scenario objects come from JavaScript Golden fixtures with structural fields Deno cannot infer.
+// @ts-nocheck: Golden scenario objects use implicit structural types.
 import {
     EXPECTED_VALIDATION_WORKFLOW_BRANCH_IDS,
     VALIDATION_WORKFLOW_BRANCHES,
@@ -7,8 +7,8 @@ import {
 } from "../testing/validation-workflow-coverage.ts";
 
 export function branchesForOwner(owner: string): ValidationWorkflowBranchId[] {
-    return EXPECTED_VALIDATION_WORKFLOW_BRANCH_IDS.filter((id) =>
-        VALIDATION_WORKFLOW_BRANCHES.find((branch) => branch.id === id)?.owner === owner
+    return EXPECTED_VALIDATION_WORKFLOW_BRANCH_IDS.filter(
+        (id) => VALIDATION_WORKFLOW_BRANCHES.find((branch) => branch.id === id)?.owner === owner,
     );
 }
 
@@ -38,9 +38,6 @@ export function withValidationBranches(
         validationBranches: branches,
         timeoutMs: Math.max(base.timeoutMs || 120000, 180000),
         actions: [...(base.actions || []), capturePlanStateAction(planNames)],
-        assertions: [
-            ...(base.assertions || []),
-            ...branches.map((id) => validationEvidenceAssertion(id)),
-        ],
+        assertions: [...(base.assertions || []), ...branches.map((id) => validationEvidenceAssertion(id))],
     };
 }

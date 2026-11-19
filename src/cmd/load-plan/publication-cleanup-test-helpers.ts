@@ -2,7 +2,7 @@ import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -21,10 +21,10 @@ import { join } from "node:path";
 
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { addEntry, findById } from "../../shared/worktree-registry.js";
+import { addEntry, findById } from "../../shared/worktree-registry.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
-import type { EditorAPI, UiAPI } from "../../ui/tui/types.js";
+import type { EditorAPI, UiAPI } from "../../ui/tui/api.ts";
 
 const seed = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "README.md": "Project\n" });
 const driver = fromFileUrl(new URL("../../shared/workflow/testing/publication-process-driver.ts", import.meta.url));
@@ -320,6 +320,17 @@ async function checkCleanupRestart(
 }
 
 export function registerPublicationCleanupTests(invocation: Invocation): void {
+    // Failure recovery is shared after selection. Cover picker entry and selection
+    // here; the named-command suite owns the complete crash/remote-state matrix.
+    if (invocation === "picker") {
+        test("load-plan picker views a published Plan without implicit cleanup", async () => {
+            await checkCleanupRestart("verification_receipt", invocation, "unchanged", false);
+        });
+        test("load-plan picker requested cleanup preserves files after losing Git registration", async () => {
+            await checkCleanupRestart("verification_receipt", invocation, "lost_registration");
+        });
+        return;
+    }
     for (const boundary of ["verification_receipt", "cleanup_effect", "cleanup_receipt"] as const) {
         test(`load-plan ${invocation} views a published Plan without cleanup after ${boundary}`, async () => {
             await checkCleanupRestart(boundary, invocation, "unchanged", false);

@@ -1,9 +1,9 @@
-// @ts-nocheck: shared from JS command code; JSDoc documents the public shape.
-import { AGENTS } from "../../constants.js";
+// @ts-nocheck: Callback parameters and result shapes are implicit.
+import { AGENTS } from "../../constants.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
-import { getSettingsManager } from "../settings.js";
-import { buildWorkflowOnlyAgentMessage, isWorkflowOnlyAgent, listAvailableAgents } from "./agents.js";
+import { getSettingsManager } from "../settings.ts";
+import { buildWorkflowOnlyAgentMessage, isWorkflowOnlyAgent, listAvailableAgents } from "./agents.ts";
 import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session-runtime.ts";
 import { setActiveSessionModel } from "./model-selection.ts";
 
@@ -33,8 +33,8 @@ export async function listUserAgentOptions(projectRoot) {
     const defaultModel = settings.getDefaultModel?.() || "";
     const defaultThinkingLevel = settings.getDefaultThinkingLevel?.() || "default";
     const root = projectRoot || "";
-    const fallbackModel = getConfiguredAgentModel(AGENTS.ENGINEER, root) ||
-        (defaultModel ? `${defaultProvider}/${defaultModel}` : "");
+    const fallbackModel =
+        getConfiguredAgentModel(AGENTS.ENGINEER, root) || (defaultModel ? `${defaultProvider}/${defaultModel}` : "");
     const agents = await listAvailableAgents(projectRoot);
     return agents.map((agent) => {
         const reference = getConfiguredAgentModel(agent.name, root) || fallbackModel || agent.model || "";
@@ -46,8 +46,11 @@ export async function listUserAgentOptions(projectRoot) {
             defaults: {
                 model: parsed.ok ? parsed.id : "",
                 provider: parsed.ok ? parsed.provider : "",
-                thinkingLevel: getConfiguredAgentThinkingLevel(agent.name, root) ||
-                    defaultThinkingLevel || agent.thinkingLevel || "default",
+                thinkingLevel:
+                    getConfiguredAgentThinkingLevel(agent.name, root) ||
+                    defaultThinkingLevel ||
+                    agent.thinkingLevel ||
+                    "default",
             },
         };
     });

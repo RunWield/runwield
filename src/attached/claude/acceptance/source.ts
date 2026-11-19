@@ -35,6 +35,8 @@ export async function captureCoreSource(checkout: string): Promise<CoreSource> {
         "src",
         "scripts",
         ".claude-plugin",
+        "runtime-root.ts",
+        // Older Core checkouts still use the JavaScript filename.
         "runtime-root.js",
         "tsconfig.json",
         "tsconfig.bun.json",

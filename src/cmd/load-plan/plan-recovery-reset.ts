@@ -1,7 +1,7 @@
 import { resetPlanExecutionMetadata, restoreRecreatedPlanExecution } from "../../plan-store/index.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { runPlanRecoveryEffects } from "../../plan-store/index.ts";
 import { buildPlanRecoveryUserMessage, planRecoveryMessage } from "../../shared/workflow/validation-user-messages.ts";
 import {
@@ -10,7 +10,7 @@ import {
     settleWorktreeAttempt,
     validateWorktreeDiscard,
     validateWorktreeRecreation,
-} from "../../shared/worktree.js";
+} from "../../shared/worktree.ts";
 import { restoreWorktreeTree } from "../../shared/workflow/git-snapshot.ts";
 import { formatGitRequiredMessage, isGitRepositoryRequiredError } from "../../shared/git.ts";
 import {
@@ -23,7 +23,7 @@ import {
     pathExists,
 } from "./plan-recovery-worktree.ts";
 import { executeReadyPlanWithRepair } from "./plan-execution.ts";
-import { updateEntry as updateWorktreeRegistryEntry } from "../../shared/worktree-registry.js";
+import { updateEntry as updateWorktreeRegistryEntry } from "../../shared/worktree-registry.ts";
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 

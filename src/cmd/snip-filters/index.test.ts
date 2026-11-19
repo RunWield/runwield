@@ -9,7 +9,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
@@ -30,10 +30,7 @@ async function withSnipFiltersFixture(run: (fixture: SnipFiltersFixture) => Prom
         const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-snip-filters-command-"));
         const homeDir = join(fixtureRoot, "home");
         const projectRoot = join(fixtureRoot, "project");
-        await Promise.all([
-            fsMkdir(homeDir, { recursive: true }),
-            fsMkdir(projectRoot, { recursive: true }),
-        ]);
+        await Promise.all([fsMkdir(homeDir, { recursive: true }), fsMkdir(projectRoot, { recursive: true })]);
 
         try {
             process.env["HOME"] = homeDir;

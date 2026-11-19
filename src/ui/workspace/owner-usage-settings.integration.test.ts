@@ -6,23 +6,23 @@ import { dirname, join } from "node:path";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
 import type { MetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import {
     approveMetricsExporter,
     listInstalledMetricsExporters,
     removeMetricsExporterApprovals,
 } from "../../shared/extensions/metrics-exporter.ts";
-import { getCustomSetting, setCustomSetting } from "../../shared/settings.js";
+import { getCustomSetting, setCustomSetting } from "../../shared/settings.ts";
 import { readMetricsExportGrants } from "../../shared/workflow/metrics-export-grants.ts";
 import { readMetricsExportStatus, runMetricsExportCycle } from "../../shared/workflow/metrics-export-scheduler.ts";
-import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "../../shared/workflow/metrics.js";
+import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 import { ExecutionMetricsRecorder } from "../../shared/workflow/execution-metrics.ts";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
-import { encodeCwdForSessionDir } from "../../shared/session/root-session.js";
+import { encodeCwdForSessionDir } from "../../shared/session/root-session.ts";
 import type { OwnerUsageReport } from "./server/owner-usage.ts";
 import { resolveCollectionEpoch, setWorkflowMetricsRecording } from "../../shared/workflow/metrics-journal.ts";
 import { queryUsageReport } from "../../shared/workflow/usage-reporting.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 import type { UsageSettingsRequest, UsageSettingsResponse, UsageSettingsView } from "./server/owner-usage-settings.ts";
 
 const origin = "http://127.0.0.1:8787";

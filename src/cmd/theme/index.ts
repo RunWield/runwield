@@ -4,11 +4,11 @@ import process from "node:process";
  * Implementation of the theme selection command.
  */
 
-import { getSettingsManager, setCustomSetting } from "../../shared/settings.js";
+import { getSettingsManager, setCustomSetting } from "../../shared/settings.ts";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
-import { DEFAULT_THEME_NAME, discoverAndRegisterThemes, getAvailableThemes, setTheme } from "../../ui/theme/theme.js";
-import { printCommandHelp } from "../help/index.js";
-import { COMMAND_NAMES } from "../registry.js";
+import { DEFAULT_THEME_NAME, discoverAndRegisterThemes, getAvailableThemes, setTheme } from "../../ui/theme/theme.ts";
+import { printCommandHelp } from "../help/index.ts";
+import { COMMAND_NAMES } from "../registry.ts";
 
 interface ThemeSelectItem {
     value: string;
@@ -21,11 +21,7 @@ interface ThemeSelectionHooks {
 }
 
 interface ThemeCommandUi {
-    promptSelect(
-        title: string,
-        items: ThemeSelectItem[],
-        hooks: ThemeSelectionHooks,
-    ): Promise<string | null>;
+    promptSelect(title: string, items: ThemeSelectItem[], hooks: ThemeSelectionHooks): Promise<string | null>;
 }
 
 interface ThemeCommandOptions {

@@ -4,7 +4,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
-import { getCustomSetting, setCustomSetting } from "../settings.js";
+import { getCustomSetting, setCustomSetting } from "../settings.ts";
 import {
     approveMetricsExporter,
     listInstalledMetricsExporters,
@@ -23,7 +23,6 @@ import { clearUsageHistory } from "./usage-reporting.ts";
 import { SessionContextMetricsRecorder } from "./execution-metrics.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
-import { withExportConfigurationLock } from "./metrics-export-storage.ts";
 
 interface LegacyCursor {
     startedExecutions?: string[];
@@ -76,7 +75,7 @@ test("start boundaries exclude old operations and include only explicitly grante
         );
         await setCustomSetting("workflowMetrics", false, "project", f.project);
         // A disabled interval has no journal payload to export.
-        const { recordWorkflowMetric } = await import("./metrics.js");
+        const { recordWorkflowMetric } = await import("./metrics.ts");
         assertEquals(
             (
                 await recordWorkflowMetric(
@@ -181,16 +180,12 @@ test("current history after clear rejects usage without a retained execution sta
 test("queued Project edit cannot restore a revoked destination", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant();
-        let revoke: Promise<{ deliveryInFlight: boolean }> | undefined;
-        let update: Promise<boolean> | undefined;
-        await withExportConfigurationLock(async () => {
-            revoke = revokeMetricsExportDestination("fixture");
-            update = updateMetricsExportProjects("fixture", [f.project]).then(
-                () => true,
-                () => false,
-            );
-            await new Promise((resolve) => setTimeout(resolve, 10));
-        });
+        // Revocation acquires the free lock before the Project edit starts waiting.
+        const revoke = revokeMetricsExportDestination("fixture");
+        const update = updateMetricsExportProjects("fixture", [f.project]).then(
+            () => true,
+            () => false,
+        );
         await revoke;
         assertEquals(await update, false);
         assertEquals(readMetricsExportGrants(), []);
@@ -199,15 +194,11 @@ test("queued Project edit cannot restore a revoked destination", async () => {
 test("queued Project edit uses the current destination rather than overwriting an endpoint change", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant();
-        let change: ReturnType<typeof f.grant> | undefined;
-        let update: ReturnType<typeof updateMetricsExportProjects> | undefined;
-        await withExportConfigurationLock(async () => {
-            change = f.grant("/present");
-            update = updateMetricsExportProjects("fixture", [f.project]);
-            await new Promise((resolve) => setTimeout(resolve, 10));
-        });
+        // The endpoint change owns the lock before the Project edit is queued.
+        const change = f.grant("/present");
+        const update = updateMetricsExportProjects("fixture", [f.project]);
         await change;
-        assertEquals((await update)?.endpoint, f.endpoint("/present"));
+        assertEquals((await update).endpoint, f.endpoint("/present"));
         assertEquals(readMetricsExportGrants()[0].endpoint, f.endpoint("/present"));
     });
 });

@@ -10,8 +10,8 @@ import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { parsePlanFrontMatter } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
-import { addEntry, getWorktreeRegistryPath } from "../worktree-registry.js";
-import { HostedSession } from "./hosted-session.js";
+import { addEntry, getWorktreeRegistryPath } from "../worktree-registry.ts";
+import { HostedSession } from "./hosted-session.ts";
 import { restoreExecutionWorkflow } from "./execution-workflow-recovery.ts";
 import { resolvePersistedExecutionRootConfiguration } from "./runtime/support.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";

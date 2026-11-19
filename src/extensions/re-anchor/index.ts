@@ -17,9 +17,9 @@ import type { ContextEvent, ExtensionAPI, SessionCompactEvent } from "@earendil-
 import { buildReAnchorMessage, type ReAnchorContext } from "../../shared/workflow/workflow-prompts.ts";
 import { projectEngineerPlanBody } from "../../shared/workflow/engineer-plan-projection.ts";
 import { loadPlan, readFrozenPlanExecutionDocuments, resumePlanAttempt } from "../../plan-store/index.ts";
-import { normalizeWorkflowPlanName } from "../../shared/session/workflow-context-session.js";
+import { normalizeWorkflowPlanName } from "../../shared/session/workflow-context-session.ts";
 import { normalizeLedger, renderOpenItems } from "../../shared/workflow/review-ledger.ts";
-import type { HostedSession } from "../../shared/session/hosted-session.js";
+import type { HostedSession } from "../../shared/session/hosted-session.ts";
 
 export interface ReAnchorOptions {
     /** The agent this session was built for. Decides which artifact, if any, is re-anchored. */
@@ -28,6 +28,16 @@ export interface ReAnchorOptions {
 }
 
 type ReAnchorResolution = Required<ReAnchorContext>;
+
+/** Read the reminder from the active system prompt, including Agent overrides. */
+function readCompactionReminder(systemPrompt: string): string {
+    const lines = systemPrompt.split(/\r?\n/);
+    const start = lines.findLastIndex((line) => /^## Compaction reminder\s*$/i.test(line));
+    if (start < 0) return "";
+    const remaining = lines.slice(start + 1);
+    const end = remaining.findIndex((line) => /^#{1,2}\s/.test(line));
+    return (end < 0 ? remaining : remaining.slice(0, end)).join("\n").trim();
+}
 
 // The Agents that execute or repair against an approved Plan. The selectable
 // Engineer is absent on purpose: a QUICK_FIX has no Plan to re-anchor to.
@@ -98,24 +108,36 @@ export default function reAnchorExtension(pi: ExtensionAPI, options: ReAnchorOpt
         pendingReAnchor = true;
     });
 
-    pi.on("context", async (event: ContextEvent) => {
-        if (!pendingReAnchor) return undefined;
+    pi.on("context", async (event: ContextEvent, ctx) => {
+        const reminder = readCompactionReminder(ctx.getSystemPrompt());
+        // Project onto the compacted context, never onto the saved summary. Each
+        // Agent session supplies its own reminder, including after resume/switch.
+        const messages =
+            reminder && event.messages.some((message) => message.role === "compactionSummary")
+                ? event.messages.map((message) =>
+                      message.role === "compactionSummary"
+                          ? { ...message, summary: `${message.summary}\n\n## Compaction reminder\n\n${reminder}` }
+                          : message,
+                  )
+                : event.messages;
+        const projected = messages === event.messages ? undefined : { messages };
+        if (!pendingReAnchor) return projected;
         // Clear before doing any work: one compaction boundary re-anchors once,
         // whether or not this particular request ends up carrying a message.
         pendingReAnchor = false;
 
         try {
             const text = buildReAnchorMessage(await resolveReAnchorContext(options));
-            if (!text) return undefined;
+            if (!text) return projected;
 
             // Append only. The event can replace the whole array, and rebuilding
             // it would put this extension in charge of history it has no business
             // editing.
-            return { messages: [...event.messages, { role: "user" as const, content: text, timestamp: Date.now() }] };
+            return { messages: [...messages, { role: "user" as const, content: text, timestamp: Date.now() }] };
         } catch {
             // Re-anchoring is fail-open. A resolution failure loses the pointer;
             // throwing here would lose the provider request.
-            return undefined;
+            return projected;
         }
     });
 }

@@ -1,7 +1,6 @@
 import { seedPlanController } from "../../shared/testing/plan-state-fixture.ts";
 import { admitProjectIdentity } from "../../shared/project-identity.ts";
-import { importPlans } from "../../plan-store/index.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { importPlans, loadPlan } from "../../plan-store/index.ts";
 import { withRetainedPlanReadFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { deepStrictEqual, strictEqual, ok, rejects } from "node:assert/strict";
@@ -19,22 +18,23 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { enterProjectRuntime, WORKFLOW_DETAILS_PENDING } from "../../shared/project-runtime-layout.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
-
-import { addEntry } from "../../shared/worktree-registry.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { addEntry } from "../../shared/worktree-registry.ts";
 import { loadOwnerSidebar } from "./server/owner-dashboard.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 
 function document(id: string, body = "Primary compass", extra = "") {
     return `---\n${id ? `planId: ${id}\n` : ""}classification: FEATURE\nstatus: in_progress\n${extra}---\n# ${body}\n`;
 }
+
 async function put(path: string, bytes: string) {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, bytes);
 }
+
 async function tree(root: string): Promise<Record<string, string>> {
     const result: Record<string, string> = {};
     for (const entry of await readdir(root, { withFileTypes: true }).catch(() => [])) {
@@ -47,9 +47,11 @@ async function tree(root: string): Promise<Record<string, string>> {
     }
     return result;
 }
+
 async function snapshot(root: string) {
     return { project: await tree(root), runtime: await tree(getRunWieldRuntimeDir(root)) };
 }
+
 const fixture = defineGitFixture(async (root) => {
     await put(join(root, "docs/plans/ordinary.md"), document("ordinary-id"));
     await git(root, ["add", "."]);
@@ -248,124 +250,6 @@ test("production Workspace uses current registered Plan and controller fields ac
     });
 });
 
-test("canonical search ignores pending legacy controller hydration and keeps both Projects", async () => {
-    const root = await realpath(await fixture.checkout());
-    {
-        const healthy = await realpath(await fixture.checkout());
-        await admitProjectIdentity(root);
-        await admitProjectIdentity(healthy);
-        await importPlans(root, await realpath(join(root, "docs/plans/ordinary.md")));
-        await importPlans(healthy, await realpath(join(healthy, "docs/plans/ordinary.md")));
-        let owner: Awaited<ReturnType<typeof workspace>> | undefined;
-        try {
-            owner = await workspace(root);
-            const other = owner.store.registerProject({ root: healthy, displayName: "Healthy" });
-            await owner.app.workspaceSearch.refresh();
-            strictEqual((await (await owner.get("/api/owner/search?q=compass")).json()).results.length, 2);
-            await put(
-                join(getRunWieldRuntimeDir(root), "controller/plans/name%3Aordinary.json"),
-                JSON.stringify({ version: 1, revision: 1, planName: "ordinary", state: {} }),
-            );
-            const before = await snapshot(root);
-            for (const refresh of [false, true]) {
-                if (refresh) await owner.app.workspaceSearch.refresh();
-                const found = await (await owner.get("/api/owner/search?q=compass")).json();
-                deepStrictEqual(
-                    found.results.map((row: { projectId: string }) => row.projectId).sort(),
-                    [owner.project.projectId, other.projectId].sort(),
-                );
-                strictEqual(
-                    found.states.every((state: { state: string }) => state.state === "ready"),
-                    true,
-                );
-                deepStrictEqual(await snapshot(root), before);
-            }
-        } finally {
-            await owner?.close();
-            await rm(root, { recursive: true, force: true });
-            await rm(healthy, { recursive: true, force: true });
-        }
-    }
-});
-
-for (const failure of ["newer-package-version", "linked-document-directory"]) {
-    test(`query-time Plan authority failure reports a safe reader state and keeps healthy Projects (${failure})`, async () => {
-        const root = await realpath(await fixture.checkout());
-        {
-            const healthy = await realpath(await fixture.checkout());
-            await admitProjectIdentity(root);
-            await admitProjectIdentity(healthy);
-            await importPlans(root, await realpath(join(root, "docs/plans/ordinary.md")));
-            await importPlans(healthy, await realpath(join(healthy, "docs/plans/ordinary.md")));
-            const outside = `${root}-outside-plans`;
-            let owner: Awaited<ReturnType<typeof workspace>> | undefined;
-            try {
-                await enterProjectRuntime(root);
-                owner = await workspace(root);
-                const other = owner.store.registerProject({ root: healthy, displayName: "Healthy" });
-                await owner.app.workspaceSearch.refresh();
-                const indexed = await (await owner.get("/api/owner/search?q=compass")).json();
-                strictEqual(indexed.results.length, 2);
-                strictEqual(
-                    indexed.states.find((state: { projectId: string }) => state.projectId === owner?.project.projectId)
-                        .state,
-                    "ready",
-                );
-                const canonical = await loadPlan(root, "ordinary");
-                ok(canonical);
-                const packageRoot = dirname(canonical.path);
-                if (failure === "newer-package-version") {
-                    const metadataPath = join(packageRoot, "plan.wld.json");
-                    const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
-                    await writeFile(metadataPath, JSON.stringify({ ...metadata, version: 999 }));
-                } else {
-                    await rename(packageRoot, outside);
-                    await symlink(outside, packageRoot);
-                }
-                const before = {
-                    failed: await snapshot(root),
-                    healthy: await snapshot(healthy),
-                    outside: await tree(outside),
-                };
-                // Do not refresh: query hydration must detect changes made after the index became ready.
-                for (let repeat = 0; repeat < 2; repeat++) {
-                    const found = await (await owner.get("/api/owner/search?q=compass")).json();
-                    deepStrictEqual(
-                        found.results.map((row: { projectId: string }) => row.projectId),
-                        [other.projectId],
-                    );
-                    deepStrictEqual(
-                        found.states.find(
-                            (state: { projectId: string }) => state.projectId === owner?.project.projectId,
-                        ),
-                        {
-                            projectId: owner.project.projectId,
-                            state: "failed",
-                            reader: "Plan reader",
-                            message: "Plan reader indexing failed.",
-                        },
-                    );
-                    strictEqual(JSON.stringify(found).includes(root), false);
-                    strictEqual(JSON.stringify(found).includes(outside), false);
-                    deepStrictEqual(
-                        {
-                            failed: await snapshot(root),
-                            healthy: await snapshot(healthy),
-                            outside: await tree(outside),
-                        },
-                        before,
-                    );
-                }
-            } finally {
-                await owner?.close();
-                await rm(root, { recursive: true, force: true });
-                await rm(healthy, { recursive: true, force: true });
-                await rm(outside, { recursive: true, force: true });
-            }
-        }
-    });
-}
-
 test("production Workspace reads target-only Plans from local Git objects without filesystem hydration", async () => {
     const root = await realpath(await fixture.checkout());
     return await withRetainedPlanReadFixture(root, async () => {
@@ -389,7 +273,7 @@ test("production Workspace reads target-only Plans from local Git objects withou
             const { findPlanById } = await import("../../plan-store/index.ts");
             const { assertAuthorizedPlanPath, assertReadablePlanResource } =
                 await import("./server/project-artifacts.ts");
-            const { loadWorkspaceDetail } = await import("./server/plan-adapter.js");
+            const { loadWorkspaceDetail } = await import("./server/plan-adapter.ts");
             const resource = await findPlanById(root, "target-id");
             await assertReadablePlanResource(root, resource);
             await rejects(() => assertAuthorizedPlanPath(root, resource.path, resource.planName));
@@ -561,5 +445,123 @@ for (const source of ["target", "registered"]) {
                 await rm(root, { recursive: true, force: true });
             }
         });
+    });
+}
+
+test("canonical search ignores pending legacy controller hydration and keeps both Projects", async () => {
+    const root = await realpath(await fixture.checkout());
+    {
+        const healthy = await realpath(await fixture.checkout());
+        await admitProjectIdentity(root);
+        await admitProjectIdentity(healthy);
+        await importPlans(root, await realpath(join(root, "docs/plans/ordinary.md")));
+        await importPlans(healthy, await realpath(join(healthy, "docs/plans/ordinary.md")));
+        let owner: Awaited<ReturnType<typeof workspace>> | undefined;
+        try {
+            owner = await workspace(root);
+            const other = owner.store.registerProject({ root: healthy, displayName: "Healthy" });
+            await owner.app.workspaceSearch.refresh();
+            strictEqual((await (await owner.get("/api/owner/search?q=compass")).json()).results.length, 2);
+            await put(
+                join(getRunWieldRuntimeDir(root), "controller/plans/name%3Aordinary.json"),
+                JSON.stringify({ version: 1, revision: 1, planName: "ordinary", state: {} }),
+            );
+            const before = await snapshot(root);
+            for (const refresh of [false, true]) {
+                if (refresh) await owner.app.workspaceSearch.refresh();
+                const found = await (await owner.get("/api/owner/search?q=compass")).json();
+                deepStrictEqual(
+                    found.results.map((row: { projectId: string }) => row.projectId).sort(),
+                    [owner.project.projectId, other.projectId].sort(),
+                );
+                strictEqual(
+                    found.states.every((state: { state: string }) => state.state === "ready"),
+                    true,
+                );
+                deepStrictEqual(await snapshot(root), before);
+            }
+        } finally {
+            await owner?.close();
+            await rm(root, { recursive: true, force: true });
+            await rm(healthy, { recursive: true, force: true });
+        }
+    }
+});
+
+for (const failure of ["newer-package-version", "linked-document-directory"]) {
+    test(`query-time Plan authority failure reports a safe reader state and keeps healthy Projects (${failure})`, async () => {
+        const root = await realpath(await fixture.checkout());
+        {
+            const healthy = await realpath(await fixture.checkout());
+            await admitProjectIdentity(root);
+            await admitProjectIdentity(healthy);
+            await importPlans(root, await realpath(join(root, "docs/plans/ordinary.md")));
+            await importPlans(healthy, await realpath(join(healthy, "docs/plans/ordinary.md")));
+            const outside = `${root}-outside-plans`;
+            let owner: Awaited<ReturnType<typeof workspace>> | undefined;
+            try {
+                await enterProjectRuntime(root);
+                owner = await workspace(root);
+                const other = owner.store.registerProject({ root: healthy, displayName: "Healthy" });
+                await owner.app.workspaceSearch.refresh();
+                const indexed = await (await owner.get("/api/owner/search?q=compass")).json();
+                strictEqual(indexed.results.length, 2);
+                strictEqual(
+                    indexed.states.find((state: { projectId: string }) => state.projectId === owner?.project.projectId)
+                        .state,
+                    "ready",
+                );
+                const canonical = await loadPlan(root, "ordinary");
+                ok(canonical);
+                const packageRoot = dirname(canonical.path);
+                if (failure === "newer-package-version") {
+                    const metadataPath = join(packageRoot, "plan.wld.json");
+                    const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
+                    await writeFile(metadataPath, JSON.stringify({ ...metadata, version: 999 }));
+                } else {
+                    await rename(packageRoot, outside);
+                    await symlink(outside, packageRoot);
+                }
+                const before = {
+                    failed: await snapshot(root),
+                    healthy: await snapshot(healthy),
+                    outside: await tree(outside),
+                };
+                // Do not refresh: query hydration must detect changes made after the index became ready.
+                for (let repeat = 0; repeat < 2; repeat++) {
+                    const found = await (await owner.get("/api/owner/search?q=compass")).json();
+                    deepStrictEqual(
+                        found.results.map((row: { projectId: string }) => row.projectId),
+                        [other.projectId],
+                    );
+                    deepStrictEqual(
+                        found.states.find(
+                            (state: { projectId: string }) => state.projectId === owner?.project.projectId,
+                        ),
+                        {
+                            projectId: owner.project.projectId,
+                            state: "failed",
+                            reader: "Plan reader",
+                            message: "Plan reader indexing failed.",
+                        },
+                    );
+                    strictEqual(JSON.stringify(found).includes(root), false);
+                    strictEqual(JSON.stringify(found).includes(outside), false);
+                    deepStrictEqual(
+                        {
+                            failed: await snapshot(root),
+                            healthy: await snapshot(healthy),
+                            outside: await tree(outside),
+                        },
+                        before,
+                    );
+                }
+            } finally {
+                await owner?.close();
+                await rm(root, { recursive: true, force: true });
+                await rm(healthy, { recursive: true, force: true });
+                await rm(outside, { recursive: true, force: true });
+            }
+        }
     });
 }

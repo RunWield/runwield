@@ -78,20 +78,44 @@ interface AgyUsageFixture {
 interface AgyFixtureFile {
     rows: AgyUsageFixture[];
 }
+interface AgyRecordedUsage {
+    input_tokens: number;
+    output_tokens: number;
+    thinking_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens?: number;
+}
+interface AgyRecordedResult {
+    usage: AgyRecordedUsage;
+}
+interface AgyRecordedEvent {
+    event: string;
+    result?: AgyRecordedResult;
+}
 const agy: AgyFixtureFile = JSON.parse(await fsReadFile(new URL("./fixtures/agy-usage.json", import.meta.url), "utf8"));
 for (const row of agy.rows) {
     test(`partial agy fixture ${row.fixture} keeps known buckets without inventing cache writes or totals`, async () => {
+        const recording = await fsReadFile(
+            new URL(`../../src/shared/session/backends/agy-cli/fixtures/${row.fixture}`, import.meta.url),
+            "utf8",
+        );
+        const events: AgyRecordedEvent[] = recording
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+        const usage = events.find((event) => event.event === "result")?.result?.usage;
+        assert(usage, "Recorded backend result must contain usage");
         await captured(
             observation({
                 backend: "agy-cli",
                 usageKind: "turn",
                 aggregationBasis: "turn",
                 measurementAvailability: "partial",
-                inputTokens: row.inputTokens,
-                outputTokens: row.outputTokens,
-                reasoningTokens: row.reasoningTokens,
-                cacheReadTokens: row.cacheReadTokens,
-                cacheWriteTokens: row.cacheWriteTokens,
+                inputTokens: usage.input_tokens,
+                outputTokens: usage.output_tokens,
+                reasoningTokens: usage.thinking_tokens,
+                cacheReadTokens: usage.cache_read_tokens,
+                cacheWriteTokens: usage.cache_write_tokens ?? null,
             }),
             (s) => {
                 assertEquals(native(s, "usage_details"), {

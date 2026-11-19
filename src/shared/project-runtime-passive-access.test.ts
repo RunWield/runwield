@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { getRunWieldRuntimeDir } from "../constants.js";
+import { getRunWieldRuntimeDir } from "../constants.ts";
 import { admitProjectIdentity, inspectProjectIdentity, type ProjectLaunchContext } from "./project-identity.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {

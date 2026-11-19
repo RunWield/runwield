@@ -1,6 +1,6 @@
 /** Separate process. Exercise workflow boundaries with a real remote managed operation. */
 import type { ExtensionToolContext, SessionManager } from "@earendil-works/pi-coding-agent";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { createBackgroundTaskTool } from "../../tools/background-task.ts";
 import { readFile, writeFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -24,7 +24,7 @@ import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { remoteBackgroundTaskLogDirectory } from "./background-task-logs.ts";
-import { git } from "../workflow/validation-test-helpers.js";
+import { git } from "../workflow/validation-test-helpers.ts";
 
 interface Input {
     connection: RemoteSessionControlConnection;

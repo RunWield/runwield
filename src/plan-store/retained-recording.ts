@@ -17,7 +17,7 @@ import {
     settlePreparedRecord,
     type RecordingPreparation,
 } from "../shared/work-records/package-recording.ts";
-import type { WorkRecordSource, GeneratedWorkRecordSections } from "../shared/work-records/generation.js";
+import type { WorkRecordSource, GeneratedWorkRecordSections } from "../shared/work-records/generation.ts";
 import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 interface RetainedRecordingIdentity {
@@ -93,7 +93,7 @@ export async function readRetainedRecordingContext(
             recordingIdentity.name !== sources.workRecordOwner.name)
     )
         throw new Error("Retained recording owner changed after preparation.");
-    const workRecord = await readJson<import("../plan-store.js").PlanFrontMatter["workRecord"]>(
+    const workRecord = await readJson<import("../plan-store.ts").PlanFrontMatter["workRecord"]>(
         join(root, "record-link.json"),
     );
     const source = sources.workRecordOwner
@@ -119,7 +119,7 @@ export async function readRetainedRecordingContext(
 /** The canonical generator records provenance bookkeeping with the same owner as the retained controller. */
 export async function recordRetainedRecordingBacklink(
     source: import("./recording.ts").PlanRecordingSource,
-    workRecord: import("../plan-store.js").PlanFrontMatter["workRecord"],
+    workRecord: import("../plan-store.ts").PlanFrontMatter["workRecord"],
 ): Promise<boolean> {
     const context = recordingOwners.getStore();
     if (!context) return false;
@@ -182,7 +182,7 @@ export async function settleRetainedRecord(
         if (context.proof.retainedPublicationPolicy?.workRecords) {
             const frozen = context.preparation.record;
             const { parseWorkRecordMarkdown, formatWorkRecordMarkdown } =
-                await import("../shared/work-records/markdown.js");
+                await import("../shared/work-records/markdown.ts");
             const { approveWorkRecord } = await import("../shared/work-records/lifecycle.ts");
             const parsed = parseWorkRecordMarkdown(frozen.text);
             const expected = formatWorkRecordMarkdown(approveWorkRecord(parsed.attrs), parsed.body);

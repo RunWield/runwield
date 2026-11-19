@@ -12,14 +12,14 @@ import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-en
 import { parseArgs } from "../../shared/cli-args.ts";
 import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { AGENTS, getCwd, SUBAGENTS } from "../../constants.js";
-import { COMMAND_NAMES } from "../registry.js";
+import { AGENTS, getCwd, SUBAGENTS } from "../../constants.ts";
+import { COMMAND_NAMES } from "../registry.ts";
 import { EMPTY_PROJECT_DIRECTORY_INIT_NOOP_BODY, isEmptyProjectDirectory } from "../../shared/project-state.ts";
 import { extractBundledAgentDefs, extractBundledSkills } from "../../shared/session/agent-assets.ts";
 import { extractBundledModelPresets } from "../../shared/model-presets.ts";
 import { createSessionRuntime, SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
-import { getCustomSetting, getSettingsManager } from "../../shared/settings.js";
+import { getCustomSetting, getSettingsManager } from "../../shared/settings.ts";
 import { printCommandHelp } from "../help/index.ts";
 import { recordInitDone, recordInitOffered } from "./init-state.ts";
 import { isProjectInitComplete, requireProjectInitArtifact } from "./init-completion.ts";
@@ -30,8 +30,8 @@ import { confirmInitFiles, INIT_DECLINED_MESSAGE } from "./init-consent.ts";
 import { recordInitializedProjectContext } from "../../shared/worktree-project-context.ts";
 
 interface InitCommandBaseOptions {
-    uiAPI?: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage"> &
-        Partial<Pick<import("../../ui/tui/types.js").UiAPI, "promptSelect">>;
+    uiAPI?: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage"> &
+        Partial<Pick<import("../../ui/tui/api.ts").UiAPI, "promptSelect">>;
     sessionPort: InteractiveSessionPort;
     projectRoot?: string;
 }

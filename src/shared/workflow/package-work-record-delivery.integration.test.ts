@@ -5,7 +5,7 @@ import { read } from "../testing/plan-package-fixture.ts";
 import { readPlanPackagePublication } from "../../plan-store/packages.ts";
 import { listWorkRecords } from "../work-records/store.ts";
 import { withWorkRecordOwner } from "../work-records/owner.ts";
-import { parseWorkRecordMarkdown } from "../work-records/markdown.js";
+import { parseWorkRecordMarkdown } from "../work-records/markdown.ts";
 import { git } from "../git-test-fixture.ts";
 
 for (const policy of [
@@ -56,12 +56,12 @@ test("ordinary Recorder shares retained preparation and canonical settlement", a
     const { withRuntimeCommandFixture } = await import("../../cmd/testing/runtime-command-fixture.ts");
     await withRuntimeCommandFixture("package-ordinary-recorder-", async ({ setModelResponseFactories }) => {
         const { fauxAssistantMessage, fauxToolCall } = await import("@earendil-works/pi-ai");
-        const { HostedSession } = await import("../session/hosted-session.js");
+        const { HostedSession } = await import("../session/hosted-session.ts");
         const { runValidationAttempt } = await import("./validation-supervisor.ts");
         const { loadPackageWorkflowPlan } = await import("../../plan-store/workflows.ts");
         const { createGitPort } = await import("../git-port.ts");
         const { systemLocalCIPort } = await import("./validation-local-ci.ts");
-        const { attachRecorder, makeUi } = await import("./validation-test-helpers.js");
+        const { attachRecorder, makeUi } = await import("./validation-test-helpers.ts");
         const { createWorkRecordMnemotecaFixture } = await import("../work-records/test-fixtures/mnemoteca-port.ts");
         const f = await recordingFixture({ plans: false, workRecords: false });
         try {
@@ -119,7 +119,7 @@ for (const mode of ["disabled", "intermediate", "terminal", "local"] as const) {
             mode === "local",
         );
         try {
-            const { setExactProjectCustomSetting } = await import("../settings.js");
+            const { setExactProjectCustomSetting } = await import("../settings.ts");
             if (mode === "disabled")
                 setExactProjectCustomSetting("workRecords", { autoGenerateOnPlanCompletion: false }, f.root);
             if (mode === "intermediate") {

@@ -28,7 +28,7 @@ import {
     getGuidedReviewMode,
     getDeliveryCopyPolicy,
     shouldAutoGenerateWorkRecordsOnPlanCompletion,
-} from "../settings.js";
+} from "../settings.ts";
 import {
     readPublishedDeliverySources,
     readPublishedRecordMarkdown,
@@ -44,17 +44,17 @@ import {
  * so the durable Epic Manual QA artifact is sealed into child delivery.
  */
 
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { withPlanPublication } from "../../plan-store/index.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
 import { findEpicManualQaSection } from "../../plan-store/index.ts";
-import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.js";
+import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
-import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.js";
+import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
-import { stageValidationPassedInExecutionWorktree } from "./plan-lifecycle.js";
+import { stageValidationPassedInExecutionWorktree } from "./plan-lifecycle.ts";
 import { shouldContinueParentEpicAfterValidation } from "./validation-scope.ts";
 import type {
     HumanReviewMetadata,

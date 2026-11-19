@@ -34,7 +34,7 @@ export type ExecutionSegmentContinuation = {
     plan: { planId: string; planName: string; approvedRevision: string; approvedStatus: string; markdown: string };
     approval: { feedback?: string; images: HandoffImage[] };
     preparedEvidence: PlanActionEvidence;
-    activeWorkflow: import("../types.js").ActiveExecutionWorkflow;
+    activeWorkflow: import("../session/execution-workflow-session.ts").ActiveExecutionWorkflow;
     /** Runtime Agent that resumes the segment. `engineer` only appears in markers written before the Plan Engineer split. */
     executionOwner: HandoffExecutionOwner;
     collaboration: { style: "autonomous" | "pair"; recommendation: "autonomous" | "pair" };
@@ -46,7 +46,7 @@ export type SemanticRepairSegmentContinuation = {
     session: { runwieldSessionId: string; stableSessionId?: string };
     plan: { planId: string; planName: string; approvedRevision: string; approvedStatus: string; markdown: string };
     preparedEvidence: PlanActionEvidence;
-    activeWorkflow: import("../types.js").ActiveExecutionWorkflow;
+    activeWorkflow: import("../session/execution-workflow-session.ts").ActiveExecutionWorkflow;
     /** Runtime Agent that resumes the segment. `engineer` only appears in markers written before the Plan Engineer split. */
     executionOwner: HandoffExecutionOwner;
     repair: {
@@ -91,7 +91,7 @@ export type BuildExecutionContinuationArgs = {
     approvalFeedback?: string;
     approvalImages?: HandoffImage[];
     preparedEvidence: PlanActionEvidence;
-    activeWorkflow: import("../types.js").ActiveExecutionWorkflow;
+    activeWorkflow: import("../session/execution-workflow-session.ts").ActiveExecutionWorkflow;
     executionOwner: "plan-engineer" | "frontend-engineer";
     collaborationStyle: "autonomous" | "pair";
     collaborationRecommendation: "autonomous" | "pair";
@@ -106,7 +106,7 @@ export type BuildSemanticRepairContinuationArgs = {
     approvedStatus: string;
     approvedMarkdown: string;
     preparedEvidence: PlanActionEvidence;
-    activeWorkflow: import("../types.js").ActiveExecutionWorkflow;
+    activeWorkflow: import("../session/execution-workflow-session.ts").ActiveExecutionWorkflow;
     executionOwner: "plan-engineer" | "frontend-engineer";
     semanticRound: number;
     repairGeneration: string;
@@ -226,7 +226,9 @@ function normalizeImages(images: HandoffImage[]): HandoffImage[] {
     });
 }
 
-function parseContinuation(payload: SegmentHandoffPayload):
+function parseContinuation(
+    payload: SegmentHandoffPayload,
+):
     | { kind: "ok"; continuation: SegmentHandoffContinuation }
     | { kind: "refresh_required" | "recovery_required"; result: HandoffRejection } {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -256,8 +258,12 @@ function parseContinuation(payload: SegmentHandoffPayload):
         };
     }
     if (
-        !candidate.session?.runwieldSessionId || !candidate.plan?.planId || !candidate.plan?.planName ||
-        !candidate.plan?.approvedRevision || !candidate.plan?.approvedStatus || !candidate.preparedEvidence
+        !candidate.session?.runwieldSessionId ||
+        !candidate.plan?.planId ||
+        !candidate.plan?.planName ||
+        !candidate.plan?.approvedRevision ||
+        !candidate.plan?.approvedStatus ||
+        !candidate.preparedEvidence
     ) {
         return {
             kind: "recovery_required",
@@ -287,6 +293,11 @@ function hasLaterTurnEntry(entries: PendingSegmentMarker["entries"], markerIndex
 }
 
 function sameEvidence(left: PlanActionEvidence, right: PlanActionEvidence): boolean {
-    return left.planId === right.planId && left.planName === right.planName && left.revision === right.revision &&
-        left.status === right.status && JSON.stringify(left.worktree) === JSON.stringify(right.worktree);
+    return (
+        left.planId === right.planId &&
+        left.planName === right.planName &&
+        left.revision === right.revision &&
+        left.status === right.status &&
+        JSON.stringify(left.worktree) === JSON.stringify(right.worktree)
+    );
 }

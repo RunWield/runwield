@@ -10,7 +10,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 
 import { loadPlan } from "../../plan-store/index.ts";
-import { addEntry, findById, listEntries } from "../worktree-registry.js";
+import { addEntry, findById, listEntries } from "../worktree-registry.ts";
 import { EVIDENCE, runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { locateAttachedWorkflows, type AttachedWorkflowRecord } from "./record-store.ts";
 import { completionInput, executionInput, implementing, readyPlan } from "./execution-test-fixture.ts";

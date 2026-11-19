@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { configureGuideRunner, getGuideRunner, runWldJobCommand } from "./review-agent-handlers.js";
+import { configureGuideRunner, getGuideRunner, runWldJobCommand } from "./review-agent-handlers.ts";
 
 // One process-level configuration lifecycle. No model or local command is replaced.
 test("guide runner selection defaults to the local command and rejects duplicate configuration", () => {

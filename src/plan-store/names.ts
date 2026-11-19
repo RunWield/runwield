@@ -1,5 +1,5 @@
 import { managedPlanStoreActive, renameManagedPlan } from "./managed.ts";
-import { loadPlan, StalePlanWriteError } from "../plan-store.js";
+import { loadPlan, StalePlanWriteError } from "../plan-store.ts";
 import { withLocalPlanWorkflow } from "./access.ts";
 import { currentPackageProject, currentPackageSelection, packageWorkflowLocks, selectedPackage } from "./workflows.ts";
 import { renamePlanPackage } from "./packages.ts";

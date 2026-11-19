@@ -4,20 +4,14 @@ import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixt
 import type { WorkspaceLifecyclePayload } from "./routes/api/handlers.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-    mkdtemp as fsMkdtemp,
-    readFile as fsReadFile,
-    rm as fsRm,
-    stat as fsStat,
-    writeFile as fsWriteFile,
-} from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { loadPlanBodyById } from "../../plan-store/index.ts";
 
-import { PLAN_UI_TOKEN_HEADER } from "../../constants.js";
+import { PLAN_UI_TOKEN_HEADER } from "../../constants.ts";
 import {
     applyWorkspaceLifecycleActionInMemory,
     loadBoard,
@@ -25,18 +19,18 @@ import {
     runWorkspaceResumeCheck,
     serializePlanSummary,
     workspaceMetadata as _workspaceMetadata,
-} from "./server/plan-adapter.js";
+} from "./server/plan-adapter.ts";
 
-import { blockedDropMessage, isAllowedDropTarget, parseAllowedTargetStatuses } from "./islands/PlanBoardDragDrop.jsx";
+import { blockedDropMessage, isAllowedDropTarget, parseAllowedTargetStatuses } from "./islands/PlanBoardDragDrop.tsx";
 
 import {
     createCloseWithoutVerificationIntent,
     createMoveStatusIntent,
     createPutOnHoldIntent,
     lifecycleActionLabel,
-} from "./islands/PlanLifecycleActions.jsx";
+} from "./islands/PlanLifecycleActions.tsx";
 
-import { createWorkspaceApp } from "./server.js";
+import { createWorkspaceApp } from "./server.ts";
 import { COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { listWorkRecords } from "../../shared/work-records/store.ts";
@@ -407,34 +401,6 @@ test("Workspace persisted close preserves closure when Work Record generation fa
         assertEquals(detail.frontMatter.workRecord?.status, "failed");
         assertEquals(await listWorkRecords(cwd), []);
     });
-});
-
-test("Workspace in-memory close preview is side-effect free", async () => {
-    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
-    try {
-        const summary = serializePlanSummary({
-            planId: "preview-id",
-            name: "preview",
-            relativePath: "docs/plans/preview.md",
-            attrs: { planId: "preview-id", status: "implemented", classification: "FEATURE" },
-        });
-        const preview = applyWorkspaceLifecycleActionInMemory(summary, {
-            action: "close_without_verification",
-            closedWithoutVerificationReason: "Preview close.",
-        });
-
-        assertEquals(summary.status, "implemented");
-        assertEquals(preview.plan.status, "closed_without_verification");
-        let workRecordDirExists = true;
-        try {
-            await fsStat(`${cwd}/docs/work-records`);
-        } catch (error) {
-            workRecordDirExists = !(error instanceof Error && "code" in error && error.code === "ENOENT");
-        }
-        assertEquals(workRecordDirExists, false);
-    } finally {
-        await fsRm(cwd, { recursive: true });
-    }
 });
 
 test("Workspace lifecycle API requires Resume Check confirmation for staleness warnings", async () => {

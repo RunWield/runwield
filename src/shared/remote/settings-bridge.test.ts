@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { getCustomSetting, setCustomSetting } from "../settings.js";
+import { getCustomSetting, setCustomSetting } from "../settings.ts";
 import { startRemoteControlService } from "./control.ts";
 
 const identity = { buildId: "b".repeat(64), protocol: 1 };
@@ -19,7 +19,7 @@ test("an unfinished settings body cannot write after admission ends", async () =
             await fsMkdir(join(home, ".wld"));
             await fsWriteFile(join(home, ".wld", "settings.json"), "{}");
             let finish!: () => void;
-            const pending = new Promise<void>((resolve) => finish = resolve);
+            const pending = new Promise<void>((resolve) => (finish = resolve));
             const service = startRemoteControlService(identity);
             const address = `http://127.0.0.1:${service.port}`;
             const headers = { Authorization: `Bearer ${service.credential}` };
@@ -28,10 +28,14 @@ test("an unfinished settings body cannot write after admission ends", async () =
             const body = new ReadableStream<Uint8Array>({
                 async start(controller) {
                     await pending;
-                    controller.enqueue(new TextEncoder().encode(JSON.stringify({
-                        id: "a".repeat(32),
-                        update: { kind: "set", key: "theme", value: "dark" },
-                    })));
+                    controller.enqueue(
+                        new TextEncoder().encode(
+                            JSON.stringify({
+                                id: "a".repeat(32),
+                                update: { kind: "set", key: "theme", value: "dark" },
+                            }),
+                        ),
+                    );
                     controller.close();
                 },
             });
@@ -85,14 +89,16 @@ test("laptop settings updates need the live authenticated connection and preserv
             const nested = await request("2".repeat(32), { kind: "compaction", key: "reserveTokens", value: 120 });
             assertEquals(nested.status, 200);
             assertEquals(
-                (await fetch(`${address}/settings/update`, {
-                    method: "POST",
-                    headers,
-                    body: JSON.stringify({
-                        id: "4".repeat(32),
-                        update: { kind: "model", model: "model-x", provider: "provider-y" },
-                    }),
-                })).status,
+                (
+                    await fetch(`${address}/settings/update`, {
+                        method: "POST",
+                        headers,
+                        body: JSON.stringify({
+                            id: "4".repeat(32),
+                            update: { kind: "model", model: "model-x", provider: "provider-y" },
+                        }),
+                    })
+                ).status,
                 200,
             );
             const snapshot = await (await fetch(`${address}/settings/snapshot`, { headers })).json();

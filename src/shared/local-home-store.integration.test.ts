@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { listPlans, listPlanResources, loadPlan, readPlanResourceCatalog } from "../plan-store/index.ts";
 
 import { importPlans, authorLocalPlan } from "../plan-store/index.ts";
-import { updateArchivedPlanFrontMatter } from "../plan-store.js";
+import { updateArchivedPlanFrontMatter } from "../plan-store.ts";
 import { packageFixture, tree } from "./testing/plan-package-fixture.ts";
 
 test("ordinary catalogs ignore checkout Plans, then show only explicitly imported home documents", async () => {

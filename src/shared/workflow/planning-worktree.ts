@@ -15,7 +15,7 @@ import {
     installPlanningDocument,
 } from "../../plan-store/index.ts";
 
-import { loadPlan } from "../../plan-store/index.ts";
+import { hasCanonicalPlanAccess, loadPlan } from "../../plan-store/index.ts";
 import {
     addEntry as addWorktreeRegistryEntry,
     listEntries as listWorktreeRegistryEntries,
@@ -23,15 +23,15 @@ import {
     renamePlanningWorktreePlan,
     updateEntry as updateWorktreeRegistryEntry,
     type WorktreeRegistryEntry,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 import {
     checkpointExecutionPreparation,
     createWorktreeGitArtifacts,
     prepareTargetBranchRef,
     removeWorktreeGitArtifacts,
-} from "../worktree.js";
+} from "../worktree.ts";
 import { runExecutionPreparationTransition } from "../../plan-store/index.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 
 import { enterProjectRuntime, ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
 import { refreshPlanningWorktree } from "./planning-worktree-refresh.ts";
@@ -65,6 +65,7 @@ async function preparePlanningWorktreeForPlanEntered(
     planAttrs: PlanningPlanAttributes,
 ): Promise<PlanningWorktreeResult> {
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+    const canonicalPlan = hasCanonicalPlanAccess();
     await enterProjectRuntime(projectRoot);
     const planId = typeof planAttrs.planId === "string" ? planAttrs.planId.trim() : "";
     if (!planId)
@@ -76,7 +77,7 @@ async function preparePlanningWorktreeForPlanEntered(
         (entry) => entry.planId === planId && entry.status !== "abandoned",
     );
     if (existing) {
-        if (await pathExists(existing.path)) {
+        if (!canonicalPlan && (await pathExists(existing.path))) {
             await assertPlanningDocumentAvailable(projectRoot, existing.id);
         }
         if (existing.planName !== planName) {
@@ -86,12 +87,9 @@ async function preparePlanningWorktreeForPlanEntered(
                 );
             }
             const target = await prepareExistingTargetSnapshot(projectRoot, targetBranchForPlan(planAttrs));
-            const targetPlan = await loadPlanningTargetForPreparation(
-                projectRoot,
-                planName,
-                target.baseBranch,
-                target.baseRef,
-            );
+            const targetPlan = canonicalPlan
+                ? await loadPlan(projectRoot, planName)
+                : await loadPlanningTargetForPreparation(projectRoot, planName, target.baseBranch, target.baseRef);
             if (!targetPlan || targetPlan.attrs.planId !== planId || existing.baseBranch !== target.baseBranch) {
                 throw new Error(`Target Plan ${planName} does not match the saved planning identity.`);
             }
@@ -115,7 +113,7 @@ async function preparePlanningWorktreeForPlanEntered(
                     `Planning worktree targets ${existing.baseBranch}, but Plan targets ${target.baseBranch}.`,
                 );
             }
-            if (target.baseRef !== existing.baseCommit) {
+            if (!canonicalPlan && target.baseRef !== existing.baseCommit) {
                 const targetPlan = await loadPlanningTargetForPreparation(
                     projectRoot,
                     planName,
@@ -141,7 +139,9 @@ async function preparePlanningWorktreeForPlanEntered(
         await prepareTargetBranchRef(projectRoot, targetBranch);
     }
     const target = await prepareExistingTargetSnapshot(projectRoot, targetBranch);
-    const targetPlan = await loadPlanningTargetForPreparation(projectRoot, planName, target.baseBranch, target.baseRef);
+    const targetPlan = canonicalPlan
+        ? await loadPlan(projectRoot, planName)
+        : await loadPlanningTargetForPreparation(projectRoot, planName, target.baseBranch, target.baseRef);
     if (!targetPlan) throw new Error(`Plan ${planName} does not exist on target ${target.baseBranch}.`);
     if (targetPlan.attrs.planId && targetPlan.attrs.planId !== planId) {
         throw new Error(`Target Plan ${planName} has a different Plan ID. Your files were not changed.`);
@@ -190,6 +190,19 @@ async function preparePlanningWorktreeForPlanEntered(
                 branch: entry.branch,
                 baseCommit: entry.baseCommit,
             });
+            if (canonicalPlan) {
+                await updateWorktreeRegistryEntry(projectRoot, entry.id, { status: "planning" });
+                await markEffect("worktree_registry_settled", {
+                    worktreeId: entry.id,
+                    path: entry.path,
+                    branch: entry.branch,
+                    status: entry.status,
+                });
+                const plan = await loadPlan(projectRoot, planName);
+                if (!plan || plan.attrs.planId !== planId)
+                    throw new Error("Canonical Plan identity changed during planning preparation.");
+                return { entry, plan, reused: false };
+            }
             await addWorktreeRegistryEntry(projectRoot, entry);
             await markEffect("worktree_registry_settled", {
                 worktreeId: entry.id,

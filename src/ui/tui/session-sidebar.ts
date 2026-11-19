@@ -9,7 +9,7 @@ import {
 } from "../../shared/session/session-sidebar.ts";
 import type { SessionArtifactReference } from "../../shared/session/file-session-store-types.ts";
 import type { LiveValidationProgress, WorkflowProgressFact } from "../../shared/workflow/workflow-presentation.ts";
-import { theme } from "../theme/theme.js";
+import { theme } from "../theme/theme.ts";
 
 export interface TuiSessionSidebarSnapshot {
     name?: string | null;

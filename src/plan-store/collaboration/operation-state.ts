@@ -1,6 +1,6 @@
 /** Private recovery for local collaboration effects after an external response has been accepted. */
 import type { CollaborationResult } from "./operations.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import { normalizeCollaborationFrontMatter, COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
 import { loadPlan } from "../queries.ts";
 import {
@@ -39,7 +39,7 @@ export async function recoverCollaborationMutation(
     )
         throw new Error("New Plan edits prevent replaying an older collaboration effect.");
     if (observed !== desired || current.body !== (pending.body ?? pending.beforeBody)) {
-        const { updatePlanCollaborationMetadata, clearPlanCollaborationMetadata } = await import("../../plan-store.js");
+        const { updatePlanCollaborationMetadata, clearPlanCollaborationMetadata } = await import("../../plan-store.ts");
         if (pending.action === "unshare")
             await clearPlanCollaborationMetadata(cwd, pending.planName, COLLABORATION_LOCK_BYPASS.unshare, {
                 updatedAt: pending.updates.updatedAt,

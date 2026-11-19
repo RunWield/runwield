@@ -1,22 +1,21 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { readFile as fsReadFile, realpath as fsRealpath, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { Buffer } from "node:buffer";
+import { constants } from "node:fs";
+import { lstat, mkdir, mkdtemp, open, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import { getHomeDir } from "../../../../constants.js";
+import { getHomeDir } from "../../../../constants.ts";
 import { getModelRegistry } from "../../../models/model-registry.ts";
 import type { ImageGenerationSettings } from "../../../image-generation-settings.ts";
 import { mimeTypeForImagePath } from "../../image-attachments.ts";
-import { concreteAgyModel, thinkingLevelToEffort } from "./model-options.ts";
-import { DenoAgyCliProcessPort } from "./process.ts";
-import { parseAgyCliStream } from "./stream-parser.ts";
+import { runAgyAcpTurn } from "./acp-transport.ts";
+import { thinkingLevelToEffort } from "./model-options.ts";
 
 interface AgyImageRequest {
     model: string;
     settings: ImageGenerationSettings;
     prompt: string;
-    referencePaths: string[];
+    referenceImages: ImageContent[];
     signal?: AbortSignal;
 }
 
@@ -29,8 +28,9 @@ function inside(root: string, file: string): boolean {
     return path !== "" && path !== ".." && !path.startsWith("../") && !path.startsWith("..\\") && !isAbsolute(path);
 }
 
-/** Agy owns authentication and native generation; RunWield validates and copies the result. */
+/** One isolated ACP image turn. Never replay a failed request or substitute credentials. */
 export async function generateAgyImage(request: AgyImageRequest): Promise<ImageContent> {
+    request.signal?.throwIfAborted();
     if (request.settings.temperature !== undefined) {
         throw new Error("agy-cli does not support imageGeneration.temperature. Remove that setting.");
     }
@@ -38,98 +38,126 @@ export async function generateAgyImage(request: AgyImageRequest): Promise<ImageC
         throw new Error(`Unsupported agy-cli model: ${request.model}. Select an Agy model supported by RunWield.`);
     }
     const effort = thinkingLevelToEffort(request.model, request.settings.thinkingLevel);
-    request.signal?.throwIfAborted();
-    const cwd = await mkdtemp(join(tmpdir(), "runwield-create-image-"));
-    const prompt = [
-        "Generate exactly one image using your native generate_image tool exactly once.",
-        "Do not use MCP tools, shell commands, subagents, browser, or skills. Do not modify project files.",
-        "Return the actual absolute path produced by that native tool in the required JSON schema.",
-        "If generation fails, report the failure. Do not substitute a previous image or retry.",
-        request.referencePaths.length
-            ? `Use these exact reference image paths in ImagePaths: ${JSON.stringify(request.referencePaths)}.`
-            : "This is a new image. Omit reference-image arguments.",
-        `Image description: ${JSON.stringify(request.prompt)}`,
-    ].join("\n");
-    const args = [
-        "-p",
-        prompt,
-        "--model",
-        concreteAgyModel(request.model, effort),
-        "--effort",
-        effort,
-        "--output-format",
-        "stream-json",
-        "--print-timeout",
-        "5m",
-        "--disable-slash-commands",
-        "--json-schema",
-        JSON.stringify({
-            type: "object",
-            properties: { path: { type: "string" } },
-            required: ["path"],
-            additionalProperties: false,
-        }),
-    ];
-    // Do not install global agents, change MCP configuration, or bypass permissions.
-    let process: ReturnType<DenoAgyCliProcessPort["run"]> | undefined;
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), "runwield-create-image-")));
+    const name = `runwield-image-${crypto.randomUUID()}`;
+    const signal = AbortSignal.any([...(request.signal ? [request.signal] : []), AbortSignal.timeout(300_000)]);
     try {
-        process = new DenoAgyCliProcessPort().run(
-            { command: "agy", args, env: {}, timeoutMs: 300_000 },
-            cwd,
-            request.signal,
+        const directory = join(cwd, ".agents", "agents", name);
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+        await writeFile(
+            join(directory, "agent.md"),
+            [
+                "---",
+                `name: ${name}`,
+                "description: One isolated native image generation",
+                "mainAgent: true",
+                "subagent: false",
+                "tools: [generate_image]",
+                "excludeDefaultComponents: true",
+                "inheritMcp: false",
+                "inheritCustomizations: false",
+                "mcpServers: []",
+                "skills: []",
+                "plugins: []",
+                "commandExecutionPolicy: off",
+                "---",
+                "Use only native generate_image exactly once. Do not retry or use other tools.",
+                "Do not read unrelated files, use MCP, shell, browser, skills, or subagents.",
+                "Return only JSON with a single path key containing the actual absolute generated image path.",
+                "If generation fails, report failure. Never invent a path or reuse a previous image.",
+            ].join("\n"),
+            { mode: 0o600 },
         );
-        const tools = new Map<number, string>();
-        const [parsed, outcome] = await Promise.all([
-            parseAgyCliStream(process.stdout, {
-                onTool: (tool) => {
-                    if (tool.name === "generate_image") tools.set(tool.stepIndex, tool.state);
-                },
-            }),
-            process.completed,
-            // Consume diagnostics but never expose host logs or credentials in the tool result.
-            process.stderrText,
-        ]);
-        request.signal?.throwIfAborted();
-        if (!outcome.success || parsed.metadata.status !== "success" || parsed.metadata.permissionDenied) {
-            throw new Error(
-                `Agy image generation failed (${
-                    outcome.terminatedBy ?? parsed.metadata.status ?? "process error"
-                }). Check Agy login and permissions.`,
-            );
+        // Stage the already-validated bytes, never hand mutable user paths to the vendor.
+        const referencePaths: string[] = [];
+        const referenceIdentities: { ino: number; dev: number }[] = [];
+        for (const [index, image] of request.referenceImages.entries()) {
+            const extension =
+                image.mimeType === "image/jpeg" ? "jpg" : image.mimeType === "image/webp" ? "webp" : "png";
+            const path = join(cwd, `reference-${index}.${extension}`);
+            await writeFile(path, Buffer.from(image.data, "base64"), { mode: 0o600 });
+            referencePaths.push(path);
+            const identity = await lstat(path);
+            referenceIdentities.push({ ino: identity.ino, dev: identity.dev });
         }
-        if (tools.size !== 1 || [...tools.values()][0] !== "DONE") {
+        const tools = new Map<number, { name: string; state: string }>();
+        const result = await runAgyAcpTurn(
+            {
+                cwd,
+                agentName: name,
+                model: request.model,
+                effort,
+                signal,
+                mcpServers: [],
+                userRequest: [
+                    "Generate exactly one image using native generate_image exactly once. No retries or other tools.",
+                    "Return only JSON with exactly one path key containing the actual absolute native output path.",
+                    referencePaths.length
+                        ? `Use exactly these reference paths as ImagePaths: ${JSON.stringify(referencePaths)}.`
+                        : "This is a new image. Omit reference-image arguments.",
+                    `Image description: ${JSON.stringify(request.prompt)}`,
+                ].join("\n"),
+            },
+            { onTool: (tool) => tools.set(tool.stepIndex, { name: tool.name, state: tool.state }) },
+        );
+        signal.throwIfAborted();
+        const tool = [...tools.values()][0];
+        if (tools.size !== 1 || tool?.name !== "generate_image" || tool.state !== "DONE") {
             throw new Error("Agy did not complete exactly one native image generation. No output was saved.");
         }
-        const result = JSON.parse(parsed.rawResultText) as ImagePathResponse;
-        if (!result || typeof result.path !== "string" || !isAbsolute(result.path)) {
-            throw new Error("Agy did not return a structured absolute image path.");
+        const parsed = JSON.parse(result.rawResultText) as ImagePathResponse | null;
+        if (
+            !parsed ||
+            Array.isArray(parsed) ||
+            Object.keys(parsed).length !== 1 ||
+            typeof parsed.path !== "string" ||
+            !isAbsolute(parsed.path)
+        ) {
+            throw new Error("Agy did not return exactly one structured absolute image path.");
         }
-        const session = parsed.metadata.sessionId;
+        const session = result.metadata.sessionId;
         if (!session || !/^[a-zA-Z0-9_-]+$/.test(session)) throw new Error("Agy did not identify its image session.");
-        const source = await fsRealpath(result.path);
-        const temporaryRoot = await fsRealpath(cwd);
-        const hostRoot = join(getHomeDir(), ".gemini", "antigravity-cli", "brain", session);
-        let currentSessionRoot = "";
-        try {
-            currentSessionRoot = await fsRealpath(hostRoot);
-        } catch { /* host may return the temporary path */ }
-        if (!inside(temporaryRoot, source) && (!currentSessionRoot || !inside(currentSessionRoot, source))) {
+        const source = await realpath(parsed.path);
+        const temporaryRoot = await realpath(cwd);
+        const sessionRoot = join(getHomeDir(), ".gemini", "antigravity-cli", "brain", session);
+        // Canonicalize the brain parent, not the session directory: a session symlink must not widen scope.
+        const canonicalBrain = await realpath(join(getHomeDir(), ".gemini", "antigravity-cli", "brain")).catch(
+            () => "",
+        );
+        const canonicalSession = canonicalBrain ? join(canonicalBrain, session) : sessionRoot;
+        if (!inside(temporaryRoot, source) && (!canonicalBrain || !inside(canonicalSession, source))) {
             throw new Error("Agy returned an image outside this request's output directories.");
         }
-        const stat = await fsStat(source);
-        if (!stat.isFile() || stat.size === 0 || stat.size > 32 * 1024 * 1024) {
-            throw new Error("Agy image output must be a nonempty image file under 32 MiB.");
+        const before = await lstat(source);
+        const file = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
+        try {
+            const stat = await file.stat();
+            if (referenceIdentities.some((reference) => reference.ino === stat.ino && reference.dev === stat.dev)) {
+                throw new Error("Agy returned a reference image instead of newly generated output.");
+            }
+            if (
+                before.isSymbolicLink() ||
+                before.ino !== stat.ino ||
+                before.dev !== stat.dev ||
+                (await realpath(source)) !== source
+            ) {
+                throw new Error("Agy image output changed before reading.");
+            }
+            if (!stat.isFile() || stat.size === 0 || stat.size > 32 * 1024 * 1024) {
+                throw new Error("Agy image output must be a nonempty image file under 32 MiB.");
+            }
+            const bytes = await file.readFile();
+            if (bytes.length !== stat.size) throw new Error("Agy image output changed while reading.");
+            signal.throwIfAborted();
+            return {
+                type: "image",
+                data: Buffer.from(bytes).toString("base64"),
+                mimeType: mimeTypeForImagePath(source),
+            };
+        } finally {
+            await file.close();
         }
-        return {
-            type: "image",
-            data: Buffer.from(await fsReadFile(source)).toString("base64"),
-            mimeType: mimeTypeForImagePath(source),
-        };
     } finally {
-        if (process) {
-            process.kill();
-            await Promise.allSettled([process.completed, process.stderrText]);
-        }
-        await fsRm(cwd, { recursive: true });
+        await rm(cwd, { recursive: true, force: true });
     }
 }

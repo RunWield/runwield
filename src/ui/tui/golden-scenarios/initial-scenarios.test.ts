@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 import { test } from "node:test";
 import {
     mkdtemp as fsMkdtemp,
@@ -11,10 +11,9 @@ import {
 } from "node:fs/promises";
 import process from "node:process";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals, assertRejects } from "../../../testing/assertions.ts";
+import { assertEquals, assertExists, assertRejects } from "../../../testing/assertions.ts";
 import {
     escapeCancellationScenario,
-    fauxProviderProtocolScenario,
     helpSlashCommandScenario,
     initialGoldenScenarios,
     planReviewTransactionContractScenario,
@@ -23,7 +22,7 @@ import {
     runtimeInteractionContractScenario,
     startupNoProvidersOpensLoginScenario,
     startupProviderWithoutModelsOpensModelScenario,
-} from "./initial-scenarios.js";
+} from "./initial-scenarios.ts";
 import { GoldenScenarioActor, runGoldenScenario } from "../testing/mod.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
 
@@ -62,7 +61,6 @@ const scenarioExportNames = new Map<InitialGoldenScenario, string>([
     [helpSlashCommandScenario, "helpSlashCommandScenario"],
     [planReviewTransactionContractScenario, "planReviewTransactionContractScenario"],
     [planReviewReplyOnlyConversationScenario, "planReviewReplyOnlyConversationScenario"],
-    [fauxProviderProtocolScenario, "fauxProviderProtocolScenario"],
     [runtimeInteractionContractScenario, "runtimeInteractionContractScenario"],
     [startupNoProvidersOpensLoginScenario, "startupNoProvidersOpensLoginScenario"],
     [startupProviderWithoutModelsOpensModelScenario, "startupProviderWithoutModelsOpensModelScenario"],
@@ -70,28 +68,28 @@ const scenarioExportNames = new Map<InitialGoldenScenario, string>([
 
 for (const scenario of initialGoldenScenarios.filter((candidate) => candidate !== helpSlashCommandScenario)) {
     test(`golden scenario: ${scenario.name}`, async () => {
-        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
         const result = await runGoldenScenarioChildProcess({
-            scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.js",
+            scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
             exportName: scenarioExportNames.get(scenario) || "",
             timeoutMs: "timeoutMs" in scenario && typeof scenario.timeoutMs === "number" ? scenario.timeoutMs : 30000,
         });
-        assertEquals(result.result.actor.remaining, []);
+        assertEquals(result.result?.actor.remaining, []);
     });
 }
 
-test("golden actor fails on missing scripted turn", () => {
+test("golden actor fails on missing scripted turn", async () => {
     const actor = new GoldenScenarioActor([{ id: "guide", agent: "guide", response: "ok" }]);
-    assertRejects(
+    await assertRejects(
         async () => await Promise.resolve(actor.next({ agent: "router" })),
         Error,
         "Unexpected scripted turn",
     );
 });
 
-test("golden actor fails on unused scripted turn", () => {
+test("golden actor fails on unused scripted turn", async () => {
     const actor = new GoldenScenarioActor([{ id: "router", agent: "router", response: "ok" }]);
-    assertRejects(async () => await Promise.resolve(actor.assertComplete()), Error, "Unused scripted turns");
+    await assertRejects(async () => await Promise.resolve(actor.assertComplete()), Error, "Unused scripted turns");
 });
 
 test("golden runner enforces subprocess isolation for composed scenarios", async () => {
@@ -99,14 +97,6 @@ test("golden runner enforces subprocess isolation for composed scenarios", async
         () => runGoldenScenario({ name: "composed", composedTui: true }, { keepArtifacts: false }),
         Error,
         "subprocess isolation",
-    );
-});
-
-test("golden runner reports unknown actions", async () => {
-    await assertRejects(
-        () => runGoldenScenario({ name: "bad", actions: [{ type: "unknown" }] }, { keepArtifacts: false }),
-        Error,
-        "Unknown scenario action",
     );
 });
 
@@ -133,11 +123,11 @@ test("golden actor validates declared available tool set", async () => {
     );
 });
 
-test("golden actor fails when required tools are unavailable", () => {
+test("golden actor fails when required tools are unavailable", async () => {
     const actor = new GoldenScenarioActor([
         { id: "router", agent: "router", requiredTools: ["triage_report"], response: "ok" },
     ]);
-    assertRejects(
+    await assertRejects(
         async () => await Promise.resolve(actor.next({ agent: "router", availableTools: [] })),
         Error,
         "Required tool unavailable",
@@ -145,15 +135,16 @@ test("golden actor fails when required tools are unavailable", () => {
 });
 
 test("golden scenario child process runs with isolated environment before scenario import", async () => {
-    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
     const result = await runGoldenScenarioChildProcess({
-        scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.js",
+        scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
         exportName: "helpSlashCommandScenario",
         timeoutMs: 30000,
     });
     assertEquals(result.ok, true);
-    assertEquals(result.result.name, "help-slash-command");
-    assertEquals(result.result.actor.remaining, []);
+    assertEquals(result.result?.name, "help-slash-command");
+    assertEquals(result.result?.actor.remaining, []);
+    assertExists(result.env);
     assertEquals(
         await fsStat(result.env.root)
             .then(() => true)
@@ -202,11 +193,11 @@ test("golden composition cleans up partial startup failure", async () => {
 });
 
 test("golden scenario child process failure reports retained diagnostics artifact", async () => {
-    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
     const error = await assertRejects(
         () =>
             runGoldenScenarioChildProcess({
-                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.js",
+                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
                 exportName: "missingGoldenScenario",
                 timeoutMs: 3000,
             }),
@@ -225,11 +216,11 @@ test("golden scenario child process failure reports retained diagnostics artifac
 });
 
 test("golden scenario timeout retains child heartbeat diagnostics", async () => {
-    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
     const error = await assertRejects(
         () =>
             runGoldenScenarioChildProcess({
-                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.js",
+                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
                 exportName: "timeoutDiagnosticScenario",
                 timeoutMs: 2000,
             }),
@@ -259,11 +250,11 @@ test("golden scenario timeout retains child heartbeat diagnostics", async () => 
 });
 
 test("golden scenario child crash surfaces substantive scenario diagnostics", async () => {
-    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+    const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.ts");
     const error = await assertRejects(
         () =>
             runGoldenScenarioChildProcess({
-                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.js",
+                scenarioModule: "src/ui/tui/golden-scenarios/initial-scenarios.ts",
                 exportName: "diagnosticArtifactFailureScenario",
                 timeoutMs: 10000,
             }),
@@ -289,16 +280,6 @@ test("golden scenario child crash surfaces substantive scenario diagnostics", as
     }
 });
 
-test("golden actor exposes faux-provider response factory integration", () => {
-    const actor = new GoldenScenarioActor([
-        { id: "guide", agent: "guide", phase: "inquiry", text: "hello", thinking: "thinking" },
-    ]);
-    const factory = actor.toFauxResponseFactory(() => ({ agent: "guide", phase: "inquiry" }));
-    const message = factory({}, {});
-    assertEquals(message.role, "assistant");
-    actor.assertComplete();
-});
-
 test("golden runner rejects unexpected interactions", async () => {
     await assertRejects(
         () =>
@@ -319,6 +300,7 @@ test("golden runner writes diagnostic artifacts on failure", async () => {
     const artifactRoot = await fsMkdtemp(join(tmpdir(), "golden-artifacts-test-"));
     try {
         await assertRejects(
+            // @ts-expect-error Exercise rejection of an unsupported runtime action.
             () => runGoldenScenario({ name: "artifact", actions: [{ type: "unknown" }] }, { artifactRoot }),
             Error,
             "Unknown scenario action",

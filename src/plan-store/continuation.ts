@@ -2,7 +2,7 @@ import { managedPlanStoreActive, readManagedPlan, readManagedPlanResource } from
 /** Intent-specific continuation queries; callers never read a controller file or patch its fields. */
 import { readControllerRecord } from "./controllers.ts";
 import { inspectLocalHomeStore } from "./access.ts";
-import { findPlanEvidenceById } from "../plan-store.js";
+import { findPlanEvidenceById } from "../plan-store.ts";
 
 export async function readPlanRecordingContinuation(cwd: string, planId: string) {
     if (managedPlanStoreActive()) {

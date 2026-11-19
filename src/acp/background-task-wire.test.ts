@@ -1,10 +1,10 @@
 import { assertEquals } from "../testing/assertions.ts";
 import { test } from "node:test";
-import type { InitializeRequest, NewSessionRequest, PromptRequest } from "@agentclientprotocol/sdk";
+import type { InitializeRequest, NewSessionRequest, PromptRequest } from "@agentclientprotocol/sdk/unstable";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { startRunWieldAcpServer } from "./server.js";
+import { startRunWieldAcpServer } from "./server.ts";
 
 interface WireTextContent {
     text?: string;

@@ -1,8 +1,10 @@
 import { test } from "node:test";
-import { writeFile as fsWriteFile } from "node:fs/promises";
+import { writeFile as fsWriteFile, stat as fsStat } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { join } from "node:path";
+import { runAttachedOperation } from "./coordinator.ts";
+import { readRecordBytes } from "./attached-test-fixture.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 
@@ -150,3 +152,75 @@ test("a Core round-limit pause keeps findings and resumes the same user decision
         await fixture.close();
     }
 });
+
+for (const operation of ["start_validation", "validation_decision", "task_completed"] as const) {
+    test(`inspect-only status reports the active ${operation} while real CI waits`, async () => {
+        const fixture = await attachedValidationFixture(operation === "validation_decision" ? { command: null } : {});
+        let running;
+        try {
+            let workflow = await fixture.status();
+            let payload = {};
+            if (operation !== "start_validation") {
+                const started = await fixture.call("start_validation", workflow);
+                assert(started.ok && started.workflow.nextAction.kind === "validation");
+                workflow = started.workflow;
+                payload =
+                    operation === "validation_decision"
+                        ? {
+                              actionId: started.workflow.nextAction.actionId,
+                              answer: { outcome: "text", value: "sh verify.sh" },
+                          }
+                        : {
+                              actionId: started.workflow.nextAction.actionId,
+                              message: "- Fixed the implementation; full CI pending.",
+                          };
+            }
+            await fsWriteFile(
+                join(fixture.cwd, "verify.sh"),
+                "#!/bin/sh\nprintf ci\\n >> ci-count\ntouch ci-entered\nwhile [ ! -f ci-release ]; do sleep 0.05; done\nexit 0\n",
+            );
+            const operationId = `held-${operation}`;
+            running = fixture.call(operation, workflow, payload, operationId);
+            const deadline = Date.now() + 20_000;
+            while (
+                !(await fsStat(join(fixture.cwd, "ci-entered")).then(
+                    () => true,
+                    () => false,
+                ))
+            ) {
+                assert(Date.now() < deadline, "Real CI did not reach the external boundary");
+                await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+            const before = await readRecordBytes(fixture.root, fixture.workflowId);
+            const checkpoint = await fixture.checkpointBytes();
+            const inspected = await runAttachedOperation(
+                "status",
+                fixture.root,
+                JSON.stringify({ workflowId: fixture.workflowId, inspectOnly: true }),
+            );
+            assert(inspected.ok && inspected.workflow.nextAction.kind === "validation_running");
+            assertEquals(inspected.workflow.state, "validating");
+            assertEquals(inspected.workflow.nextAction.operationId, operationId);
+            assertEquals(inspected.workflow.nextAction.operation, operation);
+            assertEquals(inspected.workflow.nextAction.progress?.phase, "mechanical");
+            assert(inspected.workflow.nextAction.startedAt);
+            assert(!inspected.workflow.nextAction.guidance.includes("start_validation"));
+            assertEquals(await readRecordBytes(fixture.root, fixture.workflowId), before);
+            assertEquals(await fixture.checkpointBytes(), checkpoint);
+            const duplicate = await fixture.call("start_validation", inspected.workflow);
+            assert(!duplicate.ok && duplicate.rejection.code === "workflow_busy");
+            await fsWriteFile(join(fixture.cwd, "ci-release"), "release");
+            const finished = await running;
+            assert(finished.ok && finished.workflow.nextAction.kind === "validation");
+            const count = await fixture.ciCount();
+            assertEquals(await fixture.call(operation, workflow, payload, operationId), finished);
+            assertEquals(await fixture.ciCount(), count);
+            const stale = await fixture.call("start_validation", inspected.workflow);
+            assert(!stale.ok && stale.rejection.code === "revision_conflict");
+        } finally {
+            await fsWriteFile(join(fixture.cwd, "ci-release"), "release");
+            await running;
+            await fixture.close();
+        }
+    });
+}

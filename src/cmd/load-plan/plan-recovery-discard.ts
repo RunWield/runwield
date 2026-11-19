@@ -1,4 +1,4 @@
-import { addEntry, findById, updateEntry } from "../../shared/worktree-registry.js";
+import { addEntry, findById, updateEntry } from "../../shared/worktree-registry.ts";
 import type { RecoveryWorktreeContext } from "./plan-session-types.ts";
 
 /** Preserve the attempt identity after confirmed discard, including retained rescue branches. */

@@ -1,10 +1,10 @@
-// @ts-nocheck: browser question bridge keeps JS Runtime interaction types at the boundary.
+// @ts-nocheck: Browser question interaction metadata has implicit types.
 /**
  * @module shared/session/browser-question
  * Starts the compiled Workspace question page for Runtime interactions.
  */
 
-import { startSessionQuestionWorkspaceServer } from "../../ui/workspace/server.js";
+import { startSessionQuestionWorkspaceServer } from "../../ui/workspace/server.ts";
 
 /**
  * @typedef {Object} BrowserQuestionServer
@@ -14,7 +14,7 @@ import { startSessionQuestionWorkspaceServer } from "../../ui/workspace/server.j
  */
 
 /**
- * @param {{ interaction: import('./session-runtime-interactions.js').RuntimeInteractionRequest, acpSessionId?: string, answerQuestion: (request: Request) => Promise<Response>|Response }} options
+ * @param {{ interaction: import('./session-runtime-interactions.ts').RuntimeInteractionRequest, acpSessionId?: string, answerQuestion: (request: Request) => Promise<Response>|Response }} options
  * @returns {BrowserQuestionServer}
  */
 export function startBrowserQuestionServer({ interaction, acpSessionId = "", answerQuestion }) {

@@ -6,8 +6,8 @@ import {
     type BatchOperationIntent,
 } from "./operation-receipts.ts";
 import { requestWorkspaceSearchRefresh } from "../shared/workspace-search-refresh.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
-import { parseWorkRecordMarkdown } from "../shared/work-records/markdown.js";
+import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
+import { parseWorkRecordMarkdown } from "../shared/work-records/markdown.ts";
 /** Explicit personal Plan packages. Legacy discovery and lifecycle admission remain separate. */
 import fs from "node:fs/promises";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -28,7 +28,7 @@ import {
     writeTextAtomically,
 } from "../shared/private-json-file.ts";
 import { EPIC_ARTIFACT_FILE_NAMES } from "../plan-format.ts";
-import { canonicalPlanStatus, normalizePlanId, StalePlanWriteError, type PlanFrontMatter } from "../plan-store.js";
+import { canonicalPlanStatus, normalizePlanId, StalePlanWriteError, type PlanFrontMatter } from "../plan-store.ts";
 import {
     preparePlanPackageImport,
     revalidatePlanImport,
@@ -181,7 +181,7 @@ export interface PackageWorkflowEvidence {
     publicationPolicy?: FrozenExecutionPublicationPolicy;
     generatedArtifact?: PackageGeneratedArtifact;
     legacySettlement?: LegacyPackageSettlement;
-    workRecord?: import("../plan-store.js").PlanFrontMatter["workRecord"];
+    workRecord?: import("../plan-store.ts").PlanFrontMatter["workRecord"];
     integration?: PackageWorkflowInput;
     review?: PackageWorkflowInput;
     readiness?: PackageWorkflowInput;

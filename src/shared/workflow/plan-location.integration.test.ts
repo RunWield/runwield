@@ -10,7 +10,7 @@ import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-run
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { realpathSync as fsRealpathSync } from "node:fs";
@@ -26,17 +26,17 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
+import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
 
 import { listPlans, loadPlan } from "../../plan-store/index.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 
-import { findById, getWorktreeRegistryPath, pruneEntry } from "../worktree-registry.js";
-import { addEntry } from "../worktree-registry.js";
+import { findById, getWorktreeRegistryPath, pruneEntry } from "../worktree-registry.ts";
+import { addEntry } from "../worktree-registry.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";

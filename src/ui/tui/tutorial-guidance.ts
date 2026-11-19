@@ -3,18 +3,18 @@ import { hasPlanDeliveryEvidence } from "../../plan-store/index.ts";
 import { opendir as fsOpendir } from "node:fs/promises";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AGENTS } from "../../constants.js";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { AGENTS } from "../../constants.ts";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { listWorkRecords } from "../../shared/work-records/store.ts";
 import { findPlanEvidenceById } from "../../plan-store/index.ts";
 
-import { getCustomSetting } from "../../shared/settings.js";
+import { getCustomSetting } from "../../shared/settings.ts";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 
-type SessionRuntimeEvent = import("../../shared/session/session-runtime-events.js").SessionRuntimeEvent;
-type SessionSnapshot = import("../../shared/types.js").SessionSnapshot;
+type SessionRuntimeEvent = import("../../shared/session/session-runtime-events.ts").SessionRuntimeEvent;
 type SessionRuntime = ReturnType<typeof import("../../shared/session/session-runtime.ts").createSessionRuntime>;
+type SessionSnapshot = NonNullable<ReturnType<SessionRuntime["getSessionSnapshot"]>>;
 type LoadedPlan = Awaited<ReturnType<typeof findPlanEvidenceById>>;
 
 type TutorialExplanation = {

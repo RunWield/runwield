@@ -429,7 +429,7 @@ test("home-only admission refuses another account and a rebound repository", asy
 
 import { updatePlanCollaborationMetadata } from "./index.ts";
 import { withHomeProjectOwner, projectStoreLocation } from "../shared/project-identity.ts";
-import { getProjectSecretStoreLocation, putSecretRecord } from "../shared/collaboration/secrets.js";
+import { getProjectSecretStoreLocation, putSecretRecord } from "../shared/collaboration/secrets.ts";
 import { COLLABORATION_LOCK_BYPASS } from "../shared/collaboration/lock.ts";
 
 test("home-only collaboration uses owner credentials without returning them", async () => {
@@ -616,7 +616,7 @@ test("non-Git recovery uses trusted execution inspection without a laptop checko
     await withProcessGlobalTestLock(async () => {
         const { mkdtemp, mkdir, chmod, rm } = await import("node:fs/promises");
         const { tmpdir } = await import("node:os");
-        const { getHomeDir } = await import("../constants.js");
+        const { getHomeDir } = await import("../constants.ts");
         const { admitProjectIdentity } = await import("../shared/project-identity.ts");
         const temporary = await mkdtemp(join(tmpdir(), "managed-non-git-recovery-"));
         const root = join(temporary, "source");
@@ -858,7 +858,7 @@ test(
             const { recordAttrs, recordBody } = await import("../shared/work-records/test-fixtures/package-records.ts");
             const { createWorkRecordMnemotecaFixture } =
                 await import("../shared/work-records/test-fixtures/mnemoteca-port.ts");
-            const { setCustomSetting } = await import("../shared/settings.js");
+            const { setCustomSetting } = await import("../shared/settings.ts");
             const { previewRecordRetention, confirmRetention } = await import("./index.ts");
             const { localConfirmRetention } = await import("./retention.ts");
             await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", f.root);

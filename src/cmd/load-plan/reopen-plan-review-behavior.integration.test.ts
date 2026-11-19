@@ -13,8 +13,8 @@ import {
 import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
 
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";

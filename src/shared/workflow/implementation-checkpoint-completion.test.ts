@@ -3,10 +3,10 @@ import { test } from "node:test";
 import { type ExtensionToolContext, SessionManager } from "@earendil-works/pi-coding-agent";
 import { loadPlan } from "../../plan-store/index.ts";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { listPendingTaskCompletions } from "../session/task-completion-session.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
-import { makeValidationProjectRoot } from "./validation-test-helpers.js";
+import { makeValidationProjectRoot } from "./validation-test-helpers.ts";
 
 const EXTENSION_CONTEXT = {} as ExtensionToolContext;
 type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;
@@ -25,7 +25,7 @@ test("implementation checkpoint acknowledges its accepted task_completed JSONL e
     });
     const root = { dispose: () => {} };
     hostedSession.setRootAgentSession(root);
-    const workflow: import("../types.js").ActiveExecutionWorkflow = {
+    const workflow: import("../session/execution-workflow-session.ts").ActiveExecutionWorkflow = {
         planName: "p",
         triageMeta: { classification: "PLANNED_CHANGE", status: "in_progress" },
         executionAgent: "engineer" as const,

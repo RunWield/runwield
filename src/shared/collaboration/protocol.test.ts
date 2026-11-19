@@ -14,7 +14,7 @@ import {
     normalizeRevisionMetadata,
     normalizeSharedSpaceLifecyclePayload,
     normalizeSharedSpaceMetadata,
-} from "./protocol.js";
+} from "./protocol.ts";
 
 test("protocol helpers normalize shared space metadata", () => {
     assertEquals(
@@ -53,7 +53,7 @@ test("protocol helpers normalize shared space metadata", () => {
             updatedAt: "later",
             latestRevision: 1,
             expiresAt: "",
-        })
+        }),
     );
     assertThrows(() =>
         normalizeSharedSpaceMetadata({
@@ -63,7 +63,7 @@ test("protocol helpers normalize shared space metadata", () => {
             updatedAt: "later",
             latestRevision: 1,
             expiresAt: "not-a-date",
-        })
+        }),
     );
 });
 
@@ -78,7 +78,7 @@ test("protocol helpers normalize revision metadata and reject invalid revisions"
         2,
     );
     assertThrows(() =>
-        normalizeRevisionMetadata({ spaceId: "space-1", revision: 0, createdAt: "now", payloadCiphertext: "x" })
+        normalizeRevisionMetadata({ spaceId: "space-1", revision: 0, createdAt: "now", payloadCiphertext: "x" }),
     );
 });
 
@@ -164,7 +164,7 @@ test("protocol helpers normalize decrypted browser review comment payloads", () 
     );
     assertThrows(() => normalizeDecryptedReviewCommentPayload({ schemaVersion: 2 }));
     assertThrows(() =>
-        normalizeDecryptedReviewCommentPayload({ schemaVersion: 1, type: "note", displayName: "A", body: "B" })
+        normalizeDecryptedReviewCommentPayload({ schemaVersion: 1, type: "note", displayName: "A", body: "B" }),
     );
 });
 
@@ -189,7 +189,7 @@ test("protocol helpers reject invalid records", () => {
     assertThrows(() => normalizeCapabilityRecord({ scope: "owner", capabilityHash: "x" }));
     assertThrows(() => normalizeEncryptedPlanPayload({ planId: "plan", title: "Draft", body: "" }));
     assertThrows(() =>
-        normalizeEncryptedCommentRecord({ id: "comment", spaceId: "space", ciphertext: "x", createdAt: "now" })
+        normalizeEncryptedCommentRecord({ id: "comment", spaceId: "space", ciphertext: "x", createdAt: "now" }),
     );
     assertThrows(() => normalizeLocalSecretRecord({ planId: "plan" }));
 });
@@ -217,7 +217,7 @@ test("protocol helpers normalize remote API payloads and reject plaintext fields
             body: "plaintext",
             initialRevision: { payloadCiphertext: "cipher-plan" },
             capabilities: [{ scope: "reviewer", capabilityHash: "sha256:reviewer" }],
-        })
+        }),
     );
     assertThrows(() => normalizeAppendCommentPayload({ ciphertext: "cipher-comment", authorName: "Alice" }));
 });

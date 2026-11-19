@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { inspectProjectIdentity } from "../project-identity.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { assertManagedRuntimePath } from "../project-runtime-managed.ts";
-import { findById, type WorktreeRegistryEntry } from "../worktree-registry.js";
+import { findById, type WorktreeRegistryEntry } from "../worktree-registry.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 export interface ExecutionRecoveryRequest {
     projectId: string;

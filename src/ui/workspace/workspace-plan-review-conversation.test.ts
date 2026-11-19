@@ -6,9 +6,9 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan, ensurePlanIdentity } from "../../plan-store/index.ts";
 
-import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 import { collectArtifactConversationReply } from "./react/artifact-conversation.ts";
 
 for (const source of ["new", "saved"] as const)

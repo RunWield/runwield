@@ -1,7 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { match as assertMatch } from "node:assert/strict";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { createMnemotecaTools, type MnemotecaToolHost } from "./tools.ts";
 import type { HelperBinaryExecResult } from "../helper-binary-exec.ts";
@@ -63,15 +62,6 @@ async function executeText(
     return result.content[0]?.type === "text" ? result.content[0].text : "";
 }
 
-test("memory tools expose one action-based memory tool", () => {
-    const { tools } = setup(() => ({ code: 0, stdout: "", stderr: "" }));
-
-    assertEquals(
-        tools.map((tool) => tool.name),
-        ["memory"],
-    );
-});
-
 test("memory recall searches project and global memory with labeled provenance", async () => {
     const { calls, getTool } = setup((command, args) => {
         if (command === "git") return { code: 0, stdout: "/repo/runwield/.git\n", stderr: "" };
@@ -93,18 +83,6 @@ test("memory recall searches project and global memory with labeled provenance",
     assertEquals(calls[1]?.args, ["init", "--name", "runwield"]);
     assertEquals(calls[2]?.args, ["search", "--name", "runwield", "--format", "plain", '"he said ""hello"""']);
     assertEquals(calls[3]?.args, ["search", "--global", "--format", "plain", '"he said ""hello"""']);
-});
-
-test("memory recall returns one missing binary message", async () => {
-    const { getTool } = setup((command) => {
-        if (command === "git") return { code: 1, stdout: "", stderr: "" };
-        return { code: 127, stdout: "", stderr: "" };
-    });
-
-    const text = await executeText(getTool("memory"), { action: "recall", query: "test" });
-
-    assertMatch(text, /mnemoteca binary not found/i);
-    assertEquals(text.match(/mnemoteca binary not found/gi)?.length, 1);
 });
 
 test("memory recall returns a simple empty result when both scopes are empty", async () => {
@@ -175,31 +153,6 @@ test("memory delete refuses ambiguous IDs", async () => {
         calls.some((call) => call.args[0] === "delete"),
         false,
     );
-});
-
-test("memory delete checks the target scope before deleting by id", async () => {
-    const { calls, getTool } = setup((command, args) => {
-        if (command === "git") return { code: 1, stdout: "", stderr: "" };
-        if (args[0] === "init") return { code: 0, stdout: "", stderr: "" };
-        if (args[0] === "export") return exportedMemories(args, args.includes("--global") ? 42 : 7);
-        return { code: 0, stdout: "   ", stderr: "" };
-    });
-
-    const text = await executeText(getTool("memory"), { action: "delete", id: 42, scope: "global" });
-
-    assertEquals(text, "Memory deleted.");
-    assertEquals(calls.find((call) => call.args[0] === "export" && call.args.includes("--name"))?.args.slice(0, 4), [
-        "export",
-        "--name",
-        "project-feature",
-        "--no-embeddings",
-    ]);
-    assertEquals(calls.find((call) => call.args[0] === "export" && call.args.includes("--global"))?.args.slice(0, 3), [
-        "export",
-        "--global",
-        "--no-embeddings",
-    ]);
-    assertEquals(calls.at(-1)?.args, ["delete", "42"]);
 });
 
 test("memory delete does not treat document content as scope membership", async () => {

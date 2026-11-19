@@ -1,7 +1,7 @@
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import {
-    readdir as fsReaddir,
-    readFile as fsReadFile,
     mkdtemp as fsMkdtemp,
     writeFile as fsWriteFile,
     chmod as fsChmod,
@@ -14,7 +14,6 @@ import { join } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { fileURLToPath as fromFileUrl } from "node:url";
 import { DENO_CONFIG_PATH, EVIDENCE, withProject } from "./attached-test-fixture.ts";
 import { executionInput, readyPlan } from "./execution-test-fixture.ts";
 import process from "node:process";

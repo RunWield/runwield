@@ -2,10 +2,10 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { restoreExecutionWorkflow } from "./execution-workflow-recovery.ts";
 import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
-import type { ActiveExecutionWorkflow } from "../types.js";
+import type { ActiveExecutionWorkflow } from "./execution-workflow-session.ts";
 
 type SnapshotCase = "active" | "paused" | "stopped" | "cleared";
 for (const state of ["active", "paused", "stopped", "cleared"] as SnapshotCase[]) {

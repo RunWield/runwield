@@ -1,14 +1,14 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { __resetSettingsForTests } from "../../shared/settings.js";
+import { __resetSettingsForTests } from "../../shared/settings.ts";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { initRunWieldTheme } from "../../ui/theme/theme.js";
+import { initRunWieldTheme } from "../../ui/theme/theme.ts";
 import { runNameCommand } from "./index.ts";
 
 interface NameCommandFixture {
@@ -23,10 +23,7 @@ async function withNameCommandFixture(run: (fixture: NameCommandFixture) => Prom
         const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-name-command-"));
         const homeDir = join(fixtureRoot, "home");
         const projectRoot = join(fixtureRoot, "project");
-        await Promise.all([
-            fsMkdir(homeDir, { recursive: true }),
-            fsMkdir(projectRoot, { recursive: true }),
-        ]);
+        await Promise.all([fsMkdir(homeDir, { recursive: true }), fsMkdir(projectRoot, { recursive: true })]);
 
         try {
             process.env["HOME"] = homeDir;

@@ -7,10 +7,10 @@ import { publicationFixture } from "../workflow/testing/package-publication-fixt
 import { captureForegroundProcess } from "../captured-process.ts";
 import { git } from "../git-test-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
 import { loadPublicationAttempt } from "../workflow/publication-machine.ts";
 import { readPublishedDeliverySources } from "../../plan-store/index.ts";
-import type { WorkRecordSource } from "./generation.js";
+import type { WorkRecordSource } from "./generation.ts";
 
 async function renameCurrentPlan(cwd: string, planId: string, name: string): Promise<void> {
     const current = await findPlanById(cwd, planId);

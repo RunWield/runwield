@@ -17,7 +17,7 @@ affectedPaths:
     - "src/shared/settings.js"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/plan-store-prd.md"
-    - "docs/adr/0020-home-project-state-and-launch-mode-ownership.md"
+    - "docs/adr/019-home-project-state-and-launch-mode-ownership.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-01"

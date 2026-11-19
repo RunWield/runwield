@@ -9,18 +9,18 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 import { admitProjectIdentity, inspectProjectStorage } from "../project-identity.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { createRootSessionManager, resolveCreatedRootSessionPath, openPersistedRootSession } from "./root-session.js";
-import { captureTranscriptEvidence } from "./session-transcript-projection.js";
+import { createRootSessionManager, resolveCreatedRootSessionPath, openPersistedRootSession } from "./root-session.ts";
+import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
 import { listRecentResumableSessions } from "./session-resume-list.ts";
 import { lockPath, manifestPath, sessionDirForRoot } from "./file-session-storage.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 
 const repository = defineCommittedGitFixture();
 const storeModule = new URL("./file-session-store.ts", import.meta.url).href;
-const rootModule = new URL("./root-session.js", import.meta.url).href;
+const rootModule = new URL("./root-session.ts", import.meta.url).href;
 const identityModule = new URL("../project-identity.ts", import.meta.url).href;
 const resumeModule = new URL("./session-resume-list.ts", import.meta.url).href;
-const projectionModule = new URL("./session-transcript-projection.js", import.meta.url).href;
+const projectionModule = new URL("./session-transcript-projection.ts", import.meta.url).href;
 
 async function withHome(body: (home: string) => Promise<void>) {
     await withProcessGlobalTestLock(async () => {

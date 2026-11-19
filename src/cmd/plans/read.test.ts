@@ -5,7 +5,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { archivePlan, loadArchivedPlan } from "../../plan-store/index.ts";
 
 import { runPlansReadCommand } from "./read.ts";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 
 interface ReadSurfaceResult {
@@ -191,7 +191,7 @@ readTest(
         const { defineGitFixture, git } = await import("../../shared/git-test-fixture.ts");
         const { cp, mkdir, writeFile } = await import("node:fs/promises");
         const { join } = await import("node:path");
-        const { addEntry } = await import("../../shared/worktree-registry.js");
+        const { addEntry } = await import("../../shared/worktree-registry.ts");
         // Copy a real fixture into the command fixture so cwd stays under its process lock.
         const fixture = defineGitFixture(async (root) => {
             await mkdir(join(root, "docs/plans"), { recursive: true });
@@ -240,7 +240,7 @@ retainedReadTest(
     async ({ projectRoot }) => {
         const { mkdir } = await import("node:fs/promises");
         const { join } = await import("node:path");
-        const { addEntry } = await import("../../shared/worktree-registry.js");
+        const { addEntry } = await import("../../shared/worktree-registry.ts");
         const { RegisteredPlanDocumentUnavailableError } = await import("../../plan-store/index.ts");
         const path = join(projectRoot, "unowned-directory");
         await mkdir(path);

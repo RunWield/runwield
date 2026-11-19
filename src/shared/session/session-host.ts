@@ -3,9 +3,13 @@
  * Registry and lifecycle owner for in-process Hosted Sessions.
  */
 
-import { HostedSession } from "./hosted-session.js";
-import type { ManagedSessionMetadata, MinimalSessionManagerLike } from "./hosted-session.js";
-import type { SessionRuntimeEventSink } from "../types.js";
+import { HostedSession } from "./hosted-session.ts";
+import type { ManagedSessionMetadata, MinimalSessionManagerLike } from "./hosted-session.ts";
+import type { SessionRuntimeEvent } from "./session-runtime-events.ts";
+
+export interface SessionRuntimeEventSink {
+    emit: (event: Partial<SessionRuntimeEvent> & { type: string }) => void;
+}
 
 export type SessionHostEventSink = SessionRuntimeEventSink | SessionRuntimeEventSink["emit"];
 
@@ -30,7 +34,9 @@ export interface HostedSessionMetadata {
 
 function getSessionManagerId(sessionManager: MinimalSessionManagerLike | null | undefined): string | null {
     if (
-        !sessionManager || typeof sessionManager !== "object" || !("getSessionId" in sessionManager) ||
+        !sessionManager ||
+        typeof sessionManager !== "object" ||
+        !("getSessionId" in sessionManager) ||
         typeof sessionManager.getSessionId !== "function"
     ) {
         return null;

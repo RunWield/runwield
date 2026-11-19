@@ -1,14 +1,23 @@
 ---
-description: Plan and implement one FEATURE request with RunWield
+description: Explore ideas, answer project questions, or plan and deliver one request with RunWield
 argument-hint: <request>
 disable-model-invocation: true
 ---
 
 Start RunWield only for this request: $ARGUMENTS
 
-Show any returned `compatibility` notice to the user before continuing. On `unsupported_host`, show Core's
+Keep this original user request in host context through Router and any role handoff.
+
+Continue quietly on nonblocking compatibility assessments, including legacy notices from older Core. On `unsupported_host`, show Core's
 compatibility message and stop. On `incompatible_adapter` or `unsupported_host_version`, show Core's update message and stop.
-Core owns host and version compatibility.
+Core owns host and version compatibility. If a required MCP tool is missing or unknown, tell the user to update local
+RunWield Core and the Claude Code RunWield plugin to compatible versions, then retry. Stop without substituting a tool
+or workflow.
+
+After any result with `workflow.nextAction.kind: "role_handoff"`, require `workflow.nextAction.role` to be `ideator` or
+`guide`. Read `${CLAUDE_PLUGIN_ROOT}/references/conversation.md` and follow its shared procedure for that role, including
+calling `get_role_instructions` and answering the original user request. Skip the remaining workflow steps for this
+closed routing record. An unknown handoff role requires compatible Core/plugin updates; stop without substitution.
 
 1. Call the RunWield MCP tool `activate`. Use a new unique `operationId` and put the user's request in
    `payload.requestText`. Use `${CLAUDE_SESSION_ID}` as `payload.hostRequestId`. If that variable is not substituted,
@@ -18,7 +27,7 @@ Core owns host and version compatibility.
    `context.triageOutcome` when the conversation does not contain the request. Use `workflow.workflowId`,
    `workflow.revision`, and `workflow.nextAction.actionId` in each lifecycle call. Check that the action contract is `runwield.attached.triage/1`
    for the Router or `runwield.attached.planner/1` for the Planner. If another contract is returned, stop and tell the
-   user that Core returned an unsupported role contract.
+   user to update local RunWield Core and the Claude Code RunWield plugin: Core returned an unsupported role contract.
 3. Call `triage_report` after Triage. For a FEATURE Plan, show the setup preview before writing the Plan, then call
    `plan_written` with the Plan name. Follow the next result. A rejection with a pending action lets you repair the
    input and retry with a new `operationId`; reuse an ID only when retrying a call that returned no result.
@@ -37,7 +46,7 @@ Core owns host and version compatibility.
   not automatically restart execution or ask again. Never silently implement in place.
 - For `implementation`, send a user-visible message before dispatch with `disclosure`, `executionCwd`, and
   `worktreeBranch`, including the RunWield-owned `.gitignore` block. Do not put this only in thinking or the worker
-  prompt. Check contract `runwield.attached.implementation/1`; stop on a mismatch.
+  prompt. Check contract `runwield.attached.implementation/1`; on a mismatch, tell the user to update Core and the plugin and stop.
 - Dispatch a fresh Claude Code subagent using the host's Task/Agent tool. Its task prompt must include the full returned
   `instructions.text` verbatim (do not summarize it), `executionCwd`, `planPath`, `planName`, and implementer `role`.
   Tell it to use that directory for every file edit and shell command, follow that Plan, and return a Markdown
@@ -69,8 +78,8 @@ not apply the reply again to a different turn. Turns stay queued in order. Conti
 between replies. A process restart restores pending turns, not a permanent transcript.
 
 Use Claude Code's tools and other MCP servers normally. RunWield adds no hooks or tool restrictions. Stay in Claude Code
-and the browser; use no RunWield CLI or TUI commands. Claude Code owns all model calls. This plugin supports FEATURE
-planning, review, isolated implementation, validation, and durable handoff recovery.
+and the browser; use no RunWield CLI or TUI commands. Claude Code owns all model calls. This plugin supports Ideator and
+Guide conversations, plus planning, review, isolated implementation, validation, and durable delivery handoff recovery.
 
 ## Canonical document access
 

@@ -2,11 +2,11 @@ import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "./packages.ts";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
 import { readPlanRecordingContext, type PlanRecordingContext } from "./recording.ts";
-import type { GeneratedWorkRecordSections } from "../shared/work-records/generation.js";
+import type { GeneratedWorkRecordSections } from "../shared/work-records/generation.ts";
 import type { PublishedDeliverySources } from "./published-source.ts";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
 import { confirmManagedPublication } from "./retained-proof.ts";
-import { loadPlan, listPlans } from "../plan-store.js";
+import { loadPlan, listPlans } from "../plan-store.ts";
 import {
     assertProjectStoreIdentity,
     projectStoreLocation,
@@ -18,9 +18,9 @@ import {
     getGlobalSecretStoreLocation,
     getProjectSecretStoreLocation,
     resolveCompatibleSecretRecord,
-} from "../shared/collaboration/secrets.js";
-import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../shared/collaboration/client.js";
-import { normalizeSharedSpaceMetadata } from "../shared/collaboration/protocol.js";
+} from "../shared/collaboration/secrets.ts";
+import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../shared/collaboration/client.ts";
+import { normalizeSharedSpaceMetadata } from "../shared/collaboration/protocol.ts";
 import {
     packageController,
     reservePlanExecution,
@@ -376,8 +376,8 @@ export interface ProjectStoreAuthorChildren {
     operationId: string;
     planId: string;
     expectedRevision: string;
-    children: import("../plan-store.js").ChildFeaturePlanDescriptor[];
-    options: Omit<import("../plan-store.js").PlanWriteOptions, "onChildPlanWritten" | "collaborationLockBypass">;
+    children: import("../plan-store.ts").ChildFeaturePlanDescriptor[];
+    options: Omit<import("../plan-store.ts").PlanWriteOptions, "onChildPlanWritten" | "collaborationLockBypass">;
     finalize: boolean;
 }
 export interface ProjectStoreChildrenResultRead {
@@ -386,7 +386,7 @@ export interface ProjectStoreChildrenResultRead {
     operationId: string;
 }
 export interface ProjectStoreChildrenResult {
-    children: import("../plan-store.js").SavedChildFeaturePlan[];
+    children: import("../plan-store.ts").SavedChildFeaturePlan[];
 }
 export interface ProjectStoreRetainedRecordingSettle extends importRetainedCleanup {
     kind: "settle-retained-record";
@@ -399,7 +399,7 @@ export interface ProjectStoreRetainedRecordingRead {
 export interface ProjectStoreRetainedRecordingPrepare extends importRetainedCleanup {
     kind: "prepare-retained-record";
     pendingPublication: boolean;
-    sections: import("../shared/work-records/generation.js").GeneratedWorkRecordSections | null;
+    sections: import("../shared/work-records/generation.ts").GeneratedWorkRecordSections | null;
 }
 export interface ProjectStoreRetainedRecordingResult {
     retainedRecording: import("./retained-recording.ts").RetainedRecordingContext | null;
@@ -427,14 +427,14 @@ export interface ProjectStoreArchiveCatalogRead {
     kind: "archive-catalog";
 }
 export interface ProjectStoreArchiveCatalog {
-    archives: Awaited<ReturnType<typeof import("../plan-store.js").listArchivedPlans>>;
+    archives: Awaited<ReturnType<typeof import("../plan-store.ts").listArchivedPlans>>;
 }
 export interface ProjectStoreArchivedRead {
     kind: "read-archive";
     reference: string;
 }
 export interface ProjectStoreArchived {
-    archived: Awaited<ReturnType<typeof import("../plan-store.js").loadArchivedPlan>>;
+    archived: Awaited<ReturnType<typeof import("../plan-store.ts").loadArchivedPlan>>;
 }
 export interface ProjectStoreArchive extends PlanMutation {
     kind: "archive-plan";
@@ -453,14 +453,14 @@ export interface ProjectStoreResourceCatalogRead {
     kind: "plan-resource-catalog";
 }
 export interface ProjectStoreResourceCatalog {
-    resourceCatalog: Awaited<ReturnType<typeof import("../plan-store.js").readPlanResourceCatalog>>;
+    resourceCatalog: Awaited<ReturnType<typeof import("../plan-store.ts").readPlanResourceCatalog>>;
 }
 export interface ProjectStorePlanResourceRead {
     kind: "plan-resource";
     planId: string;
 }
 export interface ProjectStorePlanResource {
-    planResource: Awaited<ReturnType<typeof import("../plan-store.js").findPlanEvidenceById>>;
+    planResource: Awaited<ReturnType<typeof import("../plan-store.ts").findPlanEvidenceById>>;
 }
 export interface ProjectStoreReviewPresentationRead {
     kind: "review-presentation";
@@ -475,7 +475,7 @@ export interface ProjectStoreHumanReview extends PlanMutation {
 }
 export interface ProjectStoreEpicReview extends PlanMutation {
     kind: "save-epic-review";
-    review: import("../plan-store.js").PlanFrontMatter["epicIntegrationReview"];
+    review: import("../plan-store.ts").PlanFrontMatter["epicIntegrationReview"];
 }
 export interface ProjectStoreReviewCapture {
     kind: "capture-review";
@@ -487,13 +487,13 @@ export interface ProjectStoreReviewInput {
 }
 export interface ProjectStoreReviewDecision extends PlanMutation {
     kind: "review-decision";
-    sourceStatus: import("../plan-store.js").PlanFrontMatter["status"];
+    sourceStatus: import("../plan-store.ts").PlanFrontMatter["status"];
     sourceMarkdown: string;
     controllerRevision: number | null;
     input: import("./packages.ts").PackageWorkflowInput;
     decision: import("./review.ts").SharedPlanReviewDecision;
-    classification: import("../plan-store.js").PlanFrontMatter["classification"];
-    workKind: import("../plan-store.js").PlanFrontMatter["workKind"] | null;
+    classification: import("../plan-store.ts").PlanFrontMatter["classification"];
+    workKind: import("../plan-store.ts").PlanFrontMatter["workKind"] | null;
 }
 export interface ProjectStoreRecordCatalog {
     kind: "record-catalog";
@@ -1107,15 +1107,15 @@ export class PreparedProjectStore {
                         ),
                     );
                 if (command.kind === "archive-catalog")
-                    return { archives: await (await import("../plan-store.js")).listArchivedPlans(this.cwd) };
+                    return { archives: await (await import("../plan-store.ts")).listArchivedPlans(this.cwd) };
                 if (command.kind === "read-archive")
                     return {
                         archived: await (
-                            await import("../plan-store.js")
+                            await import("../plan-store.ts")
                         ).loadArchivedPlan(this.cwd, command.reference),
                     };
                 if (command.kind === "plan-resource-catalog") {
-                    const { readPlanResourceCatalog } = await import("../plan-store.js");
+                    const { readPlanResourceCatalog } = await import("../plan-store.ts");
                     return { resourceCatalog: await readPlanResourceCatalog(this.cwd) };
                 }
                 if (command.kind === "record-catalog") {
@@ -1132,7 +1132,7 @@ export class PreparedProjectStore {
                     };
                 const plan = await selectedPackage({ planId: command.planId });
                 if (command.kind === "plan-resource") {
-                    const { findPlanEvidenceById } = await import("../plan-store.js");
+                    const { findPlanEvidenceById } = await import("../plan-store.ts");
                     return { planResource: await findPlanEvidenceById(this.cwd, command.planId) };
                 }
                 if (command.kind === "review-presentation") {
@@ -1396,7 +1396,7 @@ export class PreparedProjectStore {
                 if (command.kind === "prepare-sequence" || command.kind === "sequence-decision")
                     return await withPlanPackageCatalogDiscovery(owner, async () => {
                         const members = await (
-                            await import("../plan-store.js")
+                            await import("../plan-store.ts")
                         ).findPlansByParent(this.cwd, plan.metadata.name);
                         return await packageWorkflowLocks(
                             [plan.metadata.name, ...members.map((member) => member.name)],
@@ -1509,7 +1509,7 @@ export class PreparedProjectStore {
                                 if ((await readPlanDocuments(command.planId)).revision !== command.expectedRevision)
                                     throw new Error("Plan revision changed.");
                                 const { archivePlan, restoreArchivedPlan, findPlanEvidenceById } =
-                                    await import("../plan-store.js");
+                                    await import("../plan-store.ts");
                                 if (command.kind === "restore-plan")
                                     await restoreArchivedPlan(this.cwd, plan.metadata.name);
                                 else if (

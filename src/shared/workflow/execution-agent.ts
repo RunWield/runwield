@@ -15,8 +15,8 @@
  * record: it is a runtime identity, never a policy value.
  */
 
-import { AGENTS } from "../../constants.js";
-import type { ActiveExecutionWorkflow } from "../types.js";
+import { AGENTS } from "../../constants.ts";
+import type { ActiveExecutionWorkflow } from "../session/execution-workflow-session.ts";
 
 /** The owner a Plan may name. This is what gets written down. */
 export type PlanExecutionPolicyAgent = "engineer" | "frontend-engineer";
@@ -24,7 +24,6 @@ export type PlanExecutionPolicyAgent = "engineer" | "frontend-engineer";
 /** The Agent identity the runtime activates. This is never written down. */
 export type PlanExecutionRuntimeAgent = "plan-engineer" | "frontend-engineer";
 
-// `AGENTS` comes from a JSDoc-typed module, so its values widen to `string`.
 // Naming the two runtime identities here keeps the resolver's return type exact.
 const PLAN_ENGINEER: PlanExecutionRuntimeAgent = "plan-engineer";
 const FRONTEND_ENGINEER: PlanExecutionRuntimeAgent = "frontend-engineer";
@@ -60,9 +59,7 @@ export function resolvePlanExecutionRuntimeAgent(policyAgent: string | undefined
  *
  * Returns null when the workflow records no owner at all.
  */
-export function resolveActiveWorkflowRuntimeAgent(
-    workflow: ActiveExecutionWorkflow | null | undefined,
-): string | null {
+export function resolveActiveWorkflowRuntimeAgent(workflow: ActiveExecutionWorkflow | null | undefined): string | null {
     const owner = typeof workflow?.executionAgent === "string" ? workflow.executionAgent.trim() : "";
     if (!owner) return null;
     if (isQuickFixWorkflow(workflow)) return AGENTS.ENGINEER;

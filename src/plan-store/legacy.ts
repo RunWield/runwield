@@ -1,4 +1,4 @@
-import type { PlanTextLoaded } from "../plan-store.js";
+import type { PlanTextLoaded } from "../plan-store.ts";
 import { isPublicationAttemptCleanupComplete } from "../shared/workflow/publication-attempt.ts";
 import { withRetainedCheckoutSource, withoutRetainedCheckoutSource } from "./retained-source.ts";
 import type { ProjectIdentity } from "../shared/project-identity.ts";
@@ -10,7 +10,7 @@ import {
     withPlanPackageLocks,
     type LoadedPlanPackage,
 } from "./packages.ts";
-import { findById } from "../shared/worktree-registry.js";
+import { findById } from "../shared/worktree-registry.ts";
 import { inspectControllerDocumentWorktrees, assertControllerDocumentAvailable } from "./controllers.ts";
 import { healSettledTransitionRecords } from "../shared/workflow/transition-recovery.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";

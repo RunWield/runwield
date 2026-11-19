@@ -1,14 +1,17 @@
 /** A bounded view of a running turn. The transcript remains the conversation history. */
 
-import type { SessionRuntimeEvent } from "./session-runtime-events.js";
+import type { SessionRuntimeEvent } from "./session-runtime-events.ts";
 
 export function appendLiveSessionEvent(events: SessionRuntimeEvent[], event: SessionRuntimeEvent) {
     if (event.eventId) return; // Saved history is loaded through transcript pagination.
     const previous = events.at(-1);
     if (
-        previous && previous.type === event.type &&
+        previous &&
+        previous.type === event.type &&
         (event.type === "assistant_text_delta" || event.type === "assistant_thinking_delta") &&
-        "messageId" in previous && previous.messageId === event.messageId && "delta" in previous
+        "messageId" in previous &&
+        previous.messageId === event.messageId &&
+        "delta" in previous
     ) {
         events[events.length - 1] = { ...event, delta: previous.delta + event.delta };
     } else {

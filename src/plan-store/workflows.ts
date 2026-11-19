@@ -10,7 +10,7 @@ import { retainPlanAccess, retainManagedPlanAccess, type PlanAccess } from "./ha
 import { continueImportedPackage, readImportedExecutionPlan } from "./legacy.ts";
 import { currentRetainedCheckoutSource } from "./retained-source.ts";
 import { withWorkRecordOwner, withoutWorkRecordOwner } from "../shared/work-records/owner.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { journalPackageMetadataWrite } from "./transitions.ts";
 /** Explicit internal package authority. A scope propagates an admitted source through existing workflow owners. */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -50,8 +50,8 @@ import {
     pickControllerState,
     type WorkflowControllerState,
 } from "../shared/workflow/controller-state.ts";
-import { findById } from "../shared/worktree-registry.js";
-import type { PlanFrontMatter } from "../plan-store.js";
+import { findById } from "../shared/worktree-registry.ts";
+import type { PlanFrontMatter } from "../plan-store.ts";
 
 export interface PlanExecutionHost {
     projectId: string;
@@ -476,7 +476,7 @@ export { packageWorkflowRevision } from "./packages.ts";
 
 export async function loadPackageWorkflowPlan(
     planName: PackageWorkflowTarget,
-): Promise<import("../plan-store.js").PlanTextLoaded> {
+): Promise<import("../plan-store.ts").PlanTextLoaded> {
     if (managedPlanStoreActive())
         return await loadManagedWorkflowPlan(typeof planName === "string" ? planName : planName.planId);
     const plan = await selectedPackage(planName);
@@ -938,7 +938,7 @@ export async function recoverGeneratedManualQaArtifact(childName: string): Promi
 /** Hold the admitted execution owner through preparation and recover its journal on failure. */
 export async function withPlanExecutionAdmission<T>(cwd: string, planName: string, run: () => Promise<T>): Promise<T> {
     if (!currentPackageSelection()) return await run();
-    const { prepareWorktreeRegistry } = await import("../shared/worktree-registry.js");
+    const { prepareWorktreeRegistry } = await import("../shared/worktree-registry.ts");
     await prepareWorktreeRegistry(cwd);
     return await withPackageExecutionJournal(() =>
         packageWorkflowLocks([planName], async () => {

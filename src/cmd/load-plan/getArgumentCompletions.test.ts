@@ -5,7 +5,7 @@ import process from "node:process";
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 
 import { PlanFrontMatterParseError } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";

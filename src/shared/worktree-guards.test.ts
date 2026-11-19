@@ -16,7 +16,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../testing/as
 import { loadPlan } from "../plan-store/index.ts";
 
 import type { PlanFrontMatterInput } from "../plan-format.ts";
-import type { WorktreeRegistryEntry } from "./worktree-registry.js";
+import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 
 async function savePlanForTest(cwd: string, planName: string, content: string, attrs: PlanFrontMatterInput) {
     const existing = await loadPlan(cwd, planName).catch(() => null);
@@ -36,7 +36,7 @@ import {
     prepareTargetBranchRef,
     removeWorktreeGitArtifacts,
     validateWorktreeDiscard,
-} from "./worktree.js";
+} from "./worktree.ts";
 
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 
