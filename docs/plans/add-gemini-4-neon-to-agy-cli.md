@@ -22,7 +22,7 @@ routingIntent: "PLANNED_CHANGE"
 sessionName: "Gemini Agi CLI Support"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Add Gemini 4 Neon to the Antigravity CLI Backend
