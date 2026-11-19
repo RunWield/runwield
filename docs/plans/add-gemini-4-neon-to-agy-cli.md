@@ -23,6 +23,12 @@ sessionName: "Gemini Agi CLI Support"
 targetBranch: "main"
 deliveryBranch: "main"
 status: "reviewed"
+validatedCommit: "5dce76bcd7377a03bf9d80b0156d9b350bc0d829"
+workRecord:
+    status: "generated"
+    recordId: "617f16b3-0df9-48ec-8904-2c7f2221c4bc"
+    path: "docs/work-records/2026-11-19-gemini-4-neon-support-for-antigravity-cli.md"
+    lastAttemptAt: "2026-11-19T20:54:06.899Z"
 ---
 
 # Add Gemini 4 Neon to the Antigravity CLI Backend
