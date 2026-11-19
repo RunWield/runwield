@@ -76,13 +76,20 @@ See [Settings Reference](settings.md) for `agents`, `activeModelPreset`, and `mo
 
 ## Antigravity CLI
 
-Antigravity models run through the `agy` CLI using your Antigravity sign-in, so you don't need an API key.
+RunWield runs Antigravity conversation turns through [`agy acp`](https://antigravity.google/docs/ide/extensions/acp/).
+The installed Antigravity CLI owns sign-in and model access. RunWield owns its Session, workflow, and transcript.
 
 **Set up:**
 
-1. Install `agy` and sign in to Antigravity.
-2. Select one of the families below with `/model` or in your settings.
-3. On first use, RunWield asks before installing the Antigravity agent and MCP configuration it needs.
+1. Install an Antigravity CLI version that supports `agy acp`. Run `agy acp --help` to check.
+2. Sign in through Antigravity using credentials appropriate to your use.
+3. Select one of the families below with `/model` or in your settings.
+
+Google documents ACP clients separately from headless print mode. Google
+[does not support wrapping `agy -p` in third-party coding agents on consumer plans](https://antigravity.google/docs/faq?hl=en#can-i-use-antigravity-cli-headless-mode-in-third-party-coding-agents-or-automate-account-switching).
+RunWield does not fall back to print mode for conversation turns. Google's ACP editor guidance does not establish
+consumer-plan support for unattended workflow dispatch. To use Gemini without Antigravity, choose a
+`google/<model>` with a [Google AI Studio API key](https://ai.google.dev/gemini-api/docs/api-key).
 
 | Family   | Model selection             |
 | -------- | --------------------------- |
@@ -101,14 +108,11 @@ Saved Pro selections and historical model names stay unchanged. Pro remains sele
 RunWield cannot guarantee continued upstream access. If a model is unavailable, the failure stays visible. RunWield
 never silently switches families. Select another available family explicitly or configure a personal preset.
 
-> **Warning:** Antigravity can't ask you to approve actions while RunWield runs it in the background. During execution,
-> RunWield therefore starts it with `--dangerously-skip-permissions`, which approves every command and file change the
-> Agent requests. Use this backend only when you trust the Agent to run commands and change files with your account's
-> permissions. See
-> [Antigravity's headless permissions documentation](https://antigravity.google/docs/cli/headless/#permissions-in-headless-mode).
-
-Each Agent can use only the tools it is allowed. For example, an Agent without write access cannot create or edit files.
-If Antigravity blocks an action, RunWield shows what was blocked.
+RunWield supplies its workflow tools for the selected Agent through a session-scoped MCP server. It does not need to
+install those tools in your global Antigravity configuration. When Antigravity asks for permission for a file change or
+command, RunWield surfaces the request in clients that support approvals. Actions that require approval cannot proceed
+if the current client cannot ask. Antigravity's own permission rules still apply, including rules for actions that
+Antigravity already permits without asking.
 
 **Thinking level** sets Antigravity's effort:
 
@@ -120,7 +124,7 @@ If Antigravity blocks an action, RunWield shows what was blocked.
 | xhigh, max        | high                          | xhigh           | high       |
 
 Omitted thinking defaults to off, which sends low effort. Invalid thinking values fail before execution. The Session
-keeps your original thinking level and records the verified backend effort for history and replay.
+keeps your original thinking level and records the effort Antigravity accepted for history and replay.
 
 The bundled [`agy` preset](settings.md#modelpresets) uses Argon for Router, Slicer, Architect, Planner, Ideator, and
 Reviewer; other Agents keep Flash. Thinking levels are unchanged. Router and Reviewer use medium thinking, which now
@@ -129,6 +133,7 @@ CLI version or fall back automatically. Personal and project selections remain u
 
 **Limitations:**
 
+- Antigravity is not available for [image generation](settings.md#existing-antigravity-image-settings).
 - You can't attach images to an Antigravity conversation. Use [`visionFallback`](settings.md#visionfallback) to inspect
   images through another model.
 - The Session shows Antigravity's commands, file edits, and results as they happen. After a reload, it shows only the

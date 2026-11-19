@@ -371,12 +371,11 @@ including Claude CLI.
 
 Supported providers:
 
-| Provider        | `model` format             | Sign-in                                       |
-| --------------- | -------------------------- | --------------------------------------------- |
-| OpenRouter      | `openrouter/<image model>` | OpenRouter credentials through `/login`       |
-| OpenCode        | `opencode/<model>`         | OpenCode credentials through `/login`         |
-| Codex           | `codex-cli/<model>`        | Codex CLI signed in with your ChatGPT account |
-| Antigravity CLI | `agy-cli/<model>`          | `agy` installed and signed in to Antigravity  |
+| Provider   | `model` format             | Sign-in                                       |
+| ---------- | -------------------------- | --------------------------------------------- |
+| OpenRouter | `openrouter/<image model>` | OpenRouter credentials through `/login`       |
+| OpenCode   | `opencode/<model>`         | OpenCode credentials through `/login`         |
+| Codex      | `codex-cli/<model>`        | Codex CLI signed in with your ChatGPT account |
 
 See [Login commands](providers.md#login-commands) for `/login`.
 
@@ -433,21 +432,12 @@ The model must appear in your Codex model list. `thinkingLevel` accepts the reas
 model; `off` means none. `temperature` is not supported. Codex picks the image model itself. `openai-codex/<model>` is
 an accepted alias for `codex-cli/<model>`.
 
-#### Antigravity CLI
+#### Existing Antigravity image settings
 
-```jsonc
-{
-    "imageGeneration": {
-        "model": "agy-cli/gemini-3.8-flash",
-        "thinkingLevel": "medium",
-    },
-}
-```
-
-Install `agy` and sign in to Antigravity. Select a supervising model from the five
-[Antigravity CLI families](providers.md#antigravity-cli). Catalog inclusion alone does not establish native image
-support for each family; generation depends on your CLI and account. `thinkingLevel` uses the same effort mapping as
-chat, shown in that table. `temperature` is not supported. Antigravity picks the image model itself.
+Antigravity conversation models still work through [Antigravity ACP](providers.md#antigravity-cli), but
+`agy-cli/<model>` is no longer available for `imageGeneration`. If you have that setting, choose one of the image
+providers above or disable image generation. RunWield does not change the saved model or bill another provider
+automatically.
 
 #### Where to set it
 
