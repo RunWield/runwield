@@ -350,6 +350,11 @@ test("create_image uses concrete new family IDs and the shared effort mapping", 
             ["gemini-4-carbon", "medium", "medium"],
             ["gemini-4-carbon", "max", "high"],
             ["gemini-4-hydrogen", "xhigh", "xhigh"],
+            ["gemini-4-neon", "low", "low"],
+            ["gemini-4-neon", "medium", "medium"],
+            ["gemini-4-neon", "high", "high"],
+            ["gemini-4-neon", "xhigh", "xhigh"],
+            ["gemini-4-neon", "max", "xhigh"],
         ]) {
             await f.settings({ model: `agy-cli/${family}`, thinkingLevel: thinking });
             const result = await createImage({

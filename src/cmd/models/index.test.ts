@@ -323,10 +323,12 @@ test("runModelsCommand completes and accepts only supported Agy CLI base models"
                     "agy-cli/gemini-4-argon",
                     "agy-cli/gemini-4-carbon",
                     "agy-cli/gemini-4-hydrogen",
+                    "agy-cli/gemini-4-neon",
                 ],
             );
 
             for (const model of [
+                "gemini-4-neon",
                 "gemini-4-argon",
                 "gemini-4-hydrogen",
                 "gemini-4-carbon",
@@ -342,7 +344,7 @@ test("runModelsCommand completes and accepts only supported Agy CLI base models"
 
             const rejected = await captureLogs(() => runModelsCommand(["agy-cli/gemini-3.8-flash-high"]));
             assertEquals(rejected, [
-                "Unsupported Antigravity CLI model: agy-cli/gemini-3.8-flash-high. Select agy-cli/gemini-4-argon, agy-cli/gemini-4-hydrogen, agy-cli/gemini-4-carbon, agy-cli/gemini-3.8-flash, agy-cli/gemini-3.1-pro.",
+                "Unsupported Antigravity CLI model: agy-cli/gemini-3.8-flash-high. Select agy-cli/gemini-4-neon, agy-cli/gemini-4-argon, agy-cli/gemini-4-hydrogen, agy-cli/gemini-4-carbon, agy-cli/gemini-3.8-flash, agy-cli/gemini-3.1-pro.",
             ]);
             assertEquals(getSettingsManager(alternateRoot).getDefaultModel(), "gemini-3.8-flash");
         },
@@ -379,7 +381,7 @@ test("runModelsCommand rejects unsupported Agy CLI model selection for the curre
             });
             assertEquals(ui.messages, [
                 {
-                    text: "Unsupported Antigravity CLI model: agy-cli/fixture-model. Select agy-cli/gemini-4-argon, agy-cli/gemini-4-hydrogen, agy-cli/gemini-4-carbon, agy-cli/gemini-3.8-flash, agy-cli/gemini-3.1-pro.",
+                    text: "Unsupported Antigravity CLI model: agy-cli/fixture-model. Select agy-cli/gemini-4-neon, agy-cli/gemini-4-argon, agy-cli/gemini-4-hydrogen, agy-cli/gemini-4-carbon, agy-cli/gemini-3.8-flash, agy-cli/gemini-3.1-pro.",
                     isError: true,
                 },
             ]);

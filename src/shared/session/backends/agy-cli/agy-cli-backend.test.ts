@@ -682,7 +682,14 @@ test("Agy CLI supported base models are selectable and executable through backen
             .getSelectable()
             .filter((entry) => entry.provider === "agy-cli")
             .map((entry) => entry.id),
-        ["gemini-4-argon", "gemini-4-hydrogen", "gemini-4-carbon", "gemini-3.8-flash", "gemini-3.1-pro"],
+        [
+            "gemini-4-neon",
+            "gemini-4-argon",
+            "gemini-4-hydrogen",
+            "gemini-4-carbon",
+            "gemini-3.8-flash",
+            "gemini-3.1-pro",
+        ],
     );
     assertEquals(
         registry.getAvailable().some((entry) => entry.provider === "agy-cli"),

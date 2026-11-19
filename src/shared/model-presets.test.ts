@@ -99,19 +99,24 @@ test("preset names layer project over personal over bundled without inheriting r
     });
 });
 
-test("Agy preset resolves Argon planning roles and Flash execution roles with unchanged thinking", async () => {
+test("Agy preset resolves the Neon, Hydrogen and Argon split with unchanged thinking", async () => {
     await withRuntimeCommandFixture("agy-presets-", async ({ projectRoot }) => {
         await setCustomSetting("activeModelPreset", "agy", "global", projectRoot);
-        for (const role of ["router", "slicer", "architect", "planner", "ideator", "reviewer"]) {
-            assertEquals(getConfiguredAgentModel(role, projectRoot), "agy-cli/gemini-4-argon");
-            assertEquals(
-                getConfiguredAgentThinkingLevel(role, projectRoot),
-                role === "router" || role === "reviewer" ? "medium" : "high",
-            );
-        }
-        for (const role of ["operator", "guide", "engineer", "frontend-engineer", "init"]) {
-            assertEquals(getConfiguredAgentModel(role, projectRoot), "agy-cli/gemini-3.8-flash");
-            assertEquals(getConfiguredAgentThinkingLevel(role, projectRoot), role === "operator" ? "medium" : "high");
+        for (const [role, model, thinkingLevel] of [
+            ["planner", "agy-cli/gemini-4-argon", "high"],
+            ["ideator", "agy-cli/gemini-4-argon", "high"],
+            ["architect", "agy-cli/gemini-4-argon", "high"],
+            ["reviewer", "agy-cli/gemini-4-argon", "medium"],
+            ["operator", "agy-cli/gemini-4-hydrogen", "medium"],
+            ["router", "agy-cli/gemini-4-neon", "medium"],
+            ["slicer", "agy-cli/gemini-4-neon", "high"],
+            ["guide", "agy-cli/gemini-4-neon", "high"],
+            ["engineer", "agy-cli/gemini-4-neon", "high"],
+            ["frontend-engineer", "agy-cli/gemini-4-neon", "high"],
+            ["init", "agy-cli/gemini-4-neon", "high"],
+        ]) {
+            assertEquals(getConfiguredAgentModel(role, projectRoot), model);
+            assertEquals(getConfiguredAgentThinkingLevel(role, projectRoot), thinkingLevel);
         }
         await setCustomSetting(
             "modelPresets",

@@ -2348,11 +2348,13 @@ Session and workflow stay the same. The selected model and its requirements are 
 or with `activeModelPreset`. Project presets take precedence over personal presets, and personal over bundled, by
 name; each replaces the whole lower definition. Users can copy a bundled definition into settings to customize it.
 Updates keep personal and project settings, and bundled presets stay selectable when their cache cannot be written.
-The bundled `agy` preset uses `agy-cli/gemini-4-argon` for Router, Slicer, Architect, Planner, Ideator, and Reviewer.
-Other Agents retain Flash, and all configured thinking levels stay unchanged: Router and Reviewer use medium; the
-other Argon Agents use high. The preset requires Argon access. Users without access can explicitly select Pro where
-upstream supports it or use a personal preset; RunWield does not substitute another model or choose a preset by CLI
-version.
+The bundled `agy` preset uses `agy-cli/gemini-4-neon` for Router, Slicer, Guide, Engineer, Frontend Engineer, and Init;
+`agy-cli/gemini-4-hydrogen` for Operator; and `agy-cli/gemini-4-argon` for Planner, Ideator, Architect, and Reviewer.
+All configured thinking levels stay unchanged: Router, Operator, and Reviewer use medium; all other Agents use high.
+The preset needs access to these three families, including Neon and Hydrogen. Neon requires Google AI Ultra, paid
+Google AI Pro, Gemini Enterprise, or `GEMINI_API_KEY` sign-in. Free and Plus plans do not include Neon. Users without
+access see the CLI error and can select another model or a personal preset. RunWield does not substitute another
+model or choose a preset by CLI version.
 
 **Requirement: Flexible model configuration.**
 
@@ -2364,14 +2366,14 @@ version.
 - OpenAI subscription sign-in creates one private installation UUID in `~/.wld/device-id` on first use. Later sign-ins
   reuse it across Sessions and launches. API-key login does not create it; existing Codex credentials stay unchanged.
 - Claude CLI is available as `claude-cli/sonnet`, `claude-cli/opus`, `claude-cli/haiku`, and `claude-cli/fable`.
-- Antigravity CLI offers exactly five selectable base families: `agy-cli/gemini-4-argon`,
+- Antigravity CLI offers exactly six selectable base families: `agy-cli/gemini-4-neon`, `agy-cli/gemini-4-argon`,
   `agy-cli/gemini-4-hydrogen`, `agy-cli/gemini-4-carbon`, `agy-cli/gemini-3.8-flash`, and `agy-cli/gemini-3.1-pro`.
   Users set thinking separately; effort-suffixed public selections and other families are rejected before execution.
   The bundled catalog includes Carbon regardless of local entitlement. Actual availability depends on the user's CLI
   version and account; catalog inclusion does not prove a live request or image-generation support. RunWield does not
   discover this catalog from the installed CLI or filter it by account.
-- Antigravity maps off/minimal/low thinking to low effort. Medium maps to medium for Argon, Hydrogen, Carbon, and
-  Flash, and to high for Pro. High maps to high for all five. Hydrogen maps xhigh/max to xhigh; the other families map
+- Antigravity maps off/minimal/low thinking to low effort. Medium maps to medium for Neon, Argon, Hydrogen, Carbon, and
+  Flash, and to high for Pro. High maps to high for all six. Neon and Hydrogen map xhigh/max to xhigh; the other families map
   them to high. Omitted thinking defaults to off-to-low; invalid thinking remains an error. Session state retains the
   original thinking level. Chat and image-generation supervising-model commands share this mapping.
 - Saved personal and project Pro selections remain Pro, with the existing effort mapping. Historical execution facts
@@ -2462,20 +2464,21 @@ provider support documented in terms of current configuration.
 - Given a signed-out Antigravity CLI, the turn reports the terminal sign-in action promptly and can be retried after
   sign-in.
 - Given an Antigravity Engineer turn, it runs a test command and creates a file in the execution workspace.
-- Given Argon, Hydrogen, or Carbon selected through the model controls or Agent settings, a turn requests that family
+- Given Neon, Argon, Hydrogen, or Carbon selected through the model controls or Agent settings, a turn requests that family
   with the mapped effort. Verified history and resume retain the selected family, original thinking level, and backend
   effort without changing the Session or workflow. A returned wrong family or concrete effort is rejected.
 - Given a local account without Carbon access, the catalog still includes Carbon. On a compatible CLI with account
   access, Carbon maps low, medium, and high thinking to the corresponding effort. An upstream access failure stays
   visible without substituting another family; catalog inclusion alone does not prove live access.
-- Given Hydrogen with xhigh or max thinking, the request uses xhigh effort and replay keeps the original thinking
+- Given Neon selected at xhigh, the CLI request uses `--model gemini-4-neon --effort xhigh`.
+- Given Neon or Hydrogen with xhigh or max thinking, the request uses xhigh effort and replay keeps the original thinking
   value. Given Argon, Carbon, or Flash with max thinking, the request uses high effort.
 - Given saved Pro settings or a resumed Pro Session, the next request still uses Pro, including medium thinking mapped
   to high effort. Existing Pro history remains unchanged; incomplete or inconsistent execution facts stay excluded.
-- Given the bundled `agy` preset, the six named Agents use Argon with their existing thinking levels; all other
-  assignments remain Flash. Router and Reviewer now request medium effort. Personal and project presets stay intact.
-- Given an account or CLI that rejects Argon, the bundled preset reports the failure and makes no fallback request for
-  Flash or Pro. The user can explicitly select an available family or a personal preset.
+- Given the bundled `agy` preset, the six named Neon Agents, Operator on Hydrogen, and the four Argon planning/review
+  Agents resolve with their unchanged thinking levels. Personal and project presets stay intact.
+- Given an account or CLI that rejects a preset family, including Neon on Free or Plus, the bundled preset reports the
+  failure and makes no fallback request. The user can select an available family or a personal preset.
 - Given an unsupported Antigravity family, an effort-suffixed public model ID, or invalid thinking, the selection fails
   before an Antigravity process starts and does not overwrite the active model.
 

@@ -1,32 +1,32 @@
 {
-    "description": "Antigravity sign-in: Flash for execution, Argon for routing, planning and review.",
+    "description": "Antigravity sign-in: Neon for most Agents, Hydrogen for Operator, Argon for planning and review.",
     "agents": {
         "router": {
-            "model": "agy-cli/gemini-4-argon",
+            "model": "agy-cli/gemini-4-neon",
             "thinkingLevel": "medium"
         },
         "operator": {
-            "model": "agy-cli/gemini-3.8-flash",
+            "model": "agy-cli/gemini-4-hydrogen",
             "thinkingLevel": "medium"
         },
         "slicer": {
-            "model": "agy-cli/gemini-4-argon",
+            "model": "agy-cli/gemini-4-neon",
             "thinkingLevel": "high"
         },
         "guide": {
-            "model": "agy-cli/gemini-3.8-flash",
+            "model": "agy-cli/gemini-4-neon",
             "thinkingLevel": "high"
         },
         "engineer": {
-            "model": "agy-cli/gemini-3.8-flash",
+            "model": "agy-cli/gemini-4-neon",
             "thinkingLevel": "high"
         },
         "frontend-engineer": {
-            "model": "agy-cli/gemini-3.8-flash",
+            "model": "agy-cli/gemini-4-neon",
             "thinkingLevel": "high"
         },
         "init": {
-            "model": "agy-cli/gemini-3.8-flash",
+            "model": "agy-cli/gemini-4-neon",
             "thinkingLevel": "high"
         },
         "architect": {
