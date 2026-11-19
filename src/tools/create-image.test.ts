@@ -372,6 +372,31 @@ test("create_image stages validated Agy reference bytes only in disposable agent
         assertEquals(f.requests.length, 0);
     }));
 
+test("create_image rejects a staged Agy reference or hardlink reported as generated output", () =>
+    withFixture(async (f) => {
+        await f.settings({ model: "agy-cli/gemini-4-argon" });
+        await fsWriteFile(
+            join(f.cwd, "reference.png"),
+            Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)),
+        );
+        for (const mode of ["reference-output", "reference-alias"]) {
+            process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] = mode;
+            await assertRejects(
+                () =>
+                    createImage({
+                        cwd: f.cwd,
+                        prompt: "blue mug",
+                        outputPath: `${mode}.png`,
+                        imageRefs: ["reference.png"],
+                    }),
+                Error,
+                "reference image instead of newly generated output",
+            );
+            await assertRejects(() => fsStat(join(f.cwd, `${mode}.png`)), Error, "ENOENT");
+        }
+        assertEquals(f.requests.length, 0);
+    }));
+
 test("create_image rejects unproven, extra, escaped, malformed and mismatched ACP image output", () =>
     withFixture(async (f) => {
         await f.settings({ model: "agy-cli/gemini-3.8-flash" });

@@ -1,6 +1,6 @@
 import process from "node:process";
 import { createInterface } from "node:readline";
-import { appendFile, mkdir, readFile, writeFile, symlink } from "node:fs/promises";
+import { appendFile, link, mkdir, readFile, writeFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
 
 // Executable ACP fixture. No provider or credentials are contacted.
@@ -82,6 +82,11 @@ for await (const line of createInterface({ input: process.stdin })) {
             path = join(directory, "generated.png");
         }
         await writeFile(path, mode === "invalid" ? "not an image" : Uint8Array.from(atob(png), (c) => c.charCodeAt(0)));
+        if (mode === "reference-output") path = referencePaths[0];
+        if (mode === "reference-alias") {
+            path = join(cwd, "alias.png");
+            await link(referencePaths[0], path);
+        }
         if (mode === "outside") path = process.env["RUNWIELD_IMAGE_FIXTURE_OUTSIDE"] || "/other/image.png";
         if (mode === "symlink") {
             const linked = join(cwd, "escape.png");

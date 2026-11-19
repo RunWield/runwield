@@ -70,12 +70,15 @@ export async function generateAgyImage(request: AgyImageRequest): Promise<ImageC
         );
         // Stage the already-validated bytes, never hand mutable user paths to the vendor.
         const referencePaths: string[] = [];
+        const referenceIdentities: { ino: number; dev: number }[] = [];
         for (const [index, image] of request.referenceImages.entries()) {
             const extension =
                 image.mimeType === "image/jpeg" ? "jpg" : image.mimeType === "image/webp" ? "webp" : "png";
             const path = join(cwd, `reference-${index}.${extension}`);
             await writeFile(path, Buffer.from(image.data, "base64"), { mode: 0o600 });
             referencePaths.push(path);
+            const identity = await lstat(path);
+            referenceIdentities.push({ ino: identity.ino, dev: identity.dev });
         }
         const tools = new Map<number, { name: string; state: string }>();
         const result = await runAgyAcpTurn(
@@ -129,6 +132,9 @@ export async function generateAgyImage(request: AgyImageRequest): Promise<ImageC
         const file = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
         try {
             const stat = await file.stat();
+            if (referenceIdentities.some((reference) => reference.ino === stat.ino && reference.dev === stat.dev)) {
+                throw new Error("Agy returned a reference image instead of newly generated output.");
+            }
             if (
                 before.isSymbolicLink() ||
                 before.ino !== stat.ino ||
