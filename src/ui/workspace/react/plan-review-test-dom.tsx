@@ -9,6 +9,7 @@ let modulePromise;
 async function reviewModule() {
     modulePromise ??= (async () => {
         const bundle = await build({
+            tsconfig: fileURLToPath(new URL("../tsconfig.json", import.meta.url)),
             entryPoints: [fileURLToPath(new URL("./PlanReviewSurface.tsx", import.meta.url))],
             bundle: true,
             write: false,
