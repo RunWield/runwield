@@ -233,6 +233,92 @@ function mergeAbortSignals(first?: AbortSignal, second?: AbortSignal): AbortSign
 }
 
 /**
+ * Inbound request hardening for the loopback MCP bridge.
+ *
+ * GHSA-46jr-4wx8-v453: any process that learns the loopback URL and the random
+ * Bearer token (both in-process only) could otherwise stream an arbitrarily
+ * large request body — exhausting memory while the SDK parses the JSON — or
+ * pass oversized / deeply nested tool-call arguments, exhausting memory while
+ * `validateToolCall` (from `@earendil-works/pi-ai`, outside this repo) builds
+ * its validation structures. We bound both inputs before they reach the SDK.
+ */
+
+/** Hard cap on the raw bytes of any inbound MCP request body. */
+const MAX_MCP_REQUEST_BYTES = 1_048_576; // 1 MiB
+/** Cap on the serialized size of a single tool call's arguments. */
+const MAX_MCP_TOOL_CALL_ARG_BYTES = 262_144; // 256 KiB
+/** Cap on the total number of scalar/container elements in the arguments. */
+const MAX_MCP_TOOL_CALL_ARG_ELEMENTS = 4_096;
+/** Cap on nesting depth of the arguments tree. */
+const MAX_MCP_TOOL_CALL_ARG_DEPTH = 16;
+
+class McpPayloadTooLargeError extends Error {
+    constructor() {
+        super("MCP request payload too large");
+        this.name = "McpPayloadTooLargeError";
+    }
+}
+
+/**
+ * Read the request body with a hard byte cap. Throws {@link McpPayloadTooLargeError}
+ * if the stream exceeds `maxBytes`, preventing unbounded buffering.
+ */
+async function readBodyBounded(request: Request, maxBytes: number): Promise<Uint8Array<ArrayBuffer>> {
+    const reader = request.body?.getReader();
+    if (!reader) return new Uint8Array(0);
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            total += value.byteLength;
+            if (total > maxBytes) {
+                await reader.cancel();
+                throw new McpPayloadTooLargeError();
+            }
+            chunks.push(value);
+        }
+    } finally {
+        reader.releaseLock();
+    }
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+        out.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return out;
+}
+
+interface ArgumentBudget {
+    count: number;
+}
+
+/** Bound validation work before Pi receives the arguments. */
+function enforceArgsBudget(value: JsonValue, depth: number, elements: ArgumentBudget): void {
+    // Each non-root value is an array element or object member, including containers.
+    if (depth > 0 && ++elements.count > MAX_MCP_TOOL_CALL_ARG_ELEMENTS) {
+        throw new McpError(
+            ErrorCode.InvalidParams,
+            `tool call arguments exceed ${MAX_MCP_TOOL_CALL_ARG_ELEMENTS} element limit`,
+        );
+    }
+    if (value === null || typeof value !== "object") return;
+    if (depth > MAX_MCP_TOOL_CALL_ARG_DEPTH) {
+        throw new McpError(
+            ErrorCode.InvalidParams,
+            `tool call arguments exceed ${MAX_MCP_TOOL_CALL_ARG_DEPTH} nesting depth limit`,
+        );
+    }
+    if (Array.isArray(value)) {
+        for (const item of value) enforceArgsBudget(item, depth + 1, elements);
+    } else {
+        for (const key of Object.keys(value)) enforceArgsBudget(value[key], depth + 1, elements);
+    }
+}
+
+/**
  * Start a per-turn authenticated loopback MCP server advertising only the
  * supplied eligible RunWield tool aliases, and return the Claude config content
  * plus a close operation.
@@ -483,6 +569,15 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
     mcpServer.setRequestHandler(CallToolRequestSchema, (request, extra) => {
         const name = request.params.name;
         const args = request.params.arguments as JsonObject | undefined;
+        // Reject before queuing, validation, lifecycle gates, or payload recording.
+        enforceArgsBudget(args ?? {}, 0, { count: 0 });
+        const argumentBytes = new TextEncoder().encode(JSON.stringify(args ?? {})).byteLength;
+        if (argumentBytes > MAX_MCP_TOOL_CALL_ARG_BYTES) {
+            throw new McpError(
+                ErrorCode.InvalidParams,
+                `arguments too large (${argumentBytes} bytes; limit ${MAX_MCP_TOOL_CALL_ARG_BYTES})`,
+            );
+        }
         const run = callQueue.then(() => executeCall(name, args, extra.signal));
         callQueue = run.then(
             () => undefined,
@@ -499,7 +594,7 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
             port: 0,
             onListen: () => {},
         },
-        (request) => {
+        async (request) => {
             const origin = request.headers.get("origin");
             if (origin !== null && origin !== url) {
                 return new Response(JSON.stringify({ error: "Forbidden Origin" }), {
@@ -514,7 +609,29 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
                     headers: { "content-type": "application/json" },
                 });
             }
-            return transport.handleRequest(request);
+            // Bound the inbound body before the SDK parses it, mitigating
+            // GHSA-46jr-4wx8-v453 (request-parsing memory exhaustion).
+            const contentLength = Number(request.headers.get("content-length") ?? 0);
+            if (contentLength > MAX_MCP_REQUEST_BYTES) {
+                return new Response(JSON.stringify({ error: "Payload Too Large" }), {
+                    status: 413,
+                    headers: { "content-type": "application/json" },
+                });
+            }
+            if (request.body === null) return transport.handleRequest(request);
+            let boundedBody: Uint8Array<ArrayBuffer>;
+            try {
+                boundedBody = await readBodyBounded(request, MAX_MCP_REQUEST_BYTES);
+            } catch (error) {
+                if (error instanceof McpPayloadTooLargeError) {
+                    return new Response(JSON.stringify({ error: "Payload Too Large" }), {
+                        status: 413,
+                        headers: { "content-type": "application/json" },
+                    });
+                }
+                throw error;
+            }
+            return transport.handleRequest(new Request(request, { body: boundedBody }));
         },
     );
     url = `http://127.0.0.1:${serveServer.addr.port}`;
