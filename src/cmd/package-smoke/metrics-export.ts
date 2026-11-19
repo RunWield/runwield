@@ -6,10 +6,10 @@ import { realpath as fsRealpath, mkdir as fsMkdir, writeFile as fsWriteFile, rm 
 import process from "node:process";
 /** Execute real exporter code from outside the compiled module graph. */
 
-import { __resetSettingsForTests, setCustomSetting } from "../../shared/settings.js";
+import { __resetSettingsForTests, setCustomSetting } from "../../shared/settings.ts";
 import { approveMetricsExporter, listInstalledMetricsExporters } from "../../shared/extensions/metrics-exporter.ts";
 import { grantMetricsExportDestination } from "../../shared/workflow/metrics-export-grants.ts";
-import { recordWorkflowMetric } from "../../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 import { readMetricsExportStatus, runMetricsExportCycle } from "../../shared/workflow/metrics-export-scheduler.ts";
 
 export async function checkPackagedMetricsExport(): Promise<void> {

@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
@@ -9,7 +9,7 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 import { resolveSelectedThemeJson } from "../theme/theme.ts";
 import { renderRunWieldThemeCss } from "../design-system/theme-bridge.ts";
-import { createWorkspaceApp } from "./server.js";
+import { createWorkspaceApp } from "./server.ts";
 import { GET } from "./pages/theme.css.ts";
 
 test("production and dev browser themes stay dark when a light TUI theme is selected", async () => {

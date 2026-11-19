@@ -1,6 +1,7 @@
 ---
 name: write-tests
 description: Decide whether automated tests contribute meaningful protection, then write, update, repair, or prune them. Use for test coverage, flaky tests, regression tests, and test-value reviews. Language/framework-agnostic. For an explicitly requested test-driven workflow, also use a TDD skill if available.
+license: MIT; complete terms in LICENSE
 ---
 
 # Write Tests

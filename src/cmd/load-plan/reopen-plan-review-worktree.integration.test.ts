@@ -9,15 +9,15 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { executePlan } from "../../shared/workflow/plan-executor.ts";
 import { join } from "node:path";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { preparePlanningWorktreeForPlan } from "../../shared/workflow/planning-worktree.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { WorkspaceSessionContinuationService } from "../../ui/workspace/server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "../../ui/workspace/server/session-continuation.ts";
 import {
     prepareSequenceReview,
     type SequenceReviewDocument,

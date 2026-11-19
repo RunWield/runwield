@@ -8,7 +8,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertFalse, assertThrows } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-import { classifyRootSessionLocator } from "./root-session.js";
+import { classifyRootSessionLocator } from "./root-session.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import {
     openFileSessionStore,

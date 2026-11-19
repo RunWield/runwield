@@ -1,4 +1,4 @@
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { captureForegroundProcess } from "../src/shared/captured-process.ts";
 import { test } from "node:test";
 import { assertEquals } from "../src/testing/assertions.ts";

@@ -1,6 +1,6 @@
 import lockfile from "proper-lockfile";
 import type { PublicationAttempt } from "./publication-attempt.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { test } from "node:test";
@@ -10,10 +10,10 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { setCustomSetting } from "../settings.js";
-import { findById } from "../worktree-registry.js";
+import { setCustomSetting } from "../settings.ts";
+import { findById } from "../worktree-registry.ts";
 import { readControllerRecord, writeControllerState } from "./controller-registry.ts";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { UsageReporter } from "./usage-reporting.ts";
 import { workflowOutcomeEventId } from "./outcome-observations.ts";
 import {

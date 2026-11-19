@@ -1,29 +1,21 @@
+import { ok as assert } from "node:assert/strict";
 import process from "node:process";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { type AgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
-import { ensureRootAgentSession } from "../session/session.js";
-import { attachRecorder, makeUi } from "./validation-test-helpers.js";
+import { HostedSession } from "../session/hosted-session.ts";
+import { ensureRootAgentSession } from "../session/session.ts";
+import { attachRecorder, makeUi, type ValidationUiRecorder } from "./validation-test-helpers.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { runLocalCI, runMechanicalValidation } from "./validation.ts";
 
 interface MechanicalFixture {
     hostedSession: HostedSession;
-    rootAgentSession: Awaited<ReturnType<typeof ensureRootAgentSession>>;
+    rootAgentSession: AgentSession;
     sessionManager: SessionManager;
-    ui: ValidationUi;
-}
-
-interface ValidationUi {
-    messages: string[];
-    systemCalls: Array<{ validationProgress?: { stage?: string } }>;
-    toolCalls: Array<{ name: string; args: string }>;
-    toolOutputs: string[];
-    toolResults: Array<{ isError: boolean }>;
-    promptText: () => Promise<string>;
+    ui: ValidationUiRecorder;
 }
 
 interface LocalCIFixture {
@@ -48,7 +40,7 @@ function defineLocalCIFixture(results: LocalCIResult[]): LocalCIFixture {
 }
 
 async function activateMechanicalFixture(projectRoot: string): Promise<MechanicalFixture> {
-    const ui = makeUi() as ValidationUi;
+    const ui = makeUi();
     const sessionManager = SessionManager.inMemory(projectRoot);
     const hostedSession = attachRecorder(
         new HostedSession({
@@ -57,14 +49,13 @@ async function activateMechanicalFixture(projectRoot: string): Promise<Mechanica
         }),
         ui,
     );
-    // HostedSession's legacy minimal-manager JSDoc widens appendMessage beyond
-    // Pi's real SessionManager signature; the concrete manager is the runtime object.
     hostedSession.setRootSessionManager(sessionManager);
     const rootAgentSession = await ensureRootAgentSession({
         hostedSession,
         agentName: "engineer",
         sessionManager,
     });
+    assert("agent" in rootAgentSession);
     return { hostedSession, rootAgentSession, sessionManager, ui };
 }
 
@@ -74,7 +65,7 @@ function taskCompletedMessage(summary: string) {
 
 test("runLocalCI emits one semantic validation tool lifecycle", async () => {
     await withRuntimeCommandFixture("validation-local-ci-", async ({ projectRoot }) => {
-        const ui = makeUi() as ValidationUi;
+        const ui = makeUi();
         const hostedSession = attachRecorder(new HostedSession({ id: "validation-local-ci", cwd: projectRoot }), ui);
         ui.promptText = () => Promise.resolve("printf validation-output");
 
@@ -101,7 +92,7 @@ test("runLocalCI emits one semantic validation tool lifecycle", async () => {
 
 test("runLocalCI streams large validation output without failing the process buffer", async () => {
     await withRuntimeCommandFixture("validation-large-output-", async ({ projectRoot }) => {
-        const ui = makeUi() as ValidationUi;
+        const ui = makeUi();
         const hostedSession = attachRecorder(
             new HostedSession({ id: "validation-large-output", cwd: projectRoot }),
             ui,

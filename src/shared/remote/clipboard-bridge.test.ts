@@ -1,6 +1,6 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { serveHttp } from "../http-server.ts";
 import { test } from "node:test";

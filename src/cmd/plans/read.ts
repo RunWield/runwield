@@ -3,14 +3,14 @@
  * Open active or archived Plan markdown in a read-only browser view.
  */
 
-import { CLI_BIN, getCwd, PLANS_DIR_NAME } from "../../constants.js";
+import { CLI_BIN, getCwd, PLANS_DIR_NAME } from "../../constants.ts";
 import {
     findPlanById,
     listArchivedPlans,
     loadArchivedPlan,
     PlanNotFoundError,
     type PlanReadAvailability,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { NO_OPEN_BROWSER_PORT, SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { startArtifactReadSurface } from "../../ui/review/review-launcher.ts";

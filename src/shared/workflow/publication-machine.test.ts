@@ -11,7 +11,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { ProjectRuntimeEntryRefusedError, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { addEntry } from "../worktree-registry.js";
+import { addEntry } from "../worktree-registry.ts";
 import {
     advanceStoredPublication,
     cleanupStoredPublication,

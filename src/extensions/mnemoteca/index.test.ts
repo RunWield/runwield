@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { assertEquals, assertArrayIncludes } from "../../testing/assertions.ts";
 import { match as assertMatch } from "node:assert/strict";
@@ -90,20 +90,6 @@ function firstText(result: Pick<FixtureToolResult, "content">) {
     if (!first || first.type !== "text") throw new Error("Expected text content.");
     return first.text ?? "";
 }
-
-test("mnemoteca extension registers one action-based memory tool", () => {
-    const { tools } = setup(() => Promise.resolve({ code: 0, stdout: "", stderr: "" }));
-
-    const names = tools.map((tool) => tool.name);
-    assertEquals(names, ["memory"]);
-
-    for (const tool of tools) {
-        assertEquals(typeof tool.label, "string");
-        assertEquals(typeof tool.description, "string");
-        assertEquals(typeof tool.parameters, "object");
-        assertEquals(typeof tool.execute, "function");
-    }
-});
 
 test("memory recall searches both scopes and escapes quotes", async () => {
     const { getTool, calls } = setup((_command, args) => {

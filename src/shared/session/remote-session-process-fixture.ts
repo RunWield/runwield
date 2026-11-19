@@ -1,6 +1,6 @@
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { readFileSync, writeFileSync } from "node:fs";
 import { openFileSessionStore } from "./file-session-store.ts";

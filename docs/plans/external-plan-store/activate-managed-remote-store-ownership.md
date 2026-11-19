@@ -6,12 +6,12 @@ affectedPaths:
     - "src/cmd/remote/index.ts"
     - "src/shared/remote/entry.ts"
     - "src/shared/remote/supervisor.ts"
-    - "src/shared/remote/runtime.js"
+    - "src/shared/remote/runtime.ts"
     - "src/shared/project-runtime-layout.ts"
     - "src/shared/worktree-registry.js"
     - "src/shared/workflow/"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/018-remote-ssh-local-personal-authority.md"
+    - "docs/adr/017-remote-ssh-local-personal-authority.md"
     - "docs/domain-language.md"
 executionAgent: "engineer"
 collaborationRecommendation: "pair"
@@ -65,12 +65,12 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/cmd/remote/index.ts` — public launch selection and entry/adoption
 - `src/shared/remote/entry.ts` — bind laptop owner and remote execution context
 - `src/shared/remote/supervisor.ts` — connection lifecycle and recovery
-- `src/shared/remote/runtime.js` — compose workflow consumers with store service
+- `src/shared/remote/runtime.ts` — compose workflow consumers with store service
 - `src/shared/project-runtime-layout.ts` — cross-host adoption and owner-aware runtime paths
 - `src/shared/worktree-registry.js` — personal-owner scoped attempts and repository-level Git coordination
 - `src/shared/workflow/` — cross-host lifecycle/publication reconciliation
 - `docs/prd/runwield-core-prd.md` — managed remote acceptance and project runtime scope
-- `docs/adr/018-remote-ssh-local-personal-authority.md` — reconcile laptop Plan ownership and remote home execution state
+- `docs/adr/017-remote-ssh-local-personal-authority.md` — reconcile laptop Plan ownership and remote home execution state
 - `docs/domain-language.md` — remote personal authority and Project Runtime State relationships
 
 ## Reuse Opportunities
@@ -93,7 +93,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
 
 ```sh
-bun scripts/run-tests.js src/shared/remote/remote-runtime-workflows-end-to-end.test.ts src/shared/remote/remote-runtime-workflows-reconnect.test.ts src/shared/remote/remote-runtime-workflows-records-faults.test.ts src/shared/remote/entry-isolation.test.ts
+bun scripts/run-tests.ts src/shared/remote/remote-runtime-workflows-end-to-end.test.ts src/shared/remote/remote-runtime-workflows-reconnect.test.ts src/shared/remote/remote-runtime-workflows-records-faults.test.ts src/shared/remote/entry-isolation.test.ts
 ```
 
 New coverage below is proposed, not an existing passing test inventory. Planner must select concrete test files and

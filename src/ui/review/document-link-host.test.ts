@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { startReviewWorkspaceServer } from "../workspace/server.js";
+import { startReviewWorkspaceServer } from "../workspace/server.ts";
 import { DocumentLinkHost } from "./document-link-host.ts";
 import { reviewImageApi, reviewImageUploadApi } from "../workspace/routes/api/review-image-handlers.ts";
 

@@ -3,7 +3,7 @@ import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { readFile as fsReadFile, rename as fsRename, rm as fsRm, symlink as fsSymlink } from "node:fs/promises";
 import process from "node:process";
@@ -15,9 +15,9 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { dirname, join } from "node:path";
 import { type MetricsExportFixture, withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
 import { withCollidingMetricProjects } from "../../testing/workflow-metrics-fixture.ts";
-import { setCustomSetting } from "../settings.js";
-import { getWorkflowMetricsFilePath, hashMetricCwd } from "./metrics.js";
-import { encodeCwdForSessionDir } from "../session/root-session.js";
+import { setCustomSetting } from "../settings.ts";
+import { getWorkflowMetricsFilePath, hashMetricCwd } from "./metrics.ts";
+import { encodeCwdForSessionDir } from "../session/root-session.ts";
 import { metricsExportReference } from "./metrics-export-record.ts";
 import {
     readMetricsExportGrants,

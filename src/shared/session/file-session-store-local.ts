@@ -9,7 +9,7 @@ import {
     getRunWieldSessionsBaseDir,
     listCatalogSafeRootSessionLocators,
     readCatalogSafeRootSessionLocator,
-} from "./root-session.js";
+} from "./root-session.ts";
 import { readLineage, reconstructManifestFromLineage } from "./file-session-lineage.ts";
 import {
     catalogedSession,

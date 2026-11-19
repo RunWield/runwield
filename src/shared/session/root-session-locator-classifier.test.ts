@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { classifyRootSessionLocator, getRunWieldSessionDir } from "./root-session.js";
+import { classifyRootSessionLocator, getRunWieldSessionDir } from "./root-session.ts";
 
 async function makeRoot(name: string): Promise<string> {
     return await mkdtemp(join(tmpdir(), `${name}-`));

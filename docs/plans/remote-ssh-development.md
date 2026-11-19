@@ -5,7 +5,7 @@ complexity: "HIGH"
 affectedPaths:
     - "src/cli.ts"
     - "src/cmd/registry.js"
-    - "src/shared/settings.js"
+    - "src/shared/settings.ts"
     - "src/shared/models/model-registry.ts"
     - "src/shared/session/"
     - "src/extensions/"
@@ -13,13 +13,13 @@ affectedPaths:
     - "src/shared/workflow/"
     - "src/shared/foreground-process.ts"
     - "src/ui/review/"
-    - "src/ui/workspace/server.js"
+    - "src/ui/workspace/server.ts"
     - "scripts/compile.js"
     - "scripts/release-assets.js"
     - "docs/prd/remote-ssh-prd.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/domain-language.md"
-    - "docs/adr/018-remote-ssh-local-personal-authority.md"
+    - "docs/adr/017-remote-ssh-local-personal-authority.md"
 createdAt: "2026-09-20"
 origin: "internal"
 targetBranch: "epic/remote-ssh-development"
@@ -95,8 +95,8 @@ Separate where work runs from where personal data is owned. Reuse Core's tools, 
 and browser review surfaces rather than build a reduced remote product.
 
 The durable choice and alternatives are recorded in proposed
-[ADR-018](../adr/018-remote-ssh-local-personal-authority.md). Existing
-[ADR-015](../adr/015-file-authoritative-session-bundles.md) still owns file-authoritative Sessions and native writer
+[ADR-017](../adr/017-remote-ssh-local-personal-authority.md). Existing
+[ADR-014](../adr/014-file-authoritative-session-bundles.md) still owns file-authoritative Sessions and native writer
 locking. No new Session database, writer lease, permanent daemon, or hosted service is introduced.
 
 ### System shape and ownership
@@ -373,7 +373,7 @@ buildExecutionSession
 ```
 
 `session.js` currently combines one cwd with settings, prompt resources, tools, model runtime, and persistence.
-`root-session.js:installDenoSessionPersistence` intercepts synchronous Pi writes. Ordinary transcript appends bypass
+`root-session.ts:installSessionPersistence` intercepts synchronous Pi writes. Ordinary transcript appends bypass
 `file-session-store`, which owns manifests, locks, and generations. Changing `streamSimple` or the store alone cannot
 produce the requested split. Pi Session event listeners also run before persistence; they are not save acknowledgements.
 
@@ -390,7 +390,7 @@ resources from the skill directory. MCP definitions merge personal then project;
 local stdio subprocesses. Moving text alone does not move resource files or preserve integration location.
 
 `review-launcher.ts` calls `BrowserPort.open`; the review server binds loopback and resolves an in-process pending
-promise. Frontend URLs are same-origin. `review-agent-handlers.js` starts Guided Review as another `wld` process. Whole
+promise. Frontend URLs are same-origin. `review-agent-handlers.ts` starts Guided Review as another `wld` process. Whole
 origin forwarding and inherited remote context fit the existing personal workflow.
 
 Release packaging already creates Linux x64 and ARM64 binaries. The ordinary installer can mutate profiles and install
@@ -439,11 +439,11 @@ These are evidence-based boundaries, not an implementation checklist or an allow
 platform scope, trust, persistence ownership, or dependency strategy returns for review.
 
 - `src/cli.ts`, `src/cmd/registry.js` — remote entry, arguments, launch context, visible host/directory.
-- `src/shared/settings.js`, `src/shared/session/agents.js`, `agent-assets.js`, `named-invocation.ts`, and `session.js` —
+- `src/shared/settings.ts`, `src/shared/session/agents.ts`, `agent-assets.js`, `named-invocation.ts`, and `session.js` —
   local personal authority, remote project precedence, mounted resource paths, both skill loaders, child context.
 - `src/shared/models/model-registry.ts`, `src/shared/session/backends/` — local model runtime, remote catalog/stream
   contract, supported-backend checks, refresh and cancellation.
-- `src/shared/session/root-session.js`, `file-session-*.ts`, `session-runtime.js`, `segment-rollover.ts`,
+- `src/shared/session/root-session.ts`, `file-session-*.ts`, `session-runtime.js`, `segment-rollover.ts`,
   `session-resume-list.ts`, and `image-attachments.ts` — explicit remote identity, mounted Pi files, local
   locks/commits, settlement, rollover, attachments, offline history and resume.
 - `src/extensions/mnemoteca/`, `src/cmd/sleep/`, and Work Record indexing — one explicit personal Memory mapping and
@@ -452,7 +452,7 @@ platform scope, trust, persistence ownership, or dependency strategy returns for
   integrations, connection-owned processes, cancellation outside blocked Agent execution.
 - `src/shared/workflow/` — preserve project-owned workflow truth, remote validation/publication, and evidence-based
   recovery while Session history is local.
-- `src/shared/browser-port.ts`, `src/ui/review/`, TUI review integration, and `src/ui/workspace/server.js` — automatic
+- `src/shared/browser-port.ts`, `src/ui/review/`, TUI review integration, and `src/ui/workspace/server.ts` — automatic
   local forwarding, local reopen URLs, remote review content and Guided Review. No visual redesign.
 - `scripts/compile.js`, release/helper packaging and runtime resource handling — matched Linux builds, verified private
   dependencies, compiled UI, licensing, and non-destructive bootstrap.
@@ -473,8 +473,8 @@ platform scope, trust, persistence ownership, or dependency strategy returns for
 This Epic defines architectural evidence; executable child Plans provide the concrete tests. Passing existing CI does
 not prove a remote user journey.
 
-**Automated foundations:** `deno task doc-links:check`, `deno task seams:check`, and `deno task ci`. Use
-`deno task test` or `deno run -A scripts/run-tests.js <arguments>` for isolated tests, never direct `deno test`. Use
+**Automated foundations:** `deno task doc-links:check` and `deno task ci`. Use
+`deno task test` or `bun scripts/run-tests.ts <arguments>` for isolated tests, never direct `deno test`. Use
 sandboxed home/Memory storage and real Git fixtures. Do not add injection seams for owned storage, locks, Plan writes,
 or lifecycle rules. External subprocess, transport, model, and clock behavior can use genuine external boundaries.
 

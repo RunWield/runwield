@@ -124,11 +124,11 @@ Smaller models tend to be "helpful" in the wrong direction. Gemma4 31B is more w
 
 ## Benchmark Notes
 
-Use `scripts/run-router-golden-set.js` to run the real Router against the golden CSV. You can override the model,
+Use `scripts/run-router-golden-set.ts` to run the real Router against the golden CSV. You can override the model,
 thinking level, and sampling temperature for that run:
 
 ```sh
-deno run -A scripts/run-router-golden-set.js --model <provider/model> \
+deno run -A scripts/run-router-golden-set.ts --model <provider/model> \
   --thinking-level medium --temperature 0.1 --rerun --out <results.csv>
 ```
 

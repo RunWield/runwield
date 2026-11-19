@@ -4,14 +4,14 @@ import { lstat as fsLstat, mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFil
 import process from "node:process";
 import { setInterval } from "node:timers";
 import { dirname, join } from "node:path";
-import { getRunWieldRuntimeDir } from "../../constants.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { getLockHostname } from "../process-liveness.ts";
 import {
     inspectProjectRuntimeReadAccess,
     migrateLegacyProjectRuntimeState,
     resolveProjectRuntimeLayout,
 } from "../project-runtime-layout.ts";
-import { withWorktreeRegistryLockAtPath } from "../worktree-registry.js";
+import { withWorktreeRegistryLockAtPath } from "../worktree-registry.ts";
 
 interface LegacyPlanLockRecord {
     token: string;

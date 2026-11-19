@@ -1,7 +1,7 @@
 import type { RunWieldPackageInstall } from "../src/shared/package-install.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { tmpdir } from "node:os";
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import {
     copyFile as fsCopyFile,
     mkdir as fsMkdir,
@@ -19,7 +19,7 @@ import process from "node:process";
 
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { parseReleaseTag } from "./release.js";
+import { parseReleaseTag } from "./release.ts";
 
 const DEFAULT_INPUTS_PATH = "packaging/windows/tested-dependencies.json";
 const PACKAGE_ID = "Gandazgul.RunWield";

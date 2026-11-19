@@ -1,130 +1,38 @@
-import { readFile as fsReadFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { createThemeFromJson, mergeThemeJson, resolveThemeVars, splitFgBgColors } from "./theme-json.ts";
+import { createThemeFromJson, mergeThemeJson } from "./theme-json.ts";
 import type { ThemeJson } from "./theme-json.ts";
 
-test("resolveThemeVars resolves nested references and leaves literals intact", () => {
-    const resolved = resolveThemeVars({
-        name: "test-theme",
-        vars: {
-            accent: "base",
-            base: "#abcdef",
-            indexed: 42,
-        },
-        colors: {
-            accent: "accent",
-            muted: "",
-            warning: "indexed",
-            selectedBg: "#111111",
-        },
-    });
+async function baseTheme(): Promise<ThemeJson> {
+    return JSON.parse(await readFile(new URL("./catppuccin-mocha.json", import.meta.url), "utf8"));
+}
 
-    assertEquals(resolved.colors, {
-        accent: "#abcdef",
-        muted: "",
-        warning: 42,
-        selectedBg: "#111111",
-    });
-});
-
-test("resolveThemeVars reports missing and circular variables", () => {
-    assertThrows(
-        () =>
-            resolveThemeVars({
-                colors: { accent: "missing" },
-            }),
-        Error,
-        "Variable reference not found: missing",
-    );
-
-    assertThrows(
-        () =>
-            resolveThemeVars({
-                vars: { one: "two", two: "one" },
-                colors: { accent: "one" },
-            }),
-        Error,
-        "Circular variable reference",
-    );
-});
-
-test("mergeThemeJson supports partial external themes", () => {
-    const base = {
-        name: "catppuccin-mocha",
-        vars: { base: "#111111", accent: "#222222" },
-        colors: { accent: "accent", text: "", selectedBg: "base" },
-        export: { pageBg: "base" },
-    };
-    const external = {
-        name: "custom",
-        vars: { customAccent: "#abcdef" },
-        colors: { accent: "customAccent" },
-    };
-
-    const merged = mergeThemeJson(base, external);
-    const resolved = resolveThemeVars(merged);
-
-    assertEquals(merged.name, "custom");
-    assertEquals(resolved.colors, {
-        accent: "#abcdef",
-        text: "",
-        selectedBg: "#111111",
-    });
-    assertEquals(merged.export, { pageBg: "base" });
-});
-
-test("splitFgBgColors separates Pi foreground and background tokens", () => {
-    const split = splitFgBgColors({
-        accent: "#abcdef",
-        selectedBg: "#111111",
-        toolErrorBg: 52,
-        text: "",
-    });
-
-    assertEquals(split.fgColors, { accent: "#abcdef", text: "" });
-    assertEquals(split.bgColors, { selectedBg: "#111111", toolErrorBg: 52 });
-});
-
-test("embedded theme supplies workflow footer tokens and partial overrides can replace them", async () => {
-    const base: ThemeJson = JSON.parse(await fsReadFile(new URL("./catppuccin-mocha.json", import.meta.url), "utf8"));
-    const merged = mergeThemeJson(base, {
-        name: "custom-workflow",
-        vars: { custom: "#123456" },
-        colors: { routingFeature: "custom" },
-    });
-    const resolved = resolveThemeVars(merged);
-
-    assertEquals(resolved.colors.routingQuickFix, "#94e2d5");
-    assertEquals(resolved.colors.routingFeature, "#123456");
-    assertEquals(resolved.colors.routingEpic, "#cba6f7");
-    assertEquals(resolved.colors.complexityLow, "#a6e3a1");
-    assertEquals(resolved.colors.complexityMedium, "#f9e2af");
-    assertEquals(resolved.colors.complexityHigh, "#f38ba8");
-});
-
-test("createThemeFromJson constructs the real Pi Theme from resolved colors", async () => {
-    const base: ThemeJson = JSON.parse(await fsReadFile(new URL("./catppuccin-mocha.json", import.meta.url), "utf8"));
+test("partial external themes render nested custom colors while retaining default colors", async () => {
+    const base = await baseTheme();
+    const original = createThemeFromJson(base, { colorMode: "truecolor" });
     const theme = createThemeFromJson(
         mergeThemeJson(base, {
             name: "custom",
-            vars: { accent: "#abcdef", bg: "#111111" },
-            colors: { accent: "accent", selectedBg: "bg" },
+            vars: { accent: "nested", nested: "#abcdef", bg: "#111111" },
+            colors: { accent: "accent", selectedBg: "bg", routingFeature: "#123456" },
         }),
-        { colorMode: "256color" },
+        { colorMode: "truecolor" },
     );
-
     assertEquals(theme.name, "custom");
-    assertEquals(theme.fg("accent", "RunWield").includes("RunWield"), true);
-    assertEquals(theme.bg("selectedBg", "RunWield").includes("RunWield"), true);
-});
-
-test("Pi 1.5 themes retain RunWield footer colors through public rendering methods", async () => {
-    const base: ThemeJson = JSON.parse(await fsReadFile(new URL("./catppuccin-mocha.json", import.meta.url), "utf8"));
-    const theme = createThemeFromJson(mergeThemeJson(base, { colors: { routingFeature: "#123456" } }), {
-        colorMode: "truecolor",
-    });
+    assertEquals(theme.fg("accent", "RunWield"), "\x1b[38;2;171;205;239mRunWield\x1b[39m");
+    assertEquals(theme.bg("selectedBg", "selected"), "\x1b[48;2;17;17;17mselected\x1b[49m");
     const token = "routingFeature" as Parameters<typeof theme.fg>[0];
     assertEquals(theme.fg(token, "Plan"), "\x1b[38;2;18;52;86mPlan\x1b[39m");
-    assertEquals(theme.getFgAnsi(token), "\x1b[38;2;18;52;86m");
+    assertEquals(theme.fg("warning", "unchanged"), original.fg("warning", "unchanged"));
+});
+
+test("invalid custom variable graphs are rejected before installing a Theme", async () => {
+    const base = await baseTheme();
+    for (const external of [
+        { colors: { accent: "missing" } },
+        { vars: { one: "two", two: "one" }, colors: { accent: "one" } },
+    ]) {
+        assertThrows(() => createThemeFromJson(mergeThemeJson(base, external), { colorMode: "truecolor" }), Error);
+    }
 });

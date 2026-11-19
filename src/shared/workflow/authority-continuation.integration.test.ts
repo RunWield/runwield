@@ -21,12 +21,12 @@ import {
     savePlan,
     savePlanBodyById,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { addEntry, findById, updateEntry } from "../worktree-registry.js";
+import { addEntry, findById, updateEntry } from "../worktree-registry.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../cmd/load-plan/primary-plan-recovery.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { HostedSession } from "../session/hosted-session.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";

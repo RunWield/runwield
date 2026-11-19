@@ -4,7 +4,7 @@
  */
 
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
-import { isPlannedChangeClassification } from "../../constants.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
 import {
     findPlansByParent,
     getPlanDocumentRoot,
@@ -12,18 +12,18 @@ import {
     isProjectPlan,
     listArchivedPlans,
     loadArchivedPlan,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
-import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.js";
+import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 import {
     attachEpicChildren,
     buildActiveWorkRecordSource,
     evaluateWorkRecordSource,
     generateWorkRecordForSource,
-} from "./generation.js";
+} from "./generation.ts";
 
-type WorkRecordSource = import("./generation.js").WorkRecordSource;
+type WorkRecordSource = import("./generation.ts").WorkRecordSource;
 type WorkRecordSupersessionCandidate = import("./schema.ts").WorkRecordSupersessionCandidate;
 
 export interface WorkRecordAutoGenerationResult {
@@ -45,7 +45,7 @@ export interface AutoGenerateWorkRecordArgs {
     planName: string;
     mnemotecaPort: WorkRecordMnemotecaPort;
     signal?: AbortSignal;
-    runRecorderStep?: import("./generation.js").GenerationOptions["runRecorderStep"];
+    runRecorderStep?: import("./generation.ts").GenerationOptions["runRecorderStep"];
 }
 
 interface TargetedWorkRecordSource {
@@ -54,7 +54,7 @@ interface TargetedWorkRecordSource {
     targetPlanName?: string;
 }
 
-type WorkRecordParentState = Pick<import("../../plan-store.js").PlanFrontMatter, "status" | "epicCompletionMode">;
+type WorkRecordParentState = Pick<import("../../plan-store.ts").PlanFrontMatter, "status" | "epicCompletionMode">;
 
 /** The parent must be terminal before a child completion can record its Epic. */
 export function isTerminalWorkRecordParent(attrs: WorkRecordParentState): boolean {

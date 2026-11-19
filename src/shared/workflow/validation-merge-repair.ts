@@ -1,12 +1,13 @@
 import { captureForegroundProcess } from "../captured-process.ts";
+import type { MergeRepairError } from "../worktree.ts";
 /**
  * @module shared/workflow/validation-merge-repair
  * Merge failure classification and repair dispatch for the publication
  * dispatch for the publication phase.
  */
 
-import { AGENTS } from "../../constants.js";
-import { loadPlan, PlanLockTimeoutError } from "../../plan-store.js";
+import { AGENTS } from "../../constants.ts";
+import { loadPlan, PlanLockTimeoutError } from "../../plan-store.ts";
 import { requestHostRepair } from "./validation-host-state.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import type { PhaseContext, UserActionPause, ValidationLoopArgs } from "./validation-types.ts";
@@ -21,11 +22,7 @@ import {
 
 type GitCommandResult = { code: number; stdout: string; stderr: string };
 
-type AnnotatedPublicationError = Error & {
-    repairCwd?: string;
-    mergeWorktreePath?: string;
-    mergeFailureKind?: string;
-    blockingPaths?: string[];
+type AnnotatedPublicationError = MergeRepairError & {
     publicationStage?: PublicationStage;
 };
 

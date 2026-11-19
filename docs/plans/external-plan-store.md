@@ -2,7 +2,7 @@
 classification: "PROJECT"
 complexity: "HIGH"
 affectedPaths:
-    - "src/plan-store.js"
+    - "src/plan-store.ts"
     - "src/plan-front-matter.ts"
     - "src/shared/workflow/"
     - "src/shared/work-records/"
@@ -80,7 +80,7 @@ excluded by the proposal's one-copy and plain-Markdown requirements.
 
 The durable commitment is separating Project identity from checkout location and Git history. Reversing it would
 require exporting documents and metadata, rebuilding repository ownership rules, and migrating Session references.
-The [proposed Project-state ADR](../adr/0020-home-project-state-and-launch-mode-ownership.md) records the trade-offs.
+The [proposed Project-state ADR](../adr/019-home-project-state-and-launch-mode-ownership.md) records the trade-offs.
 Accepted ADRs still describe the existing implementation; the implementing work must reconcile their ownership clauses.
 
 ### Ownership and interfaces
@@ -369,7 +369,7 @@ Inspected source establishes the following current dependencies:
 | Flow                      | Existing path and finding                                                                                                            | Architectural consequence                                                                                      |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | Load a Plan               | `workflow/plan-location.ts` chooses execution, registered planning, primary, or target-branch documents                              | Replace document selection with Project/Plan lookup; preserve execution-location selection separately          |
-| Save a Plan               | `plan-store.js:savePlan` acquires catalog/Plan locks and calls `prepareControllerView`; ordinary saves preserve controller authority | Move persistence without merging document edits and lifecycle/controller writes into one unrestricted save     |
+| Save a Plan               | `plan-store.ts:savePlan` acquires catalog/Plan locks and calls `prepareControllerView`; ordinary saves preserve controller authority | Move persistence without merging document edits and lifecycle/controller writes into one unrestricted save     |
 | Controller state          | `workflow/controller-registry.ts:controllerRecordPath` stores Plan-keyed records below primary `.wld/internal/`                      | Consolidate Plan-owned controller state in metadata; retire overlays after explicit adoption                   |
 | Publication and recording | `workflow/publication-machine.ts` and `work-records/published-source.ts` recover artifacts through Plan paths and Git commits        | Retain immutable store inputs and receipts before removing repository Plan commits                             |
 | Session lookup            | `session/file-session-storage.ts` hashes roots for identity and encodes roots for local storage; remote projects use another path    | Introduce stable lookup bindings without changing transcript identity, historical cwd, or lock ownership       |
@@ -451,7 +451,7 @@ This map guides later decomposition; it is not an allowlist or a task sequence.
 
 ```text
 src/
-  plan-store.js, plan-front-matter.ts   storage contract; legacy parsing confined to explicit import
+  plan-store.ts, plan-front-matter.ts   storage contract; legacy parsing confined to explicit import
   shared/
     project-*                         identity, automatic internal relocation, action-owned entry
     runwield-owned-paths.ts            retire internal runtime writers; preserve settings and overrides
@@ -480,7 +480,7 @@ do not implement new real-time collaboration or hosted storage here.
 
 - `shared/private-json-file.ts`, `native-file-lock.ts`, and Windows replacement handling: portable file durability and
   native ownership. Validate them on the selected storage owner; mounting a path does not establish equivalence.
-- `plan-store.js` body hashing, strict read results, identity checks, and stale-write errors: preserve their protection
+- `plan-store.ts` body hashing, strict read results, identity checks, and stale-write errors: preserve their protection
   while separating document and metadata revisions.
 - `workflow/state-transition.ts` and publication attempt/receipt machinery: retain explicit evidence and restart
   reconciliation, removing obsolete Plan-copy operations rather than adding a parallel workflow.
@@ -493,7 +493,7 @@ do not implement new real-time collaboration or hosted storage here.
 ## Verification Plan
 
 An Epic is not directly executable. Later child Plans select exact focused test commands using
-`bun scripts/run-tests.js <paths>` after `bun run install:locked` on Bun 1.4.3; the integrated gate is `bun run ci`.
+`bun scripts/run-tests.ts <paths>` after `bun run install:locked` on Bun 1.4.3; the integrated gate is `bun run ci`.
 Use disposable homes, real Git fixtures, and process-global locks where required. Validate new file behavior on Linux,
 macOS, and Windows; remote testing follows the existing supported Linux host scope.
 

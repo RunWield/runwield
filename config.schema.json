@@ -318,6 +318,12 @@
                                 "router": {
                                     "$ref": "#/$defs/codexRolePreferences"
                                 },
+                                "ideator": {
+                                    "$ref": "#/$defs/codexRolePreferences"
+                                },
+                                "guide": {
+                                    "$ref": "#/$defs/codexRolePreferences"
+                                },
                                 "planner": {
                                     "$ref": "#/$defs/codexRolePreferences"
                                 },

@@ -15,7 +15,7 @@ import {
 /** File-backed controller state shared by all worktrees of one project. */
 import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import {
     enterProjectRuntime,
     checkedProjectRuntimeLayout,
@@ -27,9 +27,9 @@ import {
     inspectWorktreeRegistry,
     inspectWorktreeRegistryAtPath,
     type WorktreeRegistryEntry,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { parsePlanFrontMatter } from "../../plan-store.js";
+import { parsePlanFrontMatter } from "../../plan-store.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";
 import {
     CONTROLLER_STATE_FIELDS,

@@ -8,7 +8,7 @@
 import { type Static, Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 import { emitReviewResultMessage } from "../shared/session/workflow-messages.ts";
 import { recordWorkflowOutcome, workflowOutcomeEventId } from "../shared/workflow/outcome-observations.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";

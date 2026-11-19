@@ -11,15 +11,15 @@ import {
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.js";
+import { HostedSession } from "../session/hosted-session.ts";
 import { listPendingTaskCompletions } from "../session/task-completion-session.ts";
-import { setCustomSetting } from "../settings.js";
-import type { SessionRuntimeEvent } from "../session/session-runtime-events.js";
+import { setCustomSetting } from "../settings.ts";
+import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { dispatchPostTriage, type DispatchPostTriageArgs, readLatestTriageOutcome } from "./orchestrator.ts";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { publishWorkflowToolEvent } from "./workflow-tool-events.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 
@@ -46,8 +46,6 @@ function createSessionFixture(projectRoot: string, interaction?: InteractionHand
                 interaction?.(request) ?? { outcome: "canceled", message: "Fixture supplied no interaction answer." },
         },
     });
-    // HostedSession's legacy minimal-manager JSDoc is wider than Pi's concrete
-    // manager signature; this is the real runtime manager used in production.
     hostedSession.setRootSessionManager(sessionManager);
     const events: SessionRuntimeEvent[] = [];
     hostedSession.setEventSink((event: SessionRuntimeEvent) => events.push(event));
@@ -424,8 +422,8 @@ test("Router-to-Planner dispatch sends Planner system instructions despite Route
                 assertStringIncludes(systemPrompt, "You are the Planner");
                 assertEquals(systemPrompt.includes("Your ONLY job is to identify the Routing Intent"), false);
                 assertStringIncludes(modelMessages, "I am the Router. My only job is routing.");
-                assertStringIncludes(modelMessages, "You are now Planner.");
-                assertStringIncludes(modelMessages, "previous RunWield Agent");
+                assertEquals(modelMessages.includes("You are now Planner."), false);
+                assertEquals(modelMessages.includes("## Active RunWield Agent"), false);
                 assertStringIncludes(modelMessages, "## Triage Report");
             } finally {
                 fixture.hostedSession.dispose();

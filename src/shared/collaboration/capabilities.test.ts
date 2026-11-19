@@ -1,14 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
-import {
-    generateBearerCapability,
-    hashCapability,
-    MAINTAINER_SCOPE,
-    redactSecrets,
-    REVIEWER_SCOPE,
-    timingSafeEqual,
-} from "./capabilities.ts";
+import { generateBearerCapability, hashCapability, redactSecrets, timingSafeEqual } from "./capabilities.ts";
 
 test("capability generation creates distinct URL-safe 256-bit bearer values", () => {
     const first = generateBearerCapability();
@@ -20,15 +13,8 @@ test("capability generation creates distinct URL-safe 256-bit bearer values", ()
 test("capability hashes are deterministic server-safe values", async () => {
     const capability = "bearer-secret";
     const first = await hashCapability(capability);
-    const second = await hashCapability(capability);
-    assertEquals(first, second);
-    assertMatch(first, /^sha256:[A-Za-z0-9_-]+$/);
-    assert(!first.includes(capability));
-});
-
-test("capability helpers expose reviewer and maintainer scopes", () => {
-    assertEquals(REVIEWER_SCOPE, "reviewer");
-    assertEquals(MAINTAINER_SCOPE, "maintainer");
+    assertEquals(first, "sha256:HN6ulCbw1uXdg94YTktIM6PMU3_ZBLPYvh3K8xXjx0g");
+    assert((await hashCapability("other-secret")) !== first);
 });
 
 test("capability equality and redaction avoid raw bearer leakage", () => {

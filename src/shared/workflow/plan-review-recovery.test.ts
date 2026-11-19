@@ -1,10 +1,11 @@
+import { strictEqual } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import {
     appendSessionCompleteGuidance,
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
-} from "./plan-review-recovery.js";
+} from "./plan-review-recovery.ts";
 
 test("Plan Review returns substantive answers intact without prompting for recovery", async () => {
     for (const response of [
@@ -55,8 +56,8 @@ test("Plan Review recovery retries after unanswered review when user accepts", a
         },
     });
 
-    assertEquals(result.kind, "answered");
-    assertEquals(result.response._meta.approved, true);
+    strictEqual(result.kind, "answered");
+    assertEquals(result.response._meta?.approved, true);
     assertEquals(prompts, ["review_canceled"]);
 });
 
@@ -66,7 +67,7 @@ test("Plan Review recovery completes session when retry is declined", async () =
         requestRetry: () => Promise.resolve({ outcome: "canceled", value: false }),
     });
 
-    assertEquals(result.kind, "complete");
+    strictEqual(result.kind, "complete");
     assertEquals(result.reason, "review_error");
     assertEquals(result.message, SESSION_COMPLETE_GUIDANCE);
 });
@@ -77,7 +78,7 @@ test("Plan Review recovery completes session when retry confirmation throws", as
         requestRetry: () => Promise.reject(new Error("confirmation canceled")),
     });
 
-    assertEquals(result.kind, "complete");
+    strictEqual(result.kind, "complete");
     assertEquals(result.reason, "retry_canceled");
     assertEquals(result.message, SESSION_COMPLETE_GUIDANCE);
 });

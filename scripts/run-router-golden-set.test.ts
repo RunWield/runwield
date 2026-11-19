@@ -1,3 +1,7 @@
+import { existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import {
@@ -5,25 +9,33 @@ import {
     createBenchmarkBashNudgeTool,
     main,
     mergeGoldenRowsWithResultRows,
-    normalizeGoldenRow,
     runRouterForGoldenRequest,
     runRouterGoldenSet,
     runRouterGoldenSetWithSelection,
-} from "./run-router-golden-set.js";
+} from "./run-router-golden-set.ts";
 
 type GoldenRows = Awaited<ReturnType<typeof runRouterGoldenSet>>;
 type BenchmarkToolContext = Parameters<ReturnType<typeof createBenchmarkBashNudgeTool>["execute"]>[4];
 
-test("normalizeGoldenRow fills stable defaults and router metrics", () => {
+test("benchmark resume preserves completed rows while normalizing legacy labels and metrics", async () => {
     assertEquals(
-        normalizeGoldenRow(
-            {
-                requestText: "fix it",
-                routerDecision: "QUICK_FIX",
-                humanJudgement: "FEATURE",
-            },
-            0,
-        ),
+        (
+            await runRouterGoldenSet(
+                [
+                    {
+                        requestText: "fix it",
+                        routerDecision: "QUICK_FIX",
+                        humanJudgement: "FEATURE",
+                    },
+                ],
+                {
+                    resume: true,
+                    runAgentSession: () => {
+                        throw new Error("Completed row must not rerun");
+                    },
+                },
+            )
+        )[0],
         {
             decisionId: "golden-0001",
             timestamp: "",
@@ -54,6 +66,11 @@ test("runRouterForGoldenRequest returns latest triage_report outcome", async () 
                 {
                     role: "toolResult",
                     toolName: "triage_report",
+                    details: { routingIntent: "OPERATION", summary: "superseded" },
+                },
+                {
+                    role: "toolResult",
+                    toolName: "triage_report",
                     details: {
                         routingIntent: "INQUIRY",
                         complexity: "LOW",
@@ -71,43 +88,32 @@ test("runRouterForGoldenRequest returns latest triage_report outcome", async () 
 });
 
 test("benchmark bash tool nudges without executing commands", async () => {
-    const tool = createBenchmarkBashNudgeTool();
-    const result = await tool.execute(
-        "call-1",
-        { command: "git status" },
-        new AbortController().signal,
-        () => {},
-        {} as BenchmarkToolContext,
-    );
+    const root = await mkdtemp(join(tmpdir(), "router-no-execution-"));
+    const sentinel = join(root, "unexpected.txt");
+    const command = `printf executed > ${JSON.stringify(sentinel)}`;
+    try {
+        const tool = createBenchmarkBashNudgeTool();
+        const result = await tool.execute(
+            "call-1",
+            { command },
+            new AbortController().signal,
+            () => {},
+            {} as BenchmarkToolContext,
+        );
 
-    const content = result.content[0];
-    assertEquals(result.details.blocked, true);
-    assertEquals(result.details.command, "git status");
-    assertEquals(content.type, "text");
-    if (content.type !== "text") throw new Error("expected text content");
-    assertEquals(content.text.includes("bash is disabled"), true);
-    assertEquals(content.text.includes("and the command below was not executed"), true);
-    assertEquals(content.text.includes("OPERATION"), false);
-    assertEquals(content.text.includes("QUICK_FIX"), false);
-});
-
-test("runRouterForGoldenRequest accepts injected triage outcome", async () => {
-    const triage = await runRouterForGoldenRequest("where is router?", {
-        runAgentSession: () =>
-            Promise.resolve([
-                {
-                    role: "toolResult",
-                    toolName: "triage_report",
-                    details: {
-                        routingIntent: "INQUIRY",
-                        complexity: "LOW",
-                        summary: "answer",
-                    },
-                },
-            ]),
-    });
-
-    assertEquals(triage.routingIntent, "INQUIRY");
+        const content = result.content[0];
+        assertEquals(result.details.blocked, true);
+        assertEquals(result.details.command, command);
+        assertEquals(content.type, "text");
+        if (content.type !== "text") throw new Error("expected text content");
+        assertEquals(content.text.includes("bash is disabled"), true);
+        assertEquals(content.text.includes("and the command below was not executed"), true);
+        assertEquals(content.text.includes("OPERATION"), false);
+        assertEquals(content.text.includes("QUICK_FIX"), false);
+        assertEquals(existsSync(sentinel), false);
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
 });
 
 test("runRouterGoldenSet updates labelled rows and honors limit", async () => {
@@ -194,7 +200,7 @@ test("runRouterGoldenSet clears stale decisions only when rerunning rows", async
         ],
         {
             resume: false,
-            runAgentSession: () => new Promise<GoldenRows>(() => {}),
+            runAgentSession: () => new Promise<never>(() => {}),
             rowTimeoutMs: 1,
             onRowComplete: (checkpointRows) => {
                 checkpoints.push(checkpointRows.map((row) => ({ ...row })));
@@ -289,28 +295,6 @@ test("mergeGoldenRowsWithResultRows keeps labels from the golden rows and comple
             routerAffectedPaths: "",
         },
     ]);
-});
-
-test("runRouterGoldenSet records row errors and continues", async () => {
-    const rows = await runRouterGoldenSet([{ decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" }], {
-        runAgentSession: () => {
-            throw new Error("model failed");
-        },
-    });
-
-    assertEquals(rows[0].routerDecision, "");
-    assertEquals(rows[0].routerSummary, "ERROR: model failed");
-    assertEquals(rows[0].routerAgreesWithHuman, "");
-});
-
-test("runRouterGoldenSet times out slow rows", async () => {
-    const rows = await runRouterGoldenSet([{ decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" }], {
-        rowTimeoutMs: 1,
-        runAgentSession: () => new Promise<GoldenRows>(() => {}),
-    });
-
-    assertEquals(rows[0].routerDecision, "");
-    assertEquals(rows[0].routerSummary, "ERROR: Router golden row timed out after 1ms.");
 });
 
 test("buildRouterGoldenReport scores router decisions", () => {

@@ -4,7 +4,7 @@ export * from "./store.ts";
 export * from "./lifecycle.ts";
 export * from "./list.ts";
 export * from "./supersession.ts";
-export * from "./generation.js";
+export * from "./generation.ts";
 export * from "./auto-generation.ts";
 export * from "./index-adapter.ts";
 export * from "./search.ts";

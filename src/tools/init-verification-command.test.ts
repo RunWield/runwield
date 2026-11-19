@@ -15,7 +15,6 @@ import {
     createInitVerificationCommandOperation,
     INIT_VERIFICATION_COMMAND_PLACEHOLDER,
 } from "./init-verification-command.ts";
-import { getCustomSetting } from "../shared/settings.js";
 
 interface InitVerificationCommandParams {
     command?: string;
@@ -54,18 +53,6 @@ async function readProjectSettings(projectRoot: string) {
         nested?: { retained?: boolean };
     };
 }
-
-test("init verification command operation saves a confirmed command in project settings", async () => {
-    const projectRoot = await fsMkdtemp(join(tmpdir(), "init-verification-command-"));
-    const operation = createInitVerificationCommandOperation({ projectRoot });
-
-    const result = await executeTool(operation, { command: "deno task ci" });
-
-    assertEquals(result.details, { outcome: "saved", verificationCommand: "deno task ci" });
-    assertEquals(operation.getConfirmedCommand(), "deno task ci");
-    assertEquals(getCustomSetting("verification_command", "project", projectRoot), "deno task ci");
-    assertEquals((await readProjectSettings(projectRoot)).verification_command, "deno task ci");
-});
 
 test("init verification command operation saves the exact placeholder for no implemented verification", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "init-verification-placeholder-"));

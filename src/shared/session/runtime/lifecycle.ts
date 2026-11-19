@@ -1,14 +1,14 @@
 import { stat as fsStat } from "node:fs/promises";
-import { AGENTS } from "../../../constants.js";
+import { AGENTS } from "../../../constants.ts";
 import {
     classifyRootSessionLocator,
     createRootSessionManager,
     listCatalogSafeRootSessionLocators,
     listPersistedRootSessions,
     resolveCreatedRootSessionPath,
-} from ".././root-session.js";
-import { RuntimeEventTypes } from ".././session-runtime-events.js";
-import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.js";
+} from ".././root-session.ts";
+import { RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.ts";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
 import { isAbsolute } from "node:path";
 import type { PromptReadySessionOptions } from "./types.ts";
@@ -175,7 +175,7 @@ export class RuntimeLifecycle {
         }
     }
 
-    async prepareDeferredManagedCreation(hostedSession: import(".././hosted-session.js").HostedSession) {
+    async prepareDeferredManagedCreation(hostedSession: import(".././hosted-session.ts").HostedSession) {
         const pendingProject = this.pendingManagedCreationProjects.get(hostedSession.id);
         if (!pendingProject) return null;
         await enterGitProjectRuntime(pendingProject.cwd);
@@ -215,13 +215,13 @@ export class RuntimeLifecycle {
         }
     }
 
-    async materializeDeferredWorkflowSession(hostedSession: import(".././hosted-session.js").HostedSession) {
+    async materializeDeferredWorkflowSession(hostedSession: import(".././hosted-session.ts").HostedSession) {
         if (!this.pendingManagedCreationProjects.has(hostedSession.id)) return;
         await this.materializeDeferredManagedShell(hostedSession);
         hostedSession.dehydrateManagedSession();
     }
 
-    async materializeDeferredManagedShell(hostedSession: import(".././hosted-session.js").HostedSession) {
+    async materializeDeferredManagedShell(hostedSession: import(".././hosted-session.ts").HostedSession) {
         if (this.services.remotePersistence) {
             const pending = this.pendingManagedCreationProjects.get(hostedSession.id);
             if (!pending) return hostedSession.getManagedMetadata();
@@ -254,7 +254,7 @@ export class RuntimeLifecycle {
     }
 
     async ensureCreatedSessionTranscriptFile(
-        sessionManager: import("../hosted-session.js").MinimalSessionManagerLike,
+        sessionManager: import("../hosted-session.ts").MinimalSessionManagerLike,
         transcriptPath: string,
     ) {
         try {
@@ -275,13 +275,13 @@ export class RuntimeLifecycle {
 
     async resolveCreatedSessionPath(
         cwd: string,
-        sessionManager: import("../hosted-session.js").MinimalSessionManagerLike,
+        sessionManager: import("../hosted-session.ts").MinimalSessionManagerLike,
     ) {
         return await resolveCreatedRootSessionPath(cwd, sessionManager);
     }
 
     adoptManagedSession(options: {
-        session: import("../../owner-coordination/sessions.js").CatalogedSession;
+        session: import("../../owner-coordination/sessions.ts").CatalogedSession;
         generation?: number | null;
         acknowledgedEventId?: string | null;
         hostedSessionId?: string | null;

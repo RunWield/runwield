@@ -54,7 +54,7 @@ can still suspend CI.
 
 `bun run test` remains the focused source suite. `bun run test:golden-tui` runs the composed TUI scenarios and their
 harness tests; `test:golden-tui:extensive` runs the same complete portfolio. Always use these tasks or
-`bun scripts/run-tests.js <test paths or runner options>`; never invoke `bun test` directly. Each file gets a separate
+`bun scripts/run-tests.ts <test paths or runner options>`; never invoke `bun test` directly. Each file gets a separate
 process, HOME, temporary directory, and Mnemoteca database.
 
 Workspace memory diagnostics use the same Bun compiler and embedded payload as the CLI:
@@ -158,7 +158,7 @@ Use this as an orientation map, not a directory inventory:
 - `src/extensions/` contains runtime integrations for Mnemoteca, Cymbal, and Snip. Keep integration-specific tools,
   hooks, and tests isolated there when practical.
 - `src/tools/` contains RunWield-specific agent tools that are not better owned by an extension package.
-- `src/ui/tui/` is the terminal adapter. `src/ui/workspace/`, `src/review-workspace-server.js`, and `src/ui/review/` are
+- `src/ui/tui/` is the terminal adapter. `src/ui/workspace/`, `src/review-workspace-server.ts`, and `src/ui/review/` are
   the browser Workspace and review surfaces. Shared visual language belongs in `src/ui/design-system/` and
   `src/ui/theme/`.
 - `docs/plans/` stores durable Plan Markdown. `docs/` (outside `docs/plans/`) stores user, contributor, architecture,
@@ -244,18 +244,16 @@ rewriting, and focused tests.
 
 ## Code style
 
-- New production source files should be TypeScript (`.ts` or `.tsx` as appropriate). Existing JavaScript with JSDoc is
-  still valid; do not force-convert unrelated files, but migrate JS files when you are already touching them for source
-  changes and the migration is reasonably bounded.
+- Use TypeScript (`.ts` or `.tsx` as appropriate) for source and tests.
 - Keep Bun-native execution. Use real file extensions in imports, do not add a `tsc` emit pipeline for runtime code,
   and let `bun run check`/CI be the type gate.
 - Do not use `any`, `unknown`, or bare `object` in TypeScript types. Define named object shapes instead of inline
   complex types.
-- In remaining JavaScript, use JSDoc for types. Prefer `@typedef` for object shapes and type function parameters in the
-  `@param` block rather than adding casts or body-local `@type` declarations.
+- Export reusable types from the module that owns them and import them through its public surface. Avoid standalone
+  shared-type modules.
 - Keep CLI entry points thin. Command behavior belongs under `src/cmd/<command>/`; shared behavior belongs under
   `src/shared/` or the narrower center of gravity that owns it.
-- Resolve home and cwd through `getHomeDir()` and `getCwd()` from `src/constants.js` in `src/`. Do not read
+- Resolve home and cwd through `getHomeDir()` and `getCwd()` from `src/constants.ts` in `src/`. Do not read
   `Deno.env.get("HOME")` or `Deno.cwd()` directly in source, and do not cache process-global state at module scope.
 - Wrap tests that mutate `HOME` or the working directory in `withProcessGlobalTestLock` from
   `src/testing/process-global-lock.ts`.

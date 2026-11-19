@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { compileBun } from "../../../scripts/compile-bun.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { serveHttp } from "../http-server.ts";
@@ -238,7 +238,7 @@ async function main(): Promise<void> {
                 `${sourceRoot}/scripts`,
                 `${sourceRoot}/node_modules`,
                 `${sourceRoot}/package.json`,
-                `${sourceRoot}/runtime-root.js`,
+                `${sourceRoot}/runtime-root.ts`,
                 `${sourceRoot}/brand`,
                 `${sourceRoot}/third_party`,
                 `${sourceRoot}/tsconfig.json`,

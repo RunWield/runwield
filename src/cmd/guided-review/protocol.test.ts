@@ -16,11 +16,20 @@ const usage: GuidedReviewUsage = {
 };
 
 test("Guided Review version 2 preserves missing, zero, and present measurements", () => {
-    assertEquals(parseGuidedReviewUsageEventLine(encodeGuidedReviewUsageEvent(usage)), {
-        version: 2,
-        type: "usage",
-        usage,
-    });
+    assertEquals(
+        encodeGuidedReviewUsageEvent(usage),
+        'RUNWIELD_GUIDED_REVIEW_EVENT {"version":2,"type":"usage","usage":{"inputTokens":12,"outputTokens":0,"cacheReadTokens":null,"cacheWriteTokens":null,"costUsd":null}}\n',
+    );
+    assertEquals(
+        parseGuidedReviewUsageEventLine(
+            'RUNWIELD_GUIDED_REVIEW_EVENT {"version":2,"type":"usage","usage":{"inputTokens":12,"outputTokens":0,"cacheReadTokens":null,"cacheWriteTokens":null,"costUsd":null}}\n',
+        ),
+        {
+            version: 2,
+            type: "usage",
+            usage,
+        },
+    );
 });
 
 test("Guided Review rejects version 1 frames rather than treating old zero filling as measurements", () => {
@@ -48,7 +57,10 @@ test("Guided Review requires explicit nullable categories", () => {
 
 test("Guided Review rejects invalid negative measurements", () => {
     assertThrows(
-        () => parseGuidedReviewUsageEventLine(encodeGuidedReviewUsageEvent({ ...usage, inputTokens: -1 })),
+        () =>
+            parseGuidedReviewUsageEventLine(
+                `RUNWIELD_GUIDED_REVIEW_EVENT ${JSON.stringify({ version: 2, type: "usage", usage: { ...usage, inputTokens: -1 } })}`,
+            ),
         Error,
         "inputTokens",
     );

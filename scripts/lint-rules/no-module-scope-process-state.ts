@@ -11,7 +11,7 @@
  * another test's temp directory.
  *
  * Read these inside a function instead — via `getHomeDir()` / `getCwd()` from
- * `src/constants.js`, which is the one module allowed to touch them directly.
+ * `src/constants.ts`, which is the one module allowed to touch them directly.
  */
 
 import type { TSESTree } from "@typescript-eslint/utils";
@@ -55,8 +55,8 @@ export default {
     rules: {
         "no-module-scope-process-state": {
             create(context: ProcessStateRuleContext) {
-                // constants.js owns the accessors every other module calls.
-                if (context.filename.replace(/\\/g, "/").endsWith("/src/constants.js")) return {};
+                // constants.ts owns the accessors every other module calls.
+                if (context.filename.replace(/\\/g, "/").endsWith("/src/constants.ts")) return {};
 
                 let functionDepth = 0;
                 const enter = () => {
@@ -84,7 +84,7 @@ export default {
                             hint:
                                 "Module scope runs once per test realm, at an arbitrary moment, so this snapshots " +
                                 "another test file's cwd/env for the life of the realm. Call it inside a function " +
-                                "(use getHomeDir()/getCwd() from src/constants.js).",
+                                "(use getHomeDir()/getCwd() from src/constants.ts).",
                         });
                     },
                 };

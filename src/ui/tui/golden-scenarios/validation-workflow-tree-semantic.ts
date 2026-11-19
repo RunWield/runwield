@@ -3,7 +3,7 @@ import process from "node:process";
 import {
     plannedChangeNonGitInPlaceScenario,
     plannedChangeReviewRepairValidationScenario,
-} from "./planned-change-workflow.js";
+} from "./planned-change-workflow.ts";
 import { validationEvidenceAssertion } from "../testing/validation-workflow-coverage.ts";
 import { withValidationBranches } from "./validation-workflow-tree-shared.ts";
 

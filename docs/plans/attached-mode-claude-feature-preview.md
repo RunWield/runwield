@@ -6,7 +6,7 @@ affectedPaths:
     - "src/shared/attached/"
     - "src/shared/workflow/"
     - "src/shared/session/agent-assets.ts"
-    - "src/shared/worktree.js"
+    - "src/shared/worktree.ts"
     - "src/shared/worktree-registry.js"
     - "src/ui/review/review-launcher.ts"
     - "src/ui/workspace/"
@@ -14,7 +14,7 @@ affectedPaths:
     - "src/attached/claude/"
     - "docs/prd/runwield-connect-prd.md"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/014-attached-workflow-coordination-boundary.md"
+    - "docs/adr/013-attached-workflow-coordination-boundary.md"
     - "docs/"
     - "docs/domain-language.md"
     - "README.md"
@@ -64,7 +64,7 @@ This Epic must make pending host actions, accepted outcomes, and fresh-process c
 shared engine's sequencing and gates. This is remaining Connect integration work, not an uncompleted extraction
 prerequisite. The historical Work Record is delivery evidence; current source remains the implementation baseline.
 
-[ADR-014](../adr/014-attached-workflow-coordination-boundary.md) records the accepted boundary: an
+[ADR-013](../adr/013-attached-workflow-coordination-boundary.md) records the accepted boundary: an
 `AttachedWorkflowCoordinator` is a sibling runtime to `SessionRuntime`. Short-lived `wld attached ...` commands are the
 canonical Core boundary, and Model Context Protocol (MCP) is a thin model-facing adapter over those same operations. The
 existing TUI, Agent Client Protocol (ACP), and SessionRuntime paths remain RunWield-executed Session surfaces and do not
@@ -191,7 +191,7 @@ review from canonical state; review need not remain available while Claude is cl
   or requests host turns through its external-action protocol; it does not reimplement validation policy. The
   [validation authority matrix](../validation-authority.md#authority-matrix) owns the current division of Plan,
   controller, review, worktree, and publication facts. Attached records reference these authorities rather than copy
-  their checkpoints or receipts. [ADR-016](../adr/016-proof-bearing-publication-state-machine.md) governs publication
+  their checkpoints or receipts. [ADR-015](../adr/015-proof-bearing-publication-state-machine.md) governs publication
   evidence, restart reconciliation, and cleanup; a successful validation result alone does not prove delivery.
 - **Compatibility Matrix** — owns tested capability claims for supported Claude Code and adapter/Core version ranges.
   Preview preflight uses this versioned data and fails before relying on an unsupported worker, permission, or worktree
@@ -286,9 +286,9 @@ baseline, lifecycle position, and completion contract.
 
 ## Vertical Slice Findings
 
-- `src/shared/workflow/plan-lifecycle.js` and `state-transition.ts` already centralize Plan Events and guarded Plan
+- `src/shared/workflow/plan-lifecycle.ts` and `state-transition.ts` already centralize Plan Events and guarded Plan
   Status transitions. This is the authority the coordinator must call rather than a Claude-specific lifecycle.
-- `src/plan-store.js`, `src/shared/worktree.js`, `worktree-registry.js`, review-ledger logic, merge verification, and
+- `src/plan-store.ts`, `src/shared/worktree.ts`, `worktree-registry.js`, review-ledger logic, merge verification, and
   Work Record generation are largely session-independent and reusable.
 - `src/shared/workflow/orchestrator.ts`, `workflow.js`, `engineer-runner.ts`, and `planning-agent.ts` drive
   Pi/HostedSession turns directly and interpret protected tool results as orchestration signals. Retrofitting Attached
@@ -306,10 +306,10 @@ baseline, lifecycle position, and completion contract.
   baseline, not by itself the resolver of effective project/home/bundled policy. Attached role instructions must use the
   same layered resolution as Core Sessions and avoid independent copies of role policy.
 - `src/ui/review/review-launcher.ts` exposes Plannotator through the Workspace review server. In
-  `src/ui/workspace/server.js`, `startReviewWorkspaceServer()` starts a server in the calling process and returns an
+  `src/ui/workspace/server.ts`, `startReviewWorkspaceServer()` starts a server in the calling process and returns an
   in-memory decision promise. Durable reviewed-revision decisions and browser-process ownership must both be covered.
-- ADR-010 makes TUI and ACP sibling adapters over SessionRuntime. Attached is not another such adapter because the
-  External Agent Host executes the model turns. ADR-014 preserves ADR-010's dependency direction by introducing a
+- ADR-011 makes TUI and ACP sibling adapters over SessionRuntime. Attached is not another such adapter because the
+  External Agent Host executes the model turns. ADR-014 preserves ADR-011's dependency direction by introducing a
   sibling runtime over shared domain authorities instead.
 - The [Claude CLI backend Work Record](../work-records/2026-08-06-claude-cli-execution-backend-completed.md) and current
   `src/shared/session/backends/claude-cli/` describe Core invoking Claude as an Execution Backend. Connect reverses that
@@ -349,11 +349,11 @@ child decomposition. If discovery changes approved scope or ownership, return th
   so both carriers use one semantic contract. This Epic must not recreate validation sequencing here or in the adapter.
 - `src/tools/` — make existing Core Session protected tools consume the same structured outcome contracts where needed
   to prevent semantic drift; tools remain Session carriers, not sources of workflow policy.
-- `src/shared/session/agent-assets.ts`, `agents.js`, and related asset-resolution modules — resolve the effective
+- `src/shared/session/agent-assets.ts`, `agents.ts`, and related asset-resolution modules — resolve the effective
   layered role instructions for Attached responses. Attached code may import them; it must not start a model turn.
-- `src/shared/workflow/plan-lifecycle.js`, `state-transition.ts`, and `controller-registry.ts` — reused unchanged for
+- `src/shared/workflow/plan-lifecycle.ts`, `state-transition.ts`, and `controller-registry.ts` — reused unchanged for
   Plan transitions, revision checks, and transition guards.
-- `src/shared/worktree.js`, `src/shared/worktree-registry.js`, and execution-context services — support a host worker
+- `src/shared/worktree.ts`, `src/shared/worktree-registry.js`, and execution-context services — support a host worker
   handoff and recovery packet without transferring worktree lifecycle ownership to Claude.
 - `src/ui/review/review-launcher.ts` and `src/ui/workspace/` review endpoints — persist pending plan/code review
   decisions, waiting reasons, and resumable review identifiers for process-per-call coordination while preserving the
@@ -371,11 +371,11 @@ child decomposition. If discovery changes approved scope or ownership, return th
 
 ## Reuse Opportunities
 
-- `src/shared/workflow/plan-lifecycle.js` and `src/shared/workflow/state-transition.ts` — reuse canonical Plan Event
+- `src/shared/workflow/plan-lifecycle.ts` and `src/shared/workflow/state-transition.ts` — reuse canonical Plan Event
   guards, atomic transition behavior, locks, recovery actions, and Verified semantics.
-- `src/plan-store.js` — reuse canonical Plan parsing, atomic writes, front-matter normalization, and project-root
+- `src/plan-store.ts` — reuse canonical Plan parsing, atomic writes, front-matter normalization, and project-root
   resolution.
-- `src/shared/git-port.ts`, `src/shared/worktree.js`, and `src/shared/worktree-registry.js` — reuse real Git operations,
+- `src/shared/git-port.ts`, `src/shared/worktree.ts`, and `src/shared/worktree-registry.js` — reuse real Git operations,
   baseline evidence, execution isolation, merge safeguards, and recovery records.
 - `src/shared/workflow/validation-engine.ts` plus `validation-local-ci.ts`, `review-ledger.ts`, delivery hierarchy, and
   merge-verification modules — reuse one validation policy and evidence model across runtimes.
@@ -390,7 +390,7 @@ child decomposition. If discovery changes approved scope or ownership, return th
 
 ## Verification Plan
 
-- Automated: every Attached child Plan runs targeted tests through `deno run -A scripts/run-tests.js <test paths>`; the
+- Automated: every Attached child Plan runs targeted tests through `bun scripts/run-tests.ts <test paths>`; the
   integrated Epic gate is `deno task ci`. Never run `deno test` directly.
 - Automated: black-box Claude adapter coverage runs against each declared Preview-compatible Claude Code version and
   records the tested capability matrix. Test fixtures must verify that ordinary prompts outside Attached Workflows reach
@@ -479,11 +479,11 @@ Existing behavior that must remain protected after every child lands:
 
 - Core TUI/Workspace Sessions continue to use SessionRuntime, existing transcript segmentation, interaction/event
   semantics, routing, planning, execution, validation, and recovery behavior.
-- ACP remains a client of RunWield-executed Sessions and preserves ADR-010's dependency direction.
+- ACP remains a client of RunWield-executed Sessions and preserves ADR-011's dependency direction.
 - Existing Plan statuses, Plan Events, readiness rules, validation convergence, worktree publication safeguards, and
   Work Record provenance retain their current meaning.
 - Existing layered agent customization continues to resolve project-local, then home, then bundled assets.
-- `deno task ci`, the seam ratchet, architecture boundaries, and sandboxed test rules remain green.
+- `deno task ci`, architecture boundaries, and sandboxed test rules remain green.
 
 Behavior expected to stop existing:
 

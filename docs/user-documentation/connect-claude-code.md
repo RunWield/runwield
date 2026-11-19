@@ -1,12 +1,12 @@
 # RunWield Connect for Claude Code
 
-RunWield Connect brings Plan review, isolated implementation, validation, and delivery into Claude Code. Claude owns
-this conversation and every model call. RunWield Core owns the Plan, workflow gates, recovery, and delivery evidence.
+RunWield Connect brings Ideator and Guide conversations, Plan review, isolated implementation, validation, and delivery
+into Claude Code. Claude owns this conversation and every model call. RunWield Core owns the Plan, workflow gates, recovery, and delivery evidence.
 RunWield Workspace is the separate browser product for RunWield Sessions and collaboration.
 
 This is a **FEATURE Preview**, not stable Claude Code support. The separate [Codex adapter](connect-codex.md) is
 available for qualification and does not inherit Claude's tested scope. Other hosts reject with `unsupported_host`
-before workflow changes; other request types are outside this Preview.
+before workflow changes. Current source also adds Ideator and Guide; other Routing Intents remain outside this Preview.
 
 ## Tested scope
 
@@ -25,6 +25,13 @@ Claude `2.x` shares policy coverage, subject to the `2.1.303` minimum. Minor and
 acceptance entry; a new major requires qualification. Prerelease and build suffixes retain their numeric family, while
 a prerelease below the minimum still rejects. Coverage does not claim an exact-version run. Unqualified or unreported
 versions continue quietly, with internal assessments retained. Pre-1.0 hosts use a minor qualification boundary.
+
+Claude Code `2.1.322` completed live source-plugin conversations for both roles and entry paths, including follow-up
+replies, requested Markdown/PRD writes, an honest image-tool limit, and preservation of older open delivery work.
+See [Conversation acceptance](../prd/runwield-connect-prd.md#conversation-acceptance) for the exact scope and remaining
+checks. These disposable-project checks used bypassed permissions and do not extend the saved `2.1.303` run or qualify
+normal permission prompts. Use updated Core and the source plugin together for this unpublished behavior; older
+distributed packages may not include it.
 
 ### Permissions
 
@@ -48,24 +55,25 @@ You need:
 Core needs **no model credentials, model preset, or RunWield account** for Connect. The model setup in the
 [Quickstart](quickstart.md) is for Core-owned Sessions, not this workflow.
 
-Install Core with the [Quickstart](quickstart.md#install), Homebrew, or winget. Before the Preview is published,
-use a Core build and local marketplace from the same checkout; the published default branch and release must contain
-this Preview before the GitHub form below can install it.
-
-In Claude Code, after publication:
+Install Core with the [Quickstart](quickstart.md#install), Homebrew, or winget. The stable plugin is distributed
+through [RunWield/plugins](https://github.com/RunWield/plugins). The marketplace is **RunWield**, with install identity
+`runwield`; the plugin is `wld`.
 
 ```text
-/plugin marketplace add gandazgul/runwield
-/plugin install runwield@runwield
+/plugin marketplace add RunWield/plugins
+/plugin install wld@runwield
 ```
 
-For a local checkout that contains the Preview, replace the first command with:
+Restart Claude Code if it requests a restart to load the plugin. Claude uses `/wld:request` to start work;
+`$wld:run` is Codex syntax.
 
-```text
-/plugin marketplace add /absolute/path/to/runwield
-```
+For source development, add `/absolute/path/to/runwield` as the marketplace and install `runwield@runwield`.
+That upstream package retains `/runwield:` commands; the distribution exporter supplies the public `/wld:` namespace.
+Use a compatible Core build from the same checkout when testing unpublished behavior.
 
-The second command stays the same. Restart Claude Code if it requests a restart to load the plugin.
+If migrating from `connect@runwield`, uninstall it, update the marketplace, and install `wld@runwield`.
+If the marketplace still points to `RunWield/runwield`, remove the old plugin and marketplace before adding
+`RunWield/plugins`. See the [migration guide](https://github.com/RunWield/plugins#migrate-from-an-older-plugin-name).
 
 Start Claude Code from your project root with a timeout long enough for local checks:
 
@@ -82,7 +90,7 @@ Claude starts the plugin's `wld attached mcp` process and lists its tools when t
 list are present even before a RunWield request. Loading the plugin alone does not inspect your prompt or repository,
 inject role instructions, restrict tools, or create workflow state. Ordinary Claude use stays ordinary.
 
-### Skills during a workflow
+### Skills during a workflow or role conversation
 
 Claude roles receive the effective RunWield Skill catalog with names, descriptions, and exact read paths. Project
 Skills in `.wld/skills/<name>/SKILL.md` override bundled Skills of the same name on the next role-instructions fetch.
@@ -92,22 +100,56 @@ are not listed. The independent reviewer receives no Skill catalog.
 These references are supplied at run time. Connect does not bundle Skill files or replace the separate
 `runwield-skills` plugin.
 
+## Explore an idea or ask Guide
+
+The source plugin provides dedicated commands that skip Router and create no delivery workflow:
+
+```text
+/runwield:ideator Help me explore a simpler onboarding experience.
+/runwield:guide Explain how this project's validation works.
+```
+
+The distributed namespace remains `/wld:`; use the matching command only in a package that includes these additions.
+You can also use `/runwield:request` (distributed `/wld:request`) for an idea or question. Router maps `IDEATION` to
+Ideator and `INQUIRY` to Guide, then closes only the routing record. Claude fetches the selected role's current
+instructions and addresses your original request. An “instructions loaded” message alone is not the answer.
+
+Continue your replies in the same Claude conversation. Use Claude's own history or resume to restore the discussion.
+Core stores no role conversation, starts no Session, and needs no completion report. Connect's delivery-resume commands
+do not restore these discussions; a newer question does not displace older open delivery work.
+
+- **Ideator** interviews, researches, and tests assumptions. Ask it to synthesize a PRD when ready. It reports the saved
+  path without claiming Core artifact registration. Saving a PRD does not start planning.
+- **Guide** answers from project evidence with citations. It creates or updates an ordinary Markdown explanation only
+  when asked; it does not edit source, settings, Plans, PRDs, ADRs, domain glossaries, or other workflow artifacts.
+  Guide is read-mostly, not a tool sandbox, and is not [Guided Review](../domain-language.md).
+- Both roles use available Claude-native tools and current layered definitions, shared practices, and Skills. Memory
+  or image work requires an already available capability that performs the requested function. No new tool bridge is
+  added; unavailable capabilities must be disclosed, not reported as successful writes or image creation.
+
+Only an explicit request to plan starts a fresh normal `/runwield:request` with the agreed task and relevant artifact
+paths, not your transcript. Router, Core's `start_planning`, Plan review, and execution gates remain in place. Neither
+role automatically starts implementation, commits, or publication. Core-only `/agent` and `artifact_written` directions,
+including those in loaded document formats, are replaced by this conversation flow and actual Connect entrypoints.
+If a role tool or contract is missing, update Core and the plugin to compatible versions and retry; do not substitute
+an implementation workflow.
+
 ## Start one FEATURE request
 
 In Claude Code:
 
 ```text
-/runwield:request Add an export button for the current report.
+/wld:request Add an export button for the current report.
 ```
 
 This activates RunWield for that request, not the whole conversation. Core checks the adapter contract and Claude
 version first. The host performs Triage and planning with current Core instructions. A project does not need an
-existing `.wld` directory or `AGENTS.md`. `/runwield:init` is not provided.
+existing `.wld` directory or `AGENTS.md`. `/wld:init` is not provided.
 
 1. Review the Plan in the browser. Ask questions in review chat, request a change in chat, or send structured Feedback.
 2. A changed Plan opens a new review round on the same page. Approve the exact Plan before implementation starts.
    **Approve & Run** continues immediately. **Approve for Later** leaves it Ready For Work and starts nothing; use
-   `/runwield:implement` when you want to start it.
+   `/wld:implement` when you want to start it.
 3. Core prepares the execution checkout. Claude discloses its directory and branch and starts a fresh worker there.
    Non-Git execution needs explicit consent; it edits current files without Git isolation or publication.
 4. Core runs the configured validation command. Fresh Claude workers review the diff and repair findings. Core checks
@@ -143,15 +185,15 @@ Connect does not push a new model turn into an idle Claude session. Closing the 
 
 Use these commands in the same project, including from a new Claude Code conversation:
 
-| Command                 | Purpose                                                                 |
-| ----------------------- | ----------------------------------------------------------------------- |
-| `/runwield:plan-review` | Restore pending Triage, planning, or Plan review and its saved outcome. |
-| `/runwield:implement`   | Start a saved ready Plan or restore its implementation handoff.         |
-| `/runwield:validate`    | Continue or restore validation, code review, recording, and delivery.   |
+| Command            | Purpose                                                                 |
+| ------------------ | ----------------------------------------------------------------------- |
+| `/wld:plan-review` | Restore pending Triage, planning, or Plan review and its saved outcome. |
+| `/wld:implement`   | Start a saved ready Plan or restore its implementation handoff.         |
+| `/wld:validate`    | Continue or restore validation, code review, recording, and delivery.   |
 
-Do not start another `/runwield:request` to resume the same work. Core loads its saved action and revision. A review
+Do not start another `/wld:request` to resume the same work. Core loads its saved action and revision. A review
 page hosted by the old Claude process stops when that process closes; the resume command hosts the pending review
-again. Closing Claude also stops running Core checks. `/runwield:validate` runs interrupted checks again without
+again. Closing Claude also stops running Core checks. `/wld:validate` runs interrupted checks again without
 recording a failure for the stopped run. Work already accepted by Core remains recorded. A stale action, changed diff,
 or process interruption cannot supply a new approval or duplicate an accepted outcome.
 
@@ -166,7 +208,7 @@ Update the marketplace and plugin from Claude Code:
 
 ```text
 /plugin marketplace update runwield
-/plugin update runwield@runwield
+/plugin update wld@runwield
 ```
 
 Update Core with the installer or package manager you used. For example, rerun the Quickstart installer, or use
@@ -188,8 +230,8 @@ available for recovery, but does not continue validation for a rejected host:
 In Claude Code:
 
 ```text
-/plugin disable runwield@runwield
-/plugin uninstall runwield@runwield
+/plugin disable wld@runwield
+/plugin uninstall wld@runwield
 ```
 
 Use either command as needed. This removes access to the plugin; it does not delete Plans, Work Records, pending
@@ -203,6 +245,9 @@ Core keeps:
 - Ordinary Plan files under `docs/plans/`, plus the project's Work Records and workflow evidence.
 - A per-request Attached Workflow Record under `~/.wld/attached/`, keyed by the primary checkout.
 - Core-owned execution, validation, review, and publication evidence needed for recovery.
+
+Direct Ideator/Guide instruction reads create no record or repository setup. Routed conversations leave only their
+closed routing record and explicit routing evidence; receipts save no role prompts, dispatch settings, or later dialogue.
 
 The record references the Plan rather than replacing its lifecycle. Current role instructions are loaded from project,
 home, and bundled definitions when requested; they are not stored as a transcript. Review chat is temporary workflow
@@ -221,5 +266,5 @@ copy of your host conversation.
   [Using RunWield](usage.md).
 
 This Preview covers one FEATURE journey in Claude Code. Its acceptance evidence does not qualify Codex or any other
-External Agent Host. It does not claim stable support, other Routing Intents, `/runwield:init`, hooks, or enforced host
-role restrictions.
+External Agent Host. The separate source-role observations above do not establish stable support or complete installed
+role journeys. Other Routing Intents, `/wld:init`, hooks, and enforced host role restrictions remain outside this scope.

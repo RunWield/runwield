@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { strictEqual, ok } from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { preparePlanWorkflow } from "./plan-preparation.ts";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# Plan preparation\n" });

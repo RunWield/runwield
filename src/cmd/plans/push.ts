@@ -1,18 +1,18 @@
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
-import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
  * @module cmd/plans/push
  * Push the current local shared Plan body as a new encrypted remote Revision.
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN, getCwd } from "../../constants.js";
-import { hashPlanBody, listPlans, listPlanResources, updatePlanCollaborationMetadata } from "../../plan-store.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
+import { hashPlanBody, listPlans, listPlanResources, updatePlanCollaborationMetadata } from "../../plan-store.ts";
 import { redactSecrets, REVIEWER_SCOPE } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
 import { encryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";
 import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
-import { normalizeRevisionMetadata, normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.js";
+import { normalizeRevisionMetadata, normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.ts";
 import {
     getGlobalSecretStoreLocation,
     getProjectSecretStoreLocation,

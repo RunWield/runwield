@@ -2,12 +2,12 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
-import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
+import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
 import { createPublicationAttempt } from "../../shared/workflow/publication-attempt.ts";
 import { retainPublishedWorkRecordSource } from "../../shared/work-records/published-source.ts";
 

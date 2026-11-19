@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 interface FileWritePrototype {

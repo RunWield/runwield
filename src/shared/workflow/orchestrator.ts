@@ -23,28 +23,28 @@
  * iterates without rebuilding LLM context.
  */
 
-import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
+import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { ensurePlansDir, loadPlan } from "../../plan-store.js";
+import { ensurePlansDir, loadPlan } from "../../plan-store.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { switchActiveAgent } from "../session/agent-switching.ts";
-import { runRootTurn } from "../session/session.js";
-import { getAgentDisplayName } from "../session/agents.js";
+import { runRootTurn } from "../session/session.ts";
+import { getAgentDisplayName } from "../session/agents.ts";
 import { sanitizeSessionName } from "../session-name.ts";
 import { normalizeTriageOutcome, type TriageOutcome, type TriageOutcomeInput } from "./triage-outcome.ts";
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
     RuntimeEventTypes,
-} from "../session/session-runtime-events.js";
+} from "../session/session-runtime-events.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "./decisions.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { recordWorkflowMetric } from "./metrics.js";
-import { buildAgentHandoffRequest } from "./workflow-prompts.ts";
+import { recordWorkflowMetric } from "./metrics.ts";
+import { buildPostTriageRequest } from "./workflow-prompts.ts";
 import {
     executePlan,
     extractAssistantOutput,
@@ -71,10 +71,10 @@ interface TriageToolResultMessage {
 }
 
 export interface DispatchPostTriageArgs {
-    hostedSession: import("../session/hosted-session.js").HostedSession;
+    hostedSession: import("../session/hosted-session.ts").HostedSession;
     triage: TriageOutcomeInput;
     userRequest: string;
-    images?: import("../session/types.js").ImageAttachment[];
+    images?: import("../session/image-attachments.ts").ImageAttachment[];
     sessionManager?: SessionManager;
     localCI: LocalCIPort;
     signal?: AbortSignal;
@@ -97,14 +97,14 @@ function buildQuickFixManualQaContext(decoratedRequest: string, messages?: Agent
  * @param {string} projectRoot
  * @param {string} manualQaName
  * @param {string} manualQaContext
- * @returns {import('../session/hosted-session.js').ActiveExecutionWorkflow}
+ * @returns {import('../session/hosted-session.ts').ActiveExecutionWorkflow}
  */
 function createQuickFixWorkflow(
     triage: TriageOutcome,
     projectRoot: string,
     manualQaName: string,
     manualQaContext: string,
-): import("../session/hosted-session.js").ActiveExecutionWorkflow {
+): import("../session/hosted-session.ts").ActiveExecutionWorkflow {
     return {
         planName: "quick-fix",
         triageMeta: { ...triage, classification: "QUICK_FIX" },
@@ -119,8 +119,8 @@ function createQuickFixWorkflow(
 }
 
 function refreshedQuickFixWorkflow(
-    workflow: import("../session/hosted-session.js").ActiveExecutionWorkflow,
-): import("../session/hosted-session.js").ActiveExecutionWorkflow {
+    workflow: import("../session/hosted-session.ts").ActiveExecutionWorkflow,
+): import("../session/hosted-session.ts").ActiveExecutionWorkflow {
     return {
         ...workflow,
         executionStarted: true,
@@ -129,10 +129,10 @@ function refreshedQuickFixWorkflow(
 }
 
 async function runRootTurnUntilTaskCompletion(args: {
-    hostedSession: import("../session/hosted-session.js").HostedSession;
+    hostedSession: import("../session/hosted-session.ts").HostedSession;
     agentName: string;
     userRequest: string;
-    images?: import("../session/types.js").ImageAttachment[];
+    images?: import("../session/image-attachments.ts").ImageAttachment[];
     dispatchKind?: import("../session/request-dispatch.ts").RequestDispatchKind;
     signal?: AbortSignal;
 }): Promise<AgentMessage[]> {
@@ -182,12 +182,12 @@ async function runRootTurnUntilTaskCompletion(args: {
 }
 
 /**
- * @param {import('../session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
  * @param {string} projectRoot
  * @returns {Promise<boolean>}
  */
 async function confirmNonGitQuickFixExecution(
-    hostedSession: import("../session/hosted-session.js").HostedSession,
+    hostedSession: import("../session/hosted-session.ts").HostedSession,
     projectRoot: string,
 ): Promise<boolean> {
     const response = await requestHostedSessionInteraction(
@@ -245,12 +245,12 @@ export function readLatestTriageOutcome(messages: AgentMessage[], fromIndex?: nu
  *
  * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} sessionManager
  * @param {TriageOutcome} triage
- * @param {import('../session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
  */
 function applyAutoSessionName(
     sessionManager: SessionManager | undefined,
     triage: TriageOutcome,
-    hostedSession: import("../session/hosted-session.js").HostedSession,
+    hostedSession: import("../session/hosted-session.ts").HostedSession,
 ): void {
     if (!sessionManager) return;
 
@@ -332,11 +332,7 @@ export async function dispatchPostTriage({
                   : isPlannedChangeClassification(normalizedTriage.routingIntent)
                     ? AGENTS.PLANNER
                     : AGENTS.ARCHITECT;
-    const decoratedRequest = buildAgentHandoffRequest(
-        getAgentDisplayName(dispatchTarget, projectRoot),
-        userRequest,
-        normalizedTriage,
-    );
+    const decoratedRequest = buildPostTriageRequest(userRequest, normalizedTriage);
     await recordMetric({
         category: "routing",
         event: "dispatch_selected",

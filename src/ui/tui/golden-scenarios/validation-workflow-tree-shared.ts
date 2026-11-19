@@ -1,4 +1,4 @@
-// @ts-nocheck: scenario objects come from JavaScript Golden fixtures with structural fields Deno cannot infer.
+// @ts-nocheck: Golden scenario objects use implicit structural types.
 import {
     EXPECTED_VALIDATION_WORKFLOW_BRANCH_IDS,
     VALIDATION_WORKFLOW_BRANCHES,

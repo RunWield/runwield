@@ -13,10 +13,10 @@ import type {
     RemoteSessionRecords,
 } from "../../remote/session-protocol.ts";
 import type { FileEntry } from "@earendil-works/pi-coding-agent";
-import type { HostedSession, ManagedSessionMetadata } from "../hosted-session.js";
-import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../root-session.js";
-import { summarizeProjectedEntries } from "../session-transcript-projection.js";
-import { RuntimeEventTypes } from "../session-runtime-events.js";
+import type { HostedSession, ManagedSessionMetadata } from "../hosted-session.ts";
+import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../root-session.ts";
+import { summarizeProjectedEntries } from "../session-transcript-projection.ts";
+import { RuntimeEventTypes } from "../session-runtime-events.ts";
 import { parseRemoteSessionTranscript, REMOTE_SESSION_IDENTITY_ENTRY } from "../../remote/session-protocol.ts";
 import { RemoteSessionControl } from "../../remote/session-control-client.ts";
 import type { RemoteSessionSaveBridge } from "../../remote/session-save-bridge.ts";

@@ -9,11 +9,10 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan, savePlan } from "../plan-store.js";
+import { loadPlan, savePlan } from "../plan-store.ts";
 import {
     appendEpicManualQaSection,
     getEpicArtifactPath,
-    isEpicArtifactPlanName,
     moveEpicArtifactsFromArchive,
     moveEpicArtifactsToArchive,
 } from "./epic-artifacts.ts";
@@ -33,14 +32,6 @@ async function makeEpicFixture() {
     });
     return projectRoot;
 }
-
-test("Epic Artifact recognition is exact", () => {
-    assertEquals(isEpicArtifactPlanName("epic/manual-qa"), true);
-    assertEquals(isEpicArtifactPlanName("epic/manual-qa.md"), true);
-    assertEquals(isEpicArtifactPlanName("manual-qa"), false);
-    assertEquals(isEpicArtifactPlanName("epic/01-manual-qa-support"), false);
-    assertEquals(isEpicArtifactPlanName("epic/deeper/manual-qa"), false);
-});
 
 test("appendEpicManualQaSection preserves user edits on duplicate", async () => {
     const projectRoot = await makeEpicFixture();

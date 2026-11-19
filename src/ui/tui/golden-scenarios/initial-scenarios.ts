@@ -4,7 +4,7 @@
  */
 
 import { ok as assert } from "node:assert/strict";
-import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
+import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 
 import type {
     ConsumedScriptedInteraction,
@@ -134,6 +134,7 @@ export const routerToGuideInquiryScenario = {
             agent: "router",
             phase: "triage",
             requiredTools: ["triage_report"],
+            forbiddenTools: ["write", "edit"],
             thinking: "Classify this as an inquiry and hand it to Guide.",
             toolCalls: [
                 {
@@ -364,44 +365,6 @@ export const planReviewReplyOnlyConversationScenario = {
     assertions: [assertReplyOnlyReviewApproval],
 } satisfies GoldenScenario;
 
-export const fauxProviderProtocolScenario = {
-    name: "faux-provider-protocol-contract",
-    composedTui: true,
-    terminal: { columns: 100, rows: 30 },
-    script: [
-        {
-            id: "router-protocol-real-turn",
-            agent: "router",
-            phase: "triage",
-            requiredTools: ["triage_report"],
-            forbiddenTools: ["write", "edit"],
-            thinking: "Validate actual Router identity and tool availability.",
-            toolCalls: [
-                {
-                    name: "triage_report",
-                    arguments: {
-                        routingIntent: "INQUIRY",
-                        complexity: "LOW",
-                        summary: "Protocol check routes to Guide.",
-                        sessionName: "protocol check",
-                    },
-                },
-            ],
-        },
-        {
-            id: "guide-protocol-real-turn",
-            agent: "guide",
-            phase: "inquiry",
-            text: "Guide protocol response from the real faux provider loop.",
-        },
-    ],
-    actions: [{ type: "type", text: "protocol check" }, { type: "enter" }, { type: "waitForIdle" }],
-    assertions: [
-        (result: GoldenScenarioResult) => assertEventIncludes(result, "model:faux-provider:router:triage"),
-        (result: GoldenScenarioResult) => assertEventIncludes(result, "model:faux-provider:guide:inquiry"),
-    ],
-} satisfies GoldenScenario;
-
 function assertScriptedRuntimeInteractions(result: GoldenScenarioResult) {
     assertEventIncludes(result, "interaction:select:selected");
     assertEventIncludes(result, "interaction:text:text");
@@ -465,6 +428,7 @@ export const diagnosticArtifactFailureScenario = {
     composedTui: true,
     terminal: { columns: 80, rows: 20 },
     script: [{ id: "unused-router-turn", agent: "router", phase: "triage", text: "unused" }],
+    // @ts-expect-error Exercise diagnostic artifacts for an unsupported runtime action.
     actions: [{ type: "unknown-composed-action" }],
 } satisfies GoldenScenario;
 
@@ -474,7 +438,6 @@ export const initialGoldenScenarios = [
     helpSlashCommandScenario,
     planReviewTransactionContractScenario,
     planReviewReplyOnlyConversationScenario,
-    fauxProviderProtocolScenario,
     runtimeInteractionContractScenario,
     startupNoProvidersOpensLoginScenario,
     startupProviderWithoutModelsOpensModelScenario,

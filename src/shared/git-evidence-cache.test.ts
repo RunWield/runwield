@@ -64,9 +64,15 @@ test("a linked worktree's index evidence follows its .git pointer", async () => 
     const linked = await mkdtemp(join(tmpdir(), "runwield-git-evidence-linked-"));
     try {
         await git(root, ["worktree", "add", "-b", "linked", linked]);
-        const gitDir = (await git(linked, ["rev-parse", "--absolute-git-dir"])).trim();
-        const evidence = await gitIndexEvidence(linked);
-        assertEquals(evidence?.includes(join(await realpath(gitDir), "index")), true);
+        await settle();
+        await rememberIndexRead(root, ["README.md"]);
+        await rememberIndexRead(linked, ["README.md"]);
+        assertEquals(await reusedIndexRead(linked), ["README.md"]);
+        await writeFile(join(linked, "linked-only.txt"), "linked change\n");
+        await git(linked, ["add", "linked-only.txt"]);
+        await settle();
+        assertEquals(await reusedIndexRead(linked), undefined);
+        assertEquals(await reusedIndexRead(root), ["README.md"]);
     } finally {
         await git(root, ["worktree", "remove", "--force", linked]).catch(() => "");
         await rm(linked, { recursive: true }).catch(() => {});

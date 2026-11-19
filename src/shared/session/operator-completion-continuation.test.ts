@@ -4,11 +4,11 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { createInteractiveCompositionHarness } from "../../ui/tui/testing/interactive-composition-fixture.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { readRequestAttemptEntries } from "./request-dispatch.ts";
-import { captureTranscriptEvidence } from "./session-transcript-projection.js";
+import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
 
 test("Operator accepts a follow-up after task_completed settles", async () => {
     await withRuntimeCommandFixture("operator-follow-up-", async ({ projectRoot, setModelResponseFactories }) => {

@@ -27,10 +27,10 @@ function guard(): void {
 }
 
 export async function createRendererFixture(root: string, origin: string): Promise<Fixture> {
-    const { savePlan } = await import("../src/plan-store.js");
+    const { savePlan } = await import("../src/plan-store.ts");
     const { openOwnerCoordinationStore } = await import("../src/shared/owner-coordination/index.ts");
     const { createOwnerWorkspaceApp, createWorkspaceApp, createReviewWorkspaceApp, createSessionQuestionWorkspaceApp } =
-        await import("../src/ui/workspace/server.js");
+        await import("../src/ui/workspace/server.ts");
     const { createWorkRecordMnemotecaFixture } =
         await import("../src/shared/work-records/test-fixtures/mnemoteca-port.ts");
     const projects = [join(root, "project-a"), join(root, "project-b")];
@@ -261,9 +261,9 @@ async function configureModelFixture(home: string) {
 async function runOperationWorkload(root: string, combined: boolean, forceGc: boolean): Promise<void> {
     const { fauxAssistantMessage, fauxText } = await import("@earendil-works/pi-ai");
     const { makeManagedSessionFixture } = await import("../src/testing/managed-session-fixture.ts");
-    const { WorkspaceSessionContinuationService } = await import("../src/ui/workspace/server/session-continuation.js");
+    const { WorkspaceSessionContinuationService } = await import("../src/ui/workspace/server/session-continuation.ts");
     const { ownerSessionOperationStatusApi, ownerSessionOperationStreamApi } =
-        await import("../src/ui/workspace/routes/owner-session-api.js");
+        await import("../src/ui/workspace/routes/owner-session-api.ts");
     const { createOwnerConnectionRegistry } = await import("../src/ui/workspace/server/owner-connections.ts");
     const home = process.env["HOME"]!;
     const projectRoot = join(root, "operation-project");

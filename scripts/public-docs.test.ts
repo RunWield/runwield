@@ -128,7 +128,7 @@ test("production docs build publishes and indexes only fixture manual pages", as
     try {
         await copyTree(join(repositoryRoot, "docs-site", "src"), join(root, "docs-site", "src"));
         await copyTree(join(repositoryRoot, "docs-site", "public"), join(root, "docs-site", "public"));
-        for (const name of ["astro.config.mjs", "package.json", "release.json", "tsconfig.json"]) {
+        for (const name of ["astro.config.ts", "package.json", "release.json", "tsconfig.json"]) {
             await fsCopyFile(join(repositoryRoot, "docs-site", name), join(root, "docs-site", name));
         }
         await fsMkdir(join(root, "docs"), { recursive: true });

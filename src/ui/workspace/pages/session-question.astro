@@ -1,4 +1,5 @@
 ---
+import type { WorkspaceQuestionPayload } from "../server.ts";
 import WorkspaceLayout from "../layouts/WorkspaceLayout.astro";
 import { SessionQuestionForm } from "../components/SessionQuestionForm.tsx";
 
@@ -9,17 +10,7 @@ try {
 } catch {
     payload = {};
 }
-const data = payload as {
-    mode?: string;
-    prompt?: string;
-    defaultValue?: string;
-    placeholder?: string;
-    allowEmpty?: boolean;
-    action?: string;
-    sessionId?: string;
-    questionId?: string;
-    options?: Array<{ value: string; label: string; description?: string }>;
-};
+const data: WorkspaceQuestionPayload = payload;
 ---
 <WorkspaceLayout title="RunWield Question" selectedTab="sessions" shell="local" url={Astro.url.href}>
     <div class="rw-question-fixture">

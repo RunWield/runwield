@@ -1,4 +1,4 @@
-// @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+// @ts-nocheck: Component props and event-handler types are implicit.
 
 import React from "react";
 import { ArtifactReadSurface } from "./ArtifactReadSurface.tsx";

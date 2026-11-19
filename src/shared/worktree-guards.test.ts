@@ -11,9 +11,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 
-import { loadPlan, savePlan } from "../plan-store.js";
-import type { PlanFrontMatterInput } from "../plan-store.js";
-import type { WorktreeRegistryEntry } from "./worktree-registry.js";
+import { loadPlan, savePlan } from "../plan-store.ts";
+import type { PlanFrontMatterInput } from "../plan-store.ts";
+import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 
 async function savePlanForTest(cwd: string, planName: string, content: string, attrs: PlanFrontMatterInput) {
     const existing = await loadPlan(cwd, planName).catch(() => null);
@@ -33,7 +33,7 @@ import {
     prepareTargetBranchRef,
     removeWorktreeGitArtifacts,
     validateWorktreeDiscard,
-} from "./worktree.js";
+} from "./worktree.ts";
 
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 

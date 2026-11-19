@@ -9,14 +9,14 @@ import { isSequencePlan, projectPlanType } from "../../shared/project-plan.ts";
  * explicitly declares it done enough.
  */
 
-import { isPlannedChangeClassification } from "../../constants.js";
-import { compareChildPlansByOrder, findPlansByParent, isTerminalArchivableStatus } from "../../plan-store.js";
-import { isInValidation, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { isPlannedChangeClassification } from "../../constants.ts";
+import { compareChildPlansByOrder, findPlansByParent, isTerminalArchivableStatus } from "../../plan-store.ts";
+import { isInValidation, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
 import {
     autoGenerateWorkRecordForCompletedPlan,
     formatWorkRecordAutoGenerationResult,
-} from "../../shared/work-records/auto-generation.js";
+} from "../../shared/work-records/auto-generation.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mnemoteca-port.ts";
 import { prepareTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
 import { isGitRepository } from "../../shared/git.ts";
@@ -40,8 +40,8 @@ import {
 } from "./plan-epic-children.ts";
 import { isHoldableStatus, isUserVerifiableStatus, markPlanUserVerified, putPlanOnHold } from "./plan-hold.ts";
 import { validatePlanExecutionPolicyForReadiness } from "./plan-execution.ts";
-import type { PlanFrontMatter } from "../../plan-store.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 
 /** The Epic being acted on, loaded with its body for the detail view. */
@@ -65,8 +65,8 @@ export interface HandleEpicPlanOptions {
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, body: string, markdown: string, attrs: import('../../plan-store.js').PlanFrontMatter }} opts.plan
- * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
+ * @param {{ planName: string, body: string, markdown: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} opts.plan
+ * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface["runSlicerAgent"]} opts.runSlicerAgent
  * @param {(childPlanName: string) => Promise<void>} opts.loadChildPlan
  * @param {PlanSessionSurface} opts.session
@@ -212,7 +212,7 @@ export async function handleEpicPlan({
 
     const canReviewWithArchitect =
         plan.attrs.status === "draft" ||
-        plan.attrs.status === "approved" ||
+        (sequence && plan.attrs.status === "approved") ||
         (sequence &&
             plan.attrs.status === "ready_for_work" &&
             children.every((child) => ["draft", "approved", "ready_for_work"].includes(child.attrs.status)));
@@ -231,9 +231,7 @@ export async function handleEpicPlan({
     if (canReviewWithArchitect) {
         const action = sequence
             ? "Review the Sequence and all children with Planner."
-            : canOpenSlicer
-              ? "Review it with Architect or resume Slicer decomposition to create child plans."
-              : "Review it with Architect to continue planning.";
+            : "Open Epic review or resume planning with Architect.";
         uiAPI.appendSystemMessage(
             `This PROJECT ${sequence ? "Sequence" : "Epic"} contains child Plans. ${action}`,
             false,
@@ -251,9 +249,14 @@ export async function handleEpicPlan({
                 label: `Resume publication: ${child.name}`,
             })),
             ...(canPickChild ? [{ value: "pick_child", label: "Pick a child Planned Change plan" }] : []),
-            ...(canDirectReview ? [{ value: "direct_review", label: "Review plan" }] : []),
+            ...(canDirectReview ? [{ value: "direct_review", label: "Open Epic review" }] : []),
             ...(canReviewWithArchitect
-                ? [{ value: "review", label: sequence ? "Review Sequence with Planner" : "Review with Architect" }]
+                ? [
+                      {
+                          value: "review",
+                          label: sequence ? "Review Sequence with Planner" : "Resume planning with Architect",
+                      },
+                  ]
                 : []),
             ...(canSendBackToArchitect
                 ? [{ value: "architect_re_review", label: "Send back to Architect for re-review" }]

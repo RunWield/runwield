@@ -12,7 +12,7 @@ import {
 import { StdioTransport } from "@earendil-works/pi-mcp";
 import { getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio";
 import { join } from "node:path";
-import { getSettingsDir, getSettingsManager } from "../settings.js";
+import { getSettingsDir, getSettingsManager } from "../settings.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import type { McpServerDefinition, McpWarning } from "./config.ts";
 import { RemoteMcpTransport } from "../remote/mcp-bridge.ts";

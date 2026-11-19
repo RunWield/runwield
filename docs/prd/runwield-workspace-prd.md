@@ -142,7 +142,7 @@ Each capability owns its browser requirements and links to Core for shared behav
 
 **Scope and maturity:** Target, not implemented. The first desktop delivery is free local work on Windows, macOS, and
 Linux. Electron is the selected desktop technology; architecture and delivery are proposed in
-[ADR-0021](../adr/0021-electron-workspace-acp-client.md) and the
+[ADR-020](../adr/020-electron-workspace-acp-client.md) and the
 [local desktop Epic](../plans/local-workspace-desktop.md). Native mobile applications are deferred; existing phone
 browser access remains supported.
 
@@ -1273,8 +1273,8 @@ This cross-capability journey shows that the capabilities work together. One tru
 - [RunWield Core PRD](runwield-core-prd.md)
 - [ACP PRD](runwield-acp-protocol-prd.md) and [Connect PRD](runwield-connect-prd.md)
 - [Forge Change Request Delivery PRD](forge-change-request-delivery-prd.md)
-- [ADR-007: Local-First Workspace Plan Board](../adr/007-local-first-workspace-plan-board.md)
+- [ADR-006: Local-First Workspace Plan Board](../adr/006-local-first-workspace-plan-board.md)
 - [ADR-008: Remote-Canonical Collaborative Shared Spaces](../adr/008-remote-canonical-collaborative-shared-spaces.md)
 - [ADR-010: SessionRuntime sibling adapters and ACP](../adr/010-session-runtime-sibling-adapters-and-acp.md)
-- [ADR-015: File-Authoritative Session Bundles](../adr/015-file-authoritative-session-bundles.md)
+- [ADR-014: File-Authoritative Session Bundles](../adr/014-file-authoritative-session-bundles.md)
 - [RunWield Design System](../design-system.md)

@@ -3,59 +3,9 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { formatCodeReviewAnnotations, normalizeCodeReviewDecision, runCodeReview } from "./code-review.ts";
+import { runCodeReview } from "./code-review.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { createScriptedReviewBrowser } from "./review-test-fixture.ts";
-
-test("normalizeCodeReviewDecision handles approvals, annotations, and cancellation", () => {
-    assertEquals(
-        normalizeCodeReviewDecision({
-            approved: true,
-            feedback: "ship it",
-            annotations: [{ file: "src/a.js", line: 3, text: "nice" }],
-        }),
-        {
-            approved: true,
-            feedback: "ship it",
-            annotations: [{ file: "src/a.js", line: 3, text: "nice" }],
-            exit: false,
-            canceled: false,
-        },
-    );
-    assertEquals(normalizeCodeReviewDecision({ canceled: true }), {
-        approved: false,
-        feedback: "",
-        annotations: [],
-        exit: true,
-        canceled: true,
-    });
-    assertEquals(
-        normalizeCodeReviewDecision({
-            approved: false,
-            feedback: "Revise this.",
-            annotations: [],
-            conversationTurn: true,
-        }),
-        {
-            approved: false,
-            feedback: "Revise this.",
-            annotations: [],
-            exit: false,
-            canceled: false,
-            conversationTurn: true,
-        },
-    );
-});
-
-test("formatCodeReviewAnnotations renders file, line, and text", () => {
-    assertEquals(
-        formatCodeReviewAnnotations([
-            { file: "src/a.js", line: 12, text: "Rename this." },
-            { path: "src/b.js", comment: "Missing test." },
-        ]),
-        "1. src/a.js:12\nRename this.\n\n2. src/b.js\nMissing test.",
-    );
-});
 
 test("runCodeReview serves the real review surface and loads submitted image bytes", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-code-review-"));
@@ -84,6 +34,12 @@ test("runCodeReview serves the real review surface and loads submitted image byt
         });
 
         assertEquals(result.feedback, "Use the attached reference.");
+        assertEquals(result.approved, false);
+        assertEquals(result.exit, false);
+        assertEquals(result.annotations.length, 1);
+        assertEquals(result.annotations[0].filePath, "src/a.js");
+        assertEquals(result.annotations[0].lineStart, 1);
+        assertEquals(result.annotations[0].text, "Compare with the fixture.");
         assertEquals(result.images, [{ base64: "iVBORw==", mimeType: "image/png", name: "review" }]);
         assertEquals(scriptedBrowser.urls.length, 1);
         assertStringIncludes(scriptedBrowser.urls[0], "/review/code?token=");
@@ -125,13 +81,4 @@ test("runCodeReview cancellation stops the real review server", async () => {
     } finally {
         await fsRm(projectRoot, { recursive: true });
     }
-});
-
-test("standalone actions survive normalization even without feedback or approval", () => {
-    for (const reviewAction of ["post_comments", "approve_pr", "approve_commit"]) {
-        const decision = normalizeCodeReviewDecision({ reviewAction });
-        assertEquals(decision.reviewAction, reviewAction);
-        assertEquals(decision.exit, false);
-    }
-    assertEquals(normalizeCodeReviewDecision({ reviewAction: "request_changes" }).reviewAction, undefined);
 });

@@ -2,9 +2,9 @@ import { test } from "node:test";
 import { rename as fsRename } from "node:fs/promises";
 import { assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { configureRemotePersonalResources, PersonalResourcePathError } from "../../shared/remote/personal-resources.ts";
-import { getSettingsManager } from "../../shared/settings.js";
+import { getSettingsManager } from "../../shared/settings.ts";
 import { createChatFooterController } from "./chat-footer.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 

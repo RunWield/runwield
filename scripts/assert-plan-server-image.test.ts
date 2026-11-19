@@ -23,7 +23,7 @@ test("assertPlanServerImageFileList rejects repository source state and secret a
     const result = assertPlanServerImageFileList(
         [
             ...REQUIRED_IMAGE_FILES.filter((file) => file !== "/app/brand/logo.svg"),
-            "/app/src/ui/workspace/server.js",
+            "/app/src/ui/workspace/server.ts",
             "/app/src/ui/workspace/workspace.test.js",
             "/app/docs/plans/example.md",
             "/app/.wld/collaboration-secrets.json",
@@ -44,7 +44,7 @@ test("assertPlanServerImageFileList rejects repository source state and secret a
         "/app/deno.json",
         "/app/docs/plans/example.md",
         "/app/sessions/session.jsonl",
-        "/app/src/ui/workspace/server.js",
+        "/app/src/ui/workspace/server.ts",
         "/app/src/ui/workspace/workspace.test.js",
     ]);
 });

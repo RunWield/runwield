@@ -3,13 +3,13 @@ import type { Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { RunWieldModel } from "../../../models/model-registry.ts";
-import type { HostedSession } from "../../hosted-session.js";
+import type { HostedSession } from "../../hosted-session.ts";
 import {
     emitHostedSessionRuntimeEvent,
     normalizeRuntimeUsage,
     RuntimeEventTypes,
-} from "../../session-runtime-events.js";
-import type { ImageAttachment } from "../../types.js";
+} from "../../session-runtime-events.ts";
+import type { ImageAttachment } from "../../image-attachments.ts";
 import { WorkflowStepCompleted } from "../../../workflow/workflow-tool-events.ts";
 import {
     prepareClaudeCliCommand,

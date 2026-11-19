@@ -2,7 +2,7 @@ import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { appendEpicManualQaSection } from "../shared/epic-artifacts.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 
 const TOOL_PARAMS = Type.Object(
     {

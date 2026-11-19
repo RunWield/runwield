@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { compactResult, compactStatus } from "../../shared/attached/presentation.ts";
 import { runAttachedOperation } from "../../shared/attached/coordinator.ts";
 import { ATTACHED_OPERATIONS, MAX_ATTACHED_INPUT_BYTES } from "../../shared/attached/operations.ts";
@@ -10,7 +10,7 @@ import type { AttachedAdapterManifest } from "../../attached/mcp.ts";
  * `wld attached` supports activate, triage_report, status, plan_written,
  * start_execution, task_completed, start_validation, review_diff, review_complete,
  * review_reply, validation_decision, work_record_completed, get_instructions,
- * get_artifact, get_pending_chat, and mcp. It is the CLI carrier for the Attached
+ * get_role_instructions, get_artifact, get_pending_chat, and mcp. It is the CLI carrier for the Attached
  * Workflow Coordinator. Each operation reads one JSON object from stdin and prints one JSON
  * result. A rejected operation exits with code 1.
  *

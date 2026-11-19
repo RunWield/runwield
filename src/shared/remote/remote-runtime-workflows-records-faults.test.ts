@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals } from "../../testing/assertions.ts";
-import { savePlan } from "../../plan-store.js";
+import { savePlan } from "../../plan-store.ts";
 import type { RemoteSessionRequest } from "./session-protocol.ts";
 import {
     assertRemoteStorageAbsent,

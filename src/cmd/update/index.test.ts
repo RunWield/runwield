@@ -1,6 +1,6 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import {
@@ -193,10 +193,12 @@ test(
 test("update rejects arguments through the real usage formatter before external work", async () => {
     await withProcessGlobalTestLock(async () => {
         const exits = createExitFixture();
+        const network = createNetworkFixture(makeJsonResponse({ tag_name: "v999.0.0" }));
+        const installer = createInstallerFixture();
         const output = await captureConsole(() =>
             runUpdateCommand(["extra"], {
-                networkPort: createNetworkFixture(makeJsonResponse({ tag_name: "v999.0.0" })).port,
-                installerPort: createInstallerFixture().port,
+                networkPort: network.port,
+                installerPort: installer.port,
                 exitPort: exits.port,
             }),
         );
@@ -205,6 +207,8 @@ test("update rejects arguments through the real usage formatter before external 
             "Usage: wld update [--rc | --to <tag>] [--downgrade] [--yes]\n       wld upgrade [--rc | --to <tag>] [--downgrade] [--yes]",
         ]);
         assertEquals(exits.codes, [1]);
+        assertEquals(network.urls, []);
+        assertEquals(installer.invocations, []);
     });
 });
 

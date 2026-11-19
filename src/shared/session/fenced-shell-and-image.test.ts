@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
-import { getRunWieldSessionDir } from "./root-session.js";
+import { getRunWieldSessionDir } from "./root-session.ts";
 
 function digestHex(bytes: Uint8Array): Promise<string> {
     const buffer = new ArrayBuffer(bytes.byteLength);

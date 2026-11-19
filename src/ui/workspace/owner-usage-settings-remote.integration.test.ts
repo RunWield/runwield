@@ -5,7 +5,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { configureRemotePersonalResources } from "../../shared/remote/personal-resources.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 
 // Remote resources activate once for a process. Keep this contract in its own isolated file.
 test("remote-backed usage settings explain unavailability and reject every mutation without writes", async () => {

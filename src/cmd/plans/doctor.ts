@@ -13,7 +13,7 @@ import { confirmMissingManagedProjectDirectory, confirmProjectDirectory } from "
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { join } from "node:path";
-import { CLI_BIN, getCwd, isPlannedChangeClassification, WORKTREE_BRANCH_PREFIX } from "../../constants.js";
+import { CLI_BIN, getCwd, isPlannedChangeClassification, WORKTREE_BRANCH_PREFIX } from "../../constants.ts";
 import {
     ensurePlanIdentity,
     getPlanDocumentRoot,
@@ -21,7 +21,7 @@ import {
     inspectPlanFileStrict,
     isProjectPlan,
     parsePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import {
     enterProjectRuntime,
     inspectProjectRuntimeLayout,
@@ -29,6 +29,7 @@ import {
     type ProjectRuntimeLayout,
     type ProjectRuntimeMigrationBlockedResult,
     resolveProjectRuntimeLayout,
+    withProjectRuntimeReadScope,
 } from "../../shared/project-runtime-layout.ts";
 import { inspectRunWieldGitignore } from "../../shared/runwield-owned-paths.ts";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../../shared/lock-file-snapshot.ts";
@@ -46,7 +47,7 @@ import {
     prepareWorktreeRegistry,
     pruneEntry,
     reconcileEntryIdentity,
-} from "../../shared/worktree-registry.js";
+} from "../../shared/worktree-registry.ts";
 import { isEpicArtifactPlanName } from "../../shared/epic-artifacts.ts";
 import {
     inspectTargetBranchPlansByParent,
@@ -72,6 +73,11 @@ interface DoctorIssue {
     commands?: string[];
     /** What --repair did, or would do. Printed so the action is never a surprise. */
     repairSummary?: string;
+}
+
+interface DoctorResult {
+    issues: DoctorIssue[];
+    repaired: number;
 }
 
 interface IssueGuidance {
@@ -1264,7 +1270,15 @@ async function isCommittedArchive(projectRoot: string, planName: string, path: s
     return result.success && new TextDecoder().decode(result.stdout) === (await fsReadFile(path, "utf8"));
 }
 
-export async function runPlansDoctor(projectRoot: string, repair = true) {
+export async function runPlansDoctor(projectRoot: string, repair = true): Promise<DoctorResult> {
+    // Only passive phases share checks. Repairs keep their independent writer
+    // admission, and every verification phase starts from fresh authority.
+    return repair
+        ? await runPlansDoctorPhases(projectRoot, true)
+        : await withProjectRuntimeReadScope(() => runPlansDoctorPhases(projectRoot, false), { fresh: true });
+}
+
+async function runPlansDoctorPhases(projectRoot: string, repair: boolean): Promise<DoctorResult> {
     const inspected = await inspectProjectRuntimeLayout(projectRoot);
     if (inspected.kind === "blocked") return { issues: [migrationBlockedIssue(inspected)], repaired: 0 };
     if (inspected.kind === "pending" && !repair) {
@@ -1306,7 +1320,7 @@ export async function runPlansDoctor(projectRoot: string, repair = true) {
     for (let pass = 0; pass < 8; pass += 1) {
         const result = await runPlansDoctorPass(projectRoot, true, layout);
         repaired += result.repaired;
-        const remaining = await runPlansDoctorPass(projectRoot, false, layout);
+        const remaining = await runPlansDoctor(projectRoot, false);
         if (remaining.issues.length === 0) return { issues: [], repaired };
         const issueKey = remaining.issues
             .map((issue) => `${issue.kind}:${issue.planName || ""}:${issue.worktreeId || ""}`)
@@ -1315,7 +1329,7 @@ export async function runPlansDoctor(projectRoot: string, repair = true) {
         if (result.repaired === 0 || issueKey === lastIssueKey) return { issues: remaining.issues, repaired };
         lastIssueKey = issueKey;
     }
-    const remaining = await runPlansDoctorPass(projectRoot, false, layout);
+    const remaining = await runPlansDoctor(projectRoot, false);
     return { issues: remaining.issues, repaired };
 }
 

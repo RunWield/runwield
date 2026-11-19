@@ -7,7 +7,7 @@ import {
     mergeFrontMatterText,
     planDocumentMarkdown,
     type PlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { stripRuntimeFields } from "./controller-state.ts";
 import { platform } from "node:process";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -17,7 +17,7 @@ import {
     getExactProjectCustomSetting,
     setCustomSetting,
     setExactProjectCustomSetting,
-} from "../settings.js";
+} from "../settings.ts";
 import {
     captureValidationSettingsWrite,
     recordValidationSettingsWrite,
@@ -29,9 +29,9 @@ import {
     recordedProjectContextPaths,
 } from "../worktree-project-context.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import type { HostedSession } from "../session/hosted-session.js";
+import type { HostedSession } from "../session/hosted-session.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
-import { emitSystemStatus } from "../session/session-runtime-events.js";
+import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { captureWorktreeTree } from "./git-snapshot.ts";
 import {
     captureProcessStreamTail,
@@ -58,6 +58,7 @@ interface SetupReceipt {
     head: string;
     tree: string;
     index: string;
+    materializedPlanPaths?: string[];
     checkpointTree?: string;
     lifecyclePlan?: SetupLifecyclePlan;
     settingsWrite?: SetupSettingsWrite;
@@ -144,17 +145,17 @@ async function selectSetupCommand(session: HostedSession | undefined, cwd: strin
     return { command: String(response.value || "").trim(), confirmed: true };
 }
 
-async function snapshot(cwd: string) {
+async function snapshot(cwd: string, materializedPlanPaths?: string[]) {
     return {
         head: await git(cwd, ["rev-parse", "HEAD"]),
-        tree: await captureWorktreeTree(cwd),
+        tree: await captureWorktreeTree(cwd, materializedPlanPaths),
         index: await git(cwd, ["diff", "--cached", "--binary", "--no-ext-diff"]),
         settingsContent: await readProjectContextFile(cwd, ".wld/settings.json"),
     };
 }
 
 async function assertSetupFilesUnchanged(cwd: string, receipt: SetupReceipt) {
-    const current = await snapshot(cwd);
+    const current = await snapshot(cwd, receipt.materializedPlanPaths);
     const allowedTrees = [receipt.tree, ...(receipt.checkpointTree ? [receipt.checkpointTree] : [])];
     if (receipt.state === "ready" && receipt.lifecyclePlan && !allowedTrees.includes(current.tree)) {
         const changedPaths = await git(cwd, ["diff", "--name-only", receipt.tree, current.tree]);
@@ -188,7 +189,7 @@ async function assertSetupFilesUnchanged(cwd: string, receipt: SetupReceipt) {
         (current.index !== receipt.index && !preparationStaged)
     ) {
         throw new Error(
-            `Worktree setup changed versioned or unignored files, staging, or HEAD in ${cwd}. ` +
+            `Worktree setup changed the Plan, project files, staging, or HEAD in ${cwd}. ` +
                 "The files are preserved; reconcile those changes before retrying. They will not be committed as preparation.",
         );
     }
@@ -253,7 +254,11 @@ async function captureSettingsWrite(cwd: string, command: string): Promise<Setup
 }
 
 /** Run only explicit project configuration or an interactive answer, before lifecycle writes or Git hooks. */
-export async function prepareExecutionSetup(session: HostedSession | undefined, cwd: string): Promise<void> {
+export async function prepareExecutionSetup(
+    session: HostedSession | undefined,
+    cwd: string,
+    materializedPlanPaths: string[] = [],
+): Promise<void> {
     await enterProjectRuntime(cwd);
     const saved = await readExecutionSetup(cwd);
     const previous = saved ? await finishSettingsWrite(cwd, saved) : null;
@@ -294,7 +299,8 @@ export async function prepareExecutionSetup(session: HostedSession | undefined, 
             state: "pending",
             command,
             commitToken: previous?.commitToken ?? crypto.randomUUID(),
-            ...(await snapshot(cwd)),
+            materializedPlanPaths,
+            ...(await snapshot(cwd, materializedPlanPaths)),
             ...(selection.confirmed ? { settingsWrite: await captureSettingsWrite(cwd, command) } : {}),
         };
         // Persist the exact command-only write before touching either settings file.
@@ -343,7 +349,7 @@ export async function assertExecutionSetupRetrySafe(cwd: string): Promise<void> 
     // commit. Hooks may format those files, so prove the owned commit and path
     // boundary rather than demanding the pre-hook bytes survived unchanged.
     if (receipt.state === "ready" && receipt.checkpointTree) {
-        const current = await snapshot(cwd);
+        const current = await snapshot(cwd, receipt.materializedPlanPaths);
         const expectedPaths = new Set(
             (await git(cwd, ["diff", "--name-only", receipt.head, receipt.checkpointTree])).split("\n"),
         );
@@ -366,11 +372,14 @@ export async function assertExecutionSetupRetrySafe(cwd: string): Promise<void> 
 }
 
 /** Only the host's known Plan/lifecycle edits may extend the setup baseline before hooks run. */
-export async function recordExecutionSetupCheckpoint(cwd: string): Promise<string | undefined> {
+export async function recordExecutionSetupCheckpoint(
+    cwd: string,
+    materializedPlanPaths: string[],
+): Promise<string | undefined> {
     const receipt = await readExecutionSetup(cwd);
     if (!receipt) return undefined;
     if (receipt.state === "prepared") return receipt.commitToken;
-    const forcedPaths: string[] = [];
+    const forcedPaths = [...materializedPlanPaths];
     for (const path of await recordedProjectContextPaths(cwd)) {
         if (await isTransferredProjectContext(cwd, path)) forcedPaths.push(path);
     }

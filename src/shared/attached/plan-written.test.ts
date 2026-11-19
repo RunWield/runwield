@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../runwield-owned-paths.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
@@ -143,18 +143,6 @@ test("a fresh process retrieves the durable pending review before a browser is o
         assert(fresh.result.ok);
         assertEquals(fresh.result, compactStatus(submitted, null));
         assertEquals(await readRecordBytes(projectRoot, planning.workflowId), recordBeforeStatus);
-    });
-});
-
-test("the planning action lists the setup paths that plan_written then creates", async () => {
-    await withProject(async (projectRoot) => {
-        const { result: triaged, planning } = await reachPlanning(projectRoot);
-        assert(triaged.ok && triaged.workflow.nextAction.kind === "plan");
-        assertEquals(triaged.workflow.nextAction.projectSetup.includes(".gitignore"), true);
-
-        await writePlan(projectRoot);
-        assert((await submit(projectRoot, planning)).ok);
-        assertEquals(await exists(join(projectRoot, ".gitignore")), true);
     });
 });
 

@@ -1,6 +1,6 @@
 import { delimiter } from "node:path";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 import { makeTempFile } from "./temp-file.ts";
 import { removeExecutableFixtureDirectory } from "./runtime-executable-fixture.ts";
 import { test } from "node:test";

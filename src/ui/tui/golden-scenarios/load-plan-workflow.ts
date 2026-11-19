@@ -4,7 +4,7 @@ import { assertEquals } from "../../../testing/assertions.ts";
  */
 
 import { ok as assert } from "node:assert/strict";
-import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
+import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 import { assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 interface GoldenScenarioResult {
     name: string;

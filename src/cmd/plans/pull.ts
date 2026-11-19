@@ -1,18 +1,18 @@
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
-import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
  * @module cmd/plans/pull
  * Pull encrypted remote Shared Space feedback into a local locked Plan.
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN, getCwd } from "../../constants.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
 import {
     createPulledCollaborationPlan,
     hashPlanBody,
     listPlanResources,
     updatePlanCollaborationMetadata,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { MAINTAINER_SCOPE, redactSecrets } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
 import { decryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";
@@ -23,7 +23,7 @@ import {
     normalizeEncryptedPlanPayload,
     normalizeRevisionMetadata,
     normalizeSharedSpaceMetadata,
-} from "../../shared/collaboration/protocol.js";
+} from "../../shared/collaboration/protocol.ts";
 import {
     assertCompatiblePullSecretRecord,
     ensureProjectSecretStoreIgnored,

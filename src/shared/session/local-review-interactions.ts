@@ -1,4 +1,4 @@
-// @ts-nocheck: local review bridge forwards JS Runtime interaction metadata to review launchers.
+// @ts-nocheck: Local review interaction metadata has implicit types.
 /**
  * @module shared/session/local-review-interactions
  * Runs local browser review surfaces for adapter-neutral Runtime interactions.

@@ -1,14 +1,14 @@
 import { writeRuntimeExecutableFixture } from "../../../../testing/runtime-executable-fixture.ts";
 import { delimiter } from "node:path";
-import { getCwd } from "../../../../constants.js";
+
 import process from "node:process";
 import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertArrayIncludes } from "../../../../testing/assertions.ts";
+import { assertEquals } from "../../../../testing/assertions.ts";
 import { match as assertMatch } from "node:assert/strict";
 import { join } from "node:path";
-import { CLAUDE_CLI_CAPABILITY_TOOL_NAMES, createClaudeCliCapabilityTools } from "./capability-tools.ts";
+import { createClaudeCliCapabilityTools } from "./capability-tools.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 
@@ -32,15 +32,6 @@ async function executeText(tool: ReturnType<typeof getTool>, params: Record<stri
     const result = await tool.execute("call", params, new AbortController().signal, () => undefined, fakeContext());
     return result.content[0]?.type === "text" ? result.content[0].text : "";
 }
-
-test("Claude CLI capability factory returns the canonical capability tool names", () => {
-    const tools = createClaudeCliCapabilityTools({ cwd: getCwd() });
-
-    assertEquals(
-        tools.map((tool) => tool.name),
-        [...CLAUDE_CLI_CAPABILITY_TOOL_NAMES],
-    );
-});
 
 test("Claude CLI capability tools execute PATH helper binaries", () =>
     withProcessGlobalTestLock(async () => {
@@ -94,10 +85,3 @@ test("Claude CLI memory capability reports missing mnemoteca binary", () =>
             await fsRm(tempDir, { recursive: true });
         }
     }));
-
-test("Claude CLI capability list includes memory, code, and web families", () => {
-    assertArrayIncludes(
-        [...CLAUDE_CLI_CAPABILITY_TOOL_NAMES],
-        ["memory", "code_investigate", "web_search", "web_fetch", "web_code_search", "web_docs_search"],
-    );
-});

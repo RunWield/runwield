@@ -31,15 +31,15 @@ import {
     resolveSiblingChildPlanDependencies,
     savePlan,
     updatePlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { createPlanSessionSurface } from "./plan-session-surface.ts";
-import { discardWorktreeGitArtifacts } from "../../shared/worktree.js";
-import { addEntry, findById, removeEntry, updateEntry } from "../../shared/worktree-registry.js";
-import { setCustomSetting } from "../../shared/settings.js";
+import { discardWorktreeGitArtifacts } from "../../shared/worktree.ts";
+import { addEntry, findById, removeEntry, updateEntry } from "../../shared/worktree-registry.ts";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { executePlanAction, loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
@@ -47,9 +47,9 @@ import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
-import { getRunWieldRuntimeDir } from "../../constants.js";
-import type { PlanFrontMatterInput } from "../../plan-store.js";
-import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/types.js";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
+import type { PlanFrontMatterInput } from "../../plan-store.ts";
+import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/api.ts";
 
 interface LoadPlanUiFixture {
     editor: EditorAPI;
@@ -355,10 +355,13 @@ test("sibling dependency resolution reads canonical child Plans from the fixture
         await writePlan(projectRoot, "epic/01-first", { status: "verified", parentPlan: "epic" });
         await writePlan(projectRoot, "epic/02-second", { status: "implemented", parentPlan: "epic" });
 
+        await writePlan(projectRoot, "epic/04-attested", { status: "user_verified", parentPlan: "epic" });
+
         const dependencies = await resolveSiblingChildPlanDependencies(projectRoot, "epic", [
             "01-first",
             "epic/02-second",
             "03-missing",
+            "04-attested",
         ]);
 
         assertEquals(
@@ -372,6 +375,12 @@ test("sibling dependency resolution reads canonical child Plans from the fixture
                     state: "unverified",
                 },
                 { dependency: "03-missing", planName: undefined, status: undefined, state: "missing" },
+                {
+                    dependency: "04-attested",
+                    planName: "epic/04-attested",
+                    status: "user_verified",
+                    state: "user_verified",
+                },
             ],
         );
     });
@@ -1228,6 +1237,7 @@ test("direct review from draft approves for later without a planning turn", asyn
 
             assertEquals((await loadPlan(projectRoot, "direct-draft"))?.attrs.status, "ready_for_work");
             assertEquals(runtime.getRuntimeActiveExecutionWorkflow(sessionId), null);
+            assertEquals(runtime.getEffectiveAgentName(sessionId), "planner");
             assertEquals(
                 ui.promptOptions[0].some((option) => option.value === "review" && option.label === "Review plan"),
                 true,
@@ -1558,6 +1568,37 @@ test("direct review menu is omitted when a draft has an invalid execution policy
     });
 });
 
+for (const status of ["draft", "approved", "ready_for_work"] as const) {
+    test(`${status} Epic menu separates direct review from draft planning`, async () => {
+        await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
+            await writePlan(projectRoot, "epic-menu", { classification: "PROJECT", status });
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["cancel"]);
+            try {
+                await runLoadPlanCommand(["epic-menu"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    editor: ui.editor,
+                });
+
+                const options = ui.promptOptions[0];
+                assertEquals(
+                    options.filter((option) => option.value === "direct_review"),
+                    [{ value: "direct_review", label: "Open Epic review" }],
+                );
+                assertEquals(
+                    options.filter((option) => option.value === "review"),
+                    status === "draft" ? [{ value: "review", label: "Resume planning with Architect" }] : [],
+                );
+                assertEquals((await loadPlan(projectRoot, "epic-menu"))?.attrs.status, status);
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
+    });
+}
+
 test("direct review on a PROJECT Epic approves and slices", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot, setModelMessages }) => {
         await writePlan(projectRoot, "direct-epic", { classification: "PROJECT", status: "draft" });
@@ -1599,13 +1640,13 @@ test("direct review on a PROJECT Epic approves and slices", async () => {
             assertEquals((await loadPlan(projectRoot, "direct-epic"))?.attrs.status, "ready_for_decomposition");
             assertEquals(
                 ui.promptOptions[0].some(
-                    (option) => option.value === "direct_review" && option.label === "Review plan",
+                    (option) => option.value === "direct_review" && option.label === "Open Epic review",
                 ),
                 true,
             );
             assertEquals(
                 ui.promptOptions[0].some(
-                    (option) => option.value === "review" && option.label === "Review with Architect",
+                    (option) => option.value === "review" && option.label === "Resume planning with Architect",
                 ),
                 true,
             );

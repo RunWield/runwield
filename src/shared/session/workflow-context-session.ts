@@ -4,18 +4,22 @@
  * Persists RunWield workflow footer context in Pi's append-only session stream.
  */
 
-import { COMPLEXITIES, normalizeRoutingIntent } from "../../constants.js";
+import { COMPLEXITIES, normalizeRoutingIntent } from "../../constants.ts";
 
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { SegmentHandoffPayload } from "../workflow/execution-segment-handoff.ts";
-import type { RuntimeValidationProgress } from "./session-runtime-events.js";
+import type { RuntimeValidationProgress } from "./session-runtime-events.ts";
 import type { WorkflowProgressFact } from "../workflow/workflow-presentation.ts";
-import type { SessionSegmentLineageEvidence } from "../types.js";
+import type { SessionSegmentLineageEvidence } from "./file-session-store-types.ts";
 
 export interface LineageSessionManager {
     appendCustomEntry?: (customType: string, data: SessionSegmentLineageEvidence) => string | void;
     getBranch?: () => unknown[];
     getEntries?: () => unknown[];
+}
+
+interface WorkflowContextStore extends Pick<LineageSessionManager, "getBranch" | "getEntries"> {
+    appendCustomEntry?: (customType: string, data: WorkflowContext) => string | void;
 }
 
 export type WorkflowContext = {
@@ -207,7 +211,7 @@ export function normalizeWorkflowContext(value: unknown): WorkflowContext | null
 }
 
 export function recordWorkflowTriageContext(
-    sessionManager: SessionManager | undefined | null,
+    sessionManager: WorkflowContextStore | undefined | null,
     details: WorkflowTriageContextDetails,
 ): WorkflowContext | null {
     const routingIntent = normalizeWorkflowRoutingIntent(details.routingIntent);
@@ -221,7 +225,7 @@ export function recordWorkflowTriageContext(
 }
 
 export function recordWorkflowPlanName(
-    sessionManager: SessionManager | undefined | null,
+    sessionManager: WorkflowContextStore | undefined | null,
     planName: unknown,
 ): WorkflowContext | null {
     const normalizedPlanName = normalizeWorkflowPlanName(planName);
@@ -265,7 +269,7 @@ export function deriveWorkflowContextFromExecutionWorkflow(
 }
 
 export function recordNormalizedWorkflowContext(
-    sessionManager: SessionManager | undefined | null,
+    sessionManager: WorkflowContextStore | undefined | null,
     context: WorkflowContext | null | undefined,
 ): WorkflowContext | null {
     const normalized = normalizeWorkflowContext(context);
@@ -284,7 +288,7 @@ export function recordNormalizedWorkflowContext(
 }
 
 export function readPersistedWorkflowContext(
-    sessionManager: SessionManager | undefined | null,
+    sessionManager: Pick<LineageSessionManager, "getBranch" | "getEntries"> | undefined | null,
 ): WorkflowContext | null {
     try {
         const entries = getSessionEntries(sessionManager);
@@ -302,7 +306,7 @@ export function readPersistedWorkflowContext(
 }
 
 function recordWorkflowContext(
-    sessionManager: SessionManager | undefined | null,
+    sessionManager: WorkflowContextStore | undefined | null,
     context: WorkflowContext,
 ): WorkflowContext | null {
     return recordNormalizedWorkflowContext(sessionManager, context);

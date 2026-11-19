@@ -1,4 +1,4 @@
-import { getCwd } from "../src/constants.js";
+import { getCwd } from "../src/constants.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 import process from "node:process";
 /**
@@ -9,7 +9,7 @@ import process from "node:process";
 
 import { dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
-import { collectNestedReviewAssetUrls, collectReviewAssetUrls } from "./release-check.js";
+import { collectNestedReviewAssetUrls, collectReviewAssetUrls } from "./release-check.ts";
 
 const DEFAULT_RUNTIME_ENTRY = "dist/workspace-runtime/server.mjs";
 

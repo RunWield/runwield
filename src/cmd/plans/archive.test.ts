@@ -1,7 +1,7 @@
 import { mkdir as fsMkdir, readdir as fsReaddir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan, listArchivedPlans, listPlans, loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
+import { archivePlan, listArchivedPlans, listPlans, loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.ts";
 import { getTransitionJournalDir, getTransitionJournalPath } from "../../shared/workflow/state-transition.ts";
 import { runPlansArchiveCommand } from "./archive.ts";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";

@@ -4,7 +4,7 @@ import type { UsageLink } from "../../../shared/workflow/usage-reporting.ts";
 import { listOwnerProjects, requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import type { OwnerProjectStore } from "./owner-projects.ts";
 import type { FileSessionStore } from "../../../shared/session/file-session-store-types.ts";
-import { loadWorkspaceDetail } from "./plan-adapter.js";
+import { loadWorkspaceDetail } from "./plan-adapter.ts";
 
 interface UsageOwnerStore extends OwnerProjectStore {
     listProjectSessions: FileSessionStore["listProjectSessions"];

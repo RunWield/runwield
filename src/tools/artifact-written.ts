@@ -7,7 +7,7 @@ import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "
 import { isAbsolute, relative, resolve, sep as SEPARATOR } from "node:path";
 import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
 import type { SessionArtifactKind, SessionArtifactReference } from "../shared/session/file-session-store-types.ts";
 import {
     requestHostedSessionInteraction,

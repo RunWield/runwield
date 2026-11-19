@@ -6,7 +6,7 @@ import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/str
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { runInNewContext } from "node:vm";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 import { WORKSPACE_MANIFEST, workspaceConnectionPage, workspaceWorkerSource } from "./server/workspace-pwa.ts";
 
 test("Workspace installation assets are public without exposing owner data", async () => {

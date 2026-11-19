@@ -4,7 +4,7 @@
  */
 
 import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
-import { normalizeWorkKind } from "../../constants.js";
+import { normalizeWorkKind } from "../../constants.ts";
 import { normalizeTicketReferences } from "../ticket-references.ts";
 import {
     isWorkRecordCompletionMode,
@@ -274,7 +274,7 @@ function appendProvenance(lines: string[], provenance: WorkRecordProvenance | un
     }
 }
 
-export function formatWorkRecordFrontMatter(attrs: WorkRecordFrontMatter) {
+export function formatWorkRecordFrontMatter(attrs: WorkRecordFrontMatterInput) {
     const fm = normalizeWorkRecordFrontMatter(attrs);
     const lines = ["---"];
     appendScalarOrList(lines, WORK_RECORD_FRONT_MATTER_KEYS.kind, fm.kind);
@@ -297,7 +297,7 @@ export function formatWorkRecordFrontMatter(attrs: WorkRecordFrontMatter) {
     return lines.join("\n");
 }
 
-export function formatWorkRecordMarkdown(attrs: WorkRecordFrontMatter, body: string) {
+export function formatWorkRecordMarkdown(attrs: WorkRecordFrontMatterInput, body: string) {
     return `${formatWorkRecordFrontMatter(attrs)}\n${String(body || "").replace(/^\s*/, "")}`;
 }
 

@@ -7,7 +7,7 @@ import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } fr
 
 import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { getSettingsDir } from "./settings.js";
+import { getSettingsDir } from "./settings.ts";
 
 import type { FetchRequest } from "./fetch-request.ts";
 

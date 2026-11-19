@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -17,9 +17,9 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
 import { openNativeFileLock } from "../native-file-lock.ts";
-import { setCustomSetting } from "../settings.js";
+import { setCustomSetting } from "../settings.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.js";
+import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.ts";
 import {
     appendWorkflowMetric,
     clearWorkflowMetricJournal,
@@ -184,7 +184,7 @@ console.log("ready"); await (await import("node:events")).once((await import("no
 test("two processes preserve complete unique saved observations and report budget skips", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const script = join(projectRoot, "writer.js");
-        const module = new URL("./metrics.js", import.meta.url).href;
+        const module = new URL("./metrics.ts", import.meta.url).href;
         await fsWriteFile(
             script,
             `import { recordWorkflowMetric } from ${JSON.stringify(module)};
@@ -721,7 +721,7 @@ test("another process cannot settle an initial history capture after a populated
             `
 const {appendWorkflowMetric, resolveCollectionEpoch} = await import(${JSON.stringify(new URL("./metrics-journal.ts", import.meta.url).href)});
 // Finish cold module loading before the stale-write attempt starts its deadline.
-await import(${JSON.stringify(new URL("../settings.js", import.meta.url).href)});
+await import(${JSON.stringify(new URL("../settings.ts", import.meta.url).href)});
 const state = resolveCollectionEpoch(${JSON.stringify(path)}, true);
 console.log(state.historyEpoch);
 await (await import("node:events")).once(process.stdin, "data");

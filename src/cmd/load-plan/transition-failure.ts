@@ -3,7 +3,6 @@
  * Turning a refused lifecycle transition into something the user can act on.
  */
 
-import { CLI_BIN } from "../../constants.js";
 import type { TransitionResult } from "../../shared/workflow/state-transition.ts";
 
 /**
@@ -19,11 +18,5 @@ export function transitionFailureError(transition: TransitionResult, fallbackMes
             return `  - ${action.label}: ${detail}`;
         })
         .join("\n");
-    const blocked = transition.status === "blocked"
-        ? "\nA previous Plan update stopped before RunWield could prove the result. " +
-            `Run \`${CLI_BIN} plans doctor --repair\` to repair safe records.`
-        : "";
-    return new Error(
-        `${transition.message || fallbackMessage}${blocked}${recovery ? `\nRecovery options:\n${recovery}` : ""}`,
-    );
+    return new Error(`${transition.message || fallbackMessage}${recovery ? `\nRecovery options:\n${recovery}` : ""}`);
 }

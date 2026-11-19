@@ -12,10 +12,10 @@
 
 import * as engine from "./validation-engine.ts";
 import { runValidationAttempt, type ValidationTrigger } from "./validation-supervisor.ts";
-import { loadPlan } from "../../plan-store.js";
-import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
+import { loadPlan } from "../../plan-store.ts";
+import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { emitProgress, emitStatus } from "./validation-emit.ts";
 import { getCurrentValidationProgress } from "./validation-progress.ts";
 import { validationUserMessage } from "./validation-user-messages.ts";
@@ -44,10 +44,10 @@ export { type SemanticReviewPort, SYSTEM_SEMANTIC_REVIEW_PORT } from "./validati
 
 export type { ValidationPhaseResult, WorkflowValidationResult } from "./validation-types.ts";
 
-type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store.ts").PlanFrontMatter;
 type TriageMeta = import("../../tools/plan-written.ts").TriageMeta & Partial<PlanFrontMatter>;
-type ActiveExecutionWorkflow = import("../session/hosted-session.js").ActiveExecutionWorkflow;
-type HostedSession = import("../session/hosted-session.js").HostedSession;
+type ActiveExecutionWorkflow = import("../session/hosted-session.ts").ActiveExecutionWorkflow;
+type HostedSession = import("../session/hosted-session.ts").HostedSession;
 type GitPort = import("../git-port.ts").GitPort;
 type WorkRecordMnemotecaPort = import("../work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort;
 

@@ -1,7 +1,7 @@
 import { RunWieldTui } from "./tui.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
-import { getSettingsManager, isMascotEnabled } from "../../shared/settings.js";
+import { getSettingsManager, isMascotEnabled } from "../../shared/settings.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
     CombinedAutocompleteProvider,
@@ -33,17 +33,17 @@ import {
     SYSTEM_UPDATE_CHECK_PORTS,
 } from "../../shared/update-check.ts";
 import { endBlink, renderBootLogo } from "./boot-logo.ts";
-import { createUiApi } from "./api.js";
-import { SpinnerBlock, ToolExecutionBlock, ToolExecutionGroupBlock } from "./blocks.js";
+import { createUiApi, type VisibleToolBlock } from "./api.ts";
+import { SpinnerBlock, ToolExecutionBlock, ToolExecutionGroupBlock } from "./blocks.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
 import { type FooterTheme, renderUpdateNoticeLine } from "./chat-footer.ts";
 import { installUiApiOverrides } from "./ui-api-overrides.ts";
 import { disposeKeybindings } from "./keybindings.ts";
 import type { Component } from "@earendil-works/pi-tui";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
-import type { ImageAttachment } from "../../shared/session/types.js";
+import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
 import type { WorkflowPresentationAction } from "../../shared/workflow/workflow-presentation.ts";
-import type { UiAPI } from "./types.js";
+import type { UiAPI } from "./api.ts";
 import {
     composePinnedSessionSidebar,
     isSessionArtifactOpenKey,
@@ -107,8 +107,6 @@ interface RenderedContainerContent {
     lines: string[];
     children: RenderedChildLayout[];
 }
-
-type VisibleToolBlock = ToolExecutionGroupBlock | ToolExecutionBlock;
 
 class MeasuredContainer extends Container {
     renderedChildren: RenderedChildLayout[] = [];

@@ -2,10 +2,10 @@ import { withRuntimeCommandFixture } from "../../../cmd/testing/runtime-command-
 import { SessionHost } from "../../../shared/session/session-host.ts";
 import { SessionRuntime } from "../../../shared/session/session-runtime.ts";
 import { openFileSessionStore } from "../../../shared/session/file-session-store.ts";
-import type { HostedSession } from "../../../shared/session/hosted-session.js";
+import type { HostedSession } from "../../../shared/session/hosted-session.ts";
 import type { FileSessionStore } from "../../../shared/session/file-session-store-types.ts";
 
-interface SessionViewFixture {
+export interface SessionViewFixture {
     runtime: SessionRuntime;
     host: SessionHost;
     sessionId: string;

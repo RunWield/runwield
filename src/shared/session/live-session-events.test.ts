@@ -2,7 +2,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { appendLiveSessionEvent } from "./live-session-events.ts";
-import { createSessionRuntimeEvent, type SessionRuntimeEvent } from "./session-runtime-events.js";
+import { createSessionRuntimeEvent, type SessionRuntimeEvent } from "./session-runtime-events.ts";
 
 test("live observation excludes saved replay and coalesces streaming text", () => {
     const events: SessionRuntimeEvent[] = [];

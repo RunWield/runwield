@@ -34,7 +34,7 @@ export interface ProcessExitPort {
     exit(code: number): void;
 }
 
-export type UpdateCommandOptions = import("../registry.js").CommandContext & {
+export type UpdateCommandOptions = import("../registry.ts").CommandContext & {
     networkPort: UpdateNetworkPort;
     installerPort: InstallerProcessPort;
     exitPort: ProcessExitPort;

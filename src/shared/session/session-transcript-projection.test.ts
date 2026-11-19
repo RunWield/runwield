@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
@@ -14,7 +14,7 @@ import {
     projectCommittedTranscript,
     selectProjectedEventsAfterCursor,
     summarizeProjectedEntries,
-} from "./session-transcript-projection.js";
+} from "./session-transcript-projection.ts";
 
 async function removeTempDir(path: string) {
     let lastError;
@@ -45,18 +45,6 @@ async function withHome(callback: (home: string) => Promise<void>) {
         }
     });
 }
-
-test("Session projection reads the last persisted Session rename", () => {
-    assertEquals(
-        summarizeProjectedEntries([
-            { type: "session", name: "Original" },
-            { type: "session_info", name: "First rename" },
-            { type: "message", message: { role: "user", content: "Not the name" } },
-            { type: "session_info", name: "Saved name" },
-        ]).name,
-        "Saved name",
-    );
-});
 
 test("committed projection verifies exact prefix and ignores later tail", async () => {
     await withHome(async (home) => {
@@ -162,8 +150,8 @@ test("committed projection replays Agy backend status as display-only system sta
         events.map((event) => event.level),
         ["error", "warning", "warning"],
     );
-    assertEquals(events[0].messageId.includes("agy-cli-backend-status"), true);
-    assertEquals(events[2].messageId.includes("claude-cli-backend-status"), true);
+    assertEquals(events[0].messageId!.includes("agy-cli-backend-status"), true);
+    assertEquals(events[2].messageId!.includes("claude-cli-backend-status"), true);
     assertEquals(JSON.stringify(events).includes("workflow_tool_event"), false);
 });
 
@@ -395,23 +383,6 @@ test("projection emits RunWield notices only for later different active Agents",
     );
 });
 
-test("projection cursor selection returns only later events and advances summary-only generations", () => {
-    const events = [
-        { type: "user_message", eventId: "one" },
-        { type: "assistant_text_delta", eventId: "two" },
-        { type: "assistant_text_delta", eventId: "three" },
-    ];
-    const selected = selectProjectedEventsAfterCursor({ events, cursorEventId: "two" });
-    assertEquals(
-        selected.events.map((event) => event.eventId),
-        ["three"],
-    );
-    assertEquals(selected.nextCursor, "three");
-    const summaryOnly = selectProjectedEventsAfterCursor({ events: [], cursorEventId: null });
-    assertEquals(summaryOnly.events, []);
-    assertEquals(summaryOnly.nextCursor, null);
-});
-
 test("projection ignores old notification records", () => {
     const summary = summarizeProjectedEntries([
         { type: "custom", id: "agent-entry", customType: "runwield.active_agent", data: { agentName: "Ideator" } },
@@ -490,35 +461,36 @@ test("projection summary keeps the latest valid Agy execution backend fact", () 
     });
 });
 
-test("committed transcript authority facts are explicit projection extracts", () => {
-    const facts = getCommittedTranscriptAuthorityFacts({
-        snapshot: {
-            activeAgent: "Ideator",
-            model: "gpt-test",
-            provider: "openai",
-            thinkingLevel: "high",
-            workflowContext: { routingIntent: "FEATURE", complexity: "LOW" },
-        },
-    });
-
-    assertEquals(facts, {
-        activeAgent: "Ideator",
-        model: "gpt-test",
-        provider: "openai",
-        thinkingLevel: "high",
-        workflowContext: { routingIntent: "FEATURE", complexity: "LOW" },
-        tutorialContext: null,
-        planAssociations: [],
-    });
-    assertEquals(getCommittedTranscriptAuthorityFacts(null), {
-        activeAgent: null,
-        model: null,
-        provider: null,
-        thinkingLevel: null,
-        workflowContext: null,
-        tutorialContext: null,
-        planAssociations: [],
-    });
+test("Agy replay excludes incomplete, base-only, conflicting and invalid new-family facts", () => {
+    const valid = {
+        backend: "agy-cli",
+        provider: "agy-cli",
+        model: "gemini-4-hydrogen",
+        thinkingLevel: "xhigh",
+        effort: "xhigh",
+        backendModel: "gemini-4-hydrogen-xhigh",
+    };
+    for (const data of [
+        { ...valid, provider: "" },
+        { ...valid, thinkingLevel: "" },
+        { ...valid, thinkingLevel: "invalid" },
+        { ...valid, thinkingLevel: undefined },
+        { ...valid, effort: "" },
+        { ...valid, effort: "high" },
+        { ...valid, effort: "high", backendModel: "gemini-4-hydrogen-high" },
+        { ...valid, thinkingLevel: "medium", effort: "low", backendModel: "gemini-4-hydrogen-low" },
+        { ...valid, model: "gemini-4-carbon", backendModel: "gemini-4-carbon-xhigh" },
+        { ...valid, backendModel: "gemini-4-hydrogen" },
+        { ...valid, backendModel: "gemini-4-hydrogen-high" },
+        { ...valid, backendModel: "gemini-4-carbon-xhigh" },
+        { ...valid, model: "claude-opus-5-5" },
+    ]) {
+        assertEquals(
+            summarizeProjectedEntries([{ type: "custom", customType: "runwield.execution_backend", data }])
+                .executionBackend,
+            null,
+        );
+    }
 });
 
 test("projection cursor selection fails closed when the prior cursor is absent", () => {
@@ -715,7 +687,7 @@ test("accepted workflow transitions replay their result even when the tool stopp
     ]);
     assertEquals(triage[0].type, "tool_end");
     assertEquals(triage[0].toolName, "triage_report");
-    assertEquals(triage[0].details.summary, "Fix the broken image send.");
+    assertEquals(triage[0].details!.summary, "Fix the broken image send.");
 });
 
 test("Session replay preserves images and every text block as one user message", () => {

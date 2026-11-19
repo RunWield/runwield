@@ -1,5 +1,5 @@
 import { isEpicArtifactPlanName } from "../epic-artifacts.ts";
-import type { PlanDocumentDiagnostic } from "../../plan-store.js";
+import type { PlanDocumentDiagnostic } from "../../plan-store.ts";
 import { resolvePublicationUpstream } from "../publication-target.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
@@ -15,7 +15,7 @@ import {
     mergeFrontMatterText,
     parsePlanFrontMatter,
     withPlanCatalogLock,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import {
     addEntry as addWorktreeRegistryEntry,
     listEntries as listWorktreeRegistryEntries,
@@ -23,16 +23,16 @@ import {
     renamePlanningWorktreePlan,
     updateEntry as updateWorktreeRegistryEntry,
     type WorktreeRegistryEntry,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 import {
     checkpointExecutionPreparation,
     createWorktreeGitArtifacts,
     prepareTargetBranchRef,
     removeWorktreeGitArtifacts,
-} from "../worktree.js";
+} from "../worktree.ts";
 import { runExecutionPreparationTransition } from "./state-transition.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
-import { ensureExecutionPlanFile } from "./execution-plan-file.js";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
+import { ensureExecutionPlanFile } from "./execution-plan-file.ts";
 import {
     assertControllerDocumentAvailable,
     inspectControllerDocumentWorktrees,

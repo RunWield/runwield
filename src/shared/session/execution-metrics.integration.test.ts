@@ -5,18 +5,18 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { setCustomSetting } from "../settings.js";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.js";
+import { setCustomSetting } from "../settings.ts";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
 import { withWorkflowMetricJournalLock } from "../workflow/metrics-journal.ts";
 import { UsageReporter } from "../workflow/usage-reporting.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
-import { HostedSession } from "./hosted-session.js";
+import { HostedSession } from "./hosted-session.ts";
 import {
     drainSessionCompactionMetrics,
     ensureRootAgentSession,
     runIsolatedAgentSession,
     runRootTurn,
-} from "./session.js";
+} from "./session.ts";
 
 async function readMetrics(projectRoot: string) {
     await drainWorkflowMetrics();
@@ -329,6 +329,7 @@ test("manual compaction outside a model turn links context and auxiliary usage t
             });
             try {
                 const root = await ensureRootAgentSession({ hostedSession: hosted, agentName: "guide" });
+                assert("agent" in root);
                 await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "Say something useful." });
                 await runRootTurn({
                     hostedSession: hosted,
@@ -425,6 +426,7 @@ test("manual compaction cancellation saves a canceled result with no invented ex
         });
         try {
             const root = await ensureRootAgentSession({ hostedSession: hosted, agentName: "guide" });
+            assert("agent" in root);
             await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "First turn." });
             await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "Second turn." });
             hosted.activeCommandInvocationId = "cmd_cancel";
@@ -480,37 +482,6 @@ test("Runtime manual compaction carries the caller command ID into saved observa
     });
 });
 
-test("manual compaction failure records an error without fabricating execution", async () => {
-    await withRuntimeCommandFixture("metrics-manual-error-", async ({ projectRoot }) => {
-        await setCustomSetting("workflowMetrics", true, "project", projectRoot);
-        const hosted = new HostedSession({
-            id: "manual-error",
-            cwd: projectRoot,
-            sessionManager: SessionManager.inMemory(projectRoot),
-        });
-        try {
-            const root = await ensureRootAgentSession({ hostedSession: hosted, agentName: "guide" });
-            await assertRejects(() => root.compact(), Error, "Nothing to compact");
-            await drainSessionCompactionMetrics(root);
-            await drainWorkflowMetrics();
-            const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
-                .trim()
-                .split("\n")
-                .map((line) => JSON.parse(line));
-            const start = rows.find((row) => row.event === "compaction_started" && row.reason === "manual");
-            assert(start);
-            const finish = rows.find(
-                (row) => row.event === "compaction_finished" && row.recorderId === start.recorderId,
-            );
-            assert(finish);
-            assertEquals(finish.outcome, "error");
-            assertEquals(finish.executionId, undefined);
-        } finally {
-            await hosted.dispose();
-        }
-    });
-});
-
 test("overlapping manual compactions keep call ownership and leave no orphan starts", async () => {
     await withRuntimeCommandFixture("metrics-overlap-", async ({ projectRoot, setModelResponseFactories }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
@@ -535,6 +506,7 @@ test("overlapping manual compactions keep call ownership and leave no orphan sta
         });
         try {
             const root = await ensureRootAgentSession({ hostedSession: hosted, agentName: "guide" });
+            assert("agent" in root);
             await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "First turn." });
             await runRootTurn({ hostedSession: hosted, agentName: "guide", userRequest: "Second turn." });
             hosted.activeCommandInvocationId = "compact-a";

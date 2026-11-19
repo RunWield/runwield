@@ -16,7 +16,7 @@ affectedPaths:
     - "src/cmd/load-plan/index.js"
     - "src/cmd/plans/index.js"
     - "docs/plan-lifecycle.md"
-    - "docs/adr/005-concurrent-worktree-isolation.md"
+    - "docs/adr/004-concurrent-worktree-isolation.md"
 createdAt: "2026-06-15T13:30:00.000Z"
 updatedAt: "2026-06-16T02:58:57.961Z"
 archivedAt: "2026-07-01"
@@ -59,7 +59,7 @@ primary one.
 7. **Safety** - Registry writes are locked and atomic. Merge-back refuses or clearly prompts on a dirty primary
    checkout. Stale worktrees can be detected and pruned.
 
-See `docs/adr/005-concurrent-worktree-isolation.md` for the accepted architecture. This plan intentionally tightens a
+See `docs/adr/004-concurrent-worktree-isolation.md` for the accepted architecture. This plan intentionally tightens a
 few ADR details discovered during review.
 
 ## Review Findings To Incorporate
@@ -130,187 +130,187 @@ few ADR details discovered during review.
 ### New Files
 
 - **`src/shared/worktree.js`** - Git worktree operations:
-  - `createExecutionWorktree({ projectRoot, planName, baseRef })`
-  - `getWorktreeStatus({ projectRoot, path, branch, baseTree })`
-  - `mergeExecutionWorktree({ projectRoot, branch })`
-  - `removeExecutionWorktree({ projectRoot, path, branch, force })`
-  - `pruneMissingWorktrees({ projectRoot })`
+    - `createExecutionWorktree({ projectRoot, planName, baseRef })`
+    - `getWorktreeStatus({ projectRoot, path, branch, baseTree })`
+    - `mergeExecutionWorktree({ projectRoot, branch })`
+    - `removeExecutionWorktree({ projectRoot, path, branch, force })`
+    - `pruneMissingWorktrees({ projectRoot })`
 
 - **`src/shared/worktree-registry.js`** - Registry and lock management:
-  - Registry path: `<projectRoot>/.hns/worktrees.json`
-  - Lock path: `<projectRoot>/.hns/worktrees.lock`
-  - `withWorktreeRegistryLock(projectRoot, fn)`
-  - `addEntry`, `updateEntry`, `removeEntry`, `findByPlanName`, `findById`, `listEntries`, `pruneStaleEntries`
-  - Atomic JSON writes using temp-file + rename.
+    - Registry path: `<projectRoot>/.hns/worktrees.json`
+    - Lock path: `<projectRoot>/.hns/worktrees.lock`
+    - `withWorktreeRegistryLock(projectRoot, fn)`
+    - `addEntry`, `updateEntry`, `removeEntry`, `findByPlanName`, `findById`, `listEntries`, `pruneStaleEntries`
+    - Atomic JSON writes using temp-file + rename.
 
 ### Modified Files
 
 - **`src/constants.js`**
-  - Add `.hns` registry filenames and worktree branch/path prefixes.
-  - Keep `CWD` documented as the primary project root.
+    - Add `.hns` registry filenames and worktree branch/path prefixes.
+    - Keep `CWD` documented as the primary project root.
 
 - **`src/shared/session/session.js`**
-  - Add `cwd?: string` to `buildAgentSession()` and `runAgentSession()`.
-  - Use `sessionCwd = opts.cwd || CWD` for pi built-in tools, edit-with-fallback, multi-replace,
-    `DefaultResourceLoader`, and `createAgentSession`.
-  - Keep prompt templates, local `.hns` overrides, settings, memory startup, and project guidance anchored to primary
-    `CWD` unless a test proves they must follow the worktree.
-  - Avoid `Deno.chdir()` because parallel PROJECT tasks would race process-wide cwd.
+    - Add `cwd?: string` to `buildAgentSession()` and `runAgentSession()`.
+    - Use `sessionCwd = opts.cwd || CWD` for pi built-in tools, edit-with-fallback, multi-replace,
+      `DefaultResourceLoader`, and `createAgentSession`.
+    - Keep prompt templates, local `.hns` overrides, settings, memory startup, and project guidance anchored to primary
+      `CWD` unless a test proves they must follow the worktree.
+    - Avoid `Deno.chdir()` because parallel PROJECT tasks would race process-wide cwd.
 
 - **`src/shared/session/session-state.js`**
-  - Extend `activeExecutionWorkflow`:
-    - `planName`
-    - `triageMeta`
-    - `baselineTree`
-    - `projectRoot`
-    - `executionCwd`
-    - `worktreeId`
-    - `worktreeBranch`
-  - Add a helper to read active workflow cwd with fallback to `CWD`.
+    - Extend `activeExecutionWorkflow`:
+        - `planName`
+        - `triageMeta`
+        - `baselineTree`
+        - `projectRoot`
+        - `executionCwd`
+        - `worktreeId`
+        - `worktreeBranch`
+    - Add a helper to read active workflow cwd with fallback to `CWD`.
 
 - **`src/plan-store.js`**
-  - Add front matter fields:
-    - `worktreeId: string | null`
-    - `worktreePath: string | null`
-    - `worktreeBranch: string | null`
-    - `worktreeStatus: "none" | "active" | "completed" | "execution_failed" | "validation_failed" | "merge_conflict" | "merged" | "abandoned" | null`
-  - Preserve and clear those optional fields through `injectFrontMatter()`, `parsePlanFrontMatter()`, and
-    `updatePlanFrontMatter()`.
+    - Add front matter fields:
+        - `worktreeId: string | null`
+        - `worktreePath: string | null`
+        - `worktreeBranch: string | null`
+        - `worktreeStatus: "none" | "active" | "completed" | "execution_failed" | "validation_failed" | "merge_conflict" | "merged" | "abandoned" | null`
+    - Preserve and clear those optional fields through `injectFrontMatter()`, `parsePlanFrontMatter()`, and
+      `updatePlanFrontMatter()`.
 
 - **`src/shared/workflow/plan-lifecycle.js`**
-  - Extend `PlanEventDetails` with worktree fields.
-  - On `execution_started`: set `executionBaselineTree`, `worktreeId`, `worktreePath`, `worktreeBranch`,
-    `worktreeStatus: "active"`.
-  - On `execution_failed`: set `worktreeStatus: "execution_failed"`.
-  - On `implementation_finished`: set `worktreeStatus: "completed"` and keep plan status `implemented`.
-  - On `validation_failed`: set `worktreeStatus: "validation_failed"` and keep plan status `implemented`.
-  - Add `worktree_merge_failed` from `implemented` to `implemented` to set `worktreeStatus: "merge_conflict"` and
-    `failureReason`.
-  - On successful merge after validation: record `validation_passed` with `worktreeStatus: "merged"` and clear stale
-    failure fields.
-  - On abandon/review reset: set `worktreeStatus: "abandoned"` and optionally clear path/branch/id after removal.
+    - Extend `PlanEventDetails` with worktree fields.
+    - On `execution_started`: set `executionBaselineTree`, `worktreeId`, `worktreePath`, `worktreeBranch`,
+      `worktreeStatus: "active"`.
+    - On `execution_failed`: set `worktreeStatus: "execution_failed"`.
+    - On `implementation_finished`: set `worktreeStatus: "completed"` and keep plan status `implemented`.
+    - On `validation_failed`: set `worktreeStatus: "validation_failed"` and keep plan status `implemented`.
+    - Add `worktree_merge_failed` from `implemented` to `implemented` to set `worktreeStatus: "merge_conflict"` and
+      `failureReason`.
+    - On successful merge after validation: record `validation_passed` with `worktreeStatus: "merged"` and clear stale
+      failure fields.
+    - On abandon/review reset: set `worktreeStatus: "abandoned"` and optionally clear path/branch/id after removal.
 
 - **`src/shared/workflow/workflow.ts`**
-  - Create or resume a worktree before recording `execution_started`.
-  - Load the plan from primary `CWD`; pass plan body to agents rather than relying on the worktree's plan copy.
-  - Capture `executionBaselineTree` inside `executionCwd`.
-  - Pass an execution context to `executeStructuredProjectPlan()`, `executeSingleEngineerPlan()`, and downstream
-    validation.
-  - Use primary `CWD` for all `recordPlanEvent()` calls.
-  - Do not merge at `implementation_finished`; leave the worktree branch intact for validation and recovery.
+    - Create or resume a worktree before recording `execution_started`.
+    - Load the plan from primary `CWD`; pass plan body to agents rather than relying on the worktree's plan copy.
+    - Capture `executionBaselineTree` inside `executionCwd`.
+    - Pass an execution context to `executeStructuredProjectPlan()`, `executeSingleEngineerPlan()`, and downstream
+      validation.
+    - Use primary `CWD` for all `recordPlanEvent()` calls.
+    - Do not merge at `implementation_finished`; leave the worktree branch intact for validation and recovery.
 
 - **`src/shared/workflow/project-executor.js`**
-  - Add options object for `executionCwd`.
-  - Pass `cwd: executionCwd` into every task `agentSessionRunner()` call.
-  - Write debug logs to `executionCwd` when debugging a worktree execution.
+    - Add options object for `executionCwd`.
+    - Pass `cwd: executionCwd` into every task `agentSessionRunner()` call.
+    - Write debug logs to `executionCwd` when debugging a worktree execution.
 
 - **`src/shared/workflow/validation.js`**
-  - Resolve `executionCwd` from `activeExecutionWorkflow`.
-  - Run local CI with `cwd: executionCwd`.
-  - Compute workflow diff via `getWorkflowDiff(executionCwd, baselineTree)`.
-  - Pass `cwd: executionCwd` to reviewer, operator repair, and engineer repair sessions.
-  - If validation passes, attempt merge-back from primary `CWD`; only then record `validation_passed` with
-    `worktreeStatus: "merged"`.
-  - If merge conflicts, leave the worktree intact and record `worktree_merge_failed`.
+    - Resolve `executionCwd` from `activeExecutionWorkflow`.
+    - Run local CI with `cwd: executionCwd`.
+    - Compute workflow diff via `getWorkflowDiff(executionCwd, baselineTree)`.
+    - Pass `cwd: executionCwd` to reviewer, operator repair, and engineer repair sessions.
+    - If validation passes, attempt merge-back from primary `CWD`; only then record `validation_passed` with
+      `worktreeStatus: "merged"`.
+    - If merge conflicts, leave the worktree intact and record `worktree_merge_failed`.
 
 - **`src/cmd/load-plan/index.js`**
-  - Resolve worktree context from plan front matter first, then registry.
-  - Recovery report shows plan status, worktree status, path, branch, base tree, git status, and diff from baseline in
-    the worktree.
-  - Continue execution by rehydrating `activeExecutionWorkflow` with `executionCwd` and registry data.
-  - Reset means remove/recreate the worktree from the recorded base ref/tree; it must not call
-    `restoreWorktreeTree(CWD, ...)` for worktree-backed plans.
-  - Add recovery options for "Merge worktree changes" and "Delete/abandon worktree" where appropriate.
-  - Keep legacy baseline reset only for older plans with no worktree fields.
+    - Resolve worktree context from plan front matter first, then registry.
+    - Recovery report shows plan status, worktree status, path, branch, base tree, git status, and diff from baseline in
+      the worktree.
+    - Continue execution by rehydrating `activeExecutionWorkflow` with `executionCwd` and registry data.
+    - Reset means remove/recreate the worktree from the recorded base ref/tree; it must not call
+      `restoreWorktreeTree(CWD, ...)` for worktree-backed plans.
+    - Add recovery options for "Merge worktree changes" and "Delete/abandon worktree" where appropriate.
+    - Keep legacy baseline reset only for older plans with no worktree fields.
 
 - **`src/cmd/plans/index.js`**
-  - Show `Worktree: <status> (<branch or path>)` for plans with non-empty worktree metadata.
+    - Show `Worktree: <status> (<branch or path>)` for plans with non-empty worktree metadata.
 
 - **`docs/plan-lifecycle.md`**
-  - Document worktree front matter fields, status values, validation-before-merge behavior, and recovery semantics.
+    - Document worktree front matter fields, status values, validation-before-merge behavior, and recovery semantics.
 
-- **`docs/adr/005-concurrent-worktree-isolation.md`**
-  - Follow-up edit: clarify that session/tool cwd plumbing is required, and correct the dirty-primary-tree note so it
-    applies to merge-back rather than worktree creation.
+- **`docs/adr/004-concurrent-worktree-isolation.md`**
+    - Follow-up edit: clarify that session/tool cwd plumbing is required, and correct the dirty-primary-tree note so it
+      applies to merge-back rather than worktree creation.
 
 ## Implementation Sequence
 
 1. **Add front matter and lifecycle support**
-   - Add worktree fields to `PlanFrontMatter`.
-   - Update plan lifecycle event handling and tests.
-   - Update docs.
+    - Add worktree fields to `PlanFrontMatter`.
+    - Update plan lifecycle event handling and tests.
+    - Update docs.
 
 2. **Add worktree registry and git operations**
-   - Implement registry locking/atomic writes.
-   - Implement worktree create/status/remove/merge helpers.
-   - Unit test with temporary git repositories.
+    - Implement registry locking/atomic writes.
+    - Implement worktree create/status/remove/merge helpers.
+    - Unit test with temporary git repositories.
 
 3. **Make sessions cwd-aware**
-   - Add `cwd` option to `buildAgentSession()` and `runAgentSession()`.
-   - Ensure all file-writing tools bind to that cwd.
-   - Add focused tests that inject a temp cwd and verify tool/resource construction receives it.
+    - Add `cwd` option to `buildAgentSession()` and `runAgentSession()`.
+    - Ensure all file-writing tools bind to that cwd.
+    - Add focused tests that inject a temp cwd and verify tool/resource construction receives it.
 
 4. **Wire execution to worktrees**
-   - Create/reuse worktree in `startActiveExecutionWorkflow()`.
-   - Capture baseline in `executionCwd`.
-   - Pass execution context through FEATURE and PROJECT execution.
-   - Keep plan metadata updates in primary `CWD`.
+    - Create/reuse worktree in `startActiveExecutionWorkflow()`.
+    - Capture baseline in `executionCwd`.
+    - Pass execution context through FEATURE and PROJECT execution.
+    - Keep plan metadata updates in primary `CWD`.
 
 5. **Wire validation to worktrees**
-   - Run CI, diff, review, and repair in `executionCwd`.
-   - Merge back only after validation passes.
-   - Handle merge conflicts without deleting the worktree.
+    - Run CI, diff, review, and repair in `executionCwd`.
+    - Merge back only after validation passes.
+    - Handle merge conflicts without deleting the worktree.
 
 6. **Update recovery and plan listing**
-   - Make inspect/continue/reset/merge/delete worktree-aware.
-   - Keep legacy reset behavior for pre-worktree plans.
-   - Add plan list display for worktree state.
+    - Make inspect/continue/reset/merge/delete worktree-aware.
+    - Keep legacy reset behavior for pre-worktree plans.
+    - Add plan list display for worktree state.
 
 ## Verification Plan
 
 **Automated tests:**
 
 1. `src/plan-store.test.js`
-   - Worktree front matter fields round-trip.
-   - Optional worktree fields can be cleared.
+    - Worktree front matter fields round-trip.
+    - Optional worktree fields can be cleared.
 
 2. `src/shared/workflow/plan-lifecycle.test.js`
-   - `execution_started` records baseline and active worktree metadata.
-   - `execution_failed`, `implementation_finished`, `validation_failed`, `worktree_merge_failed`, and
-     `validation_passed` update `worktreeStatus` correctly.
-   - Invalid transitions are rejected.
+    - `execution_started` records baseline and active worktree metadata.
+    - `execution_failed`, `implementation_finished`, `validation_failed`, `worktree_merge_failed`, and
+      `validation_passed` update `worktreeStatus` correctly.
+    - Invalid transitions are rejected.
 
 3. `src/shared/worktree.test.js`
-   - Worktree creation uses unique branch/path names.
-   - Status reports clean/dirty/missing worktrees.
-   - Merge succeeds into a clean primary checkout.
-   - Merge conflict leaves the worktree and branch intact.
-   - Remove can preserve or delete branch as configured.
+    - Worktree creation uses unique branch/path names.
+    - Status reports clean/dirty/missing worktrees.
+    - Merge succeeds into a clean primary checkout.
+    - Merge conflict leaves the worktree and branch intact.
+    - Remove can preserve or delete branch as configured.
 
 4. `src/shared/worktree-registry.test.ts`
-   - Add/update/remove/list/find entries.
-   - Atomic write preserves existing registry on failure.
-   - Stale lock cleanup works.
-   - Prune detects missing worktree paths.
+    - Add/update/remove/list/find entries.
+    - Atomic write preserves existing registry on failure.
+    - Stale lock cleanup works.
+    - Prune detects missing worktree paths.
 
 5. `src/shared/session/session*.test.js`
-   - `runAgentSession({ cwd })` constructs file tools and agent session with the provided cwd.
-   - Default behavior still uses primary `CWD`.
+    - `runAgentSession({ cwd })` constructs file tools and agent session with the provided cwd.
+    - Default behavior still uses primary `CWD`.
 
 6. `src/shared/workflow/project-executor.test.js`
-   - Task sub-sessions receive `cwd: executionCwd`.
-   - Debug logging uses execution cwd.
+    - Task sub-sessions receive `cwd: executionCwd`.
+    - Debug logging uses execution cwd.
 
 7. `src/shared/workflow/validation.test.js`
-   - Local CI, diff, reviewer, and repair sessions use `executionCwd`.
-   - Validation pass triggers merge-back and records `validation_passed`.
-   - Merge conflict records `worktree_merge_failed` and keeps plan status `implemented`.
+    - Local CI, diff, reviewer, and repair sessions use `executionCwd`.
+    - Validation pass triggers merge-back and records `validation_passed`.
+    - Merge conflict records `worktree_merge_failed` and keeps plan status `implemented`.
 
 8. `src/cmd/load-plan/index.test.js`
-   - Worktree-backed inspect reports worktree status/diff.
-   - Continue rehydrates `activeExecutionWorkflow` with execution cwd.
-   - Reset removes/recreates the worktree instead of restoring primary `CWD`.
-   - Legacy no-worktree plans keep the old baseline reset path.
+    - Worktree-backed inspect reports worktree status/diff.
+    - Continue rehydrates `activeExecutionWorkflow` with execution cwd.
+    - Reset removes/recreates the worktree instead of restoring primary `CWD`.
+    - Legacy no-worktree plans keep the old baseline reset path.
 
 **Manual integration test:**
 
@@ -361,7 +361,7 @@ few ADR details discovered during review.
 | 1    | engineer   | none         | src/constants.js, src/plan-store.js, src/shared/session, src/shared/workflow/workflow.ts, src/shared/workflow/project-executor.js, src/shared/workflow/plan-lifecycle.js, src/shared/worktree.js, src/shared/worktree-registry.js | Establish isolated execution worktrees end-to-end so plan implementation agents run in an execution cwd and primary checkout files remain untouched. |
 | 2    | engineer   | 1            | src/shared/workflow/validation.js, src/shared/workflow/workflow.ts, src/shared/workflow/plan-lifecycle.js, src/shared/worktree.js, src/shared/worktree-registry.js, src/plan-store.js                                             | Run Workflow Validation inside the execution worktree and merge the worktree branch back only after validation passes.                               |
 | 3    | engineer   | 1, 2         | src/cmd/load-plan/index.js, src/cmd/plans/index.js, src/shared/session/session-state.js, src/shared/worktree.js, src/shared/worktree-registry.js                                                                                  | Add worktree-aware plan recovery and plan-list visibility for inspect, continue, reset, merge, abandon, and stale-state cases.                       |
-| 4    | doc-writer | 1, 2, 3      | docs/plan-lifecycle.md, docs/adr/005-concurrent-worktree-isolation.md                                                                                                                                                             | Document the final worktree lifecycle, validation-before-merge behavior, and recovery semantics.                                                     |
+| 4    | doc-writer | 1, 2, 3      | docs/plan-lifecycle.md, docs/adr/004-concurrent-worktree-isolation.md                                                                                                                                                             | Document the final worktree lifecycle, validation-before-merge behavior, and recovery semantics.                                                     |
 | 5    | tester     | 1, 2, 3, 4   | none                                                                                                                                                                                                                              | Integration Point: run `deno run ci` and report any cross-slice failures explicitly.                                                                 |
 
 ### Slice Details
@@ -440,6 +440,6 @@ users/operators will see.
 
 - [ ] `docs/plan-lifecycle.md` documents the new worktree front matter fields, worktree status values,
       validation-before-merge flow, and worktree-backed recovery semantics.
-- [ ] `docs/adr/005-concurrent-worktree-isolation.md` is corrected to reflect explicit session/tool cwd plumbing and to
+- [ ] `docs/adr/004-concurrent-worktree-isolation.md` is corrected to reflect explicit session/tool cwd plumbing and to
       distinguish worktree creation safety from dirty-primary merge-back risk.
 - [ ] Documentation matches the behavior implemented by Tasks 1–3 and does not describe unsupported commands or flags.

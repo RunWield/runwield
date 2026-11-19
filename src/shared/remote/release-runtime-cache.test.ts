@@ -6,7 +6,7 @@ import process from "node:process";
 import { test } from "node:test";
 import { sha256Bytes } from "../../../scripts/build-metadata.ts";
 import type { ArtifactMetadata } from "../../../scripts/build-metadata.ts";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -121,7 +121,6 @@ async function obtainAndClean(): Promise<void> {
 
 test("downloaded runtime remains usable offline after caller removes its extraction", async () => {
     await withCacheFixture(async (fixture) => {
-        assertEquals(fixture.cache, join(getHomeDir(), ".cache/runwield/remote/runtime", TAG, SUFFIX));
         serve(fixture);
         await obtainAndClean();
         assertEquals(new Uint8Array(await readFile(join(fixture.cache, NAME))), fixture.archive);

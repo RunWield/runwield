@@ -13,15 +13,14 @@ affectedPaths:
     - "src/shared/workflow/orchestrator.ts"
     - "docs/domain-language.md"
     - "docs/prd/runwield-connect-prd.md"
-    - "docs/adr/014-attached-workflow-coordination-boundary.md"
+    - "docs/adr/013-attached-workflow-coordination-boundary.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-07T03:22:45.484Z"
 origin: "internal"
 parentPlan: "attached-mode-claude-feature-preview"
 order: 1
-dependencies:
-    []
+dependencies: []
 targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
 status: "validated"
@@ -49,7 +48,7 @@ Owning PRD capabilities in `docs/prd/runwield-connect-prd.md`:
   delivers "continuation after process loss" for activation and Triage. It writes nothing to the repository, so the
   "preview material repo-local changes" scenario first applies in child 02.
 
-[ADR-014](../../../adr/014-attached-workflow-coordination-boundary.md) defines the coordinator as a sibling runtime to
+[ADR-013](../../../adr/013-attached-workflow-coordination-boundary.md) defines the coordinator as a sibling runtime to
 `SessionRuntime`. Planning, review, execution, validation, and publication are later children.
 
 Decisions from planning:
@@ -157,7 +156,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/attached/claude/` (new) — MCP stdio server that maps tools to coordinator operations. No workflow rules.
 - `docs/domain-language.md` — Attached Workflow Coordinator and Attached Workflow Record.
 - `docs/prd/runwield-connect-prd.md` — implemented-status notes for the delivered activation and continuation subset.
-- `docs/adr/014-attached-workflow-coordination-boundary.md` — record location in home and why it is not ADR-017 runtime
+- `docs/adr/013-attached-workflow-coordination-boundary.md` — record location in home and why it is not ADR-017 runtime
   state.
 
 Deliberately unchanged: `src/shared/workflow/controller-registry.ts` (no Plan exists yet), and
@@ -196,9 +195,9 @@ Deliberately unchanged: `src/shared/workflow/controller-registry.ts` (no Plan ex
 5. `submitOutcome` accepts a Triage outcome only when the action ID matches the pending action, the expected revision
    matches, and the payload passes `normalizeTriageOutcome`. Otherwise it returns a typed rejection and leaves the
    record unchanged.
-   - A PLANNED_CHANGE outcome of any Work Kind moves the record to `awaiting_planning` with next action `plan`.
-   - Any other Routing Intent moves it to `closed` with `closure.reason: "unsupported_in_preview"`.
-   - It never creates or submits a Plan.
+    - A PLANNED_CHANGE outcome of any Work Kind moves the record to `awaiting_planning` with next action `plan`.
+    - Any other Routing Intent moves it to `closed` with `closure.reason: "unsupported_in_preview"`.
+    - It never creates or submits a Plan.
 6. Repeating an operation ID that was already accepted returns the saved result and makes no new change. A different
    operation against a superseded action or old revision is rejected.
 7. Payloads over the size limit, payloads with unknown fields, and payloads with path-like or transcript-shaped fields
@@ -224,7 +223,7 @@ Deliberately unchanged: `src/shared/workflow/controller-registry.ts` (no Plan ex
 
 - Automated:
   `deno run -A scripts/run-tests.js src/shared/workflow/triage-outcome.test.ts src/shared/attached/
-  src/cmd/attached/ src/attached/claude/`.
+src/cmd/attached/ src/attached/claude/`.
 - Automated, multi-process: the test runs `wld attached activate` in subprocess A, `submit` in B, and the same `submit`
   in C, all against a sandboxed `HOME` and a real Git fixture (`defineGitFixture`). Expected: B advances to revision 2;
   C returns B's result and the file bytes are unchanged. This test fails against a stub that keeps state in memory.

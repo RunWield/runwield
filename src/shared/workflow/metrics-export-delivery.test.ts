@@ -23,7 +23,7 @@ import {
     runMetricsExportCycle,
     startMetricsExportScheduler,
 } from "./metrics-export-scheduler.ts";
-import { getWorkflowMetricsFilePath } from "./metrics.js";
+import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { withWorkflowMetricJournalLock } from "./metrics-journal.ts";
 import { listInstalledMetricsExporters } from "../extensions/metrics-exporter.ts";
 import {

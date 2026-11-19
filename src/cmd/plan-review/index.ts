@@ -1,4 +1,4 @@
-import type { CommandContext } from "../registry.js";
+import type { CommandContext } from "../registry.ts";
 
 /** Show the active review or reopen this Session's most recent review. */
 export async function runPlanReviewCommand(

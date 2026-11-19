@@ -4,8 +4,8 @@ import { test } from "node:test";
 import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { setCustomSetting } from "../settings.js";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.js";
+import { setCustomSetting } from "../settings.ts";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 
 test("one Pi execution links usage from successive model turns to its own turn", async () => {

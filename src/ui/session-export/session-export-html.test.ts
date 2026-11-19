@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import type { SessionExport, SessionExportTimelineEvent } from "../../shared/session/session-export.ts";
 import { renderSessionExportHtml } from "./session-export-html.ts";
-import { createReplayEvents } from "../../shared/session/session-transcript-projection.js";
+import { createReplayEvents } from "../../shared/session/session-transcript-projection.ts";
 
 function fixture(): SessionExport {
     const base = {

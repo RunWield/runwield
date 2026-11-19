@@ -1,5 +1,5 @@
 import { ProjectRuntimeReadPendingError } from "../../../shared/project-runtime-layout.ts";
-import { inspectWorktreeRegistry } from "../../../shared/worktree-registry.js";
+import { inspectWorktreeRegistry } from "../../../shared/worktree-registry.ts";
 
 /** Pending authority is not an empty registry and cannot satisfy a status wait. */
 export async function readScenarioRegistryForPoll(projectRoot: string) {

@@ -1,7 +1,7 @@
 import process from "node:process";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { spawnNativeProcess } from "../../shared/foreground-process.ts";
-import { setCustomSetting } from "../../shared/settings.js";
+import { setCustomSetting } from "../../shared/settings.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import {
     mkdir as fsMkdir,
@@ -17,11 +17,11 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { dirname, join } from "node:path";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { queryUsageReport } from "../../shared/workflow/usage-reporting.ts";
-import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.js";
+import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { createOwnerWorkspaceApp } from "./server.js";
+import { createOwnerWorkspaceApp } from "./server.ts";
 import type { OwnerUsageReport } from "./server/owner-usage.ts";
 
 interface FixtureRow {

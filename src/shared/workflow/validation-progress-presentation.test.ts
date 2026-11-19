@@ -6,7 +6,7 @@ import {
     validationProgressHeading,
     validationStageLabel,
 } from "./validation-progress-presentation.ts";
-import type { RuntimeValidationProgress } from "../session/session-runtime-events.js";
+import type { RuntimeValidationProgress } from "../session/session-runtime-events.ts";
 
 const BASE_CHECKS: RuntimeValidationProgress["checks"] = {
     ci: "pending",

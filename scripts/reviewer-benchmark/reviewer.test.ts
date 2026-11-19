@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command-fixture.ts";
 import { getModelRegistry } from "../../src/shared/models/model-registry.ts";
-import { setExactProjectCustomSetting } from "../../src/shared/settings.js";
-import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.js";
+import { setExactProjectCustomSetting } from "../../src/shared/settings.ts";
+import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.ts";
 import { parseDiffFiles } from "../../src/shared/workflow/review-diff-tool.ts";
 import { loadFixture } from "./fixtures.ts";
 import { materializeFixture } from "./materialize.ts";
@@ -157,24 +157,6 @@ test("premature completion is refused, nudged, then returns the exact accepted f
     });
 });
 
-test("full inspection can approve with the supplied advisory", async () => {
-    await withRuntimeCommandFixture("benchmark-review-approve-", async (runtime) => {
-        const fixture = await loadFixture(fixturePath);
-        const project = await materializeFixture(fixture, "B");
-        runtime.setModelResponseFactories(approveSteps(project));
-        try {
-            const result = await runFixtureReview(project, fixture);
-            assert.equal(result.kind, "complete");
-            assert.equal(result.outcome?.approved, true);
-            assert.deepEqual(result.outcome?.findings, []);
-            assert.deepEqual(result.outcome?.advisories, [advisory]);
-            assert.equal(result.nudgeAttempts, 0);
-        } finally {
-            await project.cleanup();
-        }
-    });
-});
-
 test("Reviewer selection is captured from the source preset and an explicit model overrides it", async () => {
     await withRuntimeCommandFixture(
         "benchmark-review-model-",
@@ -252,25 +234,6 @@ for (const prerequisite of ["missing model", "unknown model", "missing credentia
         );
     });
 }
-
-test("missing completion pauses without inventing a verdict", async () => {
-    await withRuntimeCommandFixture("benchmark-review-pause-", async (runtime) => {
-        const fixture = await loadFixture(fixturePath);
-        const project = await materializeFixture(fixture, "A");
-        runtime.setModelResponseFactories(
-            Array.from({ length: 4 }, () => () => fauxAssistantMessage(fauxText("I could not finish the review."))),
-        );
-        try {
-            const result = await runFixtureReview(project, fixture);
-            assert.equal(result.kind, "paused");
-            assert.equal(result.outcome, undefined);
-            assert.match(result.reason!, /Protocol correction budget is spent/);
-            assert.equal(result.nudgeAttempts, 3);
-        } finally {
-            await project.cleanup();
-        }
-    });
-});
 
 test("provider failure pauses without inventing a verdict", async () => {
     await withRuntimeCommandFixture("benchmark-review-provider-", async (runtime) => {

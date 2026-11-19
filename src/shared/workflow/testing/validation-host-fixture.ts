@@ -11,16 +11,16 @@ import {
     rm as fsRm,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { getCwd } from "../../../constants.js";
+import { getCwd } from "../../../constants.ts";
 import { captureForegroundProcess } from "../../captured-process.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists } from "../../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../../../plan-store.js";
+import { loadPlan, savePlan, updatePlanFrontMatter } from "../../../plan-store.ts";
 import { controllerRecordPath } from "../controller-registry.ts";
-import { addEntry } from "../../worktree-registry.js";
-import { setCustomSetting, setExactProjectCustomSetting } from "../../settings.js";
+import { addEntry } from "../../worktree-registry.ts";
+import { setCustomSetting, setExactProjectCustomSetting } from "../../settings.ts";
 import { parseDiffFiles } from "../review-diff.ts";
 import {
     type HostTurnValidationResult,
@@ -29,8 +29,8 @@ import {
 } from "../validation-host-contract.ts";
 import { continueHostTurnValidation } from "../validation-host-turn.ts";
 import { readDeliveryEvidence } from "../delivery-evidence.ts";
-import { getWorkflowMetricsFilePath } from "../metrics.js";
-import { makeValidationProjectRoot } from "../validation-test-helpers.js";
+import { getWorkflowMetricsFilePath } from "../metrics.ts";
+import { makeValidationProjectRoot } from "../validation-test-helpers.ts";
 
 import process from "node:process";
 
@@ -44,7 +44,7 @@ const base = defineGitFixture(async (root) => {
 export type HostFixtureOptions = {
     nonGit?: boolean;
     command?: string | null;
-    attrs?: Partial<import("../../../plan-store.js").PlanFrontMatter>;
+    attrs?: Partial<import("../../../plan-store.ts").PlanFrontMatter>;
     planOnly?: boolean;
 };
 export async function hostFixture(options: HostFixtureOptions = {}) {

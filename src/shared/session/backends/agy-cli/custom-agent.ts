@@ -9,7 +9,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { getHomeDir } from "../../../../constants.js";
+import { getHomeDir } from "../../../../constants.ts";
 
 export interface AgyCustomAgentPaths {
     agentsRootPath: string;

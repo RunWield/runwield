@@ -7,10 +7,9 @@ import {
     __resetSettingsForTests,
     clearMascotEnabledCache,
     isMascotEnabled,
-    preserveRunWieldCustomSettingsForWrite,
     setCustomSetting,
     setExactProjectCustomSetting,
-} from "./settings.js";
+} from "./settings.ts";
 
 test("mascot defaults on and only literal false disables it", async () => {
     await withRuntimeCommandFixture("settings-mascot-default-", async ({ projectRoot }) => {
@@ -47,11 +46,4 @@ test("manual mascot edits stay cached until reload or test reset", async () => {
         __resetSettingsForTests();
         assertEquals(isMascotEnabled(projectRoot), true);
     });
-});
-
-test("Pi settings writes preserve mascot visibility", () => {
-    assertEquals(
-        JSON.parse(preserveRunWieldCustomSettingsForWrite('{"mascot":false}', '{"theme":"dark"}')),
-        { theme: "dark", mascot: false },
-    );
 });

@@ -115,7 +115,6 @@ agent prompt, so the two cannot drift the way `buildEngineerRequest` drifted fro
 ## Files to Modify
 
 - `src/extensions/re-anchor/index.ts` — new: the extension, its flag, artifact resolution, and both handlers.
-  TypeScript, since a new production `.js` under `src/` fails `deno task language-policy:check`.
 - `src/extensions/re-anchor/index.test.ts` — new unit coverage for compaction events, context injection, artifact
   resolution, exclusions, and fail-open handling.
 - `src/shared/session/session.js` — register the factory alongside the existing three, closing over `agentName`,

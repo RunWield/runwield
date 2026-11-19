@@ -1,24 +1,25 @@
+import type { UiAPI } from "../ui/tui/api.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall, type AssistantMessage } from "@earendil-works/pi-ai";
 import { assertEquals } from "./assertions.ts";
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../plan-store.js";
+import { loadPlan, savePlan, updatePlanFrontMatter } from "../plan-store.ts";
 import { createGitPort } from "../shared/git-port.ts";
 import { git } from "../shared/git-test-fixture.ts";
-import { setExactProjectCustomSetting } from "../shared/settings.js";
-import { HostedSession } from "../shared/session/hosted-session.js";
-import { ensureRootAgentSession } from "../shared/session/session.js";
+import { setExactProjectCustomSetting } from "../shared/settings.ts";
+import { HostedSession } from "../shared/session/hosted-session.ts";
+import { ensureRootAgentSession } from "../shared/session/session.ts";
 import type { SessionRuntime } from "../shared/session/session-runtime.ts";
-import { findById } from "../shared/worktree-registry.js";
+import { findById } from "../shared/worktree-registry.ts";
 import { createTestWorktreeAttempt } from "../shared/worktree-test-helpers.ts";
 import { cleanupStoredPublication } from "../shared/workflow/publication-machine.ts";
-import { buildPlanEventUpdates, type PlanEvent, type PlanEventDetails } from "../shared/workflow/plan-lifecycle.js";
+import { buildPlanEventUpdates, type PlanEvent, type PlanEventDetails } from "../shared/workflow/plan-lifecycle.ts";
 import { runPlanLifecycleEventTransition } from "../shared/workflow/state-transition.ts";
 import { makePublicationOutcomeFixture } from "../shared/workflow/testing/publication-outcome-fixture.ts";
 import { runValidationPhase } from "../shared/workflow/validation.ts";
 import { runLocalCI } from "../shared/workflow/validation-local-ci.ts";
-import { attachRecorder, makeUi, UNEXPECTED_VALIDATION_PORTS } from "../shared/workflow/validation-test-helpers.js";
+import { attachRecorder, makeUi, UNEXPECTED_VALIDATION_PORTS } from "../shared/workflow/validation-test-helpers.ts";
 import { handlePlanRecovery, SYSTEM_RECOVERY_FLOW_PORTS } from "../cmd/load-plan/plan-recovery-flow.ts";
 import { createPlanSessionSurface } from "../cmd/load-plan/plan-session-surface.ts";
 
@@ -163,13 +164,15 @@ export async function runJourneyRecovery(
         const ui = makeUi();
         const answers = ["abandon", "confirm", "cancel"];
         ui.promptSelect = () => Promise.resolve(answers.shift() || "cancel");
+        // This journey only uses these recorder methods from the legacy TUI interface.
+        const recoveryUi: Pick<UiAPI, "appendSystemMessage" | "promptSelect" | "promptText"> = ui;
         const plan = await loadPlan(entry.path, name);
         assert(plan);
         await handlePlanRecovery({
             projectRoot: root,
             plan: { ...plan, planName: name },
             agentName: "engineer",
-            uiAPI: ui,
+            uiAPI: recoveryUi as UiAPI,
             session: surface,
             recordedAttempt: entry,
             ports: SYSTEM_RECOVERY_FLOW_PORTS,

@@ -408,3 +408,8 @@ replaces a saved preference. RunWield retains the selection through approval, wo
 Init was skipped or incomplete. Do not repeatedly resubmit an old command after a later deliberate change. RunWield
 still runs the full command against the final implementation; an earlier planning check is not proof that the delivered
 revision passes.
+
+## Compaction reminder
+
+You are still the Planner. Keep refining the plan file iteratively, ask only blocking questions, and call
+`plan_written` with the plan name without `.md` when the plan is ready.

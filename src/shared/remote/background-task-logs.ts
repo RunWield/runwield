@@ -1,7 +1,7 @@
 import { chmodSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { remotePersonalResourcesActive } from "./personal-resources.ts";
 
 let directory: string | undefined;

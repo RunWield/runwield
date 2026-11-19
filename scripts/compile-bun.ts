@@ -5,9 +5,11 @@ import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { argv, versions } from "node:process";
 import { fileURLToPath } from "node:url";
-import { requirePinnedBun } from "./check-bun-runtime.ts";
+import { requireSupportedBun } from "./check-bun-runtime.ts";
 import { BUILD_METADATA_SCHEMA, computeBuildIdentity, REMOTE_PROTOCOL_VERSION, sha256File } from "./build-metadata.ts";
 import { resolveBuildVersion, writeBuildIdentityFile, writeVersionFile } from "./write-version.ts";
+
+import { SIDEBAR_MOTION_SOURCE } from "../src/ui/workspace/server/public-workspace-assets.ts";
 
 interface LoadedSource {
     contents: string;
@@ -54,7 +56,7 @@ export const PASSIVE_PATHS = [
     "src/ui/workspace/static",
     "src/ui/design-system/tokens.css",
     "src/ui/design-system/components.css",
-    "src/ui/design-system/sidebar-motion.js",
+    SIDEBAR_MOTION_SOURCE,
     "src/ui/design-system/panel-icon.ts",
     "brand/logo.svg",
     "src/agent-definitions",
@@ -107,7 +109,7 @@ export async function compileBun(
     expectedBuildId?: string,
     entrypoint = "src/cli.ts",
 ): Promise<void> {
-    requirePinnedBun();
+    requireSupportedBun();
     const entry = resolve(ROOT, entrypoint);
     const relativeEntry = relative(ROOT, entry);
     if (relativeEntry.startsWith("..") || !relativeEntry)
@@ -119,8 +121,8 @@ export async function compileBun(
     const require = createRequire(import.meta.url);
     const piRoot = dirname(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))));
     const piManifest = JSON.parse(await readFile(join(piRoot, "package.json"), "utf8"));
-    if (piManifest.version !== "1.5.0") {
-        throw new Error("Codemode asset adapter requires Pi 1.5.0; requalify before upgrading.");
+    if (piManifest.version !== "1.5.2") {
+        throw new Error("Codemode asset adapter requires Pi 1.5.2; requalify before upgrading.");
     }
     const bun: BunBuildRuntime = require("bun");
     await mkdir(join(ROOT, ".ci-cache"), { recursive: true });
@@ -177,7 +179,7 @@ export async function compileBun(
                             !source.includes("export function setEmbeddedQuickJSWasmPath(path)") ||
                             !source.includes('return "./src/extensions/codemode/worker.ts";')
                         ) {
-                            throw new Error("Pi 1.5.0 codemode asset contract changed; requalify packaging.");
+                            throw new Error("Pi 1.5.2 codemode asset contract changed; requalify packaging.");
                         }
                         return {
                             contents:

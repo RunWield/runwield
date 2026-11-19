@@ -161,8 +161,8 @@ async function main(): Promise<void> {
     }
 
     const { COMMAND_NAMES, commandRegistry, getCommandDefinition, hasCommandSurface, requiresProjectDirectoryConsent } =
-        await import("./cmd/registry.js");
-    const { printCommandHelp, printGlobalHelp } = await import("./cmd/help/index.js");
+        await import("./cmd/registry.ts");
+    const { printCommandHelp, printGlobalHelp } = await import("./cmd/help/index.ts");
 
     const helpRequest = resolveHelpRequest(args, COMMAND_NAMES);
     if (helpRequest.requested) {
@@ -203,9 +203,9 @@ async function main(): Promise<void> {
 
     if (requiresProjectDirectoryConsent(firstPositional, normalizedArgs.slice(1))) {
         const { confirmProjectDirectory } = await import("./ui/tui/directory-warning.ts");
-        const { getCwd } = await import("./constants.js");
+        const { getCwd } = await import("./constants.ts");
         if (!(await confirmProjectDirectory(getCwd(), allowSystemDirectory))) return;
-        const { resolvePrimaryCheckoutRoot } = await import("./shared/primary-checkout.ts");
+        const { resolvePrimaryCheckoutRoot } = await import("./shared/project-checkout.ts");
         const primaryRoot = resolvePrimaryCheckoutRoot(getCwd());
         if (primaryRoot !== getCwd() && !(await confirmProjectDirectory(primaryRoot, allowSystemDirectory))) return;
     }

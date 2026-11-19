@@ -23,11 +23,11 @@ import {
     updatePlanFrontMatter,
     withPlanCatalogLock,
     withPlanLock,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { join } from "node:path";
-import type { PlanFrontMatter } from "../../plan-store.js";
+import type { PlanFrontMatter } from "../../plan-store.ts";
 import { EPIC_ARTIFACT_FILE_NAMES } from "../epic-artifacts.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { buildPlanEventUpdates } from "./plan-lifecycle.js";
 import { assertControllerDocumentAvailable, listControllerDocumentWorktrees } from "./controller-registry.ts";
 

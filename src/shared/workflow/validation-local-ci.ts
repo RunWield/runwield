@@ -14,7 +14,7 @@ import {
     getExactProjectCustomSetting,
     setCustomSetting,
     setExactProjectCustomSetting,
-} from "../settings.js";
+} from "../settings.ts";
 import { spawnForegroundShell } from "../foreground-process.ts";
 import { captureValidationSettingsWrite, recordValidationSettingsWrite } from "../worktree-project-context.ts";
 import {
@@ -27,7 +27,7 @@ import {
     emitSystemStatus,
     normalizeRuntimeToolResult,
     RuntimeEventTypes,
-} from "../session/session-runtime-events.js";
+} from "../session/session-runtime-events.ts";
 import { describeRuntimeTool } from "../session/tool-event-title.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
@@ -83,7 +83,7 @@ export async function saveValidationCommand(
 }
 
 async function askForValidationCommand(
-    hostedSession: import("../session/hosted-session.js").HostedSession,
+    hostedSession: import("../session/hosted-session.ts").HostedSession,
     projectRoot: string,
     settingsPolicy: ValidationCommandSettingsPolicy,
 ): Promise<string> {
@@ -135,7 +135,7 @@ export interface ValidationCommandOptions {
 }
 
 export interface LocalCIOptions {
-    hostedSession: import("../session/hosted-session.js").HostedSession;
+    hostedSession: import("../session/hosted-session.ts").HostedSession;
     cwd: string;
     settingsPolicy?: ValidationCommandSettingsPolicy;
 }

@@ -10,7 +10,7 @@ import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { AGENTS, SUBAGENTS } from "../constants.js";
+import { AGENTS, SUBAGENTS } from "../constants.ts";
 import { formatProviderModelReference } from "../shared/models/model-validation.ts";
 import {
     DELEGATED_READ_TOOLS,
@@ -20,13 +20,9 @@ import {
     getDelegatedRole,
     loadSubAgentDefinition,
 } from "../shared/session/subagent-definitions.ts";
-import type {
-    DelegatedAuthority,
-    DelegatedRoleDefinition,
-    DelegatedRoleId,
-} from "../shared/session/subagent-definitions.ts";
-import type { HostedSession } from "../shared/session/hosted-session.js";
-import type { AgentDefinition } from "../shared/session/types.js";
+import type { DelegatedAuthority, DelegatedRoleId } from "../shared/session/subagent-definitions.ts";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
+import type { AgentDefinition } from "../shared/session/agents.ts";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
 import { extractAssistantOutput } from "../shared/workflow/workflow-results.ts";
 
@@ -160,7 +156,7 @@ export function resolveDelegatedToolNames(parentTools: string[], mode: Delegatio
 
 /**
  * @param {import('../shared/session/subagent-definitions.ts').DelegatedRoleId} [role]
- * @returns {Promise<import('../shared/session/types.js').AgentDefinition>}
+ * @returns {Promise<import('../shared/session/agents.ts').AgentDefinition>}
  */
 export async function loadDelegatedAgentPrompt(
     role: DelegatedRoleId = DELEGATED_ROLE_GENERAL,
@@ -325,7 +321,7 @@ function truncateToolText(text: string): string {
 }
 
 /**
- * @param {import('../shared/session/hosted-session.js').HostedSession} hostedSession
+ * @param {import('../shared/session/hosted-session.ts').HostedSession} hostedSession
  * @param {string | undefined} explicitOverride
  * @returns {string | undefined}
  */
@@ -344,30 +340,6 @@ function resolveDelegatedThinkingLevelOverride(
     explicitOverride: ThinkingLevel | undefined,
 ): ThinkingLevel | undefined {
     return explicitOverride || hostedSession.getThinkingLevel() || undefined;
-}
-
-/**
- * Role context for the child's user request. A general delegation adds nothing, so its
- * request text stays byte-identical to pre-role delegation.
- *
- * @param {import('../shared/session/subagent-definitions.ts').DelegatedRoleDefinition} role
- * @param {"read" | "write"} requestedMode
- * @param {"read" | "write"} effectiveMode
- * @returns {string[]}
- */
-function roleRequestLines(
-    role: DelegatedRoleDefinition,
-    requestedMode: DelegationMode,
-    effectiveMode: DelegationMode,
-): string[] {
-    if (role.id === DELEGATED_ROLE_GENERAL) return [];
-    const lines = [`Delegated role: ${role.id}`];
-    if (effectiveMode !== requestedMode) {
-        lines.push(
-            `The parent requested ${requestedMode} mode; the ${role.id} role has a ${role.authorityCeiling}-only authority ceiling, so this session runs as ${effectiveMode}.`,
-        );
-    }
-    return lines;
 }
 
 /**
@@ -449,15 +421,7 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
             }
             const childTools = resolveDelegatedToolNames(opts.parentTools, mode);
             const definitionId = mode === "read" ? SUBAGENTS.DELEGATED_READ : SUBAGENTS.DELEGATED;
-            const userRequest = [
-                `Delegation mode: ${mode}`,
-                ...roleRequestLines(role, requestedMode, mode),
-                "",
-                "You are running as a context-isolated child. Complete only the brief below and return a concise handoff.",
-                "",
-                "## Brief",
-                brief,
-            ].join("\n");
+            const userRequest = [`Delegation mode: ${mode}`, "", "## Brief", brief].join("\n");
             const modelOverride = resolveDelegatedModelOverride(opts.hostedSession, opts.modelOverride);
             const thinkingLevelOverride = resolveDelegatedThinkingLevelOverride(
                 opts.hostedSession,

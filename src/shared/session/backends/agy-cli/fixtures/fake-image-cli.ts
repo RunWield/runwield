@@ -1,7 +1,7 @@
 import process from "node:process";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 // Executable fixture for the real subprocess boundary. It never contacts a provider.
-import { getCwd } from "../../../../../constants.js";
+import { getCwd } from "../../../../../constants.ts";
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR4nGP4z8AARwzIHABvqgf5gNwAKAAAAABJRU5ErkJggg==";
 async function main() {
     const mode = process.env["RUNWIELD_IMAGE_FIXTURE_MODE"] || "success";

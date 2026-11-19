@@ -3,7 +3,7 @@
  */
 
 import { ok as assert } from "node:assert/strict";
-import { assertEventIncludes } from "../testing/scenario-runner.js";
+import { assertEventIncludes } from "../testing/scenario-runner.ts";
 import { assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
 interface CapturedPlan {

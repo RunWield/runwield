@@ -1,6 +1,6 @@
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { remoteBackgroundTaskLogDirectory } from "../remote/background-task-logs.ts";
 
 export type ValidationStateProblem = "plan_missing" | "unknown_plan_status";

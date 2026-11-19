@@ -1,6 +1,8 @@
-/** Keep supervising-model selection identical for chat and image generation. */
-export function thinkingLevelToEffort(modelId: string, thinkingLevel: string | undefined): "low" | "medium" | "high" {
-    switch (thinkingLevel || "off") {
+export type AgyCliEffort = "low" | "medium" | "high" | "xhigh";
+
+/** Keep supervising-model selection identical for chat, images, and replay. */
+export function thinkingLevelToEffort(modelId: string, thinkingLevel: string | undefined): AgyCliEffort {
+    switch (thinkingLevel ?? "off") {
         case "off":
         case "minimal":
         case "low":
@@ -8,14 +10,15 @@ export function thinkingLevelToEffort(modelId: string, thinkingLevel: string | u
         case "medium":
             return modelId === "gemini-3.1-pro" ? "high" : "medium";
         case "high":
+            return "high";
         case "xhigh":
         case "max":
-            return "high";
+            return modelId === "gemini-4-hydrogen" ? "xhigh" : "high";
         default:
             throw new Error(`Unknown RunWield thinkingLevel "${thinkingLevel}".`);
     }
 }
 
-export function concreteAgyModel(modelId: string, effort: "low" | "medium" | "high"): string {
+export function concreteAgyModel(modelId: string, effort: AgyCliEffort): string {
     return `${modelId}-${effort}`;
 }

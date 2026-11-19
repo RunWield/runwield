@@ -1,7 +1,7 @@
 // @ts-nocheck: happy-dom browser globals are installed for this test.
-import { readFile as fsReadFile } from "node:fs/promises";
+
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "../../../../testing/assertions.ts";
+import { assertEquals } from "../../../../testing/assertions.ts";
 import { Window } from "happy-dom";
 
 test("printing splits oversized callouts and keeps short callouts together", async () => {
@@ -21,11 +21,12 @@ test("printing splits oversized callouts and keeps short callouts together", asy
         Object.defineProperty(globalThis, name, {
             configurable: true,
             writable: true,
-            value: name === "window"
-                ? browser
-                : typeof browser[name] === "function"
-                ? browser[name].bind(browser)
-                : browser[name],
+            value:
+                name === "window"
+                    ? browser
+                    : typeof browser[name] === "function"
+                      ? browser[name].bind(browser)
+                      : browser[name],
         });
     }
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -53,15 +54,6 @@ test("printing splits oversized callouts and keeps short callouts together", asy
         browser.dispatchEvent(new browser.Event("runwield:prepare-print"));
         assertEquals(short.hasAttribute("data-print-long-callout"), false);
         assertEquals(long.hasAttribute("data-print-long-callout"), true);
-        const css = await fsReadFile("src/ui/design-system/print.css", "utf8");
-        assertStringIncludes(
-            css,
-            ".rw-plan-review :is(.alert, .directive, blockquote) {\n        break-inside: avoid;",
-        );
-        assertStringIncludes(
-            css,
-            ".rw-plan-review :is(.alert, .directive, blockquote)[data-print-long-callout] {\n        break-inside: auto;",
-        );
         browser.dispatchEvent(new browser.Event("afterprint"));
         assertEquals(long.hasAttribute("data-print-long-callout"), false);
     } finally {

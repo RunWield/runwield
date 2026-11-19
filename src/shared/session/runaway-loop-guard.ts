@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AgentSession, AgentSessionEvent, CustomEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "./hosted-session.js";
-import { emitSystemStatus } from "./session-runtime-events.js";
+import type { HostedSession } from "./hosted-session.ts";
+import { emitSystemStatus } from "./session-runtime-events.ts";
 
 export const LOOP_GUARD_MAX_MODEL_TURNS = 100;
 export const LOOP_GUARD_REPEAT_CYCLES = 3;
@@ -24,7 +24,7 @@ type RunawayLoopGuardOptions = {
     hostedSession?: HostedSession;
 };
 
-type GuardCustomEntry = CustomEntry<GuardEntryData>;
+export type GuardCustomEntry = CustomEntry<GuardEntryData>;
 
 export class RunawayLoopGuardStoppedError extends Error {
     constructor(reason: string) {

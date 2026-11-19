@@ -1,4 +1,4 @@
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { createKetchTools } from "./tools.ts";
 export {
     createKetchTools,

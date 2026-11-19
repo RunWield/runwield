@@ -1,4 +1,5 @@
 ---
+planId: "5a7fd331-f2b4-4b1b-9b79-324a3b55ecb1"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "HIGH"
@@ -21,11 +22,15 @@ affectedPaths:
     - "docs/prd/runwield-core-prd.md"
 executionAgent: "engineer"
 createdAt: "2026-09-21T17:14:01.408Z"
-origin: "internal"
-planId: "5a7fd331-f2b4-4b1b-9b79-324a3b55ecb1"
 status: "user_verified"
+origin: "internal"
 userVerifiedAt: "2026-10-26T19:13:40.038Z"
 userVerificationNote: "Owner confirmed this Plan was delivered. Implementation and tests were published in commit 667d10be5 (Run every Epic on its own branch with an integration gate, 2026-10-01), which is contained in main. The draft status was stale."
+workRecord:
+    status: "generated"
+    recordId: "eaf4dcb8-d6e0-4f90-9bf4-0e692d6421d6"
+    path: "docs/work-records/2026-11-05-epic-branches-and-integration-gate.md"
+    lastAttemptAt: "2026-11-05T16:12:43.819Z"
 archivedAt: "2026-10-26T19:53:33.720Z"
 archivedFromStatus: "user_verified"
 archivedFromPath: "docs/plans/epic-branches-and-integration-gate.md"

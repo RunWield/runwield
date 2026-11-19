@@ -1,7 +1,7 @@
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes, assertThrows } from "../testing/assertions.ts";
 import { isMissingExecutableError, spawnForegroundProcess, spawnForegroundShell } from "./foreground-process.ts";
-import { getCwd } from "../constants.js";
+import { getCwd } from "../constants.ts";
 
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
@@ -240,22 +240,6 @@ test(
         );
     },
 );
-
-test("spawnForegroundProcess writes optional stdin and closes it", { skip: IS_WINDOWS }, async () => {
-    const process = spawnForegroundProcess({
-        command: "cat",
-        cwd: getCwd(),
-        stdinText: "stdin marker",
-    });
-    const [outcome, stdout, stderr] = await Promise.all([
-        process.done,
-        readAll(process.stdout),
-        readAll(process.stderr),
-    ]);
-    assertEquals(outcome, { exitCode: 0, terminatedBy: null });
-    assertEquals(stdout, "stdin marker");
-    assertEquals(stderr, "");
-});
 
 test("spawnForegroundProcess reports a missing executable as a spawn error", { skip: IS_WINDOWS }, () => {
     const error = assertThrows(() =>

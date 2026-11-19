@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { getCliCommandDefinitions, requiresProjectDirectoryConsent } from "../registry.js";
+import { getCliCommandDefinitions, requiresProjectDirectoryConsent } from "../registry.ts";
 
 const cli = fileURLToPath(new URL("../../cli.ts", import.meta.url));
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);

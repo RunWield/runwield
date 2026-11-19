@@ -4,14 +4,14 @@ import { realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile, mkdir as 
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 import { hasNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import {
     getTransitionJournalDir,
     getTransitionJournalPath,
     listTransitionRecoveryRecords,
 } from "../workflow/state-transition.ts";
-import { makeValidationProjectRoot } from "../workflow/validation-test-helpers.js";
+import { makeValidationProjectRoot } from "../workflow/validation-test-helpers.ts";
 import { EVIDENCE, readRecordBytes, runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { completionInput, executionInput, readyPlan } from "./execution-test-fixture.ts";
 import { type AttachedWorkflowRecord, loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";

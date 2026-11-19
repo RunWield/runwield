@@ -1,4 +1,4 @@
-import { AGENTS } from "../../src/constants.js";
+import { AGENTS } from "../../src/constants.ts";
 
 export type Measurement = number | "unavailable";
 export interface ReviewMeasurements {

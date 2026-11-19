@@ -4,13 +4,13 @@ import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
-import { HostedSession } from "../session/hosted-session.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
+import { HostedSession } from "../session/hosted-session.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { AgyCliBackendError } from "../session/backends/agy-cli/failure.ts";
 import { buildEngineerPausedMessage, runEngineerWithPlan } from "./engineer-runner.ts";
 import { runPlanningAgent } from "./planning-agent.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 
 interface AgentSessionFixture {
     hostedSession: HostedSession;
@@ -39,7 +39,7 @@ function createAgentSession(
         },
     });
     // Pi's concrete SessionManager satisfies HostedSession's deliberately small
-    // runtime contract, but the legacy JSDoc signature is wider.
+    // runtime contract, while the manager interface accepts a wider signature.
     hostedSession.setRootSessionManager(sessionManager);
     return { hostedSession, sessionManager };
 }

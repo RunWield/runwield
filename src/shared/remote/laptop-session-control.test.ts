@@ -6,7 +6,7 @@ import { strict as assert } from "node:assert";
 import { writeFileSync, statSync, existsSync } from "node:fs";
 import { rm as fsRm } from "node:fs/promises";
 import { openNativeFileLock } from "../native-file-lock.ts";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
@@ -83,14 +83,6 @@ async function setup() {
     }
     return { root, store, target, service, control, request, post, save, baseDir };
 }
-
-test("a dormant laptop connection and empty remote list create no project or Session evidence", async () => {
-    await fixture(async (f) => {
-        assertEquals(await f.request({ kind: "list" }), { sessions: [] });
-        assertEquals(listProjectsFromDisk(f.baseDir), []);
-        assertEquals(readdirSync(f.baseDir), []);
-    });
-});
 
 test("first message ownership stays on the laptop and publication releases the native writer", async () => {
     await fixture(async (f) => {

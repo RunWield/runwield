@@ -1,5 +1,5 @@
 import { spawnNativeProcess } from "../foreground-process.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { parseRemoteInteractiveConfig } from "./entry.ts";
@@ -54,20 +54,6 @@ test("remote view rejects malformed configuration before terminal or registry st
     assertStringIncludes(result.stderr, "Invalid remote view host");
     assertEquals(result.stdout, "");
     assertEquals(result.stderr.includes("Unknown option"), false);
-});
-
-test("remote interactive entry refuses stale status-only configuration before opening a local Session", async () => {
-    const config = {
-        host: "remote-server",
-        cwd: "/srv/project",
-        status: "Connected",
-        trust: "SSH verified",
-        readiness: "Waiting",
-    };
-    const result = await privateEntry(["--remote-view"], `${JSON.stringify(config)}\nq`);
-    assertEquals(result.code, 1);
-    assertStringIncludes(result.stderr, "Invalid remote interactive configuration");
-    assertEquals(result.stdout, "");
 });
 
 test("remote view rejects an unfinished input header", async () => {

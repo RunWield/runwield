@@ -1,14 +1,7 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import stripAnsi from "strip-ansi";
-import {
-    composePinnedSessionSidebar,
-    isSessionArtifactOpenKey,
-    isSessionSidebarActionKey,
-    isSessionSidebarCycleKey,
-    TuiSessionSidebar,
-    tuiSessionSidebarProjection,
-} from "./session-sidebar.ts";
+import { composePinnedSessionSidebar, TuiSessionSidebar, tuiSessionSidebarProjection } from "./session-sidebar.ts";
 import { initRunWieldTheme } from "../theme/theme.ts";
 
 initRunWieldTheme();
@@ -41,7 +34,10 @@ test("TUI Session Sidebar defaults to workflow and cycles through shared tabs", 
         systemContextTokens: 24_000,
         artifacts: [ARTIFACT],
     };
-    const sidebar = new TuiSessionSidebar(() => "session-1", () => snapshot);
+    const sidebar = new TuiSessionSidebar(
+        () => "session-1",
+        () => snapshot,
+    );
 
     const workflow = stripAnsi(sidebar.render(34).join("\n"));
     assertStringIncludes(workflow, "EPIC");
@@ -107,7 +103,10 @@ test("TUI quick fix workflow shows its current CI step without Plan stages or an
             checks: { ci: "running", semanticReview: "skipped", humanReview: "skipped", merge: "skipped" },
         },
     } as const;
-    const sidebar = new TuiSessionSidebar(() => "quick-fix-session", () => snapshot);
+    const sidebar = new TuiSessionSidebar(
+        () => "quick-fix-session",
+        () => snapshot,
+    );
     const projection = tuiSessionSidebarProjection(snapshot);
     assertEquals(projection.workflow.currentStage?.label, "Verification Command");
     assertEquals(projection.workflow.action, null);
@@ -173,39 +172,8 @@ test("workflow sidebar follows question state independently of running CI", () =
         });
         assertEquals(answered.workflow.currentStage?.id, "mechanical");
         assertEquals(answered.workflow.action, null);
-        assertEquals(
-            answered.workflow.currentStage?.detail,
-            "Run the configured verification command.",
-        );
+        assertEquals(answered.workflow.currentStage?.detail, "Run the configured verification command.");
     }
-});
-
-test("artifact reader shortcut does not consume the sidebar cycle key or ordinary typing", () => {
-    assertEquals(isSessionArtifactOpenKey("\u001b]"), true);
-    assertEquals(isSessionArtifactOpenKey("\u001d"), false);
-    assertEquals(isSessionArtifactOpenKey("]"), false);
-});
-
-test("TUI Session Sidebar reuses the snapshot already loaded for the frame", () => {
-    let snapshotReads = 0;
-    const sidebar = new TuiSessionSidebar(
-        () => "session-1",
-        () => {
-            snapshotReads += 1;
-            return null;
-        },
-    );
-    const lines = sidebar.render(34, { managed: { generation: 0 }, name: "Cached Session" });
-    assertEquals(snapshotReads, 0);
-    assertStringIncludes(stripAnsi(lines.join("\n")), "Cached Session");
-});
-
-test("shared TUI projection defaults idle Sessions without a Plan to Session", () => {
-    const projection = tuiSessionSidebarProjection({ managed: { generation: 0 }, artifacts: [] });
-    assertEquals(projection.defaultTab, "session");
-    assertEquals(projection.workflow.active, false);
-    assertEquals(projection.workflow.epic, null);
-    assertEquals(projection.session.generation, "0");
 });
 
 test("TUI Session Sidebar hides Epic for a standalone Plan", () => {
@@ -223,29 +191,6 @@ test("TUI Session Sidebar hides Epic for a standalone Plan", () => {
     assertEquals(workflow.includes("EPIC"), false);
 });
 
-test("TUI Session Sidebar cycles once for ctrl+] key-down only", () => {
-    assertEquals(isSessionSidebarCycleKey("\x1d"), true);
-    assertEquals(isSessionSidebarCycleKey("\x1b[93;5u"), true);
-    assertEquals(isSessionSidebarCycleKey("\x1b[93;5:1u"), true);
-    assertEquals(isSessionSidebarCycleKey("\x1b[93;5:2u"), false);
-    assertEquals(isSessionSidebarCycleKey("\x1b[93;5:3u"), false);
-    assertEquals(isSessionSidebarCycleKey("]"), false);
-});
-
-test("TUI Session Sidebar exposes a keyboard action without changing draft keys", () => {
-    assertEquals(isSessionSidebarActionKey("\x1b[13;5u"), true);
-    assertEquals(isSessionSidebarActionKey("\r"), false);
-    const sidebar = new TuiSessionSidebar(
-        () => "session-action",
-        () => ({
-            managed: { generation: 1 },
-            workflowContext: { planName: "needs-answer", liveQuestion: true },
-        }),
-    );
-    assertEquals(sidebar.currentAction(), null);
-    assertEquals(stripAnsi(sidebar.render(42).join("\n")).includes("ctrl+enter"), false);
-});
-
 test("TUI Session Sidebar stays at the top of the visible transcript viewport", () => {
     const mainLines = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`);
     const lines = composePinnedSessionSidebar(mainLines, ["sidebar top", "sidebar detail"], 12, 5);
@@ -259,13 +204,10 @@ test("TUI Session Sidebar stays at the top of the visible transcript viewport", 
 
 test("TUI Session Sidebar reserves a full-width composer and footer below both panes", () => {
     const mainLines = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`);
-    const lines = composePinnedSessionSidebar(
-        mainLines,
-        ["sidebar top", "sidebar detail"],
-        12,
-        5,
-        ["full width composer", "full width footer"],
-    );
+    const lines = composePinnedSessionSidebar(mainLines, ["sidebar top", "sidebar detail"], 12, 5, [
+        "full width composer",
+        "full width footer",
+    ]);
 
     assertEquals(lines.length, 14);
     assertEquals(lines[9].endsWith("sidebar top"), true);

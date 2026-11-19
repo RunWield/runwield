@@ -10,11 +10,11 @@ import {
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { getRunWieldSessionDir } from "./root-session.js";
-import { captureTranscriptEvidence } from "./session-transcript-projection.js";
+import { getRunWieldSessionDir } from "./root-session.ts";
+import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
 import { listRecentResumableSessions, RECENT_SESSION_LIMIT } from "./session-resume-list.ts";
 
 function transcriptText(id: string, cwd: string, timestamp: string, index: number): string {

@@ -8,7 +8,7 @@ import {
     resolveApprovedMetricsExporters,
 } from "../extensions/metrics-exporter.ts";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
-import { getWorkflowMetricsFilePath, MeasurementProjectUnavailableError } from "./metrics.js";
+import { getWorkflowMetricsFilePath, MeasurementProjectUnavailableError } from "./metrics.ts";
 import { resolveCollectionEpoch, withWorkflowMetricJournalLock } from "./metrics-journal.ts";
 import {
     grantMatchesExporter,

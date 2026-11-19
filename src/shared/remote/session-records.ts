@@ -3,7 +3,7 @@ import { readCommittedRemoteLineage } from "./committed-session.ts";
 import { findProject, listManifests, sessionDirForProject } from "../session/file-session-storage.ts";
 import type { FileSessionStore } from "../session/file-session-store-types.ts";
 import { reasonForCandidate } from "../session/plan-session-lookup.ts";
-import { summarizeResumableTranscript, buildProjectedSessionInfo } from "../session/session-transcript-projection.js";
+import { summarizeResumableTranscript, buildProjectedSessionInfo } from "../session/session-transcript-projection.ts";
 import { type RemotePlanSessionQuery, type RemoteSessionRecords } from "./session-protocol.ts";
 
 export function projectRemoteSessionRecords(

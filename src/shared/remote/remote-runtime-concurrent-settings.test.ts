@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { SessionHost } from "../session/session-host.ts";
-import { summarizeProjectedEntries } from "../session/session-transcript-projection.js";
+import { summarizeProjectedEntries } from "../session/session-transcript-projection.ts";
 import { configureRemotePersonalResources } from "./personal-resources.ts";
 import { configureRemoteModelConnection } from "../models/model-registry.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";

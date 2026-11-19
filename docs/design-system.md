@@ -119,7 +119,7 @@ The rest of Workspace should reuse that language through these implementation la
 - shell and navigation: `src/ui/workspace/layouts/WorkspaceLayout.astro`
 - shared Plan Board page composition: `src/ui/workspace/components/PlanBoardPage.astro`
 - board patterns: `src/ui/workspace/components/BoardColumn.tsx`, `PlanCard.tsx`, and `EpicCard.tsx`
-- detail patterns: `src/ui/workspace/components/PlanDetail.jsx`
+- detail patterns: `src/ui/workspace/components/PlanDetail.tsx`
 - editor and action islands: `src/ui/workspace/islands/`
 
 When documentation and implementation disagree, inspect Plan Review and Code Review first, then update the shared system
@@ -167,7 +167,7 @@ RunWield owns its browser UI components. Shared design-system CSS and primitives
 `src/ui/design-system/` so Workspace, Plannotator, and future browser surfaces can consume the same visual language. For
 Workspace under `src/ui/workspace/`, the supported endpoint is Astro SSR, React islands, and Tailwind 4. Fresh, Preact,
 and UnoCSS runtime code is retired for Workspace; remaining Preact/Zag components under
-`src/ui/design-system/components/*.jsx` are legacy non-Workspace primitives until a dedicated design-system migration
+`src/ui/design-system/components/*.tsx` are legacy non-Workspace primitives until a dedicated design-system migration
 replaces them.
 
 Workspace surfaces must use RunWield semantic tokens for color, radius, spacing, and status intent. Tailwind utilities
@@ -1066,9 +1066,8 @@ automated score does not establish visual acceptance.
 
 ## Plannotator component reuse exception
 
-Workspace may temporarily host imported upstream Plannotator React/TypeScript components while RunWield validates deeper
-collaboration with the Plannotator ecosystem. This exception is scoped to `src/ui/workspace/` and does not by itself
-change the rest of RunWield's JS/JSDoc convention.
+Workspace may host imported upstream Plannotator React/TypeScript components under `src/ui/workspace/` while RunWield
+validates deeper collaboration with the Plannotator ecosystem. RunWield source uses TypeScript throughout.
 
 When imported Plannotator components are used:
 
@@ -1097,7 +1096,7 @@ The Plan Board, Plan Review, and Code Review each have one surface body. Shells 
 
 Astro development entrypoints:
 
-- `deno task workspace:dev` starts the development server and opens `/dev`, the catalog for every paired presentation;
+- `bun run workspace:dev` starts the development server and opens `/dev/`, the catalog for every paired presentation;
 - `/` and `/projects/dev-project/plans` compare the local and Workspace Plan Board shells;
 - `/dev/plan-review` and `/dev/workspace/plan-review` exercise standalone and Workspace-launched full-window Plan
   Review;
@@ -1107,7 +1106,7 @@ Astro development entrypoints:
   messages, collapsed Activity, individual tool states, thinking, Plan and Code Review prompts, every special workflow
   tool (including triage, completion, and QA), and system notices.
 
-Plan Review fixture variants are linked from `/dev`; fixture pages do not render an additional variant switcher above
+Plan Review fixture variants are linked from `/dev/`; fixture pages do not render an additional variant switcher above
 the review surface.
 
 The `/dev` routes are fixture-only and return 404 in production. The standalone `/review/plan` and `/review/code` routes

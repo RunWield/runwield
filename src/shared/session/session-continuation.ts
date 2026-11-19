@@ -1,4 +1,4 @@
-import { getRunWieldSessionsBaseDir, listCatalogSafeRootSessionLocators } from "./root-session.js";
+import { getRunWieldSessionsBaseDir, listCatalogSafeRootSessionLocators } from "./root-session.ts";
 import { listManifests, listProjectsFromDisk, sessionDirForRoot } from "./file-session-storage.ts";
 
 /** Discover the selected transcript segment without opening a writer or repairing storage. */

@@ -5,7 +5,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { EVIDENCE, spawnAttachedCli } from "./attached-test-fixture.ts";
 import { join } from "node:path";
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { prepareIndexRuntime } from "./delivery-test-fixture.ts";
 import { listWorkRecords } from "../work-records/store.js";
 import { findIndexedDocumentIdsByRecordId } from "../work-records/index-adapter.ts";

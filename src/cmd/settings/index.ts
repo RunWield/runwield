@@ -5,7 +5,7 @@
 
 import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { ModelPreset, ModelPresetsMap } from "../../shared/model-presets.ts";
-import { getCwd } from "../../constants.js";
+import { getCwd } from "../../constants.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
     getCustomSetting,
@@ -15,9 +15,9 @@ import {
     setCompactionKeepRecentTokens,
     setCompactionReserveTokens,
     setCustomSetting,
-} from "../../shared/settings.js";
+} from "../../shared/settings.ts";
 import { theme } from "../../ui/theme/theme.ts";
-import { printCommandHelp } from "../help/index.js";
+import { printCommandHelp } from "../help/index.ts";
 import { editPolicySetting, getPolicySettings } from "./policies.ts";
 
 interface CompactionSettings {

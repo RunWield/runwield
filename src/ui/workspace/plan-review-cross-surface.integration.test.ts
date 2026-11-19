@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-// @ts-nocheck: The live session and owner service expose JavaScript records.
+// @ts-nocheck: Owner-service result records have implicit types.
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../../shared/foreground-process.ts";
@@ -7,10 +7,10 @@ import { test } from "node:test";
 import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, savePlan } from "../../plan-store.js";
+import { loadPlan, savePlan } from "../../plan-store.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 
 function stopChild(child) {
     try {

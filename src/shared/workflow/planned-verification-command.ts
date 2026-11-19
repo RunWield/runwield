@@ -4,7 +4,7 @@ import {
     getExactProjectCustomSetting,
     setCustomSetting,
     setExactProjectCustomSetting,
-} from "../settings.js";
+} from "../settings.ts";
 import { captureValidationSettingsWrite, recordValidationSettingsWrite } from "../worktree-project-context.ts";
 
 export interface PlannedVerificationCommand {

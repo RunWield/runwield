@@ -4,10 +4,10 @@
  */
 
 import { REMOTE_SESSION_IDENTITY_ENTRY } from "../remote/session-protocol.ts";
-import type { ManagedSessionMetadata } from "./hosted-session.js";
+import type { ManagedSessionMetadata } from "./hosted-session.ts";
 import type { FileActivationProof } from "./file-session-store-types.ts";
-import { createRootSessionManager, resolveCreatedRootSessionPath } from "./root-session.js";
-import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.js";
+import { createRootSessionManager, resolveCreatedRootSessionPath } from "./root-session.ts";
+import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.ts";
 import {
     recordNormalizedWorkflowContext,
     recordPendingSegmentContinuation,
@@ -19,11 +19,11 @@ import type { SegmentHandoffPayload } from "../workflow/execution-segment-handof
 
 type RolloverKind = "execution" | "semantic_repair";
 
-type RuntimeSessionManager = import("./hosted-session.js").MinimalSessionManagerLike;
+type RuntimeSessionManager = import("./hosted-session.ts").MinimalSessionManagerLike;
 type HostedManagedSession = {
     cwd: string;
     getManagedMetadata: () => ManagedSessionMetadata | null;
-    getActiveExecutionWorkflow: () => import("../types.js").ActiveExecutionWorkflow | null;
+    getActiveExecutionWorkflow: () => import("./execution-workflow-session.ts").ActiveExecutionWorkflow | null;
     getTutorialContext: () => import("./tutorial-context-session.ts").TutorialContext | null;
     getRootSessionManager: () => RuntimeSessionManager | null;
     dehydrateManagedSession: () => void;

@@ -11,7 +11,7 @@ import { conversation, pendingChat, reply, reviewApi, sendChat } from "./review-
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { toDelivery } from "./delivery-test-fixture.ts";
 import { continueHostTurnValidation } from "../workflow/validation-host-turn.ts";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan } from "../../plan-store.ts";
 
 test("Code page chat queues and replies without a decision, survives a fresh process, and permits later approval", async () => {
     const fixture = await attachedValidationFixture();

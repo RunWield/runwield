@@ -1,13 +1,13 @@
 import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
-import { prepareWorktreeRegistry } from "../../shared/worktree-registry.js";
+import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
  * @module cmd/plans/unshare
  * Destructively delete a remote Shared Space and intentionally clear local collaboration state.
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { CLI_BIN, getCwd } from "../../constants.js";
-import { clearPlanCollaborationMetadata, listPlans, listPlanResources } from "../../plan-store.js";
+import { CLI_BIN, getCwd } from "../../constants.ts";
+import { clearPlanCollaborationMetadata, listPlans, listPlanResources } from "../../plan-store.ts";
 import { redactSecrets } from "../../shared/collaboration/capabilities.ts";
 import {
     CollaborationApiError,
@@ -15,7 +15,7 @@ import {
     SYSTEM_COLLABORATION_FETCH,
 } from "../../shared/collaboration/client.ts";
 import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
-import { normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.js";
+import { normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.ts";
 import {
     deleteCompatibleSecretRecords,
     getGlobalSecretStoreLocation,

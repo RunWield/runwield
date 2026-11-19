@@ -6,7 +6,7 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { withWorkflowMetricsFixture } from "../testing/workflow-metrics-fixture.ts";
 import { ExecutionMetricsRecorder, type ModelUsageObservation } from "../shared/workflow/execution-metrics.ts";
-import { setCustomSetting } from "../shared/settings.js";
+import { setCustomSetting } from "../shared/settings.ts";
 import { UsageReporter } from "../shared/workflow/usage-reporting.ts";
 import { createSeeImageTool } from "./see-image.ts";
 

@@ -4,9 +4,9 @@ import { fauxAssistantMessage, fauxText, getSystemMessageText } from "@earendil-
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { parseGuidedReviewMetadataLine, parseGuidedReviewUsageEventLine } from "../guided-review/protocol.ts";
-import { AGENTS } from "../../constants.js";
-import { listAvailableAgents, loadAgentDef } from "../../shared/session/agents.js";
-import { getCliCommandDefinitions, requiresProjectDirectoryConsent } from "../registry.js";
+import { AGENTS } from "../../constants.ts";
+import { listAvailableAgents, loadAgentDef } from "../../shared/session/agents.ts";
+import { getCliCommandDefinitions, requiresProjectDirectoryConsent } from "../registry.ts";
 import { runAiReviewCommand } from "./index.ts";
 
 test("ai-review runs the read-only AI Reviewer and emits usage, metadata, and final JSON", async () => {

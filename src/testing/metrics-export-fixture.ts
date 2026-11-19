@@ -7,13 +7,13 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 
 import { withProcessGlobalTestLock } from "./process-global-lock.ts";
-import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.js";
+import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.ts";
 import { approveMetricsExporter, listInstalledMetricsExporters } from "../shared/extensions/metrics-exporter.ts";
 import {
     grantMetricsExportDestination,
     type MetricsExportDestinationGrant,
 } from "../shared/workflow/metrics-export-grants.ts";
-import { recordWorkflowMetric } from "../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 import { readMetricsExportLedger } from "../shared/workflow/metrics-export-ledger.ts";
 import type { MetricsExportObservation } from "../shared/workflow/metrics-export-record.ts";
 

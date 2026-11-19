@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 
 import { basename, join } from "node:path";
-import { SNIP_FILTERS_DIR } from "../src/constants.js";
+import { SNIP_FILTERS_DIR } from "../src/constants.ts";
 
 const FILTERS = ["deno-check.yaml", "deno-fmt.yaml", "deno-lint.yaml", "deno-test.yaml", "deno-task.yaml"];
 

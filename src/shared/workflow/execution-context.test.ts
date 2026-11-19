@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname } from "node:path";
-import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
-import { addEntry, findById, getWorktreeRegistryPath } from "../worktree-registry.js";
+import { ensurePlanIdentity, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.ts";
+import { addEntry, findById, getWorktreeRegistryPath } from "../worktree-registry.ts";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 
@@ -74,7 +74,11 @@ test("resolveValidationExecutionContext preserves active QUICK_FIX non-Git execu
 });
 
 test("resolveValidationExecutionContext preserves an explicit QUICK_FIX worktree", async () => {
-    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    const cwd = await baseRepo.checkout();
+    const parent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    const worktreePath = join(parent, "execution");
+    await git(cwd, ["worktree", "add", "-b", "worktree/p", worktreePath, "HEAD"]);
+    const baselineTree = await git(worktreePath, ["rev-parse", "HEAD^{tree}"]);
     try {
         await savePlan(cwd, "p", "# Plan", { classification: "QUICK_FIX", status: "validated_ci" });
         const result = await resolveValidationExecutionContext({
@@ -84,8 +88,8 @@ test("resolveValidationExecutionContext preserves an explicit QUICK_FIX worktree
             explicitContext: {
                 planName: "p",
                 executionMode: "worktree",
-                executionCwd: "/worktree-p",
-                baselineTree: "tree-p",
+                executionCwd: worktreePath,
+                baselineTree: baselineTree,
                 worktreeId: "wt-p",
                 worktreeBranch: "worktree/p",
                 worktreeBaseBranch: "main",
@@ -94,11 +98,12 @@ test("resolveValidationExecutionContext preserves an explicit QUICK_FIX worktree
         assertEquals(result.kind, "ok");
         if (result.kind === "ok") assertEquals(result.context.executionMode, "worktree");
         if (result.kind === "ok" && result.context.executionMode === "worktree") {
-            assertEquals(result.context.executionCwd, "/worktree-p");
-            assertEquals(result.context.baselineTree, "tree-p");
+            assertEquals(result.context.executionCwd, worktreePath);
+            assertEquals(result.context.baselineTree, baselineTree);
             assertEquals(result.context.worktreeId, "wt-p");
         }
     } finally {
+        await fsRm(parent, { recursive: true });
         await fsRm(cwd, { recursive: true });
     }
 });

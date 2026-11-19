@@ -9,10 +9,10 @@
  */
 
 import { extractYaml } from "../front-matter.ts";
-import { AGENTS } from "../../constants.js";
+import { AGENTS } from "../../constants.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { recordWorkflowMetric } from "./metrics.js";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordWorkflowMetric } from "./metrics.ts";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
 import { normalizeLedger } from "./review-ledger.ts";
 import type { ValidationPhaseName } from "./validation-ports.ts";

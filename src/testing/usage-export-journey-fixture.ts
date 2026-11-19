@@ -13,17 +13,17 @@ import { assertEquals } from "./assertions.ts";
 import { writeRuntimeExecutableFixture } from "./runtime-executable-fixture.ts";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
 import { getModelRegistry } from "../shared/models/model-registry.ts";
-import { createRootSessionManager } from "../shared/session/root-session.js";
+import { createRootSessionManager } from "../shared/session/root-session.ts";
 import { ClaudeCliExecutionSession } from "../shared/session/backends/claude-cli/execution-session.ts";
 import { AgyCliExecutionSession } from "../shared/session/backends/agy-cli/execution-session.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
 import type { MetricsJournalRow } from "../shared/workflow/metrics-export-record.ts";
 import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
-} from "../ui/workspace/routes/api/review-agent-handlers.js";
-import { createOwnerWorkspaceApp } from "../ui/workspace/server.js";
+} from "../ui/workspace/routes/api/review-agent-handlers.ts";
+import { createOwnerWorkspaceApp } from "../ui/workspace/server.ts";
 import type { OwnerUsageReport } from "../ui/workspace/server/owner-usage.ts";
 
 export const PRIVATE_TEXT = "journey-private-prompt-and-code";

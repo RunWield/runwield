@@ -8,17 +8,17 @@
  * turn and never stores a host transcript.
  *
  * Operations cover activation, Triage, Plan submission, execution handoff, and completion.
- * A PLANNED_CHANGE outcome hands the host the Planner role; other Routing Intents
- * close the workflow as unsupported in this Preview.
+ * PLANNED_CHANGE hands the host the Planner role. IDEATION and INQUIRY close only
+ * their routing record with a conversational role handoff; other intents remain unsupported.
  */
 
-import { getHomeDir } from "../../constants.js";
+import { getHomeDir } from "../../constants.ts";
 import { prepareAttachedPlanning, resolvePlanningSelection } from "./planning.ts";
 import { resolveCodexRoleSettings } from "./codex-role-settings.ts";
 import { readTextPage } from "../text-page.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { readPublishedDeliverySources } from "../work-records/published-source.ts";
-import { parseRecorderSections } from "../work-records/generation.js";
+import { parseRecorderSections } from "../work-records/generation.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 import {
@@ -29,7 +29,7 @@ import {
 import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
-import { findActiveByPlanName, findById, listEntries } from "../worktree-registry.js";
+import { findActiveByPlanName, findById, listEntries } from "../worktree-registry.ts";
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative } from "node:path";
 import {
@@ -42,14 +42,14 @@ import {
     resolvePlanExecutionPolicy,
     updatePlanFrontMatter,
     type PlanFrontMatter,
-} from "../../plan-store.js";
+} from "../../plan-store.ts";
 import { assertNotReservedEpicArtifactPlanName } from "../epic-artifacts.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { runWieldGitignoreNeedsUpdate } from "../runwield-owned-paths.ts";
 import { VERSION } from "../version.js";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
 import { withOrderedTransitionResources } from "../workflow/state-transition.ts";
-import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.js";
+import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.ts";
 import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
 import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.ts";
@@ -61,6 +61,9 @@ import {
     type AttachedLifecycleOperationName,
     isAttachedReadOperation,
     parseAttachedActionReadInput,
+    parseAttachedRoleReadInput,
+    ATTACHED_CONVERSATION_CONTRACT_VERSION,
+    type AttachedRoleReadResult,
     type ReviewReplyEnvelope,
     parseReviewReplyInput,
     type ActivateEnvelope,
@@ -139,8 +142,8 @@ import process from "node:process";
  * turn and never stores a host transcript.
  *
  * Operations cover activation, Triage, Plan submission, execution handoff, and completion.
- * A PLANNED_CHANGE outcome hands the host the Planner role; other Routing Intents
- * close the workflow as unsupported in this Preview.
+ * PLANNED_CHANGE hands the host the Planner role. IDEATION and INQUIRY close only
+ * their routing record with a conversational role handoff; other intents remain unsupported.
  */
 
 type Decision = { result: AttachedOperationResult; next?: AttachedWorkflowRecord };
@@ -314,6 +317,9 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
                     : "Implementation is recorded in the consented current directory. ") +
                 "Call start_validation now. Publication remains pending. This is not Verified.",
         };
+    }
+    if (record.closure?.reason === "role_handoff") {
+        return { kind: "role_handoff", role: record.closure.role };
     }
     if (record.closure?.reason === "delivered" && record.plan) {
         return {
@@ -753,6 +759,18 @@ export async function triageReport(envelope: TriageReportEnvelope): Promise<Atta
                     current,
                 ),
             };
+        }
+        if (outcome.routingIntent === "IDEATION" || outcome.routingIntent === "INQUIRY") {
+            return await accept("triage_report", envelope, current, {
+                state: "closed",
+                pendingAction: null,
+                triageOutcome: outcome,
+                closure: {
+                    reason: "role_handoff",
+                    routingIntent: outcome.routingIntent,
+                    role: outcome.routingIntent === "IDEATION" ? "ideator" : "guide",
+                },
+            });
         }
         if (outcome.routingIntent !== "PLANNED_CHANGE") {
             return await accept("triage_report", envelope, current, {
@@ -1867,7 +1885,7 @@ async function runParsedOperation(
 }
 
 function roleForAction(action: AttachedNextAction): AttachedHostRole | undefined {
-    if ("role" in action) return action.role;
+    if ("role" in action && action.kind !== "role_handoff") return action.role;
     if (action.kind !== "validation" && action.kind !== "recorder") return undefined;
     switch (action.request.kind) {
         case "reviewer":
@@ -1991,7 +2009,7 @@ export type AttachedReadResult =
           reviewReply?: never;
       })
     | Extract<AttachedOperationResult, { ok: false }>;
-export type AttachedCarrierResult = AttachedOperationResult | AttachedReadResult;
+export type AttachedCarrierResult = AttachedOperationResult | AttachedReadResult | AttachedRoleReadResult;
 
 export interface AttachedOperationOptions {
     signal?: AbortSignal;
@@ -2001,6 +2019,12 @@ export interface AttachedOperationOptions {
  * The single entry both carriers use: JSON text in, one result object out. Because the
  * CLI and MCP carriers both pass text here, the same input gives the same result.
  */
+export function runAttachedOperation(
+    name: "get_role_instructions",
+    projectRoot: string,
+    inputText: string,
+    options?: AttachedOperationOptions,
+): Promise<AttachedRoleReadResult>;
 export function runAttachedOperation(
     name: AttachedReadOperationName,
     projectRoot: string,
@@ -2039,6 +2063,26 @@ export async function runAttachedOperation(
         input = JSON.parse(inputText);
     } catch {
         input = undefined;
+    }
+    if (name === "get_role_instructions") {
+        const parsed = parseAttachedRoleReadInput(input);
+        if (!parsed.ok) return { ok: false, operation: name, rejection: parsed.rejection };
+        const { role, evidence } = parsed.envelope;
+        const compatibility = assessCompatibility(evidence);
+        if (isBlockingCompatibility(compatibility))
+            return await rejected(name, rejection(compatibility.status, compatibility.message));
+        const hostId = attachedHost(evidence.host)!.id;
+        return {
+            ok: true,
+            operation: name,
+            compatibility,
+            instructions: {
+                role,
+                contractVersion: ATTACHED_CONVERSATION_CONTRACT_VERSION,
+                text: await resolveAttachedRoleInstructions(projectRoot, role, hostId),
+                ...(hostId === "codex" && { dispatch: resolveCodexRoleSettings(projectRoot, role) }),
+            },
+        };
     }
     if (isAttachedReadOperation(name)) {
         const parsed = parseAttachedActionReadInput(name, projectRoot, input);

@@ -10,7 +10,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
  */
 
 import { dirname, join } from "node:path";
-import { getCwd, getHomeDir } from "../../constants.js";
+import { getCwd, getHomeDir } from "../../constants.ts";
 
 interface InitStateEntry {
     path: string;

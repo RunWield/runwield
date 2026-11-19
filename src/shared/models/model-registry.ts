@@ -1,3 +1,4 @@
+import { AGY_CLI_DISPLAY_NAMES, AGY_CLI_MODEL_IDS } from "./agy-cli-catalog.ts";
 import type { FetchRequest } from "../fetch-request.ts";
 import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFileSync as fsReadFileSync, statSync as fsStatSync } from "node:fs";
@@ -12,12 +13,13 @@ import type {
     Credential,
     CredentialInfo,
     Model,
+    ModelsRefreshOptions,
     Provider,
 } from "@earendil-works/pi-ai";
 import { dirname, join } from "node:path";
 import { parse as parseJsonc } from "../jsonc.ts";
-import { getSettingsDir } from "../settings.js";
-import { getHomeDir } from "../../constants.js";
+import { getSettingsDir } from "../settings.ts";
+import { getHomeDir } from "../../constants.ts";
 import { personalGlobalRoot, remotePersonalResourcesActive } from "../remote/personal-resources.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import {
@@ -135,12 +137,6 @@ const CLAUDE_CLI_DISPLAY_NAMES: Record<(typeof CLAUDE_CLI_ALIASES)[number], stri
     haiku: "Claude CLI Haiku",
     fable: "Claude CLI Fable",
 };
-const AGY_CLI_MODEL_IDS = ["gemini-3.8-flash", "gemini-3.1-pro"] as const;
-const AGY_CLI_DISPLAY_NAMES: Record<(typeof AGY_CLI_MODEL_IDS)[number], string> = {
-    "gemini-3.8-flash": "Antigravity CLI Gemini 3.8 Flash",
-    "gemini-3.1-pro": "Antigravity CLI Gemini 3.1 Pro",
-};
-
 interface ExternalCliProviderDefinition {
     provider: ExternalCliExecutionBackend;
     displayName: string;
@@ -597,11 +593,16 @@ export class RunWieldModelRegistry {
         await runtime.logout(providerId);
     }
 
-    async refresh(): Promise<void> {
+    async refresh(options: ModelsRefreshOptions = {}): Promise<void> {
         if (this.remote) throw new Error("Remote model catalog requires a new control connection");
-        const runtime = await (this.runtimePromise || getModelRuntime());
-        this.runtime = runtime;
-        await runtime.refresh();
+        const runtime = await this.getRuntime();
+        const result = await runtime.refresh(options);
+        if (result.aborted) throw new Error("Model catalog refresh was cancelled or timed out.");
+        if (result.errors.size > 0) {
+            throw new Error(
+                Array.from(result.errors, ([provider, error]) => `${provider}: ${error.message}`).join("; "),
+            );
+        }
     }
 
     getError(): string | undefined {

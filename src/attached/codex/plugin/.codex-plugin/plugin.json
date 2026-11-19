@@ -1,7 +1,7 @@
 {
     "name": "runwield",
-    "version": "0.1.0",
-    "description": "RunWield Connect for Codex Preview: plan, review, implement, validate, and deliver one FEATURE request.",
+    "version": "0.1.1",
+    "description": "RunWield Connect for Codex Preview: explore ideas with Ideator, ask Guide project questions, or plan, review, implement, validate, and deliver a request.",
     "author": {
         "name": "RunWield",
         "url": "https://runwield.dev"
@@ -9,13 +9,14 @@
     "homepage": "https://runwield.dev",
     "repository": "https://github.com/runwield/runwield",
     "license": "MIT",
-    "keywords": ["planning", "code-review", "workflows"],
+    "keywords": ["ideation", "project-questions", "planning", "code-review", "workflows"],
     "skills": "./skills/",
     "mcpServers": "./.mcp.json",
     "interface": {
         "displayName": "RunWield Connect",
-        "shortDescription": "Planning and verification inside Codex",
-        "longDescription": "Explicitly run one request through RunWield planning, browser review, isolated implementation, validation, and delivery. Requires compatible local RunWield Core on PATH. Codex owns every model call.",
+        "websiteURL": "https://runwield.dev/downloads",
+        "shortDescription": "Ideas, project guidance, and delivery inside Codex",
+        "longDescription": "Explicitly explore ideas with Ideator, ask Guide about your project, or run a request through RunWield planning, browser review, isolated implementation, validation, and delivery. Conversations stay in Codex. Requires compatible local RunWield Core on PATH. Codex owns every model call.",
         "developerName": "RunWield",
         "category": "Developer Tools"
     }

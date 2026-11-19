@@ -50,7 +50,7 @@ Owning requirements:
 - [Browser Plan review and workflow](../../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow): preserve
   pending reviews, current content, and explicit decisions.
 - [Core Session continuity](../../../prd/runwield-core-prd.md#session-continuity) and
-  [ADR-015](../../../adr/015-file-authoritative-session-bundles.md): saved history stays in files; background work and
+  [ADR-014](../../../adr/014-file-authoritative-session-bundles.md): saved history stays in files; background work and
   pending interactions belong to their live owner, not the browser connection.
 
 No product requirement is removed. Operation completion is not a new conclusion for a delivery workflow.

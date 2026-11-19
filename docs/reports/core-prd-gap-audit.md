@@ -21,7 +21,7 @@ and retained context. It is not evidence that every other journey works. No comp
 
 - **Observed during this audit:** Work Record search failed with
   `Invalid Work Record: Markdown body must include a
-  non-empty ## Summary section.`
+non-empty ## Summary section.`
 - **Source-confirmed paths:** The remaining findings come from source, prompts, and test inspection. Their examples are
   proposed reproductions, not claims that a runtime test was executed.
 - **Existing coverage:** A cited test shows what the repository currently asserts. It was not run in this audit.
@@ -65,9 +65,11 @@ Workspace claims interaction support
 
 **Evidence:**
 
-- `src/ui/workspace/server/session-continuation.js:925`: interaction support claim.
+- `WorkspaceSessionContinuationService.createInteractionAdapter` in `src/ui/workspace/server/session-continuation.ts`
+  supplies the Workspace interaction adapter.
 - `src/tools/pair-checkpoint.ts:173`: checkpoint request; `:226`: selected-only decision extraction; `:295`: fallback.
-- `src/ui/workspace/components/SessionTimeline.jsx:442,487`: typed-response mapping and generic interaction card.
+- `sessionInteractionTypedResponse` and `SessionInteractionCard` in `src/ui/workspace/components/SessionTimeline.tsx`
+  map typed answers and render the generic interaction card.
 
 **Failure example:** The user types “stop” or asks for a visual revision. The answer is not treated as that decision;
 autonomous execution can continue. This is a user-control defect, not a missing visual refinement.
@@ -177,7 +179,7 @@ preserving unmerged work. Checking a status or message alone will not prove cont
 
 - `fix-recovery-worktree-discard-cleanup.md`: dirty, `feedback`; overlaps work preservation and cleanup.
 - `guided-validation-repair.md`: `draft`; contains references to a Plan Workflow Lease. That is obsolete under
-  [ADR-015](../adr/015-file-authoritative-session-bundles.md), not a requirement to restore.
+  [ADR-014](../adr/014-file-authoritative-session-bundles.md), not a requirement to restore.
 - `offer-semantic-review-intervention.md`: `draft`; overlaps stalled-review choices.
 - `fix-validation-repair-followup.md`: `ready_for_work`; covers repair handoff and subsequent messages.
 - `archived/classify-validation-operational-errors.md`: historical explanation, not current acceptance evidence.
@@ -192,17 +194,17 @@ recovery fixes wait for a rewrite of the entire workflow engine.
 **Required outcome:** Users own Plan prose. RunWield repairs its own metadata, preserves the latest body and decisions,
 and leaves unrelated Plans usable. Ordinary listing must not mutate an external Markdown draft.
 
-**Evidence:** `src/plan-store.js:1705` returns a malformed-file result without repair. At `:2733`, any unresolved active
-Plan parse issue makes the whole listing throw. `src/cmd/load-plan/index.ts:300` rejects unknown status values.
+**Evidence:** `parsePlanTextStrict` in `src/plan-store.ts` returns a malformed-file result without repair. An unresolved
+active Plan parse issue makes `readPlansWithTargetChildren` throw during strict listing. `src/cmd/load-plan/index.ts:300` rejects unknown status values.
 
 **Failure example:** One Plan contains `status: [unterminated`. Listing other valid Plans fails. Loading does not
 recover RunWield's lifecycle metadata. A separate body edit must not be lost while recovering this state.
 
-**Existing tests:** `src/plan-store.test.js:968` expects listing to reject; `:1988` expects malformed metadata updates
-to reject while preserving bytes. Byte preservation is valuable, but these tests do not prove automatic recovery.
+**Existing tests:** `src/plan-store.test.ts` expects strict listing to reject malformed Plans and metadata updates to
+reject while preserving bytes. Byte preservation is valuable, but these tests do not prove automatic recovery.
 
 **Existing strengths:** Read-only metadata-free drafts, deliberate adoption, original age, stable identity, and body
-preservation have coverage at `plan-store.test.js:2848–2909`; adoption is implemented around `plan-store.js:3512`.
+preservation have coverage in `src/plan-store.test.ts`. `onboardExternalPlan` implements adoption.
 
 **Boundaries:** Do not relax review or infer that malformed metadata grants approval. Do not add a Plan-body parser. A
 repair must preserve lifecycle evidence and recent edits, not merely make the file parse. The dirty Plan-store and
@@ -283,7 +285,8 @@ image transfer or predecessor lookup. `src/tools/see-image.ts:94–98` supplies 
 access, and isolation between two Sessions. Include working-directory changes because execution can move into a
 worktree.
 
-**Boundary:** Keep the file-authoritative Session model in ADR-015 and the focused handoffs in ADR-012. Do not solve
+**Boundary:** Keep the [file-authoritative Session model](../adr/014-file-authoritative-session-bundles.md) and
+[focused handoffs](../adr/011-segment-session-transcripts-at-execution-handoff.md). Do not solve
 this by copying all previous conversation into repair. Future Session deletion is not a current missing deletion
 feature.
 

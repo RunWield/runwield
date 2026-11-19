@@ -8,9 +8,9 @@ affectedPaths:
     - "src/shared/workflow/validation-publication.ts"
     - "src/shared/workflow/publication-receipt.ts"
     - "src/shared/work-records/published-source.ts"
-    - "src/shared/settings.js"
+    - "src/shared/settings.ts"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/016-proof-bearing-publication-state-machine.md"
+    - "docs/adr/015-proof-bearing-publication-state-machine.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-01"
@@ -58,9 +58,9 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/workflow/validation-publication.ts` — candidate and store settlement integration
 - `src/shared/workflow/publication-receipt.ts` — permanent proof after attempt cleanup
 - `src/shared/work-records/published-source.ts` — retained source instead of new-format git-show reconstruction
-- `src/shared/settings.js` — separate copy policy definitions
+- `src/shared/settings.ts` — separate copy policy definitions
 - `docs/prd/runwield-core-prd.md` — publication and execution recovery requirements
-- `docs/adr/016-proof-bearing-publication-state-machine.md` — reconcile Git artifacts versus canonical Plan truth
+- `docs/adr/015-proof-bearing-publication-state-machine.md` — reconcile Git artifacts versus canonical Plan truth
 
 ## Reuse Opportunities
 
@@ -82,7 +82,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
 
 ```sh
-bun scripts/run-tests.js src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/workflow/publication-revalidation.test.ts src/shared/work-records/published-delivery-source.test.ts
+bun scripts/run-tests.ts src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/workflow/publication-revalidation.test.ts src/shared/work-records/published-delivery-source.test.ts
 ```
 
 New coverage below is proposed, not an existing passing test inventory. Planner must select concrete test files and

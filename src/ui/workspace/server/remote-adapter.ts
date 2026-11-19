@@ -17,7 +17,7 @@ import type {
     RevisionMetadata,
     EncryptedCommentRecord,
     CommentStateChangePayload,
-} from "../../../shared/collaboration/protocol.js";
+} from "../../../shared/collaboration/protocol.ts";
 import type { RemoteDatabase, OpenRemoteDatabaseOptions } from "./remote-db.ts";
 
 export interface RemoteRetentionPolicy {

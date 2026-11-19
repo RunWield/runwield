@@ -1,6 +1,6 @@
 /** Codex preferences are dispatch hints, never Core model settings or workflow authority. */
 import { join } from "node:path";
-import { getCustomSetting, getSettingsDir } from "../settings.js";
+import { getCustomSetting, getSettingsDir } from "../settings.ts";
 import {
     ATTACHED_HOST_ROLES,
     type AttachedHostRole,

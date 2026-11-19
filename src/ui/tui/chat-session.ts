@@ -1,4 +1,4 @@
-import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
+import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import { resolveSessionContinuation } from "../../shared/session/session-runtime.ts";
 import {
     confirmMissingManagedProjectDirectory,
@@ -26,15 +26,15 @@ import {
     commandRegistry,
     getCommandInvocationNames,
     getSlashCommandDefinitions,
-} from "../../cmd/registry.js";
-import { AGENTS, getCwd } from "../../constants.js";
+} from "../../cmd/registry.ts";
+import { AGENTS, getCwd } from "../../constants.ts";
 import {
     EMPTY_PROJECT_DIRECTORY_HEADER,
     EMPTY_PROJECT_DIRECTORY_PROMPT_NOTE,
     EMPTY_PROJECT_DIRECTORY_WELCOME_BODY,
     isEmptyProjectDirectory,
 } from "../../shared/project-state.ts";
-import { listAvailableAgents } from "../../shared/session/agents.js";
+import { listAvailableAgents } from "../../shared/session/agents.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import {
     getCustomSetting,
@@ -42,7 +42,7 @@ import {
     initSettings,
     ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY,
     setCustomSetting,
-} from "../../shared/settings.js";
+} from "../../shared/settings.ts";
 import {
     isInitDone as isInitDoneFn,
     isInitOffered as isInitOfferedFn,
@@ -53,7 +53,7 @@ import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { setActiveSessionModel } from "../../shared/session/model-selection.ts";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
 import { startMetricsExportScheduler } from "../../shared/workflow/metrics-export-scheduler.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
+import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { renderBootBanner } from "./boot-banner.ts";
 import { getSelectedDefaultModelAvailability, maybeShowModelWelcome } from "./model-welcome.ts";
 import { createChatFooterController } from "./chat-footer.ts";
@@ -66,8 +66,8 @@ import {
     ONBOARDING_WARNING,
 } from "./onboarding-content.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
-import type { ImageAttachment } from "../../shared/session/types.js";
-import type { UiAPI } from "./types.js";
+import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
+import type { UiAPI } from "./api.ts";
 
 const CHAT_PROMPT_AGENT_NAME = AGENTS.OPERATOR;
 export type SessionRuntime = ReturnType<typeof createSessionRuntime>;

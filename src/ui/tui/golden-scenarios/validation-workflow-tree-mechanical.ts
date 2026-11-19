@@ -2,7 +2,7 @@ import {
     plannedChangeCiRepairReentryScenario,
     plannedChangeValidationExhaustedScenario,
     plannedChangeValidationFailureRetryScenario,
-} from "./planned-change-workflow.js";
+} from "./planned-change-workflow.ts";
 import { withValidationBranches } from "./validation-workflow-tree-shared.ts";
 
 export const validationTreeCiLoopScenario = withValidationBranches(

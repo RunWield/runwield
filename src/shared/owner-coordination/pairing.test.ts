@@ -6,13 +6,12 @@ import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.ts";
 import type { OwnerCoordinationDatabase } from "./database.ts";
-import { hashSecret, randomHumanCode } from "./crypto.ts";
+import { hashSecret } from "./crypto.ts";
 import {
     approvePairingRequest,
     claimPairingRequest,
     createPairingRequest,
     getPairingRequestByProof,
-    stripTerminalControlCharacters,
 } from "./pairing.ts";
 import { listDevices, revokeDevice, verifyDeviceCredential, verifyDeviceCsrf } from "./devices.ts";
 
@@ -27,15 +26,23 @@ function getLastSeen(database: OwnerCoordinationDatabase, deviceId: string) {
     );
 }
 
-test("pairing approval codes use cryptographic randomness by default", () => {
+test("pairing creates usable approval codes without insecure randomness", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-pairing-randomness-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
     const originalRandom = Math.random;
     try {
-        Math.random = () => 0;
-        const code = randomHumanCode();
-        assertMatch(code, /^[A-Z2-9]{6}$/);
-        assertEquals(code === "AAAAAA", false);
+        Math.random = () => {
+            throw new Error("Pairing must not use Math.random");
+        };
+        const request = createPairingRequest(database, { deviceLabel: "Phone" });
+        assertMatch(request.code, /^[A-Z2-9]{6}$/);
+        const approved = approvePairingRequest(database, request.code);
+        assertEquals(approved.state, "approved");
+        assertEquals(approved.deviceLabel, "Phone");
     } finally {
         Math.random = originalRandom;
+        database.close();
+        await fsRm(dir, { recursive: true });
     }
 });
 
@@ -91,7 +98,6 @@ test("pairing device labels strip terminal control characters", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-pairing-label-"));
     const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
     try {
-        assertEquals(stripTerminalControlCharacters("Phone\x1B[31m\x07"), "Phone");
         const request = createPairingRequest(database, {
             deviceLabel: "Phone\x1B[31m\x07\nName",
             idFactory: idFactory(),

@@ -23,25 +23,25 @@ import { join } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
 import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
-import { CLI_BIN, normalizePlanClassification, normalizeWorkKind, PLANS_DIR_NAME } from "../constants.js";
+import { CLI_BIN, normalizePlanClassification, normalizeWorkKind, PLANS_DIR_NAME } from "../constants.ts";
 import {
     ensurePlanIdentity,
     loadPlan,
     planDocumentMarkdown,
     resolvePlanExecutionPolicy,
     updatePlanFrontMatter,
-} from "../plan-store.js";
+} from "../plan-store.ts";
 import { assertNotReservedEpicArtifactPlanName } from "../shared/epic-artifacts.ts";
-import { recordPlanEvent } from "../shared/workflow/plan-lifecycle.js";
+import { recordPlanEvent } from "../shared/workflow/plan-lifecycle.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../shared/workflow/plan-location.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";
-import { recordWorkflowMetric } from "../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
     RuntimeEventTypes,
-} from "../shared/session/session-runtime-events.js";
+} from "../shared/session/session-runtime-events.ts";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
@@ -52,10 +52,10 @@ import {
     requestPlanReviewRetryConfirmation,
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
-} from "../shared/workflow/plan-review-recovery.js";
+} from "../shared/workflow/plan-review-recovery.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
-import type { HostedSession } from "../shared/session/hosted-session.js";
-import type { PlanFrontMatter } from "../plan-store.js";
+import type { HostedSession } from "../shared/session/hosted-session.ts";
+import type { PlanFrontMatter } from "../plan-store.ts";
 
 export interface TriageMeta extends Partial<PlanFrontMatter> {
     classification?: "QUICK_FIX" | "PLANNED_CHANGE" | "FEATURE" | "PROJECT";
@@ -127,7 +127,7 @@ interface PlanWrittenOptions {
     hostedSession?: HostedSession;
 }
 
-type ToolResult = AgentToolResult<ToolResultDetails | null>;
+export type PlanWrittenToolResult = AgentToolResult<ToolResultDetails | null>;
 type InteractionMeta = NonNullable<Awaited<ReturnType<typeof requestHostedSessionInteraction>>["_meta"]>;
 
 function parsePlanReviewMeta(meta: InteractionMeta | undefined): PlanReviewMeta {
@@ -232,8 +232,8 @@ function textResult(
     details: ToolResultDetails | null = null,
     terminate = false,
     images: ReviewImage[] = [],
-): ToolResult {
-    const result: ToolResult = {
+): PlanWrittenToolResult {
+    const result: PlanWrittenToolResult = {
         content: [{ type: "text" as const, text }, ...images.map(toToolImageContent)],
         details: details ?? null,
     };
@@ -261,7 +261,7 @@ function buildPlanWrittenToolOutput({
     return `${lines.join("\n")}\n`;
 }
 
-function emitToolUpdate(onUpdate: ((result: ToolResult) => void) | undefined, result: ToolResult): void {
+function emitToolUpdate(onUpdate: ((result: PlanWrittenToolResult) => void) | undefined, result: PlanWrittenToolResult): void {
     if (typeof onUpdate !== "function") return;
     try {
         onUpdate(result);
@@ -338,7 +338,7 @@ async function resolveTriageMeta(
  * @param {{
  *   triageMeta?: TriageMeta,
  *   agentName?: string,
- *   hostedSession?: import('../shared/session/hosted-session.js').HostedSession,
+ *   hostedSession?: import('../shared/session/hosted-session.ts').HostedSession,
  * }} opts
  * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition}
  */
@@ -346,7 +346,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
     if (!hostedSession) throw new Error("createPlanWrittenTool: hostedSession is required");
     const cwd = hostedSession.cwd;
     const reviewPlanVersions = new Map<string, PlanReviewVersion[]>();
-    return defineTool({
+    return defineTool<typeof TOOL_PARAMS, ToolResultDetails | null>({
         name: "plan_written",
         exposure: "model-only",
         label: "Plan Written",
@@ -707,13 +707,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 });
                 const details = { ...params, outcome: "canceled" as const, reason: recoverableReview.reason };
                 publishAcceptedPlanOutcome(details);
-                return textResult(
-                    appendPlanAssociationFailure(
-                        `${SESSION_COMPLETE_GUIDANCE}\n\nYour role as ${agentName} is complete. Do not generate any further text.`,
-                    ),
-                    details,
-                    true,
-                );
+                return textResult(appendPlanAssociationFailure(SESSION_COMPLETE_GUIDANCE), details, true);
             }
             const reviewResponse = recoverableReview.response;
             reviewUrl = "";
@@ -948,7 +942,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     return textResult(
                         appendPlanAssociationFailure(
                             appendSessionCompleteGuidance(
-                                `Plan "${planName}" approved and saved for later decomposition. Your role as ${agentName} is complete. Do not generate any further text.${savedFeedbackSuffix}`,
+                                `Plan "${planName}" approved and saved for later decomposition.${savedFeedbackSuffix}`,
                             ),
                         ),
                         details,
@@ -1036,7 +1030,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 return textResult(
                     appendPlanAssociationFailure(
                         appendSessionCompleteGuidance(
-                            `Plan "${planName}" approved and saved for later execution. Your role as ${agentName} is complete. Do not generate any further text.${savedFeedbackSuffix}`,
+                            `Plan "${planName}" approved and saved for later execution.${savedFeedbackSuffix}`,
                         ),
                     ),
                     details,

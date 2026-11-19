@@ -1,5 +1,6 @@
+import { findExistingProjectPath } from "../../shared/project-checkout.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
+import { stat as fsStat } from "node:fs/promises";
 /**
  * @module cmd/load-plan/plan-recovery-worktree
  * Reading, reporting on, and detaching the worktree generation a Plan records.
@@ -9,8 +10,8 @@ import { realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
  * missing field would make a destructive action unsafe.
  */
 
-import { loadPlan, resolvePlanExecutionPolicy, updatePlanFrontMatter } from "../../plan-store.js";
-import { buildPlanEventUpdates } from "../../shared/workflow/plan-lifecycle.js";
+import { loadPlan, resolvePlanExecutionPolicy, updatePlanFrontMatter } from "../../plan-store.ts";
+import { buildPlanEventUpdates } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveValidationExecutionContext } from "../../shared/workflow/execution-context.ts";
 import {
     buildPlanRecoveryUserMessage,
@@ -19,20 +20,21 @@ import {
 } from "../../shared/workflow/validation-user-messages.ts";
 import { runPlanFrontMatterTransition, runReviewReopenTransition } from "../../shared/workflow/state-transition.ts";
 import { getWorkflowDiff } from "../../shared/workflow/git-snapshot.ts";
-import { getWorktreeStatus, slugify } from "../../shared/worktree.js";
-import { WORKTREE_BRANCH_PREFIX } from "../../constants.js";
+import { getWorktreeStatus, slugify } from "../../shared/worktree.ts";
+import { WORKTREE_BRANCH_PREFIX } from "../../constants.ts";
 import {
     findActiveByPlanName as findWorktreeByPlanName,
     findById as findWorktreeById,
-} from "../../shared/worktree-registry.js";
+} from "../../shared/worktree-registry.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
-import type { PlanFrontMatter } from "../../plan-store.js";
-import type { PlanStatus } from "../../shared/workflow/plan-lifecycle.js";
-import type { UiAPI } from "../../ui/tui/types.js";
+import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { PlanStatus } from "../../shared/workflow/plan-lifecycle.ts";
+import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
 
 /**
@@ -72,14 +74,6 @@ interface AttachedWorktreeRecord {
     branch: string;
 }
 
-async function canonicalPath(path: string): Promise<string | null> {
-    try {
-        return await fsRealpath(path);
-    } catch {
-        return null;
-    }
-}
-
 async function listAttachedWorktrees(projectRoot: string): Promise<AttachedWorktreeRecord[]> {
     const command = captureForegroundProcess("git", { args: ["worktree", "list", "--porcelain"], cwd: projectRoot });
     const output = await command;
@@ -111,7 +105,7 @@ async function discoverAttachedPlanWorktree(
     projectRoot: string,
     plan: RecoveryPlanRef,
 ): Promise<RecoveryWorktreeContext | null> {
-    const projectPath = await canonicalPath(projectRoot);
+    const projectPath = await findExistingProjectPath(projectRoot);
     const matches: RecoveryWorktreeContext[] = [];
     // Execution branches are created only as `worktree/<plan-slug>-<attempt-id>`, a
     // prefix target branches may not use, and attempt IDs contain no dash. A child
@@ -123,7 +117,7 @@ async function discoverAttachedPlanWorktree(
         branch.startsWith(executionBranchPrefix) && !branch.slice(executionBranchPrefix.length).includes("-");
     for (const record of await listAttachedWorktrees(projectRoot)) {
         if (!isOwnExecutionBranch(record.branch)) continue;
-        const recordPath = await canonicalPath(record.path);
+        const recordPath = await findExistingProjectPath(record.path);
         if (!recordPath || recordPath === projectPath) continue;
         const executionPlan = await loadPlan(record.path, plan.planName).catch(() => null);
         if (!executionPlan || executionPlan.attrs.executionMode !== "worktree") continue;
@@ -137,7 +131,7 @@ async function discoverAttachedPlanWorktree(
         )
             continue;
         if (plan.attrs.planId && plan.attrs.planId !== attrs.planId) continue;
-        if ((await canonicalPath(attrs.worktreePath)) !== recordPath) continue;
+        if ((await findExistingProjectPath(attrs.worktreePath)) !== recordPath) continue;
         if (record.branch !== `refs/heads/${attrs.worktreeBranch}`) continue;
         if (!["in_progress", "failed", "implemented", "validated_ci", "reviewed", "validated"].includes(attrs.status))
             continue;
@@ -179,7 +173,7 @@ export interface ReopenPlanForReviewOptions {
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} plan
  * @returns {Promise<RecoveryWorktreeContext | null>}
  */
 export async function resolveRecoveryWorktree(
@@ -218,9 +212,9 @@ export async function resolveRecoveryWorktree(
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter, revision?: string }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter, revision?: string }} plan
  * @param {RecoveryWorktreeContext | null} context
- * @returns {Promise<import('../../plan-store.js').PlanFrontMatter>}
+ * @returns {Promise<import('../../plan-store.ts').PlanFrontMatter>}
  */
 export async function persistRecoveredWorktreeMetadata(
     projectRoot: string,
@@ -277,8 +271,8 @@ export function assertRecoveryWorktreeIsManaged(
  *
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, path: string, body: string, attrs: import('../../plan-store.js').PlanFrontMatter, revision?: string }} opts.plan
- * @param {import('../../shared/workflow/plan-lifecycle.js').PlanStatus} opts.currentStatus
+ * @param {{ planName: string, path: string, body: string, attrs: import('../../plan-store.ts').PlanFrontMatter, revision?: string }} opts.plan
+ * @param {import('../../shared/workflow/plan-lifecycle.ts').PlanStatus} opts.currentStatus
  * @param {RecoveryWorktreeContext | null | undefined} [opts.worktreeContext]
  * @param {PlanSessionSurface} opts.session
  */
@@ -368,7 +362,7 @@ export async function pathExists(path: string | undefined): Promise<boolean> {
  * @param {string} action
  * @param {string} planName
  * @param {string} error
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  */
 export function reportInvalidRecoveryPolicy(
     action: string,
@@ -385,10 +379,10 @@ export function reportInvalidRecoveryPolicy(
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} plan
  * @param {RecoveryWorktreeContext | null} context
  * @param {PlanSessionSurface} session
- * @param {import('../../ui/tui/types.js').UiAPI} [uiAPI]
+ * @param {import('../../ui/tui/api.ts').UiAPI} [uiAPI]
  * @param {string} [action]
  * @returns {Promise<RecoveryWorkflowState | null>}
  */
@@ -474,8 +468,8 @@ export async function rehydrateActiveRecoveryWorkflow(
  * Append recovery context for a partially executed Plan.
  *
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.js').PlanFrontMatter, body: string, markdown: string }} plan
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter, body: string, markdown: string }} plan
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @param {RecoveryWorktreeContext | null} worktreeContext
  * @returns {Promise<void>}
  */
@@ -546,7 +540,7 @@ export async function appendRecoveryReport(
  * Ask for destructive baseline reset confirmation.
  *
  * @param {string} planName
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
 export async function confirmBaselineReset(planName: string, uiAPI: UiAPI): Promise<boolean> {
@@ -562,7 +556,7 @@ export async function confirmBaselineReset(planName: string, uiAPI: UiAPI): Prom
 
 /**
  * @param {string} planName
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
 export async function confirmMetadataOnlyRecoveryCleanup(_planName: string, uiAPI: UiAPI): Promise<boolean> {
@@ -576,7 +570,7 @@ export async function confirmMetadataOnlyRecoveryCleanup(_planName: string, uiAP
 
 /**
  * @param {string} planName
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @param {string} action
  * @returns {Promise<boolean>}
  */
@@ -591,7 +585,7 @@ export async function confirmWorktreeAction(planName: string, uiAPI: UiAPI, acti
 /**
  * @param {string} planName
  * @param {RecoveryWorktreeContext | null} worktreeContext
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
 export async function confirmMissingWorktreeRecreate(
@@ -615,14 +609,14 @@ export async function confirmMissingWorktreeRecreate(
 /**
  * @param {string} planName
  * @param {RecoveryWorktreeContext | null} worktreeContext
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
 /**
  * @param {string} projectRoot
  * @param {string} planName
  * @param {RecoveryWorktreeContext | null} worktreeContext
- * @param {import('../../ui/tui/types.js').UiAPI} uiAPI
+ * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @returns {Promise<boolean>}
  */
 export async function confirmRecoveryWorktreeAvailable(
@@ -657,6 +651,7 @@ export async function confirmRecoveryWorktreeAvailable(
         return false;
     }
     try {
+        await enterProjectRuntime(worktreeContext.path);
         const status = await getWorktreeStatus({
             projectRoot: projectRoot,
             path: worktreeContext.path,

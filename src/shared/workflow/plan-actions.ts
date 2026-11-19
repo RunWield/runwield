@@ -2,15 +2,15 @@ import { preparePlanWorkflow } from "./plan-preparation.ts";
 import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 /** Shared Plan action evidence and lifecycle executor. */
 
-import { findPlanEvidenceById, getPlanRevisionForText, loadPlan, type PlanFrontMatter } from "../../plan-store.js";
+import { findPlanEvidenceById, getPlanRevisionForText, loadPlan, type PlanFrontMatter } from "../../plan-store.ts";
 import {
     prepareWorktreeRegistry,
     readPlanActionWorktreeEvidence,
     WorktreeRegistryAmbiguityError,
-} from "../worktree-registry.js";
+} from "../worktree-registry.ts";
 import { RegisteredPlanDocumentUnavailableError } from "./controller-registry.ts";
-import { getPlanLifecycleActionMetadata, recordPlanEvent } from "./plan-lifecycle.js";
-import type { PlanEvent, PlanStatus } from "./plan-lifecycle.js";
+import { getPlanLifecycleActionMetadata, recordPlanEvent } from "./plan-lifecycle.ts";
+import type { PlanEvent, PlanStatus } from "./plan-lifecycle.ts";
 import { PlanningNotStartedError } from "./plan-location.ts";
 
 export type PlanActionName =

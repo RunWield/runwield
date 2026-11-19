@@ -12,15 +12,15 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { loadPlanBodyById, savePlan } from "../../plan-store.js";
-import { PLAN_UI_TOKEN_HEADER } from "../../constants.js";
-import { loadBoard, loadWorkspaceDetail, workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";
+import { loadPlanBodyById, savePlan } from "../../plan-store.ts";
+import { PLAN_UI_TOKEN_HEADER } from "../../constants.ts";
+import { loadBoard, loadWorkspaceDetail, workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.ts";
 import { PlanBoard } from "./components/Board.tsx";
 import { PlanBoardToolbar } from "./components/PlanBoardToolbar.tsx";
 
-import { PlanDetail } from "./components/PlanDetail.jsx";
+import { PlanDetail } from "./components/PlanDetail.tsx";
 
-import { createWorkspaceApp } from "./server.js";
+import { createWorkspaceApp } from "./server.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
@@ -57,7 +57,9 @@ test("Workspace wrapper protects page routes and serves public assets without to
         const sidebarMotion = await app(new Request("http://localhost/design-system/sidebar-motion.js"));
         assertEquals(sidebarMotion.status, 200);
         assertEquals(sidebarMotion.headers.get("content-type"), "text/javascript; charset=utf-8");
-        assertStringIncludes(await sidebarMotion.text(), "export function animateSidebarChange");
+        const sidebarScript = await sidebarMotion.text();
+        assertStringIncludes(sidebarScript, "export function animateSidebarChange");
+        assertEquals(new Bun.Transpiler({ loader: "js" }).scan(sidebarScript).exports, ["animateSidebarChange"]);
         const panelIcon = await app(new Request("http://localhost/design-system/panel-icon.ts"));
         assertEquals(panelIcon.status, 200);
         assertEquals(panelIcon.headers.get("content-type"), "text/javascript; charset=utf-8");
@@ -166,7 +168,7 @@ test("Workspace API and detail route return readable editable Plan body metadata
                 classification: "FEATURE",
                 complexity: "HIGH",
                 summary: "Detail summary",
-                affectedPaths: ["src/ui/workspace/components/PlanDetail.jsx"],
+                affectedPaths: ["src/ui/workspace/components/PlanDetail.tsx"],
                 tickets: [{ url: "https://example.com/tickets/DETAIL-123" }, { url: "javascript:alert(1)" }],
                 dependencies: ["sibling-plan"],
                 implementedAt: "2026-06-30T10:00:00.000Z",
@@ -252,7 +254,7 @@ test("Workspace API and detail route return readable editable Plan body metadata
             assertStringIncludes(html, "Plan ID");
             assertStringIncludes(html, "detail-id");
             assertStringIncludes(html, "Affected paths");
-            assertStringIncludes(html, "src/ui/workspace/components/PlanDetail.jsx");
+            assertStringIncludes(html, "src/ui/workspace/components/PlanDetail.tsx");
             assertStringIncludes(html, "Depends on");
             assertStringIncludes(html, "sibling-plan");
             assertStringIncludes(html, "Implemented at");

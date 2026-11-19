@@ -1,5 +1,5 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "./hosted-session.js";
+import type { HostedSession } from "./hosted-session.ts";
 import { readRequestAttemptEntries, type RequestAttemptEntry } from "./request-dispatch.ts";
 import { workflowAttemptKey } from "./task-completion-session.ts";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
@@ -36,7 +36,7 @@ type PairReportedEvent = {
     checkpointNumber: number;
     timestampMs: number;
     workflowAttemptKey: string;
-    workflow: import("./hosted-session.js").ActiveExecutionWorkflow;
+    workflow: import("./hosted-session.ts").ActiveExecutionWorkflow;
     report: PairCheckpointReport;
     source: PairRequestProvenance;
 };
@@ -47,7 +47,7 @@ type PairResolvedEvent = {
     checkpointId: string;
     timestampMs: number;
     workflowAttemptKey: string;
-    workflow: import("./hosted-session.js").ActiveExecutionWorkflow;
+    workflow: import("./hosted-session.ts").ActiveExecutionWorkflow;
     decision: PairCheckpointDecision;
     revisionDirection?: string;
     userTurn: PairRequestProvenance;
@@ -91,7 +91,7 @@ type ResolvePairCheckpointArgs = {
     hostedSession: HostedSession;
     checkpointId: string;
     decision: PairCheckpointDecision;
-    workflow: import("./hosted-session.js").ActiveExecutionWorkflow;
+    workflow: import("./hosted-session.ts").ActiveExecutionWorkflow;
     revisionDirection?: string;
     timestampMs?: number;
 };
@@ -301,7 +301,7 @@ export function clearPairCheckpoint(
 
 export function pairCheckpointMatchesWorkflow(
     checkpoint: CurrentPairCheckpoint,
-    workflow: import("./hosted-session.js").ActiveExecutionWorkflow,
+    workflow: import("./hosted-session.ts").ActiveExecutionWorkflow,
 ): boolean {
     return checkpoint.report.workflow.planName === workflow.planName &&
         checkpoint.report.workflowAttemptKey === workflowAttemptKey(workflow);
@@ -339,7 +339,7 @@ export function restorePairExecutionState(hostedSession: HostedSession): Current
 
 export function hasFinalPairAssent(
     hostedSession: HostedSession,
-    workflow: import("./hosted-session.js").ActiveExecutionWorkflow,
+    workflow: import("./hosted-session.ts").ActiveExecutionWorkflow,
 ): boolean {
     const current = readCurrentPairCheckpoint(hostedSession);
     return Boolean(

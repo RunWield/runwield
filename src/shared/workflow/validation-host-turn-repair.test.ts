@@ -6,7 +6,7 @@ import { assertEquals, assertExists, assertStringIncludes } from "../../testing/
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { updatePlanFrontMatter } from "../../plan-store.js";
+import { updatePlanFrontMatter } from "../../plan-store.ts";
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { captureWorktreeTree } from "./git-snapshot.ts";

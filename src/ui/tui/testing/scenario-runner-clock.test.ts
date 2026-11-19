@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals, assertRejects } from "../../../testing/assertions.ts";
-import { runGoldenScenario } from "./scenario-runner.js";
+import { runGoldenScenario, type GoldenAction } from "./scenario-runner.ts";
 
 test("Golden scenario does not time out when the wall clock moves forward", async () => {
     const originalNow = Date.now;
@@ -32,7 +32,7 @@ test("Golden scenario enforces its timeout when the wall clock moves backward", 
                     {
                         name: "backward-clock-jump",
                         timeoutMs: 1,
-                        get actions() {
+                        get actions(): GoldenAction[] {
                             const start = performance.now();
                             while (performance.now() - start < 10) {
                                 // Let the deadline pass without changing the monotonic clock.

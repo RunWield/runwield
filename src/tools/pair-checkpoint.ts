@@ -6,7 +6,7 @@
 import { type Static, Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.js";
+import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.ts";
 import {
     type PairCheckpointDecision,
     type PairCheckpointReport,
@@ -14,7 +14,7 @@ import {
     recordPairCheckpointReport,
     resolvePairCheckpoint,
 } from "../shared/session/pair-checkpoint-session.ts";
-import { recordWorkflowMetric } from "../shared/workflow/metrics.js";
+import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 
 const PARAMETERS = Type.Object(
     {

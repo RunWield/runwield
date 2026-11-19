@@ -2,7 +2,7 @@
 import { buildValidationRepairPrompt } from "./validation-repair-prompt.ts";
 import { buildDiffInspectionSection } from "./review-diff.ts";
 import { readSemanticRound, recordLifecycleEvent } from "./validation-context.ts";
-import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, updatePlanFrontMatter } from "../../plan-store.ts";
 import { semanticReviewMode } from "./validation-types.ts";
 import type { PhaseContext, ValidationLoopArgs } from "./validation-types.ts";
 import { readValidationReviewState, type ValidationCheckpoint } from "./validation-checkpoint.ts";

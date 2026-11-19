@@ -13,7 +13,6 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { parseWorkspaceServeArgs } from "./serve.ts";
 
 interface WorkspaceCommandFixture {
     databasePath: string;
@@ -37,16 +36,11 @@ const decoder = new TextDecoder();
 const workspaceModuleUrl = import.meta.resolve("./index.ts");
 const denoConfigPath = fromFileUrl(new URL("../../../deno.json", import.meta.url));
 
-async function withWorkspaceCommandFixture(
-    run: (fixture: WorkspaceCommandFixture) => Promise<void>,
-): Promise<void> {
+async function withWorkspaceCommandFixture(run: (fixture: WorkspaceCommandFixture) => Promise<void>): Promise<void> {
     const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-workspace-command-"));
     const homeDir = join(fixtureRoot, "home");
     const projectRoot = join(fixtureRoot, "project");
-    await Promise.all([
-        fsMkdir(homeDir, { recursive: true }),
-        fsMkdir(projectRoot, { recursive: true }),
-    ]);
+    await Promise.all([fsMkdir(homeDir, { recursive: true }), fsMkdir(projectRoot, { recursive: true })]);
     const listener = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, () => new Response("reserved"));
     const port = listener.addr.port;
     await listener.shutdown();
@@ -64,8 +58,10 @@ async function withWorkspaceCommandFixture(
 }
 
 function workspaceCommandSource(argv: string[]): string {
-    return `import { runWorkspaceCommand } from ${JSON.stringify(workspaceModuleUrl)};\n` +
-        `await runWorkspaceCommand(${JSON.stringify(argv)});\n`;
+    return (
+        `import { runWorkspaceCommand } from ${JSON.stringify(workspaceModuleUrl)};\n` +
+        `await runWorkspaceCommand(${JSON.stringify(argv)});\n`
+    );
 }
 
 function workspaceCommandOptions(fixture: WorkspaceCommandFixture, argv: string[]): NativeSpawnOptions {
@@ -82,15 +78,16 @@ function workspaceCommandOptions(fixture: WorkspaceCommandFixture, argv: string[
     };
 }
 
-async function runWorkspaceChild(
-    fixture: WorkspaceCommandFixture,
-    argv: string[],
-): Promise<CapturedProcessOutput> {
+async function runWorkspaceChild(fixture: WorkspaceCommandFixture, argv: string[]): Promise<CapturedProcessOutput> {
     const { args, cwd, env } = workspaceCommandOptions(fixture, argv);
     return await captureForegroundProcess(process.execPath, { args, cwd, env });
 }
 
-async function waitForWorkspace(origin: string, serverChild: NativeProcess): Promise<Response> {
+async function waitForWorkspace(
+    origin: string,
+    serverChild: NativeProcess,
+    headers: Record<string, string> = {},
+): Promise<Response> {
     let lastError: Error | undefined;
     const deadline = Date.now() + 120_000;
     while (Date.now() < deadline) {
@@ -102,7 +99,7 @@ async function waitForWorkspace(origin: string, serverChild: NativeProcess): Pro
             throw new Error(`Owner Workspace exited before it served /pair with code ${exited.status.code}.`);
         }
         try {
-            const response = await fetch(`${origin}/pair`);
+            const response = await fetch(`${origin}/pair`, { headers });
             if (response.ok || response.status === 503) return response;
             lastError = new Error(`Owner Workspace returned ${response.status} for /pair.`);
         } catch (error) {
@@ -138,34 +135,6 @@ async function collectServerOutput(serverChild: NativeProcess): Promise<Captured
     ]);
 }
 
-test("workspace serve parser defaults to loopback and rejects unsafe non-loopback", () => {
-    assertEquals(parseWorkspaceServeArgs([]), {
-        host: "127.0.0.1",
-        port: 8787,
-        publicOrigin: "http://127.0.0.1:8787",
-        trustTlsTerminator: false,
-        noOpen: false,
-        help: false,
-    });
-    const safe = parseWorkspaceServeArgs([
-        "--bind",
-        "0.0.0.0",
-        "--trust-tls-terminator",
-        "--public-origin",
-        "https://runwield.example.test:443",
-    ]);
-    assertEquals(safe.host, "0.0.0.0");
-    assertEquals(safe.publicOrigin, "https://runwield.example.test");
-
-    let message = "";
-    try {
-        parseWorkspaceServeArgs(["--bind", "0.0.0.0"]);
-    } catch (error) {
-        message = error instanceof Error ? error.message : String(error);
-    }
-    assertStringIncludes(message, "Non-loopback owner Workspace bind requires");
-});
-
 test("workspace help and validation use isolated command processes without creating owner state", async () => {
     await withWorkspaceCommandFixture(async (fixture) => {
         const help = await runWorkspaceChild(fixture, ["--help"]);
@@ -186,18 +155,18 @@ test("workspace help and validation use isolated command processes without creat
         const unsafeServe = await runWorkspaceChild(fixture, ["serve", "--bind", "0.0.0.0", "--no-open"]);
         assertEquals(unsafeServe.code, 0);
         assertStringIncludes(decoder.decode(unsafeServe.stderr), "Non-loopback owner Workspace bind requires");
-        assertEquals(await fsStat(fixture.databasePath).then(() => true).catch(() => false), false);
+        assertEquals(
+            await fsStat(fixture.databasePath)
+                .then(() => true)
+                .catch(() => false),
+            false,
+        );
     });
 });
 
 test("workspace serve and pair complete the real browser pairing lifecycle", async () => {
     await withWorkspaceCommandFixture(async (fixture) => {
-        const serveArgs = [
-            "serve",
-            "--port",
-            String(fixture.port),
-            "--no-open",
-        ];
+        const serveArgs = ["serve", "--port", String(fixture.port), "--no-open"];
         const serverChild = spawnNativeProcess(process.execPath, workspaceCommandOptions(fixture, serveArgs));
         let serverOutput: CapturedProcessOutput | undefined;
         try {
@@ -218,7 +187,7 @@ test("workspace serve and pair complete the real browser pairing lifecycle", asy
                 body: JSON.stringify({ deviceLabel: "Device \u001b[31mRed\u0007" }),
             });
             assertEquals(request.status, 201);
-            const pairing = await request.json() as PairingRequestBody;
+            const pairing = (await request.json()) as PairingRequestBody;
             assertEquals(pairing.state, "pending");
             assertEquals(/^[A-Z2-9]{6}$/.test(pairing.code), true);
             assertEquals(typeof pairing.expiresAt, "string");
@@ -236,7 +205,7 @@ test("workspace serve and pair complete the real browser pairing lifecycle", asy
                 headers: { cookie: proofCookie },
             });
             assertEquals(statusResponse.status, 200);
-            assertEquals((await statusResponse.json() as PairingStatusBody).state, "approved");
+            assertEquals(((await statusResponse.json()) as PairingStatusBody).state, "approved");
 
             const claim = await fetch(`${fixture.origin}/api/owner/pairing/claim`, {
                 method: "POST",
@@ -259,5 +228,35 @@ test("workspace serve and pair complete the real browser pairing lifecycle", asy
         } finally {
             store.close();
         }
+    });
+});
+
+test("workspace serves behind an explicitly trusted HTTPS terminator", async () => {
+    await withWorkspaceCommandFixture(async (fixture) => {
+        const child = spawnNativeProcess(
+            process.execPath,
+            workspaceCommandOptions(fixture, [
+                "serve",
+                "--bind",
+                "0.0.0.0",
+                "--port",
+                String(fixture.port),
+                "--trust-tls-terminator",
+                "--public-origin",
+                "https://runwield.example.test:443",
+                "--no-open",
+            ]),
+        );
+        let output: CapturedProcessOutput;
+        try {
+            assertEquals(
+                (await waitForWorkspace(fixture.origin, child, { host: "runwield.example.test" })).status,
+                200,
+            );
+        } finally {
+            output = await collectServerOutput(child);
+        }
+        assertStringIncludes(decoder.decode(output.stdout), "Owner Workspace: https://runwield.example.test");
+        assertEquals(decoder.decode(output.stderr).includes("Non-loopback owner Workspace bind requires"), false);
     });
 });

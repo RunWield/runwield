@@ -9,8 +9,8 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { emitSystemStatus } from "../../shared/session/session-runtime-events.js";
-import { HostedSession } from "../../shared/session/hosted-session.js";
+import { emitSystemStatus } from "../../shared/session/session-runtime-events.ts";
+import { HostedSession } from "../../shared/session/hosted-session.ts";
 import {
     createValidationProgress,
     emitRunWieldSystemStatus,
@@ -134,7 +134,7 @@ for (const legacy of [false, true]) {
 
 test("runtime resumes saved Code Review from its name without stale Plan content", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
-        const { savePlan } = await import("../../plan-store.js");
+        const { savePlan } = await import("../../plan-store.ts");
         await savePlan(projectRoot, "resume-review", "# Saved Code Review", {
             classification: "PLANNED_CHANGE",
             status: "reviewed",

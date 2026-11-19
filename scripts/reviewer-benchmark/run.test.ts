@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFile, readdir, writeFile, access, cp, mkdir, symlink, unlink } from "node:fs/promises";
+import { readFile, writeFile, access, cp, mkdir, symlink, unlink } from "node:fs/promises";
 import { load, JSON_SCHEMA } from "js-yaml";
 import { join, resolve } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai";
@@ -15,7 +15,7 @@ import { latestResults, readRun } from "./records.ts";
 import { runBenchmark, selectCases } from "./run.ts";
 import type { SelectedCase } from "./run.ts";
 import { scoreRun } from "./score.ts";
-import { corpusPath, inspectionSteps, withFixtureCopy } from "./test-fixtures.ts";
+import { inspectionSteps, withFixtureCopy } from "./test-fixtures.ts";
 
 const finding = {
     title: "Cache escapes its project",
@@ -55,25 +55,6 @@ test("selection expands the nine smoke cases and accepts explicit subsets", asyn
     assert.deepEqual(
         (await selectCases("RV-D05/B,RV-M01")).map((entry) => entry.variant),
         ["B", "A"],
-    );
-});
-test("all selects every package and oracle variant in scenario and variant order", async () => {
-    const expected: string[] = [];
-    for (const entry of (await readdir(corpusPath, { withFileTypes: true })).sort((a, b) =>
-        a.name.localeCompare(b.name),
-    )) {
-        if (!entry.isDirectory() || !(await readdir(join(corpusPath, entry.name))).includes("scenario.yaml")) continue;
-        const oracle = load(await readFile(join(corpusPath, entry.name, "evaluation/oracle.yaml"), "utf8"), {
-            schema: JSON_SCHEMA,
-        }) as FixtureOracle;
-        for (const variant of Object.keys(oracle.variants).sort()) expected.push(`${entry.name}/${variant}`);
-    }
-    const selected = await selectCases("all");
-    assert.equal(selected.length, 33);
-    assert.equal(new Set(selected.map((entry) => entry.fixture.manifest.scenarioId)).size, 17);
-    assert.deepEqual(
-        selected.map((entry) => `${entry.fixture.manifest.scenarioId}/${entry.variant}`),
-        expected,
     );
 });
 

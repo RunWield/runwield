@@ -180,6 +180,10 @@ test("installing from RunWield/skills offers exactly the skills the Core baselin
     const discovered = await discoverSkillsInContainers(`${REPO_ROOT}/skills`);
 
     assertEquals(
+        baseline.skills.some((entry) => entry.skill === "skills/write-tests/SKILL.md"),
+        true,
+    );
+    assertEquals(
         discovered
             .filter((skill) => !skill.internal)
             .map((skill) => skill.path)

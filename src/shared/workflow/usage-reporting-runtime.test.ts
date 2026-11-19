@@ -4,8 +4,8 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../session/session-runtime.ts";
-import { setCustomSetting } from "../settings.js";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";
+import { setCustomSetting } from "../settings.ts";
+import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.ts";
 import { UsageReporter } from "./usage-reporting.ts";
 
 test("a real managed text prompt records human activity independently of presentation events", async () => {

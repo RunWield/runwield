@@ -12,7 +12,7 @@ affectedPaths:
     - "src/shared/work-records/index-adapter.ts"
     - "docs/domain-language.md"
     - "docs/prd/runwield-core-prd.md"
-    - "docs/adr/017-project-runtime-state-under-wld-internal.md"
+    - "docs/adr/016-project-runtime-state-under-wld-internal.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-11-01"
@@ -65,7 +65,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/work-records/index-adapter.ts` — home index location
 - `docs/domain-language.md` — Project Runtime State and Internal Root definitions
 - `docs/prd/runwield-core-prd.md` — initialization and work protection
-- `docs/adr/017-project-runtime-state-under-wld-internal.md` — reconcile the old physical-location rule
+- `docs/adr/016-project-runtime-state-under-wld-internal.md` — reconcile the old physical-location rule
 
 ## Reuse Opportunities
 
@@ -87,7 +87,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
 
 ```sh
-bun scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/project-runtime-read-scope.test.ts
+bun scripts/run-tests.ts src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/project-runtime-read-scope.test.ts
 ```
 
 New coverage below is proposed, not an existing passing test inventory. Planner must select concrete test files and

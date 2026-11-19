@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { formatArchiveRetentionNudge } from "../../shared/plan-archive-retention.ts";
-import type { UiAPI } from "../../ui/tui/types.js";
+import type { UiAPI } from "../../ui/tui/api.ts";
 
 const pendingArchives = new Set<string>();
 
