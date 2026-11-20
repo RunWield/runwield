@@ -1,3 +1,4 @@
+import { isRemovedAgyProvider } from "../../models/removed-providers.ts";
 import { AGENTS, SUBAGENTS } from "../../../constants.ts";
 import { readPersistedActiveAgentName, readPersistedModelState } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
@@ -287,10 +288,6 @@ export function normalizeManagedActiveModelState(
     return { model, provider };
 }
 
-export function isAgyCliMcpSetupApprovalError(error: Error) {
-    return error instanceof Error && error.name === "AgyCliMcpSetupApprovalError";
-}
-
 /**
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager
  * @returns {string | undefined}
@@ -298,6 +295,7 @@ export function isAgyCliMcpSetupApprovalError(error: Error) {
 export function resolvePersistedResumeModel(sessionManager: import("@earendil-works/pi-coding-agent").SessionManager) {
     const persisted = readPersistedModelState(sessionManager);
     if (!persisted?.provider || !persisted.model) return undefined;
+    if (isRemovedAgyProvider(persisted.provider)) return `${persisted.provider}/${persisted.model}`;
     try {
         const registry = getModelRegistry();
         const model = registry.find(persisted.provider, persisted.model);

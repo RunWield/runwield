@@ -1,4 +1,4 @@
-import { AGY_CLI_MODEL_CHOICES } from "../models/agy-cli-catalog.ts";
+import { isRemovedAgyProvider, removedAgyModelError } from "../models/removed-providers.ts";
 /** Shared helpers for loading agent definitions and running agent invocations. */
 
 import type { JsonValue } from "../jsonc.ts";
@@ -125,7 +125,6 @@ import {
 } from "../models/model-registry.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import {
-    createAgyExecutionSession,
     createClaudeExecutionSession,
     createPiExecutionSession,
     disposeExecutionSession,
@@ -134,8 +133,6 @@ import {
     isExecutionSession,
 } from "./execution-backend.ts";
 import { ClaudeCliExecutionSession } from "./backends/claude-cli/execution-session.ts";
-import { AgyCliExecutionSession } from "./backends/agy-cli/execution-session.ts";
-import { buildBridgedToolPromptAppendix } from "./bridged-tools/prompt.ts";
 import {
     completeRequestDispatch,
     failRequestDispatch,
@@ -353,7 +350,8 @@ interface ComposeCliBridgedToolsOptions {
     sessionManager?: SessionManager;
 }
 
-interface BuildExecutionSessionOptions extends AgyImageInputOptions {
+interface BuildExecutionSessionOptions {
+    images?: { base64: string; mimeType: string }[];
     managedOperationCapability?: ManagedOperationCapability;
 }
 
@@ -597,11 +595,6 @@ export function assertThinkingLevelSupportedForInvocation(
     explicit: boolean,
 ) {
     if (!explicit || !thinkingLevel || thinkingLevel === "off") return;
-    if (
-        model?.executionBackend === "agy-cli" &&
-        ["minimal", "low", "medium", "high", "xhigh", "max"].includes(thinkingLevel)
-    )
-        return;
     if (model?.reasoning === true) return;
     throw new Error(
         `Model ${model?.provider || ""}/${model?.id || ""} does not support thinkingLevel "${thinkingLevel}".`,
@@ -613,14 +606,6 @@ export function assertThinkingLevelBackendSupportedForInvocation(
     thinkingLevel: string | undefined,
 ) {
     if (!thinkingLevel || thinkingLevel === "off") return;
-    if (model?.executionBackend === "agy-cli") {
-        if (["minimal", "low", "medium", "high", "xhigh", "max"].includes(thinkingLevel)) return;
-        throw new Error(
-            `Model ${model?.provider || ""}/${
-                model?.id || ""
-            } uses Agy CLI, which does not support thinkingLevel "${thinkingLevel}" for RunWield named invocations.`,
-        );
-    }
     if (model?.executionBackend !== "claude-cli") return;
     throw new Error(
         `Model ${model?.provider || ""}/${
@@ -1051,6 +1036,12 @@ export function getConfiguredAgentModel(agentName: string, projectRoot: string):
     return agents?.[agentName]?.model;
 }
 
+function hasRemovedBundledAgyPreset(projectRoot: string): boolean {
+    if (getMergedCustomSetting("activeModelPreset", projectRoot) !== "agy") return false;
+    const presets = getMergedCustomSetting("modelPresets", projectRoot) as ModelPresetsMap | undefined;
+    return !presets || !Object.hasOwn(presets, "agy");
+}
+
 /**
  * Get the configured thinking level override for an agent from merged (global + project) settings.
  *
@@ -1390,6 +1381,12 @@ export async function resolveModel(
     }
 
     // Config-driven per-agent model override (agents.<name>.model or active preset)
+    if (candidateModels.length === 0 && hasRemovedBundledAgyPreset(projectRoot)) {
+        throw removedAgyModelError(
+            "Built-in preset agy",
+            "Change or remove activeModelPreset, or choose a supported model with /model.",
+        );
+    }
     if (agentName) {
         const configuredModel = getConfiguredAgentModel(agentName, projectRoot);
         if (configuredModel) {
@@ -1463,6 +1460,12 @@ export async function resolveModel(
             continue;
         }
 
+        if (isRemovedAgyProvider(parsed.provider)) {
+            throw removedAgyModelError(
+                candidate.model,
+                `Replace the ${candidate.source} or choose a supported model with /model.`,
+            );
+        }
         // Reject remote CLI selections from every source before discovery or a backend can start.
         assertModelExecutionBackendSupported({ provider: parsed.provider, id: parsed.id });
         let found = modelRegistry.find(parsed.provider, parsed.id);
@@ -1526,11 +1529,6 @@ export async function resolveModel(
                     agentName,
                     details: { reason: "unknown_candidate", source: candidate.source, parsed: true },
                 });
-                if (parsed.provider === "agy-cli") {
-                    throw new Error(
-                        `Unsupported Antigravity CLI model: ${candidate.model}. Select ${AGY_CLI_MODEL_CHOICES}.`,
-                    );
-                }
                 throw new Error(`Unknown ${candidate.source}: ${candidate.model}`);
             }
             continue;
@@ -2762,24 +2760,6 @@ export async function composeClaudeCliBridgedTools({
 }
 
 /**
- * Compose the Agy CLI Bridged Tools through the same policy as Claude CLI.
- * The host-specific backend still owns its command, parser, and setup.
- */
-export async function composeAgyCliBridgedTools(opts: ComposeCliBridgedToolsOptions): Promise<ToolDefinition[]> {
-    return await composeClaudeCliBridgedTools(opts);
-}
-
-export interface AgyImageInputOptions {
-    images?: { base64: string; mimeType: string }[];
-}
-
-function assertAgyCliImageInputSupported(images: { base64: string; mimeType: string }[] | undefined) {
-    if (images && images.length > 0) {
-        throw new Error("Agy CLI execution backend does not support image attachments in this slice");
-    }
-}
-
-/**
  * Build the model-selected execution session for root and HostedSession-backed isolated turns.
  * Pi models continue through buildAgentSession(); Claude CLI models bypass Pi entirely.
  */
@@ -2814,42 +2794,27 @@ export async function buildExecutionSession(
         thinkingLevelOverride: opts.thinkingLevelOverride,
     }).resolvedThinkingLevel;
     const backend = resolvedModel?.executionBackend || "pi";
-    const imageInputOptions = opts;
-    if (backend === "agy-cli") assertAgyCliImageInputSupported(imageInputOptions.images);
     if (backend === "pi") {
         const built = await buildAgentSession(opts);
         return { ...built, executionSession: createPiExecutionSession(built.session) };
     }
-    if (backend !== "claude-cli" && backend !== "agy-cli") {
+    if (backend !== "claude-cli") {
         throw new Error(
             `Unsupported model execution backend "${backend}" for ${resolvedModel.provider}/${resolvedModel.id}.`,
         );
     }
     const effectiveSessionManager = opts.sessionManager || SessionManager.inMemory(sessionCwd);
-    const finalCustomTools =
-        backend === "claude-cli"
-            ? await composeClaudeCliBridgedTools({
-                  agentDef,
-                  sessionManager: effectiveSessionManager,
-                  inheritedBashAllowedCommands: opts.inheritedBashAllowedCommands,
-                  agentName: opts.agentName,
-                  hostedSession: targetHostedSession,
-                  triageMeta: opts.triageMeta,
-                  cwd: sessionCwd,
-                  customTools: opts.customTools,
-                  mcpRootTools: opts.mcpRootTools,
-              })
-            : await composeAgyCliBridgedTools({
-                  agentDef,
-                  sessionManager: effectiveSessionManager,
-                  inheritedBashAllowedCommands: opts.inheritedBashAllowedCommands,
-                  agentName: opts.agentName,
-                  hostedSession: targetHostedSession,
-                  triageMeta: opts.triageMeta,
-                  cwd: sessionCwd,
-                  customTools: opts.customTools,
-                  mcpRootTools: opts.mcpRootTools,
-              });
+    const finalCustomTools = await composeClaudeCliBridgedTools({
+        agentDef,
+        sessionManager: effectiveSessionManager,
+        inheritedBashAllowedCommands: opts.inheritedBashAllowedCommands,
+        agentName: opts.agentName,
+        hostedSession: targetHostedSession,
+        triageMeta: opts.triageMeta,
+        cwd: sessionCwd,
+        customTools: opts.customTools,
+        mcpRootTools: opts.mcpRootTools,
+    });
     const rebuildToolNames = resolveEffectiveSessionToolNames(
         agentDef.tools,
         opts.toolNames,
@@ -2873,47 +2838,19 @@ export async function buildExecutionSession(
     const effectiveMcpIntegration =
         opts.mcpIntegration ||
         (opts.mcpRootTools?.length === 0 ? undefined : targetHostedSession?.getMcpIntegration?.() || undefined);
-    const mcpToolNames = new Set(effectiveMcpIntegration?.getTools().map((tool) => tool.name));
-    const stableBridgedTools = finalCustomTools.filter((tool) => !mcpToolNames.has(tool.name));
-    const backendPrompt =
-        backend === "agy-cli"
-            ? finalSystemPrompt +
-              buildBridgedToolPromptAppendix(stableBridgedTools, "Antigravity CLI", rebuildToolNames) +
-              (mcpToolNames.size > 0
-                  ? "\nExternal server tools are available through the current MCP tool list.\n"
-                  : "")
-            : finalSystemPrompt;
-    const promptState = {
-        text: backendPrompt,
-    };
-    const session =
-        backend === "claude-cli"
-            ? new ClaudeCliExecutionSession({
-                  cwd: sessionCwd,
-                  agentName: opts.agentName,
-                  agentDisplayName: agentDef.displayName,
-                  finalSystemPrompt: promptState.text,
-                  model: resolvedModel,
-                  sessionManager: effectiveSessionManager,
-                  hostedSession: targetHostedSession || undefined,
-                  bridgedTools: finalCustomTools,
-                  mcpIntegration: effectiveMcpIntegration,
-                  persistModelChange: opts.persistModelChange !== false,
-              })
-            : await AgyCliExecutionSession.create({
-                  cwd: sessionCwd,
-                  agentName: opts.agentName,
-                  agentDisplayName: agentDef.displayName,
-                  finalSystemPrompt: promptState.text,
-                  model: resolvedModel,
-                  sessionManager: effectiveSessionManager,
-                  hostedSession: targetHostedSession || undefined,
-                  bridgedTools: finalCustomTools,
-                  mcpIntegration: effectiveMcpIntegration,
-                  thinkingLevel: backendThinking,
-                  persistModelChange: opts.persistModelChange !== false,
-                  declaredTools: rebuildToolNames,
-              });
+    const promptState = { text: finalSystemPrompt };
+    const session = new ClaudeCliExecutionSession({
+        cwd: sessionCwd,
+        agentName: opts.agentName,
+        agentDisplayName: agentDef.displayName,
+        finalSystemPrompt: promptState.text,
+        model: resolvedModel,
+        sessionManager: effectiveSessionManager,
+        hostedSession: targetHostedSession || undefined,
+        bridgedTools: finalCustomTools,
+        mcpIntegration: effectiveMcpIntegration,
+        persistModelChange: opts.persistModelChange !== false,
+    });
     await recordWorkflowMetric(
         {
             category: "model_selection",
@@ -2940,10 +2877,7 @@ export async function buildExecutionSession(
         sessionCwd,
     );
     return {
-        executionSession:
-            backend === "claude-cli"
-                ? createClaudeExecutionSession(session as ClaudeCliExecutionSession)
-                : createAgyExecutionSession(session as AgyCliExecutionSession),
+        executionSession: createClaudeExecutionSession(session),
         session,
         agentDef,
         promptState,
@@ -4413,13 +4347,6 @@ export async function ensureRootAgentSession(opts: EnsureRootAgentSessionOptions
             /* ignore */
         }
         rootSessionMetadata.delete(existing);
-        if (isExecutionSession(existing) && existing.kind === "agy-cli") {
-            try {
-                await disposeExecutionSession(existing);
-            } catch (_e) {
-                /* ignore */
-            }
-        }
     }
 
     const finalModelForUi = resolvedModel ? `${resolvedModel.provider}/${resolvedModel.id}` : undefined;
@@ -4653,7 +4580,6 @@ export async function runRootTurn({
     let transitionSteeringConsumed = false;
     let dispatch = null;
     try {
-        if (backend === "agy-cli") assertAgyCliImageInputSupported(effectiveImages);
         dispatch = prepareRequestDispatch(sessionManager, {
             userRequest: effectiveUserRequest,
             dispatchKind: targetHostedSession.generatedTaskTurnId ? "background_task_result" : dispatchKind,
@@ -4666,7 +4592,7 @@ export async function runRootTurn({
         targetHostedSession.metricsHumanInputPending = false;
         const finalRequest = dispatch.userRequest;
         let messages;
-        if (isExecutionSession(session) && (session.kind === "claude-cli" || session.kind === "agy-cli")) {
+        if (isExecutionSession(session) && session.kind === "claude-cli") {
             publishTransitionSteeringConsumption(targetHostedSession, transitionSteering);
             transitionSteeringConsumed = true;
             const transitionId = targetHostedSession.getAgentTransitionId?.();
@@ -4935,7 +4861,7 @@ export async function runIsolatedAgentSession(opts: RunIsolatedAgentSessionOptio
         const mode = opts.background ? "background" : "foreground";
         try {
             let messages;
-            if (executionSession?.kind === "claude-cli" || executionSession?.kind === "agy-cli") {
+            if (executionSession?.kind === "claude-cli") {
                 if (opts.disableAutoCompaction === true) {
                     assertPreparedPromptFitsContext(
                         session as AgentSession,

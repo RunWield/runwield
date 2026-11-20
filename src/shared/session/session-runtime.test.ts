@@ -3326,23 +3326,6 @@ test("SessionRuntime steers active foreground sub-agent before streaming root an
     hostedSession.removeSubAgentSession(foregroundSession);
 });
 
-test("SessionRuntime accepts text steering for Antigravity CLI but rejects image steering", async () => {
-    const sessionHost = new SessionHost();
-    const agentSession = makeSteeringAgentSession();
-    agentSession.model = { provider: "agy-cli", executionBackend: "agy-cli", input: ["text"] };
-    const runtime = makeRuntime({ sessionHost });
-    const sessionId = await attachExternalAgentSession(runtime, sessionHost, agentSession);
-
-    const steered = await runtime.steerSession(sessionId, "change direction", []);
-    assertEquals(steered.queued, true);
-    assertEquals(agentSession.getSteeringMessages(), ["change direction"]);
-    await assertRejects(
-        () => runtime.steerSession(sessionId, "look at this", [{ base64: btoa("img"), mimeType: "image/png" }]),
-        Error,
-        "Antigravity CLI sessions do not support image attachments.",
-    );
-});
-
 test("SessionRuntime buffers identifiable steering for the replacement Agent and supports recall", async () => {
     const sessionHost = new SessionHost();
     const rootSession = makeSteeringAgentSession();
@@ -4240,7 +4223,7 @@ test("SessionRuntime rejects image user turns before submission events", async (
                 modelOverride: "agy-cli/gemini-3.8-flash",
             }),
         Error,
-        "Antigravity CLI sessions do not support image attachments.",
+        "Antigravity (agy-cli) was removed",
     );
 
     assertEquals(events.includes(RuntimeEventTypes.USER_MESSAGE), false);

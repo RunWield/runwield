@@ -1920,7 +1920,7 @@ access to their own attachments. **Target:** deleting a Session also removes its
 
 ### Image generation
 
-**Scope and maturity:** Current through OpenRouter, Codex, and Antigravity ACP. The OpenCode Responses route is
+**Scope and maturity:** Current through OpenRouter and Codex. The OpenCode Responses route is
 experimental. Google SDK integration, graphical image settings, and remote generation are deferred. [Provider notes](../research/image-generation-provider-proof.md) hold historical test results.
 
 **Requirement: Generate images with a user-selected model.** Users set `imageGeneration.model`, with optional supported
@@ -1928,13 +1928,12 @@ experimental. Google SDK integration, graphical image settings, and remote gener
 model.
 
 - **Pi image models** use the existing provider configuration and authentication.
-- **`agy-cli/<model>`** uses a separate Antigravity ACP session, the installed CLI’s sign-in, and Antigravity’s image model.
 - **`codex-cli/<model>`** and **`openai-codex/<model>`** use the local Codex runtime's ChatGPT sign-in. RunWield finds
   Codex on PATH or in the ChatGPT desktop app on macOS.
 - **`opencode/<model>`** uses a Responses model with hosted image-tool access.
 
 Each request uses the configured provider and billing route. Unsupported controls are reported. A model change starts
-from that model's own controls. Antigravity image generation does not fall back to print mode or a different provider.
+from that model's own controls. A failed request does not switch providers.
 
 **Requirement: Produce a reusable project image with truthful success.** `create_image` takes a prompt, a required new
 output path, and optional project or Session image references. File-writing Agents, write-capable delegates, Agents
@@ -2342,18 +2341,11 @@ model execution; the tested provider/platform matrix and unsupported CLI backend
 **Requirement: Change models without losing Session or workflow context.** Users choose models and providers while the
 Session and workflow stay the same. The selected model and its requirements are visible across clients.
 
-**Requirement: Curated model presets.** Core bundles `codex`, `agy`, `opencode`, `claude-mixed`, `claude-opus`, and
+**Requirement: Curated model presets.** Core bundles `codex`, `opencode`, `claude-mixed`, `claude-opus`, and
 `codex-claude` presets with visible model assignments and access requirements. Users pick them in the preset selector
 or with `activeModelPreset`. Project presets take precedence over personal presets, and personal over bundled, by
 name; each replaces the whole lower definition. Users can copy a bundled definition into settings to customize it.
 Updates keep personal and project settings, and bundled presets stay selectable when their cache cannot be written.
-The bundled `agy` preset uses `agy-cli/gemini-4-neon` for Router, Slicer, Guide, Engineer, Frontend Engineer, and Init;
-`agy-cli/gemini-4-hydrogen` for Operator; and `agy-cli/gemini-4-argon` for Planner, Ideator, Architect, and Reviewer.
-All configured thinking levels stay unchanged: Router, Operator, and Reviewer use medium; all other Agents use high.
-The preset needs access to these three families, including Neon and Hydrogen. Neon requires Google AI Ultra, paid
-Google AI Pro, Gemini Enterprise, or `GEMINI_API_KEY` sign-in. Free and Plus plans do not include Neon. Users without
-access see the CLI error and can select another model or a personal preset. RunWield does not substitute another
-model or choose a preset by CLI version.
 
 **Requirement: Flexible model configuration.**
 
@@ -2365,18 +2357,6 @@ model or choose a preset by CLI version.
 - OpenAI subscription sign-in creates one private installation UUID in `~/.wld/device-id` on first use. Later sign-ins
   reuse it across Sessions and launches. API-key login does not create it; existing Codex credentials stay unchanged.
 - Claude CLI is available as `claude-cli/sonnet`, `claude-cli/opus`, `claude-cli/haiku`, and `claude-cli/fable`.
-- Antigravity CLI offers exactly six selectable base families: `agy-cli/gemini-4-neon`, `agy-cli/gemini-4-argon`,
-  `agy-cli/gemini-4-hydrogen`, `agy-cli/gemini-4-carbon`, `agy-cli/gemini-3.8-flash`, and `agy-cli/gemini-3.1-pro`.
-  Users set thinking separately; effort-suffixed public selections and other families are rejected before execution.
-  The bundled catalog includes Carbon regardless of local entitlement. Actual availability depends on the user's CLI
-  version and account; catalog inclusion does not prove a live request or image-generation support. RunWield does not
-  discover this catalog from the installed CLI or filter it by account.
-- Antigravity maps off/minimal/low thinking to low effort. Medium maps to medium for Neon, Argon, Hydrogen, Carbon, and
-  Flash, and to high for Pro. High maps to high for all six. Neon and Hydrogen map xhigh/max to xhigh; the other families map
-  them to high. Omitted thinking defaults to off-to-low; invalid thinking remains an error. Session state retains the
-  original thinking level. Chat and image-generation supervising-model commands share this mapping.
-- Saved personal and project Pro selections remain Pro, with the existing effort mapping. Historical execution facts
-  keep their original model names. An unavailable family produces a visible failure without fallback or a silent alias.
 - Vision fallback covers text-only models.
 - Prompt-cache warming stays off; a user-facing warming setting is deferred.
 - The local TUI model picker offers an explicit catalog refresh that enables network access and bypasses Pi's cache.
@@ -2401,7 +2381,7 @@ failures get a clear notice and the user decides. Cancellation stops retries qui
 attempt and states how to try again; [Session continuity](#session-continuity) and [workflow
 recovery](#workflow-completion-and-automatic-recovery) keep the Session and workflow.
 
-**Requirement: CLI Execution Backends.** Claude CLI and Antigravity CLI run inside a RunWield Session, and RunWield
+**Requirement: CLI Execution Backends.** Claude CLI runs inside a RunWield Session, and RunWield
 keeps the transcript, workflow, resume, and replay. Setup uses the installed CLI and its own sign-in; the first turn
 reports missing executables or sign-in with the backend's setup action. History shows the RunWield-visible activity
 of each backend. RunWield Connect is the separate mode in which an external host owns the conversation; see the
@@ -2436,23 +2416,13 @@ omitting required tools, or moving project operations to laptop files.
 - **Claude CLI steering:** Text Steering Messages reach the active Claude CLI turn, including turns with only native
   tools. Each message stays pending until Claude acknowledges it, then enters history once. Up recalls the latest
   pending message; Esc recalls pending messages and stops the turn.
-- **Antigravity:** Turns use the Antigravity ACP server. RunWield preserves the selected role, its instructions, its
-  allowed tools, the chosen model and effort, and the history visible to RunWield. Workflow tools are scoped to the turn
-  rather than installed in the user's global Antigravity settings. Actions needing approval wait for a supported client
-  to ask, or stop if it cannot ask. Permission failures name the denied action, with sensitive details redacted.
-  A signed-out CLI tells the user to sign in through Antigravity and retry without exposing login URLs or codes.
-  See [Providers and Models](../user-documentation/providers.md#antigravity-cli).
-- **Antigravity recovery:** RunWield accepts workflow completion only through its authorized completion tool. A normal
-  ACP end of turn is not completion evidence. A failed or interrupted turn does not automatically replay actions
-  with uncertain effects or fall back to `agy -p`.
-
-Future and open questions: provider-specific prompt or temperature tuning where it materially improves behavior, and
-provider support documented in terms of current configuration.
+  Future and open questions: provider-specific prompt or temperature tuning where it materially improves behavior, and
+  provider support documented in terms of current configuration.
 
 **Acceptance scenarios:**
 
 - When the user changes a model, the Session and workflow stay the same and the model is visible across clients.
-- Given no personal presets, Model Presets lists all six bundled choices with their models and required access.
+- Given no personal presets, Model Presets lists all five bundled choices with their models and required access.
 - Given a personal preset with a bundled name, the personal definition takes effect in full.
 - Given `Unexpected EOF` followed by a successful retry, the user sees the interruption and retry progress, then the
   answer, with completed tools kept.
@@ -2461,30 +2431,6 @@ provider support documented in terms of current configuration.
 - Given Validation Repair Engineer without its own model, repair uses Engineer's model and thinking level.
 - Given a CLI backend without its executable or sign-in, the first turn shows that backend's setup action.
 - Given an active Claude CLI turn, text steering reaches Claude before its next model step and appears once in history.
-- Given a signed-out Antigravity CLI, the turn reports the terminal sign-in action promptly and can be retried after
-  sign-in.
-- Given an Antigravity Engineer turn, it runs an allowed test command and creates a file in the execution workspace
-  after any required approval.
-- Given an Antigravity turn that ends before its required completion tool runs, the workflow remains incomplete.
-- Given saved Antigravity image settings, generation uses ACP and accepts only a completed tool call with one valid
-  image from the active session. An invalid or unavailable result creates no destination file and makes no fallback call.
-- Given Neon, Argon, Hydrogen, or Carbon selected through the model controls or Agent settings, a turn requests that family
-  with the mapped effort. Verified history and resume retain the selected family, original thinking level, and backend
-  effort without changing the Session or workflow. A returned wrong family or concrete effort is rejected.
-- Given a local account without Carbon access, the catalog still includes Carbon. On a compatible CLI with account
-  access, Carbon maps low, medium, and high thinking to the corresponding effort. An upstream access failure stays
-  visible without substituting another family; catalog inclusion alone does not prove live access.
-- Given Neon selected at xhigh, the CLI request uses `--model gemini-4-neon --effort xhigh`.
-- Given Neon or Hydrogen with xhigh or max thinking, the request uses xhigh effort and replay keeps the original thinking
-  value. Given Argon, Carbon, or Flash with max thinking, the request uses high effort.
-- Given saved Pro settings or a resumed Pro Session, the next request still uses Pro, including medium thinking mapped
-  to high effort. Existing Pro history remains unchanged; incomplete or inconsistent execution facts stay excluded.
-- Given the bundled `agy` preset, the six named Neon Agents, Operator on Hydrogen, and the four Argon planning/review
-  Agents resolve with their unchanged thinking levels. Personal and project presets stay intact.
-- Given an account or CLI that rejects a preset family, including Neon on Free or Plus, the bundled preset reports the
-  failure and makes no fallback request. The user can select an available family or a personal preset.
-- Given an unsupported Antigravity family, an effort-suffixed public model ID, or invalid thinking, the selection fails
-  before an Antigravity process starts and does not overwrite the active model.
 
 ### Installation and updates
 
@@ -2651,8 +2597,7 @@ Runtime State stay remote. Remote source entering prompts or review is not a syn
 
 **Not included:** Unattended execution, source synchronization, a required laptop checkout, multi-user collaboration,
 remote ACP clients, migration of an existing local Session to another checkout, automatic installation of every project
-dependency, or hostile-server isolation. **Deferred/unsupported:** Windows laptops, Claude CLI and Antigravity CLI
-backends, remote `/sleep`, remote ACP, direct server CLI review (`wld review`, `wld plans ui`, `wld wr`), and hosted
+dependency, or hostile-server isolation. **Deferred/unsupported:** Windows laptops, the Claude CLI backend, remote `/sleep`, remote ACP, direct server CLI review (`wld review`, `wld plans ui`, `wld wr`), and hosted
 Workspace registration. Remote `/sleep` reports its limit without maintenance; see
 [project context](#project-context-and-initialization).
 
@@ -3218,11 +3163,10 @@ transcript nor a billing charge. Missing measurements remain unavailable, not ze
 measurements linked to assistant turns. Claude CLI retains each result's turn usage once with a distinct source identity;
 turn cost is the change in the process running total. Request measurements and per-model detail remain alternatives
 where they overlap. Core retains these alternatives locally but excludes redundant alternative rows from
-all metrics exports. New Claude CLI and agy CLI usage rows identify input as excluding cache tokens; old rows keep their
-recorded basis. agy CLI retains turn-cumulative tokens and records USD cost as calculated when its model ID exactly
-matches the built-in Google price catalog. A missing catalog entry stays unavailable; a preview or alias model is not
-price evidence. Upstream-reported cost stays distinct from calculated cost. Pi and agy reasoning counts are recorded as
-a subset of output, not added to it. Missing reasoning or cache-write counts stay unavailable.
+all metrics exports. New Claude CLI usage rows identify input as excluding cache tokens. Historical rows keep their
+recorded token counts, cost, measurement coverage, and input basis even after their provider is retired.
+Upstream-reported cost stays distinct from calculated cost. Reasoning counts are a subset of output, not added to it.
+Missing reasoning or cache-write counts stay unavailable.
 
 Usage rows record start and end times only when observed for that row. CLI aggregate timing measures the subprocess
 turn, not model-server latency. Pi assistant timing is captured during its turn, not at settlement. Claude alternative
@@ -3438,22 +3382,18 @@ in Project coverage while hiding old rows, so Workspace can offer a readable ret
   missing end without turning it into a success. A failed turn keeps usage that its provider already reported.
 - Given absent usage, cost, truncation, or context occupancy measurements, RunWield marks each unavailable or partial;
   it does not replace missing values with zero or add overlapping turn and request costs.
-- Given Pi request usage, Claude request/turn/per-model fixtures, or agy turn-cumulative usage, when recorded, RunWield
-  retains the available detail without adding Claude alternative observations to a reported turn total. Absent cache
-  categories stay unavailable and supplied zeros stay measured. New agy rows record calculated USD cost only from an
-  exact catalog model. An unmatched model keeps unavailable cost; reasoning remains part of output.
-- Given a new CLI usage row, input and cache counts remain non-overlapping. Existing rows with unknown basis are not
-  rewritten. Given agy thinking tokens or Pi reasoning tokens, recorded reasoning is part of the unchanged output total.
-- Given an exact agy catalog match, cost is calculated from recorded counts and labeled calculated. Given only a preview
-  catalog entry, cost stays unavailable. Missing token buckets are not written as measured zero.
+- Given Pi request usage or Claude request, turn, and per-model usage, RunWield retains available detail without
+  adding alternatives to a reported turn total. Absent cache categories stay unavailable and supplied zeros stay measured.
+- Given a new Claude CLI usage row, input and cache counts remain non-overlapping. Existing rows with unknown basis
+  are not rewritten. Reasoning tokens remain part of the unchanged output total.
 - Given a Pi assistant message that completes before settlement, its observed start and end stay inside its turn.
   Settlement time does not replace them. Unobserved rows keep null timing.
-- Given a complete priced request, reported-zero request, unavailable-cost request, partial agy turn, and complete CLI
+- Given a complete priced request, reported-zero request, unavailable-cost request, historical partial turn, and complete CLI
   aggregate, Langfuse receives one content-free observation per attempt with the corresponding native fields and flags.
   Partial buckets stay absent; the aggregate creates no child generations or second parent total.
 - Given a Guided Review cost subtotal with partial cost coverage, Langfuse receives the subtotal in metadata with
-  `cost_complete=false`, without native cost details or a native model name. A partial-token agy turn with complete
-  catalog cost still sends native cost. Local cost coverage follows the separate cost fact.
+  `cost_complete=false`, without native cost details or a native model name. A historical partial-token turn with recorded complete
+  cost still sends native cost. Local cost coverage follows the separate cost fact.
 - Given uncertain ingestion or delayed readback, the exporter does not retry. Matching native readback confirms
   presence, including equivalent empty native representations and fully identical unmerged versions. This does not
   authorize a retry or claim exactly-once ingestion. Vendor-invented buckets, costs, complete values, or conflicting

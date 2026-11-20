@@ -9,6 +9,7 @@ import { basename, extname, isAbsolute, join, normalize, relative, resolve } fro
 import { discoverProviderModel } from "../models/model-registry.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
+import { isRemovedAgyProvider, removedAgyModelError } from "../models/removed-providers.ts";
 import { getResolvedVisionFallbackModelSetting } from "../settings.ts";
 import { getRemoteSessionSaveBridge, getRunWieldSessionDir } from "./root-session.ts";
 import { MAX_SESSION_BYTES } from "../remote/session-protocol.ts";
@@ -311,6 +312,8 @@ export async function resolveVisionFallbackModel(
 
     const parsed = parseProviderModel(configured);
     if (!parsed.ok) throw new Error(`Invalid visionFallback.model: ${configured}. Use provider/id.`);
+    if (isRemovedAgyProvider(parsed.provider))
+        throw removedAgyModelError(configured, "Choose a supported visionFallback.model or remove that setting.");
     assertModelExecutionBackendSupported({ provider: parsed.provider, id: parsed.id });
 
     let found = modelRegistry.find(parsed.provider, parsed.id);

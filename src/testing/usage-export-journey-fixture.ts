@@ -15,7 +15,7 @@ import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.t
 import { getModelRegistry } from "../shared/models/model-registry.ts";
 import { createRootSessionManager } from "../shared/session/root-session.ts";
 import { ClaudeCliExecutionSession } from "../shared/session/backends/claude-cli/execution-session.ts";
-import { AgyCliExecutionSession } from "../shared/session/backends/agy-cli/execution-session.ts";
+import { ExecutionMetricsRecorder } from "../shared/workflow/execution-metrics.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
 import type { MetricsJournalRow } from "../shared/workflow/metrics-export-record.ts";
 import {
@@ -77,83 +77,41 @@ export async function configureJourneyModel() {
     };
 }
 
-/** The only CLI stand-in: replay pinned upstream streams through the real executables' boundary. */
-export async function runJourneyCli(home: string, root: string, backend: "claude-cli" | "agy-cli") {
+/** Replay a pinned upstream Claude stream through the real process boundary. */
+export async function runJourneyCli(home: string, root: string) {
     const bin = join(home, "journey-bin");
     await mkdir(bin, { recursive: true });
-    const fixture =
-        backend === "claude-cli"
-            ? "claude-cli/fixtures/claude-2.1.284-read-tool-stream.jsonl"
-            : "agy-cli/fixtures/agy-1.2.12-tool-stream.jsonl";
-    const vendor = await readFile(new URL(`../shared/session/backends/${fixture}`, import.meta.url), "utf8");
-    const script = join(bin, `${backend}.ts`);
+    const vendor = await readFile(
+        new URL(
+            "../shared/session/backends/claude-cli/fixtures/claude-2.1.284-read-tool-stream.jsonl",
+            import.meta.url,
+        ),
+        "utf8",
+    );
+    const script = join(bin, "claude.ts");
     await writeFile(
         script,
         `
-const args = process.argv.slice(2);
-if (args[0] === "acp") {
-    if (args.includes("-p") || args.includes("--dangerously-skip-permissions")) throw new Error("unsafe legacy invocation");
-    const lines = (await import("node:readline")).createInterface({ input: (await import("node:process")).stdin });
-    const send = (frame) => console.log(JSON.stringify({ jsonrpc: "2.0", ...frame }));
-    const sessionId = "usage-session";
-    const selected = { mode: "default", model: "gemini-3.8-flash", thought_level: "low" };
-    const config = () => ({ configOptions: Object.entries(selected).map(([id,currentValue]) => ({ id,currentValue })) });
-    const update = (value) => send({ method: "session/update", params: { sessionId, update: value } });
-    for await (const line of lines) {
-        const request = JSON.parse(line);
-        const respond = (result) => send({ id: request.id, result });
-        if (request.method === "initialize") respond({ protocolVersion: 1 });
-        else if (request.method === "session/new") respond({ sessionId, ...config() });
-        else if (request.method === "session/set_config_option") {
-            selected[request.params.configId] = request.params.value;
-            respond(config());
-        } else if (request.method === "session/prompt") {
-            const frames = ${JSON.stringify(vendor)}.trim().split("\\n").map(JSON.parse);
-            const resultFrame = frames.find((frame) => (frame.event || frame.type) === "result");
-            const result = typeof resultFrame.result === "object" ? resultFrame.result : resultFrame;
-            const usage = result.usage || {};
-            update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: result.response || (typeof result.result === "string" ? result.result : "reply") } });
-            for (const frame of frames) {
-                const step = frame.step_update;
-                if (step?.step_type !== "tool") continue;
-                update({ sessionUpdate: "tool_call_update", toolCallId: String(step.step_index), name: step.tool_name || step.tool_info?.name || "read_file", status: step.state === "ACTIVE" ? "in_progress" : step.state === "ERROR" ? "failed" : "completed", rawInput: step.tool_info?.parameters || {} });
-            }
-            // Translate captured legacy measurements into ACP fields without
-            // supplying defaults: missing and measured zero remain distinct.
-            respond({ stopReason: "end_turn", usage: {
-                inputTokens: usage.input_tokens, outputTokens: usage.output_tokens,
-                cachedReadTokens: usage.cache_read_tokens, cachedWriteTokens: usage.cache_write_tokens,
-                thoughtTokens: usage.thinking_tokens,
-            } });
-        } else if (request.method === "session/close") { respond({}); lines.close(); break; }
-        else throw new Error("Unexpected ACP request: " + request.method);
-    }
-} else {
-    const lines = (await import("node:readline")).createInterface({input:process.stdin});
-    await new Promise(resolve=>lines.once("line",resolve));
-    lines.close();
-    console.log(${JSON.stringify(vendor)});
-}
+const lines = (await import("node:readline")).createInterface({input:process.stdin});
+await new Promise(resolve=>lines.once("line",resolve));
+lines.close();
+console.log(${JSON.stringify(vendor)});
 `,
     );
-    await writeRuntimeExecutableFixture(join(bin, backend === "claude-cli" ? "claude" : "agy"), script);
+    await writeRuntimeExecutableFixture(join(bin, "claude"), script);
     const previousPath = process.env.PATH;
     process.env.PATH = `${bin}${process.platform === "win32" ? ";" : ":"}${previousPath || ""}`;
     try {
-        const model = getModelRegistry().find(backend, backend === "claude-cli" ? "sonnet" : "gemini-3.8-flash");
+        const model = getModelRegistry().find("claude-cli", "sonnet");
         assert(model);
-        const options = {
+        const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Guide",
             agentDisplayName: "Guide",
             finalSystemPrompt: `${PRIVATE_TEXT} system instructions`,
             model,
             sessionManager: await createRootSessionManager("new", root),
-        };
-        const session =
-            backend === "claude-cli"
-                ? new ClaudeCliExecutionSession(options)
-                : await AgyCliExecutionSession.create(options);
+        });
         try {
             await session.runTurn({ userRequest: PRIVATE_TEXT });
         } finally {
@@ -163,6 +121,36 @@ if (args[0] === "acp") {
         if (previousPath === undefined) delete process.env.PATH;
         else process.env.PATH = previousPath;
     }
+}
+
+/** Insert measurements in the format already written by released Antigravity backends. */
+export async function recordJourneyHistoricalAgyUsage(root: string) {
+    const recorder = new ExecutionMetricsRecorder({
+        projectRoot: root,
+        sessionId: "historical-agy-usage",
+        agent: "Guide",
+        provider: "agy-cli",
+        backend: "agy-cli",
+        model: "gemini-3.8-flash",
+    });
+    await recorder.recordExecutionStart();
+    const now = new Date().toISOString();
+    await recorder.recordModelUsage({
+        inputTokens: 19529,
+        outputTokens: 155,
+        cacheReadTokens: 16511,
+        cacheWriteTokens: null,
+        reasoningTokens: 0,
+        costAmount: (19529 * 0.75 + 155 * 3.75 + 16511 * 0.075) / 1_000_000,
+        costSource: "calculated",
+        costAvailability: "complete",
+        measurementAvailability: "partial",
+        aggregationBasis: "turn",
+        inputCacheBasis: "excludes_cache",
+        startedAt: now,
+        endedAt: now,
+    });
+    await recorder.settleExecution("succeeded");
 }
 
 /** Real job handling and aggregate writer; only the external guide command is scripted. */

@@ -52,9 +52,8 @@ type ToolContent = ToolContentBlock[];
 
 /** Provenance stamped on every bridge-recorded tool result; not user-settable. */
 export const CLAUDE_CLI_MCP_PROVENANCE = "claude-cli-mcp" as const;
-export const AGY_CLI_MCP_PROVENANCE = "agy-cli-mcp" as const;
 
-export type BridgedToolProvenance = typeof CLAUDE_CLI_MCP_PROVENANCE | typeof AGY_CLI_MCP_PROVENANCE;
+export type BridgedToolProvenance = typeof CLAUDE_CLI_MCP_PROVENANCE;
 
 /** External prefixed alias each supported internal tool is exposed under. */
 export const WORKFLOW_MCP_ALIASES = {
@@ -92,16 +91,7 @@ export interface RunWieldMcpBridgeAssistantBase {
 /** Message shapes this bridge records (assistant toolCall + toolResult). */
 type BridgeRecordedMessage = Parameters<SessionManager["appendMessage"]>[0];
 
-export interface RunWieldMcpAuthorizationRequest {
-    name: string;
-    arguments: JsonObject;
-    toolCallId: string;
-}
-
 export interface RunWieldMcpBridgeOptions {
-    /** Authorize the actual arguments before invoking any tool implementation. */
-    authorizeCall?: (request: RunWieldMcpAuthorizationRequest) => Promise<boolean>;
-
     /** Eligible existing Tool Definitions exposed to this external CLI turn. */
     tools: ToolDefinition[];
     /** Abort signal for the current external CLI turn. */
@@ -474,22 +464,6 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
         const pendingSteering = entry.kind === "lifecycle" ? options.readPendingSteering?.() || [] : [];
         if (pendingSteering.length > 0) {
             return rejectedResult(formatPendingSteeringRejection(pendingSteering), entry, callId, args ?? {});
-        }
-
-        if (options.authorizeCall) {
-            let approved = false;
-            try {
-                approved = await options.authorizeCall({
-                    name: entry.internalName,
-                    arguments: args ?? {},
-                    toolCallId: callId,
-                });
-            } catch {
-                approved = false;
-            }
-            callSignal?.throwIfAborted();
-            if (!approved)
-                return rejectedResult("permission denied for the actual tool arguments", entry, callId, args ?? {});
         }
 
         let params: JsonObject;

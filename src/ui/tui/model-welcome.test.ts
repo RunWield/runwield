@@ -117,7 +117,7 @@ test("no providers opens the real welcome prompt and never the model selector", 
             const harness = await createInteractiveCompositionHarness({});
             try {
                 const screen = await harness.waitForScreen(WELCOME_TITLE);
-                assert(screen.includes("Use Antigravity CLI"));
+                assert(!screen.includes("Use Antigravity CLI"));
                 assert(screen.includes("Use a subscription login"));
                 assert(!screen.includes(MODEL_SELECTOR_MARKER), "no-provider startup must not open the model selector");
                 const provider = await registerScriptedOAuthProvider();

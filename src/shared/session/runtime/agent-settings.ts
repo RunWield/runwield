@@ -1,4 +1,3 @@
-import { AGY_CLI_MODEL_CHOICES } from "../../models/agy-cli-catalog.ts";
 import { mkdirSync } from "node:fs";
 import { AGENTS } from "../../../constants.ts";
 import { recordManualModelSelection } from ".././active-agent-session.ts";
@@ -23,12 +22,7 @@ import { readCurrentPairCheckpoint, recordPairCheckpointSnapshot } from ".././pa
 import { recordExecutionWorkflowSnapshot } from "../execution-workflow-session.ts";
 import { resolvePersistedExecutionRootConfiguration } from "./support.ts";
 
-import {
-    getRuntimeRootAgentSession,
-    isAgyCliMcpSetupApprovalError,
-    isRuntimeRootSessionManager,
-    SessionTurnInProgressError,
-} from "./support.ts";
+import { getRuntimeRootAgentSession, isRuntimeRootSessionManager, SessionTurnInProgressError } from "./support.ts";
 
 import type { ManagedOperationFailure } from "./types.ts";
 import type { RuntimeServices } from "./base.ts";
@@ -183,12 +177,9 @@ export class RuntimeAgentSettings {
     ): Promise<RuntimeMutationResult> {
         const registry = getModelRegistry();
         const parsedModel = provider ? { ok: true, provider, id: model } : parseProviderModel(model);
+        if (parsedModel.ok)
+            assertModelExecutionBackendSupported({ provider: parsedModel.provider, id: parsedModel.id });
         const targetModel = parsedModel.ok ? registry.find(parsedModel.provider, parsedModel.id) : undefined;
-        if (parsedModel.ok && parsedModel.provider === "agy-cli" && !targetModel) {
-            throw new Error(
-                `Unsupported Antigravity CLI model: agy-cli/${parsedModel.id}. Select ${AGY_CLI_MODEL_CHOICES}.`,
-            );
-        }
         assertModelExecutionBackendSupported(targetModel);
 
         const promptReadySession = this.services.sessionHost.getSession(sessionId);
@@ -225,16 +216,10 @@ export class RuntimeAgentSettings {
                         recordManualModelSelection(sessionManager, provider, model);
                     }
                 } catch (error) {
-                    if (!(error instanceof Error && isAgyCliMcpSetupApprovalError(error))) {
-                        if (previousUserOverride) {
-                            session.setActiveModelState(
-                                previousModelState.model,
-                                previousModelState.provider || "",
-                                true,
-                            );
-                        } else {
-                            session.clearUserModelOverride?.();
-                        }
+                    if (previousUserOverride) {
+                        session.setActiveModelState(previousModelState.model, previousModelState.provider || "", true);
+                    } else {
+                        session.clearUserModelOverride?.();
                     }
                     throw error;
                 }

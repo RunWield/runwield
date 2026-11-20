@@ -36,7 +36,7 @@ export function createImageTool(options: CreateImageToolOptions) {
         name: "create_image",
         label: "create_image",
         description:
-            "Generate or edit one image using the user's imageGeneration.model (Pi image model, agy-cli, codex-cli/openai-codex, or an OpenCode Responses model with hosted image-tool access). Save real image bytes to the required outputPath. Model and generation settings are user-controlled, not tool arguments.",
+            "Generate or edit one image using the user's imageGeneration.model (Pi image model, codex-cli/openai-codex, or an OpenCode Responses model with hosted image-tool access). Save real image bytes to the required outputPath. Model and generation settings are user-controlled, not tool arguments.",
         parameters: PARAMETERS,
         async execute(_callId, params, signal) {
             try {

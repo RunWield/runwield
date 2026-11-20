@@ -113,9 +113,9 @@ async function writeResumeThreshold(settingsPath: string, threshold: number): Pr
     __resetSettingsForTests();
 }
 
-test("getResumeModelSelection preserves supported Agy CLI references with the conservative context window", () => {
+test("getResumeModelSelection opens historical Antigravity transcripts without a live model override", () => {
     assertEquals(getResumeModelSelection({ provider: "agy-cli", modelId: "gemini-3.8-flash" }), {
-        modelOverride: "agy-cli/gemini-3.8-flash",
+        modelOverride: undefined,
         contextWindow: 128000,
     });
 });
