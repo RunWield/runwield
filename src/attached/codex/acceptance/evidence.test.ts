@@ -251,7 +251,7 @@ test("durable evidence rejects original-checkout edits and altered validation co
         ],
     };
     const implemented = {
-        git: { ...before.git, status: "?? .gitignore\n?? docs/plans/greeting.md\n" },
+        git: { ...before.git, status: "?? .gitignore\n" },
         files: [
             {
                 path: "runwield-home/workflows/wf.json",
@@ -274,8 +274,6 @@ test("durable evidence rejects original-checkout edits and altered validation co
                     )
                     .digest("hex"),
             },
-            { path: "fixture/.wld/internal/layout.json", sha256: "core-layout" },
-            { path: "fixture/docs/plans/greeting.md", sha256: "core-plan" },
         ],
     };
     equal(assessExecution(before, implemented).outcome, "pass");

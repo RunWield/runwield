@@ -166,6 +166,7 @@ interface PackageMetadataWrite {
     beforeMetadata: PlanPackageMetadata;
     afterRevision: number;
     metadataHash: string;
+    reopenedHash?: string;
 }
 interface PackageJournalScope {
     projectRoot: string;
@@ -176,6 +177,7 @@ const packageJournal = new AsyncLocalStorage<PackageJournalScope>();
 export async function journalPackageMetadataWrite(
     before: PlanPackageMetadata,
     after: PlanPackageMetadata,
+    reopened?: PlanPackageMetadata,
 ): Promise<void> {
     const scope = packageJournal.getStore();
     if (!scope || !currentPackageSelection()) return;
@@ -187,6 +189,7 @@ export async function journalPackageMetadataWrite(
         beforeMetadata: before,
         afterRevision: after.revision,
         metadataHash: createHash("sha256").update(JSON.stringify(after)).digest("hex"),
+        reopenedHash: reopened && createHash("sha256").update(JSON.stringify(reopened)).digest("hex"),
     };
     await writeJournal(scope.projectRoot, scope.transitionId, {
         ...record,
@@ -1400,6 +1403,14 @@ export async function runPlanReviewDecisionTransition<T>(
     },
 ): Promise<TransitionResult> {
     const operation = opts.approved ? "plan_review_approved" : "plan_review_feedback";
+    if (currentPackageSelection()) {
+        // An interrupted approval may have saved editor bytes without replacing the metadata generation.
+        await reconcileTransitionRecoveryRecords(opts.projectRoot, {
+            apply: true,
+            planName: opts.planName,
+            operations: ["plan_review_approved", "plan_review_feedback"],
+        });
+    }
     if (!opts.worktreeId) {
         return await runPlanTransition({
             projectRoot: opts.projectRoot,
@@ -1738,11 +1749,13 @@ export async function reconcileTransitionRecoveryRecords(
         proveEffect,
         planName,
         diagnostic = false,
+        operations,
     }: {
         apply?: boolean;
         proveEffect?: EffectProver;
         planName?: string;
         diagnostic?: boolean;
+        operations?: readonly string[];
     } = {},
 ): Promise<TransitionReconciliation[]> {
     let records = await listTransitionRecoveryRecords(projectRoot, { diagnostic });
@@ -1751,6 +1764,10 @@ export async function reconcileTransitionRecoveryRecords(
     if (planName !== undefined) {
         records = records.filter((record) => record.planName === planName);
     }
+    if (operations)
+        records = records.filter(
+            (record) => typeof record.operation === "string" && operations.includes(record.operation),
+        );
     const reconciliations: TransitionReconciliation[] = [];
     for (const record of records) {
         const transitionId = String(record.transitionId || "");
@@ -1886,9 +1903,17 @@ export async function reconcileTransitionRecoveryRecords(
             ) {
                 const current = await selectedPackage(planName);
                 const last = writes.at(-1)!;
-                const applied =
-                    current.metadata.revision === last.afterRevision &&
-                    createHash("sha256").update(JSON.stringify(current.metadata)).digest("hex") === last.metadataHash;
+                const currentHash = createHash("sha256").update(JSON.stringify(current.metadata)).digest("hex");
+                const applied = current.metadata.revision === last.afterRevision && currentHash === last.metadataHash;
+                const reopened = current.metadata.revision === last.afterRevision && currentHash === last.reopenedHash;
+                if (reopened) {
+                    reconciliations.push({
+                        ...base,
+                        resolvable: true,
+                        reason: "changed review inputs reopened the Plan; current editor documents are preserved",
+                    });
+                    continue;
+                }
                 const unchanged = current.metadata.revision === writes[0].beforeRevision;
                 const superseded = current.metadata.revision > last.afterRevision;
                 reconciliations.push({

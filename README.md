@@ -165,7 +165,7 @@ those files to keep you trapped. Any other harnesses or coding tools can still m
 You type `wld "add rate limiting to the public API"`. Then:
 
 1. **Router** classifies it as a **Planned Change** and hands off to Planner.
-2. **Planner** investigates the repo and writes a plan to `docs/plans/`.
+2. **Planner** investigates the repo and writes a Plan to your personal Project store.
 3. **You review it** in the browser — comment, request changes, approve. Iterate as many times as you want. Nothing has
    touched your code yet.
 4. **Engineer** executes the approved plan in an isolated git worktree.
@@ -236,9 +236,9 @@ The agent roster:
 | Reviewer          | Compares the final diff against the original plan.                                                     |
 | Recorder          | Writes the durable Work Record after completion.                                                       |
 
-Everything RunWield owns lives under `~/.wld/` (sessions, settings, global instructions, overrides). Everything about
-_your project_ stays in your repo as plain markdown: `docs/plans/`, `.wld/`, `docs/domain-language.md`. No lock-in, no
-database, all greppable.
+RunWield keeps personal Plans, Work Records and workflow state under `~/.wld/projects/<projectId>/`. The repository keeps
+Project settings, Agent overrides and project documentation. Ordinary SSH uses the remote account’s personal store.
+When you launch `wld remote <host>` from a laptop, the laptop owns the Plans and Work Records.
 
 **Documentation:** [public manual](https://docs.runwield.dev) · [usage](https://docs.runwield.dev/usage/) ·
 [plans and workflows](https://docs.runwield.dev/workflows/) · [settings](https://docs.runwield.dev/settings/) ·

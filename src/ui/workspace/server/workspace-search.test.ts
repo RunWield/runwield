@@ -22,6 +22,7 @@ import { platform, tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { join } from "node:path";
 import { DatabaseSync } from "../../../shared/sqlite.ts";
+import { admitProjectIdentity } from "../../../shared/project-identity.ts";
 import { authorLocalPlan, savePlanProse, loadPlan } from "../../../plan-store/index.ts";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
@@ -378,6 +379,7 @@ test("nested and execution-worktree Plan writes refresh searchable content befor
         await savePlanProse(fixture.root, name, "# Marigold refresh\n", first.revision);
         assertEquals(await found("Marigold refresh"), true);
         await git(fixture.root, ["worktree", "add", "--detach", executionRoot, "HEAD"]);
+        assertEquals((await admitProjectIdentity(executionRoot)).kind, "existing");
         const current = await loadPlan(executionRoot, name);
         if (!current) throw new Error("The linked worktree could not resolve the child Plan.");
         await savePlanProse(executionRoot, name, "# Mica refresh\n", current.revision);

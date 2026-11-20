@@ -23,7 +23,7 @@ export async function continueImportedPackage<T>(
     identity: ProjectIdentity,
     selected: LoadedPlanPackage,
     run: () => Promise<T>,
-    canonical: () => Promise<T>,
+    canonical: (expectedRevision?: number) => Promise<T>,
 ): Promise<T> {
     const reference = selected.metadata.references.legacyImport;
     if (!reference || selected.metadata.workflow?.legacySettlement) return await canonical();
@@ -67,10 +67,16 @@ export async function continueImportedPackage<T>(
             if (plan.attrs.validationCheckpoint && plan.attrs.validationCheckpoint.attemptId !== prior.id)
                 throw new Error("Imported validation checkpoint belongs to another attempt.");
             if (!abandoned && (!proof.published || (entry && entry.status !== "validated"))) return false;
-            await withPlanPackageLocks(identity, [selected.metadata.planId], async () => {
+            return await withPlanPackageLocks(identity, [selected.metadata.planId], async () => {
                 const current = await readPlanPackage(identity, { planId: selected.metadata.planId });
                 if (current.kind !== "loaded") throw new Error(current.message);
-                if (current.metadata.workflow?.legacySettlement) return;
+                if (
+                    current.metadata.name !== selected.metadata.name ||
+                    current.metadata.revision !== selected.metadata.revision ||
+                    (current.metadata.archive && !current.metadata.archive.restoredAt)
+                )
+                    throw new Error("Package selection changed; reload its current metadata.");
+                if (current.metadata.workflow?.legacySettlement) return current.metadata.revision;
                 const context = current.documents.find((doc) => doc.name === "context.md")!;
                 await savePlanPackageDocument(identity, current.metadata.planId, "context.md", context.hash, plan.body);
                 const controller = await writePackageControllerEvidence(
@@ -78,30 +84,36 @@ export async function continueImportedPackage<T>(
                     current.metadata.planId,
                     pickControllerState(plan.attrs),
                 );
-                await updatePlanPackageMetadata(identity, current.metadata.planId, current.metadata.revision, {
-                    definition: {
-                        ...current.metadata.definition,
-                        status: abandoned || plan.attrs.status === "user_verified" ? plan.attrs.status : "verified",
-                    },
-                    workflow: {
-                        ...current.metadata.workflow,
-                        attempt: undefined,
-                        controller,
-                        workRecord: plan.attrs.workRecord,
-                        legacySettlement: {
-                            outcome: abandoned ? "abandoned" : "published",
-                            attemptId: prior.id,
-                            importRecordId: reference.recordId,
-                            settledAt: new Date().toISOString(),
-                            ...(proof.targetBranch ? { targetBranch: proof.targetBranch } : {}),
-                            ...(plan.attrs.validatedCommit ? { commit: plan.attrs.validatedCommit } : {}),
+                const settled = await updatePlanPackageMetadata(
+                    identity,
+                    current.metadata.planId,
+                    current.metadata.revision,
+                    {
+                        definition: {
+                            ...current.metadata.definition,
+                            status: abandoned || plan.attrs.status === "user_verified" ? plan.attrs.status : "verified",
+                        },
+                        workflow: {
+                            ...current.metadata.workflow,
+                            attempt: undefined,
+                            controller,
+                            workRecord: plan.attrs.workRecord,
+                            legacySettlement: {
+                                outcome: abandoned ? "abandoned" : "published",
+                                attemptId: prior.id,
+                                importRecordId: reference.recordId,
+                                settledAt: new Date().toISOString(),
+                                ...(proof.targetBranch ? { targetBranch: proof.targetBranch } : {}),
+                                ...(plan.attrs.validatedCommit ? { commit: plan.attrs.validatedCommit } : {}),
+                            },
                         },
                     },
-                });
+                );
+                return settled.revision;
             });
-            return true;
         };
-        if (await settle()) return await withoutRetainedCheckoutSource(canonical);
+        const committed = await settle();
+        if (committed !== false) return await withoutRetainedCheckoutSource(() => canonical(committed));
         if (!live) throw new Error("Original execution attempt is unavailable; no replacement was started.");
         const [checked] = await inspectControllerDocumentWorktrees(identity.checkoutRoot, [live]);
         assertControllerDocumentAvailable(checked);

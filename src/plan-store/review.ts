@@ -3,19 +3,20 @@ import { withPlanAccess, type PlanAccess } from "./handles.ts";
 import { selectPlanAccess } from "./handles.ts";
 import {
     selectedPackage,
+    packageController,
     loadPackageWorkflowPlan,
     assertPackageWorkflowInput,
     capturePackageWorkflowInput,
     updatePackageWorkflowMetadata,
 } from "./workflows.ts";
 import { currentPackageSelection } from "./workflows.ts";
-import { saveReviewedPlanDocument } from "./index.ts";
+import { savePlanDocument } from "./index.ts";
 import type { PackageWorkflowInput } from "./packages.ts";
 import { preparePlanWorkflow } from "./index.ts";
 import { resolvePlanQuestions, type PlanQuestionAnswer } from "../shared/plan-questions.ts";
 import { projectPlanType } from "../shared/project-plan.ts";
 import { resolve } from "node:path";
-import { Marked } from "marked";
+import quikdown from "quikdown";
 import { getStoredPlanPath, loadPlanFileStrict, writePlanMarkdownWithRevision } from "../plan-store.ts";
 import {
     injectFrontMatter,
@@ -29,6 +30,7 @@ import {
     isPlanReviewableWithoutReopen,
     recordPlanEvent,
 } from "../shared/workflow/plan-lifecycle.ts";
+import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import { runPlanReviewDecisionTransition } from "./transitions.ts";
 import { PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";
 import { pickControllerState, stripRuntimeFields } from "../shared/workflow/controller-state.ts";
@@ -99,22 +101,49 @@ function reviewRejected(message: string): SharedPlanReviewActionResult {
     return { approved: false, feedback: message, cancellationReason: "stale_plan_review" };
 }
 
-// Only prose soft breaks are formatting. Keep code, raw HTML, hard breaks,
-// links, and document structure in the comparison. This HTML is never displayed.
-const reviewMarkdown = new Marked({
-    gfm: true,
-    breaks: false,
-    walkTokens(token) {
-        if (token.type === "text" && token.escaped !== true && typeof token.text === "string") {
-            token.text = token.text.replace(/\r?\n/g, " ");
+function reviewMarkdownEvidence(source: string): string {
+    // Rendering can trim code, omit list ordinals, or discard extra table cells.
+    // Preserve those source details, and treat raw HTML as opaque content.
+    const protectedSource: string[] =
+        source.match(
+            /^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*\1[ \t]*$|(`+)[^`]*?\2|<!--[\s\S]*?-->|<([a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\3\s*>|<\/?[a-z][^>]*>|^ {0,3}\[\^[^\]]+\]:[^\n]*(?:\n[ \t]+[^\n]*)*/gim,
+        ) || [];
+    const ordinals = source.match(/^[ \t]*\d+\.(?=\s)/gm) || [];
+    const tables: string[][][] = [];
+    let rows: string[][] = [];
+    let inListItem = false;
+    for (const line of [...source.split(/\r?\n/), ""]) {
+        if (/^[ \t]*(?:[-*+]|\d+\.)\s+\S/.test(line)) inListItem = true;
+        else if (!/^[ \t]+\S/.test(line)) inListItem = false;
+        if (!inListItem && /^(?: {4}|\t)/.test(line)) protectedSource.push(line);
+        if (line.includes("|")) {
+            rows.push(
+                line
+                    .trim()
+                    .replace(/^\||\|$/g, "")
+                    .split("|")
+                    .map((cell) => cell.trim().replace(/^(:?)-+(:?)$/, "$1-$2")),
+            );
+        } else {
+            // quikdown also recognizes consecutive pipe rows without a separator.
+            if (rows.length > 1) tables.push(rows);
+            rows = [];
         }
-    },
-});
+    }
+    // Unsafe destinations must stay distinct. This HTML is comparison evidence only, never display output.
+    const body = source.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/(\r?\n)(?:[ \t]*\r?\n)+[ \t]*$/, "$1");
+    const html = quikdown(body, {
+        allow_unsafe_urls: true,
+        reference_links: true,
+    });
+    const normalized = html.replace(/<[^>]*>|[^<]+/g, (part) =>
+        part.startsWith("<") ? part : part.replace(/\r?\n/g, " "),
+    );
+    return JSON.stringify({ protectedSource, ordinals, tables, normalized });
+}
 
 export function sameReviewedMarkdown(left: string, right: string): boolean {
-    return (
-        left === right || reviewMarkdown.parse(left, { async: false }) === reviewMarkdown.parse(right, { async: false })
-    );
+    return left === right || reviewMarkdownEvidence(left) === reviewMarkdownEvidence(right);
 }
 
 /**
@@ -286,16 +315,18 @@ async function applySharedPlanReviewDecisionInScope({
                     beforePlan.controllerRevision !== expectedControllerRevision
                 )
                     throw new Error("Plan changed after review opened. Refresh the review before deciding.");
-                await assertPackageWorkflowInput(
-                    planName,
-                    packageInput,
-                    (left, right) =>
-                        reviewMarkdown.parse(left, { async: false }) === reviewMarkdown.parse(right, { async: false }),
-                );
+                await assertPackageWorkflowInput(planName, packageInput, sameReviewedMarkdown);
                 const current = await selectedPackage(planName);
+                if (current.metadata.archive && !current.metadata.archive.restoredAt)
+                    throw new Error("This Plan package is archived.");
+                assertSharedPlanWriteAllowed(await packageController(current));
                 let text = typeof decision.plan === "string" ? decision.plan : beforePlan.markdown;
                 if (approved) text = resolvePlanQuestions(text, decision.questionAnswers);
-                await saveReviewedPlanDocument(planName, beforePlan.markdown, text);
+                if (conversationTurn) {
+                    await savePlanDocument(current.metadata.planId, "context.md", beforePlan.revision, text);
+                    return (await loadPackageWorkflowPlan(planName)).attrs;
+                }
+
                 const nextAttrs = {
                     ...beforePlan.attrs,
                     classification: canonicalClassification,
@@ -307,20 +338,18 @@ async function applySharedPlanReviewDecisionInScope({
                     nextAttrs.collaborationRecommendation = undefined;
                     nextAttrs.frontend = undefined;
                 }
-                if (!conversationTurn) {
-                    if (!isPlanReviewableWithoutReopen(nextAttrs.status))
-                        Object.assign(
-                            nextAttrs,
-                            buildPlanEventUpdates("review_reopened", nextAttrs.status, { triageMeta: nextAttrs }),
-                        );
+                if (!isPlanReviewableWithoutReopen(nextAttrs.status))
                     Object.assign(
                         nextAttrs,
-                        buildPlanEventUpdates(approved ? "review_approved" : "review_feedback", nextAttrs.status, {
-                            triageMeta: nextAttrs,
-                            failureReason: decision.feedback,
-                        }),
+                        buildPlanEventUpdates("review_reopened", nextAttrs.status, { triageMeta: nextAttrs }),
                     );
-                }
+                Object.assign(
+                    nextAttrs,
+                    buildPlanEventUpdates(approved ? "review_approved" : "review_feedback", nextAttrs.status, {
+                        triageMeta: nextAttrs,
+                        failureReason: decision.feedback,
+                    }),
+                );
                 const nextDefinition = {
                     ...current.metadata.definition,
                     classification: canonicalClassification,
@@ -332,25 +361,16 @@ async function applySharedPlanReviewDecisionInScope({
                     delete nextDefinition.executionAgent;
                     delete nextDefinition.collaborationRecommendation;
                 }
-                const writeRevision = (await loadPackageWorkflowPlan(planName)).revision;
-                const retained = await capturePackageWorkflowInput(planName, nextDefinition);
-                await assertPackageWorkflowInput(planName, packageInput, (left, right, documentName, planId) =>
-                    documentName === "context.md" && planId === current.metadata.planId
-                        ? right === text
-                        : reviewMarkdown.parse(left, { async: false }) ===
-                          reviewMarkdown.parse(right, { async: false }),
+                const retained = await capturePackageWorkflowInput(planName, nextDefinition, text);
+                await assertPackageWorkflowInput(planName, packageInput, sameReviewedMarkdown);
+                await updatePackageWorkflowMetadata(
+                    planName,
+                    nextAttrs,
+                    beforePlan.revision,
+                    { review: approved ? retained : undefined, readiness: undefined },
+                    approved ? "approved" : undefined,
+                    { text, input: retained },
                 );
-                if (!conversationTurn)
-                    await updatePackageWorkflowMetadata(
-                        planName,
-                        nextAttrs,
-                        writeRevision,
-                        {
-                            review: approved ? retained : undefined,
-                            readiness: undefined,
-                        },
-                        approved ? "approved" : undefined,
-                    );
                 return await loadPackageWorkflowPlan(planName);
             },
         });

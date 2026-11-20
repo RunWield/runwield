@@ -39,6 +39,7 @@ const observedRename = (from: fs.PathLike, to: fs.PathLike) => {
         exit("import-all-moved");
     originalRename(from, to);
     const path = String(to);
+    if (path.includes("/plans/") && path.endsWith("/context.md")) exit("reviewed-context");
     if (
         (request.command === "review-race" || request.command === "sequence-race") &&
         request.boundary !== "review-metadata" &&
@@ -318,6 +319,9 @@ try {
                     name: request.name ?? "one",
                     documents: { "context.md": "# Created\n", "validation.md": "# Validate\n" },
                 });
+                break;
+            case "recover":
+                await store.recoverPlanPackages(request.identity);
                 break;
             case "read":
                 result = current;

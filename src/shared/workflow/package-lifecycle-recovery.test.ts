@@ -368,6 +368,36 @@ test("a newer metadata revision supersedes an interrupted metadata-only intent w
     }
 });
 
+test("restarting a half-written browser approval preserves newer parent input and the browser edit", async () => {
+    const f = await packageFixture();
+    try {
+        const parent = await create(f.identity, {
+            planId: "parent",
+            name: "parent",
+            definition: { classification: "PROJECT", status: "draft" },
+        });
+        const plan = await create(f.identity, { parentPlanId: "parent" });
+        const first = await driver({ identity: f.identity, command: "review" });
+        equal(first.code, 0, first.output + first.errors);
+        equal((await read(f.identity)).metadata.definition.status, "approved");
+        const stopped = await driver({ identity: f.identity, command: "review-race", boundary: "reviewed-context" });
+        equal(stopped.code, 86, stopped.output + stopped.errors);
+        await fs.writeFile(join(parent.path, "context.md"), "Changed parent requirements\n");
+        const restarted = await driver({ identity: f.identity, command: "recover" });
+        equal(restarted.code, 0, restarted.output + restarted.errors);
+        equal((await read(f.identity)).metadata.definition.status, "draft");
+        equal((await read(f.identity)).metadata.history?.length, 1);
+        equal((await read(f.identity)).metadata.workflow?.review, undefined);
+        ok((await fs.readFile(join(plan.path, "context.md"), "utf8")).includes("Reviewed edit"));
+        equal(await fs.readFile(join(parent.path, "context.md"), "utf8"), "Changed parent requirements\n");
+        const retry = await driver({ identity: f.identity, command: "review" });
+        equal(retry.code, 0, retry.output + retry.errors);
+        equal(JSON.parse(retry.output.trim().split("\n").at(-1)!).result.approved, true, retry.output);
+    } finally {
+        await f.cleanup();
+    }
+});
+
 for (const changed of ["validation.md", "manual-qa.md", "parent"] as const) {
     test(`review rejects an editor race in ${changed} after its initial input check`, async () => {
         const f = await packageFixture();

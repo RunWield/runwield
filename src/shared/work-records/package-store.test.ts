@@ -252,13 +252,11 @@ test("Work Record retention keeps the count floor first and every record inside 
         await withWorkRecordOwner(f.root, f.identity, async () => {
             const dir = workRecordOwnerLayout()!.records;
             await fs.mkdir(dir, { recursive: true });
-            async function seed(count: number, createdAt: string) {
+            const id = (index: number) => `11111111-1111-4111-8111-${String(index).padStart(12, "0")}`;
+            async function seed(start: number, count: number, createdAt: string) {
                 await Promise.all(
                     Array.from({ length: count }, async (_, i) => {
-                        const attrs = recordAttrs({
-                            recordId: `11111111-1111-4111-8111-${String(i).padStart(12, "0")}`,
-                            createdAt,
-                        });
+                        const attrs = recordAttrs({ recordId: id(start + i), createdAt });
                         await fs.writeFile(
                             join(dir, `${attrs.recordId}.md`),
                             formatWorkRecordMarkdown(attrs, recordBody),
@@ -266,14 +264,22 @@ test("Work Record retention keeps the count floor first and every record inside 
                     }),
                 );
             }
-            await seed(30, "2000-01-01T00:00:00Z");
+            await seed(0, 30, "2000-01-01T00:00:00Z");
             equal((await previewRecordRetention(f.root)).due.length, 0);
-            await seed(400, new Date().toISOString());
-            equal((await previewRecordRetention(f.root)).due.length, 0);
+            await seed(100, 400, new Date().toISOString());
+            const old = Array.from({ length: 30 }, (_, i) => id(i));
+            deepEqual(
+                (await previewRecordRetention(f.root)).due.map((r) => r.recordId),
+                old,
+            );
             await setCustomSetting("workRecords", { retentionDays: 0 }, "project", f.root);
-            const { due } = await previewRecordRetention(f.root);
-            equal(due.length, 300);
-            equal(due[0].recordId, "11111111-1111-4111-8111-000000000100");
+            const due = (await previewRecordRetention(f.root)).due.map((r) => r.recordId);
+            deepEqual(due, [...Array.from({ length: 300 }, (_, i) => id(200 + i)), ...old]);
+            const all = Array.from({ length: 400 }, (_, i) => id(100 + i)).concat(old);
+            deepEqual(
+                all.filter((record) => !due.includes(record)),
+                Array.from({ length: 100 }, (_, i) => id(100 + i)),
+            );
         });
     } finally {
         await f.cleanup();

@@ -119,6 +119,11 @@ export function createPlanSessionSurface(
                 responseAny._meta && typeof responseAny._meta === "object" && Object.keys(responseAny._meta).length > 0;
             const runtimeCanceled = response.outcome === RuntimeInteractionOutcomes.CANCELED && !hasReviewPayload;
             return {
+                outcome:
+                    response.outcome === RuntimeInteractionOutcomes.BLOCKED ||
+                    response.outcome === RuntimeInteractionOutcomes.UNSUPPORTED
+                        ? response.outcome
+                        : undefined,
                 canceled: response.outcome === RuntimeInteractionOutcomes.CANCELED,
                 cancellationReason:
                     typeof review.cancellationReason === "string"

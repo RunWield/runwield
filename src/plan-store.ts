@@ -1371,6 +1371,7 @@ export async function writePlanMarkdownWithRevisionLocked(
     filePath: string,
     nextMarkdown: string,
     expectedRevision: string | undefined,
+    source?: "generated-epic-projection",
 ): Promise<string> {
     return await readLocalHomeStore(
         cwd,
@@ -1384,16 +1385,13 @@ export async function writePlanMarkdownWithRevisionLocked(
                     if (expectedRevision !== undefined && current.revision !== expectedRevision)
                         throw new StalePlanWriteError(expectedRevision, current.revision);
                     const plan = await selectedPackage(planName);
-                    const context = plan.documents.find((document) => document.name === "context.md");
-                    if (!context) throw new Error("Canonical Plan context is missing.");
-                    await savePlanPackageDocument(
-                        project,
-                        plan.metadata.planId,
-                        "context.md",
-                        context.hash,
-                        nextMarkdown,
-                    );
-                    return (await loadPackageWorkflowPlan(planName)).revision;
+                    const { savePlanDocument, saveReviewedPlanDocument } = await import("./plan-store/documents.ts");
+                    if (source === "generated-epic-projection") {
+                        await saveReviewedPlanDocument(planName, current.markdown, nextMarkdown);
+                        return (await loadPackageWorkflowPlan(planName)).revision;
+                    }
+                    return (await savePlanDocument(plan.metadata.planId, "context.md", current.revision, nextMarkdown))
+                        .revision;
                 });
             }
             return await withPlanLock(
@@ -3751,7 +3749,8 @@ export async function savePlanBodyById(
                 throw new StalePlanWriteError(options.expectedRevision || "required", resource.revision);
             const actual = await hashPlanBody(resource.body);
             if (actual !== expectedBodyHash) throw new StalePlanBodyError(expectedBodyHash, actual);
-            await savePlanPackageDocument(selection, planId, "context.md", actual, newBody);
+            const { savePlanDocument } = await import("./plan-store/documents.ts");
+            await savePlanDocument(planId, "context.md", resource.revision, newBody, options);
             return { ...(await findPlanEvidenceById(cwd, planId)), bodyHash: await hashPlanBody(newBody) };
         });
     }

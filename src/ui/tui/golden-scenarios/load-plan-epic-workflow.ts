@@ -567,6 +567,7 @@ export const loadPlanEpicArchitectReviewScenario = {
 };
 
 export const loadPlanEpicArchitectReReviewScenario = {
+    retainedCheckoutInput: true,
     name: "load-plan-epic-send-back-discuss-approve-later-and-reload",
     composedTui: true,
     initialAgentName: "guide",

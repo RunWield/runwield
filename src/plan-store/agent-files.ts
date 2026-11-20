@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { getHomeDir } from "../constants.ts";
 import {
     managedPlanStoreActive,
     managedDocumentRoot,
@@ -5,8 +7,8 @@ import {
     readManagedDocument,
     saveManagedDocument,
 } from "./managed.ts";
-import { mkdir, readFile, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { mkdir, readFile, stat, realpath, lstat } from "node:fs/promises";
+import { dirname, basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { inspectLocalHomeStore } from "./access.ts";
 import { readPlanPackage } from "./packages.ts";
 import { withPackageProject, packageWorkflowRevision } from "./workflows.ts";
@@ -49,10 +51,64 @@ function exactEdit(content: string, oldText: string, newText: string, path: stri
     return next;
 }
 
+/** Resolve the existing ancestor so new files reached through an alias use the same ownership check. */
+async function canonicalFileTarget(path: string): Promise<string> {
+    try {
+        return await realpath(path);
+    } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+        const link = await lstat(path).catch((cause: NodeJS.ErrnoException) => {
+            if (cause.code === "ENOENT") return null;
+            throw cause;
+        });
+        if (link?.isSymbolicLink()) throw new Error("The file target is a dangling symbolic link.");
+        const parent = dirname(path);
+        if (parent === path) return path;
+        return join(await canonicalFileTarget(parent), basename(path));
+    }
+}
+
+function insideProjectStorage(relativePath: string): boolean {
+    return relativePath !== ".." && !relativePath.startsWith(".." + sep) && !isAbsolute(relativePath);
+}
+
+/** Both the Plan guard and delegated source tool use this exact absolute target. */
+export async function resolvePlanFileTarget(cwd: string, requested: string): Promise<string> {
+    let path = requested.replace(/[\u00a0\u2000-\u200a\u202f\u205f\u3000]/g, " ").replace(/^@/, "");
+    if (process.platform === "win32") {
+        path = path.replace(
+            /^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i,
+            (_match, drive: string, rest: string | undefined) =>
+                drive.toUpperCase() + ":\\" + (rest || "").replaceAll("/", "\\"),
+        );
+    }
+    if (path === "~" || path.startsWith("~/") || (process.platform === "win32" && path.startsWith("~\\")))
+        path = join(getHomeDir(), path.slice(2));
+    if (path.startsWith("file://")) path = fileURLToPath(path);
+    const absolute = resolve(cwd, path);
+    const target = await canonicalFileTarget(absolute);
+    const homeProjects = join(getHomeDir(), ".wld", "projects");
+    const protectedPath = relative(homeProjects, absolute);
+    if (insideProjectStorage(protectedPath)) {
+        const expected = join(await canonicalFileTarget(homeProjects), protectedPath);
+        if (target !== expected) throw new Error("A protected Project path was redirected.");
+    }
+    return target;
+}
+
 /** Intercept owned Plan files; undefined means the caller's ordinary file tool owns this path. */
 export async function operatePlanFile(cwd: string, command: PlanFileCommand): Promise<PlanFileResult | undefined> {
-    const { path, mode } = command;
-    if (!path) return;
+    const { mode } = command;
+    if (!command.path) return;
+    const path = await resolvePlanFileTarget(cwd, command.path);
+    cwd = await canonicalFileTarget(cwd);
+    async function guardProjectStorage() {
+        if (mode === "read") return;
+        const root = await canonicalFileTarget(join(getHomeDir(), ".wld", "projects"));
+        const rel = relative(root, path);
+        if (insideProjectStorage(rel))
+            throw new Error("Project metadata can only be changed through its owning operation.");
+    }
     if (managedPlanStoreActive()) {
         const absolute = isAbsolute(path) ? path : join(cwd, path);
         const rel = relative(managedDocumentRoot(cwd), absolute).replaceAll("\\", "/");
@@ -79,6 +135,7 @@ export async function operatePlanFile(cwd: string, command: PlanFileCommand): Pr
             throw new Error(
                 "Repository Plan documents are import sources or delivery copies. Create canonical Plans with plan_written contextMarkdown.",
             );
+        await guardProjectStorage();
         return;
     }
     const store = inspectLocalHomeStore(cwd);
@@ -89,7 +146,9 @@ export async function operatePlanFile(cwd: string, command: PlanFileCommand): Pr
         );
     const absolute = isAbsolute(path) ? path : join(cwd, path);
     if (store.kind === "local") {
-        const root = join(store.identity.executionAccountHome, ".wld", "projects", store.identity.projectId, "plans");
+        const root = await canonicalFileTarget(
+            join(store.identity.executionAccountHome, ".wld", "projects", store.identity.projectId, "plans"),
+        );
         const rel = relative(root, absolute).replaceAll("\\", "/");
         if (rel && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel)) {
             const resource = rel.split("/").at(-1)!;
@@ -119,6 +178,7 @@ export async function operatePlanFile(cwd: string, command: PlanFileCommand): Pr
                 "Repository Plan documents are import sources or delivery copies. Create canonical Plans with plan_written contextMarkdown.",
             );
     }
+    await guardProjectStorage();
     if (!checkoutDocument) return;
     const planName = relative(cwd, absolute).replaceAll("\\", "/").slice("docs/plans/".length, -3);
     if (mode === "write") {

@@ -27,14 +27,24 @@ export interface ProjectPersonalOwner {
     /** Explicit laptop account identity for managed launches; account home for ordinary launches. */
     identity: string;
 }
+interface AccountHomeDirectory {
+    device: number;
+    inode: number;
+}
 export interface ProjectLaunchContext {
     personalOwner: ProjectPersonalOwner;
     executionAccountHome: string;
+    /** Original account HOME when it resolves through an alias. */
+    configuredExecutionAccountHome?: string;
+    accountHomeDirectory?: AccountHomeDirectory;
 }
 export interface ProjectIdentity {
     projectId: string;
     personalOwner: ProjectPersonalOwner;
     executionAccountHome: string;
+    /** Original account HOME when it resolves through an alias. */
+    configuredExecutionAccountHome?: string;
+    accountHomeDirectory?: AccountHomeDirectory;
     repositoryId: string;
     checkoutId: string;
     cwd: string;
@@ -51,6 +61,7 @@ export interface ProjectIdentityPending {
 }
 export interface ProjectIdentityInvalid {
     kind: "invalid";
+    cause?: Error;
     message: string;
 }
 export interface ProjectIdentityExisting {
@@ -318,6 +329,25 @@ export function projectLaunchContext(): ProjectLaunchContext {
         personalOwner: remoteProjectOwner() ?? { kind: "execution-account", identity: executionAccountHome },
     };
 }
+/** Keep writes on the captured account directory if the login HOME is retargeted during an operation. */
+export function verifyExecutionAccountHome(
+    context: Pick<
+        ProjectLaunchContext,
+        "configuredExecutionAccountHome" | "executionAccountHome" | "accountHomeDirectory"
+    >,
+): void {
+    if (!context.accountHomeDirectory && !context.configuredExecutionAccountHome) return;
+    const resolved = realpathSync(context.configuredExecutionAccountHome ?? context.executionAccountHome);
+    const target = lstatSync(resolved);
+    if (
+        resolved !== context.executionAccountHome ||
+        (context.accountHomeDirectory &&
+            (target.dev !== context.accountHomeDirectory.device || target.ino !== context.accountHomeDirectory.inode))
+    ) {
+        throw new Error("The execution account home changed during this operation.");
+    }
+}
+
 function contextFor(options: ProjectIdentityOptions): ProjectLaunchContext {
     const context = options.context ?? projectLaunchContext();
     if (
@@ -331,7 +361,27 @@ function contextFor(options: ProjectIdentityOptions): ProjectLaunchContext {
         context.personalOwner.identity !== context.executionAccountHome
     )
         throw new Error("Ordinary Project owner must be the execution account");
-    return context;
+    verifyExecutionAccountHome(context);
+    if (context.accountHomeDirectory) return context;
+    // On macOS /var is a system-wide alias that also appears in existing test and Project locators.
+    const configured = lstatSync(context.executionAccountHome, { throwIfNoEntry: false });
+    if (!configured || (process.platform !== "linux" && !configured.isSymbolicLink())) return context;
+    const physical = realpathSync(context.executionAccountHome);
+    const target = lstatSync(physical);
+    if (!target.isDirectory() || (process.geteuid && target.uid !== process.geteuid()))
+        throw new Error("The account home must resolve to a directory owned by the effective user.");
+    return {
+        ...context,
+        ...(physical !== context.executionAccountHome && {
+            configuredExecutionAccountHome: context.executionAccountHome,
+        }),
+        accountHomeDirectory: { device: target.dev, inode: target.ino },
+        executionAccountHome: physical,
+        personalOwner:
+            context.personalOwner.kind === "execution-account"
+                ? { ...context.personalOwner, identity: physical }
+                : context.personalOwner,
+    };
 }
 function checkIdentityDirectories(home: string, ...segments: string[]): string {
     let path = home;
@@ -680,7 +730,7 @@ export function inspectProjectIdentity(path: string, options: ProjectIdentityOpt
         const candidates = candidatesFor(e, context);
         return candidates.length ? { kind: "pending", candidates } : { kind: "fresh" };
     } catch (error) {
-        return { kind: "invalid", message: String(error) };
+        return { kind: "invalid", message: String(error), ...(error instanceof Error && { cause: error }) };
     }
 }
 function writeLocalIdentity(path: string, text: string): void {
@@ -897,7 +947,7 @@ export async function admitProjectIdentity(
             }
             return admitProjectIdentity(path, options);
         }
-        return { kind: "invalid", message: String(error) };
+        return { kind: "invalid", message: String(error), ...(error instanceof Error && { cause: error }) };
     }
 }
 export class ProjectIdentityEntryRequired extends Error {
@@ -908,6 +958,7 @@ export class ProjectIdentityEntryRequired extends Error {
                 : result.kind === "pending"
                   ? `Project clone-link choice required: ${result.candidates.map((candidate) => `${candidate.displayName} (${candidate.projectId})`).join(", ")}`
                   : "Project identity entry canceled",
+            result.kind === "invalid" && result.cause ? { cause: result.cause } : undefined,
         );
         this.name = "ProjectIdentityEntryRequired";
     }
@@ -920,6 +971,9 @@ export interface HomeProjectOwner {
     repositoryId: string;
     personalOwner: ProjectPersonalOwner;
     executionAccountHome: string;
+    /** Original account HOME when it resolves through an alias. */
+    configuredExecutionAccountHome?: string;
+    accountHomeDirectory?: AccountHomeDirectory;
     registrationDigest: string;
 }
 export type ProjectStoreIdentity = ProjectIdentity | HomeProjectOwner;
@@ -1009,6 +1063,7 @@ export async function registerHomeProjectOwner(input: HomeProjectRegistration): 
     }
 }
 export function assertProjectStoreIdentity(identity: ProjectStoreIdentity): void {
+    verifyExecutionAccountHome(identity);
     if (isHomeProjectOwner(identity)) {
         const current = inspectHomeProjectOwner(identity.projectId, identity.repositoryId);
         if (

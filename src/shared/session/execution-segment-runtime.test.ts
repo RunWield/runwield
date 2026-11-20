@@ -102,7 +102,7 @@ test("managed execution rollover writes one fresh successor and rejects stale Pl
                         worktree: evidence.evidence.worktree,
                     },
                 });
-                assertStringIncludes(rejected.error || "", "Plan revision changed after approval");
+                assertStringIncludes(rejected.error || "", "not ready for work (status: draft)");
                 assertEquals(
                     runtimeHandle.store.listSessionTranscriptSegments(fixture.session.runwieldSessionId).length,
                     1,

@@ -1,3 +1,4 @@
+import { sameReviewedMarkdown } from "./review.ts";
 import { managedPlanStoreActive, readManagedDocument, saveManagedDocument, saveManagedProse } from "./managed.ts";
 import { posix } from "node:path";
 import {
@@ -6,15 +7,29 @@ import {
     packageWorkflowRevision,
     packageController,
     packageWorkflowLocks,
+    reopenedPackageReview,
 } from "./workflows.ts";
-import { savePlanPackageDocument, listPlanPackages, type PackageResourceRole } from "./packages.ts";
-import { assertSharedPlanWriteAllowed, isSharedPlanLocked } from "../shared/collaboration/lock.ts";
+import {
+    savePlanPackageDocument,
+    commitPlanPackageBatch,
+    packageDocumentText,
+    listPlanPackages,
+    type PackageResourceRole,
+    type LoadedPlanPackage,
+} from "./packages.ts";
+import {
+    assertSharedPlanWriteAllowed,
+    isSharedPlanLocked,
+    type CollaborationWriteOptions,
+} from "../shared/collaboration/lock.ts";
 import { StalePlanWriteError } from "../plan-store.ts";
 
 /** Save an edit against the exact context shown by a retained review. Storage checks stay with the owner. */
 export async function saveReviewedPlanDocument(planName: string, before: string, after: string): Promise<void> {
     await packageWorkflowLocks([planName], async () => {
         const plan = await selectedPackage(planName);
+        if (plan.metadata.archive && !plan.metadata.archive.restoredAt)
+            throw new Error("This Plan package is archived.");
         assertSharedPlanWriteAllowed(await packageController(plan));
         const document = plan.documents.find((entry) => entry.name === "context.md")!;
         if (new TextDecoder().decode(document.bytes) !== before)
@@ -55,9 +70,19 @@ export async function readPlanDocuments(planId: string, name: string = "context.
         revision: packageWorkflowRevision(plan),
         metadataRevision: plan.metadata.revision,
         body: new TextDecoder().decode(document.bytes),
-        writable: !isSharedPlanLocked(controller),
+        writable:
+            (!plan.metadata.archive || Boolean(plan.metadata.archive.restoredAt)) && !isSharedPlanLocked(controller),
         documents: plan.documents.map((entry) => ({ name: entry.name, role: entry.role })),
     };
+}
+
+/** Derive review and execution metadata for an atomic change to the reviewed documents. */
+export async function reviewUpdateForDocumentChanges(
+    plan: LoadedPlanPackage,
+    changes: Array<{ previous: string; next: string }>,
+) {
+    if (changes.every(({ previous, next }) => sameReviewedMarkdown(previous, next))) return;
+    return await reopenedPackageReview(plan);
 }
 
 export async function savePlanDocument(
@@ -65,6 +90,7 @@ export async function savePlanDocument(
     name: string,
     revision: string,
     body: string,
+    options: CollaborationWriteOptions = {},
 ): Promise<PlanDocumentView> {
     if (managedPlanStoreActive()) return await saveManagedDocument(planId, name, revision, body);
     return await packageWorkflowLocks([{ planId }], async () => {
@@ -73,10 +99,27 @@ export async function savePlanDocument(
         const plan = await selectedPackage({ planId });
         const document = plan.documents.find((entry) => entry.name === name);
         if (!document) throw new Error("Plan document not found.");
-        assertSharedPlanWriteAllowed(await packageController(plan));
         const currentRevision = packageWorkflowRevision(plan);
         if (currentRevision !== revision) throw new StalePlanWriteError(revision, currentRevision);
-        await savePlanPackageDocument(selection, planId, document.name, document.hash, body);
+        if (plan.metadata.archive && !plan.metadata.archive.restoredAt)
+            throw new Error("This Plan package is archived.");
+        assertSharedPlanWriteAllowed(await packageController(plan), options);
+        const previous = new TextDecoder().decode(document.bytes);
+        if (previous !== body) {
+            const changed = await reviewUpdateForDocumentChanges(plan, [{ previous, next: body }]);
+            if (changed) {
+                const documents = packageDocumentText(plan.documents);
+                await commitPlanPackageBatch(selection, [
+                    {
+                        before: { metadata: plan.metadata, documents },
+                        metadata: { ...plan.metadata, ...changed, revision: plan.metadata.revision + 1 },
+                        documents: { ...documents, [document.name]: body },
+                    },
+                ]);
+            } else {
+                await savePlanPackageDocument(selection, planId, document.name, document.hash, body);
+            }
+        }
         return await readPlanDocuments(planId, name);
     });
 }

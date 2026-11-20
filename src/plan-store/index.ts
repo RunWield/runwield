@@ -4,6 +4,7 @@
  */
 export {
     operatePlanFile,
+    resolvePlanFileTarget,
     isCanonicalPlanMarkdownPath,
     type PlanFileCommand,
     type PlanFileResult,

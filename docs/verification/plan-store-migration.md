@@ -166,3 +166,57 @@ A final fresh managed connection selected the original `family/second` Session f
 conversation at the primary cwd, and used Guide's real `work_record_read` to retrieve approved record
 `6ce6ddbb-caa9-48bd-8758-6b4d4e3a0094` from the laptop owner. Only the primary Git worktree remained. The final primary
 checkout inspection found neither `.wld/internal` nor `.wld/plans` (including symlink entries).
+
+## Integration closeout on Fedora 44
+
+On 2026-11-20 UTC, two disposable unprivileged accounts logged in through OpenSSH on the Kubernetes control-plane
+host. The SSH server set each login's HOME from its passwd entry. Each account had separate ordinary and managed
+Git repositories and bare publication targets. The macOS laptop used a separate disposable personal directory for
+each managed connection. Its home-only Project registrations contained zero local checkouts.
+
+| Effective SSH user | Configured login HOME | Resolved login HOME                         | Ordinary Project ID                    | Managed Project ID on the laptop       |
+| ------------------ | --------------------- | ------------------------------------------- | -------------------------------------- | -------------------------------------- |
+| `rwq9d66p`         | `/home/rwq9d66p`      | `/home/rwq9d66p`                            | `fe59c657-4f10-4f0b-8e85-8bdcb642f635` | `df7dd60a-9ed7-4893-a694-32fd8b51b4f7` |
+| `rwq9d66s`         | `/home/rwq9d66s`      | `/var/tmp/wld-closeout-9d66-homes/rwq9d66s` | `01c48772-a304-48ff-8bdf-fec27cd0f112` | `4929db73-fc4b-4328-857d-39206e8a70c0` |
+
+**Ordinary SSH.** On each account, `wld plans import` created the Plan in the remote account's personal Project.
+The native TUI recorded a user attestation and generated an approved Work Record. It claimed no Workflow Validation
+for that attestation. With default retention, a fresh login saw the record and both preview and confirmation kept it.
+With the disposable Project's count and age floors set to zero, preview found one record and confirmation deleted
+one. In a new login an editor changed the canonical Markdown. `wld plans history show` still read the closed version
+and `wld plans history restore` restored its text. The checkout source retained its original bytes.
+
+**Managed SSH.** Both native `wld remote` connections mounted laptop resources over SSHFS. A synthetic model provided
+Agent tool calls. The TUI, Git, two review pages, shell verification, SSH transport and owner stores ran normally.
+Each browser approval reached the laptop. Implementation and verification ran in a Fedora Git worktree. After semantic
+review and browser Code Review approval, the respective bare `main` refs contained `remote delivered` in `sentinel.txt`.
+The only changed paths relative to each target's first parent were `.gitignore` and `sentinel.txt`. Both receipt
+policies recorded Plan copies off, Work Record copies off and canonical generation on.
+
+| HOME layout | Attempt    | Validated commit | Published commit | Approved laptop Work Record            |
+| ----------- | ---------- | ---------------- | ---------------- | -------------------------------------- |
+| Physical    | `5c9d9004` | `30ba041a3e04`   | `69d2da6bce47`   | `d074f933-975b-476c-b3b7-cf3ac75df946` |
+| Symlink     | `17703f9c` | `d2fcb5913816`   | `473da486241b`   | `b1de2ab2-ad79-477a-97ed-3b4dc62c3259` |
+
+A fresh authenticated Project-store client admitted each binding over real SSH. It read the saved approval milestone,
+read and searched the approved record, and checked the execution host's retention settings. With retention set to zero,
+the unfinished cleanup protected each record. After native cleanup removed each worktree and source branch, the same
+preview returned one due record per laptop. Both confirmed prunes removed it. The corresponding execution-host Project
+had neither a canonical Plan package nor a Work Record directory. Neither checkout acquired `.wld/internal`.
+
+**Failures observed and retried.** Build `188eba748e37cfb88f1a07af927f701b47804d9cff139422b96b5979252164a2`
+returned HTTP 200 to the browser but left both edited Plans in draft. The managed operation had completed its receipt
+for the prose write before the approval metadata write. The completed delivery rows above used matching macOS arm64
+and Linux x86_64 binaries with build ID `16800347e028c080bd79e6d599d429875bf7eabfecc229ecfba7129e6c928a65`.
+The final reconnect used `b6587e171d987fde701fbeeda1d337ff73770368487c08d76360ad1ae4ff01f8`. Reopening the two
+original interrupted reviews and selecting **Approve for Later** preserved the browser edits, retained an approval
+milestone and cleared both recovery journals. The subprocess regression then interrupted an edited approval after saving
+the child prose and changed the parent on disk before restart. Recovery preserved both edits, reopened the previously
+approved child and kept its earlier approval milestone. A fresh review approved the new input.
+
+Mnemoteca's fresh `setup` returned HTTP 404 for its pinned ONNX Runtime 1.23.1 download on both platforms. The test
+copied the existing installed runtime and model assets from each machine into its disposable homes. It used separate
+empty test databases. `mnemoteca setup` then reported the components installed. Native cleanup and record search
+succeeded on retry.
+
+Cleanup removed both test accounts, their login homes, the symlink target, the temporary SSH key and agent, and the isolated laptop homes and harness files. Both passwd entries were absent after cleanup.

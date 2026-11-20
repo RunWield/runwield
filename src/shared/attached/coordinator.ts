@@ -187,7 +187,7 @@ async function validationOperationIsActive(record: AttachedWorkflowRecord): Prom
     const holder = record.validation?.holder;
     return Boolean(
         holder &&
-        !(await attachedValidationHolderSettled(locateAttachedWorkflows(record.projectRoot), holder)) &&
+        !(await attachedValidationHolderSettled(locateAttachedWorkflows(currentAttachedProjectRoot(record)), holder)) &&
         !(await isLockHolderGone(JSON.stringify(holder))),
     );
 }
@@ -197,7 +197,9 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     if (record.state === "validating") {
         if (await validationOperationIsActive(record)) {
             const source = record.plan
-                ? await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, { readOnly: true })
+                ? await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
+                      readOnly: true,
+                  })
                 : null;
             const checkpoint = source?.plan?.attrs.validationCheckpoint;
             return {
@@ -251,7 +253,7 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     if (record.state === "triaging" && pending) return { kind: "triage", ...pending };
     if (record.state === "awaiting_planning" && pending) {
         const location = record.plan
-            ? await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, {
+            ? await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
                   readOnly: true,
                   loadFromTarget: true,
               })
@@ -265,7 +267,7 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
             planningRequired: !ready,
             ...(record.plan && { planName: record.plan.planName, planId: record.plan.planId }),
             ...(ready && {
-                planningCwd: location?.documentRoot || record.projectRoot,
+                planningCwd: location?.documentRoot || currentAttachedProjectRoot(record),
                 ...(record.plan && {
                     planPath: location!.plan!.path,
                 }),
@@ -862,7 +864,7 @@ export async function startPlanning(envelope: StartPlanningEnvelope): Promise<At
                         rejection("workflow_not_found", "The workflow no longer exists."),
                     ),
                 };
-            if (current.projectRoot !== location.projectRoot)
+            if (!attachedWorkflowBelongsToLocation(location, current))
                 return {
                     result: await rejected(
                         "start_planning",
@@ -2702,12 +2704,14 @@ async function readAttachedRepairDiff(
     request: Extract<import("../workflow/validation-host-contract.ts").ValidationHostRequest, { kind: "repair" }>,
 ): Promise<string> {
     if (!record.plan) throw new Error("The Plan is missing.");
-    const source = await resolveWorkflowPlanLocation(record.projectRoot, record.plan.planName, { readOnly: true });
+    const source = await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
+        readOnly: true,
+    });
     const pending = source.plan?.attrs.validationCheckpoint?.pendingRepair;
     if (!source.plan || !pending || !sameHostIdentity(pending.identity, request.identity)) {
         throw new Error("This repair action is no longer pending.");
     }
-    const entry = await findActiveByPlanName(record.projectRoot, record.plan.planName);
+    const entry = await findActiveByPlanName(currentAttachedProjectRoot(record), record.plan.planName);
     // Repairs may edit the checkout. Read its current target-relative patch, including on restored actions.
     return await getWorktreeReviewDiff(request.cwd, source.plan.attrs.worktreeBaseBranch || "", entry?.baseRef);
 }

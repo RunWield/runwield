@@ -18,7 +18,7 @@ origin: "internal"
 targetBranch: "epic/external-plan-store"
 userVerifiedAt: null
 deliveryBranch: "epic/external-plan-store"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Finish External Plan Store integration

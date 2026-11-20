@@ -25,7 +25,15 @@ try {
         readPublishedDeliverySources,
         readPublishedRecordMarkdown,
     } = await import("../../plan-store/index.ts");
-    if (command === "manual-prune-seed" || command === "managed-prune" || command === "manual-prune-list") {
+    if (command === "managed-author" || command === "managed-author-rename") {
+        const { authorLocalPlan, renamePlan } = await import("../../plan-store/index.ts");
+        if (command === "managed-author")
+            await authorLocalPlan(input.cwd, { planName: "repeatable", contextMarkdown: "# New Plan\n" });
+        const plan = await loadPlan(input.cwd, "repeatable");
+        ok(plan?.attrs.planId);
+        if (command === "managed-author-rename") await renamePlan(input.cwd, "repeatable", "renamed", plan.revision);
+        console.log(plan.attrs.planId);
+    } else if (command === "manual-prune-seed" || command === "managed-prune" || command === "manual-prune-list") {
         const { runWorkRecordsCommand } = await import("../../cmd/wr/index.ts");
         const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
         const { setExactProjectCustomSetting } = await import("../settings.ts");

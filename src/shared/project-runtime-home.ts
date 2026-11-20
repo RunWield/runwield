@@ -1,3 +1,4 @@
+import { verifyExecutionAccountHome } from "./project-identity.ts";
 import { recoverLegacyPlanControllers } from "../plan-store/index.ts";
 /** Home-owned ordinary runtime. A durable inventory separates copying, publication, and retirement. */
 import {
@@ -423,7 +424,13 @@ async function validateLegacyEvidence(
             return refuse("malformed_migration_evidence", [mapping.source], "Legacy migration evidence is unreadable.");
         }
         if (saved.version > 1) refuse("newer_layout", [mapping.source], "Legacy runtime requires a newer version.");
-        if (saved.version !== 1 || !roots.includes(saved.primaryCheckoutRoot))
+        if (
+            saved.version !== 1 ||
+            typeof saved.primaryCheckoutRoot !== "string" ||
+            !isAbsolute(saved.primaryCheckoutRoot) ||
+            resolve(saved.primaryCheckoutRoot) !== saved.primaryCheckoutRoot ||
+            (name === "layout-migration.json" && !roots.includes(saved.primaryCheckoutRoot))
+        )
             refuse("malformed_migration_evidence", [mapping.source], "Legacy migration ownership is invalid.");
         if (
             name === "layout.json" &&
@@ -868,6 +875,12 @@ async function removeEmptyTree(path: string): Promise<void> {
     }
 }
 export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promise<ProjectRuntimeMigrationReadyResult> {
+    verifyExecutionAccountHome(identity);
+    const result = await enterPinnedProjectRuntime(identity);
+    verifyExecutionAccountHome(identity);
+    return result;
+}
+async function enterPinnedProjectRuntime(identity: ProjectIdentity): Promise<ProjectRuntimeMigrationReadyResult> {
     const layout = homeProjectRuntimeLayout(identity);
     await assertSafePath(projectHome(identity), identity.executionAccountHome);
     await assertSafePath(layout.primary.layoutMigrationLockPath, projectHome(identity));

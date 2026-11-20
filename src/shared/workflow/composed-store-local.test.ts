@@ -55,10 +55,16 @@ test("imported Epic sibling edits survive execution and another host resumes the
         equal((await loadPlan(root, "family/second"))?.attrs.parentPlan, "family");
 
         const { planning } = await reachPlanning(root);
+        const prepared = await runOperation("start_planning", root, {
+            ...planWrittenInput(planning),
+            operationId: "prepare-imported-child",
+            payload: { actionId: planning.actionId, existingPlan: { planName: "family/first", planId: "first-id" } },
+        });
+        ok(prepared.ok && prepared.workflow.nextAction.kind === "plan", JSON.stringify(prepared));
         const submitted = await runOperation(
             "plan_written",
             root,
-            planWrittenInput({ ...planning, planName: "family/first" }),
+            planWrittenInput({ ...planning, expectedRevision: prepared.workflow.revision, planName: "family/first" }),
         );
         ok(submitted.ok, JSON.stringify(submitted));
         const hosted = await ensureReviewHosted(root, submitted.workflow, NO_OPEN_BROWSER_PORT);

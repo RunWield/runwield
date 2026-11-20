@@ -24,6 +24,8 @@ import {
 } from "../shared/project-identity.ts";
 import {
     capturePlanPackageInput,
+    commitPlanPackageBatch,
+    packageDocumentText,
     savePlanPackageDocument,
     listPlanPackages,
     resolvePlanPackageReference,
@@ -226,10 +228,17 @@ export async function withPackageWorkflow<T>(
         throw new Error("Package selection changed; reload its current metadata.");
     if (selected.metadata.archive && !selected.metadata.archive.restoredAt)
         throw new Error("This Plan package is archived.");
-    const canonical = async () => {
+    const canonical = async (expectedRevision = selection.expectedRevision) => {
         const current = await readPlanPackage(selection.identity, { planId: selection.planId });
         if (current.kind !== "loaded") throw new Error(current.message);
-        const admitted = { ...selection, expectedRevision: current.metadata.revision };
+        if (
+            current.metadata.name !== selected.metadata.name ||
+            current.metadata.revision !== expectedRevision ||
+            (current.metadata.archive && !current.metadata.archive.restoredAt)
+        ) {
+            throw new Error("Package selection changed; reload its current metadata.");
+        }
+        const admitted = { ...selection, expectedRevision };
         return await withWorkRecordOwner(cwd, selection.identity, () =>
             sources.run({ identity: selection.identity, selection: admitted }, run),
         );
@@ -342,6 +351,7 @@ async function requiredPackages(plan: LoadedPlanPackage): Promise<LoadedPlanPack
 export async function capturePackageWorkflowInput(
     planName: PackageWorkflowTarget,
     nextDefinition?: PackageDefinition,
+    reviewedContext?: string,
 ): Promise<PackageWorkflowInput> {
     const selection = currentPackageSelection()!;
     const packages = await requiredPackages((await selectedPackage(planName))!);
@@ -351,12 +361,29 @@ export async function capturePackageWorkflowInput(
         async () => {
             const inputs = [];
             for (const plan of packages)
-                inputs.push(await capturePlanPackageInput(selection.identity, plan.metadata.planId));
+                inputs.push(
+                    await capturePlanPackageInput(
+                        selection.identity,
+                        plan.metadata.planId,
+                        plan === packages[0] ? reviewedContext : undefined,
+                    ),
+                );
             const current = await requiredPackages((await selectedPackage(planName))!);
             if (definitionHash(current) !== definitionHash(packages))
                 throw new Error("Required Plan definition changed during capture.");
             const input = { inputs, definitionHash: definitionHash(current) };
-            await assertPackageWorkflowInput(planName, input);
+            const reviewedSource = packages[0];
+            const originalContext =
+                reviewedContext === undefined ? undefined : packageDocumentText(reviewedSource.documents)["context.md"];
+            await assertPackageWorkflowInput(
+                planName,
+                input,
+                (before, live, name, planId) =>
+                    name === "context.md" &&
+                    planId === reviewedSource.metadata.planId &&
+                    before === reviewedContext &&
+                    live === originalContext,
+            );
             if (nextDefinition)
                 input.definitionHash = definitionHash(
                     current.map((p, index) =>
@@ -618,12 +645,22 @@ export async function preparePackageWorkflowUpdate(
     return { ...relations, definition, controller, workflow: { ...workflow, controller: ref } };
 }
 
+export async function reopenedPackageReview(plan: LoadedPlanPackage) {
+    const status = plan.metadata.definition.status;
+    if (status !== "approved" && status !== "ready_for_work" && status !== "ready_for_decomposition") return;
+    const view = await loadPackageWorkflowPlan({ planId: plan.metadata.planId });
+    const { buildPlanEventUpdates } = await import("../shared/workflow/plan-lifecycle.ts");
+    const updates = buildPlanEventUpdates("review_reopened", status, { triageMeta: view.attrs });
+    return await preparePackageWorkflowUpdate(plan, view.attrs, updates, { review: undefined, readiness: undefined });
+}
+
 export async function updatePackageWorkflowMetadata(
     planName: PackageWorkflowTarget,
     updates: Partial<PlanFrontMatter>,
     expectedRevision?: string,
     workflowUpdate?: PackageWorkflowEvidence,
     milestone?: "approved" | { delivered: PackageInputReference },
+    reviewedContext?: { text: string; input: PackageWorkflowInput },
 ) {
     return await packageWorkflowLocks([planName], async () => {
         const current = (await selectedPackage(planName))!;
@@ -691,11 +728,34 @@ export async function updatePackageWorkflowMetadata(
             );
         }
         const update = { ...metadataUpdate, history };
-        await journalPackageMetadataWrite(
-            current.metadata,
-            JSON.parse(JSON.stringify({ ...eventPackage.metadata, history })),
-        );
-        await updatePlanPackageMetadata(identity, current.metadata.planId, current.metadata.revision, update);
+        const change = reviewedContext ? await reopenedPackageReview(current) : undefined;
+        const reopened = change
+            ? { ...current.metadata, ...change, revision: current.metadata.revision + 1 }
+            : undefined;
+        const nextMetadata = { ...eventPackage.metadata, history };
+        await journalPackageMetadataWrite(current.metadata, nextMetadata, reopened);
+        const previous = packageDocumentText(current.documents);
+        if (reviewedContext) {
+            const required = await requiredPackages(current);
+            const inputs = reviewedContext.input.inputs.map((reference) => {
+                const plan = required.find((p) => p.metadata.planId === reference.planId);
+                if (!plan) throw new Error("Reviewed Plan membership changed.");
+                return { name: plan.metadata.name, reference };
+            });
+            await commitPlanPackageBatch(
+                identity,
+                [
+                    {
+                        before: { metadata: current.metadata, documents: previous },
+                        metadata: nextMetadata,
+                        documents: { ...previous, "context.md": reviewedContext.text },
+                    },
+                ],
+                { inputs, reopened },
+            );
+        } else {
+            await updatePlanPackageMetadata(identity, current.metadata.planId, current.metadata.revision, update);
+        }
         return (await loadPackageWorkflowPlan(planName))!.attrs;
     });
 }

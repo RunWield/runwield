@@ -1,3 +1,4 @@
+import { snapshotPlanEvidence } from "../../acceptance-plan-evidence.ts";
 import { compactResult } from "../../../shared/attached/presentation.ts";
 import type { AttachedOperationResult } from "../../../shared/attached/operations.ts";
 import { isDeepStrictEqual } from "node:util";
@@ -110,39 +111,16 @@ export function evaluateEvidence(evidence: AcceptanceEvidence): AcceptanceSummar
                     value.schemaVersion === 1 &&
                     populated(value.workflowId),
             )?.value;
-    const controller = (phase: Phase) => {
-        const planId = field(record(phase), "plan", "planId"),
-            planName = field(record(phase), "plan", "planName");
-        return artifacts
-            .get(phase)
-            ?.json.find(
-                ({ path, value }) =>
-                    typeof planId === "string" &&
-                    path === `fixture/.wld/internal/controller/plans/${encodeURIComponent(planId)}.json` &&
-                    value.planId === planId &&
-                    value.planName === planName,
-            )?.value;
-    };
-    const publicationAt = (phase: Phase) => field(controller(phase), "state", "publicationReceipt");
-    const publishedPath = (phase: Phase, path: string) =>
-        `published/${field(publicationAt(phase), "publishedCommit")}/${path}`;
-    const planDocument = (phase: Phase) => {
-        const name = field(record(phase), "plan", "planName"),
-            id = field(record(phase), "plan", "planId");
-        const documents = artifacts
-            .get(phase)
-            ?.markdown.filter(
-                ({ path, attrs }) =>
-                    typeof name === "string" && path.endsWith(`/docs/plans/${name}.md`) && attrs.planId === id,
-            );
-        return documents?.find(({ path }) => path === publishedPath(phase, `docs/plans/${name}.md`)) ?? documents?.[0];
-    };
-    const plan = (phase: Phase) => planDocument(phase)?.attrs;
+    const packages = new Map(
+        PHASES.map((phase) => [phase, snapshotPlanEvidence(snapshot(phase)?.files ?? [], record(phase))]),
+    );
+    const controller = (phase: Phase) => packages.get(phase)?.controller;
+    const plan = (phase: Phase) => packages.get(phase)?.metadata.definition;
     const receiptRows = (phase: Phase) => {
         const name = field(record(phase), "plan", "planName"),
             attempt = field(record(phase), "execution", "worktreeId");
         if (typeof name !== "string" || typeof attempt !== "string") return [];
-        const prefix = `fixture/.wld/internal/delivery-evidence/${encodeURIComponent(name)}/${encodeURIComponent(attempt)}/`;
+        const prefix = `${packages.get(phase)?.executionPath}/delivery-evidence/${encodeURIComponent(name)}/${encodeURIComponent(attempt)}/`;
         return artifacts.get(phase)?.json.filter(({ path }) => path.startsWith(prefix)) ?? [];
     };
     const ledger = (phase: Phase) =>
@@ -376,7 +354,8 @@ export function evaluateEvidence(evidence: AcceptanceEvidence): AcceptanceSummar
         artifacts
             .get("implemented")
             ?.json.filter(
-                ({ path, value }) => path === "fixture/.wld/internal/worktrees.json" && value.version === 2,
+                ({ path, value }) =>
+                    path === `${packages.get("implemented")?.executionPath}/worktrees.json` && value.version === 2,
             ) ?? [];
     check(
         "step-08-isolated-execution",
@@ -514,7 +493,7 @@ export function evaluateEvidence(evidence: AcceptanceEvidence): AcceptanceSummar
         ...phasePointers("code-review", "code-chat", "code-change", "code-approved"),
         "logs/http.jsonl",
     );
-    const publication = field(controller("delivered"), "state", "publicationReceipt");
+    const publication = packages.get("delivered")?.delivery;
     const effectiveVerified =
         field(plan("delivered"), "status") === "verified" ||
         (populated(field(controller("delivered"), "state", "verifiedAt")) && !!jsonMap(publication));
@@ -523,8 +502,6 @@ export function evaluateEvidence(evidence: AcceptanceEvidence): AcceptanceSummar
         field(record("delivered"), "state") === "closed" &&
             field(record("delivered"), "closure", "reason") === "delivered" &&
             effectiveVerified &&
-            planDocument("delivered")?.path ===
-                publishedPath("delivered", `docs/plans/${field(record("delivered"), "plan", "planName")}.md`) &&
             populated(field(publication, "validatedCommit")) &&
             reaches(snapshot("delivered"), publication),
         ...phasePointers("delivered"),
@@ -541,7 +518,7 @@ export function evaluateEvidence(evidence: AcceptanceEvidence): AcceptanceSummar
                 .get("delivered")
                 ?.markdown.some(
                     ({ path, attrs }) =>
-                        path === publishedPath("delivered", workRecordPath) &&
+                        path.startsWith(`${packages.get("delivered")?.projectPath}/work-records/`) &&
                         attrs.kind === "work_record" &&
                         attrs.recordId === workRecordId &&
                         attrs.status === "approved" &&

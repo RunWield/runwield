@@ -1,7 +1,13 @@
+import {
+    admitProjectIdentity,
+    verifyExecutionAccountHome,
+    type ProjectLaunchContext,
+} from "./shared/project-identity.ts";
+import { tmpdir } from "node:os";
 import { seedPlan } from "./shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "./shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
-import { deepEqual, equal, ok, rejects } from "node:assert/strict";
+import { deepEqual, equal, ok, rejects, throws } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, driver, packageFixture, tree, documents } from "./shared/testing/plan-package-fixture.ts";
@@ -331,6 +337,47 @@ test("a symlinked package directory cannot redirect creation outside the persona
         deepEqual(await tree(outside), before);
         equal((await readPlanPackage(f.identity, { name: "escape/new" })).kind, "unsafe_path");
     } finally {
+        await f.cleanup();
+    }
+});
+
+test("physical and symbolic account homes select one owner and pin its location", async () => {
+    const f = await packageFixture();
+    const home = await fs.mkdtemp(join(tmpdir(), "account-home-"));
+    const alias = join(home, "login");
+    const physical = join(await fs.realpath(home), "storage");
+    const replacement = join(home, "replacement");
+    const forHome = (home: string): ProjectLaunchContext => ({
+        executionAccountHome: home,
+        personalOwner: { kind: "execution-account", identity: home },
+    });
+    try {
+        await fs.mkdir(physical);
+        await fs.mkdir(replacement);
+        await fs.symlink(physical, alias);
+        const admission = await admitProjectIdentity(f.root, { context: forHome(alias) });
+        ok(admission.kind === "existing");
+        const first = admission.identity;
+        const next = await admitProjectIdentity(f.root, { context: forHome(physical) });
+        ok(next.kind === "existing");
+        const second = next.identity;
+        equal(first.executionAccountHome, physical);
+        deepEqual(first.personalOwner, second.personalOwner);
+        equal(first.projectId, second.projectId);
+        equal(first.repositoryId, second.repositoryId);
+        const { recoverPlanPackages, withPlanPackageLocks } = await import("./plan-store/packages.ts");
+        await rejects(
+            withPlanPackageLocks(first, [], async () => {
+                await fs.rm(alias);
+                await fs.symlink(replacement, alias);
+            }),
+            /home changed/,
+        );
+        throws(() => verifyExecutionAccountHome(first), /home changed/);
+        await rejects(recoverPlanPackages(first), /home changed/);
+        deepEqual(await fs.readdir(replacement), []);
+    } finally {
+        await fs.rm(home, { recursive: true, force: true });
         await f.cleanup();
     }
 });

@@ -70,9 +70,13 @@ test("Epic child recovery repairs moved submodule links and preserves unfinished
         const moduleGitDir = await realpath(oldModuleGitDir);
         const config = join(moduleGitDir, "config");
         const before = await readFile(config, "utf8");
-        const { inspectProjectRuntimeReadAccess } = await import("./project-runtime-layout.ts");
+        const { inspectProjectRuntimeReadAccess, enterProjectRuntime } = await import("./project-runtime-layout.ts");
         await inspectProjectRuntimeReadAccess(child);
         assertEquals(await readFile(config, "utf8"), before);
+        await git(movedRoot, ["config", "--local", "runwield.projectId", "invalid"]);
+        await assertRejects(() => enterProjectRuntime(child));
+        assertEquals(await readFile(config, "utf8"), before);
+        await git(movedRoot, ["config", "--local", "--unset", "runwield.projectId"]);
         const { confirmRecoveryWorktreeAvailable } = await import("../cmd/load-plan/plan-recovery-worktree.ts");
         const messages: string[] = [];
         const ui: Partial<import("../ui/tui/api.ts").UiAPI> = {

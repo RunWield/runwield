@@ -56,6 +56,7 @@ export interface DriverRequest {
         | "sequence"
         | "lifecycle"
         | "execution"
+        | "recover"
         | "recover-lifecycle"
         | "metadata"
         | "document"

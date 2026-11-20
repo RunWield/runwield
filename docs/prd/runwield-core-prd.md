@@ -404,6 +404,11 @@ owns the lifecycle metadata and keeps the user's current body intact through met
 rollback. A document save retains its assigned Plan identity and durable workflow decisions. Saving content protects edits made since that content was opened. Changes to the intended work follow normal
 Plan review.
 
+**Acceptance: Material edits reopen review.** A material change to an approved or ready Plan saves the new prose
+and reopens review in one operation. Formatting-only edits preserve approval. Workspace and agent writes reject
+an archived Plan or a stale revision and keep its current bytes. An action selected before a rename or archive must
+reload the Plan before acting.
+
 **Requirement: Canonical packages keep metadata beside editable documents.** Local and manual-SSH Project operations persist one ID-addressed package in home storage, with versioned
 `plan.wld.json`, required `context.md` and `validation.md`, and optional QA and integration resources. Document hashes
 and metadata revisions are independent: changing either cannot overwrite or unnecessarily stale the other. Markdown,
@@ -419,6 +424,11 @@ import sources or optional delivery copies; absence, damage or denial of home st
 artifacts. Name lookup never adopts a checkout document. New planning uses Markdown documents and typed definition
 fields through `plan_written`; Core owns protected metadata. Managed remote launch selects the initiating laptop's
 home-only Project store through the same public owner. Service loss cannot select an execution account's personal store.
+
+**Acceptance: Linux login homes.** A physical login home and a symlink to a directory owned by the account select
+the same personal store and locks when they reach the same directory. If the home is retargeted while an operation
+is running, the operation stops and the replacement stays untouched. A symlink inside the store cannot redirect
+writes. These rules apply to manual SSH and to execution state on a managed SSH host.
 
 **Requirement: Managed Plans retain laptop authority.** A remote-only Project needs no laptop checkout or source sync.
 Trusted startup binds the remote Project and repository to the laptop account. Personal Plan documents, controllers,
@@ -2063,9 +2073,9 @@ confirmed host uses the saved project's key and collection binding. The normal c
 is the same project. Yes shares the local resolver’s collection; No keeps the normal remote
 collection. Several matches are listed separately. Either answer is saved before opening the TUI, and reconnect does not
 ask again. A Memory collection without a local Session project never triggers a question. Shared Memory does not merge
-Sessions. Work Record indexes remain derived project data and use the remote project’s
-`.wld/internal/work-records.sqlite3`, not personal Memory. [Work Record retrieval](#work-records) reads the remote
-project’s canonical records. A successful personal save means it is saved on the laptop, not queued until exit.
+Sessions. Work Record search indexes live at `~/.wld/projects/<project-id>/internal/work-records/index.sqlite3` on the
+canonical owner. [Work Record retrieval](#work-records) uses that owner's records. For managed SSH, a successful personal
+save means the laptop has stored the change.
 
 **Remote Memory acceptance scenarios:**
 

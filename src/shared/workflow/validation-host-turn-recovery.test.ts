@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { writeFile as fsWriteFile } from "node:fs/promises";
-import { ok as assert } from "node:assert/strict";
+import { spyOn } from "bun:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { coverage, hostFixture, hostRequest } from "./testing/validation-host-fixture.ts";
@@ -72,6 +72,7 @@ test("fresh reviewer corrections spend the same limit as Session nudges and cann
 });
 test("host operational retries pause without sleeping and retain their budget across processes", async () => {
     const fixture = await hostFixture();
+    const timers = spyOn(globalThis, "setTimeout");
     try {
         await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
         let reviewer = hostRequest(await fixture.processTurn(), "reviewer");
@@ -80,12 +81,10 @@ test("host operational retries pause without sleeping and retain their budget ac
             kind: "rate_limited",
             operation: "semantic_review",
             message: "Provider is busy.",
-            retryAfter: 60,
+            retryAfter: 53,
         });
         for (let attempt = 1; attempt <= 3; attempt++) {
-            // Measure the host operation, not cold module loading in a fresh process.
-            // The next reviewer request below still verifies recovery across processes.
-            const started = performance.now();
+            timers.mockClear();
             const result = await fixture.turn({
                 kind: "reviewer",
                 identity: reviewer.identity,
@@ -93,7 +92,11 @@ test("host operational retries pause without sleeping and retain their budget ac
                 coverage: [],
                 failure,
             });
-            assert(performance.now() - started < 10_000, "Host mode must not sleep for the provider's 60-second wait.");
+            assertEquals(
+                timers.mock.calls.some(([, delay]) => delay === 53_000),
+                false,
+                "Host mode scheduled the provider retry delay.",
+            );
             assertEquals(result.kind, "paused");
             if (result.kind !== "paused") throw new Error("Expected retry pause.");
             const policyDecision = decideValidationRecovery({
@@ -108,6 +111,7 @@ test("host operational retries pause without sleeping and retain their budget ac
             if (attempt < 3) reviewer = hostRequest(await fixture.processTurn(), "reviewer");
         }
     } finally {
+        timers.mockRestore();
         await fixture.close();
     }
 });

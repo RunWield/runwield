@@ -36,6 +36,8 @@ import {
     CONTROLLER,
     PLAN,
     WORK_RECORD,
+    EXECUTION,
+    METADATA_FILE,
 } from "./evidence-test-fixture.ts";
 
 function snapshot(evidence: AcceptanceEvidence, phase: Phase): Snapshot {
@@ -165,6 +167,28 @@ const cases: MissingProof[] = [
     },
 
     {
+        name: "unreferenced controller generation does not attest implementation",
+        check: "step-09-implementation",
+        change(e) {
+            editJson(snapshot(e, "implemented"), METADATA_FILE, (value) => {
+                const ref = jsonMap(field(value, "workflow", "controller"))!;
+                ref.revisionId = "another-generation";
+            });
+        },
+    },
+    {
+        name: "foreign Project's same-ID Plan does not attest implementation",
+        check: "step-09-implementation",
+        change(e) {
+            const snap = snapshot(e, "implemented");
+            for (const file of [...snap.files]) {
+                if (file.path.startsWith("runwield-home/.wld/projects/project/"))
+                    putFile(snap, file.path.replace("/projects/project/", "/projects/foreign/"), file.text!);
+            }
+            snap.files = snap.files.filter((file) => file.path !== METADATA_FILE);
+        },
+    },
+    {
         name: "controller belongs to another Plan",
         check: "step-09-implementation",
         change: (e) => {
@@ -186,7 +210,7 @@ const cases: MissingProof[] = [
         name: "worktree registry has only an ID",
         check: "step-08-isolated-execution",
         change: (e) => {
-            putFile(snapshot(e, "implemented"), "fixture/.wld/internal/worktrees.json", {
+            putFile(snapshot(e, "implemented"), EXECUTION + "/worktrees.json", {
                 version: 2,
                 entries: [{ id: "wt-1" }],
             });
@@ -221,13 +245,11 @@ const cases: MissingProof[] = [
         },
     },
     {
-        name: "no published Plan document",
+        name: "missing owner Plan context",
         check: "step-13-publication",
         change: (e) => {
             for (const phase of ["delivered", "inactive-after"] as const)
-                snapshot(e, phase).files = snapshot(e, phase).files.filter(
-                    (file) => !file.path.endsWith("/docs/plans/feature.md"),
-                );
+                snapshot(e, phase).files = snapshot(e, phase).files.filter((file) => file.path !== PLAN);
         },
     },
     {
@@ -345,16 +367,16 @@ const cases: MissingProof[] = [
         name: "Work Record absent",
         check: "step-14-work-record",
         change: (e) => {
-            snapshot(e, "delivered").files = snapshot(e, "delivered").files.filter(
-                (file) => !file.path.endsWith("/docs/work-records/feature.md"),
-            );
+            snapshot(e, "delivered").files = snapshot(e, "delivered").files.filter((file) => file.path !== WORK_RECORD);
         },
     },
     {
         name: "Plan not effectively verified",
         check: "step-13-publication",
         change: (e) => {
-            putFile(snapshot(e, "delivered"), PLAN, "---\nplanId: plan-id\nstatus: implemented\n---\n# Plan\n");
+            editJson(snapshot(e, "delivered"), METADATA_FILE, (value) => {
+                value.definition = { status: "implemented" };
+            });
             editJson(snapshot(e, "delivered"), CONTROLLER, (value) => {
                 const state = jsonMap(value.state)!;
                 delete state.verifiedAt;
@@ -569,10 +591,11 @@ for (const phase of PHASES)
 test("publication authority can verify a Plan whose invoking document is not updated", () => {
     const evidence = completeEvidence();
     for (const phase of ["delivered", "inactive-after"] as const) {
-        for (const file of [...snapshot(evidence, phase).files]) {
-            if (file.path.endsWith("/docs/plans/feature.md"))
-                putFile(snapshot(evidence, phase), file.path, "---\nplanId: plan-id\nstatus: reviewed\n---\n# Plan\n");
-        }
+        putFile(
+            snapshot(evidence, phase),
+            "fixture/docs/plans/feature.md",
+            "---\nplanId: plan-id\nstatus: reviewed\n---\n# Stale checkout copy\n",
+        );
     }
     assertEquals(evaluateEvidence(evidence).outcome, "pass");
 });
@@ -596,7 +619,7 @@ test("delivery can prove canonical documents that exist only on the published br
     const evidence = completeEvidence();
     for (const phase of ["delivered", "inactive-after"] as const) {
         snapshot(evidence, phase).files = snapshot(evidence, phase).files.filter(
-            (file) => file.path !== PLAN && file.path !== WORK_RECORD,
+            (file) => !file.path.startsWith("published/") && !file.path.startsWith("fixture/docs/"),
         );
     }
     assertEquals(evaluateEvidence(evidence).outcome, "pass");

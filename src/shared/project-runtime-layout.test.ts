@@ -125,6 +125,37 @@ for (const alias of ["none", "parent", "checkout"] as const) {
     });
 }
 
+test("first home adoption preserves a completed checkout marker after a move", async () => {
+    const oldRoot = await fsRealpath(await fixture.checkout());
+    const movedRoot = oldRoot + "-moved";
+    try {
+        const oldRuntime = getRunWieldRuntimeDir(oldRoot);
+        await writeText(
+            join(oldRuntime, "internal/layout.json"),
+            JSON.stringify({
+                version: 1,
+                primaryCheckoutRoot: oldRoot,
+                adoptedSelectedCheckoutRoots: [oldRoot],
+                completedAt: new Date().toISOString(),
+            }),
+        );
+        await writeText(join(oldRuntime, "internal/controller/plans/saved.json"), '{"proof":"retained"}');
+        await fsPromises.rename(oldRoot, movedRoot);
+        if (oldRuntime !== join(oldRoot, ".wld")) {
+            const movedRuntime = getRunWieldRuntimeDir(movedRoot);
+            await fsMkdir(dirname(movedRuntime), { recursive: true });
+            await fsPromises.rename(oldRuntime, movedRuntime);
+        }
+        const layout = await enterProjectRuntime(movedRoot);
+        assertEquals(
+            await fsReadFile(join(layout.primary.controllerPlansDir, "saved.json"), "utf8"),
+            '{"proof":"retained"}',
+        );
+    } finally {
+        await fsRm(movedRoot, { recursive: true, force: true });
+    }
+});
+
 test("runtime rejects malformed primary locations in completed markers", async () => {
     const root = await fixture.checkout({ prefix: "runwield-runtime-invalid-primary-" });
     try {

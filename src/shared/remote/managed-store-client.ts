@@ -455,6 +455,7 @@ async function executeManagedFixture() {
             trustedWorkKind: "FEATURE",
             decision: {
                 approved: true,
+                plan: reviewPlan.markdown + "\nAccepted browser edit.\n",
                 approvalAction: "run",
                 executionAgent: "engineer",
                 collaborationRecommendation: "autonomous",
@@ -467,7 +468,8 @@ async function executeManagedFixture() {
         const { createExecutionStartPorts, startActiveExecutionWorkflow } =
             await import("../workflow/execution-start.ts");
         const ready = await loadPlan(input.cwd, "public-tool");
-        if (!ready) throw new Error("Ready Plan is unavailable.");
+        if (!ready || !ready.markdown.includes("Accepted browser edit.") || ready.attrs.status !== "ready_for_work")
+            throw new Error("Approved browser edits and readiness must share the canonical Plan.");
         const execution = await startActiveExecutionWorkflow({
             cwd: input.cwd,
             planName: "public-tool",
@@ -1183,7 +1185,10 @@ async function executeManagedFixture() {
             throw new Error("Managed repository copy choice was not retained.");
         const { archivePlansByStatus } = await import("../../plan-store/index.ts");
         const bulk = await archivePlansByStatus(input.cwd, "draft", { force: true });
-        if (bulk.failed.length || !bulk.archived.some((entry) => entry.name === "import-source"))
+        if (
+            bulk.failed.length ||
+            !["import-source", "managed-epic"].every((name) => bulk.archived.some((entry) => entry.name === name))
+        )
             throw new Error(`Managed bulk archive lost its owner: ${JSON.stringify(bulk)}`);
         await restoreSavedPlan(input.cwd, imported.planIds[0]);
         const { runPlansDoctor } = await import("../../plan-store/index.ts");

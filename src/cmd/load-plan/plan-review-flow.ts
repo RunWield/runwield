@@ -330,8 +330,13 @@ export async function reviewLoadedPlanDirectly({
                 ? { outcome: RuntimeInteractionOutcomes.ACCEPTED, value: true }
                 : { outcome: RuntimeInteractionOutcomes.CANCELED, value: false };
         },
-        onUnanswered: ({ reason }) => {
-            uiAPI.appendSystemMessage(`Plan review ended without an answer (${reason}).`, false, "RunWield");
+        onUnanswered: ({ reason, response }) => {
+            const detail = response?.message?.trim();
+            uiAPI.appendSystemMessage(
+                `Plan review ended without an answer (${reason}).${detail ? " " + detail : ""}`,
+                false,
+                "RunWield",
+            );
         },
     });
 

@@ -242,7 +242,7 @@ Reinstall the plugin, then use a resume command to continue saved work. Disable 
 
 Core keeps:
 
-- Ordinary Plan files under `docs/plans/`, plus the project's Work Records and workflow evidence.
+- Canonical Plans and Work Records in the owner’s `~/.wld/projects/<projectId>/` store. Use `read_plan`, `work_record_search` and `work_record_read` even when Git delivery copies are disabled.
 - A per-request Attached Workflow Record under `~/.wld/attached/`, keyed by the primary checkout.
 - Core-owned execution, validation, review, and publication evidence needed for recovery.
 

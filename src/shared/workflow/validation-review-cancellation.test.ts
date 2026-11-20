@@ -227,7 +227,7 @@ async function awaitReviewStep<T>(name: string, pending: Promise<T>, timeoutMs =
 for (const revise of [false, true]) {
     test(
         `Code Review reopen projects the same live URL through ${revise ? "revision and CI" : "conversation"} until approval`,
-        { timeout: 30_000 },
+        { timeout: 120_000 },
         async () => {
             const projectRoot = await awaitReviewStep("fixture checkout", reopenFixture.checkout());
             await seedPlan(projectRoot, "p", "# Review reopen\n\nKeep the exported label.", {

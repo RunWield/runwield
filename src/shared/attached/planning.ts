@@ -31,7 +31,7 @@ export async function resolvePlanningSelection(projectRoot: string, selection: E
 export async function prepareAttachedPlanning(projectRoot: string, selection: ExistingPlanningPlan) {
     const selected = await resolvePlanningSelection(projectRoot, selection);
     if ("packageSelection" in selected.location && selected.location.packageSelection) {
-        if (selected.location.planningNotStarted) {
+        if (selected.location.planningNotStarted !== undefined) {
             const plan = selected.location.plan;
             if (!plan) throw new Error("The selected Plan is unavailable for preparation.");
             await withLocalPlanWorkflow(projectRoot, selected.plan.planName, () =>

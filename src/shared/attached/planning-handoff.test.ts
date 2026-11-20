@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { ok as assert, strictEqual as equal, deepStrictEqual } from "node:assert/strict";
-import { mkdir, writeFile, readFile, realpath } from "node:fs/promises";
+import { mkdir, writeFile, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { readAttachedAction } from "./coordinator.ts";
@@ -125,6 +125,46 @@ test("native existing-child planning hands off an isolated authoritative documen
     assert(retried.ok && retried.workflow.nextAction.kind === "plan");
     equal(retried.workflow.nextAction.planningCwd, action.planningCwd);
     deepStrictEqual(await listEntries(root), entries);
+});
+
+test("a moved checkout starts its selected child on the current target", async () => {
+    const original = await checkoutWithImportedFamily();
+    const moved = original + "-moved";
+    const input = activateInput();
+    input.payload = {
+        hostRequestId: "moving-child",
+        requestText: "Plan the selected child",
+        existingPlan: { ...child, targetBranch: "epic/target" },
+    };
+    const triage = pendingTriage(await runOperation("activate", original, input));
+    const planned = await runOperation("triage_report", original, triageReportInput(triage));
+    assert(planned.ok && planned.workflow.nextAction.kind === "plan", JSON.stringify(planned));
+    await rename(original, moved);
+    try {
+        const { admitProjectIdentity } = await import("../project-identity.ts");
+        equal((await admitProjectIdentity(moved)).kind, "existing");
+        const prepared = await runOperation("start_planning", moved, {
+            workflowId: triage.workflowId,
+            evidence: EVIDENCE,
+            operationId: "after-move",
+            expectedRevision: planned.workflow.revision,
+            payload: { actionId: planned.workflow.nextAction.actionId },
+        });
+        assert(prepared.ok && prepared.workflow.nextAction.kind === "plan", JSON.stringify(prepared));
+        const cwd = prepared.workflow.nextAction.planningCwd;
+        assert(cwd && cwd !== moved && cwd !== original);
+        equal(await readFile(join(cwd, "target-only.txt"), "utf8"), "published sibling implementation\n");
+        await git(moved, ["switch", "epic/target"]);
+        await writeFile(join(moved, "second-sibling.txt"), "published after planning\n");
+        await git(moved, ["add", "second-sibling.txt"]);
+        await git(moved, ["commit", "-m", "Publish the next sibling"]);
+        await git(moved, ["switch", "main"]);
+        const { prepareAttachedPlanning } = await import("./planning.ts");
+        await prepareAttachedPlanning(moved, child);
+        equal(await readFile(join(cwd, "second-sibling.txt"), "utf8"), "published after planning\n");
+    } finally {
+        await rm(moved, { recursive: true, force: true });
+    }
 });
 
 test("Plan submission cannot bypass missing target-backed planning preparation", async () => {

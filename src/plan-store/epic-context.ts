@@ -203,7 +203,14 @@ export async function syncEpicChildPlanDeviations(checkoutRoot: string, childPla
     );
     if (next === epic.markdown) return null;
     try {
-        await writePlanMarkdownWithRevisionLocked(checkoutRoot, epicPlanName, epic.path, next, epic.revision);
+        await writePlanMarkdownWithRevisionLocked(
+            checkoutRoot,
+            epicPlanName,
+            epic.path,
+            next,
+            epic.revision,
+            "generated-epic-projection",
+        );
     } catch (error) {
         if (error instanceof SharedPlanLockError) return null;
         throw error;
@@ -230,7 +237,14 @@ export async function recordIntegrationNotes(
     const next = withIntegrationNotes(epic.markdown, childPlanName, notes);
     if (next === epic.markdown) return null;
     try {
-        await writePlanMarkdownWithRevisionLocked(checkoutRoot, epicPlanName, epic.path, next, epic.revision);
+        await writePlanMarkdownWithRevisionLocked(
+            checkoutRoot,
+            epicPlanName,
+            epic.path,
+            next,
+            epic.revision,
+            "generated-epic-projection",
+        );
     } catch (error) {
         // A shared Epic is written through collaboration; the notes stay in the review result instead.
         if (error instanceof SharedPlanLockError) return null;

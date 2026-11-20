@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import { ok as assert, strictEqual as equal, deepStrictEqual as same } from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
+import { mkdir as makeDirectory, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { setCustomSetting, getDeliveryCopyPolicy } from "../settings.ts";
 import { packageFixture, create, read, tree } from "../testing/plan-package-fixture.ts";
-import { withPlanAccess, selectPlanAccess } from "../../plan-store/index.ts";
-import { savePlanDocument } from "../../plan-store/index.ts";
+import { savePlanDocument, withPlanAccess, selectPlanAccess } from "../../plan-store/index.ts";
 import { writeWorkRecord } from "../work-records/store.ts";
 import { recordAttrs, recordBody } from "../work-records/test-fixtures/package-records.ts";
 import { EVIDENCE, reachPlanning, planWrittenInput, runOperation, readRecordBytes } from "./attached-test-fixture.ts";
@@ -14,6 +14,11 @@ test("Connect document reads bind canonical Plan pages and Work Records to the c
     const f = await packageFixture();
     const other = await packageFixture();
     try {
+        await setCustomSetting("plans", { deliveryCopies: false }, "project", f.root);
+        await setCustomSetting("workRecords", { deliveryCopies: false }, "project", f.root);
+        same(getDeliveryCopyPolicy(f.root), { plans: false, workRecords: false });
+        await makeDirectory(join(f.root, "docs", "plans"), { recursive: true });
+        await writeFile(join(f.root, "docs", "plans", "dark-mode-toggle.md"), "# Stale checkout copy\n");
         const prose = "# Canonical Plan\n\n世界 café 🛠\n".repeat(20);
         await create(f.identity, {
             name: "dark-mode-toggle",
@@ -96,6 +101,10 @@ test("Connect document reads bind canonical Plan pages and Work Records to the c
             const fresh = await call("read_plan");
             assert(fresh.ok && "content" in fresh);
             equal(fresh.content, "# Newer content\n");
+            const entireRecord = await call("work_record_read", { recordId: record.attrs.recordId });
+            assert(entireRecord.ok && "content" in entireRecord);
+            assert(entireRecord.content.includes(record.attrs.recordId));
+            assert(entireRecord.content.includes("Canonical evidence"));
             const recordPage = await call("work_record_read", { recordId: record.attrs.recordId, maxBytes: 20 });
             assert(recordPage.ok && "documentRevision" in recordPage);
             await writeFile(record.path, record.markdown.replace("Canonical evidence", "Updated evidence"));

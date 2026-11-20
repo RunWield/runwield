@@ -1261,8 +1261,8 @@ test("semantic feedback hands off repair before offering human review", async ()
     assertEquals(result.kind, "semantic_repair_handoff");
     assertEquals(result.semanticRepairHandoff?.semanticRound, 3);
     assertEquals(plan?.attrs.status, "implemented");
-    assertEquals(plan?.attrs.humanReviewMode, undefined);
-    assertEquals(plan?.attrs.humanReviewDecision, undefined);
+    assertEquals(plan?.attrs.humanReviewMode, null);
+    assertEquals(plan?.attrs.humanReviewDecision, null);
 });
 
 test("inline round-limit repair records passing CI before another Reviewer round", async () => {

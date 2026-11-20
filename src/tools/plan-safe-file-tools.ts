@@ -1,4 +1,4 @@
-import { operatePlanFile } from "../plan-store/index.ts";
+import { operatePlanFile, resolvePlanFileTarget } from "../plan-store/index.ts";
 export { isCanonicalPlanMarkdownPath } from "../plan-store/index.ts";
 
 /** Result shape the wrapper returns for both its own guards and the wrapped tool. */
@@ -52,8 +52,10 @@ export function wrapPlanSafeFileTool<T extends { execute: unknown }>(
             onUpdate?: unknown,
             ctx?: unknown,
         ) {
-            const path = stringValue(params?.path ?? params?.file_path);
+            const requested = stringValue(params?.path ?? params?.file_path);
+            let path = requested;
             try {
+                if (requested) path = await resolvePlanFileTarget(cwd, requested);
                 const result = await operatePlanFile(cwd, {
                     path,
                     mode,
@@ -73,7 +75,14 @@ export function wrapPlanSafeFileTool<T extends { execute: unknown }>(
                     isError: true,
                 };
             }
-            return await originalExecute.call(tool, toolCallId, params, signal, onUpdate, ctx);
+            return await originalExecute.call(
+                tool,
+                toolCallId,
+                requested ? { ...params, path, ...(params.file_path !== undefined && { file_path: path }) } : params,
+                signal,
+                onUpdate,
+                ctx,
+            );
         },
     };
     // The wrapper adds guard results (`isError`) that the wrapped tool's own

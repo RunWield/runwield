@@ -1,9 +1,10 @@
+import { tmpdir } from "node:os";
 import { parseHistoryList, parseMilestoneDocuments } from "../shared/remote/project-store-protocol.ts";
 import { test } from "node:test";
 import { equal, deepEqual, rejects } from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { join } from "node:path";
-import { readFile, writeFile, unlink } from "node:fs/promises";
+import { readFile, writeFile, unlink, mkdtemp, rm } from "node:fs/promises";
 import { PreparedProjectStore, authorLocalPlan, loadPlan, savePlanProse } from "./index.ts";
 import { packageFixture, startDriver } from "../shared/testing/plan-package-fixture.ts";
 
@@ -748,6 +749,63 @@ test("managed milestone replay returns the first committed revision after later 
     }
 });
 
+/** Hold the actual owner response after its operation commits and before execution receives it. */
+function observeOwnerResponse(
+    endpoint: string,
+    observe: (kind: string, response: Response) => Response | Promise<Response>,
+) {
+    return Bun.serve({
+        port: 0,
+        hostname: "127.0.0.1",
+        async fetch(request) {
+            const path = new URL(request.url).pathname;
+            const command = path === "/project-store" ? (await request.clone().json()).command : null;
+            const upstream = await fetch(new Request(new URL(path, endpoint), request));
+            return command ? await observe(command.kind, upstream) : upstream;
+        },
+    });
+}
+
+test("managed authorship retries a lost result and can reuse the name after rename", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        let lost = false;
+        const proxy = observeOwnerResponse(f.endpoint, (kind, response) => {
+            if (kind === "author-plan" && response.ok && !lost) {
+                lost = true;
+                return new Response("lost", { status: 503 });
+            }
+            return response;
+        });
+        try {
+            const first = await f.runRaw("managed-author", proxy.port);
+            equal(first.code === 0, false);
+            equal(lost, true);
+            const original = await f.run("managed-author");
+            equal(await f.run("managed-author-rename"), original);
+            const next = await f.run("managed-author");
+            ok(original !== next);
+            const admitted = await fetch(f.endpoint + "/project-store/admit", { method: "POST", headers: f.headers });
+            const binding = await admitted.json();
+            const { inspectHomeProjectOwner, withHomeProjectOwner, projectStoreLocation } =
+                await import("../shared/project-identity.ts");
+            const owner = inspectHomeProjectOwner(binding.projectId, binding.repositoryId);
+            ok(owner);
+            await withHomeProjectOwner(owner, async () => {
+                const { loadPlan } = await import("./index.ts");
+                const cwd = projectStoreLocation(owner);
+                equal((await loadPlan(cwd, "renamed"))?.attrs.planId, original);
+                equal((await loadPlan(cwd, "repeatable"))?.attrs.planId, next);
+            });
+        } finally {
+            proxy.stop(true);
+            await f.cleanup();
+        }
+    });
+});
+
 test("managed pruning changes laptop records and bound execution copies while manual SSH retains execution-account records", async () => {
     const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
     const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
@@ -786,7 +844,29 @@ test("managed pruning changes laptop records and bound execution copies while ma
                     },
                 ),
             );
-            const result = await f.run("managed-prune");
+            const localRoot = await mkdtemp(join(tmpdir(), "laptop-prune-decoy-"));
+            const decoy = join(localRoot, "delivered-record.md");
+            const pendingBytes = await readFile(copy);
+            await writeFile(decoy, pendingBytes);
+            let observed = false;
+            const proxy = observeOwnerResponse(f.endpoint, async (kind, response) => {
+                if (kind === "confirm-retention" && response.ok) {
+                    deepEqual(await readFile(copy), pendingBytes);
+                    deepEqual(await readFile(decoy), pendingBytes);
+                    observed = true;
+                }
+                return response;
+            });
+            let result: string;
+            try {
+                result = await f.run("managed-prune", proxy.port);
+                equal(observed, true);
+                deepEqual(await readFile(decoy), pendingBytes);
+            } finally {
+                proxy.stop(true);
+                await rm(localRoot, { recursive: true, force: true });
+            }
+
             equal(result.includes("Pruned 1 Work Record"), true, result);
             await rejects(readFile(copy), { code: "ENOENT" });
             await withHomeProjectOwner(owner, async () => equal((await listWorkRecords(cwd)).length, 0));

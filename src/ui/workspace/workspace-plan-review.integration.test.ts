@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { seedPlan as savePlan } from "../../shared/testing/plan-state-fixture.ts";
@@ -84,13 +85,15 @@ test("owner Plan review refuses approval after real status evidence changes", as
             },
             async ({ service, reference, response, root }) => {
                 const { loadPlan } = await import("../../plan-store/index.ts");
-                const { injectFrontMatter } = await import("../../plan-format.ts");
-                const { writeFile } = await import("node:fs/promises");
-                const { assertRejects } = await import("../../testing/assertions.ts");
+                const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
+                const { recordPlanEvent } = await import("../../shared/workflow/plan-lifecycle.ts");
+
                 const plan = await loadPlan(root, "stale");
                 if (!plan) throw new Error("missing review fixture");
-                await writeFile(plan.path, injectFrontMatter(plan.markdown, { status: "approved" }));
-                await assertRejects(
+                await withLocalPlanWorkflow(root, "stale", () =>
+                    recordPlanEvent({ cwd: root, planName: "stale", event: "review_approved", currentStatus: "draft" }),
+                );
+                await assert.rejects(
                     () =>
                         service.answerInteraction({
                             ...reference,
@@ -102,8 +105,7 @@ test("owner Plan review refuses approval after real status evidence changes", as
                                 collaborationRecommendation: "autonomous",
                             },
                         }),
-                    Error,
-                    "Plan Status changed after review opened",
+                    /Plan Status changed after review opened/,
                 );
                 const staleResponse = await response;
                 assertEquals(staleResponse.outcome, "unsupported");
@@ -120,7 +122,7 @@ test("owner Sequence review refuses changed siblings and returns the complete cu
         const root = fixture.projectRoot;
         const { prepareSequenceReview } = await import("../../plan-store/index.ts");
         const { writeFile } = await import("node:fs/promises");
-        const { assertRejects } = await import("../../testing/assertions.ts");
+
         const { loadPlan } = await import("../../plan-store/index.ts");
         await savePlan(root, "sequence", "# Sequence\n", {
             classification: "PROJECT",
@@ -155,10 +157,9 @@ test("owner Sequence review refuses changed siblings and returns the complete cu
                     approvalAction: "run",
                     documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
                 };
-                await assertRejects(
+                await assert.rejects(
                     () => service.answerInteraction({ ...reference, requestId: "stale-sequence", response: decision }),
-                    Error,
-                    "changed while review was open",
+                    /Required Plan documents changed/,
                 );
                 assertEquals((await loadPlan(root, "sequence/first"))?.attrs.status, "draft");
                 assertEquals(
@@ -287,6 +288,46 @@ test("owner requests retain admitted document identity and reject stale saves wi
         assert((await emptyPage.text()).includes("import"));
         equal((await handler(new Request(url.replace(project.projectId, empty.projectId), { headers }))).status, 403);
         deepEqual(await tree(emptyRoot), beforeEmpty);
+        const { withLocalPlanWorkflow, operatePlanFile, loadPlan } = await import("../../plan-store/index.ts");
+        const { recordPlanEvent } = await import("../../shared/workflow/plan-lifecycle.ts");
+        await withLocalPlanWorkflow(f.root, "one", async () => {
+            await recordPlanEvent({ cwd: f.root, planName: "one", event: "review_approved", currentStatus: "draft" });
+            await recordPlanEvent({
+                cwd: f.root,
+                planName: "one",
+                event: "readiness_passed",
+                currentStatus: "approved",
+            });
+        });
+        const ready = await (await get()).json();
+        equal((await save(ready.body, ready.revision)).status, 200);
+        equal((await loadPlan(f.root, "one"))?.attrs.status, "ready_for_work");
+        equal((await save("# Revised acceptance criteria\n", ready.revision)).status, 200);
+        equal((await loadPlan(f.root, "one"))?.attrs.status, "draft");
+        assert((await save("# Stale approval\n", ready.revision)).status >= 400);
+        const { archivePlan } = await import("../../plan-store/index.ts");
+        const admission = await selectPlanAccess(f.root, "one");
+        await archivePlan(f.root, "one", { force: true, reason: "retired" });
+        const archived = await read(f.identity);
+        await assert.rejects(
+            () =>
+                withPlanAccess(f.root, admission, () => {
+                    throw new Error("stale action ran");
+                }),
+            /selection changed|archived/i,
+        );
+        await assert.rejects(
+            () =>
+                operatePlanFile(f.root, {
+                    mode: "edit",
+                    path: archived.path + "/context.md",
+                    oldText: "Revised",
+                    newText: "Overwritten",
+                }),
+            /archived|protected/i,
+        );
+        deepEqual(await read(f.identity), archived);
+
         const noAuth = await handler(new Request(url));
         equal(noAuth.status, 401);
     } finally {

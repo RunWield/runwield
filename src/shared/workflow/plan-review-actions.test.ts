@@ -507,32 +507,34 @@ for (const { name, original, current, matches } of [
 ]) {
     test(`Plan review edits preserve approval only for equivalent ${name}`, async () => {
         const fixture = await makePlanFile({ status: "approved" }, original);
-        try {
-            const before = await loadPlan(fixture.dir, "plan");
-            assert(before);
-            const result = await applySharedPlanReviewDecision({
-                cwd: fixture.dir,
-                planName: "plan",
-                planPath: before.path,
-                planWithFrontMatter: before.markdown,
-                planRevision: before.revision,
-                originalAttrs: before.attrs,
-                trustedClassification: "PLANNED_CHANGE",
-                decision: {
-                    approved: false,
-                    conversationTurn: true,
-                    feedback: "Owner edit.",
-                    plan: injectFrontMatter(current, before.attrs),
-                },
-            });
-            assertEquals(result.cancellationReason, undefined);
-            const after = await loadPlan(fixture.dir, "plan");
-            assertEquals(after?.attrs.status, matches ? "approved" : "draft");
-            assertEquals(after?.body.trimEnd(), current.trimEnd());
-            assertEquals(after?.attrs.planId, before.attrs.planId);
-        } finally {
-            await fsRm(fixture.dir, { recursive: true });
-        }
+        return await withRetainedPlanFixture(fixture.dir, async () => {
+            try {
+                const before = await loadPlan(fixture.dir, "plan");
+                assert(before);
+                const result = await applySharedPlanReviewDecision({
+                    cwd: fixture.dir,
+                    planName: "plan",
+                    planPath: before.path,
+                    planWithFrontMatter: before.markdown,
+                    planRevision: before.revision,
+                    originalAttrs: before.attrs,
+                    trustedClassification: "PLANNED_CHANGE",
+                    decision: {
+                        approved: false,
+                        conversationTurn: true,
+                        feedback: "Owner edit.",
+                        plan: injectFrontMatter(current, before.attrs),
+                    },
+                });
+                assertEquals(result.cancellationReason, undefined);
+                const after = await loadPlan(fixture.dir, "plan");
+                assertEquals(after?.attrs.status, matches ? "approved" : "draft");
+                assertEquals(after?.body.trimEnd(), current.trimEnd());
+                assertEquals(after?.attrs.planId, before.attrs.planId);
+            } finally {
+                await fsRm(fixture.dir, { recursive: true });
+            }
+        });
     });
 }
 

@@ -176,36 +176,38 @@ test("execution from a linked worktree checkpoints the selected Plan even when G
     let executionCwd = "";
     try {
         await git(projectRoot, ["worktree", "add", "-b", "planning", sourceCwd]);
-        await fsWriteFile(join(projectRoot, ".git", "info", "exclude"), `/${planPath}\n`);
-        await savePlan(sourceCwd, planName, "# Excluded Plan", {
-            classification: "PLANNED_CHANGE",
-            status: "ready_for_work",
-            summary: "Excluded Plan",
-            planId: PLAN_ID,
-        });
-        assertEquals(await git(sourceCwd, ["check-ignore", planPath]), planPath);
+        await withRetainedPlanFixture(sourceCwd, async () => {
+            await fsWriteFile(join(projectRoot, ".git", "info", "exclude"), `/${planPath}\n`);
+            await savePlan(sourceCwd, planName, "# Excluded Plan", {
+                classification: "PLANNED_CHANGE",
+                status: "ready_for_work",
+                summary: "Excluded Plan",
+                planId: PLAN_ID,
+            });
+            assertEquals(await git(sourceCwd, ["check-ignore", planPath]), planPath);
 
-        const workflow = await startActiveExecutionWorkflow({
-            planName,
-            triageMeta: { planId: PLAN_ID, classification: "PLANNED_CHANGE" },
-            currentStatus: "ready_for_work",
-            hostedSession,
-            ports: createExecutionStartPorts(),
+            const workflow = await startActiveExecutionWorkflow({
+                planName,
+                triageMeta: { planId: PLAN_ID, classification: "PLANNED_CHANGE" },
+                currentStatus: "ready_for_work",
+                hostedSession,
+                ports: createExecutionStartPorts(),
+            });
+            assert(workflow.executionCwd);
+            executionCwd = workflow.executionCwd;
+            assertEquals((await loadPlan(executionCwd, planName))?.attrs.status, "in_progress");
+            assertEquals(
+                parsePlanFrontMatter(await git(executionCwd, ["show", `HEAD:${planPath}`])).attrs.status,
+                "in_progress",
+            );
+            assertEquals(
+                parsePlanFrontMatter(await git(executionCwd, ["show", `${workflow.baselineTree}:${planPath}`])).attrs
+                    .status,
+                "ready_for_work",
+            );
+            assertEquals(await git(sourceCwd, ["check-ignore", planPath]), planPath);
+            assertEquals(await git(sourceCwd, ["ls-files", "--", planPath]), "");
         });
-        assert(workflow.executionCwd);
-        executionCwd = workflow.executionCwd;
-        assertEquals((await loadPlan(executionCwd, planName))?.attrs.status, "in_progress");
-        assertEquals(
-            parsePlanFrontMatter(await git(executionCwd, ["show", `HEAD:${planPath}`])).attrs.status,
-            "in_progress",
-        );
-        assertEquals(
-            parsePlanFrontMatter(await git(executionCwd, ["show", `${workflow.baselineTree}:${planPath}`])).attrs
-                .status,
-            "ready_for_work",
-        );
-        assertEquals(await git(sourceCwd, ["check-ignore", planPath]), planPath);
-        assertEquals(await git(sourceCwd, ["ls-files", "--", planPath]), "");
     } finally {
         hostedSession.dispose();
         if (executionCwd) await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true });

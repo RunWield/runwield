@@ -15,6 +15,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import {
     assertProjectStoreIdentity,
+    verifyExecutionAccountHome,
     requireProjectCheckout,
     isHomeProjectOwner,
     projectStoreLocation,
@@ -359,6 +360,7 @@ interface ImportBatch {
     members: PackageSelector[];
     record?: ImportRecord;
     authoring?: PlanPackageBatchWrite[];
+    review?: PackageReviewCommit;
     operation?: BatchOperationIntent;
 }
 interface PackageIntent {
@@ -1276,6 +1278,12 @@ async function mutate<T>(
     discovering = false,
 ): Promise<T> {
     const paths = layout(identity);
+    const perform = async () => {
+        verifyExecutionAccountHome(identity);
+        const result = await action(paths);
+        verifyExecutionAccountHome(identity);
+        return result;
+    };
     const planIds = selected === null ? [] : typeof selected === "string" ? [selected] : selected;
     for (const id of planIds) requireId(id);
     const held = packageLocks.getStore();
@@ -1292,14 +1300,12 @@ async function mutate<T>(
                     locks.push(lock);
                     await lock.lock(true);
                 }
-                return await packageLocks.run({ internal: paths.internal, planIds: new Set(planIds) }, () =>
-                    action(paths),
-                );
+                return await packageLocks.run({ internal: paths.internal, planIds: new Set(planIds) }, perform);
             } finally {
                 for (const lock of locks.reverse()) lock.close();
             }
         }
-        return await action(paths);
+        return await perform();
     }
     await directory(paths, paths.locks);
     const catalogPath = join(paths.locks, "catalog.lock");
@@ -1330,9 +1336,7 @@ async function mutate<T>(
             for (const lock of plans.reverse()) lock.close();
             plans.length = 0;
         }
-        return await packageLocks.run({ internal: paths.internal, planIds: new Set(planIds), discovering }, () =>
-            action(paths),
-        );
+        return await packageLocks.run({ internal: paths.internal, planIds: new Set(planIds), discovering }, perform);
     } finally {
         for (const lock of plans.reverse()) lock.close();
         catalog.close();
@@ -1678,20 +1682,26 @@ export function packageDocumentText(documents: PackageDocument[]): PackageDocume
 export async function capturePlanPackageInput(
     identity: ProjectIdentity,
     planId: string,
+    reviewedContext?: string,
 ): Promise<PackageInputReference> {
     return await mutate(identity, planId, async (paths) => {
         const source = await loaded(paths, planId);
         const inputId = randomUUID();
         const stage = join(paths.stages, inputId);
         await directory(paths, stage);
-        for (const doc of source.documents) writeTextAtomically(join(stage, doc.name), doc.bytes);
+        const documents = source.documents.map((doc) => {
+            if (doc.name !== "context.md" || reviewedContext === undefined) return doc;
+            const bytes = new TextEncoder().encode(reviewedContext);
+            return { ...doc, bytes, hash: digest(bytes) };
+        });
+        for (const doc of documents) writeTextAtomically(join(stage, doc.name), doc.bytes);
         const manifest: PackageInputManifest = {
             version: 1,
             projectId: identity.projectId,
             planId,
             inputId,
             metadataRevision: source.metadata.revision,
-            documents: source.documents.map(({ name, role, hash }) => ({ name, role, hash })),
+            documents: documents.map(({ name, role, hash }) => ({ name, role, hash })),
         };
         writeJsonAtomically(join(stage, "input.wld.json"), manifest);
         const current = await loaded(paths, planId);
@@ -1719,8 +1729,11 @@ export async function readPlanPackageInput(
     reference: PackageInputReference,
 ): Promise<PackageInput> {
     const paths = layout(identity);
-    if (reference.projectId !== identity.projectId || !/^[0-9a-f-]{36}$/.test(reference.inputId))
-        fail("unsafe_path", "Invalid retained-input reference.");
+    if (reference.projectId !== identity.projectId) fail("unsafe_path", "Invalid retained-input reference.");
+    return await readInputAt(paths, reference);
+}
+async function readInputAt(paths: PackageLayout, reference: PackageInputReference): Promise<PackageInput> {
+    if (!/^[0-9a-f-]{36}$/.test(reference.inputId)) fail("unsafe_path", "Invalid retained-input reference.");
     const directory = join(paths.inputs, reference.inputId);
     const bytes = await file(paths.home, join(directory, "input.wld.json"));
     if (!bytes) fail("missing", "Retained input is missing.");
@@ -1926,6 +1939,95 @@ export interface PlanPackageBatchWrite {
     documents: PackageDocuments;
     before: { metadata: PlanPackageMetadata; documents: PackageDocuments } | null;
 }
+/** Retain every reviewed document so a crash or an outside editor cannot authorize stale input. */
+export interface PackageReviewCommit {
+    inputs: Array<{ name: string; reference: PackageInputReference }>;
+    reopened?: PlanPackageMetadata;
+}
+
+async function recoverReviewedBatch(
+    paths: PackageLayout,
+    batch: ImportBatch,
+    write: PlanPackageBatchWrite,
+    reportStale: boolean,
+): Promise<void> {
+    const review = batch.review!;
+    if (!write.before || batch.authoring?.length !== 1 || !review.inputs.length)
+        fail("pending_recovery", "Invalid reviewed package generation.");
+    metadataFrom(write.metadata);
+    metadataFrom(write.before.metadata);
+    const members = [write.metadata.planId, ...(write.metadata.parentPlanId ? [write.metadata.parentPlanId] : [])];
+    if (
+        review.inputs.length !== members.length ||
+        members.some((id) => !review.inputs.some((input) => input.reference.planId === id)) ||
+        write.before.metadata.planId !== write.metadata.planId ||
+        write.before.metadata.name !== write.metadata.name ||
+        write.metadata.revision !== write.before.metadata.revision + 1 ||
+        (review.reopened &&
+            (review.reopened.planId !== write.metadata.planId ||
+                review.reopened.name !== write.metadata.name ||
+                review.reopened.revision !== write.metadata.revision))
+    )
+        fail("pending_recovery", "Reviewed package identity changed.");
+    const path = join(paths.plans, normalizeName(write.metadata.name));
+    const metadataPath = join(path, "plan.wld.json");
+    const metadataBytes = await file(paths.home, metadataPath);
+    if (!metadataBytes) fail("pending_recovery", "Reviewed package metadata is missing.");
+    const metadata = parseMetadata(metadataBytes);
+    const sameMetadata = (left: PlanPackageMetadata, right: PlanPackageMetadata) =>
+        JSON.stringify(left) === JSON.stringify(right);
+    const finish = () =>
+        writeJsonAtomically(paths.batch, {
+            version: 1,
+            phase: "committed",
+            recordId: batch.recordId,
+            members: batch.members,
+        } satisfies ImportBatch);
+    if (!sameMetadata(metadata, write.metadata)) {
+        if (review.reopened && sameMetadata(metadata, review.reopened)) {
+            finish();
+            if (reportStale) fail("changed_input", "Reviewed inputs changed before approval.");
+            return;
+        }
+        if (!sameMetadata(metadata, write.before.metadata))
+            fail("pending_recovery", "Reviewed package metadata changed outside its transaction.");
+        const before = write.before.documents["context.md"];
+        const after = write.documents["context.md"];
+        const current = await file(paths.home, join(path, "context.md"));
+        if (current && decodePackageMarkdown(current) === before && before !== after)
+            writeTextAtomically(join(path, "context.md"), after);
+        for (const input of review.inputs) {
+            const plan = await inspectAt(paths, input.name);
+            const retained = await readInputAt(paths, input.reference);
+            if (
+                plan.kind === "loaded" &&
+                plan.metadata.planId === input.reference.planId &&
+                plan.metadata.revision === retained.manifest.metadataRevision &&
+                plan.documents.length === retained.documents.length &&
+                plan.documents.every(
+                    (doc, i) => doc.name === retained.documents[i]?.name && doc.hash === retained.documents[i]?.hash,
+                )
+            )
+                continue;
+            // Preserve all current prose, including the browser edit and concurrent filesystem edits.
+            if (review.reopened) writeJsonAtomically(metadataPath, metadataFrom(review.reopened));
+            finish();
+            if (reportStale)
+                fail("changed_input", "Reviewed inputs changed before approval. Review the current documents.");
+            return;
+        }
+        writeJsonAtomically(metadataPath, write.metadata);
+    }
+    if (batch.operation) {
+        const committed = await inspectAt(paths, write.metadata.name);
+        if (committed.kind !== "loaded") fail(committed.kind, committed.message);
+        if (batch.operation.planId !== write.metadata.planId)
+            fail("pending_recovery", "Review receipt belongs to another Plan.");
+        settleBatchOperation(paths.internal, batch.operation, packageWorkflowRevision(committed));
+    }
+    finish();
+}
+
 function batchBytes(metadata: PlanPackageMetadata, documents: PackageDocuments): Record<string, string> {
     return { ...documents, "plan.wld.json": JSON.stringify(metadata, null, 2) + "\n" };
 }
@@ -1943,7 +2045,7 @@ async function batchResourceNeedsWrite(
     return true;
 }
 
-async function recoverAuthoringBatch(paths: PackageLayout, batch: ImportBatch): Promise<void> {
+async function recoverAuthoringBatch(paths: PackageLayout, batch: ImportBatch, reportStale = false): Promise<void> {
     const writes = batch.authoring!;
     if (
         !writes.length ||
@@ -1951,6 +2053,7 @@ async function recoverAuthoringBatch(paths: PackageLayout, batch: ImportBatch): 
             JSON.stringify(writes.map((write) => ({ planId: write.metadata.planId, name: write.metadata.name })))
     )
         fail("pending_recovery", "Authoring batch membership changed.");
+    if (batch.review) return await recoverReviewedBatch(paths, batch, writes[0]!, reportStale);
     // Verify the whole generation before replacing any remaining resource. Outside edits are never rollback fodder.
     for (const write of writes) {
         metadataFrom(write.metadata);
@@ -2001,6 +2104,7 @@ async function recoverAuthoringBatch(paths: PackageLayout, batch: ImportBatch): 
 export async function commitPlanPackageBatch(
     identity: ProjectIdentity,
     writes: PlanPackageBatchWrite[],
+    review?: PackageReviewCommit,
 ): Promise<void> {
     if (!writes.length) return;
     await mutate(
@@ -2059,10 +2163,11 @@ export async function commitPlanPackageBatch(
                 phase: "pending",
                 members: writes.map((write) => ({ planId: write.metadata.planId, name: write.metadata.name })),
                 authoring: writes,
+                review,
                 operation: captureBatchOperation(),
             };
             writeJsonAtomically(paths.batch, batch);
-            await recoverAuthoringBatch(paths, batch);
+            await recoverAuthoringBatch(paths, batch, true);
             if (!isHomeProjectOwner(identity))
                 await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
         },

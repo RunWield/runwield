@@ -531,11 +531,11 @@ async function enterProjectRuntimeUncached(
     });
     if (!rootInfo || !rootInfo.isDirectory()) throw new Error("Project root must be an existing directory");
     if (rootInfo) {
-        await prepareProjectCheckout(selectedCheckoutRoot);
         const admission = await admitProjectIdentity(selectedCheckoutRoot, identityOptions);
         if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
         {
             const { layout } = await enterHomeProjectRuntime(admission.identity);
+            await prepareProjectCheckout(selectedCheckoutRoot);
             await reconcileRuntimeIgnore(layout.primary.checkoutRoot);
             return layout;
         }

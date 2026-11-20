@@ -9,6 +9,7 @@ import {
     type ProjectStoreIdentity as ProjectIdentity,
 } from "../shared/project-identity.ts";
 import { currentPackageProject, withPackageProject } from "./workflows.ts";
+import { reviewUpdateForDocumentChanges } from "./documents.ts";
 import { withMissingImportedExecutionRecovery } from "./legacy.ts";
 
 interface LocalHomeStore {
@@ -183,6 +184,8 @@ export async function saveLocalHomePlan(
                 const current = existing ? await readPlanPackage(store.identity, { planId }) : null;
                 if (current && current.kind !== "loaded") throw new Error(current.message);
                 if (current) {
+                    if (current.metadata.archive && !current.metadata.archive.restoredAt)
+                        throw new Error("This Plan package is archived.");
                     assertSharedPlanWriteAllowed(await packageController(current));
                     const revision = packageWorkflowRevision(current);
                     if (options.expectedRevision !== revision)
@@ -221,6 +224,13 @@ export async function saveLocalHomePlan(
                           "context.md": "",
                           "validation.md": "# Validation\n\nSee the Verification Plan in [context.md](context.md).\n",
                       };
+                const nextValidation = options.validationMarkdown ?? documents["validation.md"];
+                const review =
+                    current &&
+                    (await reviewUpdateForDocumentChanges(current, [
+                        { previous: documents["context.md"], next: parsed.body },
+                        { previous: documents["validation.md"], next: nextValidation },
+                    ]));
                 await commitPlanPackageBatch(store.identity, [
                     {
                         before: current ? { metadata: current.metadata, documents } : null,
@@ -235,14 +245,15 @@ export async function saveLocalHomePlan(
                             name,
                             planId,
                             revision: (current?.metadata.revision || 0) + 1,
-                            definition,
+                            ...review,
+                            definition: review ? { ...definition, status: review.definition.status } : definition,
                             parentPlanId,
                             dependencyPlanIds,
                         },
                         documents: {
                             ...documents,
                             "context.md": parsed.body,
-                            "validation.md": options.validationMarkdown ?? documents["validation.md"],
+                            "validation.md": nextValidation,
                         },
                     },
                 ]);

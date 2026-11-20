@@ -225,7 +225,7 @@ retainedReviewTest("submitPlanForReview accepts approval after Markdown body for
     try {
         const result = await submitPlanForReview({ cwd: dir, planName: "plan", planPath, browser });
 
-        assertEquals(result.approved, true);
+        assertEquals(result.approved, true, result.feedback);
         assertEquals(result.cancellationReason, undefined);
         assertEquals((await loadPlan(dir, "plan"))?.attrs.status, "approved");
     } finally {

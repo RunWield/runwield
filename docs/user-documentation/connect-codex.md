@@ -276,7 +276,7 @@ checkouts. It does not abandon delivery. Reinstall and invoke the RunWield skill
 
 ## Local artifacts and privacy
 
-Plans remain ordinary files under `docs/plans/`, alongside the project's Work Records and workflow evidence. Core keeps
+Plans and Work Records live in the owner’s `~/.wld/projects/<projectId>/` store. The host reads them through `read_plan`, `work_record_search` and `work_record_read`, including when Git delivery copies are disabled. Core keeps
 per-request recovery records under `~/.wld/attached/`, associated with the local repository. Browser review chat is
 temporary workflow context. The [shared privacy contract](../prd/runwield-connect-prd.md#artifact-privacy-and-records)
 defines what becomes durable project knowledge.

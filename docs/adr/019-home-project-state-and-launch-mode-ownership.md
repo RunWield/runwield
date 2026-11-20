@@ -19,7 +19,7 @@ The owner confirmed these target constraints on 2026-11-01:
   execution on the remote machine.
 - `wld remote <host>` keeps Plans on the initiating laptop, while code execution stays remote.
 
-This ADR records accepted local, manual-SSH, and managed-remote mechanisms alongside the still-proposed retention work. Only the explicitly accepted scope below is current guidance. [ADR-014](014-file-authoritative-session-bundles.md),
+This ADR records accepted local, manual-SSH, and managed-remote mechanisms alongside implemented local and managed retention. Only the explicitly accepted scope below is current guidance. [ADR-014](014-file-authoritative-session-bundles.md),
 [ADR-015](015-proof-bearing-publication-state-machine.md),
 [ADR-016](016-project-runtime-state-under-wld-internal.md), and
 [ADR-017](017-remote-ssh-local-personal-authority.md) remain the existing decisions until reconciled with an accepted
@@ -29,10 +29,10 @@ The stable-identity slice now uses `runwield.projectId` and `runwield.repository
 configuration, a distinct administrative-directory checkout ID, and `.wld-project.json` before Git adoption. Local
 identity and verified Session/Attached locator records live under `~/.wld/projects/<projectId>/project.wld.json`. Workspace registration remains optional
 and separate. Explicit managed-remote owner context does not introduce remote-store persistence. This narrow delivery
-does not implement document relocation. Ordinary runtime relocation is now the accepted decision in ADR-017;
+does not implement document relocation. Ordinary runtime relocation is now the accepted decision in ADR-016;
 managed launch now uses the owner transport described below. Session/Connect continuation now
 resolves verified original stores after moves and accepted clone links, without relocating bundles or locks, rewriting
-historical evidence, transferring execution attempts, or changing managed-remote ownership. ADR-015 owns that accepted
+historical evidence, transferring execution attempts, or changing managed-remote ownership. ADR-014 owns that accepted
 Session lookup decision; the broader home-state proposal remains proposed.
 
 The canonical-package persistence contract was introduced through internal operations and is now selected by ordinary
@@ -71,8 +71,8 @@ keep the exact input and attempt. The same publication owner now accepts a durab
 metadata/family/Tickets and frozen optional delivery copies. Packages complete real validation and target publication,
 settle matching personal receipts and release ownership before cleanup; no target metadata-only commit or repository
 Plan is required. Retained Recorder inputs survive code cleanup. Reusing the publication state machine avoids a second
-phase authority, and exact immutable inputs avoid treating a delivery copy as live state. ADR-016 qualifies its legacy
-Git-metadata rule for this internal case. Local and managed selection now use this contract; milestone pruning remains outside it. ADR-004 and ADR-017 qualify the accepted lifecycle/runtime
+phase authority, and exact immutable inputs avoid treating a delivery copy as live state. ADR-015 qualifies its legacy
+Git-metadata rule for this internal case. Local and managed selection now use this contract; milestone pruning remains outside it. ADR-003 and ADR-016 qualify the accepted lifecycle/runtime
 decisions; the broader proposal below remains proposed.
 
 The internal Work Record contract now shares personal Project ownership with admitted packages. Explicit record
@@ -80,8 +80,8 @@ admission also supports import/read/index without a Plan. Canonical Markdown and
 of repository binding; private location evidence retains each binding's copies. A stable Project/personal-owner index
 can be rebuilt from canonical records after a move or clone link. General Memory namespaces do not move. Retained
 Recorder preparation supplies the existing single-commit publisher and keeps pending copy confidence distinct from
-proof-approved canonical confidence. These choices are qualified in ADR-016 and used by managed owner-side recording;
-later retention and pruning remain proposed.
+proof-approved canonical confidence. These choices are qualified in ADR-015 and used by managed owner-side recording;
+Retention now preserves pinned records and requires confirmation before pruning.
 
 ## Accepted Local and Manual-SSH Activation
 
@@ -103,7 +103,7 @@ once settlement succeeds. Managed-remote ownership activation is explicitly not 
 
 The preceding implementation history describes the incremental prerequisites. Its internal-only/public-activation
 limits are superseded for local/manual-SSH use by this section. The managed owner transport is described below;
-retention and pruning remain proposed.
+Confirmed retention and pruning now run through the personal owner.
 
 ### Milestone history
 
@@ -120,7 +120,7 @@ Historical documents and private execution inputs have separate lifetimes. Autom
 The Plan store is a deep module with a public command/query interface at `src/plan-store/index.ts`. Its private
 implementation owns source selection, identity checks, lock ordering, revision checks, durable package and retained-copy
 writes, import continuation, and immutable input capture. Lifecycle policy remains in
-`src/shared/workflow/plan-lifecycle.js`; the owner applies those rules to locked authoritative data and persists the result.
+`src/shared/workflow/plan-lifecycle.ts`; the owner applies those rules to locked authoritative data and persists the result.
 This separates policy from storage without creating two writers.
 
 Named operations express authoring, review decisions, lifecycle events, imports, resource authorization, and execution
@@ -146,6 +146,12 @@ coverage without making private storage APIs available to consumers. Public-inte
 remain required; consolidating files alone does not establish the behavior.
 
 ## Decision and Rationale
+
+Linux resolves an account's configured login HOME to the physical directory owned by its effective user. Ordinary
+and managed execution use that directory for Project state and locks. Operations retain its identity and check it
+again before returning. A redirected login home stops the operation. Descendant symlinks remain subject to the
+existing store checks. The [Fedora qualification](../verification/plan-store-migration.md#integration-closeout-on-fedora-44)
+exercises both login layouts.
 
 Use stable opaque Project identity to locate home Project storage. Keep repository and checkout bindings as explicit
 execution facts, not as storage identity. Shared local Git configuration binds linked worktrees to the Project;

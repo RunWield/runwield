@@ -237,7 +237,19 @@ sys.exit(result.returncode)
             equal("status" in authored.result && authored.result.status, "completed");
             const listed = await client.execute({ kind: "list-plans" });
             ok("plans" in listed.result);
-            equal(listed.result.plans.length, recordParent ? 12 : 11);
+            const expectedActive = [
+                "abandoned-original",
+                "import-source",
+                "managed",
+                "managed-sequence",
+                "managed-sequence/first",
+                "managed-sequence/second",
+                "public-tool",
+                "recovery",
+                "retained",
+                ...(recordParent ? ["retained-parent"] : []),
+            ];
+            deepEqual(listed.result.plans.map((plan) => plan.name).sort(), expectedActive.sort());
             ok(listed.result.plans.some((plan) => plan.attrs.planId === planId));
             for (const event of ["review_approved", "readiness_passed"] as const) {
                 const document = await client.execute({ kind: "read", planId, resource: "context.md" });

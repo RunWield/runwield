@@ -225,9 +225,10 @@ export async function mutateManagedPlan(cwd: string, command: ProjectStoreComman
         }
         if (
             retained.acknowledged &&
-            command.kind === "restore-history" &&
-            retained.command.kind === "restore-history" &&
-            retained.command.expectedRevision !== command.expectedRevision
+            ((command.kind === "author-plan" && !command.input.expectedRevision) ||
+                (command.kind === "restore-history" &&
+                    retained.command.kind === "restore-history" &&
+                    retained.command.expectedRevision !== command.expectedRevision))
         ) {
             retained = { binding: owner.binding, command };
             writeJsonAtomically(path, retained);
@@ -242,7 +243,11 @@ export async function mutateManagedPlan(cwd: string, command: ProjectStoreComman
         });
         if (!("status" in result.result) || result.result.status !== "completed")
             throw new Error("Managed Plan operation remains recoverable under its retained identity.");
-        if (command.kind === "restore-history" && !retained.acknowledged)
+        if (
+            (command.kind === "restore-history" ||
+                (command.kind === "author-plan" && !command.input.expectedRevision)) &&
+            !retained.acknowledged
+        )
             writeJsonAtomically(path, { ...retained, acknowledged: true });
         return result.result;
     } finally {
