@@ -50,9 +50,9 @@ Source:
   enables native project tools and passes `--no-session-persistence`.
 - [`Claude process`](../../src/shared/session/backends/claude-cli/process.ts) and
   [historical Antigravity process](https://github.com/RunWield/runwield/blob/dd19df28b/src/shared/session/backends/agy-cli/process.ts): subprocesses use the supplied `cwd`.
-- [`Antigravity integration`](../../src/shared/session/backends/agy-cli/execution-session.ts),
-  [`custom Agent`](../../src/shared/session/backends/agy-cli/custom-agent.ts), and
-  [`MCP setup`](../../src/shared/session/backends/agy-cli/mcp-setup.ts).
+- [`Antigravity integration`](https://github.com/RunWield/runwield/blob/3c90f9dfb5cc498d78250122becf6b5c3756850f/src/shared/session/backends/agy-cli/execution-session.ts),
+  [`custom Agent`](https://github.com/RunWield/runwield/blob/3c90f9dfb5cc498d78250122becf6b5c3756850f/src/shared/session/backends/agy-cli/custom-agent.ts), and
+  [`MCP setup`](https://github.com/RunWield/runwield/blob/3c90f9dfb5cc498d78250122becf6b5c3756850f/src/shared/session/backends/agy-cli/mcp-setup.ts).
 - Installed Pi package: `dist/core/sdk.js`, `dist/providers/openai-codex.js`, `dist/api/openai-codex-responses.js`, and
   `dist/auth/oauth/openai-codex.js`. Dependency range is recorded in [the historical Deno manifest](https://github.com/gandazgul/runwield/blob/9d4bb0374/deno.json); these package
   internals are not a stable RunWield API promise.

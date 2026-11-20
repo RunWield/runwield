@@ -237,7 +237,7 @@ function isRootOwnedSession(owningSession: OwningSession, rootSession: OwningSes
     if (!owningSession || !rootSession) return false;
     if (typeof owningSession !== "object" || typeof rootSession !== "object") return false;
     const wrapper = rootSession as { kind?: string; session?: OwningSession };
-    return (wrapper.kind === "claude-cli" || wrapper.kind === "agy-cli") && wrapper.session === owningSession;
+    return wrapper.kind === "claude-cli" && wrapper.session === owningSession;
 }
 
 function matchesOptions(event: WorkflowToolEvent, options: ClaimWorkflowToolEventOptions): boolean {

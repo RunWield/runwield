@@ -1,3 +1,4 @@
+import { isRemovedAgyProvider, removedAgyModelError } from "../../shared/models/removed-providers.ts";
 import process from "node:process";
 /**
  * @module cmd/resume
@@ -74,6 +75,9 @@ function getCurrentModelContextWindow(): number {
 
 export function getResumeModelSelection(sessionModel: PersistedModelSelection | null): ResumeModelSelection {
     if (sessionModel?.provider && sessionModel.modelId) {
+        if (isRemovedAgyProvider(sessionModel.provider)) {
+            return { modelOverride: undefined, contextWindow: DEFAULT_CONTEXT_WINDOW };
+        }
         try {
             const registry = getModelRegistry();
             const model = registry.find(sessionModel.provider, sessionModel.modelId);
@@ -175,10 +179,11 @@ export async function runResumeCommand(argv: string[], options: ResumeCommandOpt
         sessionPath: selected.path,
     });
     const { modelOverride, contextWindow } = getResumeModelSelection(inspection.model);
+    const removedModel = isRemovedAgyProvider(inspection.model?.provider);
     const thresholdTokens = contextWindow * (getCompactThresholdPercent() / 100);
     let compact = false;
 
-    if (inspection.estimatedTokens > thresholdTokens) {
+    if (!removedModel && inspection.estimatedTokens > thresholdTokens) {
         const pctUsed = ((inspection.estimatedTokens / contextWindow) * 100).toFixed(1);
         const choice = await uiAPI.promptSelect("Session is large — how would you like to resume?", [
             {
@@ -228,6 +233,15 @@ export async function runResumeCommand(argv: string[], options: ResumeCommandOpt
     const resumed = sessionRuntime.getSessionSnapshot(loaded.sessionId);
     if (resumed?.managed?.syncState?.status === "active_elsewhere") {
         notice = buildConversationRestoredMessage(resumed.managed.syncState.owningSurfaceKind);
+    }
+    if (removedModel && inspection.model) {
+        notice += `
+${
+    removedAgyModelError(
+        `${inspection.model.provider}/${inspection.model.modelId}`,
+        "Use /model to choose a supported model before continuing.",
+    ).message
+}`;
     }
     const progress = resumed?.workflowContext?.validationProgress;
     if (progress?.outcome === "paused" && progress.message) notice += `\n${progress.message}`;

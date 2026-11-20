@@ -1,4 +1,3 @@
-import { AgyCliBackendError } from ".././backends/agy-cli/failure.ts";
 import { listPromptTemplates, listSkills } from ".././session.ts";
 import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { appendLiveSessionEvent } from ".././live-session-events.ts";
@@ -122,17 +121,18 @@ export class RuntimeEvents {
         };
     }
 
-    emitSessionEvent<T extends { type: string }>(
-        sessionId: string,
-        event: T,
-    ) {
-        const sessionName = event.type === RuntimeEventTypes.ATTENTION_REQUESTED && !("sessionName" in event)
-            ? this.services.sessionHost.getSession(sessionId)?.getRootSessionManager()?.getSessionName?.() || undefined
-            : undefined;
+    emitSessionEvent<T extends { type: string }>(sessionId: string, event: T) {
+        const sessionName =
+            event.type === RuntimeEventTypes.ATTENTION_REQUESTED && !("sessionName" in event)
+                ? this.services.sessionHost.getSession(sessionId)?.getRootSessionManager()?.getSessionName?.() ||
+                  undefined
+                : undefined;
         const hostedSession = this.services.sessionHost.getSession(sessionId);
         if (
-            event.type === RuntimeEventTypes.ATTENTION_REQUESTED && "reason" in event &&
-            event.reason === "agentStopped" && hostedSession
+            event.type === RuntimeEventTypes.ATTENTION_REQUESTED &&
+            "reason" in event &&
+            event.reason === "agentStopped" &&
+            hostedSession
         ) {
             hostedSession.agentStoppedAttentionTurnId = hostedSession.activeTurnId;
         }
@@ -141,10 +141,6 @@ export class RuntimeEvents {
             ...(sessionName ? { sessionName } : {}),
             ...(event.type === RuntimeEventTypes.ATTENTION_REQUESTED
                 ? { notificationSurface: hostedSession?.notificationSurface || this.services.ownerProcessKind }
-                : {}),
-            ...(event.type === RuntimeEventTypes.TERMINAL_ERROR &&
-                    "error" in event && event.error instanceof AgyCliBackendError
-                ? { messageAlreadyReported: true }
                 : {}),
         };
         const runtimeEvent = createSessionRuntimeEvent(sessionId, enrichedEvent);
@@ -187,9 +183,7 @@ export class RuntimeEvents {
     attachRuntimeEventSink(hostedSession: import(".././hosted-session.ts").HostedSession) {
         if (!hostedSession) throw new Error("SessionRuntime.attachRuntimeEventSink: session not found");
         hostedSession.setEventSink({
-            emit: (
-                event: Partial<import("../session-runtime-events.ts").SessionRuntimeEvent> & { type: string },
-            ) => {
+            emit: (event: Partial<import("../session-runtime-events.ts").SessionRuntimeEvent> & { type: string }) => {
                 this.emitSessionEvent(hostedSession.id, event);
             },
         });

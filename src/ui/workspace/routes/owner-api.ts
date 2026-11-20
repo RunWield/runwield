@@ -153,6 +153,11 @@ async function requestHash<Value>(value: Value) {
 
 export function sanitizeOwnerError(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
+    // The removal error includes a model reference, which can contain slashes.
+    // Return fixed guidance without echoing the reference or relaxing path redaction.
+    if (message.startsWith("Antigravity (agy-cli) was removed. ")) {
+        return "Antigravity (agy-cli) was removed. Choose a supported model.";
+    }
     if (/[/\\]|[A-Za-z]:/.test(message)) return "Owner Workspace operation failed.";
     return message;
 }

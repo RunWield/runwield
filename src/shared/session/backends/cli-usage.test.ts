@@ -11,14 +11,13 @@ import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
-import { getExternalCliPriceModel, getModelRegistry } from "../../models/model-registry.ts";
+import { getModelRegistry } from "../../models/model-registry.ts";
 import { setCustomSetting } from "../../settings.ts";
 import { getWorkflowMetricsFilePath } from "../../workflow/metrics.ts";
 import { HostedSession } from "../hosted-session.ts";
 import { createRootSessionManager } from "../root-session.ts";
 import type { RuntimeUsage, SessionRuntimeEvent } from "../session-runtime-events.ts";
 import { ClaudeCliExecutionSession } from "./claude-cli/execution-session.ts";
-import { AgyCliExecutionSession } from "./agy-cli/execution-session.ts";
 
 const repository = defineGitFixture(async (root) => {
     await fsWriteFile(join(root, "README.md"), "usage fixture\n");
@@ -49,17 +48,13 @@ interface JournalUsageMeasurement {
 
 interface UsageFixture {
     name: string;
-    backend: "claude-cli" | "agy-cli";
     result: string;
     runtime: RuntimeUsage;
     saved?: SavedUsage;
-    nativeTool?: boolean;
     assistantUsage?: { input_tokens: number; output_tokens: number };
     alternatives?: boolean;
     vendorStream?: string;
-    modelId?: string;
     journal?: JournalUsageMeasurement;
-    availability?: "partial" | "unavailable";
 }
 
 const absent: RuntimeUsage = {
@@ -81,78 +76,20 @@ async function withCliFixture(fixture: UsageFixture, callback: (root: string) =>
             await fsMkdir(home);
             await fsMkdir(bin);
             const streamPath = join(root, "stream.jsonl");
-            const nativeTool = fixture.nativeTool
-                ? JSON.stringify({
-                      type: "step_update",
-                      step_update: {
-                          step_type: "tool",
-                          step_index: 1,
-                          state: "DONE",
-                          tool_info: { name: "read_file", parameters: { path: "README.md" }, output: "usage fixture" },
-                      },
-                  }) + "\n"
-                : "";
-            await fsWriteFile(streamPath, fixture.vendorStream ?? nativeTool + fixture.result + "\n");
+            await fsWriteFile(streamPath, fixture.vendorStream ?? fixture.result + "\n");
             const script = join(bin, "fixture.js");
             await fsWriteFile(
                 script,
                 `
-const args = (await import("node:process")).argv.slice(2);
-if (args[0] === "acp") {
-    if (args.includes("-p") || args.includes("--dangerously-skip-permissions")) throw new Error("unsafe legacy invocation");
-    const lines = (await import("node:readline")).createInterface({ input: (await import("node:process")).stdin });
-    const send = (frame) => console.log(JSON.stringify({ jsonrpc: "2.0", ...frame }));
-    const sessionId = "usage-session";
-    const selected = { mode: "default", model: ${JSON.stringify(fixture.modelId || "gemini-3.8-flash")}, thought_level: "low" };
-    const config = () => ({ configOptions: Object.entries(selected).map(([id,currentValue]) => ({ id,currentValue })) });
-    const update = (value) => send({ method: "session/update", params: { sessionId, update: value } });
-    for await (const line of lines) {
-        const request = JSON.parse(line);
-        const respond = (result) => send({ id: request.id, result });
-        if (request.method === "initialize") respond({ protocolVersion: 1 });
-        else if (request.method === "session/new") respond({ sessionId, ...config() });
-        else if (request.method === "session/set_config_option") {
-            selected[request.params.configId] = request.params.value;
-            respond(config());
-        } else if (request.method === "session/prompt") {
-            const frames = (await (await import("node:fs/promises")).readFile(${JSON.stringify(streamPath)}, "utf8")).trim().split("\\n").map(JSON.parse);
-            const resultFrame = frames.find((frame) => (frame.event || frame.type) === "result");
-            const result = typeof resultFrame.result === "object" ? resultFrame.result : resultFrame;
-            const usage = result.usage || {};
-            update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: result.response || (typeof result.result === "string" ? result.result : "reply") } });
-            for (const frame of frames) {
-                const step = frame.step_update;
-                if (step?.step_type !== "tool") continue;
-                update({ sessionUpdate: "tool_call_update", toolCallId: String(step.step_index), name: step.tool_name || step.tool_info?.name || "read_file", status: step.state === "ACTIVE" ? "in_progress" : step.state === "ERROR" ? "failed" : "completed", rawInput: step.tool_info?.parameters || {} });
-            }
-            // Translate captured legacy measurements into ACP fields without
-            // supplying defaults: missing and measured zero remain distinct.
-            respond({ stopReason: "end_turn", usage: {
-                inputTokens: usage.input_tokens, outputTokens: usage.output_tokens,
-                cachedReadTokens: usage.cache_read_tokens, cachedWriteTokens: usage.cache_write_tokens,
-                thoughtTokens: usage.thinking_tokens,
-            } });
-        } else if (request.method === "session/close") { respond({}); lines.close(); break; }
-        else throw new Error("Unexpected ACP request: " + request.method);
-    }
-} else {
-        const lines = (await import("node:readline")).createInterface({ input: (await import("node:process")).stdin });
-        await new Promise((resolve) => lines.once("line", resolve));
-        lines.close();
-        if (!${Boolean(
-            fixture.vendorStream,
-        )}) console.log(JSON.stringify({ type: "assistant", message: { id: "cli-assistant", content: [{ type: "text", text: "reply" }], usage: ${JSON.stringify(
-            fixture.assistantUsage,
-        )} } }));
-    console.log(await (await import("node:fs/promises")).readFile(${JSON.stringify(streamPath)}, "utf8"));
-    if (${Boolean(fixture.vendorStream)}) await new Promise((resolve) => setTimeout(resolve, 30));
-}
+const lines = (await import("node:readline")).createInterface({ input: (await import("node:process")).stdin });
+await new Promise((resolve) => lines.once("line", resolve));
+lines.close();
+if (!${Boolean(fixture.vendorStream)}) console.log(JSON.stringify({ type: "assistant", message: { id: "cli-assistant", content: [{ type: "text", text: "reply" }], usage: ${JSON.stringify(fixture.assistantUsage)} } }));
+console.log(await (await import("node:fs/promises")).readFile(${JSON.stringify(streamPath)}, "utf8"));
+if (${Boolean(fixture.vendorStream)}) await new Promise((resolve) => setTimeout(resolve, 30));
 `,
             );
-            for (const command of ["claude", "agy"]) {
-                const executable = join(bin, command);
-                await writeRuntimeExecutableFixture(executable, script);
-            }
+            await writeRuntimeExecutableFixture(join(bin, "claude"), script);
             process.env["HOME"] = home;
             process.env["PATH"] = `${bin}:${previousPath || ""}`;
             await setCustomSetting("workflowMetrics", true, "project", root);
@@ -170,7 +107,6 @@ if (args[0] === "acp") {
 const fixtures: UsageFixture[] = [
     {
         name: "Claude preserves the top-level cost fallback",
-        backend: "claude-cli",
         result: JSON.stringify({
             type: "result",
             result: "reply",
@@ -182,7 +118,6 @@ const fixtures: UsageFixture[] = [
     },
     {
         name: "Claude retains alternatives once without adding them to saved turn totals",
-        backend: "claude-cli",
         assistantUsage: { input_tokens: 3, output_tokens: 1 },
         alternatives: true,
         result: JSON.stringify({
@@ -196,24 +131,7 @@ const fixtures: UsageFixture[] = [
         saved: { input: 10, output: 5, cost: { total: 0.25 } },
     },
     {
-        name: "agy input-only measurement remains partial in the journal",
-        backend: "agy-cli",
-        result: JSON.stringify({ type: "result", result: "reply", usage: { input_tokens: 7 } }),
-        runtime: { ...absent, inputTokens: 7 },
-        saved: { input: 7 },
-        availability: "partial",
-    },
-    {
-        name: "agy output-only measured zero remains partial in the journal",
-        backend: "agy-cli",
-        result: JSON.stringify({ type: "result", result: "reply", usage: { output_tokens: 0 } }),
-        runtime: { ...absent, outputTokens: 0 },
-        saved: { output: 0 },
-        availability: "partial",
-    },
-    {
         name: "Claude preserves reported tokens and total cost without inventing cost components",
-        backend: "claude-cli",
         result: JSON.stringify({
             type: "result",
             result: "reply",
@@ -225,7 +143,6 @@ const fixtures: UsageFixture[] = [
     },
     {
         name: "Claude preserves measured zero cache and cost separately from absent cache",
-        backend: "claude-cli",
         result: JSON.stringify({
             type: "result",
             result: "reply",
@@ -237,7 +154,6 @@ const fixtures: UsageFixture[] = [
     },
     {
         name: "Claude preserves fallback cost and fully observed token totals",
-        backend: "claude-cli",
         result: JSON.stringify({
             type: "result",
             result: "reply",
@@ -254,44 +170,14 @@ const fixtures: UsageFixture[] = [
     },
     {
         name: "Claude leaves absent cost and cache unavailable",
-        backend: "claude-cli",
         result: JSON.stringify({ type: "result", result: "reply", usage: { input_tokens: 3, output_tokens: 0 } }),
         runtime: { ...absent, inputTokens: 3, outputTokens: 0 },
         saved: { input: 3, output: 0 },
     },
     {
         name: "Claude omits usage when the CLI reports no measurements",
-        backend: "claude-cli",
         result: JSON.stringify({ type: "result", result: "reply" }),
         runtime: absent,
-    },
-    {
-        name: "agy preserves measured tokens without reporting cache or subscription cost",
-        backend: "agy-cli",
-        result: JSON.stringify({ type: "result", result: "reply", usage: { input_tokens: 7, output_tokens: 2 } }),
-        runtime: { ...absent, inputTokens: 7, outputTokens: 2 },
-        saved: { input: 7, output: 2 },
-    },
-    {
-        name: "agy preserves measured zero tokens without reporting cache or subscription cost",
-        backend: "agy-cli",
-        result: JSON.stringify({ type: "result", result: "reply", usage: { input_tokens: 0, output_tokens: 0 } }),
-        runtime: { ...absent, inputTokens: 0, outputTokens: 0 },
-        saved: { input: 0, output: 0 },
-    },
-    {
-        name: "agy omits usage when the CLI reports no measurements",
-        backend: "agy-cli",
-        result: JSON.stringify({ type: "result", result: "reply" }),
-        runtime: absent,
-    },
-    {
-        name: "agy native tool assistant entries carry no fabricated usage",
-        backend: "agy-cli",
-        nativeTool: true,
-        result: JSON.stringify({ type: "result", result: "reply", usage: { input_tokens: 7, output_tokens: 2 } }),
-        runtime: { ...absent, inputTokens: 7, outputTokens: 2 },
-        saved: { input: 7, output: 2 },
     },
 ];
 
@@ -299,14 +185,8 @@ const claudeVendor = await fsReadFile(
     new URL("./claude-cli/fixtures/claude-2.1.284-read-tool-stream.jsonl", import.meta.url),
     "utf8",
 );
-const agyVendor = await fsReadFile(new URL("./agy-cli/fixtures/agy-1.2.12-tool-stream.jsonl", import.meta.url), "utf8");
-const agyThinkingVendor = await fsReadFile(
-    new URL("./agy-cli/fixtures/agy-1.2.12-model-read-tool-stream.jsonl", import.meta.url),
-    "utf8",
-);
 fixtures.push({
     name: "Claude vendor tool stream stores cache-exclusive aggregate and unmeasured request alternatives",
-    backend: "claude-cli",
     result: "",
     vendorStream: claudeVendor,
     runtime: { inputTokens: 4, outputTokens: 507, cacheReadTokens: 5326, cacheWriteTokens: 6034, costUsd: 0.0594932 },
@@ -323,58 +203,10 @@ fixtures.push({
         measurementAvailability: "complete",
     },
 });
-for (const modelId of ["gemini-3.8-flash", "gemini-3.1-pro"]) {
-    fixtures.push({
-        name: `agy vendor tool stream stores measured timing and exact catalog cost for ${modelId}`,
-        backend: "agy-cli",
-        result: "",
-        vendorStream: agyVendor,
-        modelId,
-        runtime: { ...absent, inputTokens: 19529, outputTokens: 155, cacheReadTokens: 16511 },
-        saved: { input: 19529, output: 155, cacheRead: 16511 },
-        journal: {
-            inputTokens: 19529,
-            outputTokens: 155,
-            cacheReadTokens: 16511,
-            cacheWriteTokens: null,
-            reasoningTokens: 0,
-            costAmount:
-                modelId === "gemini-3.8-flash"
-                    ? (19529 * 0.75) / 1_000_000 + (155 * 3.75) / 1_000_000 + (16511 * 0.075) / 1_000_000
-                    : null,
-            costSource: modelId === "gemini-3.8-flash" ? "calculated" : "unavailable",
-            costAvailability: modelId === "gemini-3.8-flash" ? "complete" : "unavailable",
-            measurementAvailability: "partial",
-        },
-    });
-}
-fixtures.push({
-    name: "agy vendor thinking tokens remain a subset of unchanged output",
-    backend: "agy-cli",
-    result: "",
-    vendorStream: agyThinkingVendor,
-    runtime: { ...absent, inputTokens: 31817, outputTokens: 320, cacheReadTokens: 0 },
-    saved: { input: 31817, output: 320, cacheRead: 0 },
-    journal: {
-        inputTokens: 31817,
-        outputTokens: 320,
-        cacheReadTokens: 0,
-        cacheWriteTokens: null,
-        reasoningTokens: 205 + 51,
-        costAmount: (31817 * 0.75) / 1_000_000 + (320 * 3.75) / 1_000_000,
-        costSource: "calculated",
-        costAvailability: "complete",
-        measurementAvailability: "partial",
-    },
-});
-
 for (const fixture of fixtures) {
     test(`${fixture.name}, including saved replay`, async () => {
         await withCliFixture(fixture, async (root) => {
-            const model = getModelRegistry().find(
-                fixture.backend,
-                fixture.modelId || (fixture.backend === "claude-cli" ? "sonnet" : "gemini-3.8-flash"),
-            );
+            const model = getModelRegistry().find("claude-cli", "sonnet");
             assert(model);
             const manager = await createRootSessionManager("new", root);
             const hostedSession = new HostedSession({ id: "usage-fixture", cwd: root, sessionManager: manager });
@@ -391,10 +223,7 @@ for (const fixture of fixtures) {
                 sessionManager: manager,
                 hostedSession,
             };
-            const session =
-                fixture.backend === "claude-cli"
-                    ? new ClaudeCliExecutionSession(options)
-                    : await AgyCliExecutionSession.create(options);
+            const session = new ClaudeCliExecutionSession(options);
             try {
                 const beforeTurn = Date.now();
                 const messages = await session.runTurn({ userRequest: "hello" });
@@ -421,7 +250,6 @@ for (const fixture of fixtures) {
                     assert(Date.parse(turn.startedAt) <= Date.parse(turn.endedAt));
                     assert(Date.parse(turn.endedAt) <= afterTurn);
                     assert(Date.parse(turn.endedAt) <= Date.parse(turn.ts));
-                    if (fixture.backend === "agy-cli") assertEquals(turn.ts, turn.endedAt);
                     for (const alternative of rows.filter((record) => record.aggregationBasis === "alternative")) {
                         assertEquals(alternative.inputCacheBasis, "excludes_cache");
                         assertEquals(
@@ -429,7 +257,7 @@ for (const fixture of fixtures) {
                             [null, null, null],
                         );
                     }
-                    if (fixture.backend === "claude-cli") {
+                    {
                         assertEquals(
                             rows
                                 .filter((record) => record.aggregationBasis === "alternative")
@@ -446,26 +274,6 @@ for (const fixture of fixtures) {
                             ],
                         );
                     }
-                }
-                if (fixture.availability) {
-                    const metrics = (await fsReadFile(getWorkflowMetricsFilePath(root), "utf8"))
-                        .trim()
-                        .split("\n")
-                        .map((line) => JSON.parse(line));
-                    const usage = metrics.find((record) => record.event === "model_usage");
-                    assertEquals(usage?.measurementAvailability, fixture.availability);
-                    assertEquals(usage?.inputTokens, fixture.runtime.inputTokens);
-                    assertEquals(usage?.outputTokens, fixture.runtime.outputTokens);
-                    const price = getExternalCliPriceModel(model);
-                    assertAlmostEquals(
-                        usage?.costAmount,
-                        price
-                            ? ((fixture.runtime.inputTokens ?? 0) * price.cost.input +
-                                  (fixture.runtime.outputTokens ?? 0) * price.cost.output) /
-                                  1_000_000
-                            : 0,
-                        1e-12,
-                    );
                 }
                 if (fixture.alternatives) {
                     const metrics = (await fsReadFile(getWorkflowMetricsFilePath(root), "utf8"))
@@ -487,21 +295,11 @@ for (const fixture of fixtures) {
                 assert(reply?.role === "assistant");
                 assertEquals(reply.usage, fixture.saved);
                 assertEquals("usage" in reply, fixture.saved !== undefined);
-                if (fixture.nativeTool) {
-                    const tool = messages.find(
-                        (message) => message.role === "assistant" && message.stopReason === "toolUse",
-                    );
-                    assert(tool);
-                    assertEquals("usage" in tool, false);
-                }
                 const path = manager.getSessionFile();
                 assert(path);
                 const reloaded = SessionManager.open(path);
                 const replayOptions = { ...options, sessionManager: reloaded };
-                const replay =
-                    fixture.backend === "claude-cli"
-                        ? new ClaudeCliExecutionSession(replayOptions)
-                        : await AgyCliExecutionSession.create(replayOptions);
+                const replay = new ClaudeCliExecutionSession(replayOptions);
                 try {
                     assertEquals(replay.getMessages(), messages);
                 } finally {

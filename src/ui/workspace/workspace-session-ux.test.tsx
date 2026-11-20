@@ -109,7 +109,7 @@ test("Session surface retains an HTTP-rejected image draft and sends a corrected
                     submissions.push(JSON.parse(options.body));
                     return submissions.length === 1
                         ? Response.json(
-                              { error: "Antigravity CLI sessions do not support image attachments." },
+                              { error: "Antigravity (agy-cli) was removed. Choose a supported model." },
                               {
                                   status: 422,
                               },
@@ -140,7 +140,7 @@ test("Session surface retains an HTTP-rejected image draft and sends a corrected
         assertEquals(JSON.parse(readSessionDraft(requestKey)).status, "validation-error");
         assertStringIncludes(
             JSON.stringify(renderer.toJSON()),
-            "Antigravity CLI sessions do not support image attachments.",
+            "Antigravity (agy-cli) was removed. Choose a supported model.",
         );
         assertEquals(JSON.stringify(renderer.toJSON()).includes("Message queued"), false);
         mascot = undefined;

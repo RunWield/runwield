@@ -28,7 +28,6 @@ function modelReference(model: RunWieldModel): string {
 
 function backendLabel(model: RunWieldModel): string {
     if (model.executionBackend === "claude-cli" || model.provider === "claude-cli") return "Claude CLI";
-    if (model.executionBackend === "agy-cli" || model.provider === "agy-cli") return "Antigravity CLI";
     return model.provider;
 }
 
@@ -239,18 +238,6 @@ export class RunWieldModelSelectorComponent extends Container implements Focusab
                             theme.fg(
                                 "muted",
                                 "  Claude Code must be installed and signed in; RunWield checks it on first turn.",
-                            ),
-                            0,
-                            0,
-                        ),
-                    );
-                }
-                if (selected.model.executionBackend === "agy-cli" || selected.model.provider === "agy-cli") {
-                    this.listContainer.addChild(
-                        new Text(
-                            theme.fg(
-                                "muted",
-                                "  Agy must be installed and signed in; first use asks before RunWield MCP setup.",
                             ),
                             0,
                             0,

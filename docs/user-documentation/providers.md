@@ -74,74 +74,15 @@ RunWield can assign different models to different agents:
 
 See [Settings Reference](settings.md) for `agents`, `activeModelPreset`, and `modelPresets`.
 
-## Antigravity CLI
+## Antigravity CLI (removed)
 
-RunWield runs Antigravity conversation turns through [`agy acp`](https://antigravity.google/docs/ide/extensions/acp/).
-The installed Antigravity CLI owns sign-in and model access. RunWield owns its Session, workflow, and transcript.
+RunWield no longer runs Antigravity CLI models or generates images through Antigravity. Existing Session history
+keeps its original model names. To continue with Gemini, configure the `google/<model>` provider with a
+[Google AI Studio API key](https://ai.google.dev/gemini-api/docs/api-key). This uses Gemini API billing, not your
+Antigravity subscription.
 
-**Set up:**
-
-1. Install an Antigravity CLI version that supports `agy acp`. Run `agy acp --help` to check.
-2. Sign in through Antigravity using credentials appropriate to your use.
-3. Select one of the families below with `/model` or in your settings.
-
-Google documents ACP clients separately from headless print mode. Google
-[does not support wrapping `agy -p` in third-party coding agents on consumer plans](https://antigravity.google/docs/faq?hl=en#can-i-use-antigravity-cli-headless-mode-in-third-party-coding-agents-or-automate-account-switching).
-RunWield does not fall back to print mode for conversation turns or image generation. Google's ACP editor guidance does not establish
-consumer-plan support for unattended workflow dispatch. To use Gemini without Antigravity, choose a
-`google/<model>` with a [Google AI Studio API key](https://ai.google.dev/gemini-api/docs/api-key).
-
-| Family   | Model selection             |
-| -------- | --------------------------- |
-| Neon     | `agy-cli/gemini-4-neon`     |
-| Argon    | `agy-cli/gemini-4-argon`    |
-| Hydrogen | `agy-cli/gemini-4-hydrogen` |
-| Carbon   | `agy-cli/gemini-4-carbon`   |
-| Flash    | `agy-cli/gemini-3.8-flash`  |
-| Pro      | `agy-cli/gemini-3.1-pro`    |
-
-These are the six supported base families. Set thinking separately; do not append an effort suffix to the selection.
-RunWield uses a bundled catalog, without CLI-version discovery or account filtering. Carbon stays listed even when
-it is unavailable to your account. Access to each family depends on your CLI version and account; listing a family
-is not proof of a successful live request or image-generation support.
-
-Neon requires Google AI Ultra, paid Google AI Pro, Gemini Enterprise, or `GEMINI_API_KEY` sign-in.
-Free and Plus plans do not include Neon. See the [Antigravity model access documentation](https://antigravity.google/docs/models?surface=cli).
-
-Saved Pro selections and historical model names stay unchanged. Pro remains selectable where upstream supports it;
-RunWield cannot guarantee continued upstream access. If a model is unavailable, the failure stays visible. RunWield
-never silently switches families. Select another available family explicitly or configure a personal preset.
-
-RunWield supplies its workflow tools for the selected Agent through a session-scoped MCP server. It does not need to
-install those tools in your global Antigravity configuration. When Antigravity asks for permission for a file change or
-command, RunWield surfaces the request in clients that support approvals. Actions that require approval cannot proceed
-if the current client cannot ask. Antigravity's own permission rules still apply, including rules for actions that
-Antigravity already permits without asking.
-
-**Thinking level** sets Antigravity's effort:
-
-| Thinking level    | Argon / Carbon / Flash effort | Neon / Hydrogen effort | Pro effort |
-| ----------------- | ----------------------------- | ---------------------- | ---------- |
-| off, minimal, low | low                           | low                    | low        |
-| medium            | medium                        | medium                 | high       |
-| high              | high                          | high                   | high       |
-| xhigh, max        | high                          | xhigh                  | high       |
-
-Omitted thinking defaults to off, which sends low effort. Invalid thinking values fail before execution. The Session
-keeps your original thinking level and records the effort Antigravity accepted for history and replay.
-
-The bundled [`agy` preset](settings.md#modelpresets) uses Neon for Router, Slicer, Guide, Engineer, Frontend Engineer,
-and Init; Hydrogen for Operator; and Argon for Planner, Ideator, Architect, and Reviewer. Thinking levels stay
-unchanged: Router, Operator, and Reviewer use medium; the other Agents use high. The preset needs access to all three
-families, including Neon and Hydrogen. If access is unavailable, the CLI error stays visible. RunWield does not change
-the preset by CLI version or fall back automatically. Select another model or a personal preset. Personal and project
-selections remain unchanged.
-
-**Limitations:**
-
-- [Image generation](settings.md#antigravity-cli) uses a separate ACP session. Generating an image and attaching an
-  image to a conversation are separate features.
-- You can't attach images to an Antigravity conversation. Use [`visionFallback`](settings.md#visionfallback) to inspect
-  images through another model.
-- The Session shows Antigravity's commands, file edits, and results as they happen. After a reload, it shows only the
-  steps that finished.
+If you used the bundled `agy` preset, choose a supported preset in `/settings` or clear `activeModelPreset`.
+Use `/model` to choose a supported model before continuing an affected Session. Update defaults, Agent models,
+and personal or project presets that still refer to `agy-cli/<model>`. Change or clear
+[`visionFallback.model`](settings.md#visionfallback) and [`imageGeneration.model`](settings.md#imagegeneration)
+if they use Antigravity. RunWield does not silently switch the provider or billing method.

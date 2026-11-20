@@ -7,7 +7,6 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan, savePlan } from "../../plan-store.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
-import { AgyCliBackendError } from "../session/backends/agy-cli/failure.ts";
 import { buildEngineerPausedMessage, runEngineerWithPlan } from "./engineer-runner.ts";
 import { runPlanningAgent } from "./planning-agent.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
@@ -20,11 +19,12 @@ interface AgentSessionFixture {
 function createAgentSession(
     projectRoot: string,
     interactionRequests: RuntimeInteractionRequest[] = [],
-    respond: (request: RuntimeInteractionRequest) => RuntimeInteractionResponse | Promise<RuntimeInteractionResponse> =
-        () => ({
-            outcome: "selected",
-            value: "continue",
-        }),
+    respond: (
+        request: RuntimeInteractionRequest,
+    ) => RuntimeInteractionResponse | Promise<RuntimeInteractionResponse> = () => ({
+        outcome: "selected",
+        value: "continue",
+    }),
 ): AgentSessionFixture {
     const sessionManager = SessionManager.inMemory(projectRoot);
     const hostedSession = new HostedSession({
@@ -48,9 +48,11 @@ test("planning runs the real plan_written machinery with the supplied triage con
     await withRuntimeCommandFixture("planning-agent-runner-", async ({ projectRoot, setModelMessages }) => {
         await savePlan(projectRoot, "fixture-plan", "# Fixture Plan", { status: "draft" });
         setModelMessages([
-            fauxAssistantMessage(fauxToolCall("plan_written", {
-                planName: "fixture-plan",
-            })),
+            fauxAssistantMessage(
+                fauxToolCall("plan_written", {
+                    planName: "fixture-plan",
+                }),
+            ),
         ]);
         const fixture = createAgentSession(projectRoot, [], async (request) => {
             if (request.type === "plan_review") {
@@ -99,17 +101,10 @@ test("planning runs the real plan_written machinery with the supplied triage con
     });
 });
 
-test("Plan pause does not repeat an Antigravity denial already shown by the backend", () => {
-    const denial = new AgyCliBackendError("permission_denied", {
-        message: "Blocked: view_file: [redacted-home]/.gemini/antigravity-cli/settings.json",
-    });
-    const paused = buildEngineerPausedMessage(denial, undefined);
-    assertEquals(paused.includes("Reason:"), false);
+test("Plan pause reports the reason and how to resume", () => {
+    const paused = buildEngineerPausedMessage(new Error("other failure"), undefined);
+    assertEquals(paused.includes("Reason: other failure"), true);
     assertEquals(paused.includes('Say "continue"'), true);
-    assertEquals(
-        buildEngineerPausedMessage(new Error("other failure"), undefined).includes("Reason: other failure"),
-        true,
-    );
 });
 
 test("Engineer completion is derived from the real task_completed tool result", async () => {
@@ -154,11 +149,13 @@ test("Engineer completion is derived from the real task_completed tool result", 
 test("Pair execution reports a durable checkpoint and settles without a form", async () => {
     await withRuntimeCommandFixture("pair-engineer-runner-", async ({ projectRoot, setModelMessages }) => {
         setModelMessages([
-            fauxAssistantMessage(fauxToolCall("pair_checkpoint", {
-                action: "report",
-                summary: "The fixture screen is ready.",
-                evidence: ["fixture screenshot"],
-            })),
+            fauxAssistantMessage(
+                fauxToolCall("pair_checkpoint", {
+                    action: "report",
+                    summary: "The fixture screen is ready.",
+                    evidence: ["fixture screenshot"],
+                }),
+            ),
         ]);
         const interactionRequests: RuntimeInteractionRequest[] = [];
         const fixture = createAgentSession(projectRoot, interactionRequests);

@@ -36,6 +36,7 @@ import {
     PRIVATE_TEXT,
     readJourneyReport,
     runJourneyCli,
+    recordJourneyHistoricalAgyUsage,
     runJourneyGuide,
 } from "../../testing/usage-export-journey-fixture.ts";
 import { makePublicationOutcomeFixture } from "../../shared/workflow/testing/publication-outcome-fixture.ts";
@@ -112,8 +113,8 @@ test("collected producer evidence agrees with the owner report and Langfuse acro
                     await setMetricsExportCredentials("journey", context.credentials);
                     await onDay(1, async () => {
                         await pi();
-                        await runJourneyCli(home, root, "claude-cli");
-                        await runJourneyCli(home, root, "agy-cli");
+                        await runJourneyCli(home, root);
+                        await recordJourneyHistoricalAgyUsage(root);
                         await runJourneyGuide(root);
                         await runJourneyPublication(root, publication, model.respond);
                         await runJourneyRecovery(home, root, runtime, model.interruptNext);

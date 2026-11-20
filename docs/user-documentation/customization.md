@@ -67,7 +67,7 @@ Model, thinking level, and temperature in an Agent file are defaults. [`agents`]
 Bundled Agents running through Pi include `codemode` alongside their ordinary tools in TUI, Workspace, and ACP.
 A custom Agent opts in with `tools: [codemode, ...]`. A higher-layer tool list that omits `codemode` disables it;
 it is not protected. Delegated and isolated Agents keep their explicit tool ceilings and do not inherit root MCP
-connections. Claude and Antigravity CLI backends retain direct tools without advertising codemode. Connect keeps
+connections. The Claude CLI backend retains direct tools without advertising codemode. Connect keeps
 its external host's tool loop.
 
 Codemode runs JavaScript in Pi 1.5.0's QuickJS sandbox. It has no filesystem, network, Node APIs, or timers of its own.
@@ -312,8 +312,8 @@ bashAllowedCommands:
   `bashAllowedCommands: [td]` in `~/.wld/agents/guide.md` keeps Guide's built-in commands and adds `td`.
 - The list only limits the shell. It doesn't give an Agent shell access it doesn't already have.
 
-This is a convenience filter, **not a sandbox**: an allowed command can still have side effects. Claude CLI and
-Antigravity CLI use their own shell permissions, which this list doesn't change.
+This is a convenience filter, **not a sandbox**: an allowed command can still have side effects. Claude CLI uses its own
+shell permissions, which this list doesn't change.
 
 ## Prompt templates
 

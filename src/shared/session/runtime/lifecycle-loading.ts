@@ -1,4 +1,9 @@
-import { resolveResumeAgentName } from ".././active-agent-session.ts";
+import { isRemovedAgyProvider } from "../../models/removed-providers.ts";
+import {
+    readPersistedManualModelState,
+    readPersistedModelState,
+    resolveResumeAgentName,
+} from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
 import {
     classifyRootSessionLocator,
@@ -352,11 +357,18 @@ export class RuntimeLifecycleLoading {
         this.managedOperations.setPendingCreationProof(hostedSession.id, managedProof);
         this.events.attachRuntimeEventSink(hostedSession);
         try {
-            await this.settings.activateSessionAgent(hostedSession, {
-                agentName,
-                model: options.modelOverride,
-                mcpServers: options.mcpServers,
-            });
+            const savedModel =
+                readPersistedManualModelState(sessionManager, agentName) || readPersistedModelState(sessionManager);
+            // Load the transcript without replacing or running its retired selection.
+            if (!options.modelOverride && savedModel && isRemovedAgyProvider(savedModel.provider)) {
+                hostedSession.setActiveModelState(savedModel.model, savedModel.provider, true);
+            } else {
+                await this.settings.activateSessionAgent(hostedSession, {
+                    agentName,
+                    model: options.modelOverride,
+                    mcpServers: options.mcpServers,
+                });
+            }
             const setupEvents = this.events.consumePendingReplayEvents(hostedSession.id);
             const replayEvents = setupEvents.concat(
                 createProjectedReplayEvents(hostedSession.id, getRootSessionBranchEntries(sessionManager)).map(

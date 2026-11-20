@@ -16,10 +16,10 @@ import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ImageContent, ImagesInputContent, ImagesOptions, Usage } from "@earendil-works/pi-ai";
 import { getModelRuntime } from "./models/model-registry.ts";
 import { parseProviderModel } from "./models/model-validation.ts";
+import { isRemovedAgyProvider, removedAgyModelError } from "./models/removed-providers.ts";
 import { resolveImageGenerationSettings } from "./image-generation-settings.ts";
 import type { ImageGenerationSettings } from "./image-generation-settings.ts";
 import { getSessionImageDir, mimeTypeForImagePath, resolveImageRef } from "./session/image-attachments.ts";
-import { generateAgyImage } from "./session/backends/agy-cli/image-generation.ts";
 import { generateCodexImage } from "./image-generation/codex.ts";
 import { generateOpenCodeImage } from "./image-generation/opencode.ts";
 import { remotePersonalResourcesActive } from "./remote/personal-resources.ts";
@@ -169,6 +169,8 @@ export async function createImage(request: CreateImageRequest): Promise<CreatedI
     if (!settings) throw new Error("Configure imageGeneration.model to enable create_image.");
     const selected = parseProviderModel(settings.model);
     if (!selected.ok) throw new Error("imageGeneration.model must use provider/model format.");
+    if (isRemovedAgyProvider(selected.provider))
+        throw removedAgyModelError(settings.model, "Choose a supported imageGeneration.model or remove that setting.");
     if (!request.prompt.trim()) throw new Error("An image prompt is required.");
     request.signal?.throwIfAborted();
     const outputPath = await outputDestination(request.cwd, request.outputPath);
@@ -195,15 +197,7 @@ export async function createImage(request: CreateImageRequest): Promise<CreatedI
     }
     let image: ImageContent;
     let usage: Usage | undefined;
-    if (selected.provider === "agy-cli") {
-        image = await generateAgyImage({
-            model: selected.id,
-            settings,
-            prompt: request.prompt,
-            referenceImages: input.filter((content): content is ImageContent => content.type === "image"),
-            signal: request.signal,
-        });
-    } else if (["codex-cli", "openai-codex"].includes(selected.provider)) {
+    if (["codex-cli", "openai-codex"].includes(selected.provider)) {
         image = await generateCodexImage({
             model: selected.id,
             settings,

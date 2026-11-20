@@ -105,7 +105,7 @@ the [Connect capabilities](runwield-connect-prd.md#capability-requirements) and 
 release availability.
 
 When RunWield Core owns the Session and invokes another harness non-interactively, such as Claude Code through
-`claude -p` or Antigravity CLI, that harness is an **Execution Backend** alongside Pi. Execution Backends are Core
+`claude -p`, that harness is an **Execution Backend** alongside Pi. Execution Backends are Core
 capabilities, not RunWield Connect plugins or separately branded product modes.
 
 <a id="24-naming"></a>

@@ -194,16 +194,15 @@ test("handleSlashCommand executes built-in help through the real command registr
     });
 });
 
-test("handleSlashCommand keeps the MCP adapter shell-only instead of dispatching a prompt template", async () => {
-    await withSlashFixture({}, async ({ context, messages, submittedRequests }) => {
-        const slashContext = context("/mcp agy-cli");
+test("handleSlashCommand keeps /mcp reserved instead of dispatching a same-named prompt template", async () => {
+    await withSlashFixture({}, async ({ context, submittedRequests }) => {
+        const slashContext = context("/mcp");
         slashContext.promptTemplateByName.set("mcp", {
             name: "mcp",
             path: join("prompts", "mcp.md"),
         });
 
         assertEquals(await handleSlashCommand(slashContext), true);
-        assertEquals(messages, ["Use wld mcp agy-cli from a shell to run the stdio adapter."]);
         assertEquals(submittedRequests, []);
     });
 });
