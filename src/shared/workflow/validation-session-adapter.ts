@@ -330,7 +330,7 @@ async function runIsolatedRequest(
             trustedOpaqueMcpReview: Boolean(
                 reviewEvent?.owningSession &&
                 "kind" in reviewEvent.owningSession &&
-                (reviewEvent.owningSession.kind === "claude-cli" || reviewEvent.owningSession.kind === "agy-cli"),
+                reviewEvent.owningSession.kind === "claude-cli",
             ),
         };
     }

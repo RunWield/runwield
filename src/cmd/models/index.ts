@@ -1,4 +1,4 @@
-import { AGY_CLI_MODEL_CHOICES } from "../../shared/models/agy-cli-catalog.ts";
+import { isRemovedAgyProvider, removedAgyModelError } from "../../shared/models/removed-providers.ts";
 /**
  * @module cmd/models
  * Handler for the model listing and switching command.
@@ -134,14 +134,16 @@ export async function runModelsCommand(
         return "failed";
     }
 
+    if (isRemovedAgyProvider(parsedArgs.provider)) {
+        const message = removedAgyModelError(firstArg, "Use /model to choose a supported model.").message;
+        if (uiAPI) uiAPI.appendSystemMessage(message, true);
+        else console.log(message);
+        return "failed";
+    }
     const targetModel = modelRegistry.find(parsedArgs.provider, parsedArgs.id);
     if (!targetModel) {
-        const message =
-            parsedArgs.provider === "agy-cli"
-                ? `Unsupported Antigravity CLI model: ${firstArg}. Select ${AGY_CLI_MODEL_CHOICES}.`
-                : `Unknown model: ${firstArg}. Use /model to switch.`;
-        if (uiAPI) uiAPI.appendSystemMessage(message, true);
-        else console.log(parsedArgs.provider === "agy-cli" ? message : `Unknown model: ${firstArg}`);
+        if (uiAPI) uiAPI.appendSystemMessage(`Unknown model: ${firstArg}. Use /model to switch.`, true);
+        else console.log(`Unknown model: ${firstArg}`);
         return "failed";
     }
 

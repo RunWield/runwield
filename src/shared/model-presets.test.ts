@@ -1,4 +1,4 @@
-import { assertEquals } from "../testing/assertions.ts";
+import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import { readdirSync } from "node:fs";
 import {
     mkdir as fsMkdir,
@@ -15,7 +15,7 @@ import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixtur
 import { getBundledModelPresets, type ModelPresetsMap } from "./model-presets.ts";
 import { RunWieldCredentialStore, RunWieldModelRegistry } from "./models/model-registry.ts";
 import { getCustomSetting, getMergedCustomSetting, setCustomSetting } from "./settings.ts";
-import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session/session.ts";
+import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel, resolveModel } from "./session/session.ts";
 
 test("bundled presets refresh disposable files and preserve personal settings", async () => {
     await withRuntimeCommandFixture("bundled-presets-", async ({ homeDir, projectRoot, settingsPath }) => {
@@ -26,14 +26,7 @@ test("bundled presets refresh disposable files and preserve personal settings", 
         await fsWriteFile(join(directory, "retired.json"), "{}");
 
         const presets = getMergedCustomSetting("modelPresets", projectRoot) as ModelPresetsMap;
-        assertEquals(Object.keys(presets).sort(), [
-            "agy",
-            "claude-mixed",
-            "claude-opus",
-            "codex",
-            "codex-claude",
-            "opencode",
-        ]);
+        assertEquals(Object.keys(presets).sort(), ["claude-mixed", "claude-opus", "codex", "codex-claude", "opencode"]);
         assertEquals(JSON.parse(await fsReadFile(join(directory, "codex.json"), "utf8")), presets.codex);
         assertEquals(
             Array.from(readdirSync(directory, { withFileTypes: true }))
@@ -99,41 +92,45 @@ test("preset names layer project over personal over bundled without inheriting r
     });
 });
 
-test("Agy preset resolves Argon planning roles and Flash execution roles with unchanged thinking", async () => {
-    await withRuntimeCommandFixture("agy-presets-", async ({ projectRoot }) => {
+test("retired bundled selection never falls back, but personal and project presets named agy still work", async () => {
+    await withRuntimeCommandFixture("retired-agy-preset-", async ({ projectRoot }) => {
+        const modelRef = "runtime-command-fixture/fixture-model";
         await setCustomSetting("activeModelPreset", "agy", "global", projectRoot);
-        for (const role of ["router", "slicer", "architect", "planner", "ideator", "reviewer"]) {
-            assertEquals(getConfiguredAgentModel(role, projectRoot), "agy-cli/gemini-4-argon");
-            assertEquals(
-                getConfiguredAgentThinkingLevel(role, projectRoot),
-                role === "router" || role === "reviewer" ? "medium" : "high",
-            );
-        }
-        for (const role of ["operator", "guide", "engineer", "frontend-engineer", "init"]) {
-            assertEquals(getConfiguredAgentModel(role, projectRoot), "agy-cli/gemini-3.8-flash");
-            assertEquals(getConfiguredAgentThinkingLevel(role, projectRoot), role === "operator" ? "medium" : "high");
-        }
+        const agentDef = { name: "engineer" } as Parameters<typeof resolveModel>[1];
+        const resolve = (override?: string) =>
+            resolveModel(override, agentDef, "engineer", undefined, undefined, projectRoot);
+        await assertRejects(() => resolve(), Error, "Change or remove activeModelPreset");
+        assertEquals((await resolve(modelRef)).id, "fixture-model");
+
         await setCustomSetting(
             "modelPresets",
-            { agy: { agents: { router: { model: "agy-cli/gemini-3.1-pro" } } } },
+            { agy: { agents: { engineer: { model: modelRef } } } },
             "global",
             projectRoot,
         );
-        assertEquals(getConfiguredAgentModel("router", projectRoot), "agy-cli/gemini-3.1-pro");
+        assertEquals(getConfiguredAgentModel("engineer", projectRoot), modelRef);
+        assertEquals((await resolve()).id, "fixture-model");
+
         await setCustomSetting(
             "modelPresets",
-            { agy: { agents: { router: { model: "agy-cli/gemini-4-carbon" } } } },
+            { agy: { agents: { engineer: { model: "agy-cli/gemini-3.8-flash" } } } },
+            "global",
+            projectRoot,
+        );
+        await assertRejects(() => resolve(), Error, "Antigravity (agy-cli) was removed");
+        await setCustomSetting(
+            "modelPresets",
+            { agy: { agents: { engineer: { model: modelRef } } } },
             "project",
             projectRoot,
         );
-        assertEquals(getConfiguredAgentModel("router", projectRoot), "agy-cli/gemini-4-carbon");
+        assertEquals((await resolve()).id, "fixture-model");
     });
 });
 
 test("bundled presets cover shipped roles using registered models from their advertised providers", async () => {
     const providers: Record<string, string[]> = {
         codex: ["openai-codex"],
-        agy: ["agy-cli"],
         opencode: ["opencode"],
         "claude-mixed": ["claude-cli"],
         "claude-opus": ["claude-cli"],

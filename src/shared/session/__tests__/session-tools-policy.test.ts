@@ -39,7 +39,6 @@ import { loadSubAgentDefinition, REVIEWER_SUBAGENT_TOOLS } from "../subagent-def
 import {
     buildAgentSession,
     buildExecutionSession,
-    composeAgyCliBridgedTools,
     composeClaudeCliBridgedTools,
     resolveEffectiveSessionToolNames,
 } from "../session.ts";
@@ -355,7 +354,7 @@ test("all user-facing bundled Agents receive set_session_name", async () => {
     }
 });
 
-test("Claude CLI and Agy CLI bridge the session name tool", async () => {
+test("Claude CLI bridges the session name tool", async () => {
     const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-cli-session-name-tool-"));
     const sessionManager = SessionManager.inMemory(tempHome);
     const hostedSession = new HostedSession({
@@ -373,20 +372,8 @@ test("Claude CLI and Agy CLI bridge the session name tool", async () => {
             triageMeta: undefined,
             cwd: tempHome,
         });
-        const agyTools = await composeAgyCliBridgedTools({
-            agentDef,
-            agentName: AGENTS.ENGINEER,
-            hostedSession,
-            triageMeta: undefined,
-            cwd: tempHome,
-        });
-
         assertEquals(
             claudeTools.some((tool) => tool.name === "set_session_name"),
-            true,
-        );
-        assertEquals(
-            agyTools.some((tool) => tool.name === "set_session_name"),
             true,
         );
         assertEquals(
@@ -394,15 +381,7 @@ test("Claude CLI and Agy CLI bridge the session name tool", async () => {
             true,
         );
         assertEquals(
-            agyTools.some((tool) => tool.name === "background_task"),
-            true,
-        );
-        assertEquals(
             claudeTools.some((tool) => tool.name === "delegate_agent"),
-            false,
-        );
-        assertEquals(
-            agyTools.some((tool) => tool.name === "delegate_agent"),
             false,
         );
     } finally {
@@ -1286,15 +1265,24 @@ test("buildAgentSession auto-wires Work Record tools with role access modes", as
             const plannerSearch = plannerBuilt.finalCustomTools.find((tool) => tool.name === "work_record_search")!;
             const customRead = customBuilt.finalCustomTools.find((tool) => tool.name === "work_record_read")!;
             assertEquals(
-                ((await guideSearch.execute("1", { query: "" }, undefined, undefined, {} as ToolExecutionContext)).details as WorkRecordAccessDetails).accessMode,
+                (
+                    (await guideSearch.execute("1", { query: "" }, undefined, undefined, {} as ToolExecutionContext))
+                        .details as WorkRecordAccessDetails
+                ).accessMode,
                 "all",
             );
             assertEquals(
-                ((await plannerSearch.execute("1", { query: "" }, undefined, undefined, {} as ToolExecutionContext)).details as WorkRecordAccessDetails).accessMode,
+                (
+                    (await plannerSearch.execute("1", { query: "" }, undefined, undefined, {} as ToolExecutionContext))
+                        .details as WorkRecordAccessDetails
+                ).accessMode,
                 "current",
             );
             assertEquals(
-                ((await customRead.execute("1", { recordId: "" }, undefined, undefined, {} as ToolExecutionContext)).details as WorkRecordAccessDetails).accessMode,
+                (
+                    (await customRead.execute("1", { recordId: "" }, undefined, undefined, {} as ToolExecutionContext))
+                        .details as WorkRecordAccessDetails
+                ).accessMode,
                 "current",
             );
         } finally {
@@ -1707,16 +1695,20 @@ test("external CLI bridge filters RunWield background starts but not native host
     }
 });
 
-test("Claude CLI and Agy CLI bridge declared Plan Deviations for execution Agents", async () => {
+test("Claude CLI bridges declared Plan Deviations for execution Agents", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-cli-deviation-"));
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd });
     try {
         for (const agentName of ["plan-engineer", "frontend-engineer"]) {
             const agentDef = await loadAgentDef(agentName, REPO_ROOT);
-            for (const compose of [composeClaudeCliBridgedTools, composeAgyCliBridgedTools]) {
-                const tools = await compose({ agentDef, agentName, hostedSession, triageMeta: undefined, cwd });
-                assertEquals(tools.filter((tool) => tool.name === "record_plan_deviation").length, 1);
-            }
+            const tools = await composeClaudeCliBridgedTools({
+                agentDef,
+                agentName,
+                hostedSession,
+                triageMeta: undefined,
+                cwd,
+            });
+            assertEquals(tools.filter((tool) => tool.name === "record_plan_deviation").length, 1);
         }
     } finally {
         hostedSession.dispose();

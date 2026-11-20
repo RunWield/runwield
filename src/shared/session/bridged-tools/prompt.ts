@@ -12,13 +12,6 @@ interface ToolMapEntry {
     nativeName: string;
 }
 
-const AGY_TOOL_MAP: ToolMapEntry[] = [
-    { rwNames: ["bash"], nativeName: "run_command" },
-    { rwNames: ["write", "write_docs"], nativeName: "write_to_file" },
-    { rwNames: ["edit", "edit_docs"], nativeName: "replace_file_content" },
-    { rwNames: ["read", "view"], nativeName: "view_file" },
-];
-
 const CLAUDE_TOOL_MAP: ToolMapEntry[] = [
     { rwNames: ["bash"], nativeName: "Bash" },
     { rwNames: ["write", "write_docs"], nativeName: "Write" },
@@ -67,10 +60,10 @@ function buildToolMappingSection(map: ToolMapEntry[], declaredTools?: string[]):
 
 export function buildBridgedToolPromptAppendix(
     bridgedTools: ToolDefinition[],
-    hostName: "Claude Code" | "Codex" | "Antigravity CLI",
+    hostName: "Claude Code" | "Codex",
     declaredTools?: string[],
 ): string {
-    const map = hostName === "Antigravity CLI" ? AGY_TOOL_MAP : hostName === "Codex" ? CODEX_TOOL_MAP : CLAUDE_TOOL_MAP;
+    const map = hostName === "Codex" ? CODEX_TOOL_MAP : CLAUDE_TOOL_MAP;
     const toolMapping = buildToolMappingSection(map, declaredTools);
 
     const eligibleAliases = bridgedTools.map((tool) => mcpAliasFor(tool.name));

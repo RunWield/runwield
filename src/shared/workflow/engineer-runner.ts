@@ -2,7 +2,6 @@
 import { AGENTS } from "../../constants.ts";
 import { getAgentDisplayName } from "../session/agents.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
-import { AgyCliBackendError } from "../session/backends/agy-cli/failure.ts";
 import { runActiveAgentTurn } from "../session/agent-switching.ts";
 import { createPairCheckpointTool } from "../../tools/pair-checkpoint.ts";
 import { buildEngineerRequest } from "./workflow-prompts.ts";
@@ -102,10 +101,7 @@ export function buildEngineerPausedMessage(reason, projectRoot, executionAgent =
         executionAgent,
         projectRoot,
     )} stopped before reporting the task complete, so the work is unfinished and the Plan stays In Progress. Say "continue" to resume with the execution owner.`;
-    // The Antigravity backend already emitted its sanitized failure as a status event.
-    return reason && !(reason instanceof AgyCliBackendError)
-        ? `${base}\nReason: ${reason instanceof Error ? reason.message : reason}`
-        : base;
+    return reason ? `${base}\nReason: ${reason instanceof Error ? reason.message : reason}` : base;
 }
 
 /**

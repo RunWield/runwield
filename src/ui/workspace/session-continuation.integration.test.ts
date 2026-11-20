@@ -477,89 +477,153 @@ test("Workspace continuation publishes once and a TUI observer resumes from the 
     );
 });
 
-test("Workspace Session options and timeline expose supported Agy model facts", async () => {
-    await withRuntimeCommandFixture("workspace-agy-options-", async ({ homeDir, projectRoot }) => {
-        const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
-        const workspaceStore = fixture.openStore();
-        const service = new WorkspaceSessionContinuationService({ store: workspaceStore });
-        try {
-            const options = await service.listSessionOptions(fixture.project.projectId);
-            assertEquals(
-                options.models
-                    .filter((model) => model.provider === "agy-cli")
-                    .map((model) => ({ id: model.id, backend: model.executionBackend })),
-                [
-                    { id: "gemini-4-argon", backend: "agy-cli" },
-                    { id: "gemini-4-hydrogen", backend: "agy-cli" },
-                    { id: "gemini-4-carbon", backend: "agy-cli" },
-                    { id: "gemini-3.8-flash", backend: "agy-cli" },
-                    { id: "gemini-3.1-pro", backend: "agy-cli" },
-                ],
-            );
-            assertEquals(options.thinkingLevels, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-
-            const activation = workspaceStore.inspectSessionActivation(fixture.session.runwieldSessionId);
-            const proof = workspaceStore.acquireSessionActivation({
-                runwieldSessionId: fixture.session.runwieldSessionId,
-                projectId: fixture.project.projectId,
-                ownerInstanceId: "workspace-agy-facts",
-                ownerProcessKind: "workspace",
-                expectedGeneration: 0,
-                expectedCurrentSegmentId: activation.generation?.currentSegmentId ?? null,
-                phase: "checkpointing",
+test("Workspace options hide Antigravity while historical timeline model facts stay readable", async () => {
+    await withRuntimeCommandFixture(
+        "workspace-agy-options-",
+        async ({ homeDir, projectRoot, setModelResponseFactory }) => {
+            const fixture = await makeManagedSessionFixture({
+                home: homeDir,
+                projectRoot,
+                assistantMessages: ["Historical reply."],
             });
-            await fsWriteFile(
-                fixture.transcriptPath,
-                [
-                    { type: "model_change", id: "agy-model", provider: "agy-cli", modelId: "gemini-3.8-flash" },
-                    { type: "thinking_level_change", id: "agy-thinking", thinkingLevel: "high" },
-                    {
-                        type: "custom",
-                        id: "agy-backend",
-                        customType: "runwield.execution_backend",
-                        data: {
-                            version: 1,
-                            backend: "agy-cli",
-                            provider: "agy-cli",
-                            model: "gemini-3.8-flash",
-                            thinkingLevel: "high",
-                            effort: "high",
-                            backendModel: "gemini-3.8-flash-high",
+            const workspaceStore = fixture.openStore();
+            const service = new WorkspaceSessionContinuationService({ store: workspaceStore });
+            try {
+                const options = await service.listSessionOptions(fixture.project.projectId);
+                assertEquals(
+                    options.models.some((model) => model.provider === "agy-cli"),
+                    false,
+                );
+                assertEquals(options.thinkingLevels, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+
+                const activation = workspaceStore.inspectSessionActivation(fixture.session.runwieldSessionId);
+                const proof = workspaceStore.acquireSessionActivation({
+                    runwieldSessionId: fixture.session.runwieldSessionId,
+                    projectId: fixture.project.projectId,
+                    ownerInstanceId: "workspace-agy-facts",
+                    ownerProcessKind: "workspace",
+                    expectedGeneration: 0,
+                    expectedCurrentSegmentId: activation.generation?.currentSegmentId ?? null,
+                    phase: "checkpointing",
+                });
+                const tail = JSON.parse((await fsReadFile(fixture.transcriptPath, "utf8")).trim().split("\n").at(-1)!);
+                await fsWriteFile(
+                    fixture.transcriptPath,
+                    [
+                        { type: "model_change", id: "agy-model", provider: "agy-cli", modelId: "gemini-3.8-flash" },
+                        { type: "thinking_level_change", id: "agy-thinking", thinkingLevel: "high" },
+                        {
+                            type: "custom",
+                            id: "agy-manual-model",
+                            customType: "runwield.manual_model",
+                            data: { provider: "agy-cli", model: "gemini-3.8-flash" },
                         },
-                    },
-                ]
-                    .map((entry) => JSON.stringify(entry))
-                    .join("\n") + "\n",
-                { flag: "a" },
-            );
-            workspaceStore.publishGenerationAndRelease(proof, {
-                generation: 1,
-                currentSegmentId: activation.generation?.currentSegmentId ?? null,
-                ...(await readTranscriptEvidence(fixture.transcriptPath)),
-            });
+                        {
+                            type: "custom",
+                            id: "agy-backend",
+                            customType: "runwield.execution_backend",
+                            data: {
+                                version: 1,
+                                backend: "agy-cli",
+                                provider: "agy-cli",
+                                model: "gemini-3.8-flash",
+                                thinkingLevel: "high",
+                                effort: "high",
+                                backendModel: "gemini-3.8-flash-high",
+                            },
+                        },
+                    ]
+                        .map((entry, index, all) =>
+                            JSON.stringify({
+                                ...entry,
+                                parentId: index === 0 ? tail.id : all[index - 1].id,
+                                timestamp: "2026-01-01T00:00:06.000Z",
+                            }),
+                        )
+                        .join("\n") + "\n",
+                    { flag: "a" },
+                );
+                workspaceStore.publishGenerationAndRelease(proof, {
+                    generation: 1,
+                    currentSegmentId: activation.generation?.currentSegmentId ?? null,
+                    ...(await readTranscriptEvidence(fixture.transcriptPath)),
+                });
 
-            const timeline = await service.timeline(fixture.session.runwieldSessionId, {
-                projectId: fixture.project.projectId,
-                limit: 20,
-            });
-            assertEquals(timeline.snapshot.provider, "agy-cli");
-            assertEquals(timeline.snapshot.model, "gemini-3.8-flash");
-            assertEquals(timeline.snapshot.thinkingLevel, "high");
-            assertEquals(timeline.snapshot.executionBackend, {
-                backend: "agy-cli",
-                provider: "agy-cli",
-                model: "gemini-3.8-flash",
-                thinkingLevel: "high",
-                effort: "high",
-                backendModel: "gemini-3.8-flash-high",
-            });
-            assertEquals(JSON.stringify(timeline.events).includes("_meta"), false);
-        } finally {
-            service.close();
-            workspaceStore.close();
-            await fixture.cleanup();
-        }
-    });
+                const timeline = await service.timeline(fixture.session.runwieldSessionId, {
+                    projectId: fixture.project.projectId,
+                    limit: 20,
+                });
+                assertEquals(timeline.snapshot.provider, "agy-cli");
+                assertEquals(timeline.snapshot.model, "gemini-3.8-flash");
+                assertEquals(timeline.snapshot.thinkingLevel, "high");
+                assertEquals(timeline.snapshot.executionBackend, {
+                    backend: "agy-cli",
+                    provider: "agy-cli",
+                    model: "gemini-3.8-flash",
+                    thinkingLevel: "high",
+                    effort: "high",
+                    backendModel: "gemini-3.8-flash-high",
+                });
+                assertEquals(JSON.stringify(timeline.events).includes("_meta"), false);
+                const identity = {
+                    projectId: fixture.project.projectId,
+                    runwieldSessionId: fixture.session.runwieldSessionId,
+                };
+                setModelResponseFactory(fixture.recordedModelResponse("Continued on the selected model."));
+                const refusedImage = await ownerSessionContinuationStartApi({
+                    state: { store: service.store, sessionContinuation: service },
+                    params: identity,
+                    req: new Request("http://localhost/image", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({
+                            requestId: "retired-model-image-blocked",
+                            expectedGeneration: timeline.generation,
+                            text: "Inspect this image without changing models.",
+                            images: [{ base64: btoa("image"), mimeType: "image/png" }],
+                        }),
+                    }),
+                });
+                assertEquals(refusedImage.status, 422, await refusedImage.clone().text());
+                assertEquals(await refusedImage.json(), {
+                    error: "Antigravity (agy-cli) was removed. Choose a supported model.",
+                });
+                const blocked = await service.startContinuation({
+                    ...identity,
+                    expectedGeneration: timeline.generation,
+                    requestId: "retired-model-blocked",
+                    text: "Continue without changing the model.",
+                });
+                const failure = await waitForOperation(service, blocked.operationId);
+                assertEquals(failure.status, "failed");
+                assert(JSON.stringify(failure).includes("Antigravity (agy-cli) was removed"));
+                assertEquals(fixture.modelRequests.length, 0);
+
+                assertEquals(JSON.stringify(timeline.events).includes("Historical reply."), true);
+                const failedGeneration = service.store.inspectSessionActivation(identity.runwieldSessionId).generation
+                    .generation;
+                const reconfigured = await service.configureSession({
+                    ...identity,
+                    expectedGeneration: failedGeneration,
+                    provider: "runtime-command-fixture",
+                    model: "fixture-model",
+                });
+                const recovered = await service.startContinuation({
+                    ...identity,
+                    expectedGeneration: reconfigured.generation,
+                    requestId: "replacement-model-continued",
+                    text: "Continue on my selected model.",
+                });
+                assertEquals((await waitForOperation(service, recovered.operationId)).status, "completed");
+                assertEquals(fixture.modelRequests.length, 1);
+            } finally {
+                await service.runtime.closeAllSessionsWhenIdle();
+                service.close();
+                workspaceStore.close();
+                await fixture.cleanup();
+            }
+        },
+    );
 });
 
 test("Workspace Agent defaults follow presets and manual choices expire on an Agent change", async () => {
@@ -1275,7 +1339,7 @@ test("Workspace notification stream routes live events and closes when its devic
     }
 });
 
-test("Workspace image rejection returns 422 before accepting new or resumed turns", async () => {
+test("Workspace rejects a retired Agent image model before accepting a new turn and accepts a supported continuation", async () => {
     await withRuntimeCommandFixture(
         "workspace-image-http-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
@@ -1312,17 +1376,17 @@ test("Workspace image rejection returns 422 before accepting new or resumed turn
                 params.runwieldSessionId = completed.runwieldSessionId;
                 body.expectedGeneration = completed.generation;
                 const saved = service.store.getSessionById(params.runwieldSessionId);
-                // Persist the model change through the real service, as the browser does.
-                await service.configureSession({
-                    projectId: params.projectId,
-                    runwieldSessionId: params.runwieldSessionId,
-                    expectedGeneration: body.expectedGeneration,
-                    model: "gemini-3.8-flash",
-                    provider: "agy-cli",
-                });
-                body.expectedGeneration = service.store.inspectSessionActivation(
-                    params.runwieldSessionId,
-                ).generation.generation;
+                await assertRejects(
+                    () =>
+                        service.configureSession({
+                            projectId: params.projectId,
+                            runwieldSessionId: params.runwieldSessionId,
+                            expectedGeneration: body.expectedGeneration,
+                            model: "gemini-3.8-flash",
+                            provider: "agy-cli",
+                        }),
+                    Error,
+                );
                 const beforeRejection = await readTranscriptEvidence(saved.transcriptPath);
                 await setCustomSetting(
                     "agents",
@@ -1330,13 +1394,11 @@ test("Workspace image rejection returns 422 before accepting new or resumed turn
                     "project",
                     projectRoot,
                 );
-                for (const route of [ownerSessionCreateApi, ownerSessionContinuationStartApi]) {
-                    const response = await route({ state, params, req: request() });
-                    assertEquals(response.status, 422, await response.clone().text());
-                    assertEquals(await response.json(), {
-                        error: "Antigravity CLI sessions do not support image attachments.",
-                    });
-                }
+                const response = await ownerSessionCreateApi({ state, params, req: request() });
+                assertEquals(response.status, 422, await response.clone().text());
+                assertEquals(await response.json(), {
+                    error: "Antigravity (agy-cli) was removed. Choose a supported model.",
+                });
                 assertEquals(await readTranscriptEvidence(saved.transcriptPath), beforeRejection);
                 assertEquals(
                     service.store.inspectSessionActivation(params.runwieldSessionId).generation.generation,

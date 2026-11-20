@@ -107,7 +107,7 @@ test("rejected image submissions preserve exact drafts and previews until a supp
                 await Promise.resolve();
                 const expectedDraft = view.editor.getExpandedText();
                 const warnings = () =>
-                    view.messageList.render(120).join("\n").split("do not support image attachments").length;
+                    view.messageList.render(120).join("\n").split("Antigravity (agy-cli) was removed").length;
                 const beforeWarnings = warnings();
                 terminal.pressEnter();
                 await waitFor(
@@ -121,7 +121,7 @@ test("rejected image submissions preserve exact drafts and previews until a supp
                 assertEquals(view.pastedImages, [image]);
                 assertEquals(view.previewImages.children.length > 0, true);
                 assertEquals(requests.length, 0);
-                assertStringIncludes(view.messageList.render(120).join("\n"), "image");
+                assertStringIncludes(view.messageList.render(120).join("\n"), "/model");
             }
             view.editor.setText("");
             terminal.input("\x7f");

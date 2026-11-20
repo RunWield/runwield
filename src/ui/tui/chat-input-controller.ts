@@ -1,3 +1,4 @@
+import { RemovedAgyModelError } from "../../shared/models/removed-providers.ts";
 import { handleBashCommand } from "./bash-interceptor.ts";
 import { endBlink } from "./boot-logo.ts";
 import { disposeKeybindings, installKeybindings } from "./keybindings.ts";
@@ -12,8 +13,6 @@ import type { UiAPI } from "./api.ts";
 import type { TutorialContext } from "../../shared/session/tutorial-context-session.ts";
 import { AGENTS } from "../../constants.ts";
 import { ClaudeCliBackendError } from "../../shared/session/backends/claude-cli/failure.ts";
-import { AgyCliBackendError } from "../../shared/session/backends/agy-cli/failure.ts";
-import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
 import { resourceExhaustionMessage } from "../../shared/resource-exhaustion.ts";
 
 type ThinkingLevel = Parameters<typeof persistThinkingLevel>[0];
@@ -73,11 +72,11 @@ function imageWarningKey(image: ImageAttachment): string {
 function userTurnFailureMessage(error: Error | string): string | null {
     const resourceMessage = resourceExhaustionMessage(error);
     if (resourceMessage) return resourceMessage;
-    if (error instanceof ClaudeCliBackendError || error instanceof AgyCliBackendError) {
+    if (error instanceof ClaudeCliBackendError) {
         // The backend already emitted its sanitized message as a system status.
         return null;
     }
-    if (error instanceof AgyCliMcpSetupApprovalError) {
+    if (error instanceof RemovedAgyModelError) {
         return error.message;
     }
     if (error instanceof Error && error.message.includes("model")) {

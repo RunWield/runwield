@@ -29,7 +29,7 @@ Bundled Agent names are `architect`, `engineer`, `guide`, `ideator`, `operator`,
 
 ## Model presets
 
-RunWield ships `codex`, `agy`, `opencode`, `claude-mixed`, `claude-opus`, and `codex-claude`. They are available in
+RunWield ships `codex`, `opencode`, `claude-mixed`, `claude-opus`, and `codex-claude`. They are available in
 `/settings` without personal preset definitions. Files in `~/.wld/bundled-model-presets/` are disposable copies of
 bundled assets. Copy a definition into settings to customize it. Presets resolve by name: project over personal over
 bundled, replacing the whole lower-priority preset. Bundled presets are never activated automatically.

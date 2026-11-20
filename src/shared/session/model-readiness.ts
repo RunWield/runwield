@@ -1,4 +1,4 @@
-import { AGY_CLI_MODEL_CHOICES } from "../models/agy-cli-catalog.ts";
+import { isRemovedAgyProvider, removedAgyModelError } from "../models/removed-providers.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { getSettingsManager } from "../settings.ts";
 
@@ -69,6 +69,13 @@ export function getSelectedDefaultModelAvailability(projectRoot: string): ModelA
             return { available: false, error: "No default model is selected." };
         }
 
+        if (isRemovedAgyProvider(defaultProvider)) {
+            return {
+                available: false,
+                error: removedAgyModelError(`${defaultProvider}/${defaultModel}`, "Choose a supported default model.")
+                    .message,
+            };
+        }
         const registry = getModelRegistry();
         if (!registry.find) return { available: true, error: null };
         const found = registry.find(defaultProvider || "", defaultModel);
@@ -82,12 +89,6 @@ export function getSelectedDefaultModelAvailability(projectRoot: string): ModelA
         );
         if (foundModel && runnable) return { available: true, error: null };
 
-        if (defaultProvider === "agy-cli") {
-            return {
-                available: false,
-                error: `Unsupported Antigravity CLI model: ${defaultProvider}/${defaultModel}. Select ${AGY_CLI_MODEL_CHOICES}.`,
-            };
-        }
         return {
             available: false,
             error: defaultProvider

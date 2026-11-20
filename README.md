@@ -53,7 +53,7 @@ macOS and Linux, installs to `~/.local/bin`, no root required.
 For setup details, including model provider authentication, runtime helpers, and running from source, see the
 [Quickstart Guide](https://docs.runwield.dev/quickstart/).
 
-Choose a bundled model preset in `/settings` → **Model Presets**: `codex`, `agy`, `opencode`, `claude-mixed`,
+Choose a bundled model preset in `/settings` → **Model Presets**: `codex`, `opencode`, `claude-mixed`,
 `claude-opus`, or `codex-claude`. See the [preset reference](https://docs.runwield.dev/settings/#modelpresets) for model
 assignments and customization.
 

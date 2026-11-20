@@ -907,11 +907,7 @@ export function devOwnerSessionOptions(projectId = DEV_OWNER_PROJECT.projectId) 
             { name: "new", description: "Start a new Session", kind: "action" },
             { name: "resume", description: "Resume a Session", kind: "action" },
         ],
-        models: [
-            { provider: "fixture", id: "dev-model", name: "Dev Model" },
-            { provider: "agy-cli", id: "gemini-3.8-flash", name: "Antigravity CLI Gemini 3.8 Flash" },
-            { provider: "agy-cli", id: "gemini-3.1-pro", name: "Antigravity CLI Gemini 3.1 Pro" },
-        ],
+        models: [{ provider: "fixture", id: "dev-model", name: "Dev Model" }],
         thinkingLevels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
     };
 }

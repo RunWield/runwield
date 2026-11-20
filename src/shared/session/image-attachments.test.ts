@@ -219,6 +219,19 @@ test("resolveVisionFallbackModel reports unknown, unauthenticated, and non-visio
     });
 });
 
+test("resolveVisionFallbackModel rejects Antigravity before model discovery", async () => {
+    await withProcessGlobalTestLock(async () => {
+        await withVisionSettings({ visionFallback: { model: "agy-cli/gemini-3.8-flash" } }, async (home, cwd) => {
+            const registry = new RunWieldModelRegistry({ configDir: join(home, ".wld") });
+            await assertRejects(
+                () => resolveVisionFallbackModel(registry, NO_MODEL_DISCOVERY_NETWORK, cwd),
+                Error,
+                "Antigravity",
+            );
+        });
+    });
+});
+
 test("resolveVisionFallbackModel discovers configured provider models", async () => {
     await withProcessGlobalTestLock(async () => {
         await withVisionSettings({ visionFallback: { model: "local/discovered" } }, async (tempHome, tempProject) => {
