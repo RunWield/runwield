@@ -146,6 +146,10 @@ export interface RuntimeClientReport {
     priorValidationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
     validationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
 }
+if (process.argv[2] === "--runtime-identity") {
+    console.log(process.versions.bun || "");
+    process.exit(0);
+}
 const lines = processLines(stdinStream());
 const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
 configureRemotePersonalResources({ globalRoot: input.resources });

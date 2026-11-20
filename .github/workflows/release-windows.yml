@@ -101,15 +101,18 @@ jobs:
                   node-version: "24"
             - name: Install pinned native Bun
               run: |
+                  $bunVersion = (Get-Content -Raw .bun-version) -replace '[\r\n]+$', ''
+                  if ($bunVersion -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw "Invalid Bun version in .bun-version" }
+                  $env:WLD_EXPECTED_BUN_VERSION = $bunVersion
                   $asset = 'bun-windows-${{ matrix.asset }}'
                   $zip = Join-Path $env:RUNNER_TEMP "$asset.zip"
-                  Invoke-WebRequest "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/$asset.zip" -OutFile $zip
+                  Invoke-WebRequest "https://github.com/oven-sh/bun/releases/download/bun-v$($bunVersion)/$asset.zip" -OutFile $zip
                   Expand-Archive $zip -DestinationPath $env:RUNNER_TEMP
                   $bin = Join-Path $env:RUNNER_TEMP $asset
                   $bin >> $env:GITHUB_PATH
                   & "$bin/bun.exe" --version
                   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-                  & "$bin/bun.exe" -e 'if (process.arch !== "${{ matrix.arch }}" || process.versions.bun !== "1.4.4") throw new Error("Wrong native Bun runtime")'
+                  & "$bin/bun.exe" -e 'if (process.arch !== "${{ matrix.arch }}" || process.versions.bun !== process.env.WLD_EXPECTED_BUN_VERSION) throw new Error("Wrong native Bun runtime")'
                   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             - name: Install legacy Deno only for release interoperability
               if: matrix.phase == 'package'

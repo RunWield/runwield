@@ -308,9 +308,16 @@ bun run workspace:remote
 After changing collaboration or its packaging, run this end-to-end check. See the user guide,
 [Self-hosted collaboration](user-documentation/collaboration.md), for setup.
 
+The container wrapper reads `.bun-version` from the checkout and uses Podman by default. To build with raw Docker,
+pass the checkout's exact pin:
+
+```sh
+docker build --build-arg BUN_VERSION="$(sh scripts/read-bun-version.sh)" -f Containerfile -t runwield-plan-server:local .
+```
+
 Use this checklist after changing packaging or collaboration behavior:
 
-1. `podman compose -f compose.yml up -d`.
+1. `sh scripts/plan-server-container.sh compose up -d`.
 2. Confirm `curl http://127.0.0.1:8080/healthz` and `/readyz` return `{"ok":true,"mode":"remote"}`.
 3. Configure `planServerUrl` or pass `--plan-server http://127.0.0.1:8080`.
 4. Run `wld plans share <plan>` and save the reviewer and maintainer URLs securely.

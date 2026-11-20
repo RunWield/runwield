@@ -1,7 +1,7 @@
 /**
  * Production CLI qualification: bun run src/shared/remote/verify-remote-workflows.ts --archives <directory> <VERSION>
  * Code-level evidence only: bun run src/shared/remote/verify-remote-workflows.ts [compiled-client]
- * Deploys matching source with owned Bun 1.4.4 by default. WLD_LIVE_SOURCE=0 selects standalone artifacts:
+ * Deploys matching source with the repository-pinned Bun by default. WLD_LIVE_SOURCE=0 selects standalone artifacts:
  * first the production CLI save smoke (not workflow qualification), then the scripted workflow client.
  * WLD_LIVE_PRODUCTION_BINARY reuses a CLI build for that save smoke only.
  * WLD_LIVE_REMOTE_ROOT reuses this script's owned scratch; WLD_LIVE_JOURNEYS selects comma-separated journeys.
@@ -14,7 +14,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { compileBun } from "../../../scripts/compile-bun.ts";
-import { getCwd } from "../../constants.ts";
+import { readPinnedBunVersion } from "../../../scripts/check-bun-runtime.ts";
+import { fileURLToPath } from "node:url";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { serveHttp } from "../http-server.ts";
@@ -33,7 +34,9 @@ interface BuildMetadata {
     buildId: string;
 }
 async function main(): Promise<void> {
-    const sourceRoot = getCwd();
+    const sourceRoot = fileURLToPath(new URL("../../../", import.meta.url));
+    const bunVersion = readPinnedBunVersion();
+    equal(process.versions.bun, bunVersion, "Local Bun must match .bun-version");
     const evidenceRoot = await mkdtemp(join(tmpdir(), "wld-workflows-live-"));
     const evidence: string[] = [];
     type EvidenceValue = string | number | boolean | Record<string, string | number | boolean | string[]>;
@@ -165,10 +168,13 @@ async function main(): Promise<void> {
             (await ssh("umask 077; mktemp -d /tmp/wld-workflows-live-XXXXXXXXXX")).trim();
         assert(/^\/tmp\/wld-workflows-live-[a-zA-Z0-9]+$/.test(remoteRoot));
         await record("owned-remote-root", remoteRoot);
+        const bunRuntimeRoot = `${remoteRoot}/bun-v${bunVersion}`;
+        const bunExecutable = `${bunRuntimeRoot}/bun-linux-x64/bun`;
         await chmod(binary, 0o700);
         await command("/usr/bin/rsync", ["-az", binary, `sct:${remoteRoot}/client`]);
         equal((await ssh(`sha256sum ${quote(remoteRoot + "/client")}`)).split(/\s/)[0], hash);
         if (!sourceDeployment) {
+            equal((await ssh(`${quote(remoteRoot + "/client")} --runtime-identity`)).trim(), bunVersion);
             const productionBinary = process.env.WLD_LIVE_PRODUCTION_BINARY || join(evidenceRoot, "wld-linux-x64");
             if (!process.env.WLD_LIVE_PRODUCTION_BINARY) await compileBun(productionBinary, "bun-linux-x64");
             const productionHash = createHash("sha256")
@@ -177,6 +183,13 @@ async function main(): Promise<void> {
             await chmod(productionBinary, 0o700);
             await command("/usr/bin/rsync", ["-az", productionBinary, `sct:${remoteRoot}/production-client`]);
             equal((await ssh(`sha256sum ${quote(remoteRoot + "/production-client")}`)).split(/\s/)[0], productionHash);
+            const identity = JSON.parse(
+                await ssh(
+                    `env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=${quote(remoteRoot)} ${quote(remoteRoot + "/production-client")} --remote-preflight`,
+                ),
+            ) as { runtime?: string; runtimeVersion?: string };
+            equal(identity.runtime, "bun");
+            equal(identity.runtimeVersion, bunVersion, "Production CLI Bun must match .bun-version");
             const fixture = await makeControlFixture();
             let forward: Awaited<ReturnType<typeof startForward>> | undefined;
             try {
@@ -221,11 +234,30 @@ async function main(): Promise<void> {
                 await fixture.close();
             }
         }
-        // A pinned helper runtime is installed only inside the owned scratch tree.
-        await ssh(
-            `cd ${quote(remoteRoot)} && if [ ! -x bun-linux-x64/bun ]; then curl --fail --location --silent --show-error https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-x64.zip -o bun.zip && unzip -q bun.zip; fi; ./bun-linux-x64/bun --version`,
-        );
-        await record("remote-pinned-bun", (await ssh(`${quote(remoteRoot + "/bun-linux-x64/bun")} --version`)).trim());
+        // Cache only verified binaries under their exact versions inside the owned scratch tree.
+        const releaseUrl = `https://github.com/oven-sh/bun/releases/download/bun-v${bunVersion}/bun-linux-x64.zip`;
+        const remoteBunVersion = (
+            await ssh(
+                [
+                    "set -eu",
+                    "umask 077",
+                    `cd ${quote(remoteRoot)}`,
+                    `if [ ! -e ${quote(bunRuntimeRoot)} ]; then`,
+                    "    stage=$(mktemp -d .bun-download-XXXXXXXXXX)",
+                    `    trap 'rm -rf -- "$stage"' EXIT`,
+                    `    curl --fail --location --silent --show-error ${quote(releaseUrl)} -o "$stage/bun.zip"`,
+                    '    unzip -q "$stage/bun.zip" -d "$stage"',
+                    '    rm -- "$stage/bun.zip"',
+                    `    test "$("$stage/bun-linux-x64/bun" --version)" = ${quote(bunVersion)}`,
+                    `    mv -T -- "$stage" ${quote(bunRuntimeRoot)}`,
+                    "    trap - EXIT",
+                    "fi",
+                    `exec ${quote(bunExecutable)} --version`,
+                ].join("\n"),
+            )
+        ).trim();
+        equal(remoteBunVersion, bunVersion, "Remote Bun must match .bun-version");
+        await record("remote-pinned-bun", remoteBunVersion);
         if (sourceDeployment) {
             await command("/usr/bin/rsync", [
                 "-az",
@@ -238,6 +270,7 @@ async function main(): Promise<void> {
                 `${sourceRoot}/scripts`,
                 `${sourceRoot}/node_modules`,
                 `${sourceRoot}/package.json`,
+                `${sourceRoot}/.bun-version`,
                 `${sourceRoot}/runtime-root.ts`,
                 `${sourceRoot}/brand`,
                 `${sourceRoot}/third_party`,
@@ -246,7 +279,7 @@ async function main(): Promise<void> {
             ]);
             await record(
                 "source-deployment",
-                "Matching source and dependencies copied with checksums; remote runtime is owned Bun 1.4.4",
+                `Matching source and dependencies copied with checksums; remote runtime is owned Bun ${bunVersion}`,
             );
         }
         for (const journey of ["delivery", "validation-cut", "publication-proven", "publication-uncertain"].filter(
@@ -411,7 +444,7 @@ async function main(): Promise<void> {
                     }
                     if (!tunnel) await ready();
                     const pidPath = `${root}/client-${clients.length}.pid`;
-                    const shell = `cd ${quote(project)} && echo $$ > ${quote(pidPath)} && exec env -i HOME=${quote(home)} WLD_TEST_SANDBOX_HOME=${quote(home)} TMPDIR=${quote(home + "/tmp")} MNEMOTECA_DB_PATH=${quote(home + "/memory.db")} PATH=${quote(root + "/bin:" + remoteRoot + "/bun-linux-x64:/usr/local/bin:/usr/bin:/bin")} ${sourceDeployment ? quote(remoteRoot + "/bun-linux-x64/bun") + " run --tsconfig-override " + quote(remoteRoot + "/source/tsconfig.json") + " " + quote(remoteRoot + "/source/src/shared/remote/remote-runtime-test-client.ts") : quote(remoteRoot + "/client")}`;
+                    const shell = `cd ${quote(project)} && echo $$ > ${quote(pidPath)} && exec env -i HOME=${quote(home)} WLD_TEST_SANDBOX_HOME=${quote(home)} TMPDIR=${quote(home + "/tmp")} MNEMOTECA_DB_PATH=${quote(home + "/memory.db")} PATH=${quote(root + "/bin:" + bunRuntimeRoot + "/bun-linux-x64:/usr/local/bin:/usr/bin:/bin")} ${sourceDeployment ? quote(bunExecutable) + " run --tsconfig-override " + quote(remoteRoot + "/source/tsconfig.json") + " " + quote(remoteRoot + "/source/src/shared/remote/remote-runtime-test-client.ts") : quote(remoteRoot + "/client")}`;
                     const child = spawnNativeProcess("/usr/bin/ssh", {
                         cwd: sourceRoot,
                         args: [
@@ -471,7 +504,7 @@ async function main(): Promise<void> {
                             if (stopped) return;
                             stopped = true;
                             await remoteJs(
-                                `const fs=await import("node:fs/promises");try{const pid=Number((await fs.readFile(${JSON.stringify(pidPath)},"utf8")).trim());if(await fs.readlink("/proc/"+pid+"/exe")===${JSON.stringify(remoteRoot + (sourceDeployment ? "/bun-linux-x64/bun" : "/client"))})process.kill(pid,"SIGKILL")}catch(e){if(!["ENOENT","ESRCH"].includes(e.code))throw e}`,
+                                `const fs=await import("node:fs/promises");try{const pid=Number((await fs.readFile(${JSON.stringify(pidPath)},"utf8")).trim());if(await fs.readlink("/proc/"+pid+"/exe")===${JSON.stringify(sourceDeployment ? bunExecutable : remoteRoot + "/client")})process.kill(pid,"SIGKILL")}catch(e){if(!["ENOENT","ESRCH"].includes(e.code))throw e}`,
                             );
                             try {
                                 child.kill("SIGKILL");

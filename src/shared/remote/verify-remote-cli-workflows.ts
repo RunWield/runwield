@@ -10,6 +10,7 @@ import { appendFile, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
+import { readPinnedBunVersion } from "../../../scripts/check-bun-runtime.ts";
 import { Terminal } from "@xterm/headless";
 import type { FileSessionManifest } from "../session/file-session-store-types.ts";
 
@@ -379,7 +380,8 @@ async function cleaned(driver: Driver, owned: OwnedRemote, sleeper: number): Pro
 }
 
 export async function qualifyRemoteCliWorkflows(archivesInput: string, version: string): Promise<void> {
-    equal(process.versions.bun, "1.4.4");
+    const bunVersion = readPinnedBunVersion();
+    equal(process.versions.bun, bunVersion, "Local Bun must match .bun-version");
     equal(process.platform, "darwin", "This qualification covers the macOS laptop only");
     const archives = resolve(archivesInput);
     const evidence = await mkdtemp(join(tmpdir(), "wld-cli-workflows-"));
