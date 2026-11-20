@@ -117,9 +117,11 @@ function reviewMarkdownEvidence(source: string): string {
         allow_unsafe_urls: true,
         reference_links: true,
     });
-    const normalized = html.replace(/<[^>]*>|[^<]+/g, (part) =>
-        part.startsWith("<") ? part : part.replace(/\r?\n/g, " "),
-    );
+    // quikdown can append an unmatched paragraph closer after a terminal table
+    // depending on the final blank line. Table cells are compared separately above.
+    const normalized = html
+        .replace(/<\/table>\n<\/p>$/, "</table>")
+        .replace(/<[^>]*>|[^<]+/g, (part) => (part.startsWith("<") ? part : part.replace(/\r?\n/g, " ")));
     return JSON.stringify({ protectedSource, ordinals, tables, normalized });
 }
 

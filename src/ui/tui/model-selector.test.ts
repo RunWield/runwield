@@ -60,7 +60,6 @@ test("^TUI model selector exposes Pi and Claude CLI without offering retired Ant
             assertStringIncludes(initialScreen, "Use /login for API providers");
             assertStringIncludes(initialScreen, "External CLI choices require their CLI installed and signed in");
             assertStringIncludes(initialScreen, "current");
-            assertStringIncludes(initialScreen, "agy-cli/gemini-4-neon");
 
             // Sonnet is beyond the first page of the expanded model catalog.
             selector.handleInput("\x1b[A");

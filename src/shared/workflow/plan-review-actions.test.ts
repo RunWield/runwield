@@ -411,6 +411,18 @@ for (const { name, original, current, matches } of [
         matches: true,
     },
     {
+        name: "terminal table blank lines",
+        original: "Review the results.\n\n| State |\n| --- |\n| Pending |\n\n",
+        current: "Review the results.\n\n| State   |\n| ------- |\n| Pending |\n",
+        matches: true,
+    },
+    {
+        name: "terminal table text even with different blank lines",
+        original: "Review the results.\n\n| State |\n| --- |\n| Pending |\n\n",
+        current: "Review the results.\n\n| State   |\n| ------- |\n| Skipped |\n",
+        matches: false,
+    },
+    {
         name: "four-space list wrapping",
         original: "- Require approval before deployment.\n",
         current: "- Require approval\n    before deployment.\n",
