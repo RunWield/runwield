@@ -79,6 +79,7 @@ export interface SelectedProjectRuntimeLayout {
     planCatalogLockPath: string;
     transitionJournalsDir: string;
     planBackupsDir: string;
+    validationLogsDir: string;
     workRecordSupersessionLockPath: string;
     workRecordSupersessionRecoveryLockPath: string;
 }
@@ -294,6 +295,7 @@ export function resolveProjectRuntimeLayout(selectedCheckoutRoot: string): Proje
             planCatalogLockPath: join(selectedPlanLocksDir, "catalog.lock"),
             transitionJournalsDir: join(selectedInternalRoot, PLAN_TRANSITIONS_DIR_NAME),
             planBackupsDir: join(selectedInternalRoot, PLAN_BACKUPS_DIR_NAME),
+            validationLogsDir: join(selectedInternalRoot, "validation-logs"),
             workRecordSupersessionLockPath: join(selectedInternalRoot, "work-record-supersession.lock"),
             workRecordSupersessionRecoveryLockPath: join(
                 selectedInternalRoot,

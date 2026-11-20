@@ -476,6 +476,7 @@ export async function dispatchCiRepair(
                 "On a new project, that command can be the thing that is broken. Inspect `.wld/settings.json`; correct the command or implementation as needed. " +
                 "Run focused checks for the reported failure before you call `task_completed`. Run the full configured command only when needed to diagnose the failure or explicitly requested by the user. " +
                 "RunWield will independently reload `.wld/settings.json` and run the complete command after Task Completion; report that full validation as pending. " +
+                "The output below is a tail; the full log path is at its end. Read the log from the start when the tail shows timeouts, interrupted checks, or failures that could be caused by an earlier error. " +
                 "If the repair involves tests, follow the write-tests skill for sound testing behavior.\n\n" +
                 getCiFailureReason(ciResult),
         }),

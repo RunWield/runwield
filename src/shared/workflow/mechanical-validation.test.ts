@@ -2,13 +2,14 @@ import { ok as assert } from "node:assert/strict";
 import process from "node:process";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, fauxText } from "@earendil-works/pi-ai";
 import { type AgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { ensureRootAgentSession } from "../session/session.ts";
 import { attachRecorder, makeUi, type ValidationUiRecorder } from "./validation-test-helpers.ts";
-import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
+import { systemLocalCIPort, type LocalCIPort, type LocalCIResult } from "./validation-local-ci.ts";
+import { setExactProjectCustomSetting } from "../settings.ts";
 import { runLocalCI, runMechanicalValidation } from "./validation.ts";
 
 interface MechanicalFixture {
@@ -99,7 +100,7 @@ test("runLocalCI streams large validation output without failing the process buf
         );
         ui.promptText = () =>
             Promise.resolve(
-                `${JSON.stringify(process.execPath)} ${"-e"} "console.log('x'.repeat(1200000)); console.error('tail-marker')"`,
+                `${JSON.stringify(process.execPath)} -e "process.stdout.write('x'.repeat(1200000) + '\\n', () => setTimeout(() => console.error('tail-marker'), 50))"`,
             );
 
         const result = await runLocalCI({ hostedSession, cwd: projectRoot });
@@ -108,7 +109,7 @@ test("runLocalCI streams large validation output without failing the process buf
         if (result.kind !== "completed") throw new Error("CI should complete.");
         assertEquals(result.exitCode, 0);
         assertStringIncludes(result.output, "tail-marker");
-        assertStringIncludes(result.output, "stdout truncated; showing last");
+        assertStringIncludes(result.output, "Output truncated; showing the last");
         assertEquals(
             ui.toolResults.some((result) => !result.isError),
             true,
@@ -193,36 +194,50 @@ test("Mechanical Validation repairs through the real Engineer turn and then pass
 });
 
 test("Mechanical Validation ignores task completion from an earlier Engineer turn", async () => {
-    await withRuntimeCommandFixture("mechanical-stale-completion-", async ({ projectRoot, setModelResponse }) => {
-        setModelResponse("I stopped before completing the repair.");
-        const fixture = await activateMechanicalFixture(projectRoot);
-        fixture.rootAgentSession.agent.state.messages.push({
-            role: "toolResult",
-            toolCallId: "stale-task-completed",
-            toolName: "task_completed",
-            content: [{ type: "text", text: "Completed earlier work." }],
-            isError: false,
-            timestamp: Date.now(),
-        });
-        const ci = defineLocalCIFixture([{ kind: "completed", exitCode: 1, output: "still failing" }]);
+    await withRuntimeCommandFixture(
+        "mechanical-stale-completion-",
+        async ({ projectRoot, setModelResponseFactory }) => {
+            let prompt = "";
+            setModelResponseFactory((context) => {
+                prompt = JSON.stringify(context);
+                return fauxAssistantMessage(fauxText("I stopped before completing the repair."));
+            });
+            const fixture = await activateMechanicalFixture(projectRoot);
+            fixture.rootAgentSession.agent.state.messages.push({
+                role: "toolResult",
+                toolCallId: "stale-task-completed",
+                toolName: "task_completed",
+                content: [{ type: "text", text: "Completed earlier work." }],
+                isError: false,
+                timestamp: Date.now(),
+            });
+            setExactProjectCustomSetting("verification_command", "printf still-failing; exit 1", projectRoot);
 
-        const result = await runMechanicalValidation(
-            {
-                hostedSession: fixture.hostedSession,
-                sessionManager: fixture.sessionManager,
-                cwd: projectRoot,
-            },
-            ci.port,
-        );
+            const result = await runMechanicalValidation(
+                {
+                    hostedSession: fixture.hostedSession,
+                    sessionManager: fixture.sessionManager,
+                    cwd: projectRoot,
+                },
+                systemLocalCIPort,
+            );
 
-        assertEquals(result.passed, false);
-        assertEquals(
-            result.reason,
-            "Engineer stopped on a blocker during the QUICK_FIX repair. Its last message says what stopped it.",
-        );
-        assertEquals(fixture.hostedSession.getActiveExecutionWorkflow()?.validationContinuation, true);
-        fixture.hostedSession.dispose();
-    });
+            assertStringIncludes(prompt, "The output below is a tail; the full log path is at its end.");
+            assertStringIncludes(
+                prompt,
+                "Read the log from the start when the tail shows timeouts, interrupted checks",
+            );
+            assertStringIncludes(prompt, "Full validation output saved to");
+            assertStringIncludes(prompt, "still-failing");
+            assertEquals(result.passed, false);
+            assertEquals(
+                result.reason,
+                "Engineer stopped on a blocker during the QUICK_FIX repair. Its last message says what stopped it.",
+            );
+            assertEquals(fixture.hostedSession.getActiveExecutionWorkflow()?.validationContinuation, true);
+            fixture.hostedSession.dispose();
+        },
+    );
 });
 
 test("Mechanical Validation stops after three real Engineer repair completions", async () => {

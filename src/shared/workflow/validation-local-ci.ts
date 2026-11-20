@@ -3,10 +3,9 @@
  *
  * Runs the project's own validation command and captures its output.
  *
- * Output is captured as a bounded tail rather than buffered whole: a failing
- * build can emit far more than is useful, and the end is the part that explains
- * the failure. The captured streams report whether they were truncated so the
- * reader is never shown a partial log as if it were complete.
+ * Complete output is saved in the execution checkout as both pipes are read.
+ * Callers receive a bounded combined tail and the log path, so repair Agents
+ * can read the first failure without loading the whole log into their prompt.
  */
 
 import {
@@ -17,11 +16,8 @@ import {
 } from "../settings.ts";
 import { spawnForegroundShell } from "../foreground-process.ts";
 import { captureValidationSettingsWrite, recordValidationSettingsWrite } from "../worktree-project-context.ts";
-import {
-    captureProcessStreamTail,
-    formatCapturedProcessOutput,
-    PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
-} from "./process-output.ts";
+import { captureProcessOutput } from "./process-output.ts";
+import { openValidationLog, formatValidationOutput, VALIDATION_OUTPUT_LIMIT_BYTES } from "./validation-log.ts";
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
@@ -32,8 +28,6 @@ import { describeRuntimeTool } from "../session/tool-event-title.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
 import { classifyValidationOperationalError } from "./validation-operational-errors.ts";
-
-const VALIDATION_STREAM_OUTPUT_LIMIT_BYTES = PROCESS_STREAM_OUTPUT_LIMIT_BYTES;
 
 export type ValidationCommandSettingsPolicy = "ordinary-project" | "exact-project";
 
@@ -162,15 +156,18 @@ export async function runValidationCommand({
         // The foreground-process module owns the wrapper shell's process group,
         // so cancellation terminates the whole CI tree and settles its pipes.
         const shell = spawnForegroundShell({ command, cwd, signal });
-        const [outcome, stdout, stderr] = await Promise.all([
+        // Open only after spawning succeeds: a process-start failure has no log.
+        const log = await openValidationLog(cwd);
+        const [outcome, captured] = await Promise.all([
             shell.done,
-            captureProcessStreamTail(shell.stdout, VALIDATION_STREAM_OUTPUT_LIMIT_BYTES),
-            captureProcessStreamTail(shell.stderr, VALIDATION_STREAM_OUTPUT_LIMIT_BYTES),
-        ]);
+            captureProcessOutput(shell.stdout, shell.stderr, {
+                // Reserve one byte for the separator before the notices.
+                tailBytes: VALIDATION_OUTPUT_LIMIT_BYTES - 1,
+                sink: log.append,
+            }),
+        ]).finally(() => log.close());
         const canceled = outcome.terminatedBy !== null;
-        const output = canceled
-            ? `${formatCapturedProcessOutput(stdout, stderr)}\nValidation canceled.\n`
-            : formatCapturedProcessOutput(stdout, stderr);
+        const output = `${canceled ? "Validation canceled.\n" : ""}${formatValidationOutput(captured, log)}`;
         if (canceled) return { kind: "canceled", output };
         return { kind: "completed", exitCode: outcome.exitCode ?? 1, output };
     } catch (error) {

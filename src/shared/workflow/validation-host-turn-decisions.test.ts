@@ -1,4 +1,4 @@
-import { writeFile as fsWriteFile } from "node:fs/promises";
+import { writeFile as fsWriteFile, readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
@@ -13,6 +13,19 @@ import { CI_REPAIR_CYCLES, SEMANTIC_REVIEW_CYCLES } from "./validation-types.ts"
 import { applyRoundFindings, createLedger } from "./review-ledger.ts";
 import { complete, coverage, type HostFixture, hostFixture, hostRequest } from "./testing/validation-host-fixture.ts";
 import { sessionScript } from "../../testing/validation-session-script.ts";
+
+function validationLogPath(prompt: string): string {
+    const path = prompt.match(/Full validation output saved to (.+\.log)\./)?.[1];
+    assertExists(path);
+    return path;
+}
+
+async function promptWithLogPlaceholder(prompt: string): Promise<string> {
+    const path = validationLogPath(prompt);
+    // Separate runs retain their own readable logs; the surrounding guidance must match.
+    await fsReadFile(path, "utf8");
+    return prompt.replace(path, "<validation-log>");
+}
 
 async function pastReviewLimit(fixture: HostFixture) {
     await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
@@ -222,7 +235,11 @@ for (const answer of ["retry", "engineer_follow_up", "stop"] as const) {
                     return { outcome: "selected", value: selection++ === 0 ? answer : "stop" };
                 },
             });
-            assertEquals(decision.interaction.prompt, sessionPrompts[0]);
+            assertNotEquals(validationLogPath(decision.interaction.prompt), validationLogPath(sessionPrompts[0]));
+            assertEquals(
+                await promptWithLogPlaceholder(decision.interaction.prompt),
+                await promptWithLogPlaceholder(sessionPrompts[0]),
+            );
             if (answer === "engineer_follow_up") {
                 const text = hostRequest(result, "decision");
                 assertEquals(text.interaction.type, "text");
@@ -393,7 +410,11 @@ test("Retry followed by the same CI failure rejects the old decision without eff
             answer: { outcome: "selected" as const, value: "retry" },
         };
         const next = hostRequest(await fixture.processTurn(retry), "decision");
-        assertEquals(next.interaction, first.interaction);
+        assertNotEquals(validationLogPath(next.interaction.prompt), validationLogPath(first.interaction.prompt));
+        assertEquals(
+            { ...next.interaction, prompt: await promptWithLogPlaceholder(next.interaction.prompt) },
+            { ...first.interaction, prompt: await promptWithLogPlaceholder(first.interaction.prompt) },
+        );
         assertEquals(await fixture.ciCount(), 2);
         const checkpoint = await fixture.checkpointBytes();
         const evidence = await fixture.evidence();
@@ -451,9 +472,12 @@ test("CI follow-up retains the latest failed run and candidate beside custom use
         );
         const latest = `FAILURE-RUN-${CI_REPAIR_CYCLES + 1}`;
         assertStringIncludes(pending.failureReason, latest);
+        const latestLogPath = validationLogPath(pending.failureReason);
+        assertStringIncludes(await fsReadFile(latestLogPath, "utf8"), latest);
         const receipt = (await fixture.evidence()).filter((entry) => entry.kind === "ci").at(-1);
         assertExists(receipt);
         assertStringIncludes(receipt.detail, latest);
+        assertStringIncludes(receipt.detail, latestLogPath);
         assertStringIncludes(receipt.detail, pending.evidence.runId);
         assertStringIncludes(receipt.detail, pending.evidence.candidateIdentity);
         const text = hostRequest(
@@ -473,6 +497,7 @@ test("CI follow-up retains the latest failed run and candidate beside custom use
             "repair",
         );
         assertStringIncludes(followUp.prompt, latest);
+        assertStringIncludes(followUp.prompt, latestLogPath);
         assertEquals(followUp.prompt.includes(`FAILURE-RUN-${CI_REPAIR_CYCLES}\n`), false);
         assertStringIncludes(followUp.prompt, "Investigate publication observation timing.");
         assertStringIncludes(followUp.prompt, pending.evidence.runId);
