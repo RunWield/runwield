@@ -12,7 +12,7 @@ import { dirname, basename, isAbsolute, join, relative, resolve, sep } from "nod
 import { inspectLocalHomeStore } from "./access.ts";
 import { readPlanPackage } from "./packages.ts";
 import { withPackageProject, packageWorkflowRevision } from "./workflows.ts";
-import { savePlanDocument } from "./documents.ts";
+import { savePlanDocument, savePlanDocumentBatch, type PreparedPlanDocumentEdit } from "./documents.ts";
 import {
     getPlanRevisionForText,
     withPlanCatalogLock,
@@ -23,7 +23,7 @@ import { atomicWriteTextFileIfAbsent } from "../shared/atomic-text-file.ts";
 
 export interface PlanFileCommand {
     path: string;
-    mode: "write" | "edit" | "read";
+    mode: "write" | "edit" | "read" | "prepare-edit";
     content?: string;
     oldText?: string;
     newText?: string;
@@ -32,6 +32,7 @@ export interface PlanFileCommand {
 export interface PlanFileResult {
     message: string;
     content?: string;
+    document?: Omit<PreparedPlanDocumentEdit, "body">;
 }
 
 export function isCanonicalPlanMarkdownPath(cwd: string, path: string): boolean {
@@ -96,6 +97,13 @@ export async function resolvePlanFileTarget(cwd: string, requested: string): Pro
     return target;
 }
 
+export async function savePlanFileBatch(cwd: string, edits: PreparedPlanDocumentEdit[]) {
+    if (managedPlanStoreActive()) return await (await import("./managed.ts")).saveManagedDocumentBatch(cwd, edits);
+    const store = inspectLocalHomeStore(cwd);
+    if (store.kind !== "local") throw new Error("Plan document owner changed.");
+    await withPackageProject(cwd, store.identity, () => savePlanDocumentBatch(edits));
+}
+
 /** Intercept owned Plan files; undefined means the caller's ordinary file tool owns this path. */
 export async function operatePlanFile(cwd: string, command: PlanFileCommand): Promise<PlanFileResult | undefined> {
     const { mode } = command;
@@ -122,7 +130,13 @@ export async function operatePlanFile(cwd: string, command: PlanFileCommand): Pr
             if (mode === "write")
                 throw new Error("Re-read the Plan and use exact-text edit to preserve concurrent changes.");
             const document = await readManagedDocument(plan.attrs.planId, resource, cwd);
-            if (mode === "read") return { message: "Read Plan document.", content: document.body };
+            if (mode === "prepare-edit" && !document.writable) throw new Error("This Plan document cannot be edited.");
+            if (mode === "read" || mode === "prepare-edit")
+                return {
+                    message: "Read Plan document.",
+                    content: document.body,
+                    document: { planId: document.planId, resource, expectedRevision: document.revision },
+                };
             if (command.oldText === undefined || command.newText === undefined)
                 throw new Error("Plan edit requires path, oldText, and newText.");
             const edited = exactEdit(document.body, command.oldText, command.newText, path);
@@ -161,8 +175,16 @@ export async function operatePlanFile(cwd: string, command: PlanFileCommand): Pr
                 throw new Error("Re-read the Plan and use exact-text edit to preserve concurrent changes.");
             const document = plan.documents.find((entry) => entry.name === resource);
             if (!document) throw new Error("Plan document not found.");
-            if (mode === "read")
-                return { message: "Read Plan document.", content: new TextDecoder().decode(document.bytes) };
+            if (mode === "read" || mode === "prepare-edit")
+                return {
+                    message: "Read Plan document.",
+                    content: new TextDecoder().decode(document.bytes),
+                    document: {
+                        planId: plan.metadata.planId,
+                        resource,
+                        expectedRevision: packageWorkflowRevision(plan),
+                    },
+                };
             if (command.oldText === undefined || command.newText === undefined)
                 throw new Error("Plan edit requires path, oldText, and newText.");
             const edited = exactEdit(new TextDecoder().decode(document.bytes), command.oldText, command.newText, path);
@@ -200,7 +222,7 @@ export async function operatePlanFile(cwd: string, command: PlanFileCommand): Pr
         return { message: `Successfully created Plan ${path}.` };
     }
     const current = await readFile(absolute, "utf8");
-    if (mode === "read") return { message: "Read Plan document.", content: current };
+    if (mode === "read" || mode === "prepare-edit") return { message: "Read Plan document.", content: current };
     if (command.oldText === undefined || command.newText === undefined)
         throw new Error("Plan edit requires path, oldText, and newText.");
     const expectedRevision = await getPlanRevisionForText(current);

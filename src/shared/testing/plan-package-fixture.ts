@@ -82,16 +82,15 @@ export interface DriverRequest {
     mutateEvidenceDestination?: string;
     mutateEvidenceText?: string;
 }
-export function startDriver(request: DriverRequest) {
-    const child = spawn(
-        process.execPath,
-        [fileURLToPath(new URL("./plan-package-process-driver.ts", import.meta.url)), JSON.stringify(request)],
-        {
-            cwd: request.identity.checkoutRoot,
-            env: process.env,
-            stdio: ["ignore", "pipe", "pipe"],
-        },
-    );
+export function startDriver(
+    request: DriverRequest,
+    entry = new URL("./plan-package-process-driver.ts", import.meta.url),
+) {
+    const child = spawn(process.execPath, [fileURLToPath(entry), JSON.stringify(request)], {
+        cwd: request.identity.checkoutRoot,
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+    });
     let output = "",
         errors = "";
     child.stdout.on("data", (chunk) => (output += chunk.toString()));
@@ -103,9 +102,9 @@ export function startDriver(request: DriverRequest) {
     return {
         child,
         done,
-        async ready() {
+        async ready(message = "ready") {
             const deadline = Date.now() + 15000;
-            while (!output.includes("ready\n")) {
+            while (!output.includes(message + "\n")) {
                 if (child.exitCode !== null || Date.now() > deadline)
                     throw new Error(`Driver did not become ready: ${output} ${errors}`);
                 await new Promise((resolve) => setTimeout(resolve, 10));

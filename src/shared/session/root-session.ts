@@ -17,7 +17,7 @@ import type { MinimalSessionManagerLike } from "./hosted-session.ts";
 import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { open, readdir, realpath, stat as fsStat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
-import { inspectProjectStorage } from "../project-identity.ts";
+import { executionAccountStoragePath, inspectProjectStorage } from "../project-identity.ts";
 import { sessionDirForCheckout, sessionProjectMatches } from "./file-session-storage.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 export { encodeCwdForSessionDir } from "../project-directory-key.ts";
@@ -486,7 +486,7 @@ export async function classifyRootSessionLocator(
         if (!inspected.activation) return { kind: "blocked", reason: "missing_activation_row" };
         return { kind: "managed", session: cataloged, project: { projectId: project.projectId, cwd: realCwd } };
     }
-    const requestedSessionPath = resolve(String(options.sessionPath));
+    const requestedSessionPath = executionAccountStoragePath(String(options.sessionPath));
     const projectRoot = store.requireSessionProjectRoot(project.projectId);
     const projectSessionDir = join(store.path, encodeCwdForSessionDir(canonicalizeCwd(projectRoot)));
     const catalogedByPath = store.findSessionByLocator({
@@ -496,7 +496,7 @@ export async function classifyRootSessionLocator(
     const catalogedSegment = catalogedByPath
         ? store
               .listSessionTranscriptSegments(catalogedByPath.runwieldSessionId)
-              .find((segment) => resolve(segment.transcriptPath) === requestedSessionPath)
+              .find((segment) => executionAccountStoragePath(segment.transcriptPath) === requestedSessionPath)
         : null;
     const boundSessionDir = bindings.find((binding) =>
         isPathInside(requestedSessionPath, binding.sessionDirectory),

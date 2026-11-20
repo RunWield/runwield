@@ -338,6 +338,12 @@ function definitionHash(packages: LoadedPlanPackage[], ignoreCompletion = true):
         ),
     );
 }
+export function reviewedDefinitionChanged(
+    current: LoadedPlanPackage,
+    next: Pick<LoadedPlanPackage["metadata"], "definition" | "parentPlanId" | "dependencyPlanIds">,
+) {
+    return definitionHash([current]) !== definitionHash([{ ...current, metadata: { ...current.metadata, ...next } }]);
+}
 async function requiredPackages(plan: LoadedPlanPackage): Promise<LoadedPlanPackage[]> {
     const selection = currentPackageSelection()!;
     const result = [plan];
@@ -668,7 +674,22 @@ export async function updatePackageWorkflowMetadata(
         if (expectedRevision !== undefined && view.revision !== expectedRevision)
             throw new Error("Package input changed before the metadata write.");
         const identity = currentPackageProject()!;
-        const metadataUpdate = await preparePackageWorkflowUpdate(current, view.attrs, updates, workflowUpdate);
+        let metadataUpdate = await preparePackageWorkflowUpdate(current, view.attrs, updates, workflowUpdate);
+        if (
+            !workflowUpdate &&
+            !milestone &&
+            updates.status === undefined &&
+            reviewedDefinitionChanged(current, metadataUpdate)
+        ) {
+            const reopened = await reopenedPackageReview(current);
+            if (reopened)
+                metadataUpdate = {
+                    ...metadataUpdate,
+                    definition: { ...metadataUpdate.definition, status: reopened.definition.status },
+                    controller: reopened.controller,
+                    workflow: reopened.workflow,
+                };
+        }
         const { definition, controller, workflow } = metadataUpdate;
         const eventPackage = {
             ...current,

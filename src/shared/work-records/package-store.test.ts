@@ -286,6 +286,40 @@ test("Work Record retention keeps the count floor first and every record inside 
     }
 });
 
+test("retention prunes records exactly at and before the cutoff while preserving the next millisecond", async (t) => {
+    const f = await packageFixture();
+    try {
+        const { previewRecordRetention } = await import("../../plan-store/index.ts");
+        const { setCustomSetting } = await import("../settings.ts");
+        const now = Date.parse("2030-06-01T12:03:04.567Z");
+        const cutoff = now - 2 * 86_400_000;
+        await setCustomSetting("workRecords", { retentionDays: 2, retentionKeepLast: 0 }, "project", f.root);
+        await withWorkRecordOwner(f.root, f.identity, async () => {
+            const ids = [
+                "eeee1111-1111-4111-8111-111111111111",
+                "bbbb1111-1111-4111-8111-111111111111",
+                "aaaa1111-1111-4111-8111-111111111111",
+            ];
+            for (const [index, recordId] of ids.entries()) {
+                const attrs = recordAttrs({ recordId, createdAt: new Date(cutoff + index - 1).toISOString() });
+                await writeWorkRecord(f.root, attrs, recordBody);
+            }
+            const clock = t.mock.method(Date, "now", () => now);
+            try {
+                const due = await previewRecordRetention(f.root);
+                deepEqual(
+                    due.due.map((r) => r.recordId),
+                    [ids[1], ids[0]],
+                );
+            } finally {
+                clock.mock.restore();
+            }
+        });
+    } finally {
+        await f.cleanup();
+    }
+});
+
 test("a new Recorder pin survives earlier confirmation and its release restores eligibility", async () => {
     const f = await packageFixture();
     try {

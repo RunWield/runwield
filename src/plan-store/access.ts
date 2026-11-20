@@ -8,7 +8,12 @@ import {
     requireProjectCheckout,
     type ProjectStoreIdentity as ProjectIdentity,
 } from "../shared/project-identity.ts";
-import { currentPackageProject, withPackageProject } from "./workflows.ts";
+import {
+    currentPackageProject,
+    withPackageProject,
+    reviewedDefinitionChanged,
+    reopenedPackageReview,
+} from "./workflows.ts";
 import { reviewUpdateForDocumentChanges } from "./documents.ts";
 import { withMissingImportedExecutionRecovery } from "./legacy.ts";
 
@@ -177,7 +182,11 @@ export async function saveLocalHomePlan(
             const catalog = await listPlanPackages(store.identity, true);
             if (catalog.issues.length) throw new Error(catalog.issues[0].message);
             const existing = catalog.packages.find((plan) => plan.metadata.name === name);
+            if (!existing && options.expectedRevision !== undefined)
+                throw new StalePlanWriteError(options.expectedRevision, "missing");
             const planId = existing?.metadata.planId || options.authoredPlanId || parsed.attrs.planId || randomUUID();
+            if (existing && options.authoredPlanId && options.expectedRevision === undefined)
+                throw new StalePlanWriteError("absent", packageWorkflowRevision(existing));
             if (options.authoredPlanId && options.authoredPlanId !== planId)
                 throw new Error("Authoring identity changed.");
             return await withPlanPackageLocks(store.identity, [planId], async () => {
@@ -227,10 +236,12 @@ export async function saveLocalHomePlan(
                 const nextValidation = options.validationMarkdown ?? documents["validation.md"];
                 const review =
                     current &&
-                    (await reviewUpdateForDocumentChanges(current, [
-                        { previous: documents["context.md"], next: parsed.body },
-                        { previous: documents["validation.md"], next: nextValidation },
-                    ]));
+                    (reviewedDefinitionChanged(current, { definition, parentPlanId, dependencyPlanIds })
+                        ? await reopenedPackageReview(current)
+                        : await reviewUpdateForDocumentChanges(current, [
+                              { previous: documents["context.md"], next: parsed.body },
+                              { previous: documents["validation.md"], next: nextValidation },
+                          ]));
                 await commitPlanPackageBatch(store.identity, [
                     {
                         before: current ? { metadata: current.metadata, documents } : null,

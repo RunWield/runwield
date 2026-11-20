@@ -128,6 +128,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         "reserve-execution": [...common, "reservation"],
         reconcile: ["kind", "planId", "operationId"],
         "save-document": [...common, "resource", "body"],
+        "edit-documents": [...common, "edits"],
         "save-prose": [...common, "body"],
         "save-definition": [...common, "changes"],
         "record-event": [...common, "event"],
@@ -371,6 +372,23 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         )
             throw new Error("Invalid publication reference.");
     }
+    if (
+        command.kind === "edit-documents" &&
+        (!Array.isArray(command.edits) ||
+            !command.edits.length ||
+            command.edits.some(
+                (edit) =>
+                    !edit ||
+                    Object.keys(edit).sort().join(",") !== "body,expectedRevision,planId,resource" ||
+                    !identity(edit.planId) ||
+                    !["context.md", "validation.md", "manual-qa.md", "integration-report.md"].includes(edit.resource) ||
+                    typeof edit.body !== "string" ||
+                    !/^[a-f0-9]{64}$/.test(edit.expectedRevision),
+            ) ||
+            command.planId !== command.edits[0]?.planId ||
+            command.expectedRevision !== command.edits[0]?.expectedRevision)
+    )
+        throw new Error("Invalid document edit batch.");
     if ("body" in command && typeof command.body !== "string") throw new Error("Invalid document body.");
     if (
         command.kind === "record-event" &&

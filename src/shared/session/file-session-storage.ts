@@ -11,6 +11,7 @@ export { ensurePrivateDir, writeJsonAtomically, writeTextAtomically } from "../p
 import {
     assertUnclaimedSessionRoot,
     establishProjectSessionStorage,
+    executionAccountStoragePath,
     inspectProjectStorage,
     inspectSessionProjectRoots,
 } from "../project-identity.ts";
@@ -93,7 +94,9 @@ export function sessionDirForRoot(baseDir: string, root: string): string {
 
 /** Current checkout writes and successor validation share the admitted storage selection. */
 export function sessionDirForCheckout(baseDir: string, root: string): string {
-    const binding = inspectProjectStorage(root).find((item) => dirname(item.sessionDirectory) === resolve(baseDir));
+    const binding = inspectProjectStorage(root).find(
+        (item) => dirname(item.sessionDirectory) === executionAccountStoragePath(baseDir),
+    );
     if (binding) return binding.sessionDirectory;
     let canonicalRoot = resolve(root);
     try {
@@ -121,7 +124,7 @@ export function ensureProject(
     if (!stat.isDirectory()) throw new Error("Project root must be a directory");
     const canonicalRoot = realpathSync.native(enteredRoot);
     const bindings = inspectProjectStorage(canonicalRoot).filter(
-        (item) => dirname(item.sessionDirectory) === resolve(baseDir),
+        (item) => dirname(item.sessionDirectory) === executionAccountStoragePath(baseDir),
     );
     const bound = bindings.find((item) => item.root === canonicalRoot) ?? bindings[0];
     if (bound) {
@@ -329,7 +332,7 @@ export function findProject(baseDir: string, projectId: string): FileSessionProj
     if (direct) return direct;
     for (const root of inspectSessionProjectRoots(projectId)) {
         for (const binding of inspectProjectStorage(root)) {
-            if (dirname(binding.sessionDirectory) !== resolve(baseDir)) continue;
+            if (dirname(binding.sessionDirectory) !== executionAccountStoragePath(baseDir)) continue;
             const project = projects.find((item) => item.projectId === binding.sessionProjectId);
             if (project) return project;
         }
@@ -343,7 +346,8 @@ export function relatedSessionProjects(baseDir: string, projectId: string): File
     const ids = new Set([projectId]);
     for (const root of roots)
         for (const binding of inspectProjectStorage(root)) {
-            if (dirname(binding.sessionDirectory) === resolve(baseDir)) ids.add(binding.sessionProjectId);
+            if (dirname(binding.sessionDirectory) === executionAccountStoragePath(baseDir))
+                ids.add(binding.sessionProjectId);
         }
     return projects.filter((project) => ids.has(project.projectId));
 }
@@ -561,13 +565,16 @@ export class FileSessionManifestCache {
         if (previous) {
             if (previous.path !== path) this.#manifestIdsByPath.delete(previous.path);
             for (const segment of previous.manifest.segments) {
-                this.#manifestIdsByTranscriptPath.delete(resolve(segment.transcriptPath));
+                this.#manifestIdsByTranscriptPath.delete(executionAccountStoragePath(segment.transcriptPath));
             }
         }
         this.#manifests.set(manifest.runwieldSessionId, { path, manifest: structuredClone(manifest), fingerprint });
         this.#manifestIdsByPath.set(path, manifest.runwieldSessionId);
         for (const segment of manifest.segments) {
-            this.#manifestIdsByTranscriptPath.set(resolve(segment.transcriptPath), manifest.runwieldSessionId);
+            this.#manifestIdsByTranscriptPath.set(
+                executionAccountStoragePath(segment.transcriptPath),
+                manifest.runwieldSessionId,
+            );
         }
     }
 
@@ -591,13 +598,15 @@ export class FileSessionManifestCache {
     }
 
     findByTranscriptPath(transcriptPath: string): { path: string; manifest: FileSessionManifest } | null {
-        const resolvedTranscriptPath = resolve(transcriptPath);
+        const resolvedTranscriptPath = executionAccountStoragePath(transcriptPath);
         const cachedId = this.#manifestIdsByTranscriptPath.get(resolvedTranscriptPath);
         const cached = cachedId ? this.#manifests.get(cachedId) : undefined;
         if (cached) {
             const found = this.readPath(cached.path);
             if (
-                found?.manifest.segments.some((segment) => resolve(segment.transcriptPath) === resolvedTranscriptPath)
+                found?.manifest.segments.some(
+                    (segment) => executionAccountStoragePath(segment.transcriptPath) === resolvedTranscriptPath,
+                )
             ) {
                 return found;
             }
@@ -611,7 +620,9 @@ export class FileSessionManifestCache {
         }
         if (
             recovery.version !== FILE_SESSION_STORE_VERSION ||
-            !recovery.segments.some((segment) => resolve(segment.transcriptPath) === resolvedTranscriptPath)
+            !recovery.segments.some(
+                (segment) => executionAccountStoragePath(segment.transcriptPath) === resolvedTranscriptPath,
+            )
         )
             return null;
         const project = this.#project(recovery.projectId);

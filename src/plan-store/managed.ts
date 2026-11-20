@@ -237,7 +237,11 @@ export async function mutateManagedPlan(cwd: string, command: ProjectStoreComman
         if (!sameProjectStoreBinding(retained.binding, owner.binding))
             throw new Error("Managed operation owner changed.");
         const result = await owner.execute(retained.command).catch((error) => {
-            if (command.kind === "restore-history" && error instanceof ProjectStorePreconditionError)
+            if (
+                error instanceof ProjectStorePreconditionError &&
+                (command.kind === "restore-history" ||
+                    (command.kind === "author-plan" && command.input.expectedRevision === undefined))
+            )
                 writeJsonAtomically(path, { ...retained, acknowledged: true });
             throw error;
         });
@@ -256,7 +260,7 @@ export async function mutateManagedPlan(cwd: string, command: ProjectStoreComman
 }
 export async function authorManagedPlan(cwd: string, input: PlanAuthoringInput): Promise<void> {
     await client(cwd, true);
-    const prior = await readManagedPlan(cwd, input.planName);
+    const prior = input.expectedRevision === undefined ? null : await readManagedPlan(cwd, input.planName);
     await mutateManagedPlan(cwd, {
         kind: "author-plan",
         operationId: randomUUID(),
@@ -482,6 +486,20 @@ export async function readManagedDocument(
     const result = (await (await client(cwd, true)).execute({ kind: "read-documents", planId, resource })).result;
     if (!("documentView" in result)) throw new Error("Managed Plan document is unavailable.");
     return result.documentView;
+}
+export async function saveManagedDocumentBatch(
+    cwd: string,
+    edits: import("./documents.ts").PreparedPlanDocumentEdit[],
+) {
+    const first = edits[0];
+    if (!first) throw new Error("Document batch is empty.");
+    await mutateManagedPlan(cwd, {
+        kind: "edit-documents",
+        operationId: randomUUID(),
+        planId: first.planId,
+        expectedRevision: first.expectedRevision,
+        edits,
+    });
 }
 export async function saveManagedDocument(
     planId: string,

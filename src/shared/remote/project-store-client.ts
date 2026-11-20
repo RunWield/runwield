@@ -22,7 +22,14 @@ export class ProjectStoreClient {
             body: JSON.stringify(request),
             signal,
         });
-        if (response.status === 412) throw new ProjectStorePreconditionError("Plan revision changed before restore.");
+        if (response.status === 412)
+            throw new ProjectStorePreconditionError(
+                command.kind === "author-plan"
+                    ? "Plan already exists."
+                    : command.kind === "edit-documents"
+                      ? "A Plan document changed before the edit."
+                      : "Plan revision changed before restore.",
+            );
         if (!response.ok)
             throw new Error(`Project store request refused (${response.status}); retain its operation identity.`);
         const reply: ProjectStoreReply = JSON.parse(await readProjectStoreBody(response));

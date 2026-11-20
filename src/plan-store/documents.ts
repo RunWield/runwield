@@ -16,6 +16,7 @@ import {
     listPlanPackages,
     type PackageResourceRole,
     type LoadedPlanPackage,
+    type PlanPackageBatchWrite,
 } from "./packages.ts";
 import {
     assertSharedPlanWriteAllowed,
@@ -83,6 +84,55 @@ export async function reviewUpdateForDocumentChanges(
 ) {
     if (changes.every(({ previous, next }) => sameReviewedMarkdown(previous, next))) return;
     return await reopenedPackageReview(plan);
+}
+
+export interface PreparedPlanDocumentEdit {
+    planId: string;
+    resource: string;
+    expectedRevision: string;
+    body: string;
+}
+
+/** Validate all selected generations before publishing prose and review state together. */
+export async function savePlanDocumentBatch(edits: PreparedPlanDocumentEdit[]) {
+    const owner = currentPackageProject();
+    if (!owner || !edits.length) throw new Error("A document batch requires an admitted Project and edits.");
+    const grouped = Map.groupBy(edits, (edit) => edit.planId);
+    await packageWorkflowLocks(
+        [...grouped.keys()].map((planId) => ({ planId })),
+        async () => {
+            const writes: PlanPackageBatchWrite[] = [];
+            for (const [planId, changes] of grouped) {
+                const plan = await selectedPackage({ planId });
+                if (plan.metadata.archive && !plan.metadata.archive.restoredAt)
+                    throw new Error("This Plan package is archived.");
+                assertSharedPlanWriteAllowed(await packageController(plan));
+                const revision = packageWorkflowRevision(plan);
+                const previous = packageDocumentText(plan.documents);
+                const documents = { ...previous };
+                const changed = [];
+                const seen = new Set<string>();
+                for (const edit of changes) {
+                    if (edit.expectedRevision !== revision)
+                        throw new StalePlanWriteError(edit.expectedRevision, revision);
+                    const doc = plan.documents.find((item) => item.name === edit.resource);
+                    if (!doc || seen.has(doc.name)) throw new Error("Unknown or duplicate Plan document.");
+                    if (/^\ufeff?---\s*\r?\n/.test(edit.body))
+                        throw new Error("Live Plan documents must not contain YAML front matter.");
+                    seen.add(doc.name);
+                    changed.push({ previous: previous[doc.name]!, next: edit.body });
+                    documents[doc.name] = edit.body;
+                }
+                const review = await reviewUpdateForDocumentChanges(plan, changed);
+                writes.push({
+                    before: { metadata: plan.metadata, documents: previous },
+                    metadata: { ...plan.metadata, ...review, revision: plan.metadata.revision + 1 },
+                    documents,
+                });
+            }
+            await commitPlanPackageBatch(owner, writes);
+        },
+    );
 }
 
 export async function savePlanDocument(

@@ -1,4 +1,5 @@
 import { createInitialSessionManifest } from "./file-session-catalog-manifest.ts";
+import { executionAccountStoragePath } from "../project-identity.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { readFileSync, statSync } from "node:fs";
@@ -53,7 +54,7 @@ export { FILE_SESSION_STORE_VERSION } from "./file-session-storage.ts";
  */
 export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions = {}): LocalFileSessionStore {
     requireLocalSessionWriter();
-    const baseDir = options.baseDir || getRunWieldSessionsBaseDir();
+    const baseDir = executionAccountStoragePath(options.baseDir || getRunWieldSessionsBaseDir());
     ensurePrivateDir(baseDir);
     const locks = new Map<string, HeldFileLock>();
     const manifests = new FileSessionManifestCache(baseDir);
@@ -68,7 +69,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
         const safe = await readCatalogSafeRootSessionLocator({
             cwd: locator.transcriptCwd,
             sessionDir,
-            sessionPath: locator.transcriptPath,
+            sessionPath: executionAccountStoragePath(locator.transcriptPath),
         });
         const catalogLock = openNativeFileLock(catalogLockPath(sessionDir, safe.sessionPath));
         if (!catalogLock.tryLockSync(true)) {
@@ -319,7 +320,9 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                 const found = manifests.findByTranscriptPath(locator.transcriptPath);
                 if (!found || !store.getProjectById(found.manifest.projectId)) return null;
                 const segment = found.manifest.segments.find(
-                    (candidate) => resolve(candidate.transcriptPath) === resolve(String(locator.transcriptPath)),
+                    (candidate) =>
+                        executionAccountStoragePath(candidate.transcriptPath) ===
+                        executionAccountStoragePath(String(locator.transcriptPath)),
                 );
                 if (!segment) return null;
                 if (locator.projectId && !sessionProjectMatches(baseDir, found.manifest.projectId, locator.projectId))
@@ -531,7 +534,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
             const known = new Set(
                 store
                     .listSessionTranscriptSegments(orphanOptions.runwieldSessionId)
-                    .map((segment) => resolve(segment.transcriptPath)),
+                    .map((segment) => executionAccountStoragePath(segment.transcriptPath)),
             );
             const found = manifests.resolve(orphanOptions.runwieldSessionId, orphanOptions.projectId);
             if (!found) return [];
@@ -564,7 +567,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
         },
         async inspectSegmentRolloverRecovery(rolloverOptions) {
             const path = rolloverOptions.successorTranscriptPath
-                ? resolve(rolloverOptions.successorTranscriptPath)
+                ? executionAccountStoragePath(rolloverOptions.successorTranscriptPath)
                 : null;
             let successorExists = false;
             if (path) {
@@ -580,7 +583,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
             }
             const committed = store
                 .listSessionTranscriptSegments(rolloverOptions.runwieldSessionId)
-                .find((segment) => resolve(segment.transcriptPath) === path);
+                .find((segment) => executionAccountStoragePath(segment.transcriptPath) === path);
             if (committed) {
                 return {
                     state: "database_ahead",
@@ -612,7 +615,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                     };
         },
         async discardOrphanRolloverCandidate(orphanOptions) {
-            const path = resolve(orphanOptions.transcriptPath);
+            const path = executionAccountStoragePath(orphanOptions.transcriptPath);
             if (store.findSessionByLocator({ transcriptPath: path })) {
                 throw new Error("Committed Session transcript cannot be discarded");
             }
@@ -638,7 +641,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                 sessionDir: project.remote
                     ? sessionDirForProject(baseDir, project)
                     : sessionDirForCheckout(baseDir, locator.transcriptCwd),
-                sessionPath: locator.transcriptPath,
+                sessionPath: executionAccountStoragePath(locator.transcriptPath),
             });
         },
         ...createFileSessionControl({ baseDir, locks, manifests, now: options.now }),

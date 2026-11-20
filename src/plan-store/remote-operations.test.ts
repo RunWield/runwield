@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { equal, deepEqual, rejects } from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { join } from "node:path";
-import { readFile, writeFile, unlink, mkdtemp, rm } from "node:fs/promises";
+import { readFile, writeFile, unlink, mkdtemp, rm, rename } from "node:fs/promises";
 import { PreparedProjectStore, authorLocalPlan, loadPlan, savePlanProse } from "./index.ts";
 import { packageFixture, startDriver } from "../shared/testing/plan-package-fixture.ts";
 
@@ -257,7 +257,6 @@ test("a registered home-only Project authors and edits Plans without a source ch
 
 import { publicationFixture } from "../shared/workflow/testing/package-publication-fixture.ts";
 import { git } from "../shared/git-test-fixture.ts";
-import { rename } from "node:fs/promises";
 import { ok } from "node:assert/strict";
 
 test("home-owned snapshot publication retains frozen documents without touching the execution checkout", async () => {
@@ -752,7 +751,7 @@ test("managed milestone replay returns the first committed revision after later 
 /** Hold the actual owner response after its operation commits and before execution receives it. */
 function observeOwnerResponse(
     endpoint: string,
-    observe: (kind: string, response: Response) => Response | Promise<Response>,
+    observe: (kind: string, response: Response, operationId?: string) => Response | Promise<Response>,
 ) {
     return Bun.serve({
         port: 0,
@@ -761,7 +760,7 @@ function observeOwnerResponse(
             const path = new URL(request.url).pathname;
             const command = path === "/project-store" ? (await request.clone().json()).command : null;
             const upstream = await fetch(new Request(new URL(path, endpoint), request));
-            return command ? await observe(command.kind, upstream) : upstream;
+            return command ? await observe(command.kind, upstream, command.operationId) : upstream;
         },
     });
 }
@@ -772,7 +771,9 @@ test("managed authorship retries a lost result and can reuse the name after rena
     await withProcessGlobalTestLock(async () => {
         const f = await composedRemoteFixture();
         let lost = false;
-        const proxy = observeOwnerResponse(f.endpoint, (kind, response) => {
+        const requests: string[] = [];
+        const proxy = observeOwnerResponse(f.endpoint, (kind, response, operationId) => {
+            if (kind === "author-plan" && operationId) requests.push(operationId);
             if (kind === "author-plan" && response.ok && !lost) {
                 lost = true;
                 return new Response("lost", { status: 503 });
@@ -783,10 +784,16 @@ test("managed authorship retries a lost result and can reuse the name after rena
             const first = await f.runRaw("managed-author", proxy.port);
             equal(first.code === 0, false);
             equal(lost, true);
-            const original = await f.run("managed-author");
+            const original = await f.run("managed-author", proxy.port);
+            const duplicate = await f.runRaw("managed-author", proxy.port);
+            ok(duplicate.code !== 0);
+            ok(new TextDecoder().decode(duplicate.stderr).includes("Plan already exists."));
             equal(await f.run("managed-author-rename"), original);
-            const next = await f.run("managed-author");
+            const next = await f.run("managed-author", proxy.port);
             ok(original !== next);
+            equal(requests.length, 4);
+            equal(requests[0], requests[1]);
+            equal(new Set(requests).size, 3);
             const admitted = await fetch(f.endpoint + "/project-store/admit", { method: "POST", headers: f.headers });
             const binding = await admitted.json();
             const { inspectHomeProjectOwner, withHomeProjectOwner, projectStoreLocation } =
@@ -801,6 +808,58 @@ test("managed authorship retries a lost result and can reuse the name after rena
             });
         } finally {
             proxy.stop(true);
+            await f.cleanup();
+        }
+    });
+});
+
+test("managed multi-file edit resumes a dropped successful response and preserves independent source edits", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        let dropped = false;
+        const proxy = observeOwnerResponse(f.endpoint, (kind, r) => {
+            if (kind === "edit-documents" && r.ok && !dropped) {
+                dropped = true;
+                return new Response(null, { status: 503 });
+            }
+            return r;
+        });
+        try {
+            await f.run("managed-mixed-seed");
+            const edit = async (port?: number) => JSON.parse(await f.run("managed-mixed-edit", port));
+            equal((await edit(proxy.port)).isError, true);
+            equal(dropped, true);
+            const after = JSON.parse(await f.run("managed-mixed-inspect"));
+            equal(after.body, "Updated Plan");
+            equal(after.source, "Original source");
+            const source = join(f.root, "source.txt");
+            await writeFile(source, "Independent edit");
+            equal((await edit()).isError, true);
+            equal(await readFile(source, "utf8"), "Independent edit");
+            await writeFile(source, "Original source");
+            equal((await edit()).isError, undefined);
+            deepEqual(JSON.parse(await f.run("managed-mixed-inspect")), {
+                body: "Updated Plan",
+                revision: after.revision,
+                source: "Updated source",
+            });
+        } finally {
+            proxy.stop(true);
+            await f.cleanup();
+        }
+    });
+});
+
+test("managed bulk document edits publish one generation only if every Plan still matches", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        try {
+            equal(await f.run("managed-edit-documents"), "verified");
+        } finally {
             await f.cleanup();
         }
     });
@@ -848,14 +907,32 @@ test("managed pruning changes laptop records and bound execution copies while ma
             const decoy = join(localRoot, "delivered-record.md");
             const pendingBytes = await readFile(copy);
             await writeFile(decoy, pendingBytes);
+            const executionCopy = join(f.root, "parked-execution-copy.md");
             let observed = false;
-            const proxy = observeOwnerResponse(f.endpoint, async (kind, response) => {
-                if (kind === "confirm-retention" && response.ok) {
-                    deepEqual(await readFile(copy), pendingBytes);
-                    deepEqual(await readFile(decoy), pendingBytes);
-                    observed = true;
-                }
-                return response;
+            const proxy = Bun.serve({
+                port: 0,
+                hostname: "127.0.0.1",
+                async fetch(request) {
+                    const path = new URL(request.url).pathname;
+                    const forward = () => fetch(new Request(new URL(path, f.endpoint), request));
+                    if (
+                        path !== "/project-store" ||
+                        (await request.clone().json()).command?.kind !== "confirm-retention"
+                    )
+                        return await forward();
+                    // Both hosts name the same absolute path. Give each request its own file at that path.
+                    await rename(copy, executionCopy);
+                    await rename(decoy, copy);
+                    try {
+                        const response = await forward();
+                        deepEqual(await readFile(copy), pendingBytes);
+                        observed = response.ok;
+                        return response;
+                    } finally {
+                        await rename(copy, decoy);
+                        await rename(executionCopy, copy);
+                    }
+                },
             });
             let result: string;
             try {

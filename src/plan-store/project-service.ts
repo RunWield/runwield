@@ -632,6 +632,7 @@ export type ProjectStoreCommand =
     | ProjectStoreFrozenRead
     | ProjectStoreDocumentsRead
     | ProjectStoreRead
+    | (PlanMutation & { kind: "edit-documents"; edits: import("./documents.ts").PreparedPlanDocumentEdit[] })
     | ProjectStoreDocumentWrite
     | ProjectStoreHistoryRestore
     | ({ kind: "preview-retention" } & HistoryCursor)
@@ -1477,6 +1478,8 @@ export class PreparedProjectStore {
                         ),
                     );
                 const mutationPlans = [{ planId: command.planId }];
+                if (command.kind === "edit-documents")
+                    mutationPlans.push(...command.edits.map(({ planId }) => ({ planId })));
                 if ((command.kind === "reserve-recording" || command.kind === "prepare-record") && command.reference)
                     mutationPlans.push({ planId: command.reference.planId });
                 return await packageWorkflowLocks(mutationPlans, async () => {
@@ -1725,6 +1728,8 @@ export class PreparedProjectStore {
                                         saveEpicArtifact(this.cwd, plan.metadata.name, command.resource, command.body),
                                     ),
                                 );
+                            } else if (command.kind === "edit-documents") {
+                                await (await import("./documents.ts")).savePlanDocumentBatch(command.edits);
                             } else if (command.kind === "save-document") {
                                 await savePlanDocument(
                                     command.planId,

@@ -143,6 +143,57 @@ test("serialized Plan access resumes through owner validation and rejects a diff
     }
 });
 
+test("authoring and definition writes reopen readiness when the reviewed target or dependency changes", async () => {
+    const fixture = await packageFixture();
+    try {
+        await authorLocalPlan(fixture.root, { planName: "dependency", contextMarkdown: "# Dependency" });
+        for (const writer of ["author", "definition"] as const) {
+            for (const field of ["branch", "dependency"] as const) {
+                const name = writer + "-" + field;
+                const plan = { planName: name, contextMarkdown: "# Unchanged", definition: { targetBranch: "main" } };
+                await authorLocalPlan(fixture.root, plan);
+                await recordPlanEvent({
+                    cwd: fixture.root,
+                    planName: name,
+                    event: "review_approved",
+                    currentStatus: "draft",
+                });
+                await recordPlanEvent({
+                    cwd: fixture.root,
+                    planName: name,
+                    event: "readiness_passed",
+                    currentStatus: "approved",
+                });
+                const current = () => loadPlan(fixture.root, name).then((p) => p!);
+                const expectedRevision = (await current()).revision;
+                if (writer === "author") {
+                    await authorLocalPlan(fixture.root, { ...plan, expectedRevision });
+                    equal((await current()).attrs.status, "ready_for_work");
+                    await authorLocalPlan(fixture.root, {
+                        ...plan,
+                        ...(field === "branch"
+                            ? { definition: { targetBranch: "next" } }
+                            : { dependencies: ["dependency"] }),
+                        expectedRevision: (await current()).revision,
+                    });
+                } else {
+                    await savePlanDefinition(
+                        fixture.root,
+                        name,
+                        field === "branch" ? { targetBranch: "next" } : { dependencies: ["dependency"] },
+                        { expectedRevision },
+                    );
+                }
+                equal((await current()).attrs.status, "draft");
+                if (field === "branch") equal((await current()).attrs.targetBranch, "next");
+                else deepEqual((await current()).attrs.dependencies, ["dependency"]);
+            }
+        }
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
 test("execution reservation binds the target once and resumes frozen documents after live edits", async () => {
     const fixture = await packageFixture();
     try {
@@ -290,6 +341,15 @@ test("rename preserves identity and refuses a stale definition without replacing
         await authorLocalPlan(fixture.root, { planName: "old", contextMarkdown: "# Original\n" });
         const before = (await loadPlan(fixture.root, "old"))!;
         await renamePlan(fixture.root, before.attrs.planId!, "new", before.revision);
+        equal(await loadPlan(fixture.root, "old"), null);
+        await rejects(
+            authorLocalPlan(fixture.root, {
+                planName: "old",
+                expectedRevision: before.revision,
+                contextMarkdown: "# Stale edit",
+            }),
+            /changed|stale|revision/i,
+        );
         equal(await loadPlan(fixture.root, "old"), null);
         const renamed = await findPlanById(fixture.root, before.attrs.planId!);
         equal(renamed.name, "new");
@@ -477,5 +537,55 @@ test("Epic publication keeps only the Markdown retained by its integration gate"
         }
     } finally {
         await fixture.cleanup();
+    }
+});
+
+test("another review can reconcile the journal only after its live owner releases the Plan", async () => {
+    const { create, startDriver } = await import("../shared/testing/plan-package-fixture.ts");
+    const { planPackageJournalDirectory } = await import("./packages.ts");
+    const { withPackageWorkflow } = await import("./workflows.ts");
+    const fs = await import("node:fs/promises");
+    const f = await packageFixture();
+    try {
+        const plan = await create(f.identity);
+        const { runPlanReviewDecisionTransition } = await import("./transitions.ts");
+        const contender = startDriver(
+            {
+                identity: f.identity,
+                command: "review",
+                barrier: join(f.root, "start-contender"),
+            },
+            new URL("./testing/review-contention.ts", import.meta.url),
+        );
+        try {
+            await contender.ready();
+            const result = await withPackageWorkflow(
+                f.root,
+                { identity: f.identity, planId: plan.metadata.planId, expectedRevision: plan.metadata.revision },
+                () =>
+                    runPlanReviewDecisionTransition({
+                        projectRoot: f.root,
+                        planName: plan.metadata.name,
+                        approved: true,
+                        decide: async () => {
+                            const directory = planPackageJournalDirectory(f.identity);
+                            const [owned] = await fs.readdir(directory);
+                            const journal = await fs.readFile(join(directory, owned!), "utf8");
+                            await fs.writeFile(join(f.root, "start-contender"), "");
+                            await contender.ready("waiting for lock");
+                            equal(await fs.readFile(join(directory, owned!), "utf8"), journal);
+                        },
+                    }),
+            );
+            equal(result.status, "committed");
+            const second = await contender.done;
+            equal(second.code, 0, second.output + second.errors);
+            equal(JSON.parse(second.output.trim().split("\n").at(-1)!).result.status, "committed");
+            deepEqual(await fs.readdir(planPackageJournalDirectory(f.identity)), []);
+        } finally {
+            if (contender.child.exitCode === null) contender.child.kill();
+        }
+    } finally {
+        await f.cleanup();
     }
 });

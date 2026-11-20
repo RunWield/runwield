@@ -4,7 +4,7 @@ import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as 
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { match as assertMatch, throws as assertThrows } from "node:assert/strict";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { createMultiFileEditTool, type MultiFileEditParams } from "../multi_file_edit.ts";
 
 type MultiFileEditTool = ReturnType<typeof createMultiFileEditTool>;
@@ -127,9 +127,36 @@ test("multi_file_edit uses canonical Plan operations and rolls back an earlier e
     try {
         await authorLocalPlan(fixture.root, { planName: "first", contextMarkdown: "# First\n\noriginal\n" });
         await authorLocalPlan(fixture.root, { planName: "second", contextMarkdown: "# Second\n\noriginal\n" });
+        const { recordPlanEvent } = await import("../../plan-store/index.ts");
+        await recordPlanEvent({
+            cwd: fixture.root,
+            planName: "first",
+            event: "review_approved",
+            currentStatus: "draft",
+        });
+        await recordPlanEvent({
+            cwd: fixture.root,
+            planName: "first",
+            event: "readiness_passed",
+            currentStatus: "approved",
+        });
         const first = (await loadPlan(fixture.root, "first"))!;
         const second = (await loadPlan(fixture.root, "second"))!;
         const tool = createMultiFileEditTool(fixture.root);
+        const metadata = join(dirname(first.path), "plan.wld.json");
+        const record = join(dirname(dirname(dirname(first.path))), "project.wld.json");
+        for (const protectedPath of [metadata, record]) {
+            const before = await fsReadFile(protectedPath, "utf8");
+            const refused = await executeMultiFileEdit(tool, {
+                edits: [
+                    { path: first.path, oldText: "original", newText: "partial" },
+                    { path: protectedPath, oldText: before, newText: "{}" },
+                ],
+            });
+            assertEquals(refused.isError, true);
+            assertEquals(await fsReadFile(protectedPath, "utf8"), before);
+            assertEquals((await loadPlan(fixture.root, "first"))!.markdown, first.markdown);
+        }
         const failed = await executeMultiFileEdit(tool, {
             edits: [
                 { path: first.path, oldText: "original", newText: "changed" },
@@ -138,6 +165,8 @@ test("multi_file_edit uses canonical Plan operations and rolls back an earlier e
         });
         assertEquals(failed.isError, true);
         assertEquals((await loadPlan(fixture.root, "first"))!.markdown, first.markdown);
+        assertEquals((await loadPlan(fixture.root, "first"))!.attrs.status, "ready_for_work");
+        assertEquals((await loadPlan(fixture.root, "first"))!.revision, first.revision);
         const succeeded = await executeMultiFileEdit(tool, {
             edits: [
                 { path: first.path, oldText: "original", newText: "changed" },
@@ -147,6 +176,7 @@ test("multi_file_edit uses canonical Plan operations and rolls back an earlier e
         assertEquals(succeeded.isError, undefined);
         assertEquals((await loadPlan(fixture.root, "first"))!.markdown, "# First\n\nchanged\n");
         assertEquals((await loadPlan(fixture.root, "second"))!.attrs.status, "draft");
+        assertEquals((await loadPlan(fixture.root, "first"))!.attrs.status, "draft");
     } finally {
         await fixture.cleanup();
     }

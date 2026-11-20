@@ -33,6 +33,74 @@ try {
         ok(plan?.attrs.planId);
         if (command === "managed-author-rename") await renamePlan(input.cwd, "repeatable", "renamed", plan.revision);
         console.log(plan.attrs.planId);
+    } else if (command.startsWith("managed-mixed-")) {
+        const { authorLocalPlan } = await import("../../plan-store/index.ts");
+        if (command === "managed-mixed-seed") {
+            await authorLocalPlan(input.cwd, { planName: "mixed", contextMarkdown: "Original Plan" });
+            await writeFile(join(input.cwd, "source.txt"), "Original source");
+        } else {
+            const plan = await loadPlan(input.cwd, "mixed");
+            ok(plan);
+            if (command === "managed-mixed-inspect")
+                console.log(
+                    JSON.stringify({
+                        body: plan.body,
+                        revision: plan.revision,
+                        source: await readFile(join(input.cwd, "source.txt"), "utf8"),
+                    }),
+                );
+            else {
+                const { createMultiFileEditTool } = await import("../../tools/multi_file_edit.ts");
+                const tool = createMultiFileEditTool(input.cwd);
+                const result = await tool.execute(
+                    "edit-mixed",
+                    {
+                        edits: [
+                            { path: "source.txt", oldText: "Original source", newText: "Updated source" },
+                            { path: plan.path, oldText: "Original Plan", newText: "Updated Plan" },
+                        ],
+                    },
+                    new AbortController().signal,
+                    () => {},
+                    {} as Parameters<typeof tool.execute>[4],
+                );
+                console.log(JSON.stringify(result));
+            }
+        }
+    } else if (command === "managed-edit-documents") {
+        const { authorLocalPlan, operatePlanFile, savePlanFileBatch, savePlanProse } =
+            await import("../../plan-store/index.ts");
+        const prepared = [];
+        for (const name of ["first", "second"]) {
+            await authorLocalPlan(input.cwd, { planName: name, contextMarkdown: "Original" });
+            await recordPlanEvent({ cwd: input.cwd, planName: name, event: "review_approved", currentStatus: "draft" });
+            await recordPlanEvent({
+                cwd: input.cwd,
+                planName: name,
+                event: "readiness_passed",
+                currentStatus: "approved",
+            });
+            const plan = await loadPlan(input.cwd, name);
+            ok(plan);
+            const selected = await operatePlanFile(input.cwd, { path: plan.path, mode: "prepare-edit" });
+            ok(selected?.document);
+            prepared.push({ ...selected.document, body: "Changed" });
+        }
+        await savePlanProse(input.cwd, "second", "Intervening edit", prepared[1]!.expectedRevision);
+        await rejects(savePlanFileBatch(input.cwd, prepared));
+        equal((await loadPlan(input.cwd, "first"))?.revision, prepared[0]!.expectedRevision);
+        equal((await loadPlan(input.cwd, "first"))?.attrs.status, "ready_for_work");
+        const second = await loadPlan(input.cwd, "second");
+        ok(second);
+        equal(second.body, "Intervening edit");
+        prepared[1]!.expectedRevision = second.revision;
+        await savePlanFileBatch(input.cwd, prepared);
+        for (const name of ["first", "second"]) {
+            const changed = await loadPlan(input.cwd, name);
+            equal(changed?.body, "Changed");
+            equal(changed?.attrs.status, "draft");
+        }
+        console.log("verified");
     } else if (command === "manual-prune-seed" || command === "managed-prune" || command === "manual-prune-list") {
         const { runWorkRecordsCommand } = await import("../../cmd/wr/index.ts");
         const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");

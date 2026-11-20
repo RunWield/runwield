@@ -1,4 +1,10 @@
-import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
+import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
+import { ensurePrivateDir, writeJsonAtomically, syncParentDirectory } from "../shared/private-json-file.ts";
+import { openNativeFileLock } from "../shared/native-file-lock.ts";
+import { ProjectStorePreconditionError } from "../shared/remote/project-store-client.ts";
+import { readFile as fsReadFile, unlink, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module tools/multi_file_edit
  *
@@ -12,7 +18,7 @@ import type { AgentToolResult, ToolDefinition } from "@earendil-works/pi-coding-
 import { Type } from "typebox";
 import { isAbsolute, join } from "node:path";
 import { getHomeDir } from "../constants.ts";
-import { operatePlanFile } from "../plan-store/index.ts";
+import { operatePlanFile, resolvePlanFileTarget, savePlanFileBatch, type PlanFileResult } from "../plan-store/index.ts";
 
 const fileEditSchema = Type.Object(
     {
@@ -79,10 +85,99 @@ interface EditMatch {
     editIdx: number;
 }
 
-interface WrittenSnapshot {
+interface PreparedFileEdit {
     path: string;
-    content: string;
-    writtenPlanContent?: string;
+    original: string;
+    replacement: string;
+    plan?: PlanFileResult;
+}
+
+async function readOrdinarySource(path: string) {
+    try {
+        return await fsReadFile(path, "utf8");
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT")
+            throw new Error("Could not find file: " + path);
+        throw error;
+    }
+}
+
+interface EditTarget {
+    path: string;
+    label: string;
+    edits: MultiFileEdit[];
+    owner?: PlanFileResult;
+}
+
+function preparedDocuments(edits: PreparedFileEdit[]) {
+    return edits.flatMap((edit) => (edit.plan?.document ? [{ ...edit.plan.document, body: edit.replacement }] : []));
+}
+
+async function applySourceEdit(cwd: string, edit: PreparedFileEdit, resume = false) {
+    await withFileMutationQueue(edit.path, async () => {
+        if (edit.plan) {
+            await operatePlanFile(cwd, {
+                path: edit.path,
+                mode: "edit",
+                oldText: edit.original,
+                newText: edit.replacement,
+            });
+        } else {
+            const current = await readOrdinarySource(edit.path);
+            if (resume && current === edit.replacement) return;
+            if (current !== edit.original) throw new Error("File changed before edit: " + edit.path);
+            await fsWriteFile(edit.path, edit.replacement);
+        }
+    });
+}
+
+/** Preserve the owner preconditions until both the remote Plan and execution files are settled. */
+async function applyManagedMixedEdit(
+    cwd: string,
+    key: string,
+    targets: EditTarget[],
+    prepare: () => Promise<PreparedFileEdit[]>,
+) {
+    const dir = join((await enterProjectRuntime(cwd)).selected.transitionJournalsDir, "managed-file-edits");
+    ensurePrivateDir(dir);
+    const journalPath = join(dir, createHash("sha256").update(key).digest("hex") + ".json");
+    const lock = openNativeFileLock(journalPath + ".lock");
+    try {
+        await lock.lock(true);
+        let edits: PreparedFileEdit[];
+        try {
+            edits = JSON.parse(await fsReadFile(journalPath, "utf8"));
+        } catch (error) {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+            edits = await prepare();
+            writeJsonAtomically(journalPath, edits);
+        }
+        if (
+            edits.length !== targets.length ||
+            edits.some(
+                (item, i) =>
+                    item.path !== targets[i].path ||
+                    item.plan?.document?.planId !== targets[i].owner?.document?.planId ||
+                    item.plan?.document?.resource !== targets[i].owner?.document?.resource,
+            )
+        )
+            throw new Error("A retained edit target changed. Restore the original target before retrying.");
+        try {
+            await savePlanFileBatch(cwd, preparedDocuments(edits));
+        } catch (error) {
+            if (error instanceof ProjectStorePreconditionError) {
+                await unlink(journalPath);
+                syncParentDirectory(journalPath);
+            }
+            throw error;
+        }
+        for (const edit of edits) if (!edit.plan) await applySourceEdit(cwd, edit, true);
+        await unlink(journalPath);
+        syncParentDirectory(journalPath);
+        return edits;
+    } finally {
+        lock.close();
+    }
 }
 
 interface MultiFileEditDetails {
@@ -107,10 +202,6 @@ interface InputRecord {
 
 function isInputRecord(input: InputCandidate): input is InputRecord {
     return Boolean(input) && typeof input === "object" && !Array.isArray(input);
-}
-
-function coerceErrorMessage(value: null | undefined | string | number | boolean | Error): string {
-    return value instanceof Error ? value.message : String(value);
 }
 
 /**
@@ -340,63 +431,61 @@ export function createMultiFileEditTool(cwd: string) {
             const typedParams: MultiFileEditParams = params;
             const baseDir = typedParams.root ? resolveRoot(typedParams.root, cwd) : cwd;
             const groupedEdits = groupEditsByPath(typedParams.edits);
-            const diffSections: string[] = [];
-            let firstChangedLine: number | undefined;
-            let replacementCount = 0;
-
-            const writtenSnapshots: WrittenSnapshot[] = [];
-            const applyAllEdits = async () => {
-                for (const [filePath, fileEdits] of groupedEdits) {
-                    const absolutePath = resolveToBaseDir(filePath, baseDir);
-                    await withFileMutationQueue(absolutePath, async () => {
-                        try {
-                            await fsStat(absolutePath);
-                        } catch (err) {
-                            const msg =
-                                err instanceof Error && "code" in err && err.code === "ENOENT"
-                                    ? `Could not find file: ${filePath}`
-                                    : `Could not access file: ${filePath}. ${coerceErrorMessage(
-                                          err instanceof Error ? err : String(err),
-                                      )}`;
-                            throw new Error(msg);
-                        }
-
-                        const owned = await operatePlanFile(cwd, { path: absolutePath, mode: "read" });
-                        const rawContent = owned ? owned.content! : await fsReadFile(absolutePath, "utf8");
-                        const { bom, text: content } = stripBom(rawContent);
-                        const originalEnding = detectLineEnding(content);
-                        const normalizedContent = normalizeToLF(content);
-                        const { baseContent, newContent } = applyEdits(normalizedContent, fileEdits, filePath);
-                        const finalContent = bom + restoreLineEndings(newContent, originalEnding);
-
-                        if (owned) {
-                            await operatePlanFile(cwd, {
-                                path: absolutePath,
-                                mode: "edit",
-                                oldText: rawContent,
-                                newText: finalContent,
-                            });
-                            writtenSnapshots.push({
-                                path: absolutePath,
-                                content: rawContent,
-                                writtenPlanContent: finalContent,
-                            });
-                        } else {
-                            writtenSnapshots.push({ path: absolutePath, content: rawContent });
-                            await fsWriteFile(absolutePath, finalContent);
-                        }
-
-                        const diffResult = generateDiffString(baseContent, newContent);
-                        diffSections.push(`--- ${filePath}\n${diffResult.diff}`);
-                        if (firstChangedLine === undefined) firstChangedLine = diffResult.firstChangedLine;
-                        replacementCount += fileEdits.length;
+            const written: PreparedFileEdit[] = [];
+            try {
+                const targets: EditTarget[] = [];
+                for (const [label, edits] of groupedEdits) {
+                    const targetPath = await resolvePlanFileTarget(baseDir, label);
+                    if (targets.some((target) => target.path === targetPath))
+                        throw new Error("Duplicate file reached through different paths.");
+                    targets.push({
+                        path: targetPath,
+                        label,
+                        edits,
+                        owner: await operatePlanFile(cwd, { path: targetPath, mode: "prepare-edit" }),
                     });
                 }
-            };
-
-            try {
-                await applyAllEdits();
-
+                const prepare = async () => {
+                    const result: PreparedFileEdit[] = [];
+                    for (const target of targets) {
+                        const original = target.owner?.content ?? (await readOrdinarySource(target.path));
+                        const { bom, text } = stripBom(original);
+                        const { newContent } = applyEdits(normalizeToLF(text), target.edits, target.label);
+                        const replacement = bom + restoreLineEndings(newContent, detectLineEnding(text));
+                        result.push({ path: target.path, original, replacement, plan: target.owner });
+                    }
+                    return result;
+                };
+                const remote = remoteProjectOwner();
+                const mixed =
+                    remote?.kind === "managed-remote" &&
+                    targets.some((t) => t.owner?.document) &&
+                    targets.some((t) => !t.owner);
+                let prepared: PreparedFileEdit[];
+                if (mixed) {
+                    const key = JSON.stringify({ owner: remote.identity, cwd, baseDir, edits: typedParams.edits });
+                    prepared = await applyManagedMixedEdit(cwd, key, targets, prepare);
+                } else {
+                    prepared = await prepare();
+                    for (const edit of prepared)
+                        if (!edit.plan?.document) {
+                            await applySourceEdit(cwd, edit);
+                            written.push(edit);
+                        }
+                    const documents = preparedDocuments(prepared);
+                    if (documents.length) await savePlanFileBatch(cwd, documents);
+                }
+                const diffSections = [];
+                let firstChangedLine;
+                for (const [i, edit] of prepared.entries()) {
+                    const diff = generateDiffString(
+                        normalizeToLF(stripBom(edit.original).text),
+                        normalizeToLF(stripBom(edit.replacement).text),
+                    );
+                    diffSections.push(`--- ${targets[i].label}\n${diff.diff}`);
+                    firstChangedLine ??= diff.firstChangedLine;
+                }
+                const replacementCount = typedParams.edits.length;
                 const fileCount = groupedEdits.size;
                 const replacementNoun = replacementCount === 1 ? "replacement" : "replacements";
                 const fileNoun = fileCount === 1 ? "file" : "files";
@@ -410,20 +499,21 @@ export function createMultiFileEditTool(cwd: string) {
                     details: { diff: diffSections.join("\n\n"), firstChangedLine },
                 };
             } catch (err) {
-                for (const snapshot of writtenSnapshots.toReversed()) {
+                for (const edit of written.toReversed()) {
                     try {
-                        if (snapshot.writtenPlanContent !== undefined) {
-                            await operatePlanFile(cwd, {
-                                path: snapshot.path,
-                                mode: "edit",
-                                oldText: snapshot.writtenPlanContent,
-                                newText: snapshot.content,
-                            });
-                        } else {
-                            await fsWriteFile(snapshot.path, snapshot.content);
-                        }
+                        await withFileMutationQueue(edit.path, async () => {
+                            if (edit.plan)
+                                await operatePlanFile(cwd, {
+                                    path: edit.path,
+                                    mode: "edit",
+                                    oldText: edit.replacement,
+                                    newText: edit.original,
+                                });
+                            else if ((await fsReadFile(edit.path, "utf8")) === edit.replacement)
+                                await fsWriteFile(edit.path, edit.original);
+                        });
                     } catch {
-                        // Preserve the original error; doctor surfaces stale partial Plan edits if rollback cannot finish.
+                        /* Preserve concurrent edits and report the original failure. */
                     }
                 }
                 const message = err instanceof Error ? err.message : String(err);

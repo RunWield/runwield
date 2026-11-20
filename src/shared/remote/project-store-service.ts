@@ -53,7 +53,12 @@ export class LaptopProjectStoreService {
                 return new Response(null, { status: 413 });
             return new Response(result, { headers: { "Content-Type": "application/json" } });
         } catch (error) {
-            if (input.command.kind === "restore-history" && error instanceof StalePlanWriteError)
+            if (
+                error instanceof StalePlanWriteError &&
+                (input.command.kind === "restore-history" ||
+                    input.command.kind === "edit-documents" ||
+                    (input.command.kind === "author-plan" && input.command.input.expectedRevision === undefined))
+            )
                 return new Response(null, { status: 412 });
             return new Response(null, { status: 409 });
         }

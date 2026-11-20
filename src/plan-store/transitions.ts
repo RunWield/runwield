@@ -267,6 +267,15 @@ async function withRepositoryTransitionResources<T>(
     return await withControllerWriteTracking(() => acquireAt(0));
 }
 
+async function reconcileInterruptedReview(projectRoot: string, planName: string, operation: string) {
+    if (currentPackageSelection() && (operation === "plan_review_approved" || operation === "plan_review_feedback"))
+        await reconcileTransitionRecoveryRecords(projectRoot, {
+            apply: true,
+            planName,
+            operations: ["plan_review_approved", "plan_review_feedback"],
+        });
+}
+
 function withTrackedPlanLock<T>(projectRoot: string, planName: string, run: () => Promise<T>): Promise<T> {
     return withControllerWriteTracking(() => withPlanLock(projectRoot, planName, run));
 }
@@ -745,6 +754,7 @@ async function runSemanticTransition<T>({
         activeTransitionIds,
         async () =>
             await withOrderedTransitionResources(projectRoot, resources, async () => {
+                await reconcileInterruptedReview(projectRoot, planName, operation);
                 const strictBefore = await loadPlanStrict(projectRoot, planName);
                 // A Plan file RunWield cannot read is a blocked precondition, not a
                 // partial transition: nothing has been applied yet, so there is
@@ -1149,6 +1159,7 @@ async function runPlanTransition<T>({
 }): Promise<TransitionResult> {
     const transitionId = crypto.randomUUID();
     return await withTrackedPlanLock(projectRoot, planName, async () => {
+        await reconcileInterruptedReview(projectRoot, planName, operation);
         const strictBefore = await loadPlanStrict(projectRoot, planName);
         // Unreadable Plan bytes are a blocked precondition, not partial work. See
         // the matching branch in runSemanticTransition: journaling this would
@@ -1403,14 +1414,6 @@ export async function runPlanReviewDecisionTransition<T>(
     },
 ): Promise<TransitionResult> {
     const operation = opts.approved ? "plan_review_approved" : "plan_review_feedback";
-    if (currentPackageSelection()) {
-        // An interrupted approval may have saved editor bytes without replacing the metadata generation.
-        await reconcileTransitionRecoveryRecords(opts.projectRoot, {
-            apply: true,
-            planName: opts.planName,
-            operations: ["plan_review_approved", "plan_review_feedback"],
-        });
-    }
     if (!opts.worktreeId) {
         return await runPlanTransition({
             projectRoot: opts.projectRoot,

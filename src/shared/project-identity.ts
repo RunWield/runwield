@@ -14,7 +14,7 @@ import {
     unlinkSync,
     writeFileSync,
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, relative, sep } from "node:path";
 import { getHomeDir } from "../constants.ts";
 import { encodeCwdForSessionDir } from "./project-directory-key.ts";
 import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
@@ -383,6 +383,29 @@ function contextFor(options: ProjectIdentityOptions): ProjectLaunchContext {
                 : context.personalOwner,
     };
 }
+/** Normalize the configured account-home prefix without following redirects inside its storage. */
+export function executionAccountStoragePath(path: string, context = contextFor({})): string {
+    const absolute = resolve(path);
+    const alias = context.configuredExecutionAccountHome;
+    if (alias) {
+        const suffix = relative(alias, absolute);
+        if (suffix !== ".." && !suffix.startsWith(".." + sep) && !isAbsolute(suffix))
+            return join(context.executionAccountHome, suffix);
+    }
+    // A saved Session locator may use another spelling of this same login home.
+    const marker = sep + ".wld" + sep + "sessions";
+    const index = absolute.indexOf(marker);
+    if (index > 0 && (absolute.length === index + marker.length || absolute[index + marker.length] === sep)) {
+        const prefix = absolute.slice(0, index);
+        if (
+            prefix !== context.executionAccountHome &&
+            lstatSync(prefix, { throwIfNoEntry: false })?.isSymbolicLink() &&
+            realpathSync(prefix) === realpathSync(context.executionAccountHome)
+        )
+            return join(context.executionAccountHome, absolute.slice(index + 1));
+    }
+    return absolute;
+}
 function checkIdentityDirectories(home: string, ...segments: string[]): string {
     let path = home;
     for (const segment of segments) {
@@ -504,7 +527,7 @@ export function inspectProjectStorage(path: string, options: ProjectIdentityOpti
 
 /** Current, verified checkout roots for a legacy Session ID; never infer membership from a remote or basename. */
 export function inspectSessionProjectRoots(sessionProjectId: string): string[] {
-    const context = projectLaunchContext();
+    const context = contextFor({});
     if (context.personalOwner.kind !== "execution-account") return [];
     const directory = checkIdentityDirectories(context.executionAccountHome, ".wld", "projects");
     let names: string[];
@@ -548,8 +571,9 @@ export function inspectSessionProjectRoots(sessionProjectId: string): string[] {
 
 /** Publish that an admitted locator now has a store before any Session is created there. */
 export function establishProjectSessionStorage(root: string, sessionProjectId: string, directory: string): void {
-    const context = projectLaunchContext();
+    const context = contextFor({});
     if (context.personalOwner.kind !== "execution-account") return;
+    directory = executionAccountStoragePath(directory, context);
     const e = evidence(root);
     if (!e.projectId) return;
     const path = recordPath(context.executionAccountHome, e.projectId);
@@ -566,6 +590,7 @@ export function establishProjectSessionStorage(root: string, sessionProjectId: s
             (item) => item.sessionProjectId === sessionProjectId && item.sessionDirectory === directory,
         );
         if (!record || !saved) throw new Error("Project storage binding changed during Session creation");
+        verifyExecutionAccountHome(context);
         saved.sessionStoreEstablished = true;
         writeJsonAtomically(path, record);
     } finally {
