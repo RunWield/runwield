@@ -5,6 +5,8 @@ services:
         build:
             context: .
             dockerfile: Containerfile
+            args:
+                BUN_VERSION: ${BUN_VERSION:?Run sh scripts/plan-server-container.sh compose to load .bun-version}
         image: runwield-plan-server:local
         restart: unless-stopped
         read_only: true

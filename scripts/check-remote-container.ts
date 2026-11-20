@@ -4,12 +4,14 @@ import { randomUUID } from "node:crypto";
 import { generateBearerCapability, hashCapability } from "../src/shared/collaboration/capabilities.ts";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
+import { readPinnedBunVersion } from "./check-bun-runtime.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { assertPlanServerImageFileList, listImageFilesystem } from "./assert-plan-server-image.ts";
 
 const engine = process.argv[2] || "docker";
 const image = process.argv[3] || "runwield-plan-server:local";
 if (!["docker", "podman"].includes(engine)) throw new Error("Use docker or podman as the container engine.");
+const bunVersion = readPinnedBunVersion();
 const name = `runwield-remote-check-${randomUUID()}`;
 const volume = `${name}-data`;
 
@@ -71,7 +73,9 @@ try {
         name,
         "/bin/sh",
         "-ec",
-        'test "$(id -u)" = 1993; test "$(bun --version)" = 1.4.4; if command -v deno; then exit 1; fi',
+        'test "$(id -u)" = 1993; actual=$(bun --version); if [ "$actual" != "$1" ]; then echo "Expected Bun $1 from .bun-version; found $actual" >&2; exit 1; fi; if command -v deno; then exit 1; fi',
+        "check-remote-runtime",
+        bunVersion,
     );
     let base = await publishedBase();
     await ready(base);

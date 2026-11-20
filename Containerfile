@@ -1,6 +1,11 @@
 # Test image. Bun has no equivalent to the former Deno filesystem/subprocess
 # permissions. Do not treat this definition as a hardened production deployment.
-FROM oven/bun:1.4.3 AS builder
+# Supply the checked-out pin via scripts/plan-server-container.sh or --build-arg.
+ARG BUN_VERSION
+FROM docker.io/oven/bun:${BUN_VERSION} AS bun-base
+
+FROM bun-base AS builder
+ARG BUN_VERSION
 WORKDIR /app
 
 COPY .bun-version bunfig.toml package.json bun.lock runtime-root.ts tsconfig*.json ./
@@ -10,10 +15,15 @@ COPY third_party ./third_party
 COPY packaging/remote ./packaging/remote
 COPY brand/logo.svg ./brand/logo.svg
 
-RUN bun scripts/check-bun-runtime.ts && bun install --frozen-lockfile --ignore-scripts
+RUN expected=$(sh scripts/read-bun-version.sh) && actual=$(bun --version) \
+    && if [ "$BUN_VERSION" != "$expected" ] || [ "$actual" != "$expected" ]; then \
+        printf 'Expected Bun %s from .bun-version; build requested %s and runs %s.\n' \
+            "$expected" "$BUN_VERSION" "$actual" >&2; exit 1; \
+    fi \
+    && bun scripts/check-bun-runtime.ts && bun install --frozen-lockfile --ignore-scripts
 RUN bun run workspace:remote:build
 
-FROM oven/bun:1.4.3
+FROM bun-base
 WORKDIR /app
 
 ENV HOME=/data \

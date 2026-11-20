@@ -35,10 +35,13 @@ it to terminate HTTPS.
 From the repository root:
 
 ```bash
-podman compose -f compose.yml up -d
+sh scripts/plan-server-container.sh compose up -d
 curl http://127.0.0.1:8080/healthz
 curl http://127.0.0.1:8080/readyz
 ```
+
+The script reads the Bun version from `.bun-version` in this checkout. It uses Podman by default; set
+`RUNWIELD_CONTAINER_ENGINE=docker` to use Docker and Docker Compose.
 
 `/healthz` reports that the server is running. `/readyz` also checks that it can open its database.
 
@@ -114,7 +117,7 @@ Project setting example in `.wld/settings.json`:
 
 ```jsonc
 {
-    "planServerUrl": "https://plans.example.com"
+    "planServerUrl": "https://plans.example.com",
 }
 ```
 
@@ -122,7 +125,7 @@ Global setting example in `~/.wld/settings.json`:
 
 ```jsonc
 {
-    "planServerUrl": "http://127.0.0.1:8080"
+    "planServerUrl": "http://127.0.0.1:8080",
 }
 ```
 
@@ -139,13 +142,13 @@ Pull, push, and unshare refuse a `--plan-server` override that does not match th
 
 1. Share an active local Plan:
 
-   ```bash
-   wld plans share my-plan
-   ```
+    ```bash
+    wld plans share my-plan
+    ```
 
-   RunWield encrypts the Plan payload, creates a remote Shared Space, writes non-secret collaboration metadata to the
-   Plan Front Matter, stores secrets locally, and prints reviewer and maintainer URLs once. If retention is enabled, the
-   command also prints the current expiry.
+    RunWield encrypts the Plan payload, creates a remote Shared Space, writes non-secret collaboration metadata to the
+    Plan Front Matter, stores secrets locally, and prints reviewer and maintainer URLs once. If retention is enabled, the
+    command also prints the current expiry.
 
 2. Send reviewer URLs to stakeholders. Reviewers open the browser page, enter a display name, add global or inline
    comments, and resolve/reopen comments as needed. Reviewer URLs can read, comment, resolve, and reopen; they cannot
@@ -153,33 +156,33 @@ Pull, push, and unshare refuse a `--plan-server` override that does not match th
 
 3. Pull feedback as a maintainer:
 
-   ```bash
-   wld plans pull my-plan
-   # or, in another checkout:
-   wld plans pull '<maintainer-url>' --to my-plan
-   ```
+    ```bash
+    wld plans pull my-plan
+    # or, in another checkout:
+    wld plans pull '<maintainer-url>' --to my-plan
+    ```
 
-   Pull decrypts the latest Revision and its comments locally, updates or creates a locked local Plan, reports current
-   expiry when present, and launches Planner or Architect with decrypted review context for incorporation.
+    Pull decrypts the latest Revision and its comments locally, updates or creates a locked local Plan, reports current
+    expiry when present, and launches Planner or Architect with decrypted review context for incorporation.
 
 4. After accepting the local Plan revision, publish it:
 
-   ```bash
-   wld plans push my-plan
-   ```
+    ```bash
+    wld plans push my-plan
+    ```
 
-   Push encrypts the current local Plan body as the next remote Revision. The same reviewer link remains valid and can
-   switch between Revisions; comments remain scoped to the Revision where they were created.
+    Push encrypts the current local Plan body as the next remote Revision. The same reviewer link remains valid and can
+    switch between Revisions; comments remain scoped to the Revision where they were created.
 
 5. When review is intentionally over and the remote Shared Space should be removed:
 
-   ```bash
-   wld plans unshare my-plan
-   ```
+    ```bash
+    wld plans unshare my-plan
+    ```
 
-   Unshare is destructive and CLI-only in v1. It requires maintainer secrets, deletes the remote Shared Space, removes
-   matching local collaboration secrets, and clears local Shared Plan Lock metadata. `--force` skips prompts but not
-   authorization or safety checks.
+    Unshare is destructive and CLI-only in v1. It requires maintainer secrets, deletes the remote Shared Space, removes
+    matching local collaboration secrets, and clears local Shared Plan Lock metadata. `--force` skips prompts but not
+    authorization or safety checks.
 
 ## Privacy model
 
@@ -208,7 +211,7 @@ state, copy the whole volume directory with ownership preserved, then run a real
 copied database before trusting the backup:
 
 ```bash
-podman compose -f compose.yml stop runwield-plan-server
+sh scripts/plan-server-container.sh compose stop runwield-plan-server
 mkdir -p backups
 backup_dir="backups/runwield-plan-server-data-$(date +%Y%m%d%H%M%S)"
 podman run --rm \
@@ -217,7 +220,7 @@ podman run --rm \
   busybox sh -c "mkdir -p /backup/$(basename "$backup_dir") && cp -a /data/. /backup/$(basename "$backup_dir")/"
 
 sqlite3 "$backup_dir/runwield-shared-spaces.sqlite" 'PRAGMA integrity_check;'
-podman compose -f compose.yml up -d
+sh scripts/plan-server-container.sh compose up -d
 curl http://127.0.0.1:8080/readyz
 ```
 
@@ -232,7 +235,7 @@ passed `PRAGMA integrity_check;`, start the service, then verify both SQLite int
 restore_dir="backups/runwield-plan-server-data-YYYYMMDDHHMMSS"
 sqlite3 "$restore_dir/runwield-shared-spaces.sqlite" 'PRAGMA integrity_check;'
 
-podman compose -f compose.yml stop runwield-plan-server
+sh scripts/plan-server-container.sh compose stop runwield-plan-server
 podman run --rm \
   -v runwield-plan-server-data:/data \
   -v "$PWD/$restore_dir:/restore:ro" \
@@ -246,7 +249,7 @@ podman run --rm \
   busybox sh -c 'cp -a /data/. /check/'
 sqlite3 "$restored_check_dir/runwield-shared-spaces.sqlite" 'PRAGMA integrity_check;'
 
-podman compose -f compose.yml up -d
+sh scripts/plan-server-container.sh compose up -d
 curl http://127.0.0.1:8080/readyz
 ```
 
