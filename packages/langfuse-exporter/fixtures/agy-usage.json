@@ -1,5 +1,5 @@
 {
-    "source": "src/shared/session/backends/agy-cli/fixtures/",
+    "source": "Recorded Antigravity CLI streams from v0.14.7-rc.2, now stored alongside this fixture.",
     "rows": [
         {
             "fixture": "agy-1.2.12-tool-stream.jsonl",
