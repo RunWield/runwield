@@ -99,7 +99,7 @@ interface RenderedChildLayout {
 
 interface RenderedChildContent {
     width: number;
-    lines: string[];
+    lines: readonly string[];
 }
 
 interface RenderedContainerContent {
@@ -164,7 +164,7 @@ class MeasuredContainer extends Container {
         this.renderedChildren = [];
         for (const child of this.children) {
             const cacheChild = this.cacheAllChildren || child instanceof MeasuredContainer;
-            let childLines: string[] | undefined;
+            let childLines: readonly string[] | undefined;
             if (cacheChild) {
                 const cachedChild = this.renderedLinesByChild.get(child);
                 childLines = cachedChild?.width === width ? cachedChild.lines : undefined;

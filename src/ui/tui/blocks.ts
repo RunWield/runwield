@@ -57,7 +57,7 @@ export interface ValidationHandoffState {
 type ReportRendererSlots = Record<"engineer" | "reviewer", ReportRendererSlot>;
 
 interface StyledBlockContent {
-    render(width: number): string[];
+    render(width: number): readonly string[];
     invalidate?(): void;
 }
 

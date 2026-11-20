@@ -121,8 +121,8 @@ export async function compileBun(
     const require = createRequire(import.meta.url);
     const piRoot = dirname(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))));
     const piManifest = JSON.parse(await readFile(join(piRoot, "package.json"), "utf8"));
-    if (piManifest.version !== "1.5.2") {
-        throw new Error("Codemode asset adapter requires Pi 1.5.2; requalify before upgrading.");
+    if (piManifest.version !== "1.6.0") {
+        throw new Error("Codemode asset adapter requires Pi 1.6.0; requalify before upgrading.");
     }
     const bun: BunBuildRuntime = require("bun");
     await mkdir(join(ROOT, ".ci-cache"), { recursive: true });
@@ -179,7 +179,7 @@ export async function compileBun(
                             !source.includes("export function setEmbeddedQuickJSWasmPath(path)") ||
                             !source.includes('return "./src/extensions/codemode/worker.ts";')
                         ) {
-                            throw new Error("Pi 1.5.2 codemode asset contract changed; requalify packaging.");
+                            throw new Error("Pi 1.6.0 codemode asset contract changed; requalify packaging.");
                         }
                         return {
                             contents:

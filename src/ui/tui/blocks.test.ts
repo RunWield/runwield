@@ -50,7 +50,7 @@ function visibleLength(str: string) {
  * 3. After any \x1b[0m (full reset), the bg is re-applied
  *
  */
-function assertBlockBackground(lines: string[], w: number, blockName: string) {
+function assertBlockBackground(lines: readonly string[], w: number, blockName: string) {
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const vl = visibleLength(line);
