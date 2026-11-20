@@ -118,7 +118,7 @@
         "@xterm/headless": "6.0.0",
         "@zag-js/dialog": "1.42.0",
         "@zag-js/preact": "1.45.0",
-        "astro": "7.3.5",
+        "astro": "7.4.13",
         "beautiful-mermaid": "1.1.3",
         "chalk": "6.0.0",
         "class-variance-authority": "0.7.1",
@@ -150,7 +150,7 @@
         "tailwindcss": "4.3.3",
         "typebox": "1.3.27",
         "unique-username-generator": "1.5.1",
-        "vite": "8.3.3",
+        "vite": "8.3.8",
         "yargs-parser": "22.0.0"
     },
     "devDependencies": {
