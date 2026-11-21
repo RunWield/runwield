@@ -16,7 +16,9 @@ import type {
 import type { MinimalSessionManagerLike } from "./hosted-session.ts";
 import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { open, readdir, realpath, stat as fsStat, writeFile } from "node:fs/promises";
-import { basename, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
+import { executionAccountStoragePath, inspectProjectStorage } from "../project-identity.ts";
+import { sessionDirForCheckout, sessionProjectMatches } from "./file-session-storage.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 export { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
@@ -140,7 +142,7 @@ function canonicalizeCwd(cwd: string) {
  * Resolve RunWield root session directory for a cwd.
  */
 export function getRunWieldSessionDir(cwd: string) {
-    return join(getRunWieldSessionsBaseDir(), encodeCwdForSessionDir(canonicalizeCwd(cwd)));
+    return sessionDirForCheckout(getRunWieldSessionsBaseDir(), cwd);
 }
 
 /**
@@ -438,7 +440,12 @@ export async function classifyRootSessionLocator(
         if (exactHistorical) exactHistoricalProjects.push(project);
         else if (canonicalHistorical) canonicalHistoricalProjects.push(project);
     }
-    const currentProjects = exactCurrentProjects.length > 0 ? exactCurrentProjects : canonicalCurrentProjects;
+    const bindings = inspectProjectStorage(options.cwd);
+    const boundIds = new Set(bindings.map((item) => item.sessionProjectId));
+    const candidates = exactCurrentProjects.length > 0 ? exactCurrentProjects : canonicalCurrentProjects;
+    const currentProjects = boundIds.size
+        ? candidates.filter((project) => boundIds.has(project.projectId)).slice(0, 1)
+        : candidates;
     const historicalProjects =
         exactHistoricalProjects.length > 0 ? exactHistoricalProjects : canonicalHistoricalProjects;
     if (currentProjects.length > 1 || historicalProjects.length > 1) {
@@ -479,7 +486,7 @@ export async function classifyRootSessionLocator(
         if (!inspected.activation) return { kind: "blocked", reason: "missing_activation_row" };
         return { kind: "managed", session: cataloged, project: { projectId: project.projectId, cwd: realCwd } };
     }
-    const requestedSessionPath = resolve(String(options.sessionPath));
+    const requestedSessionPath = executionAccountStoragePath(String(options.sessionPath));
     const projectRoot = store.requireSessionProjectRoot(project.projectId);
     const projectSessionDir = join(store.path, encodeCwdForSessionDir(canonicalizeCwd(projectRoot)));
     const catalogedByPath = store.findSessionByLocator({
@@ -489,13 +496,18 @@ export async function classifyRootSessionLocator(
     const catalogedSegment = catalogedByPath
         ? store
               .listSessionTranscriptSegments(catalogedByPath.runwieldSessionId)
-              .find((segment) => resolve(segment.transcriptPath) === requestedSessionPath)
+              .find((segment) => executionAccountStoragePath(segment.transcriptPath) === requestedSessionPath)
         : null;
-    const locatorSessionDir = isPathInside(requestedSessionPath, projectSessionDir)
-        ? projectSessionDir
-        : catalogedSegment
-          ? getRunWieldSessionDir(catalogedSegment.transcriptCwd)
-          : undefined;
+    const boundSessionDir = bindings.find((binding) =>
+        isPathInside(requestedSessionPath, binding.sessionDirectory),
+    )?.sessionDirectory;
+    const locatorSessionDir =
+        boundSessionDir ||
+        (isPathInside(requestedSessionPath, projectSessionDir)
+            ? projectSessionDir
+            : catalogedSegment
+              ? getRunWieldSessionDir(catalogedSegment.transcriptCwd)
+              : undefined);
     let locator;
     try {
         locator = await readCatalogSafeRootSessionLocator({
@@ -531,7 +543,8 @@ export async function classifyRootSessionLocator(
         }
     }
     if (!session) return { kind: "blocked", reason: "session_not_cataloged" };
-    if (session.projectId !== project.projectId) return { kind: "blocked", reason: "locator_conflict" };
+    if (!sessionProjectMatches(store.path, session.projectId, project.projectId))
+        return { kind: "blocked", reason: "locator_conflict" };
     const inspected = store.inspectSessionActivation(session.runwieldSessionId);
     if (!inspected.activation) return { kind: "blocked", reason: "missing_activation_row" };
     return { kind: "managed", session, project: { projectId: project.projectId, cwd: realCwd }, locator };
@@ -545,6 +558,14 @@ export async function listPersistedRootSessions(cwd: string): Promise<PersistedR
     const { SessionManager } = await import("@earendil-works/pi-coding-agent");
     const canonicalCwd = canonicalizeCwd(cwd);
     const enteredCwd = resolve(cwd);
+    const bindings = inspectProjectStorage(cwd);
+    if (bindings.length) {
+        const listed = await Promise.all(
+            bindings.map((binding) => SessionManager.list(binding.root, binding.sessionDirectory)),
+        );
+        const sessions = listed.flat();
+        return sessions.filter((session, index) => sessions.findIndex((item) => item.path === session.path) === index);
+    }
     const sessionDir = getRunWieldSessionDir(canonicalCwd);
     const sessions = await SessionManager.list(canonicalCwd, sessionDir);
     if (enteredCwd !== canonicalCwd) {
@@ -572,17 +593,30 @@ export async function resolvePersistedRootSession(
     }
     const canonicalCwd = canonicalizeCwd(options.cwd);
     const defaultSessionDir = getRunWieldSessionDir(canonicalCwd);
-    const sessionDir = options.sessionDir ? resolve(options.sessionDir) : defaultSessionDir;
     const requestedPath = options.sessionPath ? resolve(options.sessionPath) : "";
+    const bindings = inspectProjectStorage(options.cwd);
+    const requestedBinding = bindings.find(
+        (item) => requestedPath && isPathInside(requestedPath, item.sessionDirectory),
+    );
+    const sessionDir = options.sessionDir
+        ? resolve(options.sessionDir)
+        : (requestedBinding?.sessionDirectory ?? defaultSessionDir);
+    const binding = bindings.find((item) => resolve(item.sessionDirectory) === sessionDir);
     const usesManagedProjectSessionDir = resolve(sessionDir) !== resolve(defaultSessionDir);
-    if (usesManagedProjectSessionDir) {
+    if (usesManagedProjectSessionDir && !binding) {
         if (!options.managedProjectRoot || !isAbsolute(options.managedProjectRoot)) {
             throw new Error("Cross-root persisted session path requires managed Project evidence");
         }
         if (!options.managedSegmentCwd || canonicalizeCwd(options.managedSegmentCwd) !== canonicalCwd) {
             throw new Error("Cross-root persisted session path requires managed segment evidence");
         }
-        if (basename(sessionDir) !== encodeCwdForSessionDir(canonicalizeCwd(options.managedProjectRoot))) {
+        const projectBindings = inspectProjectStorage(options.managedProjectRoot);
+        const establishedDirectory = projectBindings.some((item) => resolve(item.sessionDirectory) === sessionDir);
+        if (
+            !establishedDirectory &&
+            (projectBindings.length ||
+                basename(sessionDir) !== encodeCwdForSessionDir(canonicalizeCwd(options.managedProjectRoot)))
+        ) {
             throw new Error("Cross-root persisted session directory does not match managed Project evidence");
         }
     }
@@ -595,7 +629,10 @@ export async function resolvePersistedRootSession(
         if (locator.piSessionId !== options.sessionId) {
             throw new Error(`Persisted session not found for cwd: ${options.sessionId}`);
         }
-        if (canonicalizeCwd(locator.headerCwd) !== canonicalCwd) {
+        if (
+            canonicalizeCwd(locator.headerCwd) !== canonicalCwd &&
+            (!binding || !(binding.historicalRoots ?? [binding.root]).includes(resolve(locator.headerCwd)))
+        ) {
             throw new Error(
                 usesManagedProjectSessionDir
                     ? "Cross-root persisted session header does not match managed segment cwd"
@@ -621,8 +658,12 @@ export async function resolvePersistedRootSession(
     if (!match) throw new Error(`Persisted session not found for cwd: ${options.sessionId}`);
 
     return {
-        cwd: typeof match.cwd === "string" && isAbsolute(match.cwd) ? match.cwd : canonicalCwd,
-        sessionDir,
+        cwd: inspectProjectStorage(options.cwd).length
+            ? canonicalCwd
+            : typeof match.cwd === "string" && isAbsolute(match.cwd)
+              ? match.cwd
+              : canonicalCwd,
+        sessionDir: dirname(resolve(match.path)),
         sessionId: match.id,
         sessionPath: resolve(match.path),
         info: match,
@@ -733,6 +774,21 @@ export async function listCatalogSafeRootSessionLocators(
     options: ListCatalogSafeLocatorsOptions = {},
 ): Promise<CatalogSafeLocatorList> {
     if (!cwd || !isAbsolute(cwd)) throw new Error("listCatalogSafeRootSessionLocators requires an absolute cwd");
+    const bindings = !options.sessionDir ? inspectProjectStorage(cwd) : [];
+    if (bindings.length) {
+        const listed = await Promise.all(
+            bindings.map((binding) =>
+                listCatalogSafeRootSessionLocators(binding.root, { ...options, sessionDir: binding.sessionDirectory }),
+            ),
+        );
+        const locators = listed.flatMap((item) => item.locators);
+        return {
+            locators: locators.filter(
+                (locator, index) => locators.findIndex((item) => item.sessionPath === locator.sessionPath) === index,
+            ),
+            diagnostics: listed.flatMap((item) => item.diagnostics),
+        };
+    }
     const sessionDir = options.sessionDir || getRunWieldSessionDir(cwd);
     const locators: CatalogSafeRootSessionLocator[] = [];
     const diagnostics: CatalogSafeLocatorDiagnostic[] = [];

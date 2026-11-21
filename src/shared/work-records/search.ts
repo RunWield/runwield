@@ -1,3 +1,9 @@
+import {
+    readOwnedWorkRecordById as readWorkRecordById,
+    searchOwnedWorkRecords as searchWorkRecords,
+    readLocalHomeStore,
+} from "../../plan-store/index.ts";
+import { currentWorkRecordOwner } from "./owner.ts";
 /**
  * @module shared/work-records/search
  * Canonical Work Record retrieval hydrated from Markdown, using Mnemoteca only for candidates.
@@ -89,7 +95,7 @@ export function formatHydratedWorkRecord(record: WorkRecordResource): WorkRecord
         completionMode: record.attrs.completionMode,
         sourcePlans: record.attrs.provenance?.sourcePlans || [],
         tickets: record.attrs.tickets || [],
-        path: record.relativePath,
+        path: currentWorkRecordOwner() ? record.path : record.relativePath,
         notices: workRecordNotices(record),
     };
 }
@@ -131,7 +137,26 @@ async function ensureSearchBootstrap(cwd: string, options: WorkRecordIndexOption
     return { bootstrapped: true, rebuild, canonical };
 }
 
-export async function searchWorkRecords(
+export { searchWorkRecords };
+export async function searchLocalWorkRecords(
+    cwd: string,
+    query: string,
+    options: WorkRecordSearchOptions,
+): Promise<WorkRecordSearchResult> {
+    return await readLocalHomeStore(
+        cwd,
+        () => searchWorkRecordsInOwner(cwd, query, options),
+        () => ({
+            query,
+            accessMode: options.includeAll ? "all" : options.accessMode || "current",
+            records: [],
+            staleRecordIds: [],
+            bootstrapped: false,
+            rebuild: null,
+        }),
+    );
+}
+async function searchWorkRecordsInOwner(
     cwd: string,
     query: string,
     options: WorkRecordSearchOptions,
@@ -191,10 +216,24 @@ export async function searchWorkRecords(
     };
 }
 
-export async function readWorkRecordById(
+export { readWorkRecordById };
+export async function readLocalWorkRecordById(
     cwd: string,
     recordId: string,
     options: WorkRecordReadOptions = {},
+): Promise<WorkRecordReadResult> {
+    return await readLocalHomeStore(
+        cwd,
+        () => readWorkRecordByIdInOwner(cwd, recordId, options),
+        () => {
+            throw new Error(`Work Record not found: ${recordId}`);
+        },
+    );
+}
+async function readWorkRecordByIdInOwner(
+    cwd: string,
+    recordId: string,
+    options: WorkRecordReadOptions,
 ): Promise<WorkRecordReadResult> {
     const trimmed = String(recordId || "").trim();
     if (!trimmed) throw new Error("Work Record recordId is required.");

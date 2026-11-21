@@ -59,6 +59,10 @@ export function createWorkRecordMnemotecaFixture(): WorkRecordMnemotecaFixture {
                 document.content = args.at(-1) || "";
                 return Promise.resolve(result());
             }
+            if (command === "delete") {
+                documents = documents.filter((document) => document.id !== Number(args[1]));
+                return Promise.resolve(result());
+            }
             if (command === "list") {
                 const locator = optionValues(args, "--tag")[0];
                 const matches = locator ? documents.filter((document) => document.tags.includes(locator)) : documents;
@@ -67,9 +71,13 @@ export function createWorkRecordMnemotecaFixture(): WorkRecordMnemotecaFixture {
             if (command === "search") {
                 const query = (args.at(-1) || "").toLowerCase();
                 const matches = documents.filter((document) => document.content.toLowerCase().includes(query));
-                return Promise.resolve(result(JSON.stringify({
-                    results: matches.map((document) => ({ metadata: { tags: document.tags } })),
-                })));
+                return Promise.resolve(
+                    result(
+                        JSON.stringify({
+                            results: matches.map((document) => ({ metadata: { tags: document.tags } })),
+                        }),
+                    ),
+                );
             }
             return Promise.resolve(result(`Unsupported fixture command: ${command}`, 1));
         },

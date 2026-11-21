@@ -1,3 +1,4 @@
+import { currentHomeProjectOwner, assertProjectStoreIdentity, projectStoreLocation } from "../project-identity.ts";
 import { recoverWindowsRename } from "../native-file-replace-windows.ts";
 import { rename as fsRename } from "node:fs/promises";
 import {
@@ -24,7 +25,8 @@ export interface SecretStoreDocument {
 }
 
 export interface SecretStoreLocation {
-    owner: "global" | "project";
+    owner: "global" | "project" | "home-project";
+    homeOwner?: import("../project-identity.ts").HomeProjectOwner;
     path: string;
     projectRoot?: string;
 }
@@ -66,16 +68,28 @@ export function getGlobalSecretStoreLocation(homeDir = getHomeDir()): SecretStor
 }
 
 export function getProjectSecretStorePath(projectRoot: string): string {
+    const owner = currentHomeProjectOwner();
+    if (owner) {
+        assertProjectStoreIdentity(owner);
+        return join(projectStoreLocation(owner), "internal", "collaboration-secrets.json");
+    }
     return resolveProjectRuntimeLayout(projectRoot).primary.projectSecretStorePath;
 }
 
 export async function getProjectSecretStoreLocation(projectRoot: string): Promise<SecretStoreLocation> {
+    const owner = currentHomeProjectOwner();
+    if (owner) return { owner: "home-project", homeOwner: owner, path: getProjectSecretStorePath(projectRoot) };
     const layout = await enterProjectRuntime(projectRoot);
     return { owner: "project", projectRoot, path: layout.primary.projectSecretStorePath };
 }
 
 async function resolveSecretStorePath(location: SecretStoreLocation): Promise<string> {
     if (location.owner === "global") return location.path;
+    if (location.owner === "home-project") {
+        if (!location.homeOwner) throw new Error("Home Project secret owner is required.");
+        assertProjectStoreIdentity(location.homeOwner);
+        return join(projectStoreLocation(location.homeOwner), "internal", "collaboration-secrets.json");
+    }
     if (!location.projectRoot) throw new Error("Project secret store location requires a project root.");
     return (await enterProjectRuntime(location.projectRoot)).primary.projectSecretStorePath;
 }
@@ -296,6 +310,11 @@ export function normalizeSecretStore(value: unknown): SecretStoreDocument {
 }
 
 export async function ensureProjectSecretStoreIgnored(projectRoot: string) {
+    const owner = currentHomeProjectOwner();
+    if (owner) {
+        assertProjectStoreIdentity(owner);
+        return;
+    }
     const layout = await enterProjectRuntime(projectRoot);
     await fsMkdir(layout.primary.internalRoot, { recursive: true });
     await ensureRunWieldOwnedGitignoreBlock(layout.primary.checkoutRoot);

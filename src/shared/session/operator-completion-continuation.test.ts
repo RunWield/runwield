@@ -16,12 +16,14 @@ test("Operator accepts a follow-up after task_completed settles", async () => {
         let followUpContext = "";
         setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("triage_report", {
-                    routingIntent: "OPERATION",
-                    complexity: "LOW",
-                    summary: "Perform the operation.",
-                    sessionName: "Operator continuation",
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("triage_report", {
+                        routingIntent: "OPERATION",
+                        complexity: "LOW",
+                        summary: "Perform the operation.",
+                        sessionName: "Operator continuation",
+                    }),
+                ),
             () => fauxAssistantMessage(fauxToolCall("task_completed", { message: "Operation verified." })),
             (context) => {
                 followUpContext = JSON.stringify(context.messages);
@@ -72,12 +74,14 @@ test("TUI sends the first follow-up after a skill routes to Operator completion"
         let followUps = 0;
         setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("triage_report", {
-                    routingIntent: "OPERATION",
-                    complexity: "LOW",
-                    summary: "Review the changes.",
-                    sessionName: "Operator review",
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("triage_report", {
+                        routingIntent: "OPERATION",
+                        complexity: "LOW",
+                        summary: "Review the changes.",
+                        sessionName: "Operator review",
+                    }),
+                ),
             () => fauxAssistantMessage(fauxToolCall("task_completed", { message: "Operation verified." })),
             () => {
                 followUps++;

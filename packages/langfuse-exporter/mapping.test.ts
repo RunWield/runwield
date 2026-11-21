@@ -95,10 +95,7 @@ interface AgyRecordedEvent {
 const agy: AgyFixtureFile = JSON.parse(await fsReadFile(new URL("./fixtures/agy-usage.json", import.meta.url), "utf8"));
 for (const row of agy.rows) {
     test(`partial agy fixture ${row.fixture} keeps known buckets without inventing cache writes or totals`, async () => {
-        const recording = await fsReadFile(
-            new URL(`../../src/shared/session/backends/agy-cli/fixtures/${row.fixture}`, import.meta.url),
-            "utf8",
-        );
+        const recording = await fsReadFile(new URL(`./fixtures/${row.fixture}`, import.meta.url), "utf8");
         const events: AgyRecordedEvent[] = recording
             .trim()
             .split("\n")

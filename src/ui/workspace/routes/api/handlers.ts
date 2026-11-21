@@ -95,11 +95,12 @@ export async function lifecycleActionApi(ctx: WorkspaceLifecycleApiContext) {
     } catch (error) {
         const body = serializePlanError(error);
         const message = body.error;
-        const status = message.includes("not found") || message.includes("Plan not found")
-            ? 404
-            : message.includes("Unknown") || message.includes("missing targetStatus")
-            ? 400
-            : 409;
+        const status =
+            message.includes("not found") || message.includes("Plan not found")
+                ? 404
+                : message.includes("Unknown") || message.includes("missing targetStatus")
+                  ? 400
+                  : 409;
         return json({ ...body, blockedReason: status === 409 ? message : undefined }, status);
     }
 }
@@ -113,12 +114,17 @@ export async function planBodyApi(ctx: WorkspaceApiContext) {
     }
 
     if (
-        !payload || typeof payload.body !== "string" || typeof payload.expectedBodyHash !== "string" ||
+        !payload ||
+        typeof payload.body !== "string" ||
+        typeof payload.expectedBodyHash !== "string" ||
         typeof payload.expectedRevision !== "string"
     ) {
-        return json({
-            error: "Expected JSON payload { body: string, expectedBodyHash: string, expectedRevision: string }.",
-        }, 400);
+        return json(
+            {
+                error: "Expected JSON payload { body: string, expectedBodyHash: string, expectedRevision: string }.",
+            },
+            400,
+        );
     }
 
     try {

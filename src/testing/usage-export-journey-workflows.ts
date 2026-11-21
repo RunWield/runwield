@@ -1,10 +1,13 @@
 import type { UiAPI } from "../ui/tui/api.ts";
+import { seedPlanState, seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall, type AssistantMessage } from "@earendil-works/pi-ai";
 import { assertEquals } from "./assertions.ts";
-import { loadPlan, savePlan, updatePlanFrontMatter } from "../plan-store.ts";
+
+import { loadPlan } from "../plan-store/index.ts";
+
 import { createGitPort } from "../shared/git-port.ts";
 import { git } from "../shared/git-test-fixture.ts";
 import { setExactProjectCustomSetting } from "../shared/settings.ts";
@@ -15,7 +18,7 @@ import { findById } from "../shared/worktree-registry.ts";
 import { createTestWorktreeAttempt } from "../shared/worktree-test-helpers.ts";
 import { cleanupStoredPublication } from "../shared/workflow/publication-machine.ts";
 import { buildPlanEventUpdates, type PlanEvent, type PlanEventDetails } from "../shared/workflow/plan-lifecycle.ts";
-import { runPlanLifecycleEventTransition } from "../shared/workflow/state-transition.ts";
+import { runPlanLifecycleEventTransition } from "../plan-store/transitions.ts";
 import { makePublicationOutcomeFixture } from "../shared/workflow/testing/publication-outcome-fixture.ts";
 import { runValidationPhase } from "../shared/workflow/validation.ts";
 import { runLocalCI } from "../shared/workflow/validation-local-ci.ts";
@@ -80,7 +83,7 @@ async function lifecycle(root: string, name: string, attemptId: string, event: P
         event,
         record: async ({ beforePlan }) => {
             assert(beforePlan);
-            return await updatePlanFrontMatter(
+            return await seedPlanState(
                 root,
                 name,
                 buildPlanEventUpdates(event, beforePlan.attrs.status, { ...details, triageMeta: beforePlan.attrs }),
@@ -100,7 +103,7 @@ export async function runJourneyRecovery(
     interruptNext: (cancel: () => void) => void,
 ) {
     for (const name of ["ongoing", "abandon"]) {
-        await savePlan(root, name, `# ${name}\n`, {
+        await seedPlan(root, name, `# ${name}\n`, {
             planId: `plan-${name}`,
             classification: "PLANNED_CHANGE",
             status: "ready_for_work",

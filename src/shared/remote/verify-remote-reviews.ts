@@ -19,6 +19,7 @@ import { appendFile, copyFile, mkdir, mkdtemp, readFile, realpath, writeFile } f
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
+import { readPinnedBunVersion } from "../../../scripts/check-bun-runtime.ts";
 import { promisify } from "node:util";
 import { Terminal } from "@xterm/headless";
 import { buildValidationUserMessage } from "../workflow/validation-user-messages.ts";
@@ -56,7 +57,8 @@ interface ProviderRequest {
 if (import.meta.main) await main();
 async function main(): Promise<void> {
     equal(process.platform, "darwin", "This pilot is macOS-only; Windows is deferred.");
-    equal(process.versions.bun, "1.4.4");
+    const bunVersion = readPinnedBunVersion();
+    equal(process.versions.bun, bunVersion, "Local Bun must match .bun-version");
     const args = process.argv.slice(2);
     let archives: string | undefined;
     if (args[0] === "--archives") {
@@ -133,6 +135,15 @@ async function main(): Promise<void> {
         const remoteMetadata: Metadata = JSON.parse(await readFile(linux + ".build.json", "utf8"));
         equal(localMetadata.buildId, remoteMetadata.buildId);
     }
+    const launcherIdentity = JSON.parse(
+        execFileSync(executable, ["--remote-preflight"], {
+            encoding: "utf8",
+            timeout: 30_000,
+            env: { HOME: root, USERPROFILE: root, PATH: "/usr/bin:/bin" },
+        }),
+    ) as { runtime?: string; runtimeVersion?: string };
+    equal(launcherIdentity.runtime, "bun");
+    equal(launcherIdentity.runtimeVersion, bunVersion, "Production CLI Bun must match .bun-version");
     const ssh = (shell: string) =>
         execFileSync("/usr/bin/ssh", ["-T", "-o", "BatchMode=yes", "sct", shell], {
             encoding: "utf8",

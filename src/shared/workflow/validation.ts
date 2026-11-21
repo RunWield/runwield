@@ -1,3 +1,5 @@
+import { capturePlanAccess } from "../../plan-store/index.ts";
+import { resumePlanAttempt } from "../../plan-store/index.ts";
 /**
  * @module shared/workflow/validation
  * Workflow Validation public entry point.
@@ -12,9 +14,9 @@
 
 import * as engine from "./validation-engine.ts";
 import { runValidationAttempt, type ValidationTrigger } from "./validation-supervisor.ts";
-import { loadPlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.ts";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { emitProgress, emitStatus } from "./validation-emit.ts";
 import { getCurrentValidationProgress } from "./validation-progress.ts";
@@ -44,7 +46,7 @@ export { type SemanticReviewPort, SYSTEM_SEMANTIC_REVIEW_PORT } from "./validati
 
 export type { ValidationPhaseResult, WorkflowValidationResult } from "./validation-types.ts";
 
-type PlanFrontMatter = import("../../plan-store.ts").PlanFrontMatter;
+type PlanFrontMatter = import("../../plan-store/index.ts").PlanFrontMatter;
 type TriageMeta = import("../../tools/plan-written.ts").TriageMeta & Partial<PlanFrontMatter>;
 type ActiveExecutionWorkflow = import("../session/hosted-session.ts").ActiveExecutionWorkflow;
 type HostedSession = import("../session/hosted-session.ts").HostedSession;
@@ -151,11 +153,10 @@ function validationProjectRoot(args: ContinueWorkflowValidationArgs): string {
     return resolvePrimaryCheckoutRoot(args.executionContext?.projectRoot || args.hostedSession.cwd);
 }
 
-async function validationPlanCwd(args: ContinueWorkflowValidationArgs): Promise<string> {
-    const projectRoot = validationProjectRoot(args);
-    const attempt = await findWorktreeByPlanName(projectRoot, args.planName);
+async function validationPlanCwd(projectRoot: string, planName: string): Promise<string> {
+    const attempt = await findWorktreeByPlanName(projectRoot, planName);
     if (attempt) return attempt.path;
-    return (await resolveWorkflowPlanLocation(projectRoot, args.planName)).documentRoot;
+    return (await resolveWorkflowPlanLocation(projectRoot, planName)).documentRoot;
 }
 
 function presentPausedProgress(args: ContinueWorkflowValidationArgs, result: WorkflowValidationResult): void {
@@ -185,8 +186,21 @@ function presentPausedProgress(args: ContinueWorkflowValidationArgs, result: Wor
 export async function continueWorkflowValidation(
     args: ContinueWorkflowValidationArgs,
 ): Promise<WorkflowValidationResult> {
+    const active = args.hostedSession.getActiveExecutionWorkflow();
+    if (active?.packageSelection && !capturePlanAccess()) {
+        const selection = active.packageSelection;
+        return await resumePlanAttempt(
+            args.hostedSession.cwd,
+            selection,
+            active.packageAttemptId || active.worktreeId,
+            () => continueWorkflowValidation(args),
+            args.planName,
+        );
+    }
+    // Publication can remove the execution checkout before this call settles.
+    const projectRoot = validationProjectRoot(args);
     const result = await runValidationAttempt({
-        projectRoot: validationProjectRoot(args),
+        projectRoot,
         planName: args.planName,
         trigger: args.trigger,
         taskCompletionId: args.taskCompletionId,
@@ -196,7 +210,7 @@ export async function continueWorkflowValidation(
         result.recovery?.code !== "validation_owner_active" &&
         result.recovery?.code !== "task_completion_already_settled"
     ) {
-        const settledPlan = await loadPlan(await validationPlanCwd(args), args.planName);
+        const settledPlan = await loadPlan(await validationPlanCwd(projectRoot, args.planName), args.planName);
         if (settledPlan) {
             const progress = getCurrentValidationProgress(args.hostedSession);
             const active = args.hostedSession.getActiveExecutionWorkflow();
@@ -240,7 +254,7 @@ export async function runWorkflowValidationToStableBoundary(
     // explicit decisions below still stop immediately at Agent/user boundaries.
     for (let phase = 0; phase < 5; phase += 1) {
         if (result?.kind !== "paused" || !result.continueValidation) break;
-        const planCwd = await validationPlanCwd(args);
+        const planCwd = await validationPlanCwd(validationProjectRoot(args), args.planName);
         const plan = await loadPlan(planCwd, args.planName).catch(() => null);
         const status = String(plan?.attrs.status || "");
         if (!plan) break;

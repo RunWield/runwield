@@ -1,3 +1,4 @@
+import { snapshotPlanEvidence } from "../../acceptance-plan-evidence.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { field, map, type Check, type HostObservation, type JsonMap } from "./evidence.ts";
@@ -216,7 +217,6 @@ function workflow(snapshot: JsonMap): JsonMap | null {
     return map(JSON.parse(files[0].text));
 }
 function invokingCheckoutUnchanged(before: JsonMap, after: JsonMap): boolean {
-    const planName = field(workflow(after), "plan", "planName");
     // The disposable fixture starts without .gitignore; Core may add exactly its documented runtime block.
     const setupIgnore =
         !snapshotFiles(before).some((file) => file.path === "fixture/.gitignore") &&
@@ -230,10 +230,7 @@ function invokingCheckoutUnchanged(before: JsonMap, after: JsonMap): boolean {
                         )
                         .digest("hex"),
         );
-    const owned = (path: string) =>
-        (path === ".gitignore" && setupIgnore) ||
-        path.startsWith(".wld/internal/") ||
-        (typeof planName === "string" && path === `docs/plans/${planName}.md`);
+    const owned = (path: string) => path === ".gitignore" && setupIgnore;
     const source = (snapshot: JsonMap) =>
         snapshotFiles(snapshot)
             .filter(
@@ -313,35 +310,60 @@ export async function assessDurableArtifacts(root: string): Promise<Check[]> {
         {
             id: "invoking-checkout-preserved",
             outcome: invokingCheckoutUnchanged(before, final) ? "pass" : "fail",
-            detail: "Delivery preserves invoking source and Git state, allowing only the current Plan, .wld/internal/ lifecycle files, and the exact Core .gitignore setup block.",
+            detail: "Delivery preserves invoking source and Git state, allowing the exact Core .gitignore setup block.",
         },
     ];
     const record = workflow(final);
-    const planId = field(record, "plan", "planId"),
-        planName = field(record, "plan", "planName");
+    const planId = field(record, "plan", "planId");
     const files = snapshotFiles(final);
-    const controllerFile = files.find(
-        (file) =>
-            typeof file.path === "string" &&
-            file.path.endsWith(`/internal/controller/plans/${encodeURIComponent(String(planId))}.json`),
+    const personal = snapshotPlanEvidence(
+        files.flatMap((file) =>
+            typeof file.path === "string"
+                ? [{ path: file.path, text: typeof file.text === "string" ? file.text : undefined }]
+                : [],
+        ),
+        record,
     );
-    const controller = typeof controllerFile?.text === "string" ? map(JSON.parse(controllerFile.text)) : null;
-    const receipt = field(controller, "state", "publicationReceipt");
+    const receipt = personal?.delivery;
     const commit = field(receipt, "publishedCommit"),
         validated = field(receipt, "validatedCommit");
     const workRecord = field(record, "closure", "workRecord");
-    const path = field(workRecord, "path"),
-        id = field(workRecord, "recordId");
-    const document = files.find((file) => file.path === `published/${commit}/${path}`);
+    const id = field(workRecord, "recordId");
     let attrs: JsonMap = {};
-    try {
-        if (typeof document?.text === "string") attrs = extractYaml<JsonMap>(document.text).attrs;
-    } catch {
-        /* Unreadable published metadata cannot qualify delivery. */
+    for (const file of files) {
+        if (
+            typeof file.path !== "string" ||
+            !file.path.startsWith(`${personal?.projectPath}/work-records/`) ||
+            typeof file.text !== "string"
+        )
+            continue;
+        try {
+            const candidate = extractYaml<JsonMap>(file.text).attrs;
+            if (candidate.recordId === id) {
+                attrs = candidate;
+                break;
+            }
+        } catch {
+            /* A malformed record cannot attest delivery. */
+        }
+    }
+    const target = field(receipt, "targetBranch");
+    let publishedOnTarget = false;
+    if (typeof commit === "string" && /^[a-f0-9]{40}$/.test(commit) && typeof target === "string") {
+        try {
+            execFileSync("git", ["merge-base", "--is-ancestor", commit, `refs/heads/${target}`], {
+                cwd: join(root, "fixture"),
+                stdio: "ignore",
+            });
+            publishedOnTarget = true;
+        } catch {
+            /* The recorded commit must have reached the named target. */
+        }
     }
     const publication =
         field(record, "state") === "closed" &&
         field(record, "closure", "reason") === "delivered" &&
+        publishedOnTarget &&
         typeof commit === "string" &&
         /^[a-f0-9]{40}$/.test(commit) &&
         typeof validated === "string" &&
@@ -353,12 +375,11 @@ export async function assessDurableArtifacts(root: string): Promise<Check[]> {
         attrs.status === "approved" &&
         attrs.completionMode === "verified" &&
         Array.isArray(field(attrs, "provenance", "sourcePlans")) &&
-        (field(attrs, "provenance", "sourcePlans") as string[]).includes(String(planId)) &&
-        files.some((file) => file.path === `published/${commit}/docs/plans/${planName}.md`);
+        (field(attrs, "provenance", "sourcePlans") as string[]).includes(String(planId));
     checks.push({
         id: "publication-work-record",
         outcome: publication ? "pass" : "fail",
-        detail: "The closed delivered workflow must have a publication receipt and the published verified Work Record.",
+        detail: "The closed delivered workflow must have a publication receipt and the verified personal Work Record.",
     });
     let repaired = false;
     if (publication) {

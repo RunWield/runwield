@@ -83,7 +83,9 @@ function newId(idFactory?: () => string) {
 }
 
 export function normalizeDeviceLabel(label: string) {
-    const normalized = String(label || "").replace(/\s+/g, " ").trim();
+    const normalized = String(label || "")
+        .replace(/\s+/g, " ")
+        .trim();
     return normalized.slice(0, 80) || "Browser device";
 }
 
@@ -107,24 +109,24 @@ export function createPairedDevice(
     const csrf = options.csrfFactory ? options.csrfFactory() : randomBase64Url(32);
     const deviceId = newId(options.idFactory);
     const now = isoNow(options.now);
-    ownerDb.handle.prepare(
-        "INSERT INTO paired_devices(id, label, credential_hash, csrf_hash, created_at) VALUES (?, ?, ?, ?, ?)",
-    ).run(deviceId, normalizeDeviceLabel(options.label), hashSecret(credential), hashSecret(csrf), now);
+    ownerDb.handle
+        .prepare("INSERT INTO paired_devices(id, label, credential_hash, csrf_hash, created_at) VALUES (?, ?, ?, ?, ?)")
+        .run(deviceId, normalizeDeviceLabel(options.label), hashSecret(credential), hashSecret(csrf), now);
     return { deviceId, credential, csrf, device: getDeviceById(ownerDb, deviceId) };
 }
 
 export function getDeviceById(database: OwnerCoordinationDatabase, deviceId: string): PairedDevice | null {
     const row = requireDatabase(database).handle.prepare("SELECT * FROM paired_devices WHERE id = ?").get(deviceId) as
-        | PairedDeviceRow
-        | undefined;
+        PairedDeviceRow | undefined;
     return row ? deviceFromRow(row) : null;
 }
 
 export function listDevices(database: OwnerCoordinationDatabase): PairedDevice[] {
-    return (requireDatabase(database).handle.prepare("SELECT * FROM paired_devices ORDER BY created_at DESC")
-        .all() as PairedDeviceRow[]).map(
-            deviceFromRow,
-        );
+    return (
+        requireDatabase(database)
+            .handle.prepare("SELECT * FROM paired_devices ORDER BY created_at DESC")
+            .all() as PairedDeviceRow[]
+    ).map(deviceFromRow);
 }
 
 export function verifyDeviceCredential(
@@ -134,7 +136,8 @@ export function verifyDeviceCredential(
 ): PairedDevice | null {
     const ownerDb = requireDatabase(database);
     const presentedHash = hashSecret(credential || "");
-    const rows = ownerDb.handle.prepare("SELECT * FROM paired_devices WHERE revoked_at IS NULL")
+    const rows = ownerDb.handle
+        .prepare("SELECT * FROM paired_devices WHERE revoked_at IS NULL")
         .all() as PairedDeviceRow[];
     const row = rows.find((candidate) => timingSafeSecretEqual(String(candidate.credential_hash), presentedHash));
     if (!row) return null;
@@ -150,9 +153,9 @@ export function verifyDeviceCredential(
 }
 
 export function verifyDeviceCsrf(database: OwnerCoordinationDatabase, deviceId: string, csrf: string) {
-    const row = requireDatabase(database).handle.prepare(
-        "SELECT csrf_hash, revoked_at FROM paired_devices WHERE id = ?",
-    ).get(deviceId) as DeviceCsrfRow | undefined;
+    const row = requireDatabase(database)
+        .handle.prepare("SELECT csrf_hash, revoked_at FROM paired_devices WHERE id = ?")
+        .get(deviceId) as DeviceCsrfRow | undefined;
     if (!row || row.revoked_at) return false;
     return timingSafeSecretEqual(String(row.csrf_hash), hashSecret(csrf || ""));
 }
@@ -160,8 +163,10 @@ export function verifyDeviceCsrf(database: OwnerCoordinationDatabase, deviceId: 
 export function revokeDevice(database: OwnerCoordinationDatabase, deviceId: string, options: RevokeDeviceOptions = {}) {
     const ownerDb = requireDatabase(database);
     const now = isoNow(options.now);
-    ownerDb.handle.prepare(
-        "UPDATE paired_devices SET revoked_at = COALESCE(revoked_at, ?), revoked_reason = COALESCE(revoked_reason, ?) WHERE id = ?",
-    ).run(now, String(options.reason || "revoked"), deviceId);
+    ownerDb.handle
+        .prepare(
+            "UPDATE paired_devices SET revoked_at = COALESCE(revoked_at, ?), revoked_reason = COALESCE(revoked_reason, ?) WHERE id = ?",
+        )
+        .run(now, String(options.reason || "revoked"), deviceId);
     return getDeviceById(ownerDb, deviceId);
 }

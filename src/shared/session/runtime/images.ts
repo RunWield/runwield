@@ -1,3 +1,4 @@
+import { isRemovedAgyProvider, removedAgyModelError } from "../../models/removed-providers.ts";
 import { AGENTS } from "../../../constants.ts";
 import { readPersistedManualModelState, resolveResumeAgentName } from ".././active-agent-session.ts";
 import { loadAgentDef } from ".././agents.ts";
@@ -98,10 +99,14 @@ export class RuntimeImages {
         const modelRegistry = agentSession.modelRegistry || getModelRegistry();
         const activeModel =
             agentSession.model || (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
-        const modelProviderName = activeModel?.provider;
-        const executionBackend = activeModel?.executionBackend;
-        if (images.length > 0 && (modelProviderName === "agy-cli" || executionBackend === "agy-cli")) {
-            return { ok: false as const, message: "Antigravity CLI sessions do not support image attachments." };
+        if (isRemovedAgyProvider(activeModel?.provider || modelProvider)) {
+            return {
+                ok: false as const,
+                message: removedAgyModelError(
+                    `${activeModel?.provider || modelProvider}/${activeModel?.id || modelId}`,
+                    "Choose a supported model with /model.",
+                ).message,
+            };
         }
         let fallbackModelRef: string | undefined;
         if (images.length > 0 && !modelSupportsImageInput(activeModel)) {
@@ -128,7 +133,9 @@ export class RuntimeImages {
         const modelRegistry = agentSession?.modelRegistry || getModelRegistry();
         const activeModel =
             agentSession?.model || (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
-        return await this.preflightImagesForModel(session, images, activeModel, modelRegistry);
+        const imageModel =
+            activeModel || (modelProvider && modelId ? { provider: modelProvider, id: modelId } : undefined);
+        return await this.preflightImagesForModel(session, images, imageModel, modelRegistry);
     }
 
     modelReference(activeModel: RuntimeImageModel | null | undefined) {
@@ -147,8 +154,14 @@ export class RuntimeImages {
         if (!images || images.length === 0) return { ok: true, mode: "none" };
         const modelProvider = (activeModel || {}).provider;
         const executionBackend = (activeModel || {}).executionBackend;
-        if (modelProvider === "agy-cli" || executionBackend === "agy-cli") {
-            return { ok: false, message: "Antigravity CLI sessions do not support image attachments." };
+        if (isRemovedAgyProvider(modelProvider) || isRemovedAgyProvider(executionBackend)) {
+            return {
+                ok: false,
+                message: removedAgyModelError(
+                    this.modelReference(activeModel) || "agy-cli",
+                    "Choose a supported model with /model.",
+                ).message,
+            };
         }
         let fallbackModelRef;
         if (!modelSupportsImageInput(activeModel)) {

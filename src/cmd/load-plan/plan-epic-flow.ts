@@ -10,7 +10,8 @@ import { isSequencePlan, projectPlanType } from "../../shared/project-plan.ts";
  */
 
 import { isPlannedChangeClassification } from "../../constants.ts";
-import { compareChildPlansByOrder, findPlansByParent, isTerminalArchivableStatus } from "../../plan-store.ts";
+import { compareChildPlansByOrder, isTerminalArchivableStatus } from "../../plan-format.ts";
+import { findPlansByParent } from "../../plan-store/index.ts";
 import { isInValidation, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
 import {
@@ -21,12 +22,12 @@ import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mne
 import { prepareTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
 import { isGitRepository } from "../../shared/git.ts";
 import { ensureEpicBranch } from "../../shared/workflow/epic-branch.ts";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { reconcileEpicDelivery } from "../../shared/workflow/epic-integration.ts";
 import { archiveEpicWithChildren } from "./plan-epic-archive.ts";
-import { resolvePlanWithPrimaryRecovery } from "./primary-plan-recovery.ts";
+import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
-import { readControllerWorktree } from "../../shared/workflow/controller-registry.ts";
+import { readPlanExecution } from "../../plan-store/index.ts";
 import {
     buildEpicDoneEnoughSummary,
     buildEpicPlanSummary,
@@ -40,7 +41,7 @@ import {
 } from "./plan-epic-children.ts";
 import { isHoldableStatus, isUserVerifiableStatus, markPlanUserVerified, putPlanOnHold } from "./plan-hold.ts";
 import { validatePlanExecutionPolicyForReadiness } from "./plan-execution.ts";
-import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 
@@ -65,7 +66,7 @@ export interface HandleEpicPlanOptions {
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, body: string, markdown: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, body: string, markdown: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface["runSlicerAgent"]} opts.runSlicerAgent
  * @param {(childPlanName: string) => Promise<void>} opts.loadChildPlan
@@ -143,7 +144,7 @@ export async function handleEpicPlan({
         await Promise.all(
             children.map(async (child) => {
                 if (child.attrs.status !== "reviewed" && child.attrs.status !== "validated") return null;
-                const attempt = await readControllerWorktree(projectRoot, {
+                const attempt = await readPlanExecution(projectRoot, {
                     planName: child.name,
                     planId: child.attrs.planId,
                 });

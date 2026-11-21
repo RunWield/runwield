@@ -1,10 +1,15 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
+import { startActiveExecutionWorkflow, createExecutionStartPorts } from "../workflow/execution-start.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import { openPersistedRootSession } from "./root-session.ts";
@@ -52,7 +57,7 @@ test("managed execution rollover writes one fresh successor and rejects stale Pl
                 await fsWriteFile(`${fixture.projectRoot}/README.md`, "fixture\n");
                 await git(fixture.projectRoot, ["add", "."]);
                 await git(fixture.projectRoot, ["commit", "-m", "fixture: initial project"]);
-                await savePlan(fixture.projectRoot, "execution-handoff", "# Execution Handoff\n\nApproved", {
+                await seedPlan(fixture.projectRoot, "execution-handoff", "# Execution Handoff\n\nApproved", {
                     planId: "plan-execution-handoff",
                     status: "ready_for_work",
                     classification: "PLANNED_CHANGE",
@@ -84,7 +89,7 @@ test("managed execution rollover writes one fresh successor and rejects stale Pl
                 const runtimeHandle = fixture.openRuntime("test", "execution-handoff-owner");
                 handle = runtimeHandle;
                 const before = runtimeHandle.store.listSessionTranscriptSegments(fixture.session.runwieldSessionId);
-                await savePlan(fixture.projectRoot, "execution-handoff", "# Execution Handoff\n\nChanged", plan.attrs, {
+                await seedPlan(fixture.projectRoot, "execution-handoff", "# Execution Handoff\n\nChanged", plan.attrs, {
                     expectedRevision: plan.revision,
                 });
                 const rejected = await runtimeHandle.runtime.executePlan(runtimeHandle.adoptedSessionId, {
@@ -97,7 +102,7 @@ test("managed execution rollover writes one fresh successor and rejects stale Pl
                         worktree: evidence.evidence.worktree,
                     },
                 });
-                assertStringIncludes(rejected.error || "", "Plan revision changed after approval");
+                assertStringIncludes(rejected.error || "", "not ready for work (status: draft)");
                 assertEquals(
                     runtimeHandle.store.listSessionTranscriptSegments(fixture.session.runwieldSessionId).length,
                     1,
@@ -162,14 +167,37 @@ test("committed execution continuation reloads in one successor and writes one s
                 await fsWriteFile(`${fixture.projectRoot}/README.md`, "fixture\n");
                 await git(fixture.projectRoot, ["add", "."]);
                 await git(fixture.projectRoot, ["commit", "-m", "fixture: initial project"]);
-                await savePlan(fixture.projectRoot, "execution-resume", "# Execution Resume\n\nApproved", {
+                await seedPlan(fixture.projectRoot, "execution-resume", "# Execution Resume\n\nApproved", {
                     planId: "plan-execution-resume",
-                    status: "ready_for_work",
+                    status: "draft",
                     classification: "PLANNED_CHANGE",
                     complexity: "MEDIUM",
                     summary: "Execution resume",
                     affectedPaths: ["implemented.txt"],
                     executionAgent: "engineer",
+                });
+                const active = await withLocalPlanWorkflow(fixture.projectRoot, "execution-resume", async () => {
+                    await recordPlanEvent({
+                        cwd: fixture.projectRoot,
+                        planName: "execution-resume",
+                        event: "review_approved",
+                        currentStatus: "draft",
+                    });
+                    await recordPlanEvent({
+                        cwd: fixture.projectRoot,
+                        planName: "execution-resume",
+                        event: "readiness_passed",
+                        currentStatus: "approved",
+                    });
+                    const ready = await loadPlan(fixture.projectRoot, "execution-resume");
+                    if (!ready) throw new Error("Ready Plan missing");
+                    return await startActiveExecutionWorkflow({
+                        cwd: fixture.projectRoot,
+                        planName: "execution-resume",
+                        currentStatus: "ready_for_work",
+                        triageMeta: ready.attrs,
+                        ports: createExecutionStartPorts(),
+                    });
                 });
                 const plan = await loadPlan(fixture.projectRoot, "execution-resume");
                 if (!plan) throw new Error("Expected saved Plan");
@@ -190,17 +218,7 @@ test("committed execution continuation reloads in one successor and writes one s
                     approvalFeedback: "Match this approved visual reference.",
                     approvalImages: [approvalImage],
                     preparedEvidence: evidence.evidence,
-                    activeWorkflow: {
-                        planName: "execution-resume",
-                        triageMeta: plan.attrs,
-                        executionAgent: "engineer",
-                        collaborationStyle: "autonomous",
-                        collaborationRecommendation: "autonomous",
-                        executionMode: "non_git_in_place",
-                        nonGitInPlace: true,
-                        projectRoot: fixture.projectRoot,
-                        executionCwd: fixture.projectRoot,
-                    },
+                    activeWorkflow: { ...active, triageMeta: plan.attrs },
                     executionOwner: "plan-engineer",
                     collaborationStyle: "autonomous",
                     collaborationRecommendation: "autonomous",

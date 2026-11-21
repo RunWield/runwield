@@ -44,11 +44,11 @@ function resumeState(result: GoldenResult): ResumeState {
 
 const persistedPlan = {
     path: "docs/plans/resumed-plan.md",
-    text:
-        "---\nclassification: PLANNED_CHANGE\ncomplexity: MEDIUM\nsummary: Persisted resume Plan\naffectedPaths: []\nstatus: ready_for_work\n---\n# Persisted Resume Plan\n\nThe resumed Session must retain this Plan pointer.\n",
+    text: "---\nclassification: PLANNED_CHANGE\ncomplexity: MEDIUM\nsummary: Persisted resume Plan\naffectedPaths: []\nstatus: ready_for_work\n---\n# Persisted Resume Plan\n\nThe resumed Session must retain this Plan pointer.\n",
 };
 
 export const resumePersistedSessionScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "slash-resume-restores-history-agent-model-plan-and-continues",
     composedTui: true,
     initialAgentName: "guide",
@@ -70,18 +70,22 @@ export const resumePersistedSessionScenario = {
         complexity: "MEDIUM",
     },
     captureModelTurns: true,
-    scriptedInteractions: [{
-        type: "select",
-        promptIncludes: "Select a session to resume",
-        value: "__first_option__",
-    }],
-    script: [{
-        id: "operator-continues-after-resume",
-        agent: "operator",
-        phase: "operator",
-        ordinal: 1,
-        text: "Operator continued with the restored Agent, model, and Plan context.",
-    }],
+    scriptedInteractions: [
+        {
+            type: "select",
+            promptIncludes: "Select a session to resume",
+            value: "__first_option__",
+        },
+    ],
+    script: [
+        {
+            id: "operator-continues-after-resume",
+            agent: "operator",
+            phase: "operator",
+            ordinal: 1,
+            text: "Operator continued with the restored Agent, model, and Plan context.",
+        },
+    ],
     actions: [
         { type: "type", text: "/resume" },
         { type: "enter" },
@@ -115,7 +119,8 @@ export const resumePersistedSessionScenario = {
             assert(plan?.attrs?.status === "ready_for_work", `Expected durable Plan state; got ${plan?.attrs?.status}`);
             const continuedTurn = state.modelTurns?.at(-1);
             assert(
-                continuedTurn?.agent === "operator" && continuedTurn.model === "resume-model" &&
+                continuedTurn?.agent === "operator" &&
+                    continuedTurn.model === "resume-model" &&
                     continuedTurn.provider === "golden",
                 `Expected continued Operator turn on restored model; got ${JSON.stringify(continuedTurn)}`,
             );
@@ -128,6 +133,7 @@ export const resumePersistedSessionScenario = {
 };
 
 export const resumeQuickFixSessionScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "slash-resume-retains-quick-fix-engineer-context",
     composedTui: true,
     initialAgentName: "guide",
@@ -139,18 +145,22 @@ export const resumeQuickFixSessionScenario = {
         agentName: "engineer",
     },
     captureModelTurns: true,
-    scriptedInteractions: [{
-        type: "select",
-        promptIncludes: "Select a session to resume",
-        value: "__first_option__",
-    }],
-    script: [{
-        id: "engineer-continues-quick-fix-after-resume",
-        agent: "engineer",
-        phase: "engineer",
-        ordinal: 1,
-        text: "Engineer continued with the restored Quick Fix context.",
-    }],
+    scriptedInteractions: [
+        {
+            type: "select",
+            promptIncludes: "Select a session to resume",
+            value: "__first_option__",
+        },
+    ],
+    script: [
+        {
+            id: "engineer-continues-quick-fix-after-resume",
+            agent: "engineer",
+            phase: "engineer",
+            ordinal: 1,
+            text: "Engineer continued with the restored Quick Fix context.",
+        },
+    ],
     actions: [
         { type: "type", text: "/resume" },
         { type: "enter" },
@@ -182,19 +192,22 @@ export const resumeQuickFixSessionScenario = {
 };
 
 export const resumeCorruptSessionScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "slash-resume-ignores-corrupt-session-and-keeps-shell-usable",
     composedTui: true,
     corruptSession: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
     timeoutMs: 60000,
-    script: [{
-        id: "guide-answers-after-corrupt-resume",
-        agent: "guide",
-        phase: "inquiry",
-        ordinal: 1,
-        text: "The live Session remains usable after skipping corrupt history.",
-    }],
+    script: [
+        {
+            id: "guide-answers-after-corrupt-resume",
+            agent: "guide",
+            phase: "inquiry",
+            ordinal: 1,
+            text: "The live Session remains usable after skipping corrupt history.",
+        },
+    ],
     actions: [
         { type: "type", text: "/resume" },
         { type: "enter" },
@@ -215,6 +228,7 @@ export const resumeCorruptSessionScenario = {
 };
 
 export const resumeInterruptedSessionScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "slash-resume-recovers-interrupted-session-and-continues",
     composedTui: true,
     initialAgentName: "guide",
@@ -226,18 +240,22 @@ export const resumeInterruptedSessionScenario = {
         agentName: "operator",
         interrupted: true,
     },
-    scriptedInteractions: [{
-        type: "select",
-        promptIncludes: "Select a session to resume",
-        value: "__first_option__",
-    }],
-    script: [{
-        id: "operator-continues-after-interrupted-resume",
-        agent: "operator",
-        phase: "operator",
-        ordinal: 1,
-        text: "Operator continued after recovering the interrupted checkpoint.",
-    }],
+    scriptedInteractions: [
+        {
+            type: "select",
+            promptIncludes: "Select a session to resume",
+            value: "__first_option__",
+        },
+    ],
+    script: [
+        {
+            id: "operator-continues-after-interrupted-resume",
+            agent: "operator",
+            phase: "operator",
+            ordinal: 1,
+            text: "Operator continued after recovering the interrupted checkpoint.",
+        },
+    ],
     actions: [
         { type: "type", text: "/resume" },
         { type: "enter" },

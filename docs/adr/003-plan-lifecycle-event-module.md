@@ -4,6 +4,14 @@ status: accepted
 
 # Plan Lifecycle Transitions Are Centralized
 
+## Local home-store activation
+
+Ordinary local and manual-SSH Plan and Work Record access now uses the executing account's personal Project store
+under [ADR-019](019-home-project-state-and-launch-mode-ownership.md). Project catalog authority is separate from
+revision-checked workflow selection. Explicit import preserves original execution ownership until publication is proven
+or the user deliberately abandons the attempt; it never starts a replacement attempt or weakens publication evidence.
+Session bundle authority and managed-remote personal ownership retain their existing contracts.
+
 ## Product constraints
 
 [Core execution and recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery)
@@ -33,6 +41,14 @@ user-written body. Writers that replace the body still compare the whole file to
 prevent overwriting concurrent edits. A compensating transition may restore only
 its owned front matter onto the latest body. Details live in the
 [Plan lifecycle reference](../plan-lifecycle.md#plan-body-ownership-and-external-adoption).
+
+Explicitly admitted canonical packages use those same event and review rules, with definition and controller metadata
+committed together beside the documents. Immutable input and complex-controller references preserve the evidence used
+by an action. Package metadata compensation never restores document bytes. The package owner takes catalog and sorted
+Plan-ID native locks before repository/attempt locks, with nested writes reusing ownership. A package-wide attempt
+binding prevents two linked clones from creating competing unfinished executions; the recorded repository registry
+continues to own physical Git facts. Neither a path nor a matching name admits package authority. This bounded internal
+path does not change ordinary public selection or the publication decision in ADR-016.
 
 Diagnostics must inspect malformed stores without first requiring the invariants
 they diagnose. Retain per-item facts and corruption details; a migration must

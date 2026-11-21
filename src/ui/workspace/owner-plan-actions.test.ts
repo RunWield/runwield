@@ -1,16 +1,18 @@
+import process from "node:process";
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow, loadPlan } from "../../plan-store/index.ts";
+import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
 import { assertEquals } from "../../testing/assertions.ts";
-// @ts-nocheck: Astro workspace check uses browser tsconfig without Deno/JSR test globals.
-// @ts-nocheck: Astro workspace check uses browser tsconfig without Deno/JSR test globals.
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { test } from "node:test";
-import { loadPlan, savePlan } from "../../plan-store.ts";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { loadPlanActionEvidence, type PlanActionRequest } from "../../shared/workflow/plan-actions.ts";
-import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { runOwnerPlanAction } from "./server/owner-plan-actions.ts";
+import { makeManagedSessionFixture, type ManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+import { runOwnerPlanAction, type OwnerPlanActionServiceRequest } from "./server/owner-plan-actions.ts";
 
-async function makeAction(
-    root: string,
-    action: PlanActionRequest["action"] = "put_on_hold",
-): Promise<PlanActionRequest> {
+async function makeAction(root: string): Promise<PlanActionRequest> {
     const evidence = await loadPlanActionEvidence(root, "plan-demo");
     if (evidence.kind !== "success") throw new Error(evidence.message);
     return {
@@ -18,158 +20,82 @@ async function makeAction(
         expectedRevision: evidence.evidence.revision,
         expectedStatus: evidence.evidence.status,
         expectedWorktree: evidence.evidence.worktree,
-        action,
+        action: "put_on_hold",
     };
 }
 
 test("returns the stored result for an exact duplicate request", async () => {
-    const fixture = await makeManagedSessionFixture();
-    try {
-        const root = fixture.projectRoot;
-        await savePlan(root, "demo", "# Demo\n", { planId: "plan-demo", status: "draft", classification: "FEATURE" });
-        const store = fixture.store;
-        const action = await makeAction(root);
-
-        const first = await runOwnerPlanAction(store, {
-            projectId: fixture.project.projectId,
-            runwieldSessionId: fixture.session.runwieldSessionId,
-            deviceId: "device-1",
-            requestId: "req-1",
-            requestHash: "hash-1",
-            expectedGeneration: 0,
-            action,
-        });
-        const duplicate = await runOwnerPlanAction(store, {
-            projectId: fixture.project.projectId,
-            runwieldSessionId: fixture.session.runwieldSessionId,
-            deviceId: "device-1",
-            requestId: "req-1",
-            requestHash: "hash-1",
-            expectedGeneration: 0,
-            action,
-        });
-
+    await withActionFixture(async (fixture) => {
+        const request = makeRequest(fixture, await makeAction(fixture.projectRoot));
+        const first = await runOwnerPlanAction(fixture.store, request);
+        const beforeReplay = await loadPlan(fixture.projectRoot, "demo");
+        const duplicate = await runOwnerPlanAction(fixture.store, request);
         assertEquals(first.status, 200);
         assertEquals(duplicate, first);
-        assertEquals(store.inspectSessionActivation(fixture.session.runwieldSessionId).activation?.state, "idle");
-        const current = await loadPlan(root, "demo");
+        const current = await loadPlan(fixture.projectRoot, "demo");
         assertEquals(current?.attrs.status, "on_hold");
-    } finally {
-        await fixture.cleanup();
-    }
+        assertEquals(current?.revision, beforeReplay?.revision);
+        assertEquals(
+            fixture.store.inspectSessionActivation(fixture.session.runwieldSessionId).activation?.state,
+            "idle",
+        );
+    });
 });
 
 test("returns recovery guidance for an accepted duplicate without replaying", async () => {
-    const fixture = await makeManagedSessionFixture();
-    try {
-        const root = fixture.projectRoot;
-        await savePlan(root, "demo", "# Demo\n", { planId: "plan-demo", status: "draft", classification: "FEATURE" });
-        const store = fixture.store;
-        const action = await makeAction(root);
-        store.createOrGetOperationReceipt({
-            deviceId: "device-1",
-            requestId: "req-accepted",
-            runwieldSessionId: fixture.session.runwieldSessionId,
-            projectId: fixture.project.projectId,
-            expectedGeneration: 0,
-            kind: "plan_action",
-            requestHash: "hash-accepted",
-        });
-
-        const duplicate = await runOwnerPlanAction(store, {
-            projectId: fixture.project.projectId,
-            runwieldSessionId: fixture.session.runwieldSessionId,
-            deviceId: "device-1",
-            requestId: "req-accepted",
-            requestHash: "hash-accepted",
-            expectedGeneration: 0,
-            action,
-        });
-
+    await withActionFixture(async (fixture) => {
+        const request = makeRequest(fixture, await makeAction(fixture.projectRoot));
+        fixture.store.createOrGetOperationReceipt({ ...request, kind: "plan_action" });
+        const duplicate = await runOwnerPlanAction(fixture.store, request);
         assertEquals(duplicate.status, 409);
         assertEquals(duplicate.body.result.kind, "recovery_required");
-        assertEquals(store.inspectSessionActivation(fixture.session.runwieldSessionId).generation?.generation, 0);
-        const current = await loadPlan(root, "demo");
-        assertEquals(current?.attrs.status, "draft");
-    } finally {
-        await fixture.cleanup();
-    }
+        assertEquals((await loadPlan(fixture.projectRoot, "demo"))?.attrs.status, "draft");
+        assertEquals(
+            fixture.store.inspectSessionActivation(fixture.session.runwieldSessionId).activation?.state,
+            "idle",
+        );
+    });
 });
 
 test("revalidates canonical evidence for a new request id", async () => {
-    const fixture = await makeManagedSessionFixture();
-    try {
-        const root = fixture.projectRoot;
-        await savePlan(root, "demo", "# Demo\n", { planId: "plan-demo", status: "draft", classification: "FEATURE" });
-        const store = fixture.store;
-        const action = await makeAction(root);
-        const before = await loadPlan(root, "demo");
-        if (!before?.revision) throw new Error("fixture Plan missing revision");
-        await savePlan(
-            root,
-            "demo",
-            "# Demo changed\n",
-            {
-                planId: "plan-demo",
-                status: "draft",
-                classification: "FEATURE",
-            },
-            { expectedRevision: before.revision },
-        );
-
-        const result = await runOwnerPlanAction(store, {
-            projectId: fixture.project.projectId,
-            runwieldSessionId: fixture.session.runwieldSessionId,
-            deviceId: "device-1",
-            requestId: "req-2",
-            requestHash: "hash-2",
-            expectedGeneration: 0,
-            action,
-        });
-
-        assertEquals(result.status, 409);
-        assertEquals(result.body.result.kind, "refresh_required");
-        assertEquals(store.inspectSessionActivation(fixture.session.runwieldSessionId).activation?.state, "idle");
-        const current = await loadPlan(root, "demo");
-        assertEquals(current?.attrs.status, "draft");
-    } finally {
-        await fixture.cleanup();
-    }
-});
-
-test("Workspace Plan action rejects changed status and worktree evidence with a real owner store", async () => {
-    const fixture = await makeManagedSessionFixture();
-    try {
-        await savePlan(fixture.projectRoot, "demo", "# Demo\n", {
-            planId: "plan-demo",
-            status: "draft",
-            classification: "FEATURE",
-        });
+    await withActionFixture(async (fixture) => {
         const action = await makeAction(fixture.projectRoot);
         const before = await loadPlan(fixture.projectRoot, "demo");
         if (!before?.revision) throw new Error("fixture Plan missing revision");
-        await savePlan(
-            fixture.projectRoot,
-            "demo",
-            "# Demo\n",
-            {
-                planId: "plan-demo",
-                status: "ready_for_work",
-                classification: "FEATURE",
-            },
-            { expectedRevision: before.revision },
-        );
-
-        const result = await runOwnerPlanAction(fixture.store, {
-            projectId: fixture.project.projectId,
-            runwieldSessionId: fixture.session.runwieldSessionId,
-            deviceId: "device-real",
-            requestId: "req-real-store",
-            requestHash: "hash-real-store",
-            expectedGeneration: 0,
-            action,
+        await seedPlan(fixture.projectRoot, "demo", "# Changed Demo\n", before.attrs, {
+            expectedRevision: before.revision,
         });
+        const result = await runOwnerPlanAction(fixture.store, makeRequest(fixture, action));
+        assertEquals(result.status, 409);
+        assertEquals(result.body.result.kind, "refresh_required");
+        assertEquals((await loadPlan(fixture.projectRoot, "demo"))?.attrs.status, "draft");
+        assertEquals(
+            fixture.store.inspectSessionActivation(fixture.session.runwieldSessionId).activation?.state,
+            "idle",
+        );
+    });
+});
 
+test("Workspace Plan action rejects changed status and worktree evidence with a real owner store", async () => {
+    await withActionFixture(async (fixture) => {
+        const action = await makeAction(fixture.projectRoot);
+        const before = await loadPlan(fixture.projectRoot, "demo");
+        if (!before?.revision) throw new Error("fixture Plan missing revision");
+        await withLocalPlanWorkflow(fixture.projectRoot, "demo", async () => {
+            await recordPlanEvent({
+                cwd: fixture.projectRoot,
+                planName: "demo",
+                event: "review_approved",
+                currentStatus: "draft",
+            });
+            await recordPlanEvent({
+                cwd: fixture.projectRoot,
+                planName: "demo",
+                event: "readiness_passed",
+                currentStatus: "approved",
+            });
+        });
+        const result = await runOwnerPlanAction(fixture.store, makeRequest(fixture, action));
         assertEquals(result.status, 409);
         assertEquals(result.body.result.kind, "refresh_required");
         assertEquals((await loadPlan(fixture.projectRoot, "demo"))?.attrs.status, "ready_for_work");
@@ -177,41 +103,52 @@ test("Workspace Plan action rejects changed status and worktree evidence with a 
             fixture.store.inspectSessionActivation(fixture.session.runwieldSessionId).generation?.generation,
             0,
         );
-    } finally {
-        await fixture.cleanup();
-    }
+    });
 });
 
 test("conflicts when a request id is reused with different input", async () => {
-    const fixture = await makeManagedSessionFixture();
-    try {
-        const root = fixture.projectRoot;
-        await savePlan(root, "demo", "# Demo\n", { planId: "plan-demo", status: "draft", classification: "FEATURE" });
-        const store = fixture.store;
-        const action = await makeAction(root);
-        await runOwnerPlanAction(store, {
-            projectId: fixture.project.projectId,
-            runwieldSessionId: fixture.session.runwieldSessionId,
-            deviceId: "device-1",
-            requestId: "req-3",
-            requestHash: "hash-3",
-            expectedGeneration: 0,
-            action,
-        });
-
-        const conflict = await runOwnerPlanAction(store, {
-            projectId: fixture.project.projectId,
-            runwieldSessionId: fixture.session.runwieldSessionId,
-            deviceId: "device-1",
-            requestId: "req-3",
-            requestHash: "changed",
-            expectedGeneration: 0,
-            action,
-        });
-
+    await withActionFixture(async (fixture) => {
+        const request = makeRequest(fixture, await makeAction(fixture.projectRoot));
+        assertEquals((await runOwnerPlanAction(fixture.store, request)).status, 200);
+        const conflict = await runOwnerPlanAction(fixture.store, { ...request, requestHash: "changed" });
         assertEquals(conflict.status, 409);
         assertEquals(conflict.body.result.kind, "invalid_action");
-    } finally {
-        await fixture.cleanup();
-    }
+    });
 });
+
+async function withActionFixture(body: (fixture: ManagedSessionFixture) => Promise<void>) {
+    await withProcessGlobalTestLock(async () => {
+        const home = await realpath(await mkdtemp(join(tmpdir(), "runwield-owner-plan-action-")));
+        const previousHome = process.env.HOME;
+        process.env.HOME = home;
+        try {
+            const fixture = await makeManagedSessionFixture({ home });
+            try {
+                await seedPlan(fixture.projectRoot, "demo", "# Demo\n", {
+                    planId: "plan-demo",
+                    status: "draft",
+                    classification: "FEATURE",
+                });
+                await body(fixture);
+            } finally {
+                await fixture.cleanup();
+            }
+        } finally {
+            if (previousHome === undefined) delete process.env.HOME;
+            else process.env.HOME = previousHome;
+            await rm(home, { recursive: true, force: true });
+        }
+    });
+}
+
+function makeRequest(fixture: ManagedSessionFixture, action: PlanActionRequest): OwnerPlanActionServiceRequest {
+    return {
+        projectId: fixture.project.projectId,
+        runwieldSessionId: fixture.session.runwieldSessionId,
+        deviceId: "device-1",
+        requestId: "req-1",
+        requestHash: "hash-1",
+        expectedGeneration: 0,
+        action,
+    };
+}

@@ -1,12 +1,12 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
 import { AGENTS } from "../../constants.ts";
-import { resolvePlanExecutionPolicy } from "../../plan-store.ts";
+import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 
 export function resolveExecutionOwner(meta) {
     const policy = resolvePlanExecutionPolicy(meta);
     if (policy.ok) return policy.policy.executionAgent;
-    if (policy.reason === "project_epic") return /** @type {"engineer"} */ (AGENTS.ENGINEER);
+    if (policy.reason === "project_epic") return /** @type {"engineer"} */ AGENTS.ENGINEER;
     throw new Error(policy.error);
 }
 

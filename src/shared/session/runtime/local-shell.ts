@@ -169,13 +169,9 @@ export class RuntimeLocalShell {
 
             // The streams settle when the process tree dies, so final output and
             // active-interaction cleanup never race a still-running descendant.
-            const [outcome] = await Promise.all([
-                shell.done,
-                readStream(shell.stdout),
-                readStream(shell.stderr),
-            ]);
+            const [outcome] = await Promise.all([shell.done, readStream(shell.stdout), readStream(shell.stderr)]);
             if (outcome.terminatedBy) canceled = true;
-            exitCode = canceled ? 130 : outcome.exitCode ?? 1;
+            exitCode = canceled ? 130 : (outcome.exitCode ?? 1);
         } catch (error) {
             if (!canceled) {
                 output += `Error starting process: ${error instanceof Error ? error.message : String(error)}\n`;

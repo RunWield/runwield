@@ -195,7 +195,7 @@ export function scriptReviewAndRecord(f: RuntimeFixture, repair = false) {
 
 export async function readWorkflowResult(client: RuntimeProcess): Promise<RuntimeClientReport> {
     let report = await client.read();
-    while (report.kind === "workflow-interaction") report = await client.read();
+    while (report.kind === "workflow-interaction" || report.kind === "workflow-progress") report = await client.read();
     return report;
 }
 

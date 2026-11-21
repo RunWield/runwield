@@ -19,4 +19,4 @@ Starting validation updates the Plan status and runs a configured external comma
 
 ## Validation
 
-Use Bun 1.4.3. Run `bun run test`.
+Use Bun ^1.4.0. Run `bun run test`.

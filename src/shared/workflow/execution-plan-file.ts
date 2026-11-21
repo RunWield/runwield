@@ -1,3 +1,5 @@
+import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
+import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile } from "node:fs/promises";
 /**
@@ -5,15 +7,14 @@ import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile } from "node
  */
 
 import { dirname, join, relative, sep as SEPARATOR } from "node:path";
+import { getStoredPlanPath, writePlanMarkdownWithRevision } from "../../plan-store.ts";
 import {
-    atomicWriteTextFileIfAbsent,
     getPlanRevisionForText,
-    getStoredPlanPath,
     mergeFrontMatterText,
     parsePlanFrontMatter,
     planDocumentMarkdown,
-    writePlanMarkdownWithRevision,
-} from "../../plan-store.ts";
+} from "../../plan-format.ts";
+import { atomicWriteTextFileIfAbsent } from "../atomic-text-file.ts";
 
 /**
  * /*
@@ -214,6 +215,7 @@ export async function loadCanonicalExecutionPlanSource(
     projectRoot: string,
     planName: string,
 ): Promise<CanonicalExecutionPlanSource> {
+    if (hasCanonicalPlanAccess()) return { ...(await loadPackageWorkflowPlan(planName)), relativePath: "context.md" };
     const path = getStoredPlanPath(projectRoot, planName);
     const relativePath = projectRelativePath(projectRoot, path);
     const parentRelativePath = dirname(relativePath);
@@ -365,6 +367,10 @@ export async function ensureExecutionPlanFile({
     reconcileFromCanonical = true,
     replaceFromCanonical = false,
 }: EnsureExecutionPlanFileOptions): Promise<ExecutionPlanFileResult> {
+    if (hasCanonicalPlanAccess()) {
+        const source = await loadPackageWorkflowPlan(planName);
+        return { kind: "present", path: source.path, relativePath: "context.md" };
+    }
     const targetPath = getStoredPlanPath(executionCwd, planName);
     const relativePath = projectRelativePath(executionCwd, targetPath);
     const targetDir = dirname(targetPath);

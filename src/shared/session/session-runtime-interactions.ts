@@ -110,6 +110,30 @@ export async function requestHostedSessionInteraction(
     signal?: AbortSignal,
     capability: ManagedOperationCapability | null = null,
 ): Promise<RuntimeInteractionResponse> {
+    if (request.type === RuntimeInteractionTypes.PLAN_REVIEW) {
+        const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
+        const reference = request._meta?.reviewContainerPlanId || request._meta?.planId || request._meta?.planName;
+        if (typeof reference === "string")
+            return await withLocalPlanWorkflow(hostedSession.cwd, reference, () =>
+                requestHostedSessionInteractionInScope(hostedSession, request, signal, capability),
+            );
+    }
+    return await requestHostedSessionInteractionInScope(hostedSession, request, signal, capability);
+}
+
+/**
+ * @param {import('./hosted-session.ts').HostedSession} hostedSession
+ * @param {RuntimeInteractionRequest} request
+ * @param {AbortSignal} [signal]
+ * @param {import('./managed-operation.ts').ManagedOperationCapability | null} [capability]
+ * @returns {Promise<RuntimeInteractionResponse>}
+ */
+async function requestHostedSessionInteractionInScope(
+    hostedSession: HostedSession,
+    request: RuntimeInteractionRequest,
+    signal?: AbortSignal,
+    capability: ManagedOperationCapability | null = null,
+): Promise<RuntimeInteractionResponse> {
     const currentCapability = hostedSession.getManagedOperationCapability?.() || null;
     if (hostedSession.getManagedMetadata?.() && (!capability || currentCapability !== capability)) {
         return {
@@ -130,9 +154,9 @@ export async function requestHostedSessionInteraction(
     ) {
         // Keep file-backed review authority out of browser bundles that import
         // the shared interaction outcome helpers from this module.
-        const { loadPlanFileStrict } = await import("../../plan-store.ts");
+        const { preparePlanReviewDocument } = await import("../../plan-store/index.ts");
         const { loadPlanActionEvidence } = await import("../workflow/plan-actions.ts");
-        const source = await loadPlanFileStrict(request._meta.planPath);
+        const { document: source, packageInput } = await preparePlanReviewDocument(request._meta.planPath);
         if (source.kind !== "loaded") {
             throw new Error("The Plan could not be opened for review. Your files have not been changed.");
         }
@@ -151,6 +175,7 @@ export async function requestHostedSessionInteraction(
         }
         interaction._meta = {
             ...request._meta,
+            packageInput,
             expectedRevision: evidence.evidence.revision,
             expectedStatus: evidence.evidence.status,
             expectedWorktree: evidence.evidence.worktree,
@@ -195,7 +220,7 @@ export async function requestHostedSessionInteraction(
             planningAgentName.trim()
         ) {
             reviewContainerPlanId = planId;
-            const { parsePlanFrontMatter } = await import("../../plan-store.ts");
+            const { parsePlanFrontMatter } = await import("../../plan-format.ts");
             if (Array.isArray(meta.sequenceDocuments)) {
                 for (const doc of meta.sequenceDocuments) {
                     hostedSession.planReviewConversations.rememberReviewBase(doc.planId, {

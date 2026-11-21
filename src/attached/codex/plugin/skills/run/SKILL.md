@@ -114,6 +114,19 @@ isolation, create another worktree, or move the invoking checkout. If the host c
 reviewer cannot access RunWield MCP directly, report the missing capability and keep the workflow resumable. Do not
 substitute a review in this coordinating conversation.
 
+## Canonical document access
+
+When the workflow has a selected Plan, workers read it with `read_plan({ workflowId, actionId })` before acting. Use `resource` for a separate
+Plan document. Search canonical Work Records with `work_record_search({ workflowId, actionId, query })`, then read a
+result with `work_record_read({ workflowId, actionId, recordId })`. Core scopes these tools to the workflow Project
+and current action; Recorder can read all statuses, while other roles read current usable records.
+
+These tools supply content through Core without host filesystem access to home. Continue `nextOffsetBytes` until
+`truncated` is false, carrying `documentRevision` on every continuation page. Restart from zero after
+`revision_conflict`; do not combine pages from different revisions. Search pages contain JSON; parse only after all
+pages arrive. Host denial of these tools is still denial: stop dependent work if no authorized route remains. Do not
+create a repository copy or symlink, request broad home access, or treat a path as a grant.
+
 For planning, use Core's `planningCwd` and `planPath`. Follow the planning reference's `start_planning` step before
 dispatch. If preparation fails or authority is missing, stop dependent work, repair the integration, and retry the same
 workflow. Do not use temporary Core scripts, manual HTTP approvals, coordinator-proxied worker instructions, or manually

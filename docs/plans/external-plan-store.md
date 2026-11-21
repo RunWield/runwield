@@ -2,7 +2,7 @@
 classification: "PROJECT"
 complexity: "HIGH"
 affectedPaths:
-    - "src/plan-store.ts"
+    - "src/plan-store.js"
     - "src/plan-front-matter.ts"
     - "src/shared/workflow/"
     - "src/shared/work-records/"
@@ -28,7 +28,7 @@ targetBranch: "epic/external-plan-store"
 createdAt: "2026-11-01"
 status: "draft"
 epicBaseCommit: "b31bece1aeed8e4fdb4ae4289f25a73e9009f9b5"
-planId: "10b0932d-b27a-478d-a2bb-28e456d2df35"
+planId: "e8e23021-8e58-4f2c-90a4-bd89da42e5c0"
 ---
 
 # External Project State and Plan Store
@@ -40,7 +40,7 @@ and target-branch copies, then joins that content with controller and worktree r
 leave those competing ownership rules intact. This Epic replaces them with one live Plan per Project and relocates
 everything currently under every checkout's `.wld/internal/` into `~/.wld/projects/<projectId>/`.
 
-The [Plan Store proposal](../prd/plan-store-prd.md) supplies the target requirements. Current behavior remains governed
+The [Core Plan store requirements](../prd/runwield-core-prd.md#plan-authoring-and-external-adoption) supply the product requirements. Current behavior remains governed
 by the central PRDs and accepted ADRs. This is a working architecture draft, not an approved design or implemented
 capability. The owner confirmed the full proposal and expanded runtime relocation on 2026-11-01. The launch-mode
 ownership rule below is also confirmed; detailed storage and recovery mechanisms remain reviewable design choices.
@@ -369,7 +369,7 @@ Inspected source establishes the following current dependencies:
 | Flow                      | Existing path and finding                                                                                                            | Architectural consequence                                                                                      |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | Load a Plan               | `workflow/plan-location.ts` chooses execution, registered planning, primary, or target-branch documents                              | Replace document selection with Project/Plan lookup; preserve execution-location selection separately          |
-| Save a Plan               | `plan-store.ts:savePlan` acquires catalog/Plan locks and calls `prepareControllerView`; ordinary saves preserve controller authority | Move persistence without merging document edits and lifecycle/controller writes into one unrestricted save     |
+| Save a Plan               | `plan-store.js:savePlan` acquires catalog/Plan locks and calls `prepareControllerView`; ordinary saves preserve controller authority | Move persistence without merging document edits and lifecycle/controller writes into one unrestricted save     |
 | Controller state          | `workflow/controller-registry.ts:controllerRecordPath` stores Plan-keyed records below primary `.wld/internal/`                      | Consolidate Plan-owned controller state in metadata; retire overlays after explicit adoption                   |
 | Publication and recording | `workflow/publication-machine.ts` and `work-records/published-source.ts` recover artifacts through Plan paths and Git commits        | Retain immutable store inputs and receipts before removing repository Plan commits                             |
 | Session lookup            | `session/file-session-storage.ts` hashes roots for identity and encodes roots for local storage; remote projects use another path    | Introduce stable lookup bindings without changing transcript identity, historical cwd, or lock ownership       |
@@ -451,7 +451,7 @@ This map guides later decomposition; it is not an allowlist or a task sequence.
 
 ```text
 src/
-  plan-store.ts, plan-front-matter.ts   storage contract; legacy parsing confined to explicit import
+  plan-store.js, plan-front-matter.ts   storage contract; legacy parsing confined to explicit import
   shared/
     project-*                         identity, automatic internal relocation, action-owned entry
     runwield-owned-paths.ts            retire internal runtime writers; preserve settings and overrides
@@ -480,7 +480,7 @@ do not implement new real-time collaboration or hosted storage here.
 
 - `shared/private-json-file.ts`, `native-file-lock.ts`, and Windows replacement handling: portable file durability and
   native ownership. Validate them on the selected storage owner; mounting a path does not establish equivalence.
-- `plan-store.ts` body hashing, strict read results, identity checks, and stale-write errors: preserve their protection
+- `plan-store.js` body hashing, strict read results, identity checks, and stale-write errors: preserve their protection
   while separating document and metadata revisions.
 - `workflow/state-transition.ts` and publication attempt/receipt machinery: retain explicit evidence and restart
   reconciliation, removing obsolete Plan-copy operations rather than adding a parallel workflow.
@@ -493,32 +493,32 @@ do not implement new real-time collaboration or hosted storage here.
 ## Verification Plan
 
 An Epic is not directly executable. Later child Plans select exact focused test commands using
-`bun scripts/run-tests.ts <paths>` after `bun run install:locked` on Bun 1.4.3; the integrated gate is `bun run ci`.
+`bun scripts/run-tests.js <paths>` after `bun run install:locked` on Bun 1.4.3; the integrated gate is `bun run ci`.
 Use disposable homes, real Git fixtures, and process-global locks where required. Validate new file behavior on Linux,
 macOS, and Windows; remote testing follows the existing supported Linux host scope.
 
 ### Outcome Evidence
 
-| Outcome                              | Observable evidence and owning requirement                                                                                                                                                                                                                                                                                                      |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| One live Plan                        | Primary checkout, two worktrees, and a deliberately linked clone resolve the same Plan ID and document bytes; changing branches cannot change them. No new-format live read uses `docs/plans/` or `git show` for Plan content. [Plan store](../prd/plan-store-prd.md#plan-store)                                                                |
-| Independent ownership                | A lifecycle/controller update leaves every Markdown byte unchanged; a hand edit leaves metadata intact and invalidates stale approval at the action boundary. Concurrent stale writes cannot erase newer work. [Plan store](../prd/plan-store-prd.md#plan-store)                                                                                |
-| Stable continuity                    | Rename/move a Project and alter its remote; find the same Plans, Work Records, Sessions, and existing Attached Workflow. Sessions retain one writer lock and unchanged committed history. A declined clone link stays separate. [Project identity](../prd/plan-store-prd.md#project-identity)                                                   |
-| Safe import                          | Import an Epic with children, archived Plans, IDs, controller state, and an unfinished execution; restart midway and retry. Exactly one live package per ID remains, originals are unchanged, and current execution evidence wins over stale copies. Unimported files never enter listings. [Plan import](../prd/plan-store-prd.md#plan-import) |
-| Publication without repository Plans | Complete standalone and Epic delivery with Plan copies off, then both copies off. Git proves delivery; canonical status and recording recover after a killed process; no Plan commit is required. [Repository footprint](../prd/plan-store-prd.md#repository-footprint-and-delivery-copies)                                                     |
-| Immutable delivery copies            | Enable each setting combination, retry after target advancement and lost acknowledgement, and edit the live Plan meanwhile. The final branch has the intended single copies commit, excludes `plan.wld.json`, and uses the sealed input. Edited delivery copies cannot affect live state. Same requirement as above.                            |
-| Recording after cleanup              | Remove the delivered execution checkout, retry Recorder and rebuild indexes. Retrieve the exact delivered source with correct provenance, confidence, supersession, and Epic Ticket aggregation from retained store input. [Work Record store](../prd/plan-store-prd.md#work-record-store)                                                      |
-| History without Git                  | Approve, edit, deliver or close a Plan in a non-Git folder; inspect retained versions and restore content without restoring stale execution ownership or completion proof. [Plan history](../prd/plan-store-prd.md#plan-history)                                                                                                                |
-| Controlled pruning                   | Dry-run and confirmed pruning honor count/age floors, retained-Plan coverage, and unfinished evidence pins; copy cleanup stays within recorded repository paths and leaves deletions uncommitted. Missing copies do not block it. [Work Record store](../prd/plan-store-prd.md#work-record-store)                                               |
-| Surface parity                       | TUI, Workspace review/search, Connect, and ACP show and act on the same revision. Passive reads make no files or Git changes. Strict host path permissions remain enforced while the approved Plan-access route works. [Core Plan review](../prd/runwield-core-prd.md#plan-review)                                                              |
-| Remote continuity                    | On the chosen owner, disconnect before and after a store acknowledgement, reconnect, and reconcile the same operation; never duplicate publication or admit two writers through different filesystem paths. [Remote connection](../prd/runwield-core-prd.md#remote-connection)                                                                  |
+| Outcome                              | Observable evidence and owning requirement                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One live Plan                        | Primary checkout, two worktrees, and a deliberately linked clone resolve the same Plan ID and document bytes; changing branches cannot change them. No new-format live read uses `docs/plans/` or `git show` for Plan content. [Plan store](../prd/runwield-core-prd.md#plan-authoring-and-external-adoption)                                                               |
+| Independent ownership                | A lifecycle/controller update leaves every Markdown byte unchanged; a hand edit leaves metadata intact and invalidates stale approval at the action boundary. Concurrent stale writes cannot erase newer work. [Plan store](../prd/runwield-core-prd.md#plan-authoring-and-external-adoption)                                                                               |
+| Stable continuity                    | Rename/move a Project and alter its remote; find the same Plans, Work Records, Sessions, and existing Attached Workflow. Sessions retain one writer lock and unchanged committed history. A declined clone link stays separate. [Project identity](../prd/runwield-core-prd.md#project-context-and-initialization)                                                          |
+| Safe import                          | Import an Epic with children, archived Plans, IDs, controller state, and an unfinished execution; restart midway and retry. Exactly one live package per ID remains, originals are unchanged, and current execution evidence wins over stale copies. Unimported files never enter listings. [Plan import](../prd/runwield-core-prd.md#plan-authoring-and-external-adoption) |
+| Publication without repository Plans | Complete standalone and Epic delivery with Plan copies off, then both copies off. Git proves delivery; canonical status and recording recover after a killed process; no Plan commit is required. [Repository footprint](../prd/runwield-core-prd.md#delivery-and-publication)                                                                                              |
+| Immutable delivery copies            | Enable each setting combination, retry after target advancement and lost acknowledgement, and edit the live Plan meanwhile. The final branch has the intended single copies commit, excludes `plan.wld.json`, and uses the sealed input. Edited delivery copies cannot affect live state. Same requirement as above.                                                        |
+| Recording after cleanup              | Remove the delivered execution checkout, retry Recorder and rebuild indexes. Retrieve the exact delivered source with correct provenance, confidence, supersession, and Epic Ticket aggregation from retained store input. [Work Record store](../prd/runwield-core-prd.md#work-records)                                                                                    |
+| History without Git                  | Approve, edit, deliver or close a Plan in a non-Git folder; inspect retained versions and restore content without restoring stale execution ownership or completion proof. [Plan history](../prd/runwield-core-prd.md#plan-lifecycle)                                                                                                                                       |
+| Controlled pruning                   | Dry-run and confirmed pruning honor count/age floors, retained-Plan coverage, and unfinished evidence pins; copy cleanup stays within recorded repository paths and leaves deletions uncommitted. Missing copies do not block it. [Work Record store](../prd/runwield-core-prd.md#work-records)                                                                             |
+| Surface parity                       | TUI, Workspace review/search, Connect, and ACP show and act on the same revision. Passive reads make no files or Git changes. Strict host path permissions remain enforced while the approved Plan-access route works. [Core Plan review](../prd/runwield-core-prd.md#plan-review)                                                                                          |
+| Remote continuity                    | On the chosen owner, disconnect before and after a store acknowledgement, reconnect, and reconcile the same operation; never duplicate publication or admit two writers through different filesystem paths. [Remote connection](../prd/runwield-core-prd.md#remote-connection)                                                                                              |
 
 Additional outcomes introduced by the confirmed runtime scope:
 
 - **No checkout runtime:** after adoption and after exercising planning, execution, publication, repair, sharing,
   indexing, archive, and failure recovery, neither primary nor linked checkouts contain `.wld/internal/` or
   `.wld/plans`. Snapshot comparisons show settings and overrides unchanged. All former runtime writers resolve into
-  the responsible host's home Project tree. [Project runtime](../prd/plan-store-prd.md#project-runtime-outside-checkouts).
+  the responsible host's home Project tree. [Project runtime](../prd/runwield-core-prd.md#work-protection).
 - **Complete recoverable relocation:** seed every named layout resource, an unknown internal file, an unfinished
   transition, and a repair checkout with uncommitted work. Interrupt before and after destination ownership commits
   across filesystem/host boundaries. Fresh-process recovery preserves bytes, IDs, permissions, Git registrations, and
@@ -527,7 +527,7 @@ Additional outcomes introduced by the confirmed runtime scope:
   `wld remote host` uses the laptop Plan store and remote home execution runtime. Test both modes against the same
   repository without copying Plans or crossing attempt owners. Disconnect cannot select another store. Native Plan
   locks and record indexes execute on their owner rather than through SSHFS.
-  [Launch mode](../prd/plan-store-prd.md#storage-ownership-by-launch-mode).
+  [Launch mode](../prd/runwield-core-prd.md#remote-connection).
 
 Cross-boundary acceptance must include: relocate an existing Project runtime; import an existing Epic; edit a sibling while another child executes; resume
 from a second surface; publish with Plan copies disabled; remove the execution worktree; rename the Project; then
@@ -547,6 +547,18 @@ constraints. Update ADR-015/016/017/018 where ownership changes, reconciling the
 when it is accepted rather than leaving conflicting accepted storage rules. After all proposal
 requirements are delivered or explicitly deferred into their lasting owners, remove the transient Plan Store PRD and
 repair references. Do not mark these outcomes delivered during planning.
+
+### Integration Notes
+
+Left by the reviewers of individual children for the integration review. These are places to look, not requirements.
+
+<!-- runwield:integration-notes:start child="external-plan-store/serve-laptop-owned-project-state" -->
+
+**external-plan-store/serve-laptop-owned-project-state**
+
+- When activating managed remote ownership, pass and freeze the execution repository's delivery-copy settings before publication. Verify that execution-host Git proof reaches the matching laptop-owned attempt before lifecycle completion or Work Record approval. (Plan 12; src/plan-store/publication.ts and the managed remote execution/publication integration)
+
+<!-- runwield:integration-notes:end child="external-plan-store/serve-laptop-owned-project-state" -->
 
 ## Edge Cases & Considerations
 

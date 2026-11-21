@@ -19,7 +19,7 @@ leveraging modern, robust foundations for agentic AI interactions.
 
 We have selected the following foundational stack for RunWield:
 
-1. **Release runtime: Bun 1.4.4, with Deno retained for compatibility checks**
+1. **Release runtime: Bun pinned in `.bun-version`, with Deno retained for compatibility checks**
     - **Why:** The Bun migration provides standalone executables with embedded
       Workspace and agent assets. Release builds use the pinned `.bun-version`
       and frozen root and docs dependency graphs, and verify the executing

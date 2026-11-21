@@ -34,7 +34,9 @@ export interface HostedSessionMetadata {
 
 function getSessionManagerId(sessionManager: MinimalSessionManagerLike | null | undefined): string | null {
     if (
-        !sessionManager || typeof sessionManager !== "object" || !("getSessionId" in sessionManager) ||
+        !sessionManager ||
+        typeof sessionManager !== "object" ||
+        !("getSessionId" in sessionManager) ||
         typeof sessionManager.getSessionId !== "function"
     ) {
         return null;

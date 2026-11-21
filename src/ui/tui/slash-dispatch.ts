@@ -83,8 +83,12 @@ export interface SlashContext {
 type CommandRegistry = typeof import("../../cmd/registry.ts").commandRegistry;
 
 function isNotificationEventName(eventName: string): eventName is NotificationEventName {
-    return eventName === "agentStopped" || eventName === "planWritten" || eventName === "userInterview" ||
-        eventName === "compactionFinished";
+    return (
+        eventName === "agentStopped" ||
+        eventName === "planWritten" ||
+        eventName === "userInterview" ||
+        eventName === "compactionFinished"
+    );
 }
 
 export function isImmediateBuiltinSlashCommandWhileStreaming(userRequest: string): boolean {
@@ -188,34 +192,36 @@ async function dispatchBuiltin(
     const projectRoot = ctx.sessionRuntime.getSessionSnapshot?.(ctx.sessionId)?.cwd;
     const tracker = projectRoot
         ? new SlashCommandMetricsTracker({
-            command,
-            alias,
-            kind: "builtin",
-            surface: "tui",
-            projectRoot,
-            sessionId: ctx.sessionId,
-        })
+              command,
+              alias,
+              kind: "builtin",
+              surface: "tui",
+              projectRoot,
+              sessionId: ctx.sessionId,
+          })
         : null;
     const picker = (command === "agent" || command === "model") && args.length === 0;
     await tracker?.recordStart(picker ? "opened" : "start");
     if (!picker) await tracker?.recordDispatched();
     const commandUiAPI: SlashContext["uiAPI"] = picker
         ? {
-            ...ctx.uiAPI,
-            async promptSelect(...selectionArgs) {
-                const selection = await ctx.uiAPI.promptSelect(...selectionArgs);
-                if (selection) await tracker?.recordDispatched();
-                return selection;
-            },
-        }
+              ...ctx.uiAPI,
+              async promptSelect(...selectionArgs) {
+                  const selection = await ctx.uiAPI.promptSelect(...selectionArgs);
+                  if (selection) await tracker?.recordDispatched();
+                  return selection;
+              },
+          }
         : ctx.uiAPI;
     let outcome: "succeeded" | "failed" | "canceled" | "rejected" = "succeeded";
     let errorReason: string | null = null;
     try {
-        const notifyRunWieldEvent = ctx.notifyRunWieldEvent || ((eventName: string, options?: NotificationOptions) => {
-            if (!isNotificationEventName(eventName)) return;
-            return notifyRunWieldEventQuietly(eventName, options);
-        });
+        const notifyRunWieldEvent =
+            ctx.notifyRunWieldEvent ||
+            ((eventName: string, options?: NotificationOptions) => {
+                if (!isNotificationEventName(eventName)) return;
+                return notifyRunWieldEventQuietly(eventName, options);
+            });
         const result = await commandRegistry[command].execute(args, {
             uiAPI: commandUiAPI,
             editor: ctx.editor,

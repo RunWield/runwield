@@ -1,3 +1,4 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Editor, Image, Spacer, Text, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
@@ -5,7 +6,6 @@ import { RunWieldModelSelectorComponent } from "./model-selector.ts";
 import { runModelsCommand } from "../../cmd/models/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getSettingsManager } from "../../shared/settings.ts";
-import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
 import { getEditorTheme, initRunWieldTheme } from "../theme/theme.ts";
 import { createUiApi } from "./api.ts";
 import { SpinnerBlock, ToolExecutionGroupBlock } from "./blocks.ts";
@@ -14,7 +14,8 @@ import { installUiApiOverrides } from "./ui-api-overrides.ts";
 
 import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.ts";
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
-import { getStoredPlanPath, savePlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 
 interface OverridesHarness {
@@ -160,7 +161,7 @@ for (const type of ["plan_review", "code_review"] as const) {
                 const originalChildren = [...harness.container.children];
                 let surfaceReady = false;
                 try {
-                    await savePlan(projectRoot, "feature", "# Feature\n\nDo the work.\n", {
+                    await seedPlan(projectRoot, "feature", "# Feature\n\nDo the work.\n", {
                         planId: "tui-input-review-plan",
                         classification: "PLANNED_CHANGE",
                         status: "draft",
@@ -185,7 +186,7 @@ for (const type of ["plan_review", "code_review"] as const) {
                                 cwd: projectRoot,
                                 executionCwd: projectRoot,
                                 planName: "feature",
-                                planPath: getStoredPlanPath(projectRoot, "feature"),
+                                planPath: (await loadPlan(projectRoot, "feature"))!.path,
                                 diffText: "diff --git a/a b/a\n",
                                 onSurfaceReady: () => {
                                     surfaceReady = true;
@@ -359,44 +360,6 @@ test("installUiApiOverrides sends Claude selections through the runtime callback
             assertEquals(selectedModels, [{ model: "sonnet", provider: "claude-cli" }]);
             assertEquals(harness.container.children.includes(harness.editor), true);
             assertEquals(harness.editor.focused, true);
-        } finally {
-            harness.tui.stop();
-        }
-    });
-});
-
-test("installUiApiOverrides reports Agy setup failures from model selection without rejecting", async () => {
-    await withRuntimeCommandFixture("ui-api-model-selector-agy-setup-", async ({ projectRoot }) => {
-        const harness = makeHarness(projectRoot);
-        installUiApiOverrides({
-            ...harness,
-            getProjectRoot: () => projectRoot,
-            setActiveModel: () => {
-                throw new AgyCliMcpSetupApprovalError(
-                    "Antigravity MCP setup needs approval. Run wld mcp agy-cli --setup.",
-                );
-            },
-        });
-        const messages: string[] = [];
-        const appendSystemMessage = harness.uiAPI.appendSystemMessage;
-        harness.uiAPI.appendSystemMessage = (message, isError, header, style) => {
-            messages.push(message);
-            appendSystemMessage(message, isError, header, style);
-        };
-        try {
-            const selectionPromise = harness.uiAPI.showModelSelector("agy-cli/gemini-3.8-flash");
-            let selector = harness.container.children.find((child) => child instanceof RunWieldModelSelectorComponent);
-            for (let attempt = 0; !selector && attempt < 50; attempt++) {
-                await new Promise((resolve) => setTimeout(resolve, 0));
-                selector = harness.container.children.find((child) => child instanceof RunWieldModelSelectorComponent);
-            }
-            assertInstanceOf(selector, RunWieldModelSelectorComponent);
-            selector.handleInput("\r");
-            assertEquals(await selectionPromise, { selected: false });
-            harness.tui.requestRender();
-            assertStringIncludes(messages.join("\n"), "wld mcp agy-cli --setup");
-            assertEquals(messages.join("\n").includes("at async"), false);
-            assertEquals(harness.container.children.includes(harness.editor), true);
         } finally {
             harness.tui.stop();
         }

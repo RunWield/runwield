@@ -1,4 +1,3 @@
-import { readFile as fsReadFile } from "node:fs/promises";
 /**
  * @module shared/session/agent-handler
  * Workflow-aware handler for the active Agent. It runs one Agent turn, then
@@ -40,11 +39,11 @@ import {
     type TriageReportEventPayload,
     type WorkflowToolEvent,
 } from "../workflow/workflow-tool-events.ts";
-import { getStoredPlanPath, loadPlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { AGENTS } from "../../constants.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
-import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { isValidationCheckpoint, validationCheckpointCanResume } from "../workflow/validation-checkpoint.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ImageAttachment } from "./image-attachments.ts";
@@ -487,9 +486,9 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                 }
             } catch {
                 try {
-                    planContent = await fsReadFile(getStoredPlanPath(projectRoot, planName), "utf8");
+                    planContent = (await loadPlan(projectRoot, planName))?.markdown || "";
                 } catch {
-                    // Ignore in tests or if neither authoritative nor fallback Plan exists.
+                    // The owner could not supply the Plan; do not substitute a checkout copy.
                 }
             }
 

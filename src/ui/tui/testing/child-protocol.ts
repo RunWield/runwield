@@ -250,6 +250,7 @@ async function runChild(request: GoldenChildScenarioRequest) {
         process.exit(143);
     };
     process.on("SIGTERM", handleTermination);
+    let successReport = "";
     try {
         for (const [key, value] of Object.entries(env.env)) process.env[key] = value;
         process.chdir(env.projectRoot);
@@ -274,8 +275,7 @@ async function runChild(request: GoldenChildScenarioRequest) {
                 heartbeatPath: join(timeoutArtifactDir, "timeout-diagnostics.json"),
                 onReady: () => console.log(GOLDEN_CHILD_READY_MARKER),
             });
-            await fsRm(timeoutArtifactDir, { recursive: true }).catch(() => {});
-            console.log(JSON.stringify({ ok: true, result, env: { root: env.root, projectRoot: env.projectRoot } }));
+            successReport = JSON.stringify({ ok: true, result, env: { root: env.root, projectRoot: env.projectRoot } });
         } catch (error) {
             console.log(
                 JSON.stringify({
@@ -297,8 +297,11 @@ async function runChild(request: GoldenChildScenarioRequest) {
         // come off before the child can exit on its own.
         process.off("SIGTERM", handleTermination);
         process.chdir(previousCwd);
+        await fsWriteFile(join(timeoutArtifactDir, "startup-phase.txt"), "cleaning isolated environment\n");
         await env.cleanup();
     }
+    await fsRm(timeoutArtifactDir, { recursive: true }).catch(() => {});
+    console.log(successReport);
 }
 
 if (import.meta.main && process.argv.slice(2)[0] === CHILD_FLAG) {

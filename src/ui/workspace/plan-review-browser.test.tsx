@@ -26,23 +26,27 @@ test("Workspace Plan review command navigates to the existing interaction withou
         globalThis.fetch = (url, options) => {
             requests.push({ path: String(url), method: options?.method || "GET" });
             if (String(url).endsWith("/plan-review")) {
-                return Promise.resolve(Response.json({
-                    kind: "starting",
-                    operationId: "review-operation",
-                }));
+                return Promise.resolve(
+                    Response.json({
+                        kind: "starting",
+                        operationId: "review-operation",
+                    }),
+                );
             }
-            return Promise.resolve(Response.json({
-                operation: {
-                    operationId: "review-operation",
-                    status: "running",
-                    liveInteraction: {
-                        request: {
-                            type: "plan_review",
-                            reviewUrl: "/projects/project-1/plans/saved?session=session-1",
+            return Promise.resolve(
+                Response.json({
+                    operation: {
+                        operationId: "review-operation",
+                        status: "running",
+                        liveInteraction: {
+                            request: {
+                                type: "plan_review",
+                                reviewUrl: "/projects/project-1/plans/saved?session=session-1",
+                            },
                         },
                     },
-                },
-            }));
+                }),
+            );
         };
         await requestWorkspacePlanReview("project-1", "session-1", 4);
         assertEquals(requests, [

@@ -59,9 +59,7 @@ export function resolvePlanExecutionRuntimeAgent(policyAgent: string | undefined
  *
  * Returns null when the workflow records no owner at all.
  */
-export function resolveActiveWorkflowRuntimeAgent(
-    workflow: ActiveExecutionWorkflow | null | undefined,
-): string | null {
+export function resolveActiveWorkflowRuntimeAgent(workflow: ActiveExecutionWorkflow | null | undefined): string | null {
     const owner = typeof workflow?.executionAgent === "string" ? workflow.executionAgent.trim() : "";
     if (!owner) return null;
     if (isQuickFixWorkflow(workflow)) return AGENTS.ENGINEER;

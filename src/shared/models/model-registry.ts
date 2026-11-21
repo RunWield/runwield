@@ -1,11 +1,11 @@
-import { AGY_CLI_DISPLAY_NAMES, AGY_CLI_MODEL_IDS } from "./agy-cli-catalog.ts";
+import { isRemovedAgyProvider, removedAgyModelError } from "./removed-providers.ts";
 import type { FetchRequest } from "../fetch-request.ts";
 import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFileSync as fsReadFileSync, statSync as fsStatSync } from "node:fs";
 import { env } from "node:process";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
-import { type BuiltinProvider, builtinProviders, getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import type {
     Api,
     AuthInteraction,
@@ -28,7 +28,7 @@ import {
     type RemoteModelConnection,
 } from "../remote/model-bridge.ts";
 
-export type ExecutionBackend = "pi" | "claude-cli" | "agy-cli";
+export type ExecutionBackend = "pi" | "claude-cli";
 type ExternalCliExecutionBackend = Exclude<ExecutionBackend, "pi">;
 export type AuthenticationKind = "api-auth" | "external-cli";
 export type HealthCheckKind = "api-auth" | "execution-preflight";
@@ -129,7 +129,6 @@ interface ModelRegistryOptions {
 
 const MODEL_CONFIG_FILES = ["models.json", "auth.json"] as const;
 const CLAUDE_CLI_PROVIDER = "claude-cli";
-const AGY_CLI_PROVIDER = "agy-cli";
 const CLAUDE_CLI_ALIASES = ["sonnet", "opus", "haiku", "fable"] as const;
 const CLAUDE_CLI_DISPLAY_NAMES: Record<(typeof CLAUDE_CLI_ALIASES)[number], string> = {
     sonnet: "Claude CLI Sonnet",
@@ -146,8 +145,6 @@ interface ExternalCliProviderDefinition {
     contextWindow: number;
     maxTokens: number;
     aliases?: readonly string[];
-    supportedModels?: readonly string[];
-    priceCatalog?: BuiltinProvider;
     modelDisplayNames?: Record<string, string>;
 }
 
@@ -162,18 +159,6 @@ const EXTERNAL_CLI_PROVIDER_DEFINITIONS: Record<ExternalCliExecutionBackend, Ext
         maxTokens: 16384,
         aliases: CLAUDE_CLI_ALIASES,
         modelDisplayNames: CLAUDE_CLI_DISPLAY_NAMES,
-    },
-    [AGY_CLI_PROVIDER]: {
-        provider: AGY_CLI_PROVIDER,
-        displayName: "Antigravity CLI",
-        modelNamePrefix: "Antigravity CLI",
-        api: "openai-completions",
-        reasoning: true,
-        contextWindow: 128000,
-        maxTokens: 16384,
-        supportedModels: AGY_CLI_MODEL_IDS,
-        priceCatalog: "google",
-        modelDisplayNames: AGY_CLI_DISPLAY_NAMES,
     },
 };
 
@@ -303,7 +288,7 @@ export class RunWieldCredentialStore {
     }
 
     read(providerId: string): Promise<Credential | undefined> {
-        if (isExternalCliProvider(providerId)) return Promise.resolve(undefined);
+        if (isExternalCliProvider(providerId) || isRemovedAgyProvider(providerId)) return Promise.resolve(undefined);
         const credential = this.readData()[providerId];
         if (!credential) return Promise.resolve(undefined);
         if (credential.type !== "api_key" || credential.key === undefined) {
@@ -317,7 +302,7 @@ export class RunWieldCredentialStore {
             Object.entries(this.readData())
                 .filter((entry): entry is [string, ConfiguredCredential] => {
                     const [providerId, credential] = entry;
-                    if (isExternalCliProvider(providerId)) return false;
+                    if (isExternalCliProvider(providerId) || isRemovedAgyProvider(providerId)) return false;
                     return credential?.type === "oauth" || credential?.type === "api_key";
                 })
                 .map(([providerId, credential]) => ({ providerId, type: credential.type as "oauth" | "api_key" })),
@@ -462,7 +447,7 @@ export function isExternalCliProvider(provider: string): provider is ExternalCli
 }
 
 function isExternalCliBackend(backend: string | undefined): backend is ExternalCliExecutionBackend {
-    return backend === CLAUDE_CLI_PROVIDER || backend === AGY_CLI_PROVIDER;
+    return backend === CLAUDE_CLI_PROVIDER;
 }
 
 export function isExternalCliModel(model: Pick<RunWieldModel, "provider" | "executionBackend"> | undefined): boolean {
@@ -470,19 +455,11 @@ export function isExternalCliModel(model: Pick<RunWieldModel, "provider" | "exec
     return isExternalCliProvider(model.provider) || isExternalCliBackend(model.executionBackend);
 }
 
-/** Only a built-in exact ID is price evidence; CLI descriptors and configured overrides are not. */
-export function getExternalCliPriceModel(model: Pick<RunWieldModel, "provider" | "id">): Model<Api> | undefined {
-    if (!isExternalCliProvider(model.provider)) return undefined;
-    const catalog = EXTERNAL_CLI_PROVIDER_DEFINITIONS[model.provider].priceCatalog;
-    return catalog ? getBuiltinModels(catalog).find((candidate) => candidate.id === model.id) : undefined;
-}
-
 function createExternalCliModelDescriptor(provider: string, selector: string): RunWieldModel | undefined {
     if (!isExternalCliProvider(provider)) return undefined;
     const id = selector.trim();
     if (!id) return undefined;
     const definition = EXTERNAL_CLI_PROVIDER_DEFINITIONS[provider];
-    if (definition.supportedModels && !definition.supportedModels.includes(id)) return undefined;
     return {
         provider,
         id,
@@ -502,7 +479,7 @@ function createExternalCliModelDescriptor(provider: string, selector: string): R
 
 function getExternalCliAliasModels(): RunWieldModel[] {
     return Object.values(EXTERNAL_CLI_PROVIDER_DEFINITIONS).flatMap((definition) =>
-        [...(definition.aliases || []), ...(definition.supportedModels || [])]
+        (definition.aliases || [])
             .map((selector) => createExternalCliModelDescriptor(definition.provider, selector))
             .filter((model): model is RunWieldModel => Boolean(model)),
     );
@@ -550,7 +527,11 @@ export class RunWieldModelRegistry {
 
     getOAuthProviders(): Array<{ id: string; name: string }> {
         return (this.runtime?.getProviders() || [])
-            .filter((provider) => !isExternalCliProvider(provider.id) && Boolean(provider.auth?.oauth))
+            .filter(
+                (provider) =>
+                    !(isExternalCliProvider(provider.id) || isRemovedAgyProvider(provider.id)) &&
+                    Boolean(provider.auth?.oauth),
+            )
             .map((provider) => ({ id: provider.id, name: provider.name }));
     }
 
@@ -558,7 +539,10 @@ export class RunWieldModelRegistry {
         const runtime = await this.getRuntime();
         const credentials = await runtime.listCredentials();
         return credentials
-            .filter((credential) => !isExternalCliProvider(credential.providerId))
+            .filter(
+                (credential) =>
+                    !(isExternalCliProvider(credential.providerId) || isRemovedAgyProvider(credential.providerId)),
+            )
             .map((credential) => ({
                 id: credential.providerId,
                 name: this.getProviderDisplayName(credential.providerId),
@@ -581,7 +565,7 @@ export class RunWieldModelRegistry {
 
     async setProviderApiKey(providerId: string, apiKey: string): Promise<void> {
         if (this.remote) throw new Error("Remote provider auth is laptop-owned");
-        if (isExternalCliProvider(providerId)) return;
+        if (isExternalCliProvider(providerId) || isRemovedAgyProvider(providerId)) return;
         await this.credentialStore.modify(providerId, () => Promise.resolve({ type: "api_key", key: apiKey }));
         const runtime = await this.getRuntime();
         await runtime.refresh({ allowNetwork: false });
@@ -610,13 +594,19 @@ export class RunWieldModelRegistry {
     }
 
     getAll(): RunWieldModel[] {
-        if (this.remote) return Array.from(this.runtime!.getModels()) as RunWieldModel[];
+        if (this.remote) {
+            return (Array.from(this.runtime!.getModels()) as RunWieldModel[]).filter(
+                (model) => !isRemovedAgyProvider(model.provider),
+            );
+        }
         const runtimeModels = this.runtime
             ? (Array.from(this.runtime.getModels()) as RunWieldModel[])
             : readBuiltinModels();
         return dedupeModels([
-            ...runtimeModels.filter((model) => !isExternalCliModel(model)),
-            ...Array.from(this.registeredModels.values()).filter((model) => !isExternalCliModel(model)),
+            ...runtimeModels.filter((model) => !isExternalCliModel(model) && !isRemovedAgyProvider(model.provider)),
+            ...Array.from(this.registeredModels.values()).filter(
+                (model) => !isExternalCliModel(model) && !isRemovedAgyProvider(model.provider),
+            ),
             ...this.getConfiguredModels(),
             ...getExternalCliAliasModels(),
         ]);
@@ -631,10 +621,13 @@ export class RunWieldModelRegistry {
         const models = this.runtime
             ? (Array.from(this.runtime.getAvailableSnapshot()) as RunWieldModel[])
             : this.getAll().filter((model) => this.hasConfiguredAuth(model));
-        return dedupeModels(models.filter((model) => !isExternalCliModel(model)));
+        return dedupeModels(
+            models.filter((model) => !isExternalCliModel(model) && !isRemovedAgyProvider(model.provider)),
+        );
     }
 
     find(provider: string, modelId: string): RunWieldModel | undefined {
+        if (isRemovedAgyProvider(provider)) return undefined;
         if (this.remote) {
             const model = this.runtime!.getModel(provider, modelId) as RunWieldModel | undefined;
             return model && this.getAvailable().some((item) => item.provider === provider && item.id === modelId)
@@ -651,7 +644,7 @@ export class RunWieldModelRegistry {
     }
 
     isSelectable(model: RunWieldModel | undefined): boolean {
-        if (!model) return false;
+        if (!model || isRemovedAgyProvider(model.provider)) return false;
         if (this.remote) {
             return this.getAvailable().some((item) => item.provider === model.provider && item.id === model.id);
         }
@@ -660,7 +653,7 @@ export class RunWieldModelRegistry {
     }
 
     hasConfiguredAuth(model: RunWieldModel | undefined): boolean {
-        if (!model) return false;
+        if (!model || isRemovedAgyProvider(model.provider)) return false;
         if (this.remote) return this.isSelectable(model);
         if (isExternalCliModel(model)) return false;
         if (this.runtime?.hasConfiguredAuth(model.provider)) return true;
@@ -675,6 +668,12 @@ export class RunWieldModelRegistry {
               error: string;
           }
     > {
+        if (isRemovedAgyProvider(model.provider)) {
+            return {
+                ok: false,
+                error: removedAgyModelError(`${model.provider}/${model.id}`, "Choose a supported model.").message,
+            };
+        }
         if (this.remote) return { ok: false, error: "Remote model credentials stay on the laptop" };
         if (isExternalCliModel(model)) {
             return { ok: false, error: `No API auth for external CLI provider ${model.provider}` };
@@ -696,7 +695,7 @@ export class RunWieldModelRegistry {
 
     getProviderAuthStatus(provider: string): ProviderAuthStatus {
         if (this.remote) return { configured: this.runtime!.hasConfiguredAuth(provider) };
-        if (isExternalCliProvider(provider)) return { configured: false };
+        if (isExternalCliProvider(provider) || isRemovedAgyProvider(provider)) return { configured: false };
         const runtimeStatus = this.runtime?.getProviderAuthStatus(provider) as ProviderAuthStatus | undefined;
         if (runtimeStatus?.configured) return runtimeStatus;
         const providerConfig = this.getProviderConfig(provider);
@@ -711,7 +710,7 @@ export class RunWieldModelRegistry {
 
     getProvider(provider: string): Provider | ConfiguredProviderInput | undefined {
         if (this.remote) return this.runtime!.getProvider(provider);
-        if (isExternalCliProvider(provider)) return undefined;
+        if (isExternalCliProvider(provider) || isRemovedAgyProvider(provider)) return undefined;
         return (
             this.runtime?.getProvider(provider) ||
             builtinProviders().find((item) => item.id === provider) ||
@@ -731,14 +730,14 @@ export class RunWieldModelRegistry {
 
     async getProviderAuth(provider: string): Promise<AuthResultValue | undefined> {
         if (this.remote) return undefined;
-        if (isExternalCliProvider(provider)) return undefined;
+        if (isExternalCliProvider(provider) || isRemovedAgyProvider(provider)) return undefined;
         const runtime = this.runtime || (await (this.runtimePromise || getModelRuntime()));
         this.runtime = runtime;
         return (await runtime.getAuth(provider)) as AuthResultValue | undefined;
     }
 
     async getApiKeyForProvider(provider: string): Promise<string | undefined> {
-        if (isExternalCliProvider(provider)) return undefined;
+        if (isExternalCliProvider(provider) || isRemovedAgyProvider(provider)) return undefined;
         const auth = await this.getProviderAuth(provider);
         return auth?.auth.apiKey || resolveLiteralConfigValue(this.getProviderConfig(provider)?.apiKey);
     }
@@ -752,7 +751,8 @@ export class RunWieldModelRegistry {
         if (this.remote) throw new Error("Remote model catalog is laptop-owned");
         const providerId = typeof provider === "string" ? provider : asString(provider.id, "");
         const providerConfig = typeof provider === "string" ? config : provider;
-        if (!providerId || !providerConfig || isExternalCliProvider(providerId)) return;
+        if (!providerId || !providerConfig || isExternalCliProvider(providerId) || isRemovedAgyProvider(providerId))
+            return;
         this.runtime?.registerProvider(providerId, providerConfig as Parameters<ModelRuntime["registerProvider"]>[1]);
         if (this.runtimePromise && !this.runtime) {
             this.runtimePromise
@@ -778,7 +778,7 @@ export class RunWieldModelRegistry {
     }
 
     getRegisteredProviderConfig(provider: string): ConfiguredProviderInput | undefined {
-        if (isExternalCliProvider(provider)) return undefined;
+        if (isExternalCliProvider(provider) || isRemovedAgyProvider(provider)) return undefined;
         return (
             (this.runtime?.getRegisteredProviderConfig(provider) as ConfiguredProviderInput | undefined) ||
             this.getProviderConfig(provider)
@@ -786,17 +786,17 @@ export class RunWieldModelRegistry {
     }
 
     getRegisteredNativeProvider(provider: string): Provider | undefined {
-        if (isExternalCliProvider(provider)) return undefined;
+        if (isExternalCliProvider(provider) || isRemovedAgyProvider(provider)) return undefined;
         return this.runtime?.getRegisteredNativeProvider(provider);
     }
 
     getRegisteredProviderIds(): readonly string[] {
         const providers = this.readModelsConfig().providers;
         const configured = Object.keys(isJsonRecord(providers) ? providers : {}).filter(
-            (provider) => !isExternalCliProvider(provider),
+            (provider) => !(isExternalCliProvider(provider) || isRemovedAgyProvider(provider)),
         );
         const runtime = (this.runtime?.getRegisteredProviderIds() || []).filter(
-            (provider) => !isExternalCliProvider(provider),
+            (provider) => !(isExternalCliProvider(provider) || isRemovedAgyProvider(provider)),
         );
         return [...new Set([...runtime, ...configured])];
     }
@@ -808,7 +808,7 @@ export class RunWieldModelRegistry {
 
     getProviderConfig(provider: string): ConfiguredProviderInput | undefined {
         if (this.remote) return undefined;
-        if (isExternalCliProvider(provider)) return undefined;
+        if (isExternalCliProvider(provider) || isRemovedAgyProvider(provider)) return undefined;
         const providers = this.readModelsConfig().providers;
         const config = isJsonRecord(providers) ? providers[provider] : undefined;
         return isJsonRecord(config) ? (config as ConfiguredProviderInput) : undefined;
@@ -819,7 +819,7 @@ export class RunWieldModelRegistry {
         const providers = this.readModelsConfig().providers;
         if (!isJsonRecord(providers)) return [];
         return Object.entries(providers).flatMap(([provider, config]) =>
-            !isExternalCliProvider(provider) && isJsonRecord(config)
+            !(isExternalCliProvider(provider) || isRemovedAgyProvider(provider)) && isJsonRecord(config)
                 ? readConfiguredModels(provider, config as ConfiguredProviderInput)
                 : [],
         );
@@ -833,7 +833,7 @@ export async function discoverProviderModel(
     network: ModelDiscoveryNetworkPort,
     options: DiscoverProviderModelOptions = {},
 ): Promise<RunWieldModel | undefined> {
-    if (modelRegistry.remote || isExternalCliProvider(provider)) return undefined;
+    if (modelRegistry.remote || isExternalCliProvider(provider) || isRemovedAgyProvider(provider)) return undefined;
     const existing = modelRegistry.find(provider, modelId);
     if (existing) return existing;
 

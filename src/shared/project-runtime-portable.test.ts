@@ -1,3 +1,5 @@
+import { planFixtureControllerPath } from "./testing/plan-state-fixture.ts";
+import { inspectPlanFixtureController, seedPlanController } from "./testing/plan-state-fixture.ts";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -9,12 +11,8 @@ import {
     migrateLegacyProjectRuntimeState,
     resolveProjectRuntimeLayout,
 } from "./project-runtime-layout.ts";
-import {
-    controllerRecordPath,
-    readControllerRecord,
-    StaleControllerWriteError,
-    writeControllerState,
-} from "./workflow/controller-registry.ts";
+
+import { StaleControllerWriteError } from "../plan-store/index.ts";
 
 const fixture = defineCommittedGitFixture();
 
@@ -79,14 +77,14 @@ test("concurrent controller writes retain both independent updates and reject st
     const identity = { planId: "plan", planName: "demo" };
     try {
         await enterProjectRuntime(root);
-        await writeControllerState(root, identity, { validationCiAttempts: 1 });
-        const lockPath = `${controllerRecordPath(root, identity)}.lock`;
+        await seedPlanController(root, identity, { validationCiAttempts: 1 });
+        const lockPath = `${planFixtureControllerPath(root, identity)}.lock`;
         const inode = (await stat(lockPath)).ino;
         await Promise.all([
-            writeControllerState(root, identity, { validationSemanticRounds: 3 }),
-            writeControllerState(root, identity, { executionReport: "Ready for review." }),
+            seedPlanController(root, identity, { validationSemanticRounds: 3 }),
+            seedPlanController(root, identity, { executionReport: "Ready for review." }),
         ]);
-        const saved = await readControllerRecord(root, identity);
+        const saved = await inspectPlanFixtureController(root, identity);
         equal(saved?.revision, 3);
         deepEqual(saved?.state, {
             validationCiAttempts: 1,
@@ -95,10 +93,10 @@ test("concurrent controller writes retain both independent updates and reject st
         });
         equal((await stat(lockPath)).ino, inode);
         await rejects(
-            () => writeControllerState(root, identity, { validationCiAttempts: 0 }, { expectedRevision: 1 }),
+            () => seedPlanController(root, identity, { validationCiAttempts: 0 }, { expectedRevision: 1 }),
             StaleControllerWriteError,
         );
-        deepEqual(await readControllerRecord(root, identity), saved);
+        deepEqual(await inspectPlanFixtureController(root, identity), saved);
     } finally {
         await rm(root, { recursive: true });
     }

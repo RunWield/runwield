@@ -26,21 +26,22 @@ export async function resolveCodexExecutable(): Promise<string> {
             if (await isExecutableFile(candidate)) return candidate;
         }
     }
-    const bundledPaths = process.platform === "darwin"
-        ? [join(getHomeDir(), "Applications"), "/Applications"].map((directory) =>
-            join(
-                directory,
-                "ChatGPT.app",
-                "Contents",
-                "Resources",
-                "codex-cli",
-                "CodexCLI.app",
-                "Contents",
-                "MacOS",
-                "codex",
-            )
-        )
-        : [];
+    const bundledPaths =
+        process.platform === "darwin"
+            ? [join(getHomeDir(), "Applications"), "/Applications"].map((directory) =>
+                  join(
+                      directory,
+                      "ChatGPT.app",
+                      "Contents",
+                      "Resources",
+                      "codex-cli",
+                      "CodexCLI.app",
+                      "Contents",
+                      "MacOS",
+                      "codex",
+                  ),
+              )
+            : [];
     for (const candidate of bundledPaths) {
         if (await isExecutableFile(candidate)) return candidate;
     }

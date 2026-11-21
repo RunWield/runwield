@@ -22,13 +22,14 @@ import type { PhaseContext } from "../workflow/validation-types.ts";
 import { createValidationSessionPort } from "../workflow/validation-session-adapter.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
-import { loadPlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { remoteBackgroundTaskLogDirectory } from "./background-task-logs.ts";
 import { git } from "../workflow/validation-test-helpers.ts";
 
 interface Input {
     connection: RemoteSessionControlConnection;
     resources: string;
+    laptopHome: string;
     cwd: string;
     commandLog: string;
     scenario:
@@ -44,7 +45,10 @@ interface Input {
 const lines = processLines(stdinStream());
 const input: Input = JSON.parse((await lines.read()).value || "{}");
 await lines.cancel();
-configureRemotePersonalResources({ globalRoot: input.resources });
+configureRemotePersonalResources({
+    globalRoot: input.resources,
+    personalOwner: { kind: "managed-remote", identity: input.laptopHome },
+});
 configureRemoteSettingsConnection(input.connection);
 const clearModels = await configureRemoteModelConnection(input.connection);
 const host = new SessionHost();

@@ -1,26 +1,23 @@
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import type { RuntimeInteractionResponse } from "../../shared/session/session-runtime-interactions.ts";
-import { assertEquals } from "../../testing/assertions.ts";
 import process from "node:process";
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { assertEquals } from "../../testing/assertions.ts";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { getHomeDir } from "../../constants.ts";
-import { dirname } from "node:path";
 import { getWorktreeRegistryPath, withWorktreeRegistryLock } from "../../shared/worktree-registry.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
-import { savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp } from "./server.ts";
-import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 import { loadOwnerDashboard, loadOwnerSidebar, subscribeOwnerDashboard } from "./server/owner-dashboard.ts";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 
 type StreamFrame = {
     type: string;
@@ -36,7 +33,7 @@ test("owner dashboard stream authenticates and completes with verified rows", as
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const appObject = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
     try {
-        await savePlan(root, "finished", "# Finished\n", {
+        await seedPlan(root, "finished", "# Finished\n", {
             planId: "stream-plan",
             classification: "FEATURE",
             status: "user_verified",
@@ -162,18 +159,18 @@ test("one Project streams a finished row before its unrelated live socket respon
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     let lateReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
-        await savePlan(fixture.projectRoot, "blocked", "# Blocked\n", {
+        await seedPlan(fixture.projectRoot, "blocked", "# Blocked\n", {
             planId: "blocked-plan",
             classification: "FEATURE",
             status: "in_progress",
         });
-        await savePlan(fixture.projectRoot, "finished", "# Finished\n", {
+        await seedPlan(fixture.projectRoot, "finished", "# Finished\n", {
             planId: "early-plan",
             classification: "FEATURE",
             status: "user_verified",
             userVerifiedAt: new Date().toISOString(),
         });
-        await savePlan(fixture.projectRoot, "validated", "# Validated\n", {
+        await seedPlan(fixture.projectRoot, "validated", "# Validated\n", {
             planId: "validated-plan",
             classification: "FEATURE",
             status: "validated",
@@ -339,38 +336,15 @@ test("one Project streams a finished row before its unrelated live socket respon
 test("unreadable publication registry fails the finished card before unrelated Project checks end", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-registry-"));
     const first = `${dir}/first`;
-    const fixture = await makeManagedSessionFixture();
-    const store = fixture.store;
-    const continuation = new WorkspaceSessionContinuationService({ store });
-    const operationId = "registry-dashboard-operation";
-    const socketKey = createHash("sha256")
-        .update(`${getHomeDir()}:${fixture.session.runwieldSessionId}:${operationId}`)
-        .digest("hex")
-        .slice(0, 40);
-    const socketPath =
-        process.platform === "win32" ? `\\\\.\\pipe\\runwield-${socketKey}` : `/tmp/runwield-${socketKey}.sock`;
+    const second = `${dir}/second`;
+    await fsMkdir(first);
+    await fsMkdir(second);
+    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const gate = Promise.withResolvers<void>();
-    const socket = createServer(async (_request, response) => {
-        await gate.promise;
-        response.setHeader("content-type", "application/json");
-        response.end(JSON.stringify({ operationId, events: [], queuedMessages: [], interaction: null }));
-    });
-    store.acquireSessionActivation({
-        runwieldSessionId: fixture.session.runwieldSessionId,
-        projectId: fixture.project.projectId,
-        ownerInstanceId: "dashboard-registry-test",
-        ownerProcessKind: "test",
-        expectedGeneration: 0,
-        operationId,
-    });
-    await new Promise<void>((resolve, reject) => {
-        socket.once("error", reject);
-        socket.listen(socketPath, resolve);
-    });
     try {
-        await fsMkdir(first);
         store.registerProject({ root: first, displayName: "Publication" });
-        await savePlan(first, "validated", "# Validated\n", {
+        const other = store.registerProject({ root: second, displayName: "Other" });
+        await seedPlan(first, "validated", "# Validated\n", {
             planId: "validated-plan",
             classification: "FEATURE",
             status: "validated",
@@ -392,6 +366,13 @@ test("unreadable publication registry fails the finished card before unrelated P
             updatedAt: "2026-01-01T00:00:00.000Z",
         });
         await fsWriteFile(path, JSON.stringify({ version: 2, entries: [attempt("a"), attempt("b")] }));
+        const continuation = {
+            operations: new Map(),
+            async listSessions(projectId: string) {
+                if (projectId === other.projectId) await gate.promise;
+                return { sessions: [] };
+            },
+        };
         const seen = Promise.withResolvers<void>();
         const frames: Array<{
             type: string;
@@ -400,8 +381,7 @@ test("unreadable publication registry fails the finished card before unrelated P
         }> = [];
         const unsubscribe = subscribeOwnerDashboard(store, continuation, (frame) => {
             frames.push(frame);
-            const finished = frame.sectionProgress["recently-finished"];
-            if (finished.failed && !finished.pending) seen.resolve();
+            if (frame.sectionProgress["recently-finished"].failed) seen.resolve();
         });
         try {
             await Promise.race([
@@ -413,95 +393,53 @@ test("unreadable publication registry fails the finished card before unrelated P
             const progress = frames.at(-1)!;
             assertEquals(progress.type, "snapshot");
             assertEquals(progress.progress.pending, true);
-            assertEquals(progress.sectionProgress["recently-finished"], { pending: false, failed: true });
+            assertEquals(progress.sectionProgress["recently-finished"], { pending: true, failed: true });
         } finally {
             gate.resolve();
             unsubscribe();
-            await loadOwnerDashboard(store, continuation);
         }
+        await loadOwnerDashboard(store, continuation);
     } finally {
         gate.resolve();
-        await continuation.close();
-        await new Promise<void>((resolve) => socket.close(() => resolve()));
-        await fixture.cleanup();
+        store.close();
         await fsRm(dir, { recursive: true });
     }
 });
 
 test("standalone Sessions linked to one on-hold Plan remain distinct", async () => {
-    await withRuntimeCommandFixture(
-        "dashboard-distinct-sessions-",
-        async ({ projectRoot, setModelResponseFactory }) => {
-            const store = openOwnerCoordinationStore();
-            const continuation = new WorkspaceSessionContinuationService({ store });
-            const release = Promise.withResolvers<void>();
-            let entered = 0;
-            const pending: Array<Promise<RuntimeInteractionResponse>> = [];
-            try {
-                const project = store.registerProject({ root: projectRoot });
-                await savePlan(projectRoot, "held", "# Held\n", {
-                    planId: "held-plan",
-                    classification: "FEATURE",
-                    status: "on_hold",
-                });
-                const sessionIds: string[] = [];
-                for (let index = 0; index < 2; index++) {
-                    setModelResponseFactory(async () => {
-                        entered++;
-                        await release.promise;
-                        return fauxAssistantMessage("Finished.");
-                    });
-                    const started = await continuation.createSession({
-                        projectId: project.projectId,
-                        requestId: `question-${index}`,
-                        text: "Ask about the held Plan.",
-                        agentName: "operator",
-                    });
-                    for (let wait = 0; entered <= index && wait < 500; wait++)
-                        await new Promise((resolve) => setTimeout(resolve, 10));
-                    assertEquals(entered, index + 1);
-                    const operation = continuation.getOperation(started.operationId);
-                    sessionIds.push(operation.runwieldSessionId!);
-                    const runtimeSession = continuation.runtime
-                        .listSessions()
-                        .find(
-                            (session) =>
-                                continuation.runtime.getSessionSnapshot(session.id)?.managed?.runwieldSessionId ===
-                                operation.runwieldSessionId,
-                        );
-                    if (!runtimeSession) throw new Error("Running Session missing");
-                    pending.push(
-                        continuation.runtime.requestInteraction(runtimeSession.id, {
-                            type: "text",
-                            prompt: "Question about held Plan",
-                            _meta: { planId: "held-plan" },
-                        }),
-                    );
-                    for (
-                        let wait = 0;
-                        !continuation.getOperation(started.operationId).liveInteraction && wait < 500;
-                        wait++
-                    )
-                        await new Promise((resolve) => setTimeout(resolve, 10));
-                    assertEquals(Boolean(continuation.getOperation(started.operationId).liveInteraction), true);
-                }
-                const result = await loadOwnerDashboard(store, continuation);
-                const rows = result.dashboard.sections.flatMap((section) => section.items);
-                assertEquals(rows.length, 2);
-                assertEquals(new Set(rows.map((item) => item.href)).size, 2);
-                for (const id of sessionIds)
-                    assertEquals(
-                        rows.some((item) => item.href.includes(id)),
-                        true,
-                    );
-            } finally {
-                release.resolve();
-                await continuation.close();
-                await Promise.all(pending);
-                store.close();
-            }
-        },
-    );
+    const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-standalone-"));
+    const root = `${dir}/project`;
+    await fsMkdir(root);
+    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
+    try {
+        const project = store.registerProject({ root, displayName: "Test" });
+        await seedPlan(root, "held", "# Held\n", { planId: "held-plan", classification: "FEATURE", status: "on_hold" });
+        const operation = (sessionId: string) => ({
+            projectId: project.projectId,
+            runwieldSessionId: sessionId,
+            status: "running",
+            liveInteraction: {
+                interactionId: sessionId,
+                request: { type: "question", _meta: { planId: "held-plan" } },
+            },
+        });
+        const continuation = {
+            operations: new Map([
+                ["one", operation("session-one")],
+                ["two", operation("session-two")],
+            ]),
+            listSessions() {
+                return Promise.resolve({ sessions: [] });
+            },
+        };
+        const result = await loadOwnerDashboard(store, continuation);
+        const rows = result.dashboard.sections.flatMap((section) => section.items);
+        assertEquals(rows.length, 2);
+        assertEquals(new Set(rows.map((item) => item.href)).size, 2);
+    } finally {
+        store.close();
+        await fsRm(dir, { recursive: true });
+    }
 });
 
 const dashboardScopeFixture = defineCommittedGitFixture({ "README.md": "# Dashboard scope\n" });
@@ -529,7 +467,7 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
         let listening = false;
         const appObject = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
         try {
-            await savePlan(root, "finished", "# Finished\n", {
+            await seedPlan(root, "finished", "# Finished\n", {
                 planId: "scope-plan",
                 classification: "FEATURE",
                 status: "user_verified",
@@ -579,7 +517,7 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
                 true,
             );
             // A fresh producer must reread Plan content even when Git metadata is unchanged.
-            await savePlan(root, "added-after-completion", "# Added after completion\n", {
+            await seedPlan(root, "added-after-completion", "# Added after completion\n", {
                 planId: "fresh-scope-plan",
                 classification: "FEATURE",
                 status: "user_verified",
@@ -610,12 +548,13 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
 });
 
 test("archived Sessions stay under Plans in dashboard and sidebar but leave standalone history", async () => {
+    const { WorkspaceSessionContinuationService } = await import("./server/session-continuation.ts");
     const { loadOwnerSidebar } = await import("./server/owner-dashboard.ts");
     const fixture = await makeManagedSessionFixture();
     const { store, session, project } = fixture;
     const continuation = new WorkspaceSessionContinuationService({ store });
     try {
-        await savePlan(fixture.projectRoot, "archive-plan", "# Archive Plan\n", {
+        await seedPlan(fixture.projectRoot, "archive-plan", "# Archive Plan\n", {
             planId: "archive-plan",
             classification: "FEATURE",
             status: "on_hold",
@@ -700,11 +639,16 @@ test("top-level sidebar priority stays ahead of explicit Plan order in both read
     const root = join(dir, "project");
     await fsMkdir(root);
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
-    const continuation = new WorkspaceSessionContinuationService({ store });
     try {
         store.registerProject({ root, displayName: "Priority" });
-        await savePlan(root, "held", "# Held", { planId: "held-id", status: "on_hold", order: 1 });
-        await savePlan(root, "ready", "# Ready", { planId: "ready-id", status: "ready_for_work", order: 10 });
+        await seedPlan(root, "held", "# Held", { planId: "held-id", status: "on_hold", order: 1 });
+        await seedPlan(root, "ready", "# Ready", { planId: "ready-id", status: "ready_for_work", order: 10 });
+        const continuation = {
+            operations: new Map(),
+            listSessions() {
+                return Promise.resolve({ sessions: [] });
+            },
+        };
         for (const projects of [
             (await loadOwnerDashboard(store, continuation)).projects,
             await loadOwnerSidebar(store, continuation),
@@ -715,7 +659,6 @@ test("top-level sidebar priority stays ahead of explicit Plan order in both read
             );
         }
     } finally {
-        await continuation.close();
         store.close();
         await fsRm(dir, { recursive: true });
     }
@@ -727,35 +670,100 @@ for (const reader of [loadOwnerDashboard, loadOwnerSidebar]) {
         const root = join(dir, "project");
         await fsMkdir(root);
         const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
-        const continuation = new WorkspaceSessionContinuationService({ store });
         try {
             store.registerProject({ root, displayName: "Children" });
+            await seedPlan(root, "epic", "# Epic", { planId: "epic-id", classification: "PROJECT" });
             for (const child of [
                 { name: "z-first", order: 1, status: "on_hold" },
                 { name: "a-last", order: 10, status: "ready_for_work" },
                 { name: "b-unordered", status: "draft" },
             ]) {
-                await savePlan(root, `epic/${child.name}`, `# ${child.name}`, {
+                await seedPlan(root, `epic/${child.name}`, `# ${child.name}`, {
                     planId: child.name,
                     parentPlan: "epic",
                     order: child.order,
                     status: child.status,
                 });
             }
-            await savePlan(root, "unrelated", "# Unrelated", {
+            await seedPlan(root, "unrelated", "# Unrelated", {
                 planId: "unrelated",
                 status: "draft",
             });
-            const result = await reader(store, continuation);
+            const result = await reader(store, {
+                operations: new Map(),
+                listSessions() {
+                    return Promise.resolve({ sessions: [] });
+                },
+            });
             const projects = Array.isArray(result) ? result : result.projects;
             assertEquals(
-                projects[0].plans.filter((plan) => plan.planId !== "unrelated").map((plan) => plan.planId),
+                projects[0].plans
+                    .filter((plan) => plan.planId !== "unrelated" && plan.planId !== "epic-id")
+                    .map((plan) => plan.planId),
                 ["z-first", "a-last", "b-unordered"],
             );
         } finally {
-            await continuation.close();
             store.close();
             await fsRm(dir, { recursive: true });
         }
     });
 }
+
+test("dashboard keeps Promise identity and publishes later Project while first waits", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-progress-"));
+    const first = `${dir}/first`;
+    const second = `${dir}/second`;
+    await fsMkdir(first);
+    await fsMkdir(second);
+    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
+    let release = () => {};
+    const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    try {
+        const firstProject = store.registerProject({ root: first, displayName: "Blocked" });
+        store.registerProject({ root: second, displayName: "Available" });
+        await seedPlan(second, "finished", "# Finished\n", {
+            planId: "available-plan",
+            classification: "FEATURE",
+            status: "user_verified",
+            userVerifiedAt: new Date().toISOString(),
+        });
+        // The Session catalog is an external read boundary; Plan and Project readers stay real.
+        const continuation = {
+            operations: new Map(),
+            async listSessions(projectId: string) {
+                if (projectId === firstProject.projectId) await blocked;
+                return { sessions: [] };
+            },
+        };
+        const frames: Array<{ type: string; sections: Array<{ items: Array<{ planId: string }> }> }> = [];
+        let rowSeen = () => {};
+        const row = new Promise<void>((resolve) => {
+            rowSeen = resolve;
+        });
+        const unsubscribe = subscribeOwnerDashboard(store, continuation, (frame) => {
+            frames.push(frame);
+            if (frame.sections.some((section) => section.items.some((item) => item.planId === "available-plan"))) {
+                rowSeen();
+            }
+        });
+        const a = loadOwnerDashboard(store, continuation);
+        assertStrictEquals(a, loadOwnerDashboard(store, continuation));
+        await Promise.race([
+            row,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("No early row")), 5000)),
+        ]);
+        assertEquals(frames.at(-1)?.type, "snapshot");
+        release();
+        const payload = await a;
+        assertEquals(payload.dashboard.sections.flatMap((section) => section.items).length, 1);
+        unsubscribe();
+        assertEquals(loadOwnerDashboard(store, continuation) === a, false);
+        await loadOwnerDashboard(store, continuation);
+    } finally {
+        release();
+        store.close();
+        await fsRm(dir, { recursive: true });
+    }
+});

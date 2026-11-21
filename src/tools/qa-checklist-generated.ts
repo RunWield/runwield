@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
-import { appendEpicManualQaSection } from "../shared/epic-artifacts.ts";
+import { appendEpicManualQaSection } from "../plan-store/index.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
 

@@ -1,7 +1,7 @@
 // @ts-nocheck -- Served as plain browser JavaScript from the owner Workspace static route.
 import { PANEL_ICON_PATHS } from "../../design-system/panel-icon.ts";
 // This specifier resolves to the JavaScript asset served to browsers.
-import { animateSidebarChange } from "../../design-system/sidebar-motion.js";
+import { animateSidebarChange } from "../../design-system/sidebar-motion.ts";
 export const LAST_SESSION_KEY = "runwield:owner:last-session";
 export const LAST_PROJECT_KEY = "runwield:owner:last-project";
 export const SIDEBAR_COLLAPSED_KEY = "runwield:owner:sidebar-collapsed";

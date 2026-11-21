@@ -383,14 +383,26 @@ export async function smokeTestBinaryPlansUiSurface(binaryPath: string, root: st
 export async function smokeTestBinaryReviewSurface(binaryPath: string, root: string) {
     console.log("\n==> Smoke test standalone Plan review surface");
     const projectDir = join(root, "plan-review-project");
-    await fsMkdir(join(projectDir, "docs", "plans"), { recursive: true });
-    await fsWriteFile(
-        join(projectDir, "docs", "plans", "release-review-smoke.md"),
-        `---\nplanId: release-review-smoke\nclassification: FEATURE\nstatus: draft\n---\n# Release binary review smoke\n`,
-    );
-
+    const home = join(root, "plan-review-home");
+    const env = {
+        ...process.env,
+        HOME: home,
+        ...(process.env.WLD_TEST_SANDBOX_HOME ? { WLD_TEST_SANDBOX_HOME: home } : {}),
+    };
+    await Promise.all([fsMkdir(home, { recursive: true }), fsMkdir(projectDir, { recursive: true })]);
+    const source = "release-review-smoke.md";
+    await fsWriteFile(join(projectDir, source), "# Release binary review smoke\n");
+    const imported = await run(binaryPath, ["plans", "import", source], {
+        cwd: projectDir,
+        env,
+        stdin: "null",
+        stdout: "piped",
+        stderr: "piped",
+    });
+    if (!imported.success) throw new Error(`Standalone binary failed to import the review Plan: ${imported.stderr}`);
     const child = spawn(binaryPath, ["plans", "read", "release-review-smoke", "--no-open"], {
         cwd: projectDir,
+        env,
         stdio: ["ignore", "pipe", "pipe"],
     });
     const childStatus = waitForScriptExit(child);

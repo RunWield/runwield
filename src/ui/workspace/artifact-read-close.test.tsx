@@ -1,5 +1,4 @@
 // @ts-nocheck: browser tests install happy-dom globals around React.
-// @ts-nocheck: browser tests install happy-dom globals around React.
 import { test } from "node:test";
 import { importTestBundle } from "../../testing/import-test-bundle.ts";
 import { ok as assert } from "node:assert/strict";
@@ -83,6 +82,7 @@ async function withReader(payload, check, exitStatus = 200, home = false) {
             "localStorage",
             "matchMedia",
             "HTMLElement",
+            "customElements",
             "Element",
             "Node",
             "MutationObserver",

@@ -2,9 +2,7 @@ import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
 import { projectRoutingWorkflowScenarios, routerArchitectSlicerScenario } from "./project-routing-workflow.ts";
 
-const scenarioExportNames = new Map([
-    [routerArchitectSlicerScenario, "routerArchitectSlicerScenario"],
-]);
+const scenarioExportNames = new Map([[routerArchitectSlicerScenario, "routerArchitectSlicerScenario"]]);
 
 for (const scenario of projectRoutingWorkflowScenarios) {
     test(`golden PROJECT routing: ${scenario.name}`, async () => {

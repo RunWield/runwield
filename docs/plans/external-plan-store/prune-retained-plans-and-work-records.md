@@ -1,4 +1,5 @@
 ---
+planId: "acdb78a0-8f33-4280-a151-523a632af05b"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "HIGH"
@@ -6,8 +7,9 @@ affectedPaths:
     - "src/shared/plan-archive-retention.ts"
     - "src/cmd/plans/prune.ts"
     - "src/shared/work-records/"
-    - "src/cmd/"
-    - "src/shared/settings.ts"
+    - "src/cmd/wr/"
+    - "src/plan-store/"
+    - "src/shared/settings.js"
     - "src/shared/remote/"
     - "docs/domain-language.md"
     - "docs/prd/runwield-core-prd.md"
@@ -23,9 +25,10 @@ dependencies:
     - "external-plan-store/move-work-records-with-delivery-copies"
     - "external-plan-store/activate-managed-remote-store-ownership"
     - "external-plan-store/keep-and-restore-plan-milestone-history"
+userVerifiedAt: null
 targetBranch: "epic/external-plan-store"
-status: "draft"
-planId: "acdb78a0-8f33-4280-a151-523a632af05b"
+validatedCommit: "9d8d2e23c1fb57d38ed9a2a73083ef1d838b9d2b"
+status: "verified"
 ---
 
 # Prune Retained Plans and Work Records
@@ -36,6 +39,10 @@ This draft implements one slice of the [External Project State and Plan Store Ep
 Home storage becomes the long-lived owner of archived Plans, history and Work Records. Retention must preserve useful recent records and evidence needed by unfinished workflows rather than deleting by age alone.
 
 Owning requirements: [Work Record retention](../../prd/plan-store-prd.md#work-record-store); [Plan history](../../prd/plan-store-prd.md#plan-history); [Work records](../../prd/runwield-core-prd.md#work-records). These are target changes; preserve the existing behavior named below.
+
+**Implementation dependency.** Plan 14, [Keep and Restore Plan Milestone History](keep-and-restore-plan-milestone-history.md), is implemented and awaits publication to `epic/external-plan-store` at planning time. Review Plan 15 now. Before implementation, verify that Plan 14 has landed on the Epic and use its published history and evidence APIs. Plan 14 owns capture, listing and restoration. Plan 15 decides when confirmed pruning can remove that history and which evidence must survive.
+
+On the Epic base, `collectArchivedPlanUnits` in `src/plan-store/archive-retention.ts` returns an empty list for package and managed stores. The existing CLI selects legacy archive units by name. The Work Record CLI already reads canonical records, but has no prune command. Move preview, eligibility checks and confirmed mutations behind the public Plan store so both commands and reminders see the same records.
 
 ## Objective
 
@@ -57,11 +64,11 @@ during implementation and change whatever the Implementation Steps need, includi
 only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
-- `src/shared/plan-archive-retention.ts` — preserve archived-Plan count-first policy on package storage
+- `src/plan-store/index.ts` and its retention implementation — own preview and confirmed pruning by stable identity for both record types. Reuse the selection rules from `src/shared/plan-archive-retention.ts` and make the archive reminder consume the same preview.
 - `src/cmd/plans/prune.ts` — dry-run and confirmed package pruning
 - `src/shared/work-records/` — record retention, dependency pins and prune operations
-- `src/cmd/` — Work Record prune command and reminders
-- `src/shared/settings.ts` — independent retention settings and defaults
+- `src/cmd/wr/index.ts` — dispatch and document `wld wr prune`. Show the Work Record reminder on ordinary listing when records are due.
+- `src/shared/settings.js` — independent retention settings and defaults
 - `src/shared/remote/` — owner-side pruning plus execution-host copy cleanup
 - `docs/domain-language.md` — home-owned Plan Archive Retention and record retention relationships
 - `docs/prd/runwield-core-prd.md` — lasting retention and completed proposal requirements
@@ -75,29 +82,30 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Implementation Steps
 
-1. Archived Plan and Work Record policies evaluate count floors before age; default Work Record values are 100 and 90 days, and zero days means count-only.
+1. The public Plan store previews archived top-level units with Work Record coverage from `provenance.sourcePlans`. Preserve the existing `plans.archiveKeepLast` and `plans.archiveRetentionDays` settings and Epic family grouping. Work Records rank by `createdAt` with a stable identity tie-breaker and have independent project settings `workRecords.retentionKeepLast` (100) and `workRecords.retentionDays` (90). Protect the count floor first, then the recent window. Zero days means count-only.
 2. A record covering an unpruned archived Plan and any snapshot/record needed by unfinished publication or Recorder recovery is protected even if ordinary retention would remove it.
 3. Ordinary use may remind about due records but never prunes automatically; both prune flows support dry-run and explicit confirmation with no deletion on decline.
-4. Confirmed pruning removes eligible canonical units and their eligible history while preserving dependency pins; interrupted operations resume without expanding the approved set.
+4. The store rechecks identity, coverage, pins and current retention under the owner's existing locking rules before deletion. Confirmed pruning removes only still-eligible approved units and their eligible history. A reused name, newly due unit or newly pinned record cannot be deleted using an earlier confirmation. Interrupted operations resume within that set. Pruned records disappear from canonical list, read and search results, including after an index rebuild.
 5. Repository cleanup uses only recorded paths within a known binding, rejects traversal/symlink escape and foreign-owner paths, skips missing or renamed copies, and leaves successful deletions uncommitted.
-6. Managed remote pruning executes personal-store mutations on the laptop and eligible repository cleanup on the execution host; unavailable bindings do not make store pruning fabricate cleanup success.
+6. Ordinary local launch prunes the current account's store. A manual SSH login uses that host's account as local owner. In a managed remote launch the laptop performs canonical reads, pins, mutations and indexing through the existing owner service, while the execution host cleans its bound repository. An unavailable binding skips copy cleanup and leaves the canonical prune outcome accurate.
 7. Core retention requirements and glossary retention definitions match behavior. Consolidate every delivered Plan Store requirement into its owning central PRD, preserve any genuine unmet target, update references, and remove the transient PRD only after none of its unique requirements are lost.
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
+Run the locked install and focused checks through the project's isolated test script. Commit `96b0919c2` on `origin/main` allows compatible local Bun versions (`^1.4.0`); CI and release use `.bun-version`. Use the checkout's supported runtime for these commands.
 
 ```sh
-bun scripts/run-tests.ts src/shared/plan-archive-retention.test.ts src/cmd/plans/prune.test.ts src/shared/work-records/work-records.test.ts
+bun run install:locked
+bun run test src/shared/plan-archive-retention.test.ts src/cmd/plans/prune.test.ts src/cmd/wr/index.test.ts src/shared/work-records/package-store.test.ts src/plan-store/remote-operations.test.ts
 ```
 
-New coverage below is proposed, not an existing passing test inventory. Planner must select concrete test files and
-commands that fail before this slice and pass afterwards; the regression command alone does not prove the new outcome.
-Use real stores/repositories and disposable homes, with `withProcessGlobalTestLock` for process-global changes. Do not
-add injection seams for Core-owned persistence or lifecycle rules.
+Extend those suites with real stores, repositories and disposable homes. Use `withProcessGlobalTestLock` for process-global changes.
 
 - With 30 year-old records prune none; with 400 records from the last month prune none; with zero-day age apply only the count floor.
 - Retained Plan coverage and unfinished recording/publication pin otherwise eligible records and snapshots; releasing the dependency changes eligibility.
+- In the Plan CLI suite, archive a canonical Epic with children and milestone history, alongside an uncovered Plan. Confirm only the covered, due family disappears. A different family and its history remain readable. Introduce a pin between preview and confirmation and verify the owner spares the newly pinned input.
+- In the Work Record CLI and package-store suites, prove a due imported or delivered record disappears from list, read and search after confirmation and reindex. Assert the reminder itself, dry-run and decline preserve canonical data and repository copies.
+- In the remote suite, place distinguishable records in laptop and execution-account stores. Confirm managed pruning changes only laptop authority and the recorded execution-side copy. A manual SSH launch uses the execution account's home even with SSH environment variables set.
 - Dry-run/decline leave all bytes unchanged. Confirm, interrupt and retry pruning with missing, renamed, traversal and symlinked copy paths: only the approved canonical set and safe recorded paths are affected.
 - Manual: Preview due Plans and records, decline once, then confirm a bounded prune and inspect uncommitted repository deletions; repeat one unavailable/missing delivery-copy case.
 - Preserve: Existing archive semantics, recovery evidence, retained-Plan coverage, independent settings and no automatic destructive work.

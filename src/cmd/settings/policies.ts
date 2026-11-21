@@ -81,10 +81,12 @@ export function getPolicySettings(projectRoot: string): PolicySetting[] {
 }
 
 export async function editPolicySetting(policy: PolicySetting, projectRoot: string, ui: PolicyUi): Promise<void> {
-    const scope = policy.globalOnly ? "global" : await ui.promptSelect(`Save ${policy.title.toLowerCase()} for`, [
-        { value: "project", label: "This project", description: "Overrides your global preference here" },
-        { value: "global", label: "All projects", description: "Existing project overrides stay in effect" },
-    ]);
+    const scope = policy.globalOnly
+        ? "global"
+        : await ui.promptSelect(`Save ${policy.title.toLowerCase()} for`, [
+              { value: "project", label: "This project", description: "Overrides your global preference here" },
+              { value: "global", label: "All projects", description: "Existing project overrides stay in effect" },
+          ]);
     if (scope !== "project" && scope !== "global") return;
     const selection = await ui.promptSelect(
         policy.title,
@@ -110,7 +112,9 @@ export async function editPolicySetting(policy: PolicySetting, projectRoot: stri
         await setCustomSetting(policy.key, selection, scope, projectRoot);
     }
     const label = policy.choices.find((choice) => choice.value === selection)!.label;
-    const overridden = scope === "global" && !policy.globalOnly &&
+    const overridden =
+        scope === "global" &&
+        !policy.globalOnly &&
         (isPlanMergePolicy
             ? (getCustomSetting("plans", "project", projectRoot) as JsonRecord | null | undefined)
                   ?.autoMergeIntoTargetBranch !== undefined

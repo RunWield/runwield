@@ -122,9 +122,10 @@ export function reconstructManifestFromLineage(
     while (current) {
         ordered.push(current);
         visited.add(current.lineage.segmentId);
-        const children = located.filter((candidate) =>
-            candidate.lineage.parentSegmentId === current?.lineage.segmentId &&
-            !visited.has(candidate.lineage.segmentId)
+        const children = located.filter(
+            (candidate) =>
+                candidate.lineage.parentSegmentId === current?.lineage.segmentId &&
+                !visited.has(candidate.lineage.segmentId),
         );
         if (children.length > 1) return null;
         current = children[0];
@@ -134,13 +135,13 @@ export function reconstructManifestFromLineage(
     const timestamp = isoNow(now);
     const generation = ordered.length - 1;
     const committedPrefixes = ordered.map((item, ordinal) =>
-        readJsonlPrefix(item.locator.sessionPath, ordinal === ordered.length - 1)
+        readJsonlPrefix(item.locator.sessionPath, ordinal === ordered.length - 1),
     );
     const planAssociations = committedPrefixes.flatMap((prefix) =>
         readPlanAssociations(prefix.entries.slice(1)).map((association) => ({
             ...association,
             committedGeneration: generation,
-        }))
+        })),
     );
     const currentPrefix = committedPrefixes[committedPrefixes.length - 1];
 
@@ -163,9 +164,10 @@ export function reconstructManifestFromLineage(
         lineageGroupKey: item.lineage.lineageGroupKey ?? null,
         lineageRecordedAt: timestamp,
         sealedByteLength: ordinal < ordered.length - 1 ? statSync(item.locator.sessionPath).size : null,
-        sealedDigestHex: ordinal < ordered.length - 1
-            ? createHash("sha256").update(readFileSync(item.locator.sessionPath)).digest("hex")
-            : null,
+        sealedDigestHex:
+            ordinal < ordered.length - 1
+                ? createHash("sha256").update(readFileSync(item.locator.sessionPath)).digest("hex")
+                : null,
         sealedTerminalEntryId: null,
     }));
     return {

@@ -9,7 +9,7 @@ import { assertEquals, assertStringIncludes } from "../../../testing/assertions.
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
-import type { PlanFrontMatter } from "../../../plan-store.ts";
+import { type PlanFrontMatter } from "../../../plan-format.ts";
 import type { TutorialContext } from "../../../shared/session/tutorial-context-session.ts";
 import type { WorkflowControllerState } from "../../../shared/workflow/controller-state.ts";
 import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
@@ -93,6 +93,7 @@ interface CapturedProjectState {
 }
 
 interface CapturedPublication {
+    remotePlanFields?: string[];
     remotePlanAttrs?: CapturedPlanAttrs;
     controllerState?: WorkflowControllerState;
     registryEntries?: WorktreeRegistryEntry[];
@@ -394,8 +395,8 @@ export const plannedChangeReviewRepairValidationScenario = {
     ],
     actions: [
         {
-            type: "writeProjectFile",
-            path: "docs/plans/plan.md",
+            type: "savePlan",
+            planName: "plan",
             text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Golden PLANNED_CHANGE\n\nDraft content.\n",
         },
         { type: "type", text: "submit the planned change for review" },
@@ -667,6 +668,10 @@ export const onboardingTutorialDeliveryScenario = {
             const publicationAfterReload = tutorialState.tutorialPublicationAfterReload;
             assertEquals(pausedContext?.recapShown, false, "Pause must settle before verification and publication.");
             assert(
+                pausedContext?.shownExplanationIds?.includes("plan-review"),
+                "Live canonical review guidance must present before its Plan association generation commits.",
+            );
+            assert(
                 repairedContext?.shownExplanationIds?.includes("ai-review"),
                 "Semantic repair teaching must persist before its reload.",
             );
@@ -913,8 +918,8 @@ export const plannedChangeNonGitInPlaceScenario: GoldenScenario = {
     ],
     actions: [
         {
-            type: "writeProjectFile",
-            path: "docs/plans/non-git-plan.md",
+            type: "savePlan",
+            planName: "non-git-plan",
             text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden non-Git PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Non-Git PLANNED_CHANGE\n\nDraft content.\n",
         },
         { type: "type", text: "submit the non-git planned change for review" },
@@ -1078,8 +1083,8 @@ export const plannedChangeValidationFailureRetryScenario: GoldenScenario = {
     ],
     actions: [
         {
-            type: "writeProjectFile",
-            path: "docs/plans/validation-retry.md",
+            type: "savePlan",
+            planName: "validation-retry",
             text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Validation retry\naffectedPaths: []\nstatus: draft\n---\n# Validation retry\n\nDraft content.\n",
         },
         { type: "type", text: "submit validation retry plan for review" },
@@ -1123,8 +1128,8 @@ export const plannedChangeValidationFailureRetryScenario: GoldenScenario = {
                 `Expected controller CI attempts reset after success; got ${publication.controllerState?.validationCiAttempts}`,
             );
             assertEquals(
-                attrs?.validationCiAttempts,
-                undefined,
+                publication.remotePlanFields?.includes("validationCiAttempts"),
+                false,
                 "retry counters must not be written into the published Plan",
             );
             assertEquals(publication.registryEntries?.length, 0, "Expected successful publication cleanup.");
@@ -1206,8 +1211,8 @@ export const plannedChangeValidationExhaustedScenario: GoldenScenario = {
     ],
     actions: [
         {
-            type: "writeProjectFile",
-            path: "docs/plans/validation-exhausted.md",
+            type: "savePlan",
+            planName: "validation-exhausted",
             text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Validation exhausted\naffectedPaths: []\nstatus: draft\n---\n# Validation exhausted\n\nDraft content.\n",
         },
         { type: "type", text: "submit validation exhausted plan for review" },
@@ -1362,8 +1367,8 @@ export const plannedChangeFrontendIdentityScenario: GoldenScenario = {
     ],
     actions: [
         {
-            type: "writeProjectFile",
-            path: "docs/plans/frontend-identity.md",
+            type: "savePlan",
+            planName: "frontend-identity",
             text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Frontend identity\naffectedPaths: []\nstatus: draft\nexecutionAgent: frontend-engineer\n---\n# Frontend identity\n\nDraft content.\n",
         },
         { type: "type", text: "submit frontend identity plan for review" },

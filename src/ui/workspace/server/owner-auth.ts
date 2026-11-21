@@ -60,23 +60,19 @@ export function renewDeviceCookies(request: Request, response: Response, state: 
     const csrf = getCookie(request, OWNER_CSRF_COOKIE);
     if (!csrf || !state.store.verifyDeviceCsrf(deviceId, csrf)) return response;
     const headers = new Headers(response.headers);
-    for (
-        const cookie of deviceCookieHeaders({
-            credential: getCookie(request, OWNER_DEVICE_COOKIE),
-            csrf,
-            publicOrigin: state.publicOrigin,
-        })
-    ) headers.append("set-cookie", cookie);
+    for (const cookie of deviceCookieHeaders({
+        credential: getCookie(request, OWNER_DEVICE_COOKIE),
+        csrf,
+        publicOrigin: state.publicOrigin,
+    }))
+        headers.append("set-cookie", cookie);
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 export function clearDeviceCookieHeaders(options: OwnerCookieOrigin) {
     const secure = parseOwnerOrigin(options.publicOrigin).protocol === "https:";
     const suffix = `Max-Age=0; Path=/; SameSite=Strict${secure ? "; Secure" : ""}`;
-    return [
-        `${OWNER_DEVICE_COOKIE}=; ${suffix}; HttpOnly`,
-        `${OWNER_CSRF_COOKIE}=; ${suffix}`,
-    ];
+    return [`${OWNER_DEVICE_COOKIE}=; ${suffix}; HttpOnly`, `${OWNER_CSRF_COOKIE}=; ${suffix}`];
 }
 
 export function bootstrapProofCookieHeader(proof: string, options: OwnerCookieOrigin) {

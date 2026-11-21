@@ -32,11 +32,7 @@ export const slashSessionScenario = {
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
-    actions: [
-        { type: "type", text: "/session" },
-        { type: "enter" },
-        { type: "waitForIdle" },
-    ],
+    actions: [{ type: "type", text: "/session" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [
         typed("/session"),
         (result: Parameters<typeof assertScreenIncludes>[0]) => assertScreenIncludes(result, "Session Info"),
@@ -49,13 +45,15 @@ export const slashContextScenario = {
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
-    script: [{
-        id: "guide-establishes-context",
-        agent: "guide",
-        phase: "inquiry",
-        ordinal: 1,
-        text: "Context fixture established.",
-    }],
+    script: [
+        {
+            id: "guide-establishes-context",
+            agent: "guide",
+            phase: "inquiry",
+            ordinal: 1,
+            text: "Context fixture established.",
+        },
+    ],
     actions: [
         { type: "type", text: "establish context for the slash command" },
         { type: "enter" },

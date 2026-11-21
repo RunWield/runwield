@@ -19,4 +19,4 @@ Validation can request an isolated repair task. Add completion delivery so valid
 
 ## Validation
 
-Use Bun 1.4.3. Run `bun run test`.
+Use Bun ^1.4.0. Run `bun run test`.

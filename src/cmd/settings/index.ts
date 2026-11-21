@@ -100,32 +100,36 @@ export function formatCompactionBehavior(
 ): string {
     const usage = getContextUsage(session);
     const contextWindow = usage?.contextWindow ?? session.model?.contextWindow;
-    const threshold = typeof contextWindow === "number" && contextWindow > 0
-        ? Math.max(0, contextWindow - settings.reserveTokens)
-        : null;
-    const currentContext = usage && typeof usage.tokens === "number"
-        ? `${usage.tokens.toLocaleString()}/${formatMaybeTokens(usage.contextWindow)} tokens` +
-            (typeof usage.percent === "number" ? ` (${usage.percent.toFixed(1)}%)` : "")
-        : "unknown";
+    const threshold =
+        typeof contextWindow === "number" && contextWindow > 0
+            ? Math.max(0, contextWindow - settings.reserveTokens)
+            : null;
+    const currentContext =
+        usage && typeof usage.tokens === "number"
+            ? `${usage.tokens.toLocaleString()}/${formatMaybeTokens(usage.contextWindow)} tokens` +
+              (typeof usage.percent === "number" ? ` (${usage.percent.toFixed(1)}%)` : "")
+            : "unknown";
     const projectCompaction = settingsManager.getProjectSettings().compaction;
     const overrideNote = projectCompaction
         ? "\nProject settings define compaction overrides; effective values are shown above."
         : "";
 
-    return [
-        theme.bold("Compaction behavior"),
-        `${theme.fg("dim", "Auto-compact:")} ${settings.enabled ? "enabled" : "disabled"}`,
-        `${theme.fg("dim", "Reserve tokens:")} ${settings.reserveTokens.toLocaleString()}`,
-        `${theme.fg("dim", "Keep recent tokens:")} ${settings.keepRecentTokens.toLocaleString()}`,
-        `${theme.fg("dim", "Auto threshold:")} ${
-            threshold === null
-                ? "unknown"
-                : `${threshold.toLocaleString()} / ${formatMaybeTokens(contextWindow)} tokens`
-        }`,
-        `${theme.fg("dim", "Current context:")} ${currentContext}`,
-        "",
-        `Auto-compaction triggers when current context exceeds the threshold. Compaction keeps about ${settings.keepRecentTokens.toLocaleString()} tokens of recent messages.`,
-    ].join("\n") + overrideNote;
+    return (
+        [
+            theme.bold("Compaction behavior"),
+            `${theme.fg("dim", "Auto-compact:")} ${settings.enabled ? "enabled" : "disabled"}`,
+            `${theme.fg("dim", "Reserve tokens:")} ${settings.reserveTokens.toLocaleString()}`,
+            `${theme.fg("dim", "Keep recent tokens:")} ${settings.keepRecentTokens.toLocaleString()}`,
+            `${theme.fg("dim", "Auto threshold:")} ${
+                threshold === null
+                    ? "unknown"
+                    : `${threshold.toLocaleString()} / ${formatMaybeTokens(contextWindow)} tokens`
+            }`,
+            `${theme.fg("dim", "Current context:")} ${currentContext}`,
+            "",
+            `Auto-compaction triggers when current context exceeds the threshold. Compaction keeps about ${settings.keepRecentTokens.toLocaleString()} tokens of recent messages.`,
+        ].join("\n") + overrideNote
+    );
 }
 
 function formatCompactionMenuDescription(
@@ -135,9 +139,10 @@ function formatCompactionMenuDescription(
 ): string {
     const usage = getContextUsage(session);
     const contextWindow = usage?.contextWindow ?? session.model?.contextWindow;
-    const threshold = typeof contextWindow === "number" && contextWindow > 0
-        ? Math.max(0, contextWindow - settings.reserveTokens).toLocaleString()
-        : "unknown";
+    const threshold =
+        typeof contextWindow === "number" && contextWindow > 0
+            ? Math.max(0, contextWindow - settings.reserveTokens).toLocaleString()
+            : "unknown";
     const overrideSuffix = settingsManager.getProjectSettings().compaction ? " (project override active)" : "";
     return `${
         settings.enabled ? "enabled" : "disabled"
@@ -409,9 +414,7 @@ export async function runSettingsCommand(argv: string[], options: SettingsComman
                     );
                     await settingsManager.reload();
                 } else if (compactionChoice === "summary") {
-                    uiAPI.appendSystemMessage(
-                        formatCompactionBehavior(activeSettings, activeSession, settingsManager),
-                    );
+                    uiAPI.appendSystemMessage(formatCompactionBehavior(activeSettings, activeSession, settingsManager));
                 }
             } catch (error) {
                 uiAPI.appendSystemMessage(error instanceof Error ? error.message : String(error));

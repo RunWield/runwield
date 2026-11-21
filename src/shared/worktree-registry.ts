@@ -1,3 +1,4 @@
+import { openNativeFileLock } from "./native-file-lock.ts";
 import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import { open as fsOpen } from "node:fs/promises";
 import { captureForegroundProcess } from "./captured-process.ts";
@@ -30,7 +31,7 @@ import {
     withProjectRuntimeReadScope,
     type ProjectRuntimeLayout,
 } from "./project-runtime-layout.ts";
-import { inspectPlanIdentityDocuments } from "./workflow/plan-diagnostic-evidence.ts";
+import { inspectPlanIdentityDocuments } from "../plan-store/index.ts";
 import { assertPublicationAttempt, type PublicationAttempt } from "./workflow/publication-attempt.ts";
 
 const registryMutation = new AsyncLocalStorage<ProjectRuntimeLayout>();
@@ -54,6 +55,7 @@ export interface WorktreeRegistryEntry {
     updatedAt: string;
     migrationIssue?: RegistryMigrationIssue;
     publication?: PublicationAttempt;
+    creationContext?: import("./worktree-project-context.ts").WorktreeProjectContext;
 }
 
 export interface RegistryRecoveryAction {
@@ -506,9 +508,14 @@ export async function withWorktreeRegistryLock<Result>(
 ): Promise<Result> {
     return await withProjectRuntimeReadScope(async () => {
         const layout = await enterProjectRuntime(projectRoot);
-        return await withWorktreeRegistryLockAtPath(layout.primary.worktreeRegistryLockPath, () =>
-            registryMutation.run(layout, fn),
-        );
+        await fsMkdir(dirname(layout.primary.worktreeRegistryLockPath), { recursive: true, mode: 0o700 });
+        const lock = openNativeFileLock(layout.primary.worktreeRegistryLockPath);
+        await lock.lock(true);
+        try {
+            return await registryMutation.run(layout, fn);
+        } finally {
+            lock.close();
+        }
     });
 }
 

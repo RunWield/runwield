@@ -3,7 +3,7 @@
  * Turning a refused lifecycle transition into something the user can act on.
  */
 
-import type { TransitionResult } from "../../shared/workflow/state-transition.ts";
+import type { TransitionResult } from "../../plan-store/index.ts";
 
 /**
  * Turn a non-committed transition into an error that tells the user what to do

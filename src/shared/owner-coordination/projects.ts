@@ -1,3 +1,4 @@
+import { inspectProjectIdentity } from "../project-identity.ts";
 import { inspectProjectDirectory, requireDirectoryConfirmation } from "../project-directory.ts";
 /**
  * @module shared/owner-coordination/projects
@@ -17,6 +18,7 @@ export type ProjectHealthStatus = "available" | "missing" | "not_directory" | "u
 
 export interface RegisteredProject {
     projectId: string;
+    coreProjectId: string | null;
     displayName: string;
     registeredRoot: string;
     currentRoot: string;
@@ -153,7 +155,9 @@ function ensureProjectRootEvidence(db: DatabaseSync, options: EnsureProjectRootE
 }
 
 function projectFromRow(row: ProjectRow): RegisteredProject {
+    const identity = inspectProjectIdentity(row.current_root);
     return {
+        coreProjectId: identity.kind === "existing" ? identity.identity.projectId : null,
         projectId: row.id,
         displayName: row.display_name,
         registeredRoot: row.registered_root,

@@ -1,5 +1,3 @@
-import { AGY_CLI_MODEL_IDS } from "../models/agy-cli-catalog.ts";
-import { thinkingLevelToEffort } from "./backends/agy-cli/model-options.ts";
 import { constants } from "node:fs";
 import { open as fsOpen } from "node:fs/promises";
 import { stat as fsStat } from "node:fs/promises";
@@ -1029,6 +1027,34 @@ function readNonEmptyString(data: ReplayTranscriptData, key: keyof BackendFact) 
     return typeof value === "string" && value ? value : null;
 }
 
+// Historic Antigravity transcript facts remain readable after provider removal.
+const HISTORICAL_AGY_MODEL_IDS = [
+    "gemini-4-neon",
+    "gemini-4-argon",
+    "gemini-4-hydrogen",
+    "gemini-4-carbon",
+    "gemini-3.8-flash",
+    "gemini-3.1-pro",
+] as const;
+
+function historicalAgyThinkingEffort(modelId: string, thinkingLevel: string | undefined): string {
+    switch (thinkingLevel ?? "off") {
+        case "off":
+        case "minimal":
+        case "low":
+            return "low";
+        case "medium":
+            return modelId === "gemini-3.1-pro" ? "high" : "medium";
+        case "high":
+            return "high";
+        case "xhigh":
+        case "max":
+            return modelId === "gemini-4-hydrogen" || modelId === "gemini-4-neon" ? "xhigh" : "high";
+        default:
+            throw new Error(`Unknown RunWield thinkingLevel "${thinkingLevel}".`);
+    }
+}
+
 function isVerifiedAgyBackendModel(model: string, effort: string, backendModel: string) {
     return backendModel === `${model}-${effort}`;
 }
@@ -1040,10 +1066,10 @@ function readAgyExecutionBackendFact(data: ReplayTranscriptData): BackendFact | 
     const effort = readNonEmptyString(data, "effort");
     const backendModel = readNonEmptyString(data, "backendModel");
     if (provider !== "agy-cli") return null;
-    if (!model || !AGY_CLI_MODEL_IDS.some((id) => id === model)) return null;
+    if (!model || !HISTORICAL_AGY_MODEL_IDS.some((id) => id === model)) return null;
     if (!thinkingLevel || !effort) return null;
     try {
-        if (effort !== thinkingLevelToEffort(model, thinkingLevel)) return null;
+        if (effort !== historicalAgyThinkingEffort(model, thinkingLevel)) return null;
     } catch {
         return null;
     }

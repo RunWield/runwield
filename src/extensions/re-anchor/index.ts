@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 /**
  * @module extensions/re-anchor
  * Re-anchors the active agent on its durable artifact after context compaction.
@@ -17,7 +16,7 @@ import { readFileSync } from "node:fs";
 import type { ContextEvent, ExtensionAPI, SessionCompactEvent } from "@earendil-works/pi-coding-agent";
 import { buildReAnchorMessage, type ReAnchorContext } from "../../shared/workflow/workflow-prompts.ts";
 import { projectEngineerPlanBody } from "../../shared/workflow/engineer-plan-projection.ts";
-import { getStoredPlanPath } from "../../plan-store.ts";
+import { loadPlan, readFrozenPlanExecutionDocuments, resumePlanAttempt } from "../../plan-store/index.ts";
 import { normalizeWorkflowPlanName } from "../../shared/session/workflow-context-session.ts";
 import { normalizeLedger, renderOpenItems } from "../../shared/workflow/review-ledger.ts";
 import type { HostedSession } from "../../shared/session/hosted-session.ts";
@@ -52,7 +51,7 @@ const EXECUTION_AGENTS = new Set(["plan-engineer", "frontend-engineer", "reviewe
  * it on the workflow context. Execution wins because a repair turn has both and
  * only one of them is the Plan currently being worked.
  */
-function resolveReAnchorContext(options: ReAnchorOptions): ReAnchorResolution {
+async function resolveReAnchorContext(options: ReAnchorOptions): Promise<ReAnchorResolution> {
     const hostedSession = options.hostedSession;
     const activeWorkflow = hostedSession?.getActiveExecutionWorkflow() ?? null;
     const planName =
@@ -63,8 +62,21 @@ function resolveReAnchorContext(options: ReAnchorOptions): ReAnchorResolution {
     if (planName && EXECUTION_AGENTS.has(options.agentName)) {
         const executionCwd = activeWorkflow?.executionCwd || activeWorkflow?.projectRoot || hostedSession?.cwd || "";
         if (executionCwd) {
-            const markdown = readFileSync(getStoredPlanPath(executionCwd, planName), "utf8");
-            planBody = projectEngineerPlanBody(markdown);
+            const readBody = async () => {
+                const frozen = await readFrozenPlanExecutionDocuments(planName, activeWorkflow?.packageInput);
+                if (frozen) return frozen.planBody;
+                const plan = await loadPlan(executionCwd, planName);
+                return plan ? projectEngineerPlanBody(plan.markdown) : "";
+            };
+            planBody = activeWorkflow?.packageSelection
+                ? await resumePlanAttempt(
+                      executionCwd,
+                      activeWorkflow.packageSelection,
+                      activeWorkflow.packageAttemptId,
+                      readBody,
+                      planName,
+                  )
+                : await readBody();
         }
     }
 
@@ -96,7 +108,7 @@ export default function reAnchorExtension(pi: ExtensionAPI, options: ReAnchorOpt
         pendingReAnchor = true;
     });
 
-    pi.on("context", (event: ContextEvent, ctx) => {
+    pi.on("context", async (event: ContextEvent, ctx) => {
         const reminder = readCompactionReminder(ctx.getSystemPrompt());
         // Project onto the compacted context, never onto the saved summary. Each
         // Agent session supplies its own reminder, including after resume/switch.
@@ -115,7 +127,7 @@ export default function reAnchorExtension(pi: ExtensionAPI, options: ReAnchorOpt
         pendingReAnchor = false;
 
         try {
-            const text = buildReAnchorMessage(resolveReAnchorContext(options));
+            const text = buildReAnchorMessage(await resolveReAnchorContext(options));
             if (!text) return projected;
 
             // Append only. The event can replace the whole array, and rebuilding

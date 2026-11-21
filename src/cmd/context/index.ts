@@ -38,11 +38,12 @@ export function renderUsageBar(percent: number | null | undefined, width = 24): 
 export function formatContextReport(report: SessionContextReport): string {
     const lines = [];
     const model = [report.provider, report.model].filter(Boolean).join("/") || "model unavailable";
-    const usageLabel = report.usageState === "last_known"
-        ? "last known"
-        : report.usageState === "unknown_after_compaction"
-        ? "unknown after compaction"
-        : "estimated";
+    const usageLabel =
+        report.usageState === "last_known"
+            ? "last known"
+            : report.usageState === "unknown_after_compaction"
+              ? "unknown after compaction"
+              : "estimated";
 
     lines.push(theme.bold("Context Usage"));
     lines.push(
@@ -51,9 +52,9 @@ export function formatContextReport(report: SessionContextReport): string {
     lines.push(`${theme.fg("dim", "Model:")} ${model}`);
     lines.push(`${theme.fg("dim", "Usage:")} ${renderUsageBar(report.percent)}`);
     lines.push(
-        `${theme.fg("dim", "Tokens:")} ${formatContextTokens(report.usedTokens)}/${
-            formatContextTokens(report.contextWindow)
-        } (${usageLabel})`,
+        `${theme.fg("dim", "Tokens:")} ${formatContextTokens(report.usedTokens)}/${formatContextTokens(
+            report.contextWindow,
+        )} (${usageLabel})`,
     );
     lines.push(`${theme.fg("dim", "Free space:")} ${formatContextTokens(report.freeTokens)}`);
     lines.push("");

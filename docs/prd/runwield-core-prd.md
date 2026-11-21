@@ -292,6 +292,14 @@ Approval leads to a readiness check; a Plan that needs repair explains what bloc
 review keep the decision valid. Changes to Plan meaning, code, execution policy, or workflow evidence require review of
 the current Plan.
 
+**Requirement: Package review proves the complete input.** Ordinary local and manual-SSH canonical packages use the
+same approval/readiness rules over every required document and parent context. Changes to resource membership,
+validation content or execution policy require current review. Formatting-only review captures the new exact bytes;
+controller timestamps and unrelated sibling edits do not invalidate unchanged required input. Reply-only review keeps
+status unchanged. Single-Plan and Sequence decisions recheck the complete input after saving reviewed edits and before
+acceptance. A refused stale review preserves editor bytes and permits a fresh review after restart without manual
+journal repair. Managed-remote workflows retain their existing admitted source contract.
+
 **Requirement: Reply or revise in Plan review.** Planner or Architect replies in chat to explain, clarify, or ask back.
 It revises the Plan and calls `plan_written` when the answer changes scope, behavior, a decision, or verification; when
 in doubt, it revises. A reply-only turn writes nothing to the Plan file. RunWield keeps the same review and conversation
@@ -367,7 +375,8 @@ stays light, terminal animations pause during human input, and the decision cont
   keeps the block in the saved Plan.
 - When the user approves for later, the Plan waits; when they approve and run, readiness is checked first.
 - Given an open review, when a commit hook reformats the Plan, the decision still applies; a change to instructions,
-  code, links, or execution policy requires a new decision.
+  code, links, or execution policy requires a new decision. This review comparison uses rendered document meaning;
+  once execution reserves an approved input, its immutable documents retain exact bytes, including whitespace.
 - Given a ready-for-work Plan, when the user loads it and chooses **Review plan**, the saved Plan opens for review
   directly.
 - Given a draft Epic, the menu offers **Open Epic review** and **Resume planning with Architect** as separate actions.
@@ -395,35 +404,133 @@ owns the lifecycle metadata and keeps the user's current body intact through met
 rollback. A document save retains its assigned Plan identity and durable workflow decisions. Saving content protects edits made since that content was opened. Changes to the intended work follow normal
 Plan review.
 
-**Requirement: External Markdown Plans are first-class.** A plain Markdown file in `docs/plans/` is a valid draft.
-Listing, browsing, and inspecting it leave its bytes as they are. Deliberate `/load-plan` adoption adds identity and
-defaults and keeps the body and the file's original age. Loading an adopted Plan again keeps its lifecycle and
-decisions. Deliberate review, validation, and lifecycle actions prepare identity and controller state before capturing
-review revisions, claiming checkpoints, or checking completion. Validation repairs provable execution identity before
-selecting the actionable document.
+**Acceptance: Material edits reopen review.** A material change to an approved or ready Plan saves the new prose
+and reopens review in one operation. Formatting-only edits preserve approval. Workspace and agent writes reject
+an archived Plan or a stale revision and keep its current bytes. An action selected before a rename or archive must
+reload the Plan before acting.
 
-**Requirement: Inspect Plans without preparing them.** Listing, indexing, browsing, body reads, and passive progress
-reads inspect existing local evidence. They do not change Plan or runtime files, reconcile ignore rules, assign IDs,
-fetch or clone Git data, change refs or worktrees, take writer locks, or schedule repair. Fresh Projects expose local
-documents without creating runtime storage. Ready reads retain registered document-worktree authority and locally
-available target snapshots; they do not replace current workflow facts with a stale primary copy. A registered
-document must belong to an attached Git worktree of the same Project before its bytes can supply authority.
+**Requirement: Canonical packages keep metadata beside editable documents.** Local and manual-SSH Project operations persist one ID-addressed package in home storage, with versioned
+`plan.wld.json`, required `context.md` and `validation.md`, and optional QA and integration resources. Document hashes
+and metadata revisions are independent: changing either cannot overwrite or unnecessarily stale the other. Markdown,
+including YAML-looking prose, cannot assign identity or workflow state. Rename preserves identity, references and
+ID-based relationships; archive visibility does not archive children. Strict passive reads distinguish missing,
+damaged, unsafe and pending packages while keeping healthy packages available.
+Creation and rename reject a destination whose existing directory spelling differs from the requested name on the
+store's filesystem, preserving readable packages and the existing namespace.
+
+Local and manual-SSH discovery and selected workflows use this personal home store. Checkout Plans are explicit
+import sources or optional delivery copies; absence, damage or denial of home storage never selects a checkout copy.
+`wld plans import <file-or-folder>` and explicit Markdown path loading preserve source bytes and import selected
+artifacts. Name lookup never adopts a checkout document. New planning uses Markdown documents and typed definition
+fields through `plan_written`; Core owns protected metadata. Managed remote launch selects the initiating laptop's
+home-only Project store through the same public owner. Service loss cannot select an execution account's personal store.
+
+**Acceptance: Linux login homes.** A physical login home and a symlink to a directory owned by the account select
+the same personal store and locks when they reach the same directory. If the home is retargeted while an operation
+is running, the operation stops and the replacement stays untouched. A symlink inside the store cannot redirect
+writes. These rules apply to manual SSH and to execution state on a managed SSH host.
+
+**Requirement: Managed Plans retain laptop authority.** A remote-only Project needs no laptop checkout or source sync.
+Trusted startup binds the remote Project and repository to the laptop account. Personal Plan documents, controllers,
+native locks, collaboration capabilities and canonical Work Records use that owner. Git registries, worktrees, repair
+state and publication journals use the remote account home. Passive discovery creates neither registration nor runtime.
+
+**Acceptance: Managed authoring and delivery.** Given a trusted managed connection and no laptop source checkout,
+authoring, browser review and execution use one laptop Plan identity. Publishing changes only the execution repository
+and configured target. Canonical records and searches use the laptop store; the remote checkout gains no personal
+package or `.wld/internal/` fallback.
+
+**Acceptance: Original attempts survive adoption.** Given an unfinished pre-cutover managed attempt, admission verifies
+staged personal bytes and original owner, repository, checkout, attempt, branch and base before source retirement.
+Saved continuation resumes that original attempt. Its controller, publication and recording remain usable without
+silently importing its repository Plan. Missing or conflicting evidence preserves recovery state.
+After proven publication cleanup or deliberate abandonment, explicit import and renewed approval can reserve a new
+attempt for the same Plan. Saved continuations for the completed original attempt cannot enter that replacement,
+including handles saved after managed adoption. Another reservation cannot replace the live new attempt.
+
+**Acceptance: Managed non-Git completion.** Given an approved Plan executed in a non-Git folder, validation and Recorder
+acceptance complete through the laptop owner. The owner checks the reserved attempt and execution-host identity,
+retains non-Git Delivery Evidence, and approves the canonical Work Record without inventing a Git commit or target.
+Recording retries reuse the accepted record. A different attempt cannot settle the Plan or replace its evidence.
+
+**Acceptance: Publication policy and proof cross hosts.** Given different laptop and execution settings, the attempt
+freezes the execution repository's independent Plan-copy and Work Record-copy choices before publication. Later settings
+changes do not replace them. Lifecycle and record confidence remain pending until an independent execution-host probe
+proves the matching Git candidate and target, or confirms the reserved non-Git execution. Reconnect reconciles the
+original operation and proof; it does not repeat Git publication or substitute a matching commit string supplied by a caller.
+
+**Acceptance: Composed delivery survives cleanup and relocation.** Given imported Epic siblings and a saved external-host
+continuation, editing a sibling is visible to later planning without publication. A fresh host resumes the exact saved
+workflow and reviewed revision. With both delivery-copy settings off, publication changes only implementation files.
+If recording failed, the first successful retry after execution cleanup keeps the reserved record ID and sealed Plan
+prose even when live prose changed. Moving the Project preserves its Session identity and native writer exclusion.
+An eligible parent Epic remains the Work Record owner when a child supplied the sealed delivery; mismatched owners,
+attempts and parent revisions are refused. Replaying a lost settlement acknowledgement preserves one publication and
+one canonical record.
+
+**Requirement: One Plan store owns persistence.** Every surface uses the same Plan operations for authoring, review,
+lifecycle events, imports, resource access and execution input. One owner selects the admitted source and enforces
+identity, revisions, lock ordering and durable writes. Callers do not arrange a sequence of raw reads and writes to
+maintain those invariants. Lifecycle policy defines allowed events; the store persists their results. Retained legacy
+execution sources and optional delivery copies remain distinct from live canonical Plans.
+
+**Acceptance: Concurrent operations preserve one generation.** When two authors save from the same revision, one
+complete context/validation generation succeeds and the other receives a stale-input result. Protected lifecycle fields
+cannot be changed by a prose or definition save. Resolving an execution target and reserving the reviewed input happen
+under one owner transaction; dispatch uses that reserved input even if editable documents later change.
+
+**Acceptance: Empty store and explicit upgrade.** Given a checkout containing old Plans but no imported packages,
+passive catalog/read/help shows an empty store without writes or an import question. Importing one selected file makes
+that package visible across local surfaces, leaves unselected files invisible and preserves source bytes. A first
+`plan_written` submission with Markdown prose creates a canonical draft without a planning-only checkout. A sibling
+edit becomes visible on its next load without Git publication.
+
+**Requirement: Explicit internal import preserves selected Plans and continuation evidence.** An established ordinary
+Project can import a selected Markdown file or folder as one recoverable package batch. It preserves original files,
+Plan IDs and age, canonical status, Sequence type, Tickets, delivery intent, closure/hold/archive facts and ID-based
+relationships. Exact post-front-matter prose becomes `context.md`; generic YAML and plain Markdown retain all bytes as
+external drafts. Epic QA and integration files remain resources of their selected Epic. Required `validation.md` points
+to the retained context rather than moving verification prose.
+
+Import retains immutable source bytes, source locators, relationship mappings and typed legacy controller/attempt
+references. Unfinished Plans use registered documents or locally available target snapshots, with persisted controller
+and repository evidence; uncertain authority never selects a stale primary. Retained checkpoints, receipts, pending
+repair/Recorder work and publication attempts remain evidence owned by their existing runtime authorities. Import
+neither advances them nor grants execution admission. Later lifecycle admission must revalidate that binding.
+
+An ID-less source keeps its allocated ID across restarts and overlapping selections; changed bytes at that locator
+produce a conflict. Reimporting an existing ID preserves current package edits and names. Conflicting identities,
+ambiguous relationships and unavailable evidence publish no selected member. Explicitly selecting a target-only child
+may use its local target snapshot; import does not expand the selection to unrelated siblings or fetch remote refs.
+Original repository-relative paths remain available for later pruning; this operation performs no pruning or delivery
+copy setup inside the import transaction. Public local commands expose explicit import and store-only discovery; the
+separate post-import folder choice controls delivery copies. After importing a repository folder, Core offers that choice once with Yes preselected. The upgrade announcement directs existing users to run `wld plans import docs/plans/` once per Project.
+
+**Requirement: External Markdown Plans are first-class.** An external Markdown file becomes a canonical draft through
+explicit `wld plans import <file-or-folder>` or pathname `/load-plan`. Import preserves the source bytes and records its
+identity and original age. A name lookup never discovers or adopts checkout files. Reimport preserves current package
+edits and lifecycle state; conflicting source identities retain both sides for resolution.
+
+**Requirement: Inspect Plans without preparing them.** Listing, indexing, browsing, body reads and passive progress
+reads inspect only admitted personal storage. They do not import checkout documents, change Plan or runtime files,
+reconcile ignore rules, assign IDs, fetch Git data, change refs or worktrees, take writer locks, or schedule repair.
+Fresh Projects and empty stores expose no saved Plans. Missing home authority has no checkout fallback. Unsafe or
+unreadable authority retains a specific diagnostic rather than appearing as an authoritative empty result.
+
+Recorded pre-cutover attempts retain their original document, registry, checkpoint and publication owners until proven
+settlement. Their continuation rechecks that evidence before consequential actions. Managed-remote launch retains its
+existing admitted contract. See [Work protection](#work-protection) and [automatic recovery](#execution-validation-and-recovery).
+
 Doctor does not require a target branch for a draft Epic with no children, saved attempts, or execution evidence.
 A missing target for an approved Epic or one with children or attempt history remains a diagnostic, as does unreadable
 target evidence. If a cached child snapshot has no ID, Doctor retains the ID already assigned to the current document
 with the same name and parent. An explicit target ID remains authoritative.
 
-When adoption, controller preparation, or required local target evidence is missing, safe documents remain browseable
-with workflow details pending. Read availability is separate from Plan status and Front Matter. Unsafe or unreadable
-authority retains its specific diagnostic, not an authoritative empty result. Explicit save, selected or named
-`/load-plan`, and workflow actions perform required preparation and recheck authority before making decisions. See
-[Work protection](#work-protection) and [automatic recovery](#execution-validation-and-recovery).
-
 **Requirement: Generated Plans are easy to read.** Planner starts each section with its main point, keeps one idea per
 short paragraph, and uses lists for separate points. Implementation Steps and the Verification Plan stay exact. Planner
 can mark the few points a reader must not miss with a WARNING, NOTE, or TIP callout. Callouts are optional authoring
 guidance; Plans in any style stay valid. New Plan filenames and headings are descriptive, without ordinal prefixes.
-Child sequence belongs in Front Matter `order`. Reordering keeps filenames, Plan IDs, and dependency references stable;
+Child sequence belongs in typed Plan definition `order`. Reordering keeps filenames, Plan IDs, and dependency references stable;
 existing numbered filenames remain valid. Top-level menus keep status/type priority. Child menus and child-filtered
 completions use numeric `order`, independent of filenames and status. Display fallbacks for missing or equal orders do
 not authorize automatic execution.
@@ -441,6 +548,24 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 
 **Acceptance scenarios:**
 
+- Given a selected Epic family with archived children and resources, import preserves exact originals, age, Tickets,
+  statuses and ID relationships; generic YAML remains complete draft prose.
+- Given a registered linked worktree root selected from the primary checkout, import attaches QA and integration
+  resources to their Epic; repeated imports preserve the package's current name and edited resources.
+- Given an imported ID or ID-less locator, a restarted or overlapping import returns the same package. Later package
+  edits and rename survive repeats; changed ID-less source bytes require an explicit content decision.
+- Given stale primary prose and a registered execution document, import retains the execution prose and exact
+  controller/checkpoint/publication evidence. Missing, foreign or racing authority produces no committed batch.
+- Given interruption during a family import, passive ID/name/catalog reads expose the whole committed family or pending
+  evidence, never a partial family; deliberate recovery completes it without touching original workflow authorities.
+- Given an explicit package and an ordinary editor change, a metadata update preserves every document byte. A
+  document save rejects an old document hash; a metadata update rejects an old metadata revision independently.
+- Given an Epic package renamed or archived, its ID, Session references, children and dependency IDs stay stable;
+  reserved QA and integration resources never become executable Plans.
+- Given `Epic/first` on a case-insensitive filesystem, creating or renaming another package to `epic/second` fails
+  before publication. Existing packages remain readable, and a correctly spelled destination remains usable.
+- Given package inspection in a missing or damaged store, no identities, locks, directories or repairs are created;
+  healthy packages remain inspectable. Existing repository Plan discovery and saves retain their behavior.
 - Given an external Plan without metadata, a listing or board shows it unchanged; loading it adopts it with its prose
   intact.
 - Given `/load-plan` without an argument, the picker lists local Plan documents; Cancel leaves everything as it was.
@@ -482,6 +607,15 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
   direction would involve. A proposed experiment states its observable result, its effect on the recommendation, and
   whether its code is disposable.
 
+### Canonical document delivery to external hosts
+
+Core's Connect document operations reuse the Plan and Work Record owners rather than granting hosts direct home
+filesystem access. Plan reads select the workflow's Plan; Work Record search/read select stable record IDs within its
+Project and preserve current/all role policy, status and supersession notices. Action identity and document revision
+bind paged reads. Rejected requests disclose no document content and leave canonical bytes and workflow state intact.
+Search may refresh its derived index without becoming canonical authority. See
+[Connect outcomes](runwield-connect-prd.md#shared-plan-and-verification-outcomes) for host acceptance scenarios.
+
 ### Plan lifecycle
 
 **Scope and maturity:** Current baseline. A status is not evidence that every validation journey succeeds. The
@@ -506,6 +640,42 @@ Lifecycle rules:
   child selection. Epics are containers; their child Plans execute and validate independently.
 - `on_hold` pauses work and resumes from the previous stage.
 - Board actions follow the same rules as CLI and TUI actions.
+
+**Requirement: Plan lifecycle has one metadata authority.** An explicit established owner/Project, Plan ID
+and revision selects the home package for shared lifecycle actions. Its definition/controller metadata changes
+atomically without modifying Markdown; YAML-looking prose cannot assign status or identity. ID-based families and
+Sequence review read live package documents without Git transport. Local and manual-SSH discovery use the canonical
+home store described in [Plan authoring and external adoption](#plan-authoring-and-external-adoption).
+An unfinished imported legacy attempt continues through its revalidated original owner.
+
+**Requirement: Confirm archived Plan pruning.** The personal Plan store groups an archived Epic with its children.
+Only units with Work Record coverage through `provenance.sourcePlans` qualify. The Project keeps the newest
+`plans.archiveKeepLast` eligible units (default 10) and those within `plans.archiveRetentionDays` (default 14).
+Zero days applies only the count floor. The archive reminder and `wld plans prune --dry-run` show eligibility.
+Confirmation rechecks stable identities, family membership, current policy and unfinished workflow inputs.
+Pruning an approved family removes its packages and milestone versions. Active children keep the family intact.
+
+**Acceptance:** Given a due, covered archived Epic beside an uncovered Plan, confirmed pruning removes the
+Epic and child histories. The uncovered Plan and its history remain readable. If a family member becomes
+needed for recovery after preview, the whole family stays.
+
+**Requirement: Keep and restore Plan History.** Approval, confirmed delivery, manual closure and archive each keep
+a frozen version of the Plan's Markdown under its stable ID. Each approved Sequence member has its own version.
+Delivery uses the publication's retained documents, even after later edits or execution cleanup. Manual closure
+keeps the owner's reason. A Plan can start with empty history. When an Epic passed integration before Core retained
+its documents, publication confirms delivery without creating a historical version from later edits. Inspecting history
+preserves Project ownership and leaves an uninitialized store untouched.
+
+**Acceptance: Inspect and restore a milestone.** Given a renamed or archived Plan, its ID still resolves its history.
+The user can inspect the named documents and restore the complete set on an editable Plan. Restore checks the
+observed revision of every document and records one new revision. A meaningful edit to approved or ready content
+returns the Plan to draft for review. The current name, relationships, execution binding and delivery evidence come
+from the live Plan. Archived Plans require archive restore before editing. A stale restore preserves newer edits.
+
+**Acceptance: Keep one version per event.** Given an interruption, retry exposes a complete version once. A later
+approval gets a distinct version even when the documents repeat. Local and non-Git Projects use their personal
+store. A managed remote Project reads large catalogs and document sets in bounded replies from its initiating laptop.
+Retrying after a lost restore acknowledgement returns the original revision and preserves intervening edits.
 
 **Requirement: Conversation is not a Plan Status.** Review chat alone does not change status or write Plan front
 matter. Legacy `feedback` and `in_review` Plans read as `draft` in every surface, including Epic, Sequence, dependency,
@@ -739,6 +909,10 @@ siblings active. Listings show held work separately from active and finished wor
 
 ### Execution, validation, and recovery
 
+**Local home-store continuity:** Selected actions revalidate Project, repository, personal owner, Plan ID and revision. An imported unfinished attempt continues its recorded execution owner and checkpoint. Only proven publication with completed cleanup or deliberate abandonment records settlement; later canonical work no longer depends on the old checkout document. Changed or missing evidence cannot start a replacement attempt.
+
+**Acceptance:** A terminal registry label without target publication proof remains recoverable. After proven settlement, deleting legacy documents does not prevent canonical loading or later work.
+
 **Scope and maturity:** Current execution and validation baseline, with the owner's completion and automatic recovery
 requirements. These requirements are the target for every failure path; they do not certify that every current path
 already meets them. QUICK_FIX keeps its lighter behavior: Engineer implements without a Plan and RunWield runs
@@ -778,6 +952,44 @@ inspection. Automatic repair keeps user content, truthful validation, real permi
 confirms the outcome of an uncertain external action before it repeats that action. Repair belongs to the deliberate
 action or active workflow owner. Passive Plan inspection neither starts repair nor queues it for later; pending read
 availability does not abandon the workflow or require a separate Doctor ceremony.
+
+**Requirement: Package persistence recovers without inventing workflow progress.** Explicit package mutations settle
+interrupted creation and rename under Project-scoped native locks. Passive reads report unresolved publication instead
+of selecting an old or new location as authoritative. Durable metadata replacement preserves committed revisions across
+restart; recovery cannot revert a later revision. A retained input commits all observed document bytes, membership,
+hashes, Plan identity and metadata revision before returning a reference. Detected changes or missing required input
+produce no usable reference. Retained bytes survive later live edits. Capture assigns no approval, execution or delivery
+status; explicitly admitted lifecycle consumers separately bind and revalidate those inputs.
+
+**Requirement: One package attempt survives clone races and interruption.** Ordinary local and manual-SSH package execution reserves
+one unfinished attempt across the personal owner's linked clones. The binding identifies the repository that owns its
+physical Git work. Retry reuses that attempt after interruption; another clone receives its recorded continuation.
+Code remains isolated in a worktree without a package Plan copy. Implementation dispatch uses retained complete input,
+and later editor changes neither rewrite that input nor erase code. Consequential continuation requires current
+review/readiness. Checkpoints retain exact generations, review issues and repair receipts through restart. Recovery
+respects native lock owners and compensates only owned metadata. Explicitly admitted packages continue through real
+validation and publication using an immutable personal-store input. That input freezes metadata, family/Ticket sources,
+copy policy and destinations. No payload or an unchanged proven prior payload creates no artifacts commit; changed
+Plan copies and prepared Work Record payloads share one artifacts-only commit. A later delivery replaces only its own
+prior copies, proven by the retained receipt, repository/path association, published ancestry and exact prior bytes.
+Externally edited or unrelated destinations remain untouched. These copies are delivery documents, never live authority.
+Ordinary local and manual-SSH package selection and independent copy settings are current behavior.
+
+**Requirement: Package delivery settles from applicable proof before cleanup.** The existing publication record owns
+all intermediate phases. Fresh target proof binds the reviewed candidate, exact copy bytes, owner, repository, Plan,
+attempt and retained source. One atomic metadata settlement records verified delivery and releases the owner-wide
+attempt before registry cleanup. Lost acknowledgements reconcile the same effect. Missing inputs, foreign identities,
+a missing registry entry or an old receipt cannot substitute for proof. Live documents survive both refusal and retry.
+Changed code requires revalidation; an unpublished owned copies commit is separated from the new candidate so the final
+ancestry still contains one copies commit. Non-Git completion retains explicit in-place evidence.
+
+**Requirement: Import publishes complete families and recovers the same identities.** One durable batch intent reserves
+all new IDs and retains complete import inputs before publication. Until the batch commits, ID and name lookup report
+pending for its members while unrelated packages remain readable. Catalog reads detect a whole batch that starts and
+finishes during a scan, retry without locks or writes, and report pending after bounded retries. Deliberate recovery
+finishes the recorded batch after staging, partial publication or lost acknowledgement, without replaying over newer
+committed edits. Committed packages and retained evidence remain usable after original sources disappear. Import does
+not reseal, advance or clean a legacy publication attempt.
 
 **Requirement: Separate saved delivery evidence from fresh publication proof.** Passive progress reads show applicable
 saved evidence without remote verification. A valid controller publication receipt can preserve established delivery
@@ -822,6 +1034,37 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 **Acceptance scenarios:**
 
+- Given an explicitly selected package and a poisoned checkout Plan, review/readiness and execution use only the home
+  documents and metadata across ordinary public entry points.
+- Given a reviewed package, changing required resource membership, parent context or policy rejects old readiness;
+  formatting-only review preserves the decision and retains the new bytes, while reply-only leaves status unchanged.
+- Given an editor changes a required document during single-Plan or Sequence approval, the decision is refused;
+  restart preserves both saved review edits and editor changes, and a fresh review can approve the current input.
+- Given simultaneous starts in two linked clones, one exact unfinished attempt wins. Fresh-process retry after intent,
+  registry reservation or Git creation reuses it and preserves editor changes; a held native lock is waited on.
+- Given an imported dirty unfinished legacy attempt, internal selection returns its original owner and checkpoint;
+  changed or missing binding evidence cannot start a second attempt.
+- Given a locally executed package, Engineer receives retained child/parent resources and writes isolated code.
+  Implementation checkpoints persist, and real validation/review publishes code with no repository Plan required.
+  Copies disabled produce no artifacts commit; enabled copies contain only frozen Markdown, not personal metadata.
+- Given a sealed package, later editor changes, rename, settings changes and target advancement preserve its frozen
+  payload and destinations, even when another Plan takes the old name. Invalid paths or unrelated target content refuse
+  publication without overwriting either.
+- Given interruption after publication or package settlement, a fresh process proves the existing target, finishes the
+  same receipt and releases ownership before cleanup without pushing again. Corrupt/missing source or unavailable
+  upstream remains recoverable; restoring the exact prerequisite permits the same attempt to finish.
+- Given an interruption after the copies commit but before its receipt, ordinary validation resume reconciles the
+  existing copies before checking for changed implementation; unchanged code does not repeat validation or copies.
+- Given the last child of a ready Sequence, publication retains the staged parent completion and settles it only after
+  target proof. Interrupted settlement resumes; a reopened parent keeps its newer status and editor work.
+- Given a historical package receipt and a reopened Plan or new execution, that receipt cannot complete the new work.
+- Given competing package writers from worktrees or explicitly linked clones, one stale revision wins once; a
+  metadata edit and document edit both survive. An active native lock is not stolen; process exit releases it.
+- Given interruption during package publication, inspection reports pending recovery without writes. The next
+  deliberate package operation settles one identity and location, preserving committed documents and metadata.
+- Given a required or optional document change detected during capture, no retained-input handle is returned. After
+  successful capture or loss of its acknowledgement, every resolvable input contains all committed bytes and hashes;
+  staging alone never resolves as an input.
 - Given passive progress reads and an unreachable upstream, no fetch or clone starts. Applicable saved completion
   remains visible after attempt cleanup; absent or invalidated proof stays unconfirmed.
 - Given an Epic child with an applicable controller receipt, Doctor accepts that saved delivery when it reads a cached
@@ -830,6 +1073,15 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
   or request publication again. A real active document or unfinished attempt still requires inspection.
 - Given an action after a successful read, the action repeats runtime admission and current evidence checks. Read
   availability cannot authorize execution, publication, or a lifecycle change.
+- Given runtime transfer completing during passive inspection, journal retirement does not crash the read. Inspection
+  uses the completed marker without performing repair; malformed or unreadable evidence remains an error.
+- Given publication or transfer cleanup retiring a directory during passive enumeration, inspection continues over
+  the remaining authority without recreating the directory or repairing runtime state. Unreadable directories,
+  unexpected file types and authority symlinks remain errors.
+- Given one Plan publishing while another removes its completed worktrees, a temporarily pending authority read
+  releases the publishing Plan's lock before a bounded retry. Publication re-enters runtime admission and resumes
+  its durable attempt without repeating completed checks or requesting a manual reload. Malformed authority remains
+  an error, never an empty registry or proof of publication.
 - Given two Plans and a missing execution document for one, catalog reads and validation identity preparation for the
   other succeed. Neither operation changes the missing Plan's primary copy or registry entry.
 - Given that missing document, loading its Plan reports the exact execution path and does not use the primary copy.
@@ -1075,7 +1327,9 @@ history.
 
 **Requirement: Keep Epic checks together.** Each child contributes a section to the Epic's durable Manual QA artifact
 before delivery. Retries reuse its existing section and preserve user edits and checked boxes. The artifact stays with
-the Epic through archive and restore.
+the Epic through archive and restore. For home-store Plans, Core retains the exact reviewed inputs and records its
+generated checklist separately with the child attempt, parent identity, prior document hash and generated bytes.
+Publication includes that generated artifact evidence without treating arbitrary document edits as approved inputs.
 
 **Requirement: Keep advice separate from proof.** The checklist describes checks for the owner to perform; generation
 is not evidence that they ran. Publication proceeds without requiring completion of its items. A standalone generation
@@ -1090,6 +1344,8 @@ use normal publication recovery; their pause remains distinct from a failed impl
   checklist; the items are unchecked rather than presented as executed proof, and publication can continue.
 - Given an Epic child whose checklist contains user edits and checked boxes, a publication retry keeps that section
   intact instead of replacing it or adding a duplicate.
+- Given a crash between recording a generated home-store checklist and writing its document, retry restores the
+  recorded bytes only if the prior document hash still matches. A concurrent edit is preserved and blocks replay.
 
 #### Code Review gate
 
@@ -1281,6 +1537,9 @@ ordinary Session completion does not acquire that extra requirement.
 
 **Acceptance scenarios (current shared execution preparation and completion):**
 
+- Given a home-store child without an explicit target branch, preparation resolves its current-branch target before
+  reserving the execution input. The attempt retains the reviewed document references, so its generated checklist and
+  publication accept that resolved target while still rejecting unreviewed document changes.
 - Given remembered planned-work consent in a non-Git project and process loss after preparation, when preparation is
   retried against the same `in_progress` Plan, Core continues in the same files without repeating the execution-start
   lifecycle transition. It reconciles proven settled preparation journals before retry. The Attached carrier uses this
@@ -1671,8 +1930,11 @@ theme activates only its theme content. See the [theme reference](../user-docume
 
 ### Project context and initialization
 
+**Local storage admission:** Project-level storage authority is independent of selecting a Plan. Local CLI/TUI, Workspace, Connect and ACP reconstruct the same owner at their request boundaries, including empty Projects. Manual SSH uses the account running `wld`. Passive reads never register, repair or import. Settings and user overrides remain in the checkout; personal Plans and runtime state do not.
+
 **Scope and maturity:** Current baseline; compressed Project Brief and further code-intelligence improvements are target
-scope. Remote workflows keep Project Runtime State in the remote project and Session records on the laptop. See
+scope. Managed remote workflows keep Git-effect Project Runtime State under the remote account home and personal
+Project state and Session records on the laptop. See
 [Remote connection](#remote-connection) for location handling, the qualified matrix, and remote workflow placement.
 Connection alone does not initialize a project or create a saved Session.
 
@@ -1690,6 +1952,53 @@ Noninteractive project commands refuse with nonzero status and stderr guidance u
 `--continue`, or bypass Init's file consent. Help, version, global commands, Workspace services, ACP, MCP, and remote
 connections retain their existing behavior. This warning is consent, not a security sandbox or universal unsafe-path
 detector.
+
+**Requirement: Stable Core Project identity.** Deliberate Project Runtime Entry assigns one opaque Project ID.
+Linked worktrees and subdirectory entry share that ID and one repository binding; each checkout has its own binding.
+Moves and remote edits retain identity. The Git common directory's own configuration is authoritative, excluding
+included, global, command-injected, and per-worktree identity values. Ordinary and manual-SSH launches keep a versioned
+identity and verified storage-locator record in their account's `~/.wld/projects/<projectId>/project.wld.json`; Core entry needs no Workspace
+database. Workspace registration IDs remain unchanged and expose an association to existing Core identity.
+
+A non-Git Project uses `.wld-project.json`. After Git initialization, entry verifies the same identity in Git before
+removing the valid marker. Conflicting, malformed, user-owned, and symlink evidence is preserved and reported. Settings
+and overrides remain unchanged. Identity admission never stages an identity file in Git.
+
+A fresh clone's remote only suggests known Projects. The user selects one Project or creates a separate Project;
+acceptance and decline are remembered on that repository. Cancellation saves no answer. Unavailable interaction returns
+a pending choice, and changed candidate evidence requires a fresh choice. Passive lookup never creates identity, home
+records, or locks. Directory consent alone does not admit identity or prepare runtime state. An empty TUI defers
+admission until submitted work; a supplied startup request or continuation admits identity while runtime preparation
+stays with its existing action owner. Interrupted entry retains committed Git identity and repairs missing home metadata
+on retry.
+
+**Requirement: Explicit owner context.** Ordinary `wld`, including manual SSH, uses the execution account regardless of
+SSH environment variables. Verified managed-remote activation can supply a different personal owner while retaining the
+remote execution account home. That context does not authorize registry writes through the laptop mount or a replacement
+remote personal store. Managed operations use the initiating laptop's registered owner.
+
+**Stable identity acceptance scenarios:**
+
+- Given a Project entered from a new process, linked checkout, subdirectory, or moved folder, it retains its Project ID;
+  linked checkouts share the repository binding and have distinct checkout bindings.
+- Given a fresh or matching clone, CLI Plan listing, body reads, archive listing, and Doctor `--check` preserve
+  Project identity, Git configuration, runtime evidence, and ignore rules without asking for a clone-link choice.
+  Doctor repair and submitted work admit identity and can present the remembered clone-link choice.
+- Given simultaneous first entry, both processes converge on the same committed identity. Missing home metadata is
+  repaired without replacing the Git ID; corrupt evidence remains visible and unchanged.
+- Given a matching fresh clone, no identity is selected until the user chooses. Linking shares Project identity and verified Session/Connect history lookup;
+  declining creates a separate Project. Execution attempts and Workspace registration remain separate. Reopening either clone does not ask again.
+- Given two pending prompts for one clone, if one commits a Project before the other submits a conflicting choice,
+  the later choice reports the conflict and preserves the committed identity. Repeating the winning choice reuses it.
+- Given a non-Git folder that is moved and initialized with Git, entry preserves its ID and settings and removes only
+  its valid identity marker. Conflicting or malformed evidence is preserved.
+- Given manual SSH, ownership remains the remote execution account. Given an explicit managed launch owner, ownership
+  remains that owner, never an inference from the mount path or an automatic fallback after disconnection.
+
+Plans and execution runtime use their responsible account’s home Project tree. Managed remote launches retain
+personal Plan authority on the laptop and Git execution authority on the remote account. Adopted original attempts
+continue through verified bindings to their actual execution directories. Session and Connect continuity retain
+verified bindings to their original stores.
 
 **Requirement: Keep project knowledge correctly scoped.** Keep the remote project locator separate from execution cwd.
 
@@ -1764,9 +2073,9 @@ confirmed host uses the saved project's key and collection binding. The normal c
 is the same project. Yes shares the local resolver’s collection; No keeps the normal remote
 collection. Several matches are listed separately. Either answer is saved before opening the TUI, and reconnect does not
 ask again. A Memory collection without a local Session project never triggers a question. Shared Memory does not merge
-Sessions. Work Record indexes remain derived project data and use the remote project’s
-`.wld/internal/work-records.sqlite3`, not personal Memory. [Work Record retrieval](#work-records) reads the remote
-project’s canonical records. A successful personal save means it is saved on the laptop, not queued until exit.
+Sessions. Work Record search indexes live at `~/.wld/projects/<project-id>/internal/work-records/index.sqlite3` on the
+canonical owner. [Work Record retrieval](#work-records) uses that owner's records. For managed SSH, a successful personal
+save means the laptop has stored the change.
 
 **Remote Memory acceptance scenarios:**
 
@@ -1920,7 +2229,7 @@ access to their own attachments. **Target:** deleting a Session also removes its
 
 ### Image generation
 
-**Scope and maturity:** Current through OpenRouter, Codex, and Antigravity ACP. The OpenCode Responses route is
+**Scope and maturity:** Current through OpenRouter and Codex. The OpenCode Responses route is
 experimental. Google SDK integration, graphical image settings, and remote generation are deferred. [Provider notes](../research/image-generation-provider-proof.md) hold historical test results.
 
 **Requirement: Generate images with a user-selected model.** Users set `imageGeneration.model`, with optional supported
@@ -1928,13 +2237,12 @@ experimental. Google SDK integration, graphical image settings, and remote gener
 model.
 
 - **Pi image models** use the existing provider configuration and authentication.
-- **`agy-cli/<model>`** uses a separate Antigravity ACP session, the installed CLI’s sign-in, and Antigravity’s image model.
 - **`codex-cli/<model>`** and **`openai-codex/<model>`** use the local Codex runtime's ChatGPT sign-in. RunWield finds
   Codex on PATH or in the ChatGPT desktop app on macOS.
 - **`opencode/<model>`** uses a Responses model with hosted image-tool access.
 
 Each request uses the configured provider and billing route. Unsupported controls are reported. A model change starts
-from that model's own controls. Antigravity image generation does not fall back to print mode or a different provider.
+from that model's own controls. A failed request does not switch providers.
 
 **Requirement: Produce a reusable project image with truthful success.** `create_image` takes a prompt, a required new
 output path, and optional project or Session image references. File-writing Agents, write-capable delegates, Agents
@@ -1962,11 +2270,26 @@ or Session. Failures, text-only output, malformed bytes, cancellation, and timeo
 
 ### Work records
 
-**Scope and maturity:** Current generation and retrieval baseline. Manual or external record creation and richer
-authorship are follow-up scope.
+**Local canonical retrieval:** Ordinary local/manual-SSH Work Record import, list, read, search and index operations use personal Project storage without requiring a selected Plan. Repository copies are publication outputs and are never ingested by ordinary reads. `wld wr import <path>` is explicit. Work Record delivery copies default on independently of Plan copies, which default off until selected.
 
-**Requirement: Preserve outcomes with truthful completion confidence.** Work Records are concise, repository-owned
-Markdown accounts of permanent facts: the delivered outcome, recorded Plan Deviations, out-of-scope facts, and durable
+**Acceptance:** With stale repository copies and a current personal record, read/search returns the personal record. An empty canonical store does not discover repository records.
+
+**Scope and maturity:** Personal-store generation, retrieval, import and retention are current in local, manual SSH and managed launches. Richer authorship remains follow-up scope.
+
+**Requirement: Confirm Work Record pruning.** The personal owner keeps the newest `workRecords.retentionKeepLast`
+records (default 100) by creation time, using record ID to break ties. It also keeps records within
+`workRecords.retentionDays` (default 90). Zero days applies the count floor alone. Every unpruned archived
+Plan protects the records that cover it. Unfinished publication or recording protects its required inputs.
+Ordinary listing can remind the user. Both prune commands require confirmation and support a read-only dry run.
+When a confirmed item has an unchanged repository copy at a recorded path in the bound checkout, Core removes
+the file and leaves the deletion uncommitted. A missing, moved, edited or unavailable copy leaves the canonical
+outcome intact. Managed pruning acts on laptop records and cleans copies on the execution host.
+
+**Acceptance:** With default settings, 30 year-old records all stay, as do 400 records created in the last month.
+After confirmation a pruned record disappears from list, read and search, including after rebuilding the derived
+index. Declining leaves both the canonical record and its repository copy intact.
+
+**Requirement: Preserve outcomes with truthful completion confidence.** Work Records are concise Markdown accounts of permanent facts: the delivered outcome, recorded Plan Deviations, out-of-scope facts, and durable
 lessons. They keep source Plan and Ticket links, not validation receipts, delivery status, run events, to-dos, or known
 defects. Identity and links survive renaming, and search can be rebuilt from the documents.
 
@@ -1987,6 +2310,61 @@ records. Recorder finishes by submitting its record; a turn that ends without it
 (provider errors and cancellation end the attempt), and repeated omission leaves a concise protocol diagnostic on the
 Plan, without model text or private reasoning. With automatic generation turned off, listing, reading, search, and
 explicit backfill stay available.
+
+**Requirement: Package Recorder input outlives execution cleanup.** For explicitly admitted packages, a retained
+publication manifest supplies exact delivered documents, metadata, relevant children and Tickets. A delivered child
+keeps its own identity while its eligible terminal Epic remains the recording owner. Recorder retry reads that source
+after checkout, branch and publication-clone removal; edits, rename or missing repository copies do not replace it.
+Missing retained source or matching delivery proof makes retry/backfill fail recoverably without generating from live
+package content, including for imported verified Plans. Retained bytes alone never promote an unconfirmed attempt to
+verified. External recording/index failure preserves confirmed delivery and its source reference. Explicit internal
+admission selects canonical Markdown under the personal
+Project's `work-records/` directory. Identity discovery alone does not select that store. Missing admitted storage never
+falls back to repository copies; legacy attempts retain their existing owner.
+
+**Requirement: Prepare once and retain truthful delivery copies.** Admitted automatic recording freezes source,
+copy policy and destinations before Recorder acceptance. Accepted sections, record identity and pending canonical bytes
+survive interruption. Internal `plans.deliveryCopies` defaults off and `workRecords.deliveryCopies` defaults on,
+independently of automatic generation. The existing publisher combines enabled Markdown into one artifacts-only commit.
+After confirmed proof, backlinks, copy locations and declared supersession settle before approval exposes the canonical
+record to ordinary retrieval. Approval preserves its body; the Git copy keeps its preparation-time pending
+confidence. Importing that copy cannot approve it. No eligible source, disabled generation or Recorder failure produces
+no fabricated record. A late recording retry never republishes code or adds a copies commit. Older sealed manifests
+retain their original policy.
+
+**Requirement: Import and locate records without a second authority.** Under ordinary local/manual-SSH owner admission,
+`wld wr import <path>` accepts a file or directory, preserves exact Markdown and status, and resumes identical imports.
+Conflicting same-ID content refuses without overwriting either source. Core retains source/copy paths and digests by
+record ID independently of the derived index. External origins remain provenance, never repository-delete authority.
+Admitted retrieval hydrates canonical files by ID, uses stable Project/personal-owner index identity, and returns home
+paths. Linked clones share records while retaining distinct repository destinations.
+
+**Personal store acceptance scenarios:**
+
+- Given default copy settings, validation prepares one pending record, publishes its frozen copy, and approves only the
+  canonical record after matching proof. With both copies off, the canonical record remains retrievable.
+- Given process loss after accepted sections or canonical persistence, a fresh process reuses the record identity and
+  accepted output. Later editor/archive/supersession decisions and reopened Plan state survive settlement replay.
+- Given interruption while copy locations or multiple declared predecessors settle, list/search and index rebuild
+  exclude the pending successor until those relationships finish; recovery approves the same record without republishing.
+- Given exact imports with draft, pending or archived status, repetition preserves their bytes and creates no duplicate.
+  Same-ID changed content and symbolic-link destinations refuse without overwriting existing records.
+- Given a Project move, accepted linked clone or lost index, rebuild uses canonical Markdown with unchanged identity;
+  stale index tags and edited repository copies cannot make pending or archived records current.
+
+**Package source acceptance scenarios:**
+
+- Given an imported verified Plan without retained publication input, targeted retry and backfill report missing
+  evidence and leave canonical records and backlinks unchanged.
+- Given a delivered child or Epic and removed code checkouts, a fresh Recorder read returns exact retained text,
+  provenance and child Tickets, preserves live editor bytes, and creates no repository Plan.
+- Given a renamed delivered child whose terminal parent takes its sealed name, publication retains the recording
+  reference on the parent by Plan ID. Recorder reads and retry outcomes preserve the child and sibling metadata.
+- Given a failed Recorder request, its failed outcome persists and a fresh-process retry addressed to the recording
+  owner reads the same retained parent and child source, even after rename or live family edits, without revoking
+  confirmed delivery or changing a reopened Plan's status or newer execution binding.
+- Given another execution or publication, an older delivered source remains readable through its retained receipt
+  history. That historical confidence does not verify the newer candidate.
 
 **Requirement: Retrieve current records.** `wld wr` lists, searches, reads, rebuilds the index, and backfills. Default
 retrieval returns current approved records. Pending, draft, superseded, and archived records appear in explicit
@@ -2342,18 +2720,11 @@ model execution; the tested provider/platform matrix and unsupported CLI backend
 **Requirement: Change models without losing Session or workflow context.** Users choose models and providers while the
 Session and workflow stay the same. The selected model and its requirements are visible across clients.
 
-**Requirement: Curated model presets.** Core bundles `codex`, `agy`, `opencode`, `claude-mixed`, `claude-opus`, and
+**Requirement: Curated model presets.** Core bundles `codex`, `opencode`, `claude-mixed`, `claude-opus`, and
 `codex-claude` presets with visible model assignments and access requirements. Users pick them in the preset selector
 or with `activeModelPreset`. Project presets take precedence over personal presets, and personal over bundled, by
 name; each replaces the whole lower definition. Users can copy a bundled definition into settings to customize it.
 Updates keep personal and project settings, and bundled presets stay selectable when their cache cannot be written.
-The bundled `agy` preset uses `agy-cli/gemini-4-neon` for Router, Slicer, Guide, Engineer, Frontend Engineer, and Init;
-`agy-cli/gemini-4-hydrogen` for Operator; and `agy-cli/gemini-4-argon` for Planner, Ideator, Architect, and Reviewer.
-All configured thinking levels stay unchanged: Router, Operator, and Reviewer use medium; all other Agents use high.
-The preset needs access to these three families, including Neon and Hydrogen. Neon requires Google AI Ultra, paid
-Google AI Pro, Gemini Enterprise, or `GEMINI_API_KEY` sign-in. Free and Plus plans do not include Neon. Users without
-access see the CLI error and can select another model or a personal preset. RunWield does not substitute another
-model or choose a preset by CLI version.
 
 **Requirement: Flexible model configuration.**
 
@@ -2365,18 +2736,6 @@ model or choose a preset by CLI version.
 - OpenAI subscription sign-in creates one private installation UUID in `~/.wld/device-id` on first use. Later sign-ins
   reuse it across Sessions and launches. API-key login does not create it; existing Codex credentials stay unchanged.
 - Claude CLI is available as `claude-cli/sonnet`, `claude-cli/opus`, `claude-cli/haiku`, and `claude-cli/fable`.
-- Antigravity CLI offers exactly six selectable base families: `agy-cli/gemini-4-neon`, `agy-cli/gemini-4-argon`,
-  `agy-cli/gemini-4-hydrogen`, `agy-cli/gemini-4-carbon`, `agy-cli/gemini-3.8-flash`, and `agy-cli/gemini-3.1-pro`.
-  Users set thinking separately; effort-suffixed public selections and other families are rejected before execution.
-  The bundled catalog includes Carbon regardless of local entitlement. Actual availability depends on the user's CLI
-  version and account; catalog inclusion does not prove a live request or image-generation support. RunWield does not
-  discover this catalog from the installed CLI or filter it by account.
-- Antigravity maps off/minimal/low thinking to low effort. Medium maps to medium for Neon, Argon, Hydrogen, Carbon, and
-  Flash, and to high for Pro. High maps to high for all six. Neon and Hydrogen map xhigh/max to xhigh; the other families map
-  them to high. Omitted thinking defaults to off-to-low; invalid thinking remains an error. Session state retains the
-  original thinking level. Chat and image-generation supervising-model commands share this mapping.
-- Saved personal and project Pro selections remain Pro, with the existing effort mapping. Historical execution facts
-  keep their original model names. An unavailable family produces a visible failure without fallback or a silent alias.
 - Vision fallback covers text-only models.
 - Prompt-cache warming stays off; a user-facing warming setting is deferred.
 - The local TUI model picker offers an explicit catalog refresh that enables network access and bypasses Pi's cache.
@@ -2401,7 +2760,7 @@ failures get a clear notice and the user decides. Cancellation stops retries qui
 attempt and states how to try again; [Session continuity](#session-continuity) and [workflow
 recovery](#workflow-completion-and-automatic-recovery) keep the Session and workflow.
 
-**Requirement: CLI Execution Backends.** Claude CLI and Antigravity CLI run inside a RunWield Session, and RunWield
+**Requirement: CLI Execution Backends.** Claude CLI runs inside a RunWield Session, and RunWield
 keeps the transcript, workflow, resume, and replay. Setup uses the installed CLI and its own sign-in; the first turn
 reports missing executables or sign-in with the backend's setup action. History shows the RunWield-visible activity
 of each backend. RunWield Connect is the separate mode in which an external host owns the conversation; see the
@@ -2436,23 +2795,13 @@ omitting required tools, or moving project operations to laptop files.
 - **Claude CLI steering:** Text Steering Messages reach the active Claude CLI turn, including turns with only native
   tools. Each message stays pending until Claude acknowledges it, then enters history once. Up recalls the latest
   pending message; Esc recalls pending messages and stops the turn.
-- **Antigravity:** Turns use the Antigravity ACP server. RunWield preserves the selected role, its instructions, its
-  allowed tools, the chosen model and effort, and the history visible to RunWield. Workflow tools are scoped to the turn
-  rather than installed in the user's global Antigravity settings. Actions needing approval wait for a supported client
-  to ask, or stop if it cannot ask. Permission failures name the denied action, with sensitive details redacted.
-  A signed-out CLI tells the user to sign in through Antigravity and retry without exposing login URLs or codes.
-  See [Providers and Models](../user-documentation/providers.md#antigravity-cli).
-- **Antigravity recovery:** RunWield accepts workflow completion only through its authorized completion tool. A normal
-  ACP end of turn is not completion evidence. A failed or interrupted turn does not automatically replay actions
-  with uncertain effects or fall back to `agy -p`.
-
-Future and open questions: provider-specific prompt or temperature tuning where it materially improves behavior, and
-provider support documented in terms of current configuration.
+  Future and open questions: provider-specific prompt or temperature tuning where it materially improves behavior, and
+  provider support documented in terms of current configuration.
 
 **Acceptance scenarios:**
 
 - When the user changes a model, the Session and workflow stay the same and the model is visible across clients.
-- Given no personal presets, Model Presets lists all six bundled choices with their models and required access.
+- Given no personal presets, Model Presets lists all five bundled choices with their models and required access.
 - Given a personal preset with a bundled name, the personal definition takes effect in full.
 - Given `Unexpected EOF` followed by a successful retry, the user sees the interruption and retry progress, then the
   answer, with completed tools kept.
@@ -2461,30 +2810,6 @@ provider support documented in terms of current configuration.
 - Given Validation Repair Engineer without its own model, repair uses Engineer's model and thinking level.
 - Given a CLI backend without its executable or sign-in, the first turn shows that backend's setup action.
 - Given an active Claude CLI turn, text steering reaches Claude before its next model step and appears once in history.
-- Given a signed-out Antigravity CLI, the turn reports the terminal sign-in action promptly and can be retried after
-  sign-in.
-- Given an Antigravity Engineer turn, it runs an allowed test command and creates a file in the execution workspace
-  after any required approval.
-- Given an Antigravity turn that ends before its required completion tool runs, the workflow remains incomplete.
-- Given saved Antigravity image settings, generation uses ACP and accepts only a completed tool call with one valid
-  image from the active session. An invalid or unavailable result creates no destination file and makes no fallback call.
-- Given Neon, Argon, Hydrogen, or Carbon selected through the model controls or Agent settings, a turn requests that family
-  with the mapped effort. Verified history and resume retain the selected family, original thinking level, and backend
-  effort without changing the Session or workflow. A returned wrong family or concrete effort is rejected.
-- Given a local account without Carbon access, the catalog still includes Carbon. On a compatible CLI with account
-  access, Carbon maps low, medium, and high thinking to the corresponding effort. An upstream access failure stays
-  visible without substituting another family; catalog inclusion alone does not prove live access.
-- Given Neon selected at xhigh, the CLI request uses `--model gemini-4-neon --effort xhigh`.
-- Given Neon or Hydrogen with xhigh or max thinking, the request uses xhigh effort and replay keeps the original thinking
-  value. Given Argon, Carbon, or Flash with max thinking, the request uses high effort.
-- Given saved Pro settings or a resumed Pro Session, the next request still uses Pro, including medium thinking mapped
-  to high effort. Existing Pro history remains unchanged; incomplete or inconsistent execution facts stay excluded.
-- Given the bundled `agy` preset, the six named Neon Agents, Operator on Hydrogen, and the four Argon planning/review
-  Agents resolve with their unchanged thinking levels. Personal and project presets stay intact.
-- Given an account or CLI that rejects a preset family, including Neon on Free or Plus, the bundled preset reports the
-  failure and makes no fallback request. The user can select an available family or a personal preset.
-- Given an unsupported Antigravity family, an effort-suffixed public model ID, or invalid thinking, the selection fails
-  before an Antigravity process starts and does not overwrite the active model.
 
 ### Installation and updates
 
@@ -2649,10 +2974,27 @@ personal profile. Personal ownership follows [customization](#agent-and-skill-cu
 [Session continuity](#session-continuity); project files, settings, Plans, Work Records, Git, worktrees, and Project
 Runtime State stay remote. Remote source entering prompts or review is not a synchronized laptop checkout.
 
+**Prepared personal-store capability:** An explicitly registered laptop owner can serve Plan documents, definition
+changes, bounded lifecycle events, immutable publication inputs, collaboration metadata and canonical Work Records
+through the authenticated connection. The owner enforces revisions, confidence/provenance and native locks. A saved
+home-only Project/repository binding needs no laptop source checkout. Registration is trusted local work, never a
+request-supplied path, mount or owner. Ordinary remote startup still uses the current placement described above;
+activation of laptop-owned Plans/records belongs to the next launch-ownership slice.
+
+Prepared-service acceptance scenarios:
+
+- Given a registered home-only Project, separate client and owner processes read and edit its canonical documents
+  without a mount or laptop source checkout; the client account remains unchanged.
+- Given an identical operation ID after reply loss, owner restart or a later local edit, the caller receives the retained
+  result. Changed payloads/preconditions under that ID conflict. Missing or contradictory evidence remains unresolved.
+- Given a revoked connection or changed Project/repository binding while a request body is arriving, no mutation is
+  admitted. Already admitted work settles under native owner locks.
+- Given a frozen publication input, reads return its retained documents. A client assertion cannot establish new Git
+  delivery. Work Records keep the [existing evidence and confidence requirements](#work-records).
+
 **Not included:** Unattended execution, source synchronization, a required laptop checkout, multi-user collaboration,
 remote ACP clients, migration of an existing local Session to another checkout, automatic installation of every project
-dependency, or hostile-server isolation. **Deferred/unsupported:** Windows laptops, Claude CLI and Antigravity CLI
-backends, remote `/sleep`, remote ACP, direct server CLI review (`wld review`, `wld plans ui`, `wld wr`), and hosted
+dependency, or hostile-server isolation. **Deferred/unsupported:** Windows laptops, the Claude CLI backend, remote `/sleep`, remote ACP, direct server CLI review (`wld review`, `wld plans ui`, `wld wr`), and hosted
 Workspace registration. Remote `/sleep` reports its limit without maintenance; see
 [project context](#project-context-and-initialization).
 
@@ -2770,9 +3112,13 @@ removal as completed cleanup.
 repair, writes, or writer-lock probes. Fresh Projects need no storage; unmigrated or interrupted authority leaves
 workflow details pending without combining old and new stores. Adopted authority remains readable when legacy recovery
 input returns. Path resolution alone is not permission to read runtime state.
+If publication removes a linked checkout during its Git evidence read, inspection leaves details pending until a fresh
+read establishes current authority. Git failures for an existing checkout remain visible errors.
 
-Deliberate actions enter runtime state before mutation locks or writes. RunWield 0.11 adopts eligible 0.10 state once,
-including unfinished publications and saved repairs. Unsafe layouts receive a retryable refusal with the reason and
+Deliberate actions enter runtime state before mutation locks or writes. Ordinary local execution and manual SSH
+execution adopt checkout runtime into the executing account's `~/.wld/projects/<projectId>/`, including unfinished
+publications and saved repairs. Explicit managed-remote entry retains its versioned layout and laptop-owner boundary;
+it cannot fall through to ordinary-account adoption. Unsafe layouts receive a retryable refusal with the reason and
 safe paths, and all user work stays in place. Adoption is one-way; after it, use only the new version. Each action entry
 rechecks changed runtime evidence independently of earlier reads. Nested inspection reuse ends with its operation;
 new requests see newly tracked runtime paths, attached worktrees, and changed files. See
@@ -2789,6 +3135,14 @@ a pointer to another existing checkout is preserved and reported as a conflict.
 Doctor shares runtime safety inspections only within each passive scan. Each scan, including verification after
 repairs, starts with fresh evidence even inside an existing read operation. Reuse ends before repairs or external
 validation work; it does not cache Plan contents, admit writers, or replace any required validation before publication.
+
+**Requirement: Keep ordinary runtime in home storage.** Controller records, secrets, indexes, migration receipts,
+registries, staging, delivery evidence, diagnostics, backups, journals, and locks have explicit personal, repository,
+and checkout owners in the home Project tree. Linked worktrees share repository resources; linked clones retain
+separate attempts and Git authority. Copy verification and durable path publication precede retirement of unchanged
+sources. Dirty fallback worktrees and repair clones remain usable by Git. Normal external worktrees keep their paths.
+No runtime marker, alias, or internal directory remains under project `.wld/`. Unavailable home access preserves work
+and reports the prerequisite. Runtime relocation does not import canonical Plans or Work Records.
 
 **Requirement: Reconcile leftovers automatically.** When a Plan is selected, RunWield reconciles files recreated by
 older processes, stale runtime records, and concurrent migrations. Current progress, review decisions, and
@@ -2817,6 +3171,17 @@ Open product questions:
 
 **Acceptance scenarios:**
 
+- Given ordinary runtime in primary and linked checkouts, entry moves every item into its home owner, preserves
+  configuration bytes and legacy Plan authority, and leaves both checkout internal roots absent.
+- Given a crash after copying, verification, Git repair, mapping publication, or source retirement, a fresh process
+  resumes the same transfer without losing bytes, resetting review decisions, or advancing delivery proof.
+- Given a held legacy controller, registry, Plan, or Work Record lock, cutover preserves source work until the writer
+  settles. Competing migrations converge on one home authority.
+- Given a dirty fallback worktree or publication repair clone, relocation preserves HEAD, index, unstaged and untracked
+  work; registered worktrees remain registered and normal publication can resume.
+- Given manual SSH environment variables, ordinary execution still selects that account's home. Given explicit managed
+  ownership, it retains its admitted mode and does not adopt the ordinary personal store.
+
 - Given untracked runtime state and changed user `.wld` configuration, checkpoints and publications include the
   configuration and leave runtime state out.
 - Given runtime state already tracked or staged, Core refuses with safe paths and keeps the worktree, index, files, and
@@ -2837,6 +3202,8 @@ Open product questions:
   refusing a conflict; valid current locks remain intact, and genuine authority conflicts still block entry.
 - Given adoption completes during passive inspection, Core rechecks changed marker evidence without writes or lock
   probes; valid current locks remain intact, and unmatched authorities still produce a conflict.
+- Given publication removes a linked checkout between its filesystem check and Git read, passive polling waits for
+  fresh evidence and then reads the remaining registry. A damaged index in an existing checkout still reports failure.
 - Given adopted state with returning legacy files, passive reads keep current authority without recovery; selecting a
   Plan performs required recovery and preserves current decisions.
 - Given a symlink escape, newer marker, identity conflict, or unreadable registry, passive reads keep the specific
@@ -2863,6 +3230,35 @@ history is separate from local-client continuation. [Remote connection](#remote-
 browser transport; that transport does not change Session continuity or review decisions.
 
 Runtime boundaries are in [ADR-010](../adr/010-session-runtime-sibling-adapters-and-acp.md); storage and synchronization are in [ADR-014](../adr/014-file-authoritative-session-bundles.md).
+
+**Requirement: Project move and linked-clone continuity.** After deliberate entry verifies a moved checkout or accepts a
+clone link, fresh processes discover the same local Sessions through their original storage locators. History, legacy
+Project and Session IDs, segments, committed generations, Plan Associations, settings, and archive state remain intact.
+Continuation uses a verified current checkout for tools and historical cwd for transcript validation. An active execution
+or repair segment retains its existing execution binding until normal workflow recovery authorizes a change.
+Without a selected checkout, a planning segment keeps its recorded worktree cwd; its storage Project's root does not
+replace that cwd. A planning segment recorded at the Project root follows that root's verified move binding.
+
+Locator admission waits for existing Session writers to settle without replacing their native lock files. Conflicting
+Session identities and missing established stores remain unavailable rather than creating replacement history. Passive
+inspection never publishes bindings. Pending/declined clone choices, foreign owners, remote locators, reused roots, and
+retargeted aliases do not grant access. Moves without prior identity/root evidence cannot infer history ownership.
+
+**Move/link acceptance scenarios:**
+
+- Given a saved Git or non-Git Session and admitted identity, moving the Project and entering it again lets a fresh
+  process list and append to that same Session. Its prior transcript bytes and original bundle/lock remain unchanged.
+- Given separate histories in two clones, accepting their link exposes both original Sessions without merging IDs,
+  settings, writer ownership, or Git execution attempts. Explicit Core-ID and Pi-ID resume use the accepted membership.
+  Declining keeps their histories separate.
+- Given a Session created between successive admitted moves, resume and adoption use the current checkout while
+  preserving its intermediate historical cwd, original storage path, and transcript bytes.
+- Given a planning segment recorded in a worktree but stored under the primary Project, adoption and repair rollover
+  retain the worktree cwd. Adopting a Project-root planning segment after a verified move uses the moved root.
+- Given an active writer during move admission, the binding waits without blocking the writer's own Project entry.
+  After settlement, retry resolves the original bundle; aliases contend on its same native writer lock.
+- Given Workspace relinking, registration retains its ID and enabled/disabled/removed policy. Removing Workspace SQLite
+  leaves intact Core Sessions listable and writable; explicit re-registration restores browser visibility.
 
 **Requirement: Continue the same saved work across clients.** Users work with several independent Sessions through
 the TUI, ACP, and Workspace. Each Session keeps its project, conversation, selected Agent and model, and workflow
@@ -2924,8 +3320,13 @@ in another root's Session directory remains rejected.
 **Requirement: Preserve local history.** Read remote history offline and reconnect to continue saved work.
 
 Remote history stays laptop-owned but is not offered in local TUI `/resume`, ACP Session lists, Workspace project scans,
-or `/load-plan`. A connected remote `/resume` lists and continues only Sessions whose exact host identity and project
-root match the connection’s [remote project locator](#project-context-and-initialization). Resume restores saved Agent,
+or `/load-plan`. A connected remote `/resume` requires the exact authenticated host identity. A Git Project directory
+can move when trusted inspection matches its previously retained Project, repository, checkout, execution-account
+home and laptop personal-owner identity. This preserves the Session namespace and native writer lock while using the
+current remote cwd. Retain that identity while the original root is authorized, including Guide conversations without
+a laptop Plan owner. Never infer missing historical identity after the original path disappears. Legacy and non-Git
+Sessions without retained identity require the exact [remote project locator](#project-context-and-initialization).
+Resume restores saved Agent,
 model, workflow and tutorial context, and pending segment continuation. It checks remote workflow evidence without
 starting validation, repair, or publication before the user chooses. It never repeats unfinished tool effects.
 
@@ -2959,6 +3360,11 @@ remote project.
   composer, SSH, or a writer lock, and its footer gives the target and reconnect instructions.
 - Given a reconnected target, `/resume` offers only its matching Sessions. Continuing appends to the same Session with
   saved Agent and model context, without a laptop clone or repetition of earlier model requests, tools, or remote edits.
+- Given a saved managed Git conversation with retained identity, renaming its remote Project and reconnecting offers
+  the same Session. A competing writer cannot acquire that Session until its current operation settles. A different
+  host, personal owner, Project, repository or checkout cannot list or continue it.
+- Given a legacy conversation with no retained identity, moving its remote directory does not authorize history at the
+  new path. The transcript remains available offline; reconnecting to its original authorized path remains supported.
 - Given a saved remote Session, local TUI, ACP, Workspace, and `/load-plan` lists omit it and do not inspect its root as
   a laptop directory.
 - Given an image in the macOS laptop clipboard, Ctrl+V in the remote TUI reads that current image. Submission sends its
@@ -3218,11 +3624,10 @@ transcript nor a billing charge. Missing measurements remain unavailable, not ze
 measurements linked to assistant turns. Claude CLI retains each result's turn usage once with a distinct source identity;
 turn cost is the change in the process running total. Request measurements and per-model detail remain alternatives
 where they overlap. Core retains these alternatives locally but excludes redundant alternative rows from
-all metrics exports. New Claude CLI and agy CLI usage rows identify input as excluding cache tokens; old rows keep their
-recorded basis. agy CLI retains turn-cumulative tokens and records USD cost as calculated when its model ID exactly
-matches the built-in Google price catalog. A missing catalog entry stays unavailable; a preview or alias model is not
-price evidence. Upstream-reported cost stays distinct from calculated cost. Pi and agy reasoning counts are recorded as
-a subset of output, not added to it. Missing reasoning or cache-write counts stay unavailable.
+all metrics exports. New Claude CLI usage rows identify input as excluding cache tokens. Historical rows keep their
+recorded token counts, cost, measurement coverage, and input basis even after their provider is retired.
+Upstream-reported cost stays distinct from calculated cost. Reasoning counts are a subset of output, not added to it.
+Missing reasoning or cache-write counts stay unavailable.
 
 Usage rows record start and end times only when observed for that row. CLI aggregate timing measures the subprocess
 turn, not model-server latency. Pi assistant timing is captured during its turn, not at settlement. Claude alternative
@@ -3438,22 +3843,18 @@ in Project coverage while hiding old rows, so Workspace can offer a readable ret
   missing end without turning it into a success. A failed turn keeps usage that its provider already reported.
 - Given absent usage, cost, truncation, or context occupancy measurements, RunWield marks each unavailable or partial;
   it does not replace missing values with zero or add overlapping turn and request costs.
-- Given Pi request usage, Claude request/turn/per-model fixtures, or agy turn-cumulative usage, when recorded, RunWield
-  retains the available detail without adding Claude alternative observations to a reported turn total. Absent cache
-  categories stay unavailable and supplied zeros stay measured. New agy rows record calculated USD cost only from an
-  exact catalog model. An unmatched model keeps unavailable cost; reasoning remains part of output.
-- Given a new CLI usage row, input and cache counts remain non-overlapping. Existing rows with unknown basis are not
-  rewritten. Given agy thinking tokens or Pi reasoning tokens, recorded reasoning is part of the unchanged output total.
-- Given an exact agy catalog match, cost is calculated from recorded counts and labeled calculated. Given only a preview
-  catalog entry, cost stays unavailable. Missing token buckets are not written as measured zero.
+- Given Pi request usage or Claude request, turn, and per-model usage, RunWield retains available detail without
+  adding alternatives to a reported turn total. Absent cache categories stay unavailable and supplied zeros stay measured.
+- Given a new Claude CLI usage row, input and cache counts remain non-overlapping. Existing rows with unknown basis
+  are not rewritten. Reasoning tokens remain part of the unchanged output total.
 - Given a Pi assistant message that completes before settlement, its observed start and end stay inside its turn.
   Settlement time does not replace them. Unobserved rows keep null timing.
-- Given a complete priced request, reported-zero request, unavailable-cost request, partial agy turn, and complete CLI
+- Given a complete priced request, reported-zero request, unavailable-cost request, historical partial turn, and complete CLI
   aggregate, Langfuse receives one content-free observation per attempt with the corresponding native fields and flags.
   Partial buckets stay absent; the aggregate creates no child generations or second parent total.
 - Given a Guided Review cost subtotal with partial cost coverage, Langfuse receives the subtotal in metadata with
-  `cost_complete=false`, without native cost details or a native model name. A partial-token agy turn with complete
-  catalog cost still sends native cost. Local cost coverage follows the separate cost fact.
+  `cost_complete=false`, without native cost details or a native model name. A historical partial-token turn with recorded complete
+  cost still sends native cost. Local cost coverage follows the separate cost fact.
 - Given uncertain ingestion or delayed readback, the exporter does not retry. Matching native readback confirms
   presence, including equivalent empty native representations and fully identical unmerged versions. This does not
   authorize a retry or claim exactly-once ingestion. Vendor-invented buckets, costs, complete values, or conflicting

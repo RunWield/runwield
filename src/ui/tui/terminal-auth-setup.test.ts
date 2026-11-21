@@ -207,39 +207,6 @@ test("terminal auth setup can choose Claude CLI without provider credentials", a
     );
 });
 
-test("terminal auth setup can choose Antigravity CLI without provider credentials", async () => {
-    await withRuntimeCommandFixture(
-        "terminal-auth-agy-cli-",
-        async ({ homeDir }) => {
-            const terminal = installVirtualTui();
-            try {
-                const setup = runTerminalAuthSetup([]);
-                await waitForScreen(terminal, "Welcome to RunWield");
-                terminal.typeText("Antigravity");
-                terminal.pressEnter();
-                await waitForScreen(terminal, "Only showing models from configured providers");
-                await waitForScreen(terminal, "agy-cli/gemini-3.8-flash");
-                await waitForScreen(terminal, "agy-cli/gemini-3.1-pro");
-                terminal.pressEnter();
-                const result = await setup;
-
-                assertEquals(result.status, "ready");
-                assertEquals(getSettingsManager(getCwd()).getDefaultProvider(), "agy-cli");
-                assert(
-                    ["gemini-3.8-flash", "gemini-3.1-pro"].includes(
-                        getSettingsManager(getCwd()).getDefaultModel() || "",
-                    ),
-                );
-                assertEquals(await pathExists(join(homeDir, ".gemini")), false);
-                await assertNoRunWieldSessionState(homeDir);
-            } finally {
-                stopTUI();
-            }
-        },
-        { providerState: "none" },
-    );
-});
-
 test("terminal auth setup exits nonzero state when model selection is canceled after login", async () => {
     await withRuntimeCommandFixture(
         "terminal-auth-cancel-model-",

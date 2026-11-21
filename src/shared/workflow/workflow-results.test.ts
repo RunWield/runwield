@@ -17,10 +17,12 @@ function toolResult(toolName: string, details: JsonValue | undefined): AgentMess
 }
 
 test("workflow result extraction preserves task completion reports", () => {
-    const messages: AgentMessage[] = [toolResult("task_completed", {
-        outcome: "task_completed",
-        message: "- Done.",
-    })];
+    const messages: AgentMessage[] = [
+        toolResult("task_completed", {
+            outcome: "task_completed",
+            message: "- Done.",
+        }),
+    ];
 
     assertEquals(readLatestTaskCompletedReport(messages), {
         completed: true,
@@ -30,22 +32,28 @@ test("workflow result extraction preserves task completion reports", () => {
 
 test("workflow result extraction ignores non-record JSON details and searches backward", () => {
     const invalidDetails: Array<JsonValue | undefined> = [undefined, null, true, 7, "text", [], {}];
-    const reviewMessages: AgentMessage[] = [toolResult("review_complete", {
-        outcome: "approved",
-        approved: true,
-        feedback: "approved",
-        findings: [],
-        advisories: [],
-    })];
-    const planMessages: AgentMessage[] = [toolResult("plan_written", {
-        outcome: "saved",
-        planName: "fixture-plan",
-        triageMeta: { classification: "PLANNED_CHANGE" },
-    })];
-    const completionMessages: AgentMessage[] = [toolResult("task_completed", {
-        outcome: "task_completed",
-        message: "complete",
-    })];
+    const reviewMessages: AgentMessage[] = [
+        toolResult("review_complete", {
+            outcome: "approved",
+            approved: true,
+            feedback: "approved",
+            findings: [],
+            advisories: [],
+        }),
+    ];
+    const planMessages: AgentMessage[] = [
+        toolResult("plan_written", {
+            outcome: "saved",
+            planName: "fixture-plan",
+            triageMeta: { classification: "PLANNED_CHANGE" },
+        }),
+    ];
+    const completionMessages: AgentMessage[] = [
+        toolResult("task_completed", {
+            outcome: "task_completed",
+            message: "complete",
+        }),
+    ];
 
     for (const details of invalidDetails) {
         reviewMessages.push(toolResult("review_complete", details));
@@ -77,10 +85,12 @@ test("workflow result extraction ignores non-record JSON details and searches ba
 });
 
 test("plan result extraction preserves legacy truthy outcomes", () => {
-    const messages: AgentMessage[] = [toolResult("plan_written", {
-        outcome: 1,
-        planName: "legacy-plan",
-    })];
+    const messages: AgentMessage[] = [
+        toolResult("plan_written", {
+            outcome: 1,
+            planName: "legacy-plan",
+        }),
+    ];
 
     const outcome = readLatestPlanOutcome(messages);
     assertEquals(Number(outcome?.outcome), 1);

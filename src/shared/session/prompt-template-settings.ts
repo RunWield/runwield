@@ -24,25 +24,32 @@ export async function resolvePromptTemplateSettings(
     const managed = session.getManagedMetadata();
     const entries = (manager?.getBranch?.() || []) as SessionEntry[];
     const hasConversation = entries.some((entry) => entry.type === "message" && entry.message.role === "user");
-    const currentAgent = resolveActiveWorkflowRuntimeAgent(session.getActiveExecutionWorkflow()) ||
-        pending.agentName || session.getRootAgentName() || readPersistedActiveAgentName(manager || undefined) ||
-        session.getActiveAgentInfo()?.agentName || managed?.activeAgent || "";
+    const currentAgent =
+        resolveActiveWorkflowRuntimeAgent(session.getActiveExecutionWorkflow()) ||
+        pending.agentName ||
+        session.getRootAgentName() ||
+        readPersistedActiveAgentName(manager || undefined) ||
+        session.getActiveAgentInfo()?.agentName ||
+        managed?.activeAgent ||
+        "";
     const sessionAgent = currentAgent !== AGENTS.ROUTER || hasConversation || pending.agentName ? currentAgent : "";
     const agentName = invocation.agentName || sessionAgent || AGENTS.OPERATOR;
     const keepsAgent = agentName === currentAgent;
     const activeModel = session.getActiveModelState();
     const manualModel = session.isUserModelOverride() ? activeModel : null;
     const persistedModel = keepsAgent ? readPersistedManualModelState(manager || undefined, agentName) : null;
-    const inheritedModel = keepsAgent || !hasConversation && !invocation.agentName
-        ? manualModel || persistedModel || (keepsAgent && sessionAgent && activeModel.model ? activeModel : null)
-        : null;
-    const modelOverride = invocation.model ||
-        (inheritedModel?.model ? formatProviderModelReference(inheritedModel) : undefined);
+    const inheritedModel =
+        keepsAgent || (!hasConversation && !invocation.agentName)
+            ? manualModel || persistedModel || (keepsAgent && sessionAgent && activeModel.model ? activeModel : null)
+            : null;
+    const modelOverride =
+        invocation.model || (inheritedModel?.model ? formatProviderModelReference(inheritedModel) : undefined);
     const agentDef = await loadAgentDef(agentName, session.cwd);
     const model = await resolveModel(modelOverride, agentDef, agentName, getModelRegistry(), session, session.cwd, {
         ignoreManualModelOverride: true,
     });
-    const thinkingOverride = invocation.thinkingLevel ||
+    const thinkingOverride =
+        invocation.thinkingLevel ||
         (keepsAgent || !invocation.agentName ? pending.thinkingLevel : undefined) ||
         (keepsAgent && (hasConversation || sessionAgent)
             ? managed?.thinkingLevel || session.getThinkingLevel()
@@ -58,8 +65,8 @@ export async function resolvePromptTemplateSettings(
     return {
         agentName,
         model: `${model.provider}/${model.id}`,
-        thinkingLevel: thinkingLevel || "off" as ThinkingLevel,
-        manualModel: Boolean(invocation.model || inheritedModel && (manualModel || persistedModel)),
+        thinkingLevel: thinkingLevel || ("off" as ThinkingLevel),
+        manualModel: Boolean(invocation.model || (inheritedModel && (manualModel || persistedModel))),
     };
 }
 
@@ -67,15 +74,19 @@ export async function resolvePromptTemplateSettings(
 export function promptTemplateWorkflowConflict(session: HostedSession, agentName: string): string | null {
     const workflow = session.getActiveExecutionWorkflow();
     const manager = session.getRootSessionManager() as SessionManager | null;
-    const currentAgent = resolveActiveWorkflowRuntimeAgent(workflow) || session.getRootAgentName() ||
-        readPersistedActiveAgentName(manager || undefined) || session.getManagedMetadata()?.activeAgent || "";
+    const currentAgent =
+        resolveActiveWorkflowRuntimeAgent(workflow) ||
+        session.getRootAgentName() ||
+        readPersistedActiveAgentName(manager || undefined) ||
+        session.getManagedMetadata()?.activeAgent ||
+        "";
     if (agentName === currentAgent) return null;
     if (workflow) {
         return workflow.planName ? `the workflow for ${workflow.planName}` : "an unfinished execution workflow";
     }
-    const hasConversation = manager?.getBranch().some((entry) =>
-        entry.type === "message" && entry.message.role === "user"
-    );
+    const hasConversation = manager
+        ?.getBranch()
+        .some((entry) => entry.type === "message" && entry.message.role === "user");
     if (hasConversation && (currentAgent === AGENTS.PLANNER || currentAgent === AGENTS.ARCHITECT)) {
         return "an unfinished planning workflow";
     }

@@ -9,11 +9,7 @@ export interface ModelActivationResult {
 }
 
 /** Persist the default used by future sessions without claiming an active session changed. */
-export async function setDefaultModelSelection(
-    projectRoot: string,
-    model: string,
-    provider?: string,
-): Promise<void> {
+export async function setDefaultModelSelection(projectRoot: string, model: string, provider?: string): Promise<void> {
     if (remotePersonalResourcesActive()) {
         await setRemoteDefaultModelSelection(projectRoot, model, provider || "");
         return;

@@ -16,10 +16,12 @@ test("Workspace retains a newly created Session until its task result is saved",
             try {
                 setModelResponseFactories([
                     () =>
-                        fauxAssistantMessage(fauxToolCall("background_task", {
-                            action: "start",
-                            command: "sleep 0.5; printf 'created task result\\n'",
-                        })),
+                        fauxAssistantMessage(
+                            fauxToolCall("background_task", {
+                                action: "start",
+                                command: "sleep 0.5; printf 'created task result\\n'",
+                            }),
+                        ),
                     () => fauxAssistantMessage(fauxText("I started a task.")),
                     () => fauxAssistantMessage(fauxText("Created task result received.")),
                 ]);
@@ -75,11 +77,14 @@ test("Workspace history replay does not revive completed background operations a
             };
             try {
                 setModelResponseFactories([
-                    ...gates.map((gate) => () =>
-                        fauxAssistantMessage(fauxToolCall("background_task", {
-                            action: "start",
-                            command: `while [ ! -f '${gate}' ]; do sleep 0.02; done; printf 'review finished\\n'`,
-                        }))
+                    ...gates.map(
+                        (gate) => () =>
+                            fauxAssistantMessage(
+                                fauxToolCall("background_task", {
+                                    action: "start",
+                                    command: `while [ ! -f '${gate}' ]; do sleep 0.02; done; printf 'review finished\\n'`,
+                                }),
+                            ),
                     ),
                     () => fauxAssistantMessage(fauxText("Reviews started.")),
                     () => fauxAssistantMessage(fauxText("First review received.")),
@@ -99,8 +104,9 @@ test("Workspace history replay does not revive completed background operations a
                 const initialHistory = await service.timeline(id, { projectId: fixture.project.projectId });
                 const taskIds = [
                     ...new Set(
-                        [...JSON.stringify(initialHistory.events).matchAll(/"task_id"\s*:\s*"([0-9a-f-]+)"/g)]
-                            .map((match) => match[1]),
+                        [...JSON.stringify(initialHistory.events).matchAll(/"task_id"\s*:\s*"([0-9a-f-]+)"/g)].map(
+                            (match) => match[1],
+                        ),
                     ),
                 ];
                 assertEquals(taskIds.length, 2);

@@ -1,7 +1,8 @@
 // @ts-nocheck: Workspace is the scoped TSX exception zone and Plannotator is consumed as browser-only UI.
 import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
+import type { LocalLinkResolver } from "@plannotator/ui/components/LocalLinkContext";
 import type { MarkdownEditorProps } from "@plannotator/markdown-editor";
 
 export type { MarkdownEditorHandle } from "@plannotator/markdown-editor";
@@ -12,6 +13,8 @@ export interface WorkspacePlanDocumentProps extends Pick<
     "markdown" | "documentId" | "editorHandleRef" | "onMarkdownChange"
 > {
     mode: WorkspacePlanDocumentMode;
+    resolveLocalLink?: LocalLinkResolver;
+    fragment?: string;
 }
 import { RenderedMarkdown } from "@plannotator/ui/components/RenderedMarkdown.tsx";
 import "./plannotator.css";
@@ -24,7 +27,12 @@ export default function WorkspacePlanDocument({
     documentId,
     editorHandleRef,
     onMarkdownChange,
+    resolveLocalLink,
+    fragment,
 }: WorkspacePlanDocumentProps) {
+    useEffect(() => {
+        if (mode !== "edit" && fragment) document.getElementById(decodeURIComponent(fragment))?.scrollIntoView();
+    }, [mode, markdown, fragment]);
     if (mode === "edit") {
         return (
             <Suspense
@@ -48,6 +56,8 @@ export default function WorkspacePlanDocument({
     return (
         <RenderedMarkdown
             markdown={markdown}
+            resolveLocalLink={resolveLocalLink}
+            headingAnchors
             className="markdown-view plannotator-plan-body rw-workspace-rendered-markdown"
         />
     );

@@ -12,7 +12,11 @@ import { installPackageHelperFixtures } from "./package-helper-fixtures.ts";
 import { verifyBuildArtifact } from "./build-metadata.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { removeExecutableFixtureDirectory } from "../src/testing/runtime-executable-fixture.ts";
-import { SIDEBAR_MOTION_SOURCE, SIDEBAR_MOTION_URL, transpileSidebarMotionScript } from "../src/ui/workspace/server/public-workspace-assets.ts";
+import {
+    SIDEBAR_MOTION_SOURCE,
+    SIDEBAR_MOTION_URL,
+    transpileSidebarMotionScript,
+} from "../src/ui/workspace/server/public-workspace-assets.ts";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 

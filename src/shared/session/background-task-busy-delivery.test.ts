@@ -17,10 +17,12 @@ test("a completed task steers the busy parent root once before its next model re
         setModelResponseFactories([
             () => {
                 calls++;
-                return fauxAssistantMessage(fauxToolCall("background_task", {
-                    action: "start",
-                    command: "sleep 0.15; printf 'busy result'",
-                }));
+                return fauxAssistantMessage(
+                    fauxToolCall("background_task", {
+                        action: "start",
+                        command: "sleep 0.15; printf 'busy result'",
+                    }),
+                );
             },
             () => {
                 calls++;
@@ -38,9 +40,11 @@ test("a completed task steers the busy parent root once before its next model re
             await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
             const startGeneration = runtime.getSessionSnapshot(created.sessionId)?.managed?.generation ?? 0;
             assertEquals(
-                (await runtime.promptUserTurn(created.sessionId, {
-                    initialRequest: "Keep working while the command runs.",
-                })).ok,
+                (
+                    await runtime.promptUserTurn(created.sessionId, {
+                        initialRequest: "Keep working while the command runs.",
+                    })
+                ).ok,
                 true,
             );
             assertStringIncludes(nextRequest, "busy result");
@@ -50,12 +54,14 @@ test("a completed task steers the busy parent root once before its next model re
             try {
                 const saved = store.getSessionById(snapshot?.managed?.runwieldSessionId || "");
                 assert(saved);
-                const entries = (await fsReadFile(saved.transcriptPath, "utf8")).trim().split("\n").map((line) =>
-                    JSON.parse(line)
-                );
+                const entries = (await fsReadFile(saved.transcriptPath, "utf8"))
+                    .trim()
+                    .split("\n")
+                    .map((line) => JSON.parse(line));
                 const replay = createReplayEvents("busy", entries);
-                const generated = replay.filter((event) =>
-                    event.type === RuntimeEventTypes.USER_MESSAGE && event.origin === "background_task_result"
+                const generated = replay.filter(
+                    (event) =>
+                        event.type === RuntimeEventTypes.USER_MESSAGE && event.origin === "background_task_result",
                 );
                 assertEquals(generated.length, 1);
                 assertStringIncludes(generated[0].text!, "busy result");
@@ -78,10 +84,12 @@ test("a busy root receives task output rather than its foreground delegated chil
         let childRequest = "";
         setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("background_task", {
-                    action: "start",
-                    command: "sleep 0.15; printf 'root-only task result'",
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("background_task", {
+                        action: "start",
+                        command: "sleep 0.15; printf 'root-only task result'",
+                    }),
+                ),
             () => fauxAssistantMessage(fauxToolCall("delegate_agent", { mode: "read", brief: "Inspect briefly." })),
             async (context: TranscriptContext) => {
                 childRequest = JSON.stringify(context.messages);

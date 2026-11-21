@@ -1,4 +1,9 @@
-import { resolveResumeAgentName } from ".././active-agent-session.ts";
+import { isRemovedAgyProvider } from "../../models/removed-providers.ts";
+import {
+    readPersistedManualModelState,
+    readPersistedModelState,
+    resolveResumeAgentName,
+} from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
 import {
     classifyRootSessionLocator,
@@ -10,7 +15,7 @@ import {
 import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { createReplayEvents as createProjectedReplayEvents } from ".././session-transcript-projection.ts";
 import { requestHostedSessionInteraction } from ".././session-runtime-interactions.ts";
-import { sessionDirForRoot } from ".././file-session-storage.ts";
+import { sessionDirForCheckout } from ".././file-session-storage.ts";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
 import { isAbsolute } from "node:path";
 
@@ -246,6 +251,7 @@ export class RuntimeLifecycleLoading {
                 if (inspected.generation) {
                     const adopted = this.lifecycle.adoptManagedSession({
                         session: managedSession,
+                        cwd: options.cwd,
                         generation: inspected.generation.generation,
                     });
                     const sync = await this.sync.synchronizeManagedSession(adopted.sessionId, { emitEvents: false });
@@ -265,7 +271,7 @@ export class RuntimeLifecycleLoading {
                     this.events.replacePendingReplayEvents(adopted.sessionId, replayEvents);
                     return {
                         sessionId: adopted.sessionId,
-                        cwd: adopted.cwd,
+                        cwd: adoptedHostedSession.cwd,
                         replayEvents,
                         sessionManagerId: managedSession.piSessionId,
                         sessionPath: managedSession.transcriptPath,
@@ -291,7 +297,10 @@ export class RuntimeLifecycleLoading {
         let agentName = "";
         try {
             const transcriptProjectRoot = ownerCoordinationStore.requireSessionProjectRoot(managedSession.projectId);
-            const transcriptProjectSessionDir = sessionDirForRoot(ownerCoordinationStore.path, transcriptProjectRoot);
+            const transcriptProjectSessionDir = sessionDirForCheckout(
+                ownerCoordinationStore.path,
+                transcriptProjectRoot,
+            );
             const managedTranscriptPath = sessionPath || managedSession.transcriptPath;
             const managedProjectSessionDir = isPathInside(managedTranscriptPath, transcriptProjectSessionDir)
                 ? transcriptProjectSessionDir
@@ -352,11 +361,18 @@ export class RuntimeLifecycleLoading {
         this.managedOperations.setPendingCreationProof(hostedSession.id, managedProof);
         this.events.attachRuntimeEventSink(hostedSession);
         try {
-            await this.settings.activateSessionAgent(hostedSession, {
-                agentName,
-                model: options.modelOverride,
-                mcpServers: options.mcpServers,
-            });
+            const savedModel =
+                readPersistedManualModelState(sessionManager, agentName) || readPersistedModelState(sessionManager);
+            // Load the transcript without replacing or running its retired selection.
+            if (!options.modelOverride && savedModel && isRemovedAgyProvider(savedModel.provider)) {
+                hostedSession.setActiveModelState(savedModel.model, savedModel.provider, true);
+            } else {
+                await this.settings.activateSessionAgent(hostedSession, {
+                    agentName,
+                    model: options.modelOverride,
+                    mcpServers: options.mcpServers,
+                });
+            }
             const setupEvents = this.events.consumePendingReplayEvents(hostedSession.id);
             const replayEvents = setupEvents.concat(
                 createProjectedReplayEvents(hostedSession.id, getRootSessionBranchEntries(sessionManager)).map(

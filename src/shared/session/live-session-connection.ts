@@ -134,13 +134,15 @@ export async function openLiveSessionConnection(
             }
             if (request.method === "GET") {
                 const snapshot = runtime.getSessionSnapshot(session.id);
-                response.end(JSON.stringify({
-                    operationId,
-                    events,
-                    queuedMessages: runtime.getQueuedMessages(session.id),
-                    sessionInfo: projectLiveSessionInfo(snapshot),
-                    interaction: [...session.getActiveInteractions().values()][0]?.request || null,
-                }));
+                response.end(
+                    JSON.stringify({
+                        operationId,
+                        events,
+                        queuedMessages: runtime.getQueuedMessages(session.id),
+                        sessionInfo: projectLiveSessionInfo(snapshot),
+                        interaction: [...session.getActiveInteractions().values()][0]?.request || null,
+                    }),
+                );
                 return;
             }
             if (request.method !== "POST") throw new Error("Unsupported request.");
@@ -161,7 +163,8 @@ export async function openLiveSessionConnection(
                 const input = JSON.stringify([command.text, command.images, command.inputSurface]);
                 const previous = steeringRequests.get(command.requestId);
                 if (previous && previous.input !== input) throw new Error("This message ID was already used.");
-                const result = previous?.result ||
+                const result =
+                    previous?.result ||
                     runtime.steerSession(session.id, command.text || "", command.images || [], command.inputSurface);
                 steeringRequests.set(command.requestId, { input, result });
                 try {
@@ -234,27 +237,30 @@ export function readLiveSessionConnection(
     command?: LiveSessionCommand,
 ): Promise<LiveSessionSnapshot | LiveSessionCommandResult> {
     return new Promise((resolve, reject) => {
-        const request = httpRequest({
-            socketPath: socketPath(sessionId, operationId),
-            path: "/",
-            method: command ? "POST" : "GET",
-            agent: false,
-        }, (response) => {
-            let body = "";
-            response.setEncoding("utf8");
-            response.on("data", (chunk) => body += chunk);
-            response.on("error", reject);
-            response.on("end", () => {
-                try {
-                    const value = JSON.parse(body);
-                    if (response.statusCode !== 200) {
-                        reject(new Error(value.error || "The turn is no longer available."));
-                    } else resolve(value);
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        });
+        const request = httpRequest(
+            {
+                socketPath: socketPath(sessionId, operationId),
+                path: "/",
+                method: command ? "POST" : "GET",
+                agent: false,
+            },
+            (response) => {
+                let body = "";
+                response.setEncoding("utf8");
+                response.on("data", (chunk) => (body += chunk));
+                response.on("error", reject);
+                response.on("end", () => {
+                    try {
+                        const value = JSON.parse(body);
+                        if (response.statusCode !== 200) {
+                            reject(new Error(value.error || "The turn is no longer available."));
+                        } else resolve(value);
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            },
+        );
         request.setTimeout(3000, () => request.destroy(new Error("The running agent did not respond. Try again.")));
         request.on("error", reject);
         request.end(command ? JSON.stringify(command) : undefined);
@@ -268,34 +274,37 @@ export function subscribeLiveSessionAttention(
     onEvent: (event: RuntimeAttentionRequestedEvent) => void,
 ): Promise<() => void> {
     return new Promise((resolve, reject) => {
-        const request = httpRequest({
-            socketPath: socketPath(sessionId, operationId),
-            path: "/attention",
-            agent: false,
-        }, (response) => {
-            clearTimeout(timeout);
-            if (response.statusCode !== 200) {
-                response.resume();
-                reject(new Error("The running agent is no longer available."));
-                return;
-            }
-            response.setEncoding("utf8");
-            let pending = "";
-            response.on("data", (chunk: string) => {
-                pending += chunk;
-                let boundary;
-                while ((boundary = pending.indexOf("\n\n")) >= 0) {
-                    const frame = pending.slice(0, boundary);
-                    pending = pending.slice(boundary + 2);
-                    if (frame.startsWith("data: ")) {
-                        const event: RuntimeAttentionRequestedEvent = JSON.parse(frame.slice(6));
-                        onEvent(event);
-                    }
+        const request = httpRequest(
+            {
+                socketPath: socketPath(sessionId, operationId),
+                path: "/attention",
+                agent: false,
+            },
+            (response) => {
+                clearTimeout(timeout);
+                if (response.statusCode !== 200) {
+                    response.resume();
+                    reject(new Error("The running agent is no longer available."));
+                    return;
                 }
-            });
-            response.on("error", () => {});
-            resolve(() => response.destroy());
-        });
+                response.setEncoding("utf8");
+                let pending = "";
+                response.on("data", (chunk: string) => {
+                    pending += chunk;
+                    let boundary;
+                    while ((boundary = pending.indexOf("\n\n")) >= 0) {
+                        const frame = pending.slice(0, boundary);
+                        pending = pending.slice(boundary + 2);
+                        if (frame.startsWith("data: ")) {
+                            const event: RuntimeAttentionRequestedEvent = JSON.parse(frame.slice(6));
+                            onEvent(event);
+                        }
+                    }
+                });
+                response.on("error", () => {});
+                resolve(() => response.destroy());
+            },
+        );
         const timeout = setTimeout(() => request.destroy(new Error("The running agent did not respond.")), 3000);
         request.on("error", (error) => {
             clearTimeout(timeout);

@@ -827,6 +827,16 @@ export function getPlanArchiveRetentionPolicy(projectRoot: string): ArchiveReten
     return { retentionDays, keepLast };
 }
 
+/** @param {string} projectRoot */
+export function getWorkRecordRetentionPolicy(projectRoot: string) {
+    const records = getCustomSetting("workRecords", "project", projectRoot);
+    const setting = (key: string, fallback: number) =>
+        records && typeof records === "object" && !Array.isArray(records) && Object.hasOwn(records, key)
+            ? validateNonNegativeIntegerSetting(records[key], `workRecords.${key}`)
+            : fallback;
+    return { keepLast: setting("retentionKeepLast", 100), retentionDays: setting("retentionDays", 90) };
+}
+
 /** Resolve the optional human code review gate mode. */
 export function getCodeReviewMode(projectRoot: string): "none" | "ask" | "always" {
     if (!projectRoot) throw new Error("getCodeReviewMode: projectRoot is required");
@@ -851,4 +861,21 @@ export function getGuidedReviewMode(projectRoot: string): "none" | "ask" | "auto
         return normalized;
     }
     return "none";
+}
+
+/** Internal publication policy, resolved at the executing repository binding.
+ * @param {string} projectRoot
+ */
+export function getDeliveryCopyPolicy(projectRoot: string) {
+    const plans = getMergedCustomSetting("plans", projectRoot);
+    const records = getMergedCustomSetting("workRecords", projectRoot);
+    return {
+        plans: Boolean(plans && typeof plans === "object" && !Array.isArray(plans) && plans.deliveryCopies === true),
+        workRecords: !(
+            records &&
+            typeof records === "object" &&
+            !Array.isArray(records) &&
+            records.deliveryCopies === false
+        ),
+    };
 }

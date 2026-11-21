@@ -10,6 +10,7 @@ import type {
 } from "@agentclientprotocol/sdk/unstable";
 import type { Message, ProviderStreams, TranscriptContext } from "@earendil-works/pi-ai";
 import type { RuntimeValidationProgress } from "../shared/session/session-runtime-events.ts";
+import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import { collectProcessOutput } from "../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../shared/foreground-process.ts";
@@ -41,7 +42,8 @@ import { registerApiProvider, unregisterApiProviders } from "@earendil-works/pi-
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { savePlan } from "../plan-store.ts";
+import { loadPlan } from "../plan-store/index.ts";
+
 import { captureTranscriptEvidence } from "../shared/session/session-transcript-projection.ts";
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.ts";
@@ -1540,7 +1542,7 @@ test("ACP /plan-review reports when this Session has no saved review", async () 
 test("ACP /plan-review returns the live Plan Review URL while the original prompt remains pending", async () => {
     await withRuntimeCommandFixture("runwield-acp-live-plan-review-", async (fixture) => {
         await setCustomSetting("workflowMetrics", true, "project", fixture.projectRoot);
-        await savePlan(fixture.projectRoot, "acp-review", "# ACP review\n\nReview this Plan.\n", {
+        await seedPlan(fixture.projectRoot, "acp-review", "# ACP review\n\nReview this Plan.\n", {
             classification: "PLANNED_CHANGE",
             status: "draft",
             summary: "Review this Plan",
@@ -1610,12 +1612,16 @@ test("ACP /plan-review returns the live Plan Review URL while the original promp
             const url = new URL(reviewUrl);
             const token = url.searchParams.get("token");
             assert(token, "The review URL must include a decision token");
+            const reviewHtml = await (await fetch(reviewUrl)).text();
+            const embedded = reviewHtml.match(/<script[^>]*data-review-payload[^>]*>([\s\S]*?)<\/script>/)?.[1];
+            assert(embedded, "Expected current review revision payload");
+            const { reviewRevision, documentRevision } = JSON.parse(embedded);
             const decision = await fetch(
                 new URL(`/api/review/decision?token=${encodeURIComponent(token)}`, url.origin),
                 {
                     method: "POST",
                     headers: { "content-type": "application/json", "x-runwield-review-token": token },
-                    body: JSON.stringify({ canceled: true }),
+                    body: JSON.stringify({ canceled: true, reviewRevision, documentRevision }),
                 },
             );
             assertEquals(decision.status, 200, await decision.text());
@@ -3373,7 +3379,7 @@ async function chatPrompt(handle: TestServerHandle, sessionId: string, text: str
 
 async function saveChatMenuPlans(projectRoot: string) {
     for (const name of ["alpha", "beta"]) {
-        await savePlan(projectRoot, name, `# ${name}\n\n## Objective\n\nTest ${name}.\n`, {
+        await seedPlan(projectRoot, name, `# ${name}\n\n## Objective\n\nTest ${name}.\n`, {
             classification: "PLANNED_CHANGE",
             status: "draft",
             summary: `Test ${name}`,
@@ -3386,7 +3392,9 @@ async function saveChatMenuPlans(projectRoot: string) {
 test("ACP no-form load-plan rejects invalid replies and continues through sequential menus", async () => {
     await withRuntimeCommandFixture("acp-load-plan-chat-", async (fixture) => {
         await saveChatMenuPlans(fixture.projectRoot);
-        const before = await fsReadFile(join(fixture.projectRoot, "docs/plans/beta.md"), "utf8");
+        const beta = await loadPlan(fixture.projectRoot, "beta");
+        assert(beta);
+        const before = await fsReadFile(beta.path, "utf8");
         const handle = startTestServer();
         try {
             const { sessionId } = await createSession(handle, fixture.projectRoot);
@@ -3417,7 +3425,7 @@ test("ACP no-form load-plan rejects invalid replies and continues through sequen
             assertStringIncludes(joinedAgentText(details.messages), "Test beta");
             assertStringIncludes(joinedAgentText(details.messages), "What would you like to do?");
             await chatPrompt(handle, sessionId, "Cancel");
-            assertEquals(await fsReadFile(join(fixture.projectRoot, "docs/plans/beta.md"), "utf8"), before);
+            assertEquals(await fsReadFile(beta.path, "utf8"), before);
             fixture.setModelResponse("Normal follow-up works.");
             assertStringIncludes(
                 joinedAgentText((await chatPrompt(handle, sessionId, "Hello")).messages),

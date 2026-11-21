@@ -1,9 +1,12 @@
+import { recordPlanWorkRecord, ensureArchivedPlanIdentity } from "../../plan-store/index.ts";
+import { capturePlanAccess } from "../../plan-store/index.ts";
+import { currentWorkRecordOwner } from "./owner.ts";
 /**
  * @module shared/work-records/generation
  * Generate canonical internal Work Records from completed Plans.
  */
 
-import type { PlanFrontMatter, PlanTextLoaded } from "../../plan-store.ts";
+import { type PlanFrontMatter, type PlanTextLoaded } from "../../plan-format.ts";
 import type { PlanDeviation } from "../plan-deviations.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 import type {
@@ -16,17 +19,14 @@ import type {
 } from "./schema.ts";
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
+import { compareChildPlansByOrder, isChildFeaturePlan, isProjectPlan } from "../../plan-format.ts";
 import {
-    compareChildPlansByOrder,
     ensurePlanIdentity,
-    isChildFeaturePlan,
-    isProjectPlan,
     listArchivedPlans,
     listPlans,
     loadArchivedPlan,
     loadPlan,
-    updateArchivedPlanFrontMatter,
-} from "../../plan-store.ts";
+} from "../../plan-store/index.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../session/hosted-session.ts";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
@@ -35,7 +35,6 @@ import { settleWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
 import { dedupeTicketReferencesByUrl } from "../ticket-references.ts";
 import { readPlanDeviations, renderPlanDeviationsForWorkRecord } from "../plan-deviations.ts";
-import { runPlanFrontMatterTransition } from "../workflow/state-transition.ts";
 import { buildWorkRecordFileName, deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import { applyWorkRecordSupersession, WorkRecordSupersessionRollbackError } from "./supersession.ts";
@@ -50,6 +49,8 @@ const USER_VERIFIED_TEXT = "The user attested verification; RunWield Workflow Va
 type GeneratedWorkRecordScope = Extract<WorkRecordScope, "planned_change" | "epic">;
 
 export interface WorkRecordSource {
+    recordingAttemptId?: string;
+    preparedRecordId?: string;
     /** Explicit artifact preparation, never ordinary backfill eligibility. */
     pendingPublication?: boolean;
     sourceKind: "active" | "archived";
@@ -256,6 +257,7 @@ function findLinkableExistingRecord(source: WorkRecordSource, existingByPlanId: 
     const candidates = source.planId ? existingByPlanId.get(source.planId) || [] : [];
     return candidates.find(
         (record) =>
+            (!source.preparedRecordId || record.attrs.recordId === source.preparedRecordId) &&
             (record.attrs.status === "approved" ||
                 (source.pendingPublication && record.attrs.status === "pending_verification")) &&
             record.attrs.origin === "internal" &&
@@ -270,7 +272,7 @@ export function evaluateWorkRecordSource(
     source: WorkRecordSource,
     existingByPlanId: WorkRecordsBySourcePlanId = new Map(),
 ): WorkRecordSource {
-    if (source.attrs.workRecord && source.attrs.workRecord.status !== "failed") {
+    if (!source.preparedRecordId && source.attrs.workRecord && source.attrs.workRecord.status !== "failed") {
         return { ...source, skipReason: "existing_backlink" };
     }
     if (isChildFeaturePlan(source)) return { ...source, skipReason: "child_feature" };
@@ -302,6 +304,8 @@ export async function discoverWorkRecordSources(cwd: string): Promise<WorkRecord
         if (!loaded) continue;
         sources.push(buildActiveWorkRecordSource(entry.name, loaded));
     }
+    // Repository archives retain their legacy owner; admitted retries use package sources only.
+    if (capturePlanAccess()) return sources;
     for (const entry of await listArchivedPlans(cwd)) {
         const loaded = await loadArchivedPlan(cwd, entry.name);
         if (!loaded) continue;
@@ -361,24 +365,7 @@ export async function previewWorkRecordBackfill(cwd: string): Promise<WorkRecord
 }
 
 async function updateSourceFrontMatter(cwd: string, source: WorkRecordSource, updates: Partial<PlanFrontMatter>) {
-    if (source.sourceKind === "archived") return await updateArchivedPlanFrontMatter(cwd, source.name, updates);
-    // A Work Record backlink is post-settlement bookkeeping, so it gets an ordinary
-    // Plan transaction. Plan Recovery is deliberately not used here: recovery
-    // supersedes unresolved recovery journals and retires them on success, which
-    // would let a backlink write silently destroy the evidence for an uncertain
-    // publication it knows nothing about.
-    const transition = await runPlanFrontMatterTransition({
-        projectRoot: cwd,
-        planName: source.name,
-        operation: "work_record_backlink",
-        expectedRevision: source.documentRevision,
-        updates,
-        recoveryAttrs: source.attrs || {},
-    });
-    if (transition.status !== "committed") {
-        throw new Error(transition.message || `Could not link Work Record to Plan ${source.name}.`);
-    }
-    return transition.value;
+    await recordPlanWorkRecord(cwd, source, updates.workRecord);
 }
 
 async function ensureSourcePlanId(
@@ -398,9 +385,8 @@ async function ensureSourcePlanId(
             children: source.children,
         };
     }
-    const planId = options.idGenerator ? options.idGenerator() : crypto.randomUUID();
-    const attrs = await updateArchivedPlanFrontMatter(cwd, source.name, { planId });
-    return { ...source, planId, attrs };
+    const attrs = await ensureArchivedPlanIdentity(cwd, source.name);
+    return { ...source, planId: attrs.planId || "", attrs };
 }
 
 function declaredSupersessionIds(source: WorkRecordSource) {
@@ -641,7 +627,7 @@ async function linkSourceToRecord(cwd: string, source: WorkRecordSource, record:
         workRecord: {
             status: "generated",
             recordId: record.attrs.recordId,
-            path: record.relativePath,
+            path: currentWorkRecordOwner() ? record.path : record.relativePath,
             lastAttemptAt: iso(now),
         },
     });
@@ -721,15 +707,15 @@ export async function generateWorkRecordForSource(
                 source,
                 status: "linked",
                 recordId: record.attrs.recordId,
-                path: record.relativePath,
+                path: currentWorkRecordOwner() ? record.path : record.relativePath,
                 ...(supersessionProposals.length ? { supersessionProposals } : {}),
                 ...(indexWarning ? { indexWarning } : {}),
             };
         }
 
         const recordId =
-            source.attrs.validationCheckpoint?.hostRecorder?.recordId ||
-            (options.idGenerator ? options.idGenerator() : crypto.randomUUID());
+            (options.idGenerator ? options.idGenerator() : source.attrs.validationCheckpoint?.hostRecorder?.recordId) ||
+            crypto.randomUUID();
         declaredIds = await validateDeclaredSupersession(cwd, recordId, declaredIds);
         const sections = await generateRecorderSections(cwd, source, options, recordId, declaredIds);
         const declaredIdentities = new Set(declaredIds.map((id) => id.toLowerCase()));
@@ -757,7 +743,9 @@ export async function generateWorkRecordForSource(
         };
         const body = buildBody(source, sections);
         const title = body.match(/^#\s+(.+)$/m)?.[1] || attrs.recordId;
-        const record = await writeWorkRecord(cwd, attrs, body, { fileName: buildWorkRecordFileName(title, now) });
+        const record = await writeWorkRecord(cwd, attrs, body, {
+            fileName: buildWorkRecordFileName(source.preparedRecordId || title, now),
+        });
         let settledRecord = record;
         let indexWarning = "";
         if (source.pendingPublication) {
@@ -794,7 +782,7 @@ export async function generateWorkRecordForSource(
             source,
             status: "generated",
             recordId: settledRecord.attrs.recordId,
-            path: settledRecord.relativePath,
+            path: currentWorkRecordOwner() ? settledRecord.path : settledRecord.relativePath,
             ...(pending.length ? { supersessionProposals: pending } : {}),
             ...(indexWarning ? { indexWarning } : {}),
         };
@@ -813,6 +801,17 @@ export async function runWorkRecordBackfill(
 
     const outcomes: WorkRecordGenerationOutcome[] = [];
     for (const source of preview.eligible) {
+        if (capturePlanAccess() && source.sourceKind === "active") {
+            const { retryWorkRecordForPlan } = await import("./auto-generation.ts");
+            const result = await retryWorkRecordForPlan({ cwd, planName: source.name, ...options });
+            outcomes.push({
+                ...result,
+                source,
+                status: result.status === "generated" || result.status === "linked" ? result.status : "failed",
+                ...(result.status === "skipped" ? { error: result.reason || "Source is not eligible." } : {}),
+            });
+            continue;
+        }
         outcomes.push(await generateWorkRecordForSource(cwd, source, options));
     }
     return { ...preview, outcomes };

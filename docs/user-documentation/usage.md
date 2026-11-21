@@ -140,7 +140,7 @@ If your model can see images, paste them into the message. If it can't, set
 
 ## Work Records
 
-When a Plan finishes, RunWield writes a Work Record to `docs/work-records/`: a Markdown summary of what was done, kept
+When a Plan finishes, RunWield writes a Work Record to the personal Project store: a Markdown summary of what was done, kept
 for future planning. Plans that are part of an Epic don't get their own record; the Epic gets one when it finishes.
 
 ```bash
@@ -158,19 +158,25 @@ Records, set [`workRecords.autoGenerateOnPlanCompletion`](settings.md#workrecord
 
 ## Where RunWield keeps data
 
-| Data                         | Location                                   |
-| ---------------------------- | ------------------------------------------ |
-| Global settings              | `~/.wld/settings.json`                     |
-| Credentials                  | `~/.wld/auth.json`                         |
-| Custom models                | `~/.wld/models.json`                       |
-| Sessions                     | `~/.wld/sessions/`                         |
-| Global instructions          | `~/.wld/RUNWIELD.md` or `~/.wld/AGENTS.md` |
-| Your Agents and prompts      | `~/.wld/agents/`, `~/.wld/prompts/`        |
-| Project settings             | `.wld/settings.json`                       |
-| Project Agents and prompts   | `.wld/agents/`, `.wld/prompts/`            |
-| Plans                        | `docs/plans/`                              |
-| Work Records                 | `docs/work-records/`                       |
-| RunWield's own project state | `.wld/internal/`                           |
+| Data                         | Location                                    |
+| ---------------------------- | ------------------------------------------- |
+| Global settings              | `~/.wld/settings.json`                      |
+| Credentials                  | `~/.wld/auth.json`                          |
+| Custom models                | `~/.wld/models.json`                        |
+| Sessions                     | `~/.wld/sessions/`                          |
+| Global instructions          | `~/.wld/RUNWIELD.md` or `~/.wld/AGENTS.md`  |
+| Your Agents and prompts      | `~/.wld/agents/`, `~/.wld/prompts/`         |
+| Project settings             | `.wld/settings.json`                        |
+| Project Agents and prompts   | `.wld/agents/`, `.wld/prompts/`             |
+| Plans                        | `~/.wld/projects/<projectId>/plans/`        |
+| Work Records                 | `~/.wld/projects/<projectId>/work-records/` |
+| RunWield's own project state | `~/.wld/projects/<projectId>/`              |
+
+Stop active RunWield sessions before backing up. Copy the complete `~/.wld/` tree from the owning account, preserving
+permissions and file contents. Back up the repository and its Git metadata separately. To restore, close RunWield and
+restore both backups to the owning account. Verify your Plans with `wld plans` and Work Records with `wld wr`.
+For a managed SSH Project, back up the laptop’s personal store and the execution host’s Project runtime and checkout.
+For manual SSH, back up the remote account. Optional Git delivery copies cover selected documents only.
 
 The first time RunWield runs, it copies some Pi configuration files into `~/.wld/` if RunWield's copies don't exist yet.
 

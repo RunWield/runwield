@@ -11,6 +11,7 @@ provenance:
     sourcePlans:
         - "ad8b3586-b7e9-4b1e-b7fa-c132f48a3ad8"
 ---
+
 # Ideator and Guide conversations in Connect
 
 ## Summary

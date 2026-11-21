@@ -1,9 +1,13 @@
+import type { PlanAccess, PackageWorkflowInput } from "../../plan-store/index.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 import type { ReviewLedger } from "../workflow/review-ledger.ts";
 import type { HostedSession, MinimalSessionManagerLike } from "./hosted-session.ts";
 
 export interface ActiveExecutionWorkflow {
     planName: string;
+    packageSelection?: PlanAccess;
+    packageInput?: PackageWorkflowInput;
+    packageAttemptId?: string;
     triageMeta: TriageMeta;
     executionAgent: "engineer" | "frontend-engineer";
     executionStarted?: boolean;
@@ -63,8 +67,8 @@ export function readExecutionWorkflowSnapshot(
         if (data?.version !== 1 || !data.workflow) return { version: 1, workflow: null };
         const workflow = data.workflow;
         if (
-            (typeof workflow.planName !== "string" ||
-                (!workflow.planName && workflow.triageMeta?.classification !== "QUICK_FIX")) ||
+            typeof workflow.planName !== "string" ||
+            (!workflow.planName && workflow.triageMeta?.classification !== "QUICK_FIX") ||
             !["engineer", "frontend-engineer"].includes(workflow.executionAgent)
         ) {
             return { version: 1, workflow: null };

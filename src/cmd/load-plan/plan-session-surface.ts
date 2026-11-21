@@ -17,9 +17,9 @@ import {
 } from "../../shared/session/session-runtime-interactions.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
-import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
-import type { SequenceReviewDecision } from "../../shared/workflow/sequence-review.ts";
+import type { SequenceReviewDecision } from "../../plan-store/index.ts";
 import type { ActiveExecutionWorkflow, PlanSessionSurface } from "./plan-session-types.ts";
 
 /**
@@ -119,6 +119,11 @@ export function createPlanSessionSurface(
                 responseAny._meta && typeof responseAny._meta === "object" && Object.keys(responseAny._meta).length > 0;
             const runtimeCanceled = response.outcome === RuntimeInteractionOutcomes.CANCELED && !hasReviewPayload;
             return {
+                outcome:
+                    response.outcome === RuntimeInteractionOutcomes.BLOCKED ||
+                    response.outcome === RuntimeInteractionOutcomes.UNSUPPORTED
+                        ? response.outcome
+                        : undefined,
                 canceled: response.outcome === RuntimeInteractionOutcomes.CANCELED,
                 cancellationReason:
                     typeof review.cancellationReason === "string"

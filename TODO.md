@@ -40,7 +40,7 @@ I would order the overlapping group like this:
 
 8. simplify-validation-and-lifecycle-messages.md Better after the error/repair model is stable. - done
 
-9. Package storage proposal removed; the [Plan Store PRD](docs/prd/plan-store-prd.md) owns storage direction.
+9. Package storage proposal removed; the [Core PRD](docs/prd/runwield-core-prd.md#plan-authoring-and-external-adoption) owns Plan storage requirements.
 
 10. Package frontend proposal removed; shipped journey guidance remains in the Agent instructions.
 

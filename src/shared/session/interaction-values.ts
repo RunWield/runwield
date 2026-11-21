@@ -21,7 +21,10 @@ export const RuntimeInteractionOutcomes = Object.freeze({
     BLOCKED: "blocked",
 });
 
-export function isApprovalAcceptedValue<Request extends Pick<RuntimeInteractionRequest, "options">>(request: Request, value: string): boolean {
+export function isApprovalAcceptedValue<Request extends Pick<RuntimeInteractionRequest, "options">>(
+    request: Request,
+    value: string,
+): boolean {
     const options = request.options || [];
     const option = options.find((item) => item.value === value);
     if (option?._meta?.accepted === true || option?._meta?.approvalOutcome === "accepted") return true;

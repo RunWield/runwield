@@ -413,6 +413,33 @@ extend the [Codex qualification evidence](#codex-acceptance) or claim an unobser
 
 ### Shared Plan and verification outcomes
 
+**Local canonical access:** Ordinary local/manual-SSH entry uses Core’s personal Project store, including an empty
+store. New authoring submits Markdown prose and typed definition facts; hosts do not write protected metadata or rely
+on checkout Plan copies. Read and review operations revalidate their own Project/action/revision authority. Restricted
+hosts continue through authorized Plan and Work Record operations without requiring arbitrary home-directory access.
+Managed-remote ownership activation remains deferred; its current admitted contract is preserved.
+
+**Acceptance:** A Plan imported or authored through one local surface is the same ID and current revision when read
+from another. Unimported checkout documents remain invisible and stale action evidence cannot authorize a save.
+
+**Internally admitted package path:** Connect reads the same home Plan identity through Core's `read_plan` tool.
+Workers receive explicit instructions to read the current action's Plan before acting, including validation workers.
+`work_record_search` and `work_record_read` reuse Core's canonical Work Record retrieval and role-based current/all
+policy. A stable record ID identifies a Work Record within the workflow's Project; a filesystem path never authorizes
+access. Search hydrates canonical records and reports stale index candidates and status/supersession notices.
+
+**Requirement: Deliver canonical documents without host home access.** Current action identity scopes each read.
+Bounded UTF-8 pages include a document revision; continuation requires that revision and rejects changed input. Reads
+and rejected requests do not advance workflow or modify canonical documents. The external host authorizes the MCP
+call; Core supplies the text from its own authorized store. If the host denies tools and no authorized route remains,
+the worker stops dependent work. Core does not grant host roots or create repository copies or links. Public default
+package admission is current for ordinary local and manual-SSH launches; managed-remote ownership activation remains target scope.
+
+**Acceptance:** A restricted host unable to read canonical home files can read the selected Plan and searchable Work
+Records through the real Core MCP carrier. Invalid paths, stale action identities, unavailable record IDs and stale
+page revisions return no content and preserve documents and workflow state. Current-only roles cannot read archived
+or superseded records; Recorder retains all-status access. Reconnect reads the same edited canonical content.
+
 **Scope and maturity:** The Claude FEATURE Preview delivers Plan review, Feedback, approval, and readiness through
 Plannotator and Core. Review decisions are durable before browser acknowledgment. Claude retrieves Feedback and image
 paths explicitly with current instructions, revises the Plan, and submits the next round into the same browser page. Cancellation returns to
@@ -774,6 +801,29 @@ start or resume from the user's intent; a resume first presents the latest open 
 [Cross-host continuation](#compatibility-and-honest-availability) owns the required originating-host disclosure and
 artifact-based handoff. Shared runtime tests do not qualify either Codex surface's complete live journey.
 
+**Requirement: Verified Project move and link continuity.** Deliberate Core Project entry binds original Attached
+Workflow directories to stable identity. Status by ID, latest-open restore, current instructions, callbacks, and accepted
+next operations follow those verified bindings and retain the original record and lock path. Lookup changes no revision,
+request, pending action, or accepted-operation receipt. Historical request evidence remains historical; current checkout
+paths are resolved separately. Planning and review may continue in an accepted linked clone; first execution binds to
+that clone's repository, independently of the request's origin. Other linked repositories can discover the workflow but
+cannot take over its execution attempt. Compatibility, consent, current-action, and revision checks continue to apply.
+
+**Move/link acceptance scenarios:**
+
+- Given a pending workflow in an admitted Project, moving and re-entering it lets a fresh process restore the same
+  workflow and action IDs. Its next accepted operation advances the existing revision once; replay changes no bytes.
+- Given accepted linked clones, lookup reaches their bound histories. A declined clone or foreign workflow ID grants no
+  mutation authority, and incompatible hosts retain their existing refusal.
+- Given a workflow created between successive admitted moves, restore and continuation retain its intermediate
+  historical root and original storage directory.
+- Given an unrelated directory reusing a moved Project's old root, status reports the location mismatch, latest-open
+  restore excludes the old workflow, and instructions and callbacks retain the foreign-Project refusal.
+- Given a workflow created in clone A and planned, reviewed, and first executed in accepted linked clone B, B can read
+  current instructions, complete the action, and replay accepted operations without changing historical request evidence.
+  A and other linked repositories cannot advance that execution attempt.
+- Given a retained execution attempt, another linked repository cannot silently become its execution checkout.
+
 **Requirement: Distinguish active validation from recovery.** Read-only inspection identifies an owned, unsettled
 validation operation as running, with its operation identity, start time, and available checkpoint progress. It does
 not suggest starting another validation operation. Recovery guidance appears after the operation has settled or its
@@ -781,6 +831,14 @@ owner is gone; elapsed time alone does not establish interruption. Shared Core o
 [latest-failure repair context](runwield-core-prd.md#validation) and full validation before publication.
 
 **Requirement: Start with necessary setup and preserve work after interruption.**
+
+- Large reviews retain each immutable validation request once. Reading another diff page adds its replay result and
+  coverage receipt, not another copy of the entire candidate. Exact operation replay and candidate identity remain
+  unchanged after process restart.
+- Core reads existing expanded records with memory bounded by individual requests and replay results. Passive reads
+  leave the record untouched; the next guarded write converts it to compact storage without changing its action,
+  revision preconditions, historical operation responses, or review coverage. Missing or altered retained request
+  evidence refuses continuation rather than weakening review.
 
 - A user must be able to run the first Attached Workflow in an uninitialized trusted repository.
 - Full `wld init` is not an entrance requirement.
@@ -836,7 +894,8 @@ owner is gone; elapsed time alone does not establish interruption. Shared Core o
   outcome. A new conversation does not need the old conversation's text.
 - **Existing-Plan planning handoff:** Given a user-selected draft Epic child on its target branch and a dirty invoking
   checkout, native activation or continuation binds that exact Plan identity. Before Planner edits, an explicit Core
-  planning operation prepares the authoritative workspace and supplies its cwd and Plan path. Retrying the same action
+  planning operation prepares a source checkout on the target branch. The Planner reads the canonical Plan with
+  `read_plan` and submits its edits with `plan_written`. A child stored only in Git requires explicit import. Retrying the same action
   reuses preparation and preserves unrelated invoking-checkout changes. Passive status, instruction, and document reads
   do not create planning worktrees. Preparation failures stop dependent work for repair and native retry; they do not
   authorize manual worktrees, proxy instructions, or implementation of another child.

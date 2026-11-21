@@ -1,14 +1,24 @@
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { createUiApiFixture } from "./ui-api-test-fixture.ts";
-import { withSessionViewFixture, type SessionViewFixture } from "./testing/session-view-fixture.ts";
+import {
+    withSessionViewFixture as withSessionFixture,
+    type SessionViewFixture,
+} from "./testing/session-view-fixture.ts";
 import { test } from "node:test";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
+import {
+    withRuntimeCommandFixture as withRuntimeFixture,
+    type RuntimeCommandFixture,
+} from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { savePlan, type PlanFrontMatter } from "../../plan-store.ts";
-import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
+import type { PlanFrontMatter } from "../../plan-format.ts";
+import {
+    seedPlan as savePlan,
+    seedPlanController as writeControllerState,
+} from "../../shared/testing/plan-state-fixture.ts";
 import {
     RuntimeEventTypes,
     type RuntimeValidationCheckResults,
@@ -17,6 +27,16 @@ import {
 import { presentTutorialEvent, restoreVerifiedTutorialRecap } from "./tutorial-guidance.ts";
 import { setCustomSetting } from "../../shared/settings.ts";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
+
+async function withSessionViewFixture(run: (fixture: SessionViewFixture) => Promise<void>) {
+    return await withSessionFixture((fixture) => withRetainedPlanFixture(fixture.projectRoot, () => run(fixture)));
+}
+
+async function withRuntimeCommandFixture<T>(prefix: string, run: (fixture: RuntimeCommandFixture) => Promise<T>) {
+    return await withRuntimeFixture(prefix, (fixture) =>
+        withRetainedPlanFixture(fixture.projectRoot, () => run(fixture)),
+    );
+}
 
 function tutorialView(messages: string[]) {
     const view = createUiApiFixture();

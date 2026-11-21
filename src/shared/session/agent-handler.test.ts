@@ -1,6 +1,7 @@
-import { loadPlan, savePlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+import { seedPlan as savePlan } from "../testing/plan-state-fixture.ts";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
-import { applySharedPlanReviewDecision } from "../workflow/plan-review-actions.ts";
+import { applySharedPlanReviewDecision, capturePlanReviewInput } from "../../plan-store/index.ts";
 import { test } from "node:test";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -361,6 +362,7 @@ test("real Plan review feedback resumes the handler and saved approval settles w
                 }
                 const decision = { approved: true, approvalAction: "later" as const };
                 const accepted = await applySharedPlanReviewDecision({
+                    packageInput: await capturePlanReviewInput(projectRoot, "event-plan", plan.revision),
                     cwd: projectRoot,
                     planName: "event-plan",
                     planPath: plan.path,

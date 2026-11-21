@@ -25,6 +25,13 @@ Run `wld` to start a Session. Inside it:
 
 RunWield saves Sessions under `~/.wld/sessions/`.
 
+With `wld remote <target>`, conversation history stays on the laptop. Reconnect to the remote Project and use
+`/resume` to continue it, or use `wld remote sessions` to read saved history offline.
+
+A remote Git directory can be renamed after RunWield has retained its verified identity. Reconnecting from the same
+laptop account to that Project on the same server finds the same conversation and uses the new directory. Older
+Sessions without retained identity and non-Git Sessions still require their original remote path.
+
 When you resume a large Session, RunWield can offer to compact it first. Set the threshold with
 [`compactOnResumeThresholdPercent`](settings.md#runwield-custom-keys).
 

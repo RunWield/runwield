@@ -77,6 +77,8 @@ test("directory discovery admits an extra package for all and explicit selection
         await cp(join(checkoutRoot, "scripts/reviewer-benchmark"), join(root, "scripts/reviewer-benchmark"), {
             recursive: true,
         });
+        for (const path of ["scripts/check-bun-runtime.ts", "package.json"])
+            await cp(join(checkoutRoot, path), join(root, path));
         await symlink(join(checkoutRoot, "src"), join(root, "src"), "dir");
         await symlink(join(checkoutRoot, "node_modules"), join(root, "node_modules"), "dir");
         const result = await captureForegroundProcess("bun", {

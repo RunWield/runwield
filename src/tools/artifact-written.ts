@@ -1,3 +1,4 @@
+import { readPlanSessionArtifact } from "../plan-store/index.ts";
 import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 /**
  * @module artifact-written
@@ -116,8 +117,11 @@ export function createArtifactWrittenTool(options: ArtifactWrittenOptions = {}) 
                 const capability = hostedSession.getManagedOperationCapability?.() || null;
                 if (!capability) throw new Error("Artifact registration requires an active managed Session turn");
                 capability.assertLive();
-                const resolved = await resolveArtifact(hostedSession.cwd, params.path);
                 const kind = params.kind as SessionArtifactKind;
+                const resolved =
+                    kind === "plan" || kind === "epic-artifact"
+                        ? await readPlanSessionArtifact(hostedSession.cwd, params.path, kind)
+                        : await resolveArtifact(hostedSession.cwd, params.path);
                 assertKindPath(kind, resolved.relativePath);
                 const title = params.title?.trim() || inferTitle(resolved.markdown, resolved.relativePath);
                 const artifact = capability.registerArtifact({

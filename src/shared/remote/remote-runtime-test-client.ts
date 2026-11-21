@@ -30,10 +30,10 @@ import { recordTutorialContext } from "../session/tutorial-context-session.ts";
 import { appendExecutionWorkflowSnapshot } from "../session/execution-workflow-session.ts";
 import { runResumeCommand } from "../../cmd/resume/index.ts";
 import { requestLocalReviewInteraction } from "../session/local-review-interactions.ts";
-import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { listEntries } from "../worktree-registry.ts";
 import { reconcileStoredPublication } from "../workflow/publication-machine.ts";
-import { loadPlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { continueWorkflowValidation } from "../workflow/validation.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
@@ -51,6 +51,7 @@ export interface RuntimeClientInput {
     review?: RuntimeReviewConfiguration;
     connection: RemoteSessionControlConnection;
     resources: string;
+    laptopHome: string;
     memoryCollection: string;
     cwd: string;
 }
@@ -146,9 +147,16 @@ export interface RuntimeClientReport {
     priorValidationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
     validationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
 }
+if (process.argv[2] === "--runtime-identity") {
+    console.log(process.versions.bun || "");
+    process.exit(0);
+}
 const lines = processLines(stdinStream());
 const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
-configureRemotePersonalResources({ globalRoot: input.resources });
+configureRemotePersonalResources({
+    globalRoot: input.resources,
+    personalOwner: { kind: "managed-remote", identity: input.laptopHome },
+});
 configureRemoteSettingsConnection(input.connection);
 const clearMcp = configureRemoteMcpConnection(input.connection);
 const clearMemory = configureRemoteMemoryConnection({ ...input.connection, collection: input.memoryCollection });
@@ -329,10 +337,20 @@ try {
                     triageMeta: plan.attrs,
                     approvalEvidence: evidence.evidence,
                 };
-                const result =
+                // A real workflow can span several CI and agent turns. Expose its
+                // progress so the harness deadline measures silence, not total work.
+                const unsubscribe = runtime.subscribeSessionEvents(sessionId, (event) => {
+                    if (
+                        event.type === RuntimeEventTypes.WORKFLOW_CONTEXT_CHANGED ||
+                        event.type === RuntimeEventTypes.TOOL_END
+                    )
+                        console.log(JSON.stringify({ kind: "workflow-progress", text: event.type }));
+                });
+                const result = await (
                     command.kind === "workflow-execute"
-                        ? await runtime.executePlan(sessionId, options)
-                        : await runtime.runValidation(sessionId, options);
+                        ? runtime.executePlan(sessionId, options)
+                        : runtime.runValidation(sessionId, options)
+                ).finally(unsubscribe);
                 console.log(
                     JSON.stringify({
                         kind: command.kind,

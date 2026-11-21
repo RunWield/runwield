@@ -1,19 +1,16 @@
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.ts";
-import { deleteArchivedPlanUnit } from "../../plan-store.ts";
 import {
+    pendingPruneRequest,
+    confirmPruneRequest,
+    previewPlanRetention,
     type ArchivedPlanUnit,
-    collectArchivedPlanUnits,
-    collectWorkRecordPlanIds,
-    selectArchivedPlansForPrune,
-} from "../../shared/plan-archive-retention.ts";
-import { getPlanArchiveRetentionPolicy } from "../../shared/settings.ts";
-
+} from "../../plan-store/index.ts";
 function printPruneHelp(): void {
     console.log(`Usage:
   ${CLI_BIN} plans prune [--dry-run] [--yes] [--help]
 
-Deletes archived Plans that are covered by a Work Record and past the repository archive retention policy.`);
+Deletes confirmed archived Plan families with Work Record coverage under the Project retention policy.`);
 }
 
 function confirm(message: string): boolean {
@@ -31,10 +28,6 @@ function printGroup(label: string, units: ArchivedPlanUnit[], includePaths = fal
     }
 }
 
-function isNotFoundPruneError(error: Error): boolean {
-    return /Archived Plan not found/i.test(error.message);
-}
-
 export async function runPlansPruneCommand(argv: string[]): Promise<void> {
     const parsed = parseArgs(argv, {
         boolean: ["help", "dry-run", "yes"],
@@ -47,57 +40,35 @@ export async function runPlansPruneCommand(argv: string[]): Promise<void> {
     if (parsed._.length > 0) throw new Error(`Unexpected plans prune argument: ${String(parsed._[0])}`);
 
     const cwd = getCwd();
-    const policy = getPlanArchiveRetentionPolicy(cwd);
-    const selection = selectArchivedPlansForPrune({
-        units: await collectArchivedPlanUnits(cwd),
-        workRecordPlanIds: await collectWorkRecordPlanIds(cwd),
-        policy,
-        now: new Date(),
-    });
+    let approved = await pendingPruneRequest(cwd, "plans");
+    if (approved) console.log(`[RunWield] Interrupted prune has ${approved.length} approved Plan unit(s) remaining.`);
+    else {
+        const selection = await previewPlanRetention(cwd);
+        const policy = selection.policy;
+        console.log(
+            `[RunWield] Archived Plan prune policy: archiveRetentionDays=${policy.retentionDays}, archiveKeepLast=${policy.keepLast}`,
+        );
+        printGroup("Due", selection.due, true);
+        printGroup("Spared by keepLast", selection.sparedByKeepLast);
+        printGroup("Within retention", selection.withinRetention);
+        printGroup("Ineligible", selection.ineligible);
 
-    console.log(
-        `[RunWield] Archived Plan prune policy: archiveRetentionDays=${policy.retentionDays}, archiveKeepLast=${policy.keepLast}`,
-    );
-    printGroup("Due", selection.due, true);
-    printGroup("Spared by keepLast", selection.sparedByKeepLast);
-    printGroup("Within retention", selection.withinRetention);
-    printGroup("Ineligible", selection.ineligible);
-
+        approved = selection.due.flatMap((unit) => (unit.token ? [{ token: unit.token, label: unit.name }] : []));
+    }
     if (parsed["dry-run"]) {
         console.log("[RunWield] Dry run only. No archived Plans were deleted.");
         return;
     }
-    if (selection.due.length === 0) {
+    if (approved.length === 0) {
         console.log("[RunWield] No archived Plans are due for pruning.");
         return;
     }
-    if (!parsed.yes && !confirm(`Delete ${selection.due.length} archived Plan unit(s)?`)) {
+    if (!parsed.yes && !confirm(`Delete ${approved.length} archived Plan unit(s)?`)) {
         console.log("[RunWield] Archive prune canceled. No archived Plans were deleted.");
         return;
     }
 
-    const failures: string[] = [];
-    let deleted = 0;
-    let skipped = 0;
-    for (const unit of selection.due) {
-        try {
-            const removed = await deleteArchivedPlanUnit(cwd, unit.name);
-            deleted += 1;
-            console.log(`[RunWield] Deleted ${unit.name}`);
-            for (const path of removed) console.log(`  ${path}`);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            if (error instanceof Error && isNotFoundPruneError(error)) {
-                skipped += 1;
-                console.log(`[RunWield] Skipped ${unit.name}: ${message}`);
-                continue;
-            }
-            failures.push(`${unit.name}: ${message}`);
-            console.error(`[RunWield] Failed ${unit.name}: ${message}`);
-        }
-    }
-    console.log(`[RunWield] Pruned ${deleted} archived Plan unit(s); ${skipped} skipped; ${failures.length} failed.`);
-    if (failures.length > 0) {
-        throw new Error(`Archive prune failed for ${failures.length} unit(s): ${failures.join("; ")}`);
-    }
+    const { deleted, skipped } = await confirmPruneRequest(cwd, "plans", approved);
+    for (const name of deleted) console.log(`[RunWield] Deleted ${name}`);
+    console.log(`[RunWield] Pruned ${deleted.length} archived Plan unit(s); ${skipped.length} skipped; 0 failed.`);
 }

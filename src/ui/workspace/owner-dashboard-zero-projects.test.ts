@@ -22,7 +22,10 @@ test("Dashboard with no registered Projects completes all four empty sections", 
         unsubscribe();
         assertEquals(frames.at(-1)?.type, "complete");
         assertEquals(result.dashboard.sections.length, 4);
-        assertEquals(result.dashboard.sections.every((section) => section.items.length === 0), true);
+        assertEquals(
+            result.dashboard.sections.every((section) => section.items.length === 0),
+            true,
+        );
     } finally {
         store.close();
         await fsRm(dir, { recursive: true });

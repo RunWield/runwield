@@ -7,9 +7,9 @@ import { type Static, Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.ts";
-import { loadPlan, savePlan, StalePlanWriteError } from "../plan-store.ts";
-import { syncEpicChildPlanDeviations } from "../shared/workflow/epic-review-context.ts";
-import { appendPlanDeviation, formatPlanDeviationForPrompt, type PlanDeviation } from "../shared/plan-deviations.ts";
+import { loadPlan, recordPlanDeviation, StalePlanWriteError } from "../plan-store/index.ts";
+import { syncEpicChildPlanDeviations } from "../plan-store/index.ts";
+import { formatPlanDeviationForPrompt, type PlanDeviation } from "../shared/plan-deviations.ts";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
@@ -222,20 +222,19 @@ export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOpti
                     { decision: "stale", reason: "plan_revision_changed" },
                 );
             }
-            const appended = appendPlanDeviation(latest.attrs.planDeviations, {
-                id: toolCallId,
-                supersededRequirement,
-                replacementRequirement,
-                ...(reason ? { reason } : {}),
-                approvedAt: new Date().toISOString(),
-            });
+            let appended;
             try {
-                await savePlan(
+                appended = await recordPlanDeviation(
                     executionCwd,
                     planName,
-                    latest.markdown,
-                    { planDeviations: appended.entries },
-                    { expectedRevision: latest.revision },
+                    {
+                        id: toolCallId,
+                        supersededRequirement,
+                        replacementRequirement,
+                        ...(reason ? { reason } : {}),
+                        approvedAt: new Date().toISOString(),
+                    },
+                    latest.revision,
                 );
             } catch (error) {
                 if (error instanceof StalePlanWriteError) {

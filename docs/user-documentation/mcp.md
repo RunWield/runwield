@@ -53,8 +53,8 @@ RunWield uses Pi's
   suffix is added.
 - **Resources:** servers that have resources also give Agents tools to list and read them. Text and images reach the
   model. Text over 20 KiB is cut short, and the full output is saved to a temporary file named in the result.
-- **Updates:** when a server adds or removes tools, Agents see the change right away. Claude CLI and Antigravity CLI see
-  it on their next turn. `/reload` rereads your MCP files.
+- **Updates:** when a server adds or removes tools, Agents see the change right away. Claude CLI sees it on
+  its next turn. `/reload` rereads your MCP files.
 - **Which Agents:** every main Agent gets your MCP tools. Helper Agents and the review Agents used during validation
   don't.
 - **Failures:** if a server can't start, RunWield shows a warning with secrets removed, and the Session keeps working.

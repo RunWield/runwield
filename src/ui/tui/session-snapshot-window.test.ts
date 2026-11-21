@@ -1,7 +1,11 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
-import { ok as assert, notStrictEqual as assertNotStrictEquals, strictEqual as assertStrictEquals } from "node:assert/strict";
+import {
+    ok as assert,
+    notStrictEqual as assertNotStrictEquals,
+    strictEqual as assertStrictEquals,
+} from "node:assert/strict";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
@@ -151,7 +155,8 @@ test("sidebar snapshots follow question lifecycle events before their cache expi
                 event.type !== RuntimeEventTypes.INTERACTION_REQUESTED &&
                 event.type !== RuntimeEventTypes.INTERACTION_RESOLVED &&
                 event.type !== RuntimeEventTypes.INTERACTION_CANCELED
-            ) return;
+            )
+                return;
             const snapshot = window.read();
             states.push(Boolean(snapshot?.workflowContext?.liveQuestion));
             actions.push(tuiSessionSidebarProjection(snapshot || {}).workflow.action?.kind || "");
@@ -171,12 +176,16 @@ test("sidebar snapshots follow question lifecycle events before their cache expi
                 const controller = new AbortController();
                 if (settlement === "already-aborted") controller.abort();
                 window.read();
-                const pending = runtime.requestInteraction(sessionId, {
-                    id: `question-${settlement}`,
-                    type: "text",
-                    prompt: "Which command?",
-                    _meta: { source: "user_interview" },
-                }, controller.signal);
+                const pending = runtime.requestInteraction(
+                    sessionId,
+                    {
+                        id: `question-${settlement}`,
+                        type: "text",
+                        prompt: "Which command?",
+                        _meta: { source: "user_interview" },
+                    },
+                    controller.signal,
+                );
                 if (settlement !== "already-aborted") {
                     await Promise.race([
                         opened.promise,

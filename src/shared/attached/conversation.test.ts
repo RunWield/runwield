@@ -1,3 +1,4 @@
+import { loadPlan } from "../../plan-store/index.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -253,8 +254,8 @@ test("conversation handoffs and direct reads preserve an older open delivery and
     await withHome(async (root) => {
         const older = await submitReview(root);
         const olderBytes = await readRecordBytes(root, older.workflowId);
-        const planPath = join(root, "docs/plans/dark-mode-toggle.md");
-        const planBytes = await readFile(planPath, "utf8");
+        const plan = await loadPlan(root, "dark-mode-toggle");
+        assert.ok(plan);
         for (const role of ["guide", "ideator"] as const) {
             const activated = await runOperation("activate", root, {
                 ...activateInput(`conversation-${role}`),
@@ -288,7 +289,7 @@ test("conversation handoffs and direct reads preserve an older open delivery and
             assert.deepEqual(status.workflow.nextAction, older.nextAction);
             assert.equal(status.workflow.revision, older.revision);
             assert.equal(await readRecordBytes(root, older.workflowId), olderBytes);
-            assert.equal(await readFile(planPath, "utf8"), planBytes);
+            assert.equal((await loadPlan(root, "dark-mode-toggle"))?.revision, plan.revision);
         }
     });
 });

@@ -1,3 +1,4 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
@@ -5,7 +6,8 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.ts";
-import { getStoredPlanPath, savePlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
 import { createUiApiFixture } from "./ui-api-test-fixture.ts";
 
@@ -84,7 +86,7 @@ test("TUI Plan review returns feedback and remains usable after a missing Plan",
     const scripted = createScriptedReviewBrowser("deny", { feedback: "Add a test" });
     const adapter = createTuiInteractionAdapter(view.uiAPI, { browser: scripted.browser });
     try {
-        await savePlan(cwd, "plan", "# Plan\n\nDo the work.\n", {
+        await seedPlan(cwd, "plan", "# Plan\n\nDo the work.\n", {
             planId: "tui-review-plan",
             classification: "PLANNED_CHANGE",
             status: "draft",
@@ -92,7 +94,7 @@ test("TUI Plan review returns feedback and remains usable after a missing Plan",
         const request = {
             type: "plan_review" as const,
             prompt: "Review the Plan",
-            _meta: { cwd, planName: "plan", planPath: getStoredPlanPath(cwd, "plan") },
+            _meta: { cwd, planName: "plan", planPath: (await loadPlan(cwd, "plan"))!.path },
         };
         const response = await adapter.requestInteraction(request);
         assertEquals(response.outcome, "selected");

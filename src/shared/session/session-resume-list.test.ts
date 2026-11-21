@@ -48,10 +48,7 @@ test("resume listing reads only the 30 newest transcripts and returns them newes
                 const id = `pi-${String(index).padStart(2, "0")}`;
                 const filename = `${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`;
                 const transcriptPath = join(sessionDir, filename);
-                await fsWriteFile(
-                    transcriptPath,
-                    transcriptText(id, cwd, timestamp, index),
-                );
+                await fsWriteFile(transcriptPath, transcriptText(id, cwd, timestamp, index));
                 const modified = new Date(Date.UTC(2026, 1, 1, 0, 0, index));
                 await fsUtimes(transcriptPath, modified, modified);
             }
@@ -88,10 +85,7 @@ test("resume listing hides a conversation while another TUI holds its lock", asy
             await fsMkdir(sessionDir, { recursive: true });
             const timestamp = "2026-01-01T00:00:00.000Z";
             const piSessionId = "pi-active-tui";
-            const transcriptPath = join(
-                sessionDir,
-                `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`,
-            );
+            const transcriptPath = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
             await fsWriteFile(transcriptPath, transcriptText(piSessionId, cwd, timestamp, 1));
             const session = await holderStore.ensureSessionCatalogRecord({
                 projectId: project.projectId,
@@ -117,7 +111,10 @@ test("resume listing hides a conversation while another TUI holds its lock", asy
 
             holderStore.releaseUnchangedActivation(proof);
             const afterRelease = await listRecentResumableSessions(cwd, listingStore);
-            assertEquals(afterRelease.map((entry) => entry.id), [piSessionId]);
+            assertEquals(
+                afterRelease.map((entry) => entry.id),
+                [piSessionId],
+            );
         } finally {
             listingStore.close();
             holderStore.close();
@@ -141,10 +138,7 @@ test("resume listing shows the top-level session but not semantic repair segment
             await fsMkdir(sessionDir, { recursive: true });
             const parentTimestamp = "2026-08-16T17:00:00.000Z";
             const parentId = "pi-top-level";
-            const parentPath = join(
-                sessionDir,
-                `${parentTimestamp.replace(/[:.]/g, "-")}_${parentId}.jsonl`,
-            );
+            const parentPath = join(sessionDir, `${parentTimestamp.replace(/[:.]/g, "-")}_${parentId}.jsonl`);
             await fsWriteFile(parentPath, transcriptText(parentId, cwd, parentTimestamp, 1));
             const session = await store.ensureSessionCatalogRecord({
                 projectId: project.projectId,
@@ -167,10 +161,7 @@ test("resume listing shows the top-level session but not semantic repair segment
 
             const repairTimestamp = "2026-08-16T18:00:00.000Z";
             const repairId = "pi-semantic-repair";
-            const repairPath = join(
-                sessionDir,
-                `${repairTimestamp.replace(/[:.]/g, "-")}_${repairId}.jsonl`,
-            );
+            const repairPath = join(sessionDir, `${repairTimestamp.replace(/[:.]/g, "-")}_${repairId}.jsonl`);
             await fsWriteFile(repairPath, transcriptText(repairId, cwd, repairTimestamp, 2));
             await store.appendSessionTranscriptSegment({
                 runwieldSessionId: session.runwieldSessionId,
@@ -185,7 +176,10 @@ test("resume listing shows the top-level session but not semantic repair segment
 
             const listed = await listRecentResumableSessions(cwd, store);
 
-            assertEquals(listed.map((entry) => entry.id), [parentId]);
+            assertEquals(
+                listed.map((entry) => entry.id),
+                [parentId],
+            );
         } finally {
             store.close();
             process.env["HOME"] = previousHome;
@@ -216,7 +210,10 @@ test("resume listing ignores an unrelated parent Project record", async () => {
 
             const listed = await listRecentResumableSessions(cwd, store);
 
-            assertEquals(listed.map((session) => session.id), [piSessionId]);
+            assertEquals(
+                listed.map((session) => session.id),
+                [piSessionId],
+            );
         } finally {
             store.close();
             process.env["HOME"] = previousHome;

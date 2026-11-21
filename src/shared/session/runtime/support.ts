@@ -1,3 +1,4 @@
+import { isRemovedAgyProvider } from "../../models/removed-providers.ts";
 import { AGENTS, SUBAGENTS } from "../../../constants.ts";
 import { readPersistedActiveAgentName, readPersistedModelState } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
@@ -5,11 +6,11 @@ import { getModelRegistry } from "../../models/model-registry.ts";
 import { parseProviderModel } from "../../models/model-validation.ts";
 import { getSettingsManager } from "../../settings.ts";
 import { isGitRepository } from "../../git.ts";
-import { preparePlanController } from "../../workflow/plan-preparation.ts";
+import { preparePlanController } from "../../../plan-store/index.ts";
 import { readPersistedWorkflowContext } from ".././workflow-context-session.ts";
 import { createPairCheckpointTool } from "../../../tools/pair-checkpoint.ts";
 import { formatPairCheckpointContext, restorePairExecutionState } from ".././pair-checkpoint-session.ts";
-import { loadPlan } from "../../../plan-store.ts";
+import { loadPlan } from "../../../plan-store/index.ts";
 import { listEntries, prepareWorktreeRegistry } from "../../worktree-registry.ts";
 
 /** A delivered execution keeps its transcript origin, but resumes in the registered project. */
@@ -287,10 +288,6 @@ export function normalizeManagedActiveModelState(
     return { model, provider };
 }
 
-export function isAgyCliMcpSetupApprovalError(error: Error) {
-    return error instanceof Error && error.name === "AgyCliMcpSetupApprovalError";
-}
-
 /**
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager
  * @returns {string | undefined}
@@ -298,6 +295,7 @@ export function isAgyCliMcpSetupApprovalError(error: Error) {
 export function resolvePersistedResumeModel(sessionManager: import("@earendil-works/pi-coding-agent").SessionManager) {
     const persisted = readPersistedModelState(sessionManager);
     if (!persisted?.provider || !persisted.model) return undefined;
+    if (isRemovedAgyProvider(persisted.provider)) return `${persisted.provider}/${persisted.model}`;
     try {
         const registry = getModelRegistry();
         const model = registry.find(persisted.provider, persisted.model);
@@ -382,7 +380,7 @@ export function buildSemanticRepairCiState(
  * @returns {Array<import('../../workflow/workflow-presentation.ts').WorkflowProgressFact>}
  */
 export function workflowProgressFactsFromActiveMeta(
-    activeWorkflowMeta: Partial<import("../../../plan-store.ts").PlanFrontMatter> & SemanticWorkflowMeta,
+    activeWorkflowMeta: Partial<import("../../../plan-store/index.ts").PlanFrontMatter> & SemanticWorkflowMeta,
 ): import("../../workflow/workflow-presentation.ts").WorkflowProgressFact[] {
     const facts: import("../../workflow/workflow-presentation.ts").WorkflowProgressFact[] = [];
     const checkpoint = activeWorkflowMeta.validationCheckpoint;

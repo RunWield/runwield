@@ -1,7 +1,8 @@
-import { canonicalizeStoredPlanName, isHiddenPlanName } from "../../plan-store.ts";
-import { assertNotReservedEpicArtifactPlanName } from "../epic-artifacts.ts";
+import { canonicalizeStoredPlanName, isHiddenPlanName } from "../../plan-format.ts";
+import { assertNotReservedEpicArtifactPlanName } from "../../plan-format.ts";
 import { effectiveDeliveryBranch } from "../workflow/plan-branch.ts";
-import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation, withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { preparePlanningWorktreeForPlan } from "../workflow/planning-worktree.ts";
 import { prepareSessionPlanningWorktree } from "../workflow/session-planning-worktree.ts";
 import type { ExistingPlanningPlan } from "./operations.ts";
 
@@ -29,6 +30,16 @@ export async function resolvePlanningSelection(projectRoot: string, selection: E
 /** The same planning boundary used by Core sessions, with explicit identity checks on both sides. */
 export async function prepareAttachedPlanning(projectRoot: string, selection: ExistingPlanningPlan) {
     const selected = await resolvePlanningSelection(projectRoot, selection);
+    if ("packageSelection" in selected.location && selected.location.packageSelection) {
+        if (selected.location.planningNotStarted !== undefined) {
+            const plan = selected.location.plan;
+            if (!plan) throw new Error("The selected Plan is unavailable for preparation.");
+            await withLocalPlanWorkflow(projectRoot, selected.plan.planName, () =>
+                preparePlanningWorktreeForPlan(projectRoot, selected.plan.planName, plan.attrs),
+            );
+        }
+        return selected.plan;
+    }
     const prepared = await prepareSessionPlanningWorktree(projectRoot, selected.plan.planName);
     if (!prepared.plan || prepared.plan.attrs.planId !== selected.plan.planId || prepared.planningNotStarted) {
         throw new Error("Core planning preparation did not preserve the selected Plan identity. Retry planning.");

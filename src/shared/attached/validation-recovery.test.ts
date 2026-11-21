@@ -86,7 +86,7 @@ test("a rejected validation decision remains recoverable and a later text answer
 test("a Core round-limit pause keeps findings and resumes the same user decision", async () => {
     const fixture = await attachedValidationFixture();
     try {
-        const { updatePlanFrontMatter } = await import("../../plan-store.ts");
+        const { seedPlanState } = await import("../testing/plan-state-fixture.ts");
         const { makeValidationCheckpoint } = await import("../workflow/validation-checkpoint.ts");
         const { createLedger, applyRoundFindings } = await import("../workflow/review-ledger.ts");
         const { SEMANTIC_REVIEW_CYCLES } = await import("../workflow/validation-types.ts");
@@ -104,7 +104,7 @@ test("a Core round-limit pause keeps findings and resumes the same user decision
             ],
             1,
         ).ledger;
-        await updatePlanFrontMatter(
+        await seedPlanState(
             fixture.cwd,
             "p",
             {

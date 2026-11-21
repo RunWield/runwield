@@ -105,7 +105,7 @@ the [Connect capabilities](runwield-connect-prd.md#capability-requirements) and 
 release availability.
 
 When RunWield Core owns the Session and invokes another harness non-interactively, such as Claude Code through
-`claude -p` or Antigravity CLI, that harness is an **Execution Backend** alongside Pi. Execution Backends are Core
+`claude -p`, that harness is an **Execution Backend** alongside Pi. Execution Backends are Core
 capabilities, not RunWield Connect plugins or separately branded product modes.
 
 <a id="24-naming"></a>
@@ -160,8 +160,7 @@ A Plan connects:
 
 Plans are prospective: they describe what the team intends to do and how.
 
-Plans remain markdown files with stable front matter in Core. Workspace can provide richer collaboration, but must not
-erase the repo-local Plan model. Optional external Ticket links preserve user-identified demand provenance for
+Core stores Plan Markdown with protected identity and lifecycle metadata in a personal Project store. Workspace uses the same canonical Plan. Repository documents support explicit import and optional delivery copies. Optional external Ticket links preserve user-identified demand provenance for
 navigation; RunWield still does not make external trackers mandatory, fetch Ticket data, or synchronize Ticket lifecycle
 state.
 

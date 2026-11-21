@@ -48,7 +48,9 @@ test("bounded remote session refuses saved CLI identity before connecting", asyn
                         modelId: provider === "claude-cli" ? "sonnet" : "gemini-3.1-pro",
                     }),
                 Error,
-                `Unsupported model execution backend "${provider}"`,
+                provider === "agy-cli"
+                    ? "Antigravity (agy-cli) was removed"
+                    : `Unsupported model execution backend "${provider}"`,
             );
             await assertRejects(
                 () =>
@@ -59,7 +61,9 @@ test("bounded remote session refuses saved CLI identity before connecting", asyn
                         modelOverride: `${provider}/${provider === "claude-cli" ? "sonnet" : "gemini-3.1-pro"}`,
                     }),
                 Error,
-                `Unsupported model execution backend "${provider}"`,
+                provider === "agy-cli"
+                    ? "Antigravity (agy-cli) was removed"
+                    : `Unsupported model execution backend "${provider}"`,
             );
         }
     } finally {
@@ -250,7 +254,9 @@ test("bounded remote Pi session reads its project through a tool and sends the r
                             project,
                         ),
                     Error,
-                    "Unsupported model execution backend",
+                    selection.startsWith("agy-cli/")
+                        ? "Antigravity (agy-cli) was removed"
+                        : "Unsupported model execution backend",
                 );
             }
             await assertRejects(
@@ -288,6 +294,9 @@ test("bounded remote Pi session reads its project through a tool and sends the r
                 await fsMkdir(join(caseRoot, ".wld"), { recursive: true });
                 await fsWriteFile(join(root, "settings.json"), JSON.stringify(globalSettings));
                 await fsWriteFile(join(caseRoot, ".wld", "settings.json"), JSON.stringify(projectSettings));
+                if (JSON.stringify([globalSettings, projectSettings, selection]).includes("agy-cli")) {
+                    expectedError = "Antigravity (agy-cli) was removed";
+                }
                 const resolve = () =>
                     resolveBoundedRemoteModelSelection(registry, { cwd: caseRoot, agentDef, ...selection });
                 if (expectedError) await assertRejects(resolve, Error, expectedError);

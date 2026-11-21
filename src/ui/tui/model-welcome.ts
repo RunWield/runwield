@@ -89,7 +89,9 @@ export async function maybeShowModelWelcome(options: MaybeShowModelWelcomeOption
         "Choose how you'd like to connect your model.",
         "RunWield needs a configured model before chat submissions can run.",
         initialAvailability.error ? `Model registry note: ${initialAvailability.error}` : "",
-    ].filter(Boolean).join("\n");
+    ]
+        .filter(Boolean)
+        .join("\n");
 
     const setupResult = await runSharedModelSetup({
         uiAPI: options.uiAPI,

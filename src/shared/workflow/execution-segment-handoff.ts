@@ -226,7 +226,9 @@ function normalizeImages(images: HandoffImage[]): HandoffImage[] {
     });
 }
 
-function parseContinuation(payload: SegmentHandoffPayload):
+function parseContinuation(
+    payload: SegmentHandoffPayload,
+):
     | { kind: "ok"; continuation: SegmentHandoffContinuation }
     | { kind: "refresh_required" | "recovery_required"; result: HandoffRejection } {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -256,8 +258,12 @@ function parseContinuation(payload: SegmentHandoffPayload):
         };
     }
     if (
-        !candidate.session?.runwieldSessionId || !candidate.plan?.planId || !candidate.plan?.planName ||
-        !candidate.plan?.approvedRevision || !candidate.plan?.approvedStatus || !candidate.preparedEvidence
+        !candidate.session?.runwieldSessionId ||
+        !candidate.plan?.planId ||
+        !candidate.plan?.planName ||
+        !candidate.plan?.approvedRevision ||
+        !candidate.plan?.approvedStatus ||
+        !candidate.preparedEvidence
     ) {
         return {
             kind: "recovery_required",
@@ -287,6 +293,11 @@ function hasLaterTurnEntry(entries: PendingSegmentMarker["entries"], markerIndex
 }
 
 function sameEvidence(left: PlanActionEvidence, right: PlanActionEvidence): boolean {
-    return left.planId === right.planId && left.planName === right.planName && left.revision === right.revision &&
-        left.status === right.status && JSON.stringify(left.worktree) === JSON.stringify(right.worktree);
+    return (
+        left.planId === right.planId &&
+        left.planName === right.planName &&
+        left.revision === right.revision &&
+        left.status === right.status &&
+        JSON.stringify(left.worktree) === JSON.stringify(right.worktree)
+    );
 }
