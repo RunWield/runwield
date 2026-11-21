@@ -1,7 +1,7 @@
 ---
 kind: "work_record"
 recordId: "9bc48521-3a7c-4e4f-b184-84e50205a302"
-status: "pending_verification"
+status: "approved"
 scope: "planned_change"
 workKind: "FEATURE"
 origin: "internal"
@@ -11,7 +11,6 @@ provenance:
     sourcePlans:
         - "34978ff1-2070-481d-96bc-2aa16475d4ca"
 ---
-
 # Complete validation logs for repair
 
 ## Summary

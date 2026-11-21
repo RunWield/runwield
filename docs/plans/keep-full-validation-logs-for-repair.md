@@ -19,13 +19,13 @@ userVerifiedAt: null
 routingIntent: "PLANNED_CHANGE"
 targetBranch: "main"
 deliveryBranch: "main"
-status: "reviewed"
 validatedCommit: "966dc31329d4d0d6939a40b1612348345f98fb3d"
 workRecord:
     status: "generated"
     recordId: "9bc48521-3a7c-4e4f-b184-84e50205a302"
     path: "docs/work-records/2026-11-21-complete-validation-logs-for-repair.md"
     lastAttemptAt: "2026-11-21T18:45:29.365Z"
+status: "verified"
 ---
 
 # Keep Full Validation Logs for Repair
