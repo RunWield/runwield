@@ -326,6 +326,8 @@ export async function smokeTestBundledAgentReferenceExtraction(binaryPath: strin
 export async function smokeTestBinaryPlansUiSurface(binaryPath: string, root: string) {
     console.log("\n==> Smoke test standalone Plans UI surface");
     const projectDir = join(root, "plans-ui-project");
+    const home = join(root, "plans-ui-home");
+    await fsMkdir(home, { mode: 0o700 });
     await fsMkdir(join(projectDir, "docs", "plans"), { recursive: true });
     await fsWriteFile(
         join(projectDir, "docs", "plans", "release-plans-ui-smoke.md"),
@@ -334,6 +336,7 @@ export async function smokeTestBinaryPlansUiSurface(binaryPath: string, root: st
 
     const child = spawn(binaryPath, ["plans", "ui", "--no-open"], {
         cwd: projectDir,
+        env: { ...process.env, HOME: home },
         stdio: ["ignore", "pipe", "pipe"],
     });
     const childStatus = waitForScriptExit(child);
