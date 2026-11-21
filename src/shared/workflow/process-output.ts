@@ -83,3 +83,62 @@ export function formatCapturedProcessOutput(
     }
     return `${output}\n${notices.join("\n")}\n`;
 }
+
+export interface ProcessOutputCaptureOptions {
+    tailBytes: number;
+    sink?: (chunk: Uint8Array) => Promise<void>;
+}
+
+/** Read both pipes concurrently, retaining and saving chunks in observed arrival order. */
+export async function captureProcessOutput(
+    stdout: ReadableStream<Uint8Array>,
+    stderr: ReadableStream<Uint8Array>,
+    { tailBytes, sink }: ProcessOutputCaptureOptions,
+): Promise<CapturedProcessStream> {
+    let retained: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
+    let totalBytes = 0;
+    async function capture(stream: ReadableStream<Uint8Array>): Promise<void> {
+        const reader = stream.getReader();
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) return;
+                totalBytes += value.byteLength;
+                retained =
+                    value.byteLength >= tailBytes
+                        ? value.slice(-tailBytes)
+                        : concatBytes(retained, value).slice(-tailBytes);
+                // Await the sink to bound pending writes as well as the retained tail.
+                await sink?.(value);
+            }
+        } finally {
+            reader.releaseLock();
+        }
+    }
+    const results = await Promise.allSettled([capture(stdout), capture(stderr)]);
+    for (const result of results) {
+        if (result.status === "rejected") throw result.reason;
+    }
+    // A byte boundary can split a UTF-8 character. Drop its continuation bytes.
+    let start = 0;
+    while (start < retained.length && (retained[start] & 0xc0) === 0x80) start++;
+    let text = new TextDecoder().decode(retained.subarray(start));
+    // Replacement characters for invalid UTF-8 can use more bytes than the input.
+    const encoded = new TextEncoder().encode(text);
+    if (encoded.byteLength > tailBytes) {
+        start = encoded.byteLength - tailBytes;
+        while (start < encoded.length && (encoded[start] & 0xc0) === 0x80) start++;
+        text = new TextDecoder().decode(encoded.subarray(start));
+    }
+    return { text, totalBytes, truncated: totalBytes > retained.byteLength || encoded.byteLength > tailBytes };
+}
+
+/** Drop a partial first line after byte truncation, then keep at most maxLines lines. */
+export function trimProcessOutputLines(capture: CapturedProcessStream, maxLines: number): CapturedProcessStream {
+    let text = capture.text;
+    if (capture.truncated && text.includes("\n")) text = text.slice(text.indexOf("\n") + 1);
+    const lines = text.split("\n");
+    const lineCount = lines.length - (text.endsWith("\n") ? 1 : 0);
+    if (lineCount > maxLines) text = lines.slice(lineCount - maxLines).join("\n");
+    return { ...capture, text, truncated: capture.truncated || text !== capture.text };
+}

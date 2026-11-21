@@ -2,7 +2,9 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import {
     mkdtemp as fsMkdtemp,
+    mkdir as fsMkdir,
     readFile as fsReadFile,
+    readdir as fsReaddir,
     realpath as fsRealpath,
     rm as fsRm,
     stat as fsStat,
@@ -17,6 +19,8 @@ import { HostedSession } from "../session/hosted-session.ts";
 import { getExactProjectCustomSetting, setCustomSetting, setExactProjectCustomSetting } from "../settings.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
+import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { createSessionRuntimeEvent } from "../session/session-runtime-events.ts";
 
 const IS_WINDOWS = process.platform === "win32";
 
@@ -64,6 +68,8 @@ test("runLocalCI reports the real exit code and captured output", async () => {
         if (result.kind !== "completed") throw new Error("CI should complete.");
         assertEquals(result.exitCode, 0);
         assertStringIncludes(result.output, "ci-ok");
+        assertEquals(result.output.includes("Output truncated"), false);
+        assertEquals(await fsReadFile(validationLogPath(result.output), "utf8"), "ci-ok");
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
     }
@@ -78,6 +84,7 @@ test("runLocalCI returns an operational failure when no validation command is av
         if (result.kind !== "operational_failure") throw new Error("CI should report an operational failure.");
         assertEquals(result.failure.code, "local_process/command_missing");
         assertEquals(result.failure.recoveryClass, "missing_information");
+        assertEquals(await existingValidationLogs(cwd), []);
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
     }
@@ -136,6 +143,10 @@ test("runLocalCI exact-project mode uses the linked worktree command and cwd", a
 
         assertEquals(result.kind, "completed");
         if (result.kind !== "completed") throw new Error("CI should complete.");
+        const logPath = validationLogPath(result.output);
+        assertEquals(logPath.startsWith(resolveProjectRuntimeLayout(worktreePath).selected.validationLogsDir), true);
+        assertEquals(logPath.startsWith(resolveProjectRuntimeLayout(primaryRoot).selected.validationLogsDir), false);
+        assertEquals((await fsStat(logPath)).isFile(), true);
         assertEquals(await fsReadFile(worktreeMarker, "utf8"), "worktree");
         assertEquals(await fsRealpath((await fsReadFile(cwdMarker, "utf8")).trim()), await fsRealpath(worktreePath));
         assertEquals(await fsReadFile(primaryMarker, "utf8").catch(() => "absent"), "absent");
@@ -192,6 +203,7 @@ test("CI process start failure does not dispatch implementation repair", async (
         if (result.kind !== "operational_failure") throw new Error("CI should report an operational failure.");
         assertEquals(result.failure.code, "local_process/process_start_failed");
         assertEquals(result.failure.recoveryClass, "missing_information");
+        assertEquals(await existingValidationLogs(cwd), []);
         assertStringIncludes(result.output, "Failed to spawn validation process:");
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
@@ -205,7 +217,7 @@ test("runLocalCI keeps output bounded and says so when the tail is truncated", a
         assertEquals(result.kind, "completed");
         if (result.kind !== "completed") throw new Error("CI should complete.");
         assertEquals(result.exitCode, 0);
-        assertStringIncludes(result.output, "[RunWield] stdout truncated;");
+        assertStringIncludes(result.output, "[RunWield] Output truncated;");
     } finally {
         await fsRm(cwd, { recursive: true }).catch(() => {});
     }
@@ -238,6 +250,7 @@ test(
             const result = await resultPromise;
 
             assertEquals(result.kind, "canceled");
+            assertEquals((await fsStat(validationLogPath(result.output))).isFile(), true);
             assertEquals(
                 await waitForProcessDeath(descendantPid),
                 true,
@@ -271,6 +284,112 @@ test("runLocalCI preserves cancellation while saving a newly answered command", 
         assertEquals(getExactProjectCustomSetting("verification_command", cwd), "touch should-not-run");
         assertEquals(await fsStat(`${cwd}/should-not-run`).catch(() => null), null);
         assertEquals(hostedSession.getActiveInteractions().size, 0);
+    } finally {
+        hostedSession.dispose();
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+async function existingValidationLogs(cwd: string): Promise<string[]> {
+    try {
+        return await fsReaddir(resolveProjectRuntimeLayout(cwd).selected.validationLogsDir);
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+        throw error;
+    }
+}
+
+function validationLogPath(output: string): string {
+    const match = output.match(
+        /Full validation output saved to (.+)\.\nRead it from the start to find the first failure\.$/,
+    );
+    if (!match) throw new Error(`Missing full log path: ${output}`);
+    return match[1];
+}
+
+function assertBoundedTail(output: string): string {
+    const tail = output.split("[RunWield]")[0];
+    assertEquals(new TextEncoder().encode(tail).byteLength <= 16_384, true);
+    assertEquals(tail.trimEnd().split("\n").length <= 200, true);
+    return tail;
+}
+
+test("runLocalCI saves the first error and all output while delivering only a short tail", async () => {
+    const command =
+        "printf 'FIRST-ERROR\\n' >&2; sleep 0.05; i=1; while [ $i -le 2000 ]; do echo line-$i; i=$((i+1)); done; echo LAST-LINE; exit 7";
+    const { cwd, hostedSession } = await makeCiProject(command);
+    let toolOutput = "";
+    hostedSession.setEventSink((draft: Parameters<typeof createSessionRuntimeEvent>[1]) => {
+        const event = createSessionRuntimeEvent(hostedSession.id, draft);
+        if (event.type === "tool_end") toolOutput = event.output;
+    });
+    try {
+        const result = await runLocalCI({ hostedSession, cwd });
+        if (result.kind !== "completed") throw new Error("CI should complete.");
+        assertEquals(result.exitCode, 7);
+        const tail = assertBoundedTail(result.output);
+        assertStringIncludes(tail, "LAST-LINE");
+        assertEquals(result.output.includes("FIRST-ERROR"), false);
+        const path = validationLogPath(result.output);
+        assertEquals(path.startsWith(resolveProjectRuntimeLayout(cwd).selected.validationLogsDir), true);
+        const full = await fsReadFile(path, "utf8");
+        const expected =
+            "FIRST-ERROR\n" + Array.from({ length: 2000 }, (_, i) => `line-${i + 1}\n`).join("") + "LAST-LINE\n";
+        assertEquals(full, expected);
+        const bytes = result.output.match(/\((\d+) of (\d+) bytes\)/);
+        if (!bytes) throw new Error("Missing truncation byte counts");
+        assertEquals(Number(bytes[1]), new TextEncoder().encode(tail).byteLength);
+        assertEquals(Number(bytes[2]), (await fsStat(path)).size);
+        assertEquals(toolOutput, result.output);
+        assertStringIncludes(toolOutput, path);
+        assertStringIncludes(toolOutput, "LAST-LINE");
+        assertEquals(toolOutput.includes("FIRST-ERROR"), false);
+    } finally {
+        hostedSession.dispose();
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("runLocalCI preserves observed stdout and stderr order in the full log", async () => {
+    const command =
+        "printf 'out-1\\n'; sleep 0.05; printf 'err-1\\n' >&2; sleep 0.05; printf 'out-2\\n'; sleep 0.05; printf 'err-2\\n' >&2";
+    const { cwd, hostedSession } = await makeCiProject(command);
+    try {
+        const result = await runLocalCI({ hostedSession, cwd });
+        if (result.kind !== "completed") throw new Error("CI should complete.");
+        assertEquals(await fsReadFile(validationLogPath(result.output), "utf8"), "out-1\nerr-1\nout-2\nerr-2\n");
+        assertEquals(result.output.startsWith("out-1\nerr-1\nout-2\nerr-2\n"), true);
+    } finally {
+        hostedSession.dispose();
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("runLocalCI bounds a 40 KB line without a newline", async () => {
+    const { cwd, hostedSession } = await makeCiProject("printf '%040000d' 0");
+    try {
+        const result = await runLocalCI({ hostedSession, cwd });
+        if (result.kind !== "completed") throw new Error("CI should complete.");
+        assertBoundedTail(result.output);
+        assertStringIncludes(result.output, "[RunWield] Output truncated;");
+        assertEquals((await fsStat(validationLogPath(result.output))).size, 40_000);
+    } finally {
+        hostedSession.dispose();
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("runLocalCI preserves the command result when the full log cannot be saved", async () => {
+    const { cwd, hostedSession } = await makeCiProject("printf real-failure; exit 9");
+    try {
+        const layout = resolveProjectRuntimeLayout(cwd).selected;
+        await fsMkdir(layout.internalRoot, { recursive: true });
+        await fsWriteFile(layout.validationLogsDir, "blocked");
+        const result = await runLocalCI({ hostedSession, cwd });
+        if (result.kind !== "completed") throw new Error("Log failure must not replace the command result.");
+        assertEquals(result.exitCode, 9);
+        assertStringIncludes(result.output, "real-failure");
+        assertStringIncludes(result.output, "[RunWield] Full validation output could not be saved:");
     } finally {
         hostedSession.dispose();
         await fsRm(cwd, { recursive: true });

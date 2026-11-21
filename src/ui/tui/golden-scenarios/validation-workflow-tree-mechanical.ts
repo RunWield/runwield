@@ -239,6 +239,8 @@ export const validationTreeValidationExhaustedRetryScenario = withValidationBran
 export const validationTreeValidationExhaustedFollowUpScenario = withValidationBranches(
     {
         ...plannedChangeValidationExhaustedScenario,
+        // Keep the failure explanation visible beside the full log path and follow-up turn.
+        terminal: { columns: 100, rows: 50 },
         scriptedInteractions: [
             { type: "select", promptIncludes: "tests for", value: "engineer_follow_up" },
             {

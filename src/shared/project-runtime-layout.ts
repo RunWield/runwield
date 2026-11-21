@@ -91,6 +91,7 @@ export interface SelectedProjectRuntimeLayout {
     planCatalogLockPath: string;
     transitionJournalsDir: string;
     planBackupsDir: string;
+    validationLogsDir: string;
     workRecordSupersessionLockPath: string;
     workRecordSupersessionRecoveryLockPath: string;
 }
@@ -316,6 +317,7 @@ function resolveCheckoutRuntimeLayout(selectedCheckoutRoot: string): ProjectRunt
             planCatalogLockPath: join(selectedPlanLocksDir, "catalog.lock"),
             transitionJournalsDir: join(selectedInternalRoot, PLAN_TRANSITIONS_DIR_NAME),
             planBackupsDir: join(selectedInternalRoot, PLAN_BACKUPS_DIR_NAME),
+            validationLogsDir: join(selectedInternalRoot, "validation-logs"),
             workRecordSupersessionLockPath: join(selectedInternalRoot, "work-record-supersession.lock"),
             workRecordSupersessionRecoveryLockPath: join(
                 selectedInternalRoot,
@@ -1401,6 +1403,7 @@ async function findCurrentAuthorityConflicts(
         basename(layout.primary.layoutMarkerPath),
         basename(layout.primary.layoutMigrationJournalPath),
         basename(layout.primary.layoutMigrationLockPath),
+        basename(layout.selected.validationLogsDir),
     ]);
     const conflicts: string[] = [];
     const allowedJournalPaths = new Set(
@@ -1421,7 +1424,9 @@ async function findCurrentAuthorityConflicts(
     for (const root of selectedRoots) {
         if (marker && (root === primaryCheckoutRoot || adoptedRoots.has(root))) continue;
         const selectedInternalRoot = internalRootFor(root);
-        const allow = root === primaryCheckoutRoot ? allowedPrimary : new Set<string>();
+        // Validation logs contain command output, not runtime authority to migrate.
+        const allow =
+            root === primaryCheckoutRoot ? allowedPrimary : new Set([basename(layout.selected.validationLogsDir)]);
         conflicts.push(...(await currentConflictsInRoot(selectedInternalRoot, allow, allowedJournalPaths)));
     }
     // A completed marker establishes the current authority. Recreated old files

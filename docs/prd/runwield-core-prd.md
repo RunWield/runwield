@@ -1271,6 +1271,12 @@ repair. Diagnosis and explicit user requests can call for earlier full runs. Sta
 validation. Reports separate completed focused checks from pending full validation. Only the runtime gate permits
 publication.
 
+**Requirement: Keep the complete validation output.** Each Verification Command run saves its complete combined
+stdout and stderr output in the execution checkout under `.wld/internal/validation-logs/`. Repair Agents, Delivery
+Evidence, and progress receive a tail of at most 200 lines and 16,384 bytes plus the absolute log path. Repair guidance
+tells Agents to read the log from the start when the tail can hide an earlier failure. Each checkout keeps the newest
+20 logs. A failed log write is reported with the tail and does not change the validation result.
+
 **Requirement: Fresh, focused repair verification.** Validation Repair Engineer instructions require rerunning every
 previously failing test file identified in the repair context, plus focused checks for the repairs, after the final
 edit using the project's supported runner. Non-test failures require the relevant failing checks. Later edits require
@@ -1303,6 +1309,9 @@ progress display comes from the confirmed validation and publication results of 
   a failure keeps the workflow in repair.
 - Given edits after passing focused repair checks, the Repair Engineer is instructed to rerun every supplied failing
   test file and repair-focused check before task completion and report the fresh results.
+- Given a failing Verification Command with more than 200 lines, the repair prompt, Delivery Evidence, and progress
+  show the bounded tail and the same full log path. The repair Agent can read the first error from that file in the
+  execution checkout. If the log cannot be saved, the tail reports why and the command keeps its real result.
 - Given a timeout with no test report, repair guidance treats the report as incomplete evidence, investigates the
   waiting operation, and does not assume an assertion defect or increase the timeout automatically.
 - Given passed checks and a process restart, the Plan stays implemented and resumes semantic review.

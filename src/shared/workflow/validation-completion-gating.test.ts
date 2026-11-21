@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
@@ -5,6 +6,8 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../../plan-store/index.ts";
+import { setExactProjectCustomSetting } from "../settings.ts";
+import { runLocalCI } from "./validation-local-ci.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { ensureRootAgentSession } from "../session/session.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
@@ -12,6 +15,7 @@ import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } 
 
 type RepairRunOptions = {
     reportCompletion: boolean;
+    readLog?: boolean;
 };
 
 async function primeRepairRoot(hostedSession: HostedSession, projectRoot: string) {
@@ -22,8 +26,8 @@ async function primeRepairRoot(hostedSession: HostedSession, projectRoot: string
     });
 }
 
-async function runCiRepair({ reportCompletion }: RepairRunOptions) {
-    return await withRuntimeCommandFixture("validation-ci-repair-", async ({ setModelResponseFactory }) => {
+async function runCiRepair({ reportCompletion, readLog = false }: RepairRunOptions) {
+    return await withRuntimeCommandFixture("validation-ci-repair-", async ({ setModelResponseFactories }) => {
         const projectRoot = await makeValidationProjectRoot("p", {
             classification: "PLANNED_CHANGE",
             status: "implemented",
@@ -32,12 +36,18 @@ async function runCiRepair({ reportCompletion }: RepairRunOptions) {
         const ui = makeUi();
         const hostedSession = attachRecorder(new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot }), ui);
         const prompts: string[] = [];
-        setModelResponseFactory((context) => {
+        const respond: Parameters<typeof setModelResponseFactories>[0][number] = (context) => {
             prompts.push(JSON.stringify(context));
+            if (readLog && prompts.length === 1) {
+                const path = prompts[0].match(/Full validation output saved to (.+?\.log)/)?.[1];
+                if (!path) throw new Error("Repair Agent must receive the full log path");
+                return fauxAssistantMessage(fauxToolCall("read", { path }), { stopReason: "toolUse" });
+            }
             return reportCompletion
                 ? fauxAssistantMessage(fauxToolCall("task_completed", { message: "- CI repair completed." }))
                 : fauxAssistantMessage(fauxText("CI repair remains incomplete."));
-        });
+        };
+        setModelResponseFactories(readLog ? [respond, respond] : [respond]);
         await primeRepairRoot(hostedSession, projectRoot);
         hostedSession.setActiveExecutionWorkflow({
             planName: "p",
@@ -51,26 +61,35 @@ async function runCiRepair({ reportCompletion }: RepairRunOptions) {
         });
 
         let ciRuns = 0;
+        let failureOutput = "";
         const result = await runValidationLoop({
             hostedSession,
             planName: "p",
             planContent: "# p",
             triageMeta: { classification: "PLANNED_CHANGE", status: "implemented", humanReviewMode: "none" },
             localCI: {
-                run: () => {
+                run: async () => {
                     ciRuns += 1;
-                    return Promise.resolve(
+                    setExactProjectCustomSetting(
+                        "verification_command",
                         ciRuns === 1
-                            ? { kind: "completed", exitCode: 1, output: "type error" }
-                            : { kind: "completed", exitCode: 0, output: "ok" },
+                            ? "printf 'FIRST-ERROR\\n' >&2; sleep 0.05; i=1; while [ $i -le 2000 ]; do echo line-$i; i=$((i+1)); done; echo LAST-LINE; exit 1"
+                            : "printf ok",
+                        projectRoot,
                     );
+                    const ci = await runLocalCI({ hostedSession, cwd: projectRoot, settingsPolicy: "exact-project" });
+                    if (ciRuns === 1) failureOutput = ci.output;
+                    return ci;
                 },
             },
         });
 
         const plan = await loadPlan(projectRoot, "p");
+        const logPath = failureOutput.match(/Full validation output saved to (.+)\./)?.[1];
+        if (!logPath) throw new Error("Repair output must include a log path");
+        const fullLog = await readFile(logPath, "utf8");
         hostedSession.dispose();
-        return { ciRuns, plan, prompts, result, projectRoot };
+        return { ciRuns, plan, prompts, result, projectRoot, failureOutput, fullLog };
     });
 }
 test("PLANNED_CHANGE CI repair parks when Engineer does not call task_completed", async () => {
@@ -86,7 +105,13 @@ test("PLANNED_CHANGE CI repair parks when Engineer does not call task_completed"
     assertEquals(typeof run.plan?.attrs.failureReason, "string");
     const prompt = run.prompts[0];
     assertStringIncludes(prompt, run.projectRoot);
-    assertStringIncludes(prompt, "type error");
+    assertStringIncludes(prompt, "LAST-LINE");
+    const logPath = run.failureOutput.match(/Full validation output saved to (.+)\./)?.[1];
+    if (!logPath) throw new Error("Repair output must include a log path");
+    assertStringIncludes(prompt, logPath);
+    assertStringIncludes(run.fullLog, "FIRST-ERROR");
+    assertStringIncludes(prompt, "The output below is a tail; the full log path is at its end.");
+    assertStringIncludes(prompt, "Read the log from the start when the tail shows timeouts, interrupted checks");
     assertStringIncludes(prompt, ".wld/settings.json");
     assertStringIncludes(prompt, "verification_command");
     assertStringIncludes(prompt, "command can be the thing that is broken");
@@ -267,4 +292,13 @@ test("fabricated transcript completion cannot complete either initial repair or 
     assertStrictEquals(managers[0], managers[1]);
     assertEquals(requests, ["Initial repair evidence.", "User guidance for the same repair."]);
     hostedSession.dispose();
+});
+
+test("a repair Agent can read the first failure from the log delivered with the tail", async () => {
+    const run = await runCiRepair({ reportCompletion: false, readLog: true });
+    assertEquals(run.prompts.length, 2, JSON.stringify(run.result));
+    assertEquals(run.failureOutput.includes("FIRST-ERROR"), false);
+    assertStringIncludes(run.prompts[1], "FIRST-ERROR");
+    assertStringIncludes(run.prompts[1], "line-1");
+    assertEquals(run.result.kind, "paused");
 });

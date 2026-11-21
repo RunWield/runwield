@@ -686,6 +686,7 @@ export async function runMechanicalValidation(
                 "run appropriate verification, then call task_completed when the repair is complete. " +
                 "If something blocks the repair, do not call task_completed: end your turn in plain text with what " +
                 "you fixed and what stopped you. " +
+                "The output below is a tail; the full log path is at its end. Read the log from the start when the tail shows timeouts, interrupted checks, or failures that could be caused by an earlier error. " +
                 "If the repair involves tests, follow the write-tests skill for sound testing behavior:\n\n" +
                 ciResult.output,
             sessionManager,
