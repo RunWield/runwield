@@ -73,6 +73,9 @@ test("fresh network-denied host turns validate real work without a Session or hi
         const deliveryEvidenceRoot = await canonicalPath(layout.primary.deliveryEvidenceRoot);
         const settingsPath = await canonicalPath(join(fixture.root, ".wld/settings.json"));
         const canonicalCwd = await fsRealpath(fixture.cwd);
+        const validationLogsDir = await canonicalPath(
+            resolveProjectRuntimeLayout(fixture.cwd).selected.validationLogsDir,
+        );
         const searchRefreshMarker = await canonicalPath(await getWorkspaceSearchRefreshMarker(fixture.root));
         const snapshot = async () => {
             const result = await files(fixture.root);
@@ -94,6 +97,7 @@ test("fresh network-denied host turns validate real work without a Session or hi
                     !(
                         path.startsWith(canonicalCwd + "/") ||
                         path.startsWith(deliveryEvidenceRoot + "/") ||
+                        (path.startsWith(validationLogsDir + "/") && path.endsWith(".log")) ||
                         originalControllers.has(path) ||
                         metricsFiles.has(path) ||
                         path === settingsPath ||

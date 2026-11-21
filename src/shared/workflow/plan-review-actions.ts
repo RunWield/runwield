@@ -113,7 +113,7 @@ function reviewMarkdownEvidence(source: string): string {
         }
     }
     // Unsafe destinations must stay distinct. This HTML is comparison evidence only, never display output.
-    const html = quikdown(source.replace(/^(?:[ \t]*\r?\n)+/, ""), {
+    const html = quikdown(source.replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd(), {
         allow_unsafe_urls: true,
         reference_links: true,
     });
