@@ -77,6 +77,7 @@ const terminalChild = {
 };
 
 export const loadPlanEpicMenuOptionsScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-epic-menu-options-by-status",
     composedTui: true,
     initialAgentName: "guide",
@@ -154,6 +155,7 @@ export const loadPlanEpicMenuOptionsScenario = {
 };
 
 export const loadPlanEpicSlicerScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-epic-opens-slicer",
     composedTui: true,
     initialAgentName: "guide",
@@ -248,6 +250,7 @@ export const loadPlanEpicSlicerScenario = {
 };
 
 export const loadPlanEpicChildMenusScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-epic-child-list-view-back-and-next",
     composedTui: true,
     initialAgentName: "guide",
@@ -304,6 +307,7 @@ export const loadPlanEpicChildMenusScenario = {
 };
 
 export const loadPlanEpicDoneEnoughArchiveScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-epic-done-enough-and-archive",
     composedTui: true,
     initialAgentName: "guide",
@@ -349,6 +353,7 @@ export const loadPlanEpicDoneEnoughArchiveScenario = {
 };
 
 export const loadPlanEpicDirectReviewScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-epic-direct-review-approves-and-slices",
     composedTui: true,
     initialAgentName: "guide",
@@ -417,6 +422,7 @@ export const loadPlanEpicDirectReviewScenario = {
 };
 
 export const loadPlanEpicDirectReviewFeedbackScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-epic-direct-review-feedback-to-architect",
     composedTui: true,
     initialAgentName: "guide",
@@ -470,6 +476,7 @@ export const loadPlanEpicDirectReviewFeedbackScenario = {
 };
 
 export const loadPlanEpicDirectReviewLaterScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-epic-direct-review-approves-for-later",
     composedTui: true,
     initialAgentName: "guide",
@@ -509,6 +516,7 @@ export const loadPlanEpicDirectReviewLaterScenario = {
 };
 
 export const loadPlanEpicArchitectReviewScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "load-plan-epic-architect-review-stays-separate",
     composedTui: true,
     initialAgentName: "guide",
@@ -559,6 +567,7 @@ export const loadPlanEpicArchitectReviewScenario = {
 };
 
 export const loadPlanEpicArchitectReReviewScenario = {
+    retainedCheckoutInput: true,
     name: "load-plan-epic-send-back-discuss-approve-later-and-reload",
     composedTui: true,
     initialAgentName: "guide",

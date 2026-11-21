@@ -1,8 +1,8 @@
 /** @module ui/workspace/routes/owner-session-api */
 
-import { readControllerRecord } from "../../../shared/workflow/controller-registry.ts";
+import { readPlanRecordingContinuation } from "../../../plan-store/index.ts";
 import { ownerPlanContinuationApi } from "./owner-plan-continuation.ts";
-import { resolveWorkflowPlanLocation } from "../../../shared/workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../../plan-store/index.ts";
 import {
     ImageSubmissionValidationError,
     type WorkspaceSessionContinuationService,
@@ -21,7 +21,7 @@ import {
     type ProjectParams,
 } from "./owner-api.ts";
 import { ownerSecurityHeaders } from "../server/owner-origin.ts";
-import { findPlanEvidenceById } from "../../../plan-store.ts";
+import { findPlanEvidenceById } from "../../../plan-store/index.ts";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "../server/owner-projects.ts";
 import { getSlashCommandDefinition } from "../../../cmd/registry.ts";
 
@@ -483,10 +483,8 @@ export async function ownerSessionPlanWorkflowApi(ctx: OwnerRouteContext<OwnerSe
             });
         }
         const retained =
-            body.action === "retry_work_record"
-                ? await readControllerRecord(projectRoot, { planId, planName: "" })
-                : null;
-        const recording = retained?.planId === planId && retained.state.recordingSource ? retained : null;
+            body.action === "retry_work_record" ? await readPlanRecordingContinuation(projectRoot, planId) : null;
+        const recording = retained;
         const primary = recording
             ? { planId, planName: recording.planName }
             : await findPlanEvidenceById(projectRoot, planId);

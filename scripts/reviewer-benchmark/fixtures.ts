@@ -1,3 +1,4 @@
+import { supportedBunRange } from "../check-bun-runtime.ts";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { load, JSON_SCHEMA } from "js-yaml";
@@ -200,7 +201,10 @@ export async function loadFixture(packagePath: string): Promise<ReviewerFixture>
         "missing tags",
     );
     requireValue(manifest.baselineRef === "main" && manifest.candidateRef === "change", "non-neutral refs");
-    requireValue(manifest.runtime?.name === "bun" && manifest.runtime.version === "1.4.3", "unsupported runtime");
+    requireValue(
+        manifest.runtime?.name === "bun" && manifest.runtime.version === supportedBunRange,
+        "unsupported runtime",
+    );
     requireValue(
         Number.isInteger(manifest.timeoutMs) && manifest.timeoutMs > 0 && manifest.timeoutMs <= 120000,
         "invalid timeout",

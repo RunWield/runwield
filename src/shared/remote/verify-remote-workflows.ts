@@ -556,7 +556,8 @@ async function main(): Promise<void> {
                 };
                 async function result(client: RuntimeProcess) {
                     let report = await client.read();
-                    while (report.kind === "workflow-interaction") report = await client.read();
+                    while (report.kind === "workflow-interaction" || report.kind === "workflow-progress")
+                        report = await client.read();
                     return report;
                 }
                 async function waitRemote(path: string) {

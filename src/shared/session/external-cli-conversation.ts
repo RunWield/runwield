@@ -103,7 +103,10 @@ function normalizeTranscriptEntry(entry: TranscriptEntry): ExternalCliConversati
 function extractText(content: string | TranscriptContentBlock[] | undefined): string {
     if (typeof content === "string") return content;
     if (!Array.isArray(content)) return "";
-    return content.map((block) => transcriptContentBlockText(block)).filter(Boolean).join("\n");
+    return content
+        .map((block) => transcriptContentBlockText(block))
+        .filter(Boolean)
+        .join("\n");
 }
 
 function isToolUseBlock(block: TranscriptContentBlock): block is ToolUseBlock {

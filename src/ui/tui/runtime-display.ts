@@ -1,6 +1,10 @@
 /** Shared conversation renderer. It consumes live or replay events, never a Runtime. */
 import type { AgentMessageAppender, UiAPI } from "./api.ts";
-import { RuntimeEventTypes, type RuntimeToolResult, type SessionRuntimeEvent } from "../../shared/session/session-runtime-events.ts";
+import {
+    RuntimeEventTypes,
+    type RuntimeToolResult,
+    type SessionRuntimeEvent,
+} from "../../shared/session/session-runtime-events.ts";
 
 import type { ProjectedRuntimeEvent } from "../../shared/session/session-transcript-projection.ts";
 

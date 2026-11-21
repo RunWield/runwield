@@ -1,3 +1,4 @@
+import { requireSupportedBun } from "../check-bun-runtime.ts";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { getHomeDir } from "../../src/constants.ts";
@@ -79,6 +80,7 @@ function failure(error: Error | string, startedAt: number): FixtureReviewResult 
 
 /** Every selected fixture is admitted before the first model call. Each trial owns a new isolated project. */
 export async function runBenchmark(selected: SelectedCase[], options: BenchmarkRunOptions = {}): Promise<BenchmarkRun> {
+    requireSupportedBun();
     if (selected.length === 0) throw new Error("Select at least one case");
     if (options.resume && !options.out) throw new Error("--resume requires --out <existing-run-directory>");
     if (options.timeoutMs !== undefined && (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0))

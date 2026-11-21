@@ -1,3 +1,4 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,7 +15,8 @@ import {
 
 import { getAgentDisplayName, listAvailableAgents } from "./agents.ts";
 import { getCustomSetting } from "../settings.ts";
-import { loadPlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 type PromptAgentDefinition = Parameters<typeof assembleFinalSystemPrompt>[0];
@@ -45,10 +47,13 @@ test("two project roots keep local catalogs settings and Plans isolated", async 
                 `---\nname: "${marker} Agent"\ndescription: "${marker}"\ntools: []\n---\n${marker} agent body`,
             );
             await fsWriteFile(join(root, ".wld", "settings.json"), JSON.stringify({ marker }));
-            await fsWriteFile(
-                join(root, "docs", "plans", "same-plan.md"),
-                `---\nclassification: FEATURE\ncomplexity: LOW\nsummary: "${marker} plan"\naffectedPaths: []\nstatus: approved\n---\n# ${marker} plan`,
-            );
+            await seedPlan(root, "same-plan", `# ${marker} plan`, {
+                classification: "PLANNED_CHANGE",
+                complexity: "LOW",
+                summary: `${marker} plan`,
+                affectedPaths: [],
+                status: "approved",
+            });
         }
 
         const [alphaPrompts, betaPrompts, alphaSkills, betaSkills, alphaAgents, betaAgents] = await Promise.all([

@@ -236,3 +236,96 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
         },
     );
 });
+
+test("ACP protocol load-plan reads the same admitted home Plan after a document revision", async () => {
+    const { admitProjectIdentity } = await import("../shared/project-identity.ts");
+    const { create } = await import("../shared/testing/plan-package-fixture.ts");
+    const { withPlanAccess, selectPlanAccess, loadPlan } = await import("../plan-store/index.ts");
+    const { savePlanDocument } = await import("../plan-store/index.ts");
+    await withRuntimeCommandFixture("acp-home-plan-", async ({ projectRoot }) => {
+        const identity = await admitProjectIdentity(projectRoot);
+        assert(identity.kind === "existing");
+        await create(identity.identity, {
+            definition: { classification: "PLANNED_CHANGE", status: "draft", summary: "Canonical ACP Plan" },
+        });
+        const access = (await selectPlanAccess(projectRoot, "plan-one"))!;
+        const revision = await withPlanAccess(projectRoot, access, async () => {
+            const current = (await loadPlan(projectRoot, "one"))!;
+            return await savePlanDocument(
+                "plan-one",
+                "context.md",
+                current.revision,
+                "# Canonical ACP Plan\n\n## Objective\n\nEdited shared home revision.\n",
+            );
+        });
+        for (let connection = 0; connection < 2; connection++) {
+            const server = await withPlanAccess(
+                projectRoot,
+                (await selectPlanAccess(projectRoot, "plan-one"))!,
+                async () => await startTestServer(),
+            );
+            try {
+                await sendMessage(server, {
+                    jsonrpc: "2.0",
+                    id: "package-initialize",
+                    method: "initialize",
+                    params: {
+                        protocolVersion: 1,
+                        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
+                    },
+                });
+                const initialized = await readThroughResponse(server, "package-initialize");
+                assert(initialized.response.result, JSON.stringify(initialized));
+                await sendMessage(server, {
+                    jsonrpc: "2.0",
+                    id: "package-new",
+                    method: "session/new",
+                    params: { cwd: projectRoot, mcpServers: [] },
+                });
+                const created = await readThroughResponse(server, "package-new");
+                const result = created.response.result as { sessionId: string };
+                assert(result?.sessionId, JSON.stringify(created));
+                const prompt = async (text: string) => {
+                    const id = crypto.randomUUID();
+                    await sendMessage(server, {
+                        jsonrpc: "2.0",
+                        id,
+                        method: "session/prompt",
+                        params: { sessionId: result.sessionId, prompt: [{ type: "text", text }] },
+                    });
+                    return await readThroughResponse(server, id);
+                };
+                const loaded = await prompt("/load-plan one");
+                assert(JSON.stringify(loaded.messages).includes("Plan loaded: one"), JSON.stringify(loaded));
+                const details = await prompt("View plan details");
+                assert(
+                    JSON.stringify(details.messages).includes("Edited shared home revision"),
+                    JSON.stringify(details),
+                );
+                assert(
+                    ![...loaded.messages, ...details.messages].some(
+                        (message) =>
+                            typeof message.method === "string" &&
+                            (message.method.startsWith("fs/") || message.method === "session/request_permission"),
+                    ),
+                    "Core document delivery must not ask the client to read home or grant roots",
+                );
+                await sendMessage(server, {
+                    jsonrpc: "2.0",
+                    id: "denied-session",
+                    method: "session/prompt",
+                    params: { sessionId: "not-authorized", prompt: [{ type: "text", text: "/load-plan one" }] },
+                });
+                const denied = await readThroughResponse(server, "denied-session");
+                assert(denied.response.error, JSON.stringify(denied));
+                assert(!JSON.stringify(denied).includes("Edited shared home revision"));
+                await prompt("Cancel");
+                await withPlanAccess(projectRoot, (await selectPlanAccess(projectRoot, "plan-one"))!, async () => {
+                    assertEquals((await loadPlan(projectRoot, "one"))!.revision, revision.revision);
+                });
+            } finally {
+                await closeTestServer(server);
+            }
+        }
+    });
+});

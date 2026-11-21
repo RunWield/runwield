@@ -1,3 +1,7 @@
+import { requiresPlanWorkflow } from "../../plan-store/index.ts";
+
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+
 /**
  * @module shared/workflow/validation-context
  * Phase-context resolution and shared lifecycle/metric helpers for the
@@ -37,6 +41,8 @@ export async function resolvePhaseContext(
     args: ValidationLoopArgs,
 ): Promise<{ kind: "ok"; context: PhaseContext } | { kind: "blocked"; result: ValidationPhaseResult }> {
     const projectRoot = getProjectRoot(args);
+    if (requiresPlanWorkflow(projectRoot))
+        return await withLocalPlanWorkflow(projectRoot, args.planName, () => resolvePhaseContext(args));
     const activeWorkflow = args.session.getActiveWorkflow();
     const resolution = await resolveValidationExecutionContext({
         projectRoot,

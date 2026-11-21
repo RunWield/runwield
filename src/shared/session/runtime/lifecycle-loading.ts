@@ -15,7 +15,7 @@ import {
 import { createSessionRuntimeEvent, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { createReplayEvents as createProjectedReplayEvents } from ".././session-transcript-projection.ts";
 import { requestHostedSessionInteraction } from ".././session-runtime-interactions.ts";
-import { sessionDirForRoot } from ".././file-session-storage.ts";
+import { sessionDirForCheckout } from ".././file-session-storage.ts";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
 import { isAbsolute } from "node:path";
 
@@ -251,6 +251,7 @@ export class RuntimeLifecycleLoading {
                 if (inspected.generation) {
                     const adopted = this.lifecycle.adoptManagedSession({
                         session: managedSession,
+                        cwd: options.cwd,
                         generation: inspected.generation.generation,
                     });
                     const sync = await this.sync.synchronizeManagedSession(adopted.sessionId, { emitEvents: false });
@@ -270,7 +271,7 @@ export class RuntimeLifecycleLoading {
                     this.events.replacePendingReplayEvents(adopted.sessionId, replayEvents);
                     return {
                         sessionId: adopted.sessionId,
-                        cwd: adopted.cwd,
+                        cwd: adoptedHostedSession.cwd,
                         replayEvents,
                         sessionManagerId: managedSession.piSessionId,
                         sessionPath: managedSession.transcriptPath,
@@ -296,7 +297,10 @@ export class RuntimeLifecycleLoading {
         let agentName = "";
         try {
             const transcriptProjectRoot = ownerCoordinationStore.requireSessionProjectRoot(managedSession.projectId);
-            const transcriptProjectSessionDir = sessionDirForRoot(ownerCoordinationStore.path, transcriptProjectRoot);
+            const transcriptProjectSessionDir = sessionDirForCheckout(
+                ownerCoordinationStore.path,
+                transcriptProjectRoot,
+            );
             const managedTranscriptPath = sessionPath || managedSession.transcriptPath;
             const managedProjectSessionDir = isPathInside(managedTranscriptPath, transcriptProjectSessionDir)
                 ? transcriptProjectSessionDir

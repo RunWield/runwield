@@ -15,8 +15,7 @@ test("compiled Workspace includes the unbundled shell's browser imports", async 
     assert(imports.length > 0);
     for (const [, specifier] of imports) {
         const browserPath = new URL(specifier, "https://workspace.test/workspace-shell.js").pathname;
-        const sourcePath =
-            browserPath === SIDEBAR_MOTION_URL ? SIDEBAR_MOTION_SOURCE : `src/ui${browserPath}`;
+        const sourcePath = browserPath === SIDEBAR_MOTION_URL ? SIDEBAR_MOTION_SOURCE : `src/ui${browserPath}`;
         const path = resolve(root, sourcePath);
         assert((await stat(path)).isFile());
         const packaged = relative(root, path).replaceAll("\\", "/");

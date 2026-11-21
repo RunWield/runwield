@@ -4,9 +4,13 @@ import { createHash } from "node:crypto";
 import { PHASES, REQUIRED_HOST_RUNS, field, type AcceptanceEvidence, type JsonMap, type Snapshot } from "./evidence.ts";
 
 export const RECORD = "runwield-home/.wld/attached/project/workflows/workflow.json";
-export const CONTROLLER = "fixture/.wld/internal/controller/plans/plan-id.json";
-export const PLAN = "fixture/docs/plans/feature.md";
-export const WORK_RECORD = "fixture/docs/work-records/feature.md";
+export const PROJECT_HOME = "runwield-home/.wld/projects/project";
+export const EXECUTION =
+    PROJECT_HOME + "/execution/repo/" + createHash("sha256").update("execution-account\0/home/fixture").digest("hex");
+export const METADATA_FILE = PROJECT_HOME + "/plans/feature/plan.wld.json";
+export const CONTROLLER = PROJECT_HOME + "/internal/plan-packages/controller-evidence/generation.json";
+export const PLAN = PROJECT_HOME + "/plans/feature/context.md";
+export const WORK_RECORD = PROJECT_HOME + "/work-records/feature.md";
 export const INITIAL_COMMIT = "a".repeat(40);
 export const PUBLISHED_COMMIT = "b".repeat(40);
 export const METADATA: JsonMap = {
@@ -82,6 +86,7 @@ export function completeEvidence(): AcceptanceEvidence {
     const workflow: JsonMap = {
         schemaVersion: 1,
         workflowId: "workflow",
+        projectRoot: "/fixture",
         state: "triaging",
         evidence: host,
         acceptedOperations: accepted,
@@ -131,10 +136,25 @@ export function completeEvidence(): AcceptanceEvidence {
                 : `code-round-${phase === "code-approved" ? 2 : 1}`,
             url: `http://127.0.0.1:12345/api/review/${endpoint}?token=local`,
         });
-    const savePlan = (status: string) =>
-        putFile(current, PLAN, `---\nplanId: plan-id\nstatus: ${status}\n---\n# Feature\n`);
+    const savePlan = (status: string) => {
+        putFile(current, PROJECT_HOME + "/project.wld.json", {
+            projectId: "project",
+            personalOwner: { kind: "execution-account", identity: "/home/fixture" },
+            repositories: [{ repositoryId: "repo", checkouts: [{ root: "/fixture" }] }],
+        });
+        putFile(current, PLAN, "# Feature\n");
+        putFile(current, METADATA_FILE, {
+            planId: "plan-id",
+            name: "feature",
+            definition: { status },
+            workflow: {
+                controller: { planId: "plan-id", revisionId: "generation" },
+                ...(state.publicationReceipt && { delivery: state.publicationReceipt }),
+            },
+        });
+    };
     const saveController = () =>
-        putFile(current, CONTROLLER, { version: 1, planId: "plan-id", planName: "feature", state });
+        putFile(current, CONTROLLER, { version: 1, planId: "plan-id", planName: "plan-id", state });
     for (const phase of PHASES) {
         current = structuredClone(current);
         const index = PHASES.indexOf(phase);
@@ -242,7 +262,7 @@ export function completeEvidence(): AcceptanceEvidence {
             };
             state.implementedAt = "2026-10-07T12:00:00Z";
             savePlan("implemented");
-            putFile(current, "fixture/.wld/internal/worktrees.json", {
+            putFile(current, EXECUTION + "/worktrees.json", {
                 version: 2,
                 entries: [
                     {
@@ -290,7 +310,7 @@ export function completeEvidence(): AcceptanceEvidence {
             operation("start_validation");
             accepted["interrupted-ci"] = structuredClone(Object.values(accepted).at(-1)!);
             workflow.validation = { actionId: "reviewer-1", request: { kind: "reviewer" } };
-            putFile(current, "fixture/.wld/internal/delivery-evidence/feature/wt-1/ci-1.json", {
+            putFile(current, EXECUTION + "/delivery-evidence/feature/wt-1/ci-1.json", {
                 version: 1,
                 kind: "ci",
                 outcome: "Exit 0",
@@ -301,7 +321,7 @@ export function completeEvidence(): AcceptanceEvidence {
                 reviewState: { reviewLedger: { items: [{ id: "R1-1", status: "new", openedInRound: 1 }] } },
             };
             workflow.validation = { actionId: "repair-1", request: { kind: "repair" } };
-            putFile(current, "fixture/.wld/internal/delivery-evidence/feature/wt-1/ai-1.json", {
+            putFile(current, EXECUTION + "/delivery-evidence/feature/wt-1/ai-1.json", {
                 version: 1,
                 kind: "ai",
                 outcome: "Changes requested",
@@ -320,7 +340,7 @@ export function completeEvidence(): AcceptanceEvidence {
             workflow.validation = { actionId: "code-round-1", request: codeRequest };
             operation("task_completed");
             operation("review_complete");
-            putFile(current, "fixture/.wld/internal/delivery-evidence/feature/wt-1/ai-2.json", {
+            putFile(current, EXECUTION + "/delivery-evidence/feature/wt-1/ai-2.json", {
                 version: 1,
                 kind: "ai",
                 outcome: "Approved",
@@ -393,7 +413,7 @@ export function completeEvidence(): AcceptanceEvidence {
             checkpoint.attemptId = "wt-1";
             checkpoint.generation = "validation-1";
             checkpoint.pendingHostDecision = revisedRequest;
-            putFile(current, "fixture/.wld/internal/delivery-evidence/feature/wt-1/ci-3.json", {
+            putFile(current, EXECUTION + "/delivery-evidence/feature/wt-1/ci-3.json", {
                 version: 1,
                 kind: "ci",
                 outcome: "Exit 0",
@@ -495,12 +515,6 @@ export function completeEvidence(): AcceptanceEvidence {
         }
         if (PHASES.indexOf(phase) >= PHASES.indexOf("activated")) putFile(current, RECORD, workflow);
         if (PHASES.indexOf(phase) >= PHASES.indexOf("implemented")) saveController();
-        if (phase === "delivered" || phase === "inactive-after") {
-            for (const path of [PLAN, WORK_RECORD]) {
-                const file = current.files.find((file) => file.path === path)!;
-                putFile(current, `published/${PUBLISHED_COMMIT}/${path.replace(/^fixture\//, "")}`, file.text!);
-            }
-        }
         result.snapshots[phase] = structuredClone(current);
     }
     return result;

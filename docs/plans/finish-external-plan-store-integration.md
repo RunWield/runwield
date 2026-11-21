@@ -16,9 +16,9 @@ collaborationRecommendation: "autonomous"
 createdAt: "2026-11-18"
 origin: "internal"
 targetBranch: "epic/external-plan-store"
-status: "ready_for_work"
 userVerifiedAt: null
 deliveryBranch: "epic/external-plan-store"
+status: "implemented"
 ---
 
 # Finish External Plan Store integration

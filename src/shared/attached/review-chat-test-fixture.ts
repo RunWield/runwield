@@ -16,10 +16,15 @@ export function reviewApi(page: string, path: string): URL {
 }
 
 export async function sendChat(page: string, message: string, revision = 0) {
+    const html = await (await fetch(page)).text();
+    const embedded = html.match(/<script[^>]*data-(?:code-)?review-payload[^>]*>([\s\S]*?)<\/script>/)?.[1];
+    if (!embedded) throw new Error("Review page did not contain a payload.");
+    const { documentRevision } = JSON.parse(embedded);
     const response = await fetch(reviewApi(page, "deny"), {
         method: "POST",
         body: JSON.stringify({
             conversationTurn: true,
+            documentRevision,
             feedback: message,
             annotations: [{ file: "implementation.ts", line: 1, text: "Selected value" }],
             reviewRevision: revision,

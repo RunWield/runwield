@@ -3,7 +3,7 @@
  * User prompts and agent request text used by workflow execution.
  */
 
-import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 import type { TicketReference } from "../ticket-references.ts";
 

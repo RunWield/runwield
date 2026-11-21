@@ -1,8 +1,8 @@
-import type {
-    PlanFrontMatter,
-    PlanFrontMatterInput,
-    resolveSiblingChildPlanDependencyStates,
-} from "../../../plan-store.ts";
+import {
+    type PlanFrontMatter,
+    type PlanFrontMatterInput,
+    type resolveSiblingChildPlanDependencyStates,
+} from "../../../plan-format.ts";
 import type { TicketReference } from "../../../shared/ticket-references.ts";
 import type { WorkflowPresentationInput } from "../../../shared/workflow/workflow-presentation.ts";
 import type { PlanBodyEditorPlan } from "../islands/PlanBodyEditor.tsx";
@@ -81,6 +81,7 @@ export interface PlanDetailData
     markdown?: string;
     frontMatter?: PlanFrontMatterInput;
     attrs?: PlanFrontMatterInput;
+    packageDocument?: Awaited<ReturnType<typeof import("../../../plan-store/index.ts").readPlanDocuments>>;
     relativePath?: string;
     worktreeStatus?: PlanFrontMatter["worktreeStatus"] | "";
     humanReviewMode?: PlanFrontMatter["humanReviewMode"] | "";

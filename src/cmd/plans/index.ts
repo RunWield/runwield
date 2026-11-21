@@ -1,11 +1,17 @@
+import { readLocalHomeStore } from "../../plan-store/index.ts";
+import { runPlansHistoryCommand } from "./history.ts";
+import { runPlansImportCommand } from "./import.ts";
 /**
  * @module cmd/plans
  * List and manage saved Plans.
  */
 
+import { DirectoryStartupCanceled } from "../../ui/tui/directory-warning.ts";
+import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 import { parseArgs } from "../../shared/cli-args.ts";
 import { getCwd } from "../../constants.ts";
-import { countChildPlanProgress, groupPlanHierarchy, listPlans } from "../../plan-store.ts";
+import { countChildPlanProgress, groupPlanHierarchy } from "../../plan-format.ts";
+import { listPlans } from "../../plan-store/index.ts";
 import { printCommandHelp } from "../help/index.ts";
 import { runPlansArchiveCommand } from "./archive.ts";
 import { runPlansDoctorCommand } from "./doctor.ts";
@@ -26,7 +32,11 @@ function isHelp(argv: string[]): boolean {
 }
 
 async function enterUnlessHelp(argv: string[]): Promise<void> {
-    if (!isHelp(argv)) await enterProjectRuntime(getCwd());
+    if (!isHelp(argv)) {
+        if (!(await admitProjectWithIdentityChoice(getCwd())))
+            throw new DirectoryStartupCanceled("Project startup canceled");
+        await enterProjectRuntime(getCwd());
+    }
 }
 
 function formatChildProgress(children: PlanEntry[]): string {
@@ -74,7 +84,19 @@ function printChildPlan(child: PlanEntry): void {
 }
 
 export async function runPlansCommand(argv: string[]): Promise<void> {
+    return await readLocalHomeStore(
+        getCwd(),
+        () => runPlansCommandInStore(argv),
+        () => runPlansCommandInStore(argv),
+    );
+}
+async function runPlansCommandInStore(argv: string[]): Promise<void> {
     const [subcommand] = argv;
+    if (subcommand === "history") return await runPlansHistoryCommand(argv.slice(1));
+    if (subcommand === "import") {
+        await runPlansImportCommand(argv.slice(1));
+        return;
+    }
     if (subcommand === "ui") {
         await runPlansUiCommand(argv.slice(1), { browser: SYSTEM_BROWSER_PORT });
         return;
@@ -129,7 +151,7 @@ export async function runPlansCommand(argv: string[]): Promise<void> {
 
     const plans = await listPlans(getCwd());
     if (plans.length === 0) {
-        console.log("[RunWield] No saved plans found.");
+        console.log("[RunWield] No saved plans found. Use wld plans import <file-or-folder> to import existing Plans.");
         return;
     }
 

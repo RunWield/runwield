@@ -1,9 +1,11 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import process from "node:process";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, savePlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import type { WorkRecordFrontMatter } from "../../shared/work-records/schema.ts";
 import { findWorkRecordById, listWorkRecords, writeWorkRecord } from "../../shared/work-records/index.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
@@ -63,7 +65,7 @@ async function writeSupersessionFixture(projectRoot: string): Promise<void> {
 }
 
 async function saveVerifiedPlan(projectRoot: string): Promise<void> {
-    await savePlan(projectRoot, "standalone", "# Standalone\n\n## Plan\n\nBuild the fixture feature.", {
+    await seedPlan(projectRoot, "standalone", "# Standalone\n\n## Plan\n\nBuild the fixture feature.", {
         planId: "plan-standalone",
         classification: "PLANNED_CHANGE",
         complexity: "LOW",
@@ -148,7 +150,7 @@ test("wld wr backfill accepts older Result headings without rewriting records", 
         process.chdir(projectRoot);
         await saveVerifiedPlan(projectRoot);
         await writeFixtureRecords(projectRoot);
-        const path = `${projectRoot}/docs/work-records/2026-07-14-current.md`;
+        const path = (await findWorkRecordById(projectRoot, CURRENT_RECORD_ID))!.path;
         const legacy = (await fsReadFile(path, "utf8")).replace("## Summary", "## Result");
         await fsWriteFile(path, legacy);
         const output = await captureCommand(["backfill", "--dry-run"]);
@@ -163,11 +165,11 @@ test("wld wr backfill names an invalid existing record without crashing or writi
         process.chdir(projectRoot);
         await saveVerifiedPlan(projectRoot);
         await writeFixtureRecords(projectRoot);
-        const path = `${projectRoot}/docs/work-records/2026-07-14-current.md`;
+        const path = (await findWorkRecordById(projectRoot, CURRENT_RECORD_ID))!.path;
         const invalid = (await fsReadFile(path, "utf8")).replace("## Summary", "## Unrelated");
         await fsWriteFile(path, invalid);
         const output = await captureCommand(["backfill", "--yes"]);
-        assertStringIncludes(output, "docs/work-records/2026-07-14-current.md");
+        assertStringIncludes(output, "work-records/2026-07-14-current.md");
         assertStringIncludes(output, "Summary");
         assertStringIncludes(output, "No files were changed");
         assertEquals(await fsReadFile(path, "utf8"), invalid);
@@ -387,12 +389,12 @@ test("wld wr retry regenerates only its completed Plan and is idempotent", async
     await withRuntimeCommandFixture("wr-targeted-retry-", async ({ projectRoot, setModelMessages }) => {
         process.chdir(projectRoot);
         await saveVerifiedPlan(projectRoot);
-        await savePlan(projectRoot, "unrelated", "# Unrelated", {
+        await seedPlan(projectRoot, "unrelated", "# Unrelated", {
             planId: "unrelated",
             classification: "PLANNED_CHANGE",
             status: "verified",
         });
-        const unrelated = await fsReadFile(`${projectRoot}/docs/plans/unrelated.md`, "utf8");
+        const unrelated = (await loadPlan(projectRoot, "unrelated"))!.markdown;
         setModelMessages([
             fauxAssistantMessage(
                 fauxToolCall("work_record_completed", {
@@ -405,8 +407,60 @@ test("wld wr retry regenerates only its completed Plan and is idempotent", async
         assertStringIncludes(await captureCommand(["retry", "standalone"], options), "Work Record generated");
         assertEquals((await loadPlan(projectRoot, "standalone"))?.attrs.status, "verified");
         assertEquals((await listWorkRecords(projectRoot)).length, 1);
-        assertEquals(await fsReadFile(`${projectRoot}/docs/plans/unrelated.md`, "utf8"), unrelated);
+        assertEquals((await loadPlan(projectRoot, "unrelated"))!.markdown, unrelated);
         assertStringIncludes(await captureCommand(["retry", "standalone"], options), "existing_backlink");
         assertEquals((await listWorkRecords(projectRoot)).length, 1);
+    });
+});
+
+test("listing, preview and decline preserve an imported record and its committed copy until confirmation", async () => {
+    await withRuntimeCommandFixture("wr-prune-", async ({ projectRoot }) => {
+        process.chdir(projectRoot);
+        const { join } = await import("node:path");
+        const fs = await import("node:fs/promises");
+        const { git } = await import("../../shared/git-test-fixture.ts");
+        const { setCustomSetting } = await import("../../shared/settings.ts");
+        const { formatWorkRecordMarkdown } = await import("../../shared/work-records/markdown.ts");
+        const { admitProjectIdentity } = await import("../../shared/project-identity.ts");
+        await git(projectRoot, ["init", "-q"]);
+        await admitProjectIdentity(projectRoot);
+        await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", projectRoot);
+        const path = join(projectRoot, "delivered.md");
+        const bytes = formatWorkRecordMarkdown(
+            recordAttrs(CURRENT_RECORD_ID, "old-plan"),
+            "# Delivered\n\n## Summary\n\nDistinct outcome.",
+        );
+        await fs.writeFile(path, bytes);
+        await git(projectRoot, ["add", "delivered.md"]);
+        await git(projectRoot, [
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.test",
+            "commit",
+            "-m",
+            "Record",
+        ]);
+        const options = { mnemotecaPort: createWorkRecordMnemotecaFixture() };
+        await captureCommand(["import", path], options);
+        assertStringIncludes(await captureCommand([], options), "wld wr prune");
+        assertStringIncludes(await captureCommand(["prune", "--dry-run"], options), "Due: 1");
+        const original = globalThis.prompt;
+        try {
+            globalThis.prompt = () => "no";
+            assertStringIncludes(await captureCommand(["prune"], options), "canceled");
+        } finally {
+            globalThis.prompt = original;
+        }
+        assertEquals(await fs.readFile(path, "utf8"), bytes);
+        assertEquals((await findWorkRecordById(projectRoot, CURRENT_RECORD_ID))?.markdown, bytes);
+        assertStringIncludes(await captureCommand(["prune", "--yes"], options), "Pruned 1");
+        assertEquals(await findWorkRecordById(projectRoot, CURRENT_RECORD_ID), null);
+        assertEquals(await fs.stat(path).catch(() => null), null);
+        assertStringIncludes(await git(projectRoot, ["status", "--short", "--", "delivered.md"]), "D delivered.md");
+        assertEquals(options.mnemotecaPort.snapshot().length, 0);
+        assertEquals((await captureCommand(["search", "Distinct"], options)).includes(CURRENT_RECORD_ID), false);
+        await captureCommand(["index", "rebuild"], options);
+        assertEquals((await captureCommand(["search", "Distinct"], options)).includes(CURRENT_RECORD_ID), false);
     });
 });

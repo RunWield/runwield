@@ -49,6 +49,7 @@ function plans(result: GoldenScenarioResult): CapturedPlan[] {
 }
 
 export const concurrentPlansIdentityScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     // Both Plans deliver to the same target; human policy gates have dedicated journeys.
     globalSettings: {
         defaultProvider: "golden",
@@ -200,13 +201,16 @@ export const concurrentPlansIdentityScenario = {
         { type: "concurrentType", name: "plan-b", text: "/load-plan concurrent-b" },
         { type: "concurrentEnter", name: "plan-b" },
         { type: "concurrentEnter", name: "plan-b" },
-        { type: "waitForEvent", event: "concurrent:plan-b:runtime:tool:start:bash", timeoutMs: 30000 },
+        // This wait includes worktree preparation and the managed execution-segment handoff.
+        { type: "waitForEvent", event: "concurrent:plan-b:runtime:tool:start:bash", timeoutMs: 60000 },
         { type: "sleep", ms: 1000 },
         {
             type: "captureProjectState",
             planNames: ["concurrent-a", "concurrent-b"],
             key: "concurrentActiveProjectState",
         },
+        // Observe completed validation before waiting for publication; the child still has one 240-second deadline.
+        { type: "waitForPlanStatus", planName: "concurrent-a", statuses: ["reviewed", "verified"], timeoutMs: 120000 },
         { type: "waitForPlanStatus", planName: "concurrent-a", statuses: ["verified"], timeoutMs: 120000 },
         { type: "waitForPlanStatus", planName: "concurrent-b", statuses: ["verified"], timeoutMs: 120000 },
         { type: "waitForConcurrentIdle", name: "plan-b", timeoutMs: 120000 },

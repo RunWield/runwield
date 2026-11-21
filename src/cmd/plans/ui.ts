@@ -28,7 +28,9 @@ interface PlansUiCommandOptions {
 }
 
 export function isLoopbackHost(value: string): boolean {
-    const host = String(value || "").trim().toLowerCase();
+    const host = String(value || "")
+        .trim()
+        .toLowerCase();
     return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
 }
 

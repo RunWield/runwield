@@ -22,10 +22,7 @@ export async function withPlanCommandFixture(
         const fixtureRoot = await fsMkdtemp(join(tmpdir(), prefix));
         const homeDir = join(fixtureRoot, "home");
         const projectRoot = join(fixtureRoot, "project");
-        await Promise.all([
-            fsMkdir(homeDir, { recursive: true }),
-            fsMkdir(projectRoot, { recursive: true }),
-        ]);
+        await Promise.all([fsMkdir(homeDir, { recursive: true }), fsMkdir(projectRoot, { recursive: true })]);
 
         try {
             process.env["HOME"] = homeDir;

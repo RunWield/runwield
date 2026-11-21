@@ -324,15 +324,26 @@ test("actual Core browser approval links its durable receipt and fails closed wh
                 ["code-change", beforePlan],
                 ["code-approved", afterPlan],
             ] as const) {
-                putFile(
-                    snapshot(evidence, phase),
-                    `fixture/.wld/internal/controller/plans/${before.record.plan!.planId}.json`,
-                    {
-                        planId: before.record.plan!.planId,
-                        planName: before.record.plan!.planName,
-                        state: { validationCheckpoint: JSON.parse(JSON.stringify(plan.attrs.validationCheckpoint)) },
-                    },
-                );
+                const saved = snapshot(evidence, phase);
+                const project = "runwield-home/.wld/projects/project";
+                const { planId, planName } = before.record.plan!;
+                putFile(saved, project + "/project.wld.json", {
+                    projectId: "project",
+                    personalOwner: { kind: "execution-account", identity: "/home/fixture" },
+                    repositories: [{ repositoryId: "repo", checkouts: [{ root: before.record.projectRoot }] }],
+                });
+                putFile(saved, project + `/plans/${planName}/context.md`, plan.markdown);
+                putFile(saved, project + `/plans/${planName}/plan.wld.json`, {
+                    planId,
+                    name: planName,
+                    definition: { status: plan.attrs.status },
+                    workflow: { controller: { planId, revisionId: phase } },
+                });
+                putFile(saved, project + `/internal/plan-packages/controller-evidence/${phase}.json`, {
+                    planId,
+                    planName: planId,
+                    state: { validationCheckpoint: JSON.parse(JSON.stringify(plan.attrs.validationCheckpoint)) },
+                });
             }
             evidence.http = [http];
             assertEquals(field(http.response, "operationId"), newIds[0]);

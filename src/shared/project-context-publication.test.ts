@@ -200,7 +200,10 @@ test("concurrent local publication attempts serialize setup reconciliation", asy
             publishExecutionWorktreeIsolated(f.args),
             publishExecutionWorktreeIsolated(f.args),
         ]);
-        assertEquals(results.map((result) => result.publicationMode), ["local", "local"]);
+        assertEquals(
+            results.map((result) => result.publicationMode),
+            ["local", "local"],
+        );
         assertEquals(await git(f.root, ["status", "--porcelain"]), "");
         assertEquals(await fsReadFile(join(f.root, "docs/domain-language.md"), "utf8"), "# Updated by the Plan\n");
     } finally {

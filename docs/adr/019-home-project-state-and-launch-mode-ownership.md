@@ -6,8 +6,8 @@ status: proposed
 
 ## Context and Constraints
 
-Live Plans currently follow checkout/branch ownership while controllers, execution registries, locks, secrets, and
-recovery files live under project `.wld/internal/`. Sessions already live in home storage. This splits a Project's
+Local and manual-SSH Plans, runtime and Sessions live in personal home storage. Managed remote launch uses the
+laptop personal store and remote-account home execution runtime. This splits a Project's
 workflow across paths that change as work moves between planning, execution, publication, and recovery.
 
 The owner confirmed these target constraints on 2026-11-01:
@@ -19,14 +19,139 @@ The owner confirmed these target constraints on 2026-11-01:
   execution on the remote machine.
 - `wld remote <host>` keeps Plans on the initiating laptop, while code execution stays remote.
 
-This ADR proposes the mechanisms that implement those constraints. It is not accepted guidance or evidence of shipped
-behavior. [ADR-014](014-file-authoritative-session-bundles.md),
+This ADR records accepted local, manual-SSH, and managed-remote mechanisms alongside implemented local and managed retention. Only the explicitly accepted scope below is current guidance. [ADR-014](014-file-authoritative-session-bundles.md),
 [ADR-015](015-proof-bearing-publication-state-machine.md),
 [ADR-016](016-project-runtime-state-under-wld-internal.md), and
 [ADR-017](017-remote-ssh-local-personal-authority.md) remain the existing decisions until reconciled with an accepted
 replacement. The [Epic](../plans/external-plan-store.md) owns implementation outcomes and migration work.
 
+The stable-identity slice now uses `runwield.projectId` and `runwield.repositoryId` from the Git common directory's own
+configuration, a distinct administrative-directory checkout ID, and `.wld-project.json` before Git adoption. Local
+identity and verified Session/Attached locator records live under `~/.wld/projects/<projectId>/project.wld.json`. Workspace registration remains optional
+and separate. Explicit managed-remote owner context does not introduce remote-store persistence. This narrow delivery
+does not implement document relocation. Ordinary runtime relocation is now the accepted decision in ADR-016;
+managed launch now uses the owner transport described below. Session/Connect continuation now
+resolves verified original stores after moves and accepted clone links, without relocating bundles or locks, rewriting
+historical evidence, transferring execution attempts, or changing managed-remote ownership. ADR-014 owns that accepted
+Session lookup decision; the broader home-state proposal remains proposed.
+
+The canonical-package persistence contract was introduced through internal operations and is now selected by ordinary
+local/manual-SSH discovery. The earlier repository-only public boundary is superseded by local activation below. Its version-1 metadata owns IDs, names, independent revisions,
+relationships, archive facts, supported definition/controller fields and references to execution records. Its optional workflow references retain complete review/readiness inputs, the personal-owner/repository/attempt binding,
+and immutable complex-controller evidence. The registry remains the owner of physical Git facts. Unsupported fields and versions
+require an explicit format change. This persistence contract does not accept the broader proposed ownership and
+activation decision below.
+
+Package lookup derives from directories and validated metadata, without an authoritative catalog database. Mutations
+take the personal Project catalog lock before stable, ordered Plan-ID locks; this deliberately serializes mutations
+within one store to keep recovery and uniqueness in one owner. A durable intent covers publication and rename. Rename
+moves the package's own resources so nested names do not make directory ancestry into a parent relationship. Retained
+inputs publish complete staged bytes and a manifest before exposing their reference. Editors do not take Core locks,
+so capture revalidates observed bytes and membership; arbitrary multi-file editor writes are not an atomic transaction.
+
+The internal import contract extends version-1 metadata with named Sequence, Ticket, supersession/deviation, delivery,
+closure and archive facts. Original bytes and remaining historical fields are immutable provenance, including retired
+objective-check fields. Typed import references resolve retained controller/checkpoint and repository-attempt evidence;
+they do not create another mutable lifecycle authority. Existing version-1 packages remain valid without these optional
+fields. Explicit internal lifecycle admission rechecks the retained binding before execution. Unfinished imported attempts
+continue through their original legacy owner; retained provenance is never promoted into mutable controller truth.
+
+A batch intent reserves IDs and retains complete selected inputs before any package is visible. The same persistence
+owner stages and publishes every new member under the catalog lock and ordered Plan-ID locks. One persistent batch
+generation marks commitment; passive scans compare it before and after traversal and retry when it changes. Merely
+checking for an intent at either end would miss a batch that both starts and finishes during traversal. Repeating
+ordinary single-package creation was rejected because interruption could expose half a family. Keeping the immutable
+inputs permits recovery without the original sources, while the committed marker prevents replay over newer edits.
+The import boundary remains explicit selection, not automatic repository migration. Managed runtime adoption preserves
+that boundary; transfer of controllers and secrets does not import repository Plan copies.
+
+The bounded internal lifecycle path now uses existing review, readiness, Sequence and Plan Event rules with home package
+metadata. Retained inputs include every required resource and parent context; implementation dispatch and checkpoints
+keep the exact input and attempt. The same publication owner now accepts a durable retained manifest with exact
+metadata/family/Tickets and frozen optional delivery copies. Packages complete real validation and target publication,
+settle matching personal receipts and release ownership before cleanup; no target metadata-only commit or repository
+Plan is required. Retained Recorder inputs survive code cleanup. Reusing the publication state machine avoids a second
+phase authority, and exact immutable inputs avoid treating a delivery copy as live state. ADR-015 qualifies its legacy
+Git-metadata rule for this internal case. Local and managed selection now use this contract; milestone pruning remains outside it. ADR-003 and ADR-016 qualify the accepted lifecycle/runtime
+decisions; the broader proposal below remains proposed.
+
+The internal Work Record contract now shares personal Project ownership with admitted packages. Explicit record
+admission also supports import/read/index without a Plan. Canonical Markdown and native mutation locks are independent
+of repository binding; private location evidence retains each binding's copies. A stable Project/personal-owner index
+can be rebuilt from canonical records after a move or clone link. General Memory namespaces do not move. Retained
+Recorder preparation supplies the existing single-commit publisher and keeps pending copy confidence distinct from
+proof-approved canonical confidence. These choices are qualified in ADR-015 and used by managed owner-side recording;
+Retention now preserves pinned records and requires confirmation before pruning.
+
+## Accepted Local and Manual-SSH Activation
+
+Ordinary local and manual-SSH entry now selects one personal home Project format for Plans and Work Records.
+Project-level authority is independent of selected workflow authority: passive catalogs can inspect an empty Project,
+while selected actions still check Plan ID, metadata revision, repository and personal owner. Request boundaries
+reconstruct that authority rather than inheriting another request’s selection. A missing or denied home store cannot
+fall back to checkout documents. Import and recorded legacy-attempt continuation are the only checkout parsing scopes.
+
+Explicit file/folder import preserves source bytes and IDs. New authoring separates Markdown from typed Core-owned
+metadata. Archive and restore change package metadata without moving prose into repository history. Independent delivery
+copy settings keep Plans off by default and Work Records on; a repository-folder import may record a one-time Plan-copy
+choice. Settings and overrides stay in their existing checkout locations.
+
+An unfinished imported attempt retains its original execution and validation owner. The existing recovery/publication
+proof must settle it before a durable package settlement releases the old binding. Publication cleanup must complete;
+abandonment must be deliberate. This avoids both duplicate execution and indefinite dependence on the old checkout
+once settlement succeeds. Managed-remote ownership activation is explicitly not accepted by this local cutover.
+
+The preceding implementation history describes the incremental prerequisites. Its internal-only/public-activation
+limits are superseded for local/manual-SSH use by this section. The managed owner transport is described below;
+Confirmed retention and pruning now run through the personal owner.
+
+### Milestone history
+
+The package owner stages the event's Markdown in the home Project and publishes a history reference with the
+corresponding metadata write. Approval and delivery use their retained inputs. Archive and closure capture the
+current package. A version's digest covers document names and bytes. Renaming the Plan preserves its history.
+
+Restore uses the package batch journal to compare the whole observed generation, replace its Markdown membership
+and advance the current metadata revision. The journal lets managed operation receipts retain the original outcome.
+Historical documents and private execution inputs have separate lifetimes. Automatic history pruning remains proposed.
+
+### Plan persistence boundary
+
+The Plan store is a deep module with a public command/query interface at `src/plan-store/index.ts`. Its private
+implementation owns source selection, identity checks, lock ordering, revision checks, durable package and retained-copy
+writes, import continuation, and immutable input capture. Lifecycle policy remains in
+`src/shared/workflow/plan-lifecycle.ts`; the owner applies those rules to locked authoritative data and persists the result.
+This separates policy from storage without creating two writers.
+
+Named operations express authoring, review decisions, lifecycle events, imports, resource authorization, and execution
+reservation. The caller supplies intent and observed revisions. It does not receive a raw metadata mutator or coordinate
+select/lock/read/write steps. Target resolution supplies a Git branch to the owner; binding that target and reserving an
+attempt are one locked operation. Frozen document assembly is also an owner query. Generic atomic filesystem helpers
+belong to `src/shared/atomic-text-file.ts`, not the public Plan API.
+
+A facade that merely reexports package CRUD or wraps callers in a selected scope was rejected: it leaves invariant
+ordering distributed across callers. Putting all workflow behavior in the lifecycle state machine was also rejected:
+agent execution, Git effects and user interaction remain with their existing owners. Compatibility delegates may call
+named Plan operations, but cannot retain an independent persistence path. Boundary tests must reject private imports
+and direct Plan persistence in consumers; behavioral tests must still prove concurrency, stale input and identity checks.
+
+Review acceptance and execution capture have different comparisons. Review tolerates changes that render identically;
+reserved execution input retains exact bytes. Neither comparison permits instructions, links or execution policy to
+change without the corresponding review/readiness evidence.
+
+The [module contract](../../src/plan-store/README.md) documents supported operations, opaque strict-action versus fresh-read
+contexts, the pre-admission runtime migration bridge, and explicit private/test membership. The mechanical CI boundary
+includes Workspace and forbids production fixture imports. Exact qualification exceptions preserve crash/corruption
+coverage without making private storage APIs available to consumers. Public-interface concurrency and stale-input tests
+remain required; consolidating files alone does not establish the behavior.
+
 ## Decision and Rationale
+
+Linux resolves an account's configured login HOME to the physical directory owned by its effective user. Ordinary
+and managed execution use that directory for Project state and locks. Operations retain its identity and check it
+again before returning. A redirected login home stops the operation. Descendant symlinks remain subject to the
+existing store checks. The [Fedora qualification](../verification/plan-store-migration.md#integration-closeout-on-fedora-44)
+exercises both login layouts.
 
 Use stable opaque Project identity to locate home Project storage. Keep repository and checkout bindings as explicit
 execution facts, not as storage identity. Shared local Git configuration binds linked worktrees to the Project;
@@ -55,6 +180,34 @@ For managed remote execution, use authenticated, connection-scoped personal-stor
 metadata, locks, and durable acknowledgements. An SSHFS mount can expose editable Markdown; it is not native writer
 authority. Operation IDs and expected revisions permit reconciliation of lost acknowledgements without replaying
 external effects. No permanent daemon, mandatory hosted service, or second saved Plan is required.
+
+The Project-store service admits either an ordinary local checkout or a trusted home-only Project/repository registration.
+Home-only authority is revalidated against the current account's `project.wld.json`; it has no synthetic checkout or
+source path. Keeping that identity distinct makes an accidental owner-side Git/registry call an explicit execution-host
+refusal instead of a wrong-machine operation. Production managed startup now obtains trusted remote identity, registers
+that home-only owner and binds the public Plan interface before importing workflow consumers. Deliberate admission
+adopts eligible personal runtime; passive discovery remains read-only. Native personal locks and indexes stay on the
+laptop, while remote-home execution journals retain Git-effect evidence. Independent remote proof precedes personal
+lifecycle and record settlement; copy policy is frozen from the execution repository.
+
+Durable operation identity and canonical effects share the existing native lock boundary. A retained effect intent
+records the bounded replacement before it occurs; recovery verifies the original resource and settles the same effect
+before another writer proceeds. Connection caches cannot prove completion after restart. ID reservations survive lost
+receipts, and immutable snapshot references avoid copying frozen history into acknowledgements. Index reconciliation
+uses the existing canonical Work Record owner and does not manufacture publication proof.
+
+An eligible parent Epic can own a child's Work Record. Recording carries the child's retained publication reference
+inside the existing owner operation, while checking the parent's current revision and the sealed Work Record owner.
+The service locks both package identities and validates the exact attempt and retained input before reserving or
+writing the record. Looking for the child's preparation on the parent would lose this relationship; accepting only a
+parent name would lose the proof binding. This extends neither public recording semantics nor storage ownership.
+
+Session resume resolves established admitted storage directories before applying the initial directory-name check.
+A moved Project can retain its original bundle directory and native lock. The resumed current cwd comes from the
+synchronized Project binding; historical segment execution paths remain evidence and are not rewritten.
+
+Managed Session discovery follows the [Session owner's verified identity binding](014-file-authoritative-session-bundles.md#remote-pi-saves-through-the-laptop-owner).
+It does not require Plan-store admission and does not create another Plan owner.
 
 The runtime location change does not move every resource to one logical owner. A Plan reference names an execution
 attempt, while its registry owns the mutable publication phase. Git supplies delivery proof; Plan metadata retains a

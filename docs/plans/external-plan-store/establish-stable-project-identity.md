@@ -1,4 +1,5 @@
 ---
+planId: "cd3a9537-e591-401e-bc68-f0bf464e2881"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "HIGH"
@@ -6,23 +7,21 @@ affectedPaths:
     - "src/shared/project-identity.ts"
     - "src/shared/project-runtime-layout.ts"
     - "src/shared/project-directory-key.ts"
-    - "src/shared/owner-coordination/projects.ts"
+    - "src/shared/owner-coordination/projects.js"
     - "src/shared/remote/personal-resources.ts"
     - "docs/domain-language.md"
     - "docs/prd/runwield-core-prd.md"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
 createdAt: "2026-11-01"
 origin: "internal"
 parentPlan: "external-plan-store"
 order: 1
 dependencies: []
 targetBranch: "epic/external-plan-store"
-status: "draft"
-planId: "cd3a9537-e591-401e-bc68-f0bf464e2881"
+userVerifiedAt: null
+validatedCommit: "c2c95957459d2f9ff7b9d073f6b4f41a82022969"
+status: "verified"
 ---
 
 # Establish Stable Project Identity
@@ -32,7 +31,7 @@ planId: "cd3a9537-e591-401e-bc68-f0bf464e2881"
 This Plan implements one slice of the [External Project State and Plan Store Epic](../external-plan-store.md).
 Existing local Session identity and several home directory keys derive from filesystem paths. Home Project storage needs a stable identity before any data moves.
 
-Owning requirements: [Project identity](../../prd/plan-store-prd.md#project-identity); [Project initialization](../../prd/runwield-core-prd.md#project-context-and-initialization). The proposed additions are stable identity, explicit owner/execution bindings, and remembered clone linking. Plan and Session continuity remain later-child targets; preserve existing locators and the current directory-consent and remote-host-verification behavior.
+Owning requirements: [Project identity](../../prd/runwield-core-prd.md#project-context-and-initialization); [Project initialization](../../prd/runwield-core-prd.md#project-context-and-initialization). The proposed additions are stable identity, explicit owner/execution bindings, and remembered clone linking. Plan and Session continuity remain later-child targets; preserve existing locators and the current directory-consent and remote-host-verification behavior.
 
 ## Objective
 
@@ -93,7 +92,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/project-identity.ts` and focused tests — authoritative identity, binding persistence, and clone-link decisions
 - `src/shared/project-runtime-layout.ts` and deliberate entry adapters — invoke admission while preserving passive reads and runtime paths
 - `src/shared/project-directory-key.ts` — keep legacy path encoding explicit during adoption
-- `src/shared/owner-coordination/projects.ts` — map existing Workspace registration rather than make it Core authority
+- `src/shared/owner-coordination/projects.js` — map existing Workspace registration rather than make it Core authority
 - `src/shared/remote/personal-resources.ts` — distinguish ordinary execution from activated laptop personal resources
 - `docs/domain-language.md` — Project Identity and repository-binding relationships
 - `docs/prd/runwield-core-prd.md` and the identity subsection of `docs/prd/plan-store-prd.md` — current identity requirements and explicitly remaining continuity targets
@@ -142,13 +141,13 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
 
 ```sh
-bun scripts/run-tests.ts src/shared/project-directory.test.ts src/shared/owner-coordination/projects.test.ts src/shared/remote/personal-resources.test.ts
+bun scripts/run-tests.js src/shared/project-directory.test.ts src/shared/owner-coordination/projects.test.ts src/shared/remote/personal-resources.test.ts
 ```
 
 Add and run these focused behavior tests (new files, not an existing passing inventory):
 
 ```sh
-bun scripts/run-tests.ts src/shared/project-identity.test.ts src/shared/project-identity.integration.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/project-runtime-passive-access.test.ts
+bun scripts/run-tests.js src/shared/project-identity.test.ts src/shared/project-identity.integration.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/project-runtime-passive-access.test.ts
 ```
 
 Use `defineGitFixture`, real stores/repositories, disposable homes, and child processes for concurrent admission.

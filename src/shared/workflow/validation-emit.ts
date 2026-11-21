@@ -30,28 +30,26 @@ export function repairBlockedReason(args: ValidationLoopArgs, projectRoot: strin
 }
 
 /** Fields accepted when building a progress record from scratch. */
-export type ValidationProgressInput =
-    & Omit<Partial<ValidationProgressRecord>, "checks">
-    & { checks?: Partial<ValidationCheckResults> };
+export type ValidationProgressInput = Omit<Partial<ValidationProgressRecord>, "checks"> & {
+    checks?: Partial<ValidationCheckResults>;
+};
 
 /**
  * Fields accepted when amending a record. `null` clears a counter, which is how a
  * terminal update drops cycle numbers that no longer mean anything.
  */
-export type ValidationProgressPatch =
-    & Omit<
-        Partial<ValidationProgressRecord>,
-        "checks" | "cycle" | "maxCycles" | "totalCycle" | "repairAttempt" | "maxRepairAttempts" | "message"
-    >
-    & {
-        checks?: Partial<ValidationCheckResults>;
-        cycle?: number | null;
-        maxCycles?: number | null;
-        totalCycle?: number | null;
-        repairAttempt?: number | null;
-        maxRepairAttempts?: number | null;
-        message?: string | null;
-    };
+export type ValidationProgressPatch = Omit<
+    Partial<ValidationProgressRecord>,
+    "checks" | "cycle" | "maxCycles" | "totalCycle" | "repairAttempt" | "maxRepairAttempts" | "message"
+> & {
+    checks?: Partial<ValidationCheckResults>;
+    cycle?: number | null;
+    maxCycles?: number | null;
+    totalCycle?: number | null;
+    repairAttempt?: number | null;
+    maxRepairAttempts?: number | null;
+    message?: string | null;
+};
 
 const CLEARABLE_COUNTERS = ["cycle", "maxCycles", "totalCycle", "repairAttempt", "maxRepairAttempts"] as const;
 const CHECK_KEYS = ["ci", "semanticReview", "humanReview", "merge"] as const;
@@ -72,8 +70,8 @@ export function createProgressRecord(values: ValidationProgressInput): Validatio
         ...(values.kind === "workflow"
             ? { totalCycle: values.totalCycle || values.cycle || 1 }
             : values.totalCycle
-            ? { totalCycle: values.totalCycle }
-            : {}),
+              ? { totalCycle: values.totalCycle }
+              : {}),
         ...(values.repairAttempt ? { repairAttempt: values.repairAttempt } : {}),
         ...(values.maxRepairAttempts ? { maxRepairAttempts: values.maxRepairAttempts } : {}),
         ...(values.message ? { message: values.message } : {}),
@@ -147,7 +145,9 @@ export function clampCycle(cycle: number, maximum = SEMANTIC_REVIEW_CYCLES): num
 export function seedProgressForStatus(args: ValidationLoopArgs): ValidationProgressRecord {
     const status = args.triageMeta.status;
     const semanticDone = status === "reviewed";
-    const ciDone = semanticDone || status === "validated_ci" ||
+    const ciDone =
+        semanticDone ||
+        status === "validated_ci" ||
         (status === "implemented" && args.triageMeta.validationPhase === "semantic");
     const rounds = readSemanticRound(args.triageMeta);
     return createProgressRecord({

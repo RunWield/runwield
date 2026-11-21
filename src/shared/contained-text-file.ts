@@ -1,9 +1,20 @@
 /** Read only through the file object whose OS-resolved path passed containment. */
-import { constants, readlinkSync } from "node:fs";
+import {
+    closeSync,
+    constants,
+    readFileSync,
+    readlinkSync,
+    fstatSync,
+    lstatSync,
+    fsyncSync,
+    type BigIntStats,
+} from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
 import { open } from "node:fs/promises";
 import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
-import { isAbsolute, resolve, sep, toNamespacedPath } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep, toNamespacedPath } from "node:path";
+import { writeJsonAtomically } from "./private-json-file.ts";
 import { platform, pid } from "node:process";
 
 interface NativeFunction {
@@ -20,6 +31,7 @@ interface ObjectPathFFI {
     dlopen(path: string, functions: Record<string, NativeFunction>): { symbols: ObjectPathSymbols };
 }
 interface WindowsSymbols {
+    SetFileInformationByHandle(handle: bigint, kind: number, buffer: Uint8Array, size: number): number;
     CreateFileW(
         path: Uint8Array,
         access: number,
@@ -103,6 +115,7 @@ function windowsAPI(): WindowsSymbols {
     if (windowsFiles) return windowsFiles;
     const ffi: WindowsFFI = createRequire(import.meta.url)("bun:ffi");
     windowsFiles = ffi.dlopen("kernel32.dll", {
+        SetFileInformationByHandle: { args: ["u64", "u32", "buffer", "u32"], returns: "i32" },
         CreateFileW: { args: ["buffer", "u32", "u32", "ptr", "u32", "u32", "u64"], returns: "u64" },
         GetFinalPathNameByHandleW: { args: ["u64", "buffer", "u32", "u32"], returns: "u32" },
         GetFileType: { args: ["u64"], returns: "u32" },
@@ -112,15 +125,15 @@ function windowsAPI(): WindowsSymbols {
     return windowsFiles;
 }
 
-function readWindowsText(root: string, path: string): string {
+function readWindowsText(root: string, path: string, pruneDigest?: string): string {
     const api = windowsAPI();
     const handle = api.CreateFileW(
         Buffer.from(toNamespacedPath(path) + "\0", "utf16le"),
-        0x80000000, // GENERIC_READ: never create, truncate, or write.
-        7, // Share read, write, and delete; do not change other actors' access.
+        pruneDigest ? 0x80010000 : 0x80000000, // Pruning also requires DELETE access.
+        pruneDigest ? 1 : 7, // Prevent replacement and writes during the digest check.
         0,
         3, // OPEN_EXISTING.
-        0,
+        pruneDigest ? 0x00200000 : 0, // OPEN_REPARSE_POINT for deletion.
         0n,
     );
     if (handle === 0n || handle === 0xffffffffffffffffn) throw denied();
@@ -136,6 +149,7 @@ function readWindowsText(root: string, path: string): string {
               ? finalPath.slice(4)
               : finalPath;
         if (!isPathInside(normalized, root)) throw denied();
+        if (pruneDigest && normalized !== path) throw denied();
         const chunks: Buffer[] = [];
         const count = Buffer.alloc(4);
         for (;;) {
@@ -144,9 +158,164 @@ function readWindowsText(root: string, path: string): string {
             if (size === 0) break;
             chunks.push(Buffer.from(buffer.subarray(0, size)));
         }
-        return Buffer.concat(chunks).toString("utf8");
+        const bytes = Buffer.concat(chunks);
+        if (pruneDigest && createHash("sha256").update(bytes).digest("hex") === pruneDigest) {
+            if (!api.SetFileInformationByHandle(handle, 4, Buffer.from([1]), 1)) throw denied();
+        }
+        return bytes.toString("utf8");
     } finally {
         api.CloseHandle(handle);
+    }
+}
+
+type RenameExclusive = (from: number, source: Uint8Array, to: number, target: Uint8Array, flags: number) => number;
+interface UnlinkFFI {
+    dlopen(
+        path: string,
+        functions: Record<string, NativeFunction>,
+    ): {
+        symbols: {
+            renameat2: RenameExclusive;
+            renameatx_np: RenameExclusive;
+            openat(parent: number, name: Uint8Array, flags: number): number;
+            unlinkat(parent: number, name: Uint8Array, flags: number): number;
+        };
+    };
+}
+let unlinkLibrary: ReturnType<UnlinkFFI["dlopen"]> | undefined;
+
+interface CopyCleanupJournal {
+    path: string;
+    digest: string;
+    stageId: string;
+    parent: string;
+    original: string;
+    settled: boolean;
+}
+function fileIdentity(stat: BigIntStats): string {
+    return [stat.dev, stat.ino, stat.birthtimeNs].join("/");
+}
+function copyJournal(location: string, path: string, digest: string): CopyCleanupJournal | undefined {
+    let text: string;
+    try {
+        text = readFileSync(location, "utf8");
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+        throw error;
+    }
+    const entry: CopyCleanupJournal = JSON.parse(text);
+    if (
+        entry.path !== path ||
+        entry.digest !== digest ||
+        !/^[a-f0-9-]{36}$/.test(entry.stageId) ||
+        !entry.original ||
+        !entry.parent ||
+        typeof entry.settled !== "boolean"
+    )
+        throw denied();
+    return entry;
+}
+/** Keep the validated parent open so removal never resolves its ancestors again. */
+export async function removeContainedCopy(
+    root: string,
+    path: string,
+    digest: string,
+    journalPath: string,
+): Promise<void> {
+    if (!isPathInside(path, root) || path.includes("\0") || !/^[a-f0-9]{64}$/.test(digest)) throw denied();
+    if (platform === "win32") {
+        readWindowsText(root, path, digest);
+        return;
+    }
+    if (platform !== "linux" && platform !== "darwin") throw denied();
+    if (!unlinkLibrary) {
+        const ffi: UnlinkFFI = createRequire(import.meta.url)("bun:ffi");
+        unlinkLibrary = ffi.dlopen(platform === "darwin" ? "/usr/lib/libSystem.B.dylib" : "libc.so.6", {
+            [platform === "darwin" ? "renameatx_np" : "renameat2"]: {
+                args: ["i32", "buffer", "i32", "buffer", "u32"],
+                returns: "i32",
+            },
+            openat: { args: ["i32", "buffer", "i32"], returns: "i32" },
+            unlinkat: { args: ["i32", "buffer", "i32"], returns: "i32" },
+        });
+    }
+    const api = unlinkLibrary.symbols;
+    let journal = copyJournal(journalPath, path, digest);
+    if (journal?.settled) return;
+    const parent = await open(dirname(path), constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW).catch(
+        (error: NodeJS.ErrnoException) => {
+            if (["ENOENT", "ENOTDIR", "ELOOP"].includes(error.code || "")) return;
+            throw error;
+        },
+    );
+    function preserveMovedDirectory() {
+        if (journal) {
+            console.warn(
+                `Copy directory moved. Preserved any detached save as RunWield recovered copy ${journal.stageId}.md in that directory.`,
+            );
+            writeJsonAtomically(journalPath, { ...journal, settled: true });
+        }
+    }
+    if (!parent) return preserveMovedDirectory();
+    try {
+        const parentId = fileIdentity(fstatSync(parent.fd, { bigint: true }));
+        if (descriptorPath(parent.fd) !== dirname(path) || (journal && journal.parent !== parentId))
+            return preserveMovedDirectory();
+        const name = Buffer.from(basename(path) + "\0");
+        const flags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+        const identityIfApproved = (leaf: Buffer, expectedPath: string) => {
+            const fd = api.openat(parent.fd, leaf, flags);
+            if (fd < 0) return;
+            try {
+                const info = fstatSync(fd, { bigint: true });
+                if (
+                    info.isFile() &&
+                    descriptorPath(fd) === expectedPath &&
+                    createHash("sha256").update(readFileSync(fd)).digest("hex") === digest
+                )
+                    return fileIdentity(info);
+            } finally {
+                closeSync(fd);
+            }
+        };
+        if (!journal) {
+            const original = identityIfApproved(name, path);
+            if (!original) return;
+            journal = { path, digest, original, parent: parentId, stageId: randomUUID(), settled: false };
+            writeJsonAtomically(journalPath, journal);
+        }
+        const rename = platform === "darwin" ? api.renameatx_np : api.renameat2;
+        const exclusive = platform === "darwin" ? 4 : 1; // RENAME_EXCL or RENAME_NOREPLACE.
+        const stageName = "RunWield recovered copy " + journal.stageId + ".md";
+        const staged = Buffer.from(stageName + "\0");
+        const stagePath = join(dirname(path), stageName);
+        let detached = !!lstatSync(stagePath, { throwIfNoEntry: false });
+        if (!detached && identityIfApproved(name, path) === journal.original) {
+            if (
+                descriptorPath(parent.fd) !== dirname(path) ||
+                rename(parent.fd, name, parent.fd, staged, exclusive) !== 0
+            ) {
+                // The copy is still in place. Only a detached file needs recovery.
+                writeJsonAtomically(journalPath, { ...journal, settled: true });
+                return;
+            }
+            fsyncSync(parent.fd);
+            detached = true;
+        }
+        if (detached) {
+            if (descriptorPath(parent.fd) !== dirname(path)) throw denied();
+            if (identityIfApproved(staged, stagePath) === journal.original) {
+                if (api.unlinkat(parent.fd, staged, 0) !== 0) throw denied();
+            } else if (rename(parent.fd, staged, parent.fd, name, exclusive) !== 0) {
+                if (!lstatSync(path, { throwIfNoEntry: false }))
+                    throw new Error("Could not restore an edited copy. Retry cleanup.");
+                console.warn(`Preserved both editor saves at ${path} and ${stagePath}`);
+            }
+        }
+        fsyncSync(parent.fd);
+        writeJsonAtomically(journalPath, { ...journal, settled: true });
+    } finally {
+        await parent.close();
     }
 }
 

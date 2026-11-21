@@ -1,5 +1,5 @@
-import { findExistingProjectPath } from "../../shared/project-checkout.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { resolveRecoveryWorktree } from "../../plan-store/index.ts";
+export { resolveRecoveryWorktree } from "../../plan-store/index.ts";
 import { stat as fsStat } from "node:fs/promises";
 /**
  * @module cmd/load-plan/plan-recovery-worktree
@@ -10,29 +10,26 @@ import { stat as fsStat } from "node:fs/promises";
  * missing field would make a destructive action unsafe.
  */
 
-import { loadPlan, resolvePlanExecutionPolicy, updatePlanFrontMatter } from "../../plan-store.ts";
-import { buildPlanEventUpdates } from "../../shared/workflow/plan-lifecycle.ts";
+import { refreshPlanExecutionReference, reopenPlanReview } from "../../plan-store/index.ts";
+import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { resolveValidationExecutionContext } from "../../shared/workflow/execution-context.ts";
 import {
     buildPlanRecoveryUserMessage,
     buildValidationRecoveryNotice,
     planRecoveryMessage,
 } from "../../shared/workflow/validation-user-messages.ts";
-import { runPlanFrontMatterTransition, runReviewReopenTransition } from "../../shared/workflow/state-transition.ts";
 import { getWorkflowDiff } from "../../shared/workflow/git-snapshot.ts";
-import { getWorktreeStatus, slugify } from "../../shared/worktree.ts";
-import { WORKTREE_BRANCH_PREFIX } from "../../constants.ts";
-import {
-    findActiveByPlanName as findWorktreeByPlanName,
-    findById as findWorktreeById,
-} from "../../shared/worktree-registry.ts";
+import { getWorktreeStatus } from "../../shared/worktree.ts";
+
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
-import { transitionFailureError } from "./transition-failure.ts";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
-import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { PlanStatus } from "../../shared/workflow/plan-lifecycle.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
@@ -69,84 +66,6 @@ export interface RecoveryExecutionContext {
     worktreeBaseBranch?: string | null;
 }
 
-interface AttachedWorktreeRecord {
-    path: string;
-    branch: string;
-}
-
-async function listAttachedWorktrees(projectRoot: string): Promise<AttachedWorktreeRecord[]> {
-    const command = captureForegroundProcess("git", { args: ["worktree", "list", "--porcelain"], cwd: projectRoot });
-    const output = await command;
-    if (output.code !== 0) return [];
-    return new TextDecoder()
-        .decode(output.stdout)
-        .trim()
-        .split("\n\n")
-        .filter(Boolean)
-        .map((block) => {
-            const lines = block.split("\n");
-            return {
-                path:
-                    lines
-                        .find((line) => line.startsWith("worktree "))
-                        ?.slice("worktree ".length)
-                        .trim() || "",
-                branch:
-                    lines
-                        .find((line) => line.startsWith("branch "))
-                        ?.slice("branch ".length)
-                        .trim() || "",
-            };
-        })
-        .filter((record) => Boolean(record.path && record.branch));
-}
-
-async function discoverAttachedPlanWorktree(
-    projectRoot: string,
-    plan: RecoveryPlanRef,
-): Promise<RecoveryWorktreeContext | null> {
-    const projectPath = await findExistingProjectPath(projectRoot);
-    const matches: RecoveryWorktreeContext[] = [];
-    // Execution branches are created only as `worktree/<plan-slug>-<attempt-id>`, a
-    // prefix target branches may not use, and attempt IDs contain no dash. A child
-    // Plan's slug extends its Epic's with another dash, so only this Plan's own
-    // attempts can match; reading every other checkout's Plan would cost a runtime
-    // entry each.
-    const executionBranchPrefix = `refs/heads/${WORKTREE_BRANCH_PREFIX}${slugify(plan.planName)}-`;
-    const isOwnExecutionBranch = (branch: string) =>
-        branch.startsWith(executionBranchPrefix) && !branch.slice(executionBranchPrefix.length).includes("-");
-    for (const record of await listAttachedWorktrees(projectRoot)) {
-        if (!isOwnExecutionBranch(record.branch)) continue;
-        const recordPath = await findExistingProjectPath(record.path);
-        if (!recordPath || recordPath === projectPath) continue;
-        const executionPlan = await loadPlan(record.path, plan.planName).catch(() => null);
-        if (!executionPlan || executionPlan.attrs.executionMode !== "worktree") continue;
-        const attrs = executionPlan.attrs;
-        if (
-            !attrs.planId ||
-            !attrs.worktreeId ||
-            !attrs.worktreePath ||
-            !attrs.worktreeBranch ||
-            !attrs.worktreeBaseBranch
-        )
-            continue;
-        if (plan.attrs.planId && plan.attrs.planId !== attrs.planId) continue;
-        if ((await findExistingProjectPath(attrs.worktreePath)) !== recordPath) continue;
-        if (record.branch !== `refs/heads/${attrs.worktreeBranch}`) continue;
-        if (!["in_progress", "failed", "implemented", "validated_ci", "reviewed", "validated"].includes(attrs.status))
-            continue;
-        matches.push({
-            id: attrs.worktreeId,
-            path: record.path,
-            branch: attrs.worktreeBranch,
-            baseBranch: attrs.worktreeBaseBranch,
-            executionBaselineTree: attrs.executionBaselineTree || undefined,
-            status: attrs.worktreeStatus || undefined,
-        });
-    }
-    return matches.length === 1 ? matches[0] : null;
-}
-
 /** The execution workflow recovery re-attaches to the session. */
 export interface RecoveryWorkflowState {
     planName: string;
@@ -173,48 +92,15 @@ export interface ReopenPlanForReviewOptions {
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} plan
  * @returns {Promise<RecoveryWorktreeContext | null>}
  */
-export async function resolveRecoveryWorktree(
-    projectRoot: string,
-    plan: RecoveryPlanRef,
-): Promise<RecoveryWorktreeContext | null> {
-    let entry = null;
-    if (plan.attrs.worktreeId) entry = await findWorktreeById(projectRoot, plan.attrs.worktreeId);
-    if (!entry) entry = await findWorktreeByPlanName(projectRoot, plan.planName);
-    if (!entry && !plan.attrs.worktreePath && !plan.attrs.worktreeBranch && !plan.attrs.worktreeId) {
-        const discovered = await discoverAttachedPlanWorktree(projectRoot, plan);
-        if (discovered) return discovered;
-    }
-    const path = entry?.path || plan.attrs.worktreePath || undefined;
-    const branch = entry?.branch || plan.attrs.worktreeBranch || undefined;
-    const id = entry?.id || plan.attrs.worktreeId || undefined;
-    const recordedBaseBranch = entry?.baseBranch || plan.attrs.worktreeBaseBranch || undefined;
-    const baseBranch = recordedBaseBranch === "HEAD" ? undefined : recordedBaseBranch;
-    if (!path && !branch && !id) return null;
-    return {
-        id,
-        path,
-        branch,
-        baseBranch,
-        // Once execution starts, the registry records operational attempt state.
-        // The primary-checkout Plan is intentionally immutable during publication,
-        // so its older worktreeStatus must not hide a failed push or conflict.
-        status: entry?.status || plan.attrs.worktreeStatus || undefined,
-        baseRef: entry?.baseRef || plan.attrs.worktreeBaseCommit || undefined,
-        baseCommit: entry?.baseCommit || plan.attrs.worktreeBaseCommit || undefined,
-        baseTree: entry?.baseTree,
-        executionBaselineTree: entry?.executionBaselineTree || plan.attrs.executionBaselineTree || undefined,
-        publication: entry?.publication,
-    };
-}
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter, revision?: string }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter, revision?: string }} plan
  * @param {RecoveryWorktreeContext | null} context
- * @returns {Promise<import('../../plan-store.ts').PlanFrontMatter>}
+ * @returns {Promise<import('../../plan-store/index.ts').PlanFrontMatter>}
  */
 export async function persistRecoveredWorktreeMetadata(
     projectRoot: string,
@@ -225,21 +111,8 @@ export async function persistRecoveredWorktreeMetadata(
     // A validated Plan deliberately drops attempt pointers. The registry remains
     // publication authority until upstream verification and cleanup complete.
     if (plan.attrs.status === "validated") return plan.attrs;
-    const updates: Partial<PlanFrontMatter> = {};
-    if (context.id && !plan.attrs.worktreeId) updates.worktreeId = context.id;
-    if (!Object.keys(updates).length) return plan.attrs;
-    const transition = await runPlanFrontMatterTransition({
-        projectRoot,
-        planName: plan.planName,
-        operation: "recovery_metadata_refresh",
-        updates,
-        recoveryAttrs: {},
-        expectedRevision: plan.revision,
-    });
-    if (transition.status !== "committed") {
-        throw transitionFailureError(transition, `Recovery metadata transition failed for ${plan.planName}.`);
-    }
-    return transition.value as PlanFrontMatter;
+    if (!context.id || plan.attrs.worktreeId) return plan.attrs;
+    return await refreshPlanExecutionReference(projectRoot, plan.planName, context.id, plan.revision);
 }
 
 /**
@@ -271,7 +144,7 @@ export function assertRecoveryWorktreeIsManaged(
  *
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, path: string, body: string, attrs: import('../../plan-store.ts').PlanFrontMatter, revision?: string }} opts.plan
+ * @param {{ planName: string, path: string, body: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter, revision?: string }} opts.plan
  * @param {import('../../shared/workflow/plan-lifecycle.ts').PlanStatus} opts.currentStatus
  * @param {RecoveryWorktreeContext | null | undefined} [opts.worktreeContext]
  * @param {PlanSessionSurface} opts.session
@@ -300,24 +173,7 @@ export async function reopenPlanForReview({
     }
     const priorWorktreeId = priorWorktree.id;
     const { documentRoot } = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
-    const transition = await runReviewReopenTransition({
-        projectRoot: documentRoot,
-        planName: plan.planName,
-        worktreeId: priorWorktreeId,
-        expectedRevision: plan.revision,
-        reopen: async ({ beforePlan, markEffect }) => {
-            if (!beforePlan) throw new Error(`Plan not found: ${plan.planName}`);
-            const updates = buildPlanEventUpdates("review_reopened", currentStatus, { triageMeta: beforePlan.attrs });
-            const updatedAttrs = await updatePlanFrontMatter(documentRoot, plan.planName, updates, beforePlan.attrs, {
-                expectedRevision: beforePlan.revision,
-            });
-            await markEffect("plan_event_recorded", { planName: plan.planName, event: "review_reopened" });
-            return updatedAttrs;
-        },
-    });
-    if (transition.status !== "committed") {
-        throw transitionFailureError(transition, `Review reopen transition failed for ${plan.planName}.`);
-    }
+    await reopenPlanReview(documentRoot, plan.planName, priorWorktreeId, currentStatus, plan.revision);
     session.clearActiveExecutionWorkflow();
     const refreshed = await loadPlan(documentRoot, plan.planName);
     if (refreshed) Object.assign(plan, refreshed);
@@ -379,7 +235,7 @@ export function reportInvalidRecoveryPolicy(
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} plan
  * @param {RecoveryWorktreeContext | null} context
  * @param {PlanSessionSurface} session
  * @param {import('../../ui/tui/api.ts').UiAPI} [uiAPI]
@@ -468,7 +324,7 @@ export async function rehydrateActiveRecoveryWorkflow(
  * Append recovery context for a partially executed Plan.
  *
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store.ts').PlanFrontMatter, body: string, markdown: string }} plan
+ * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter, body: string, markdown: string }} plan
  * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @param {RecoveryWorktreeContext | null} worktreeContext
  * @returns {Promise<void>}

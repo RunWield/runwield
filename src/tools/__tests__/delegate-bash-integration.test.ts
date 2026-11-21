@@ -53,12 +53,11 @@ test("foreground and background delegated model turns inherit parent bash limits
                 }
                 assertStringIncludes(toolResult, "inspect-me.txt");
             }
-            for (
-                const [mode, role] of [["read", undefined], ["write", undefined], [
-                    "write",
-                    "verification-adversary",
-                ]] as const
-            ) {
+            for (const [mode, role] of [
+                ["read", undefined],
+                ["write", undefined],
+                ["write", "verification-adversary"],
+            ] as const) {
                 let toolResult = "";
                 setModelResponseFactories([
                     () => fauxAssistantMessage(fauxToolCall("bash", { command: "git log" })),

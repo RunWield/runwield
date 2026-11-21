@@ -1,3 +1,4 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
@@ -8,6 +9,7 @@ import { runPlanReviewCommand } from "./index.ts";
 
 test("/plan-review reports the live URL published by the review surface without another presentation", async () => {
     await withRuntimeCommandFixture("plan-review-command-", async ({ homeDir, projectRoot }) => {
+        await seedPlan(projectRoot, "target", "# Target", { planId: "plan-id" });
         const ownerStore = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const runtime = createSessionRuntime({ sessionStore: ownerStore, ownerProcessKind: "test" });
         const pending = Promise.withResolvers<{ outcome: "canceled" }>();

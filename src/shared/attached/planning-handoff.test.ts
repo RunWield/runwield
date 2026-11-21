@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import { ok as assert, strictEqual as equal, deepStrictEqual } from "node:assert/strict";
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { readAttachedAction } from "./coordinator.ts";
 import { listEntries } from "../worktree-registry.ts";
-import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
-import { loadPlan } from "../../plan-store.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
+import { importPlans, loadPlan } from "../../plan-store/index.ts";
 import {
     activateInput,
     EVIDENCE,
@@ -44,8 +44,16 @@ const fixture = defineGitFixture(async (root) => {
     await git(root, ["switch", "main"]);
 });
 
+async function checkoutWithImportedFamily() {
+    const root = await realpath(await fixture.checkout());
+    await git(root, ["switch", "epic/target"]);
+    await importPlans(root, join(root, "docs/plans"));
+    await git(root, ["switch", "main"]);
+    return root;
+}
+
 test("native existing-child planning hands off an isolated authoritative document", async () => {
-    const root = await fixture.checkout();
+    const root = await checkoutWithImportedFamily();
     await writeFile(join(root, "README.md"), "dirty invoking checkout\n");
     await git(root, ["add", "README.md"]);
     await writeFile(join(root, "untracked.txt"), "preserve this too\n");
@@ -63,7 +71,11 @@ test("native existing-child planning hands off an isolated authoritative documen
     const passive = await runOperation("status", root, { workflowId: triage.workflowId, inspectOnly: true });
     assert(passive.ok);
     equal((await listEntries(root)).length, 0);
-    equal((await resolveWorkflowPlanLocation(root, child.planName, { readOnly: true })).planningNotStarted, true);
+    equal(
+        (await resolveWorkflowPlanLocation(root, child.planName, { readOnly: true, loadFromTarget: true }))
+            .planningNotStarted,
+        true,
+    );
     equal(await git(root, ["status", "--porcelain"]), before);
     const prepareInput = {
         workflowId: triage.workflowId,
@@ -88,7 +100,7 @@ test("native existing-child planning hands off an isolated authoritative documen
     const action = prepared.workflow.nextAction;
     equal(action.planningRequired, false);
     assert(action.planningCwd && action.planningCwd !== root);
-    equal(action.planPath, join(action.planningCwd, "docs/plans/epic/02-next.md"));
+    equal(action.planPath, (await loadPlan(root, child.planName))?.path);
     equal(handoff.context.planningCwd, action.planningCwd);
     equal(handoff.context.planPath, action.planPath);
     equal(handoff.context.planId, child.planId);
@@ -115,8 +127,48 @@ test("native existing-child planning hands off an isolated authoritative documen
     deepStrictEqual(await listEntries(root), entries);
 });
 
+test("a moved checkout starts its selected child on the current target", async () => {
+    const original = await checkoutWithImportedFamily();
+    const moved = original + "-moved";
+    const input = activateInput();
+    input.payload = {
+        hostRequestId: "moving-child",
+        requestText: "Plan the selected child",
+        existingPlan: { ...child, targetBranch: "epic/target" },
+    };
+    const triage = pendingTriage(await runOperation("activate", original, input));
+    const planned = await runOperation("triage_report", original, triageReportInput(triage));
+    assert(planned.ok && planned.workflow.nextAction.kind === "plan", JSON.stringify(planned));
+    await rename(original, moved);
+    try {
+        const { admitProjectIdentity } = await import("../project-identity.ts");
+        equal((await admitProjectIdentity(moved)).kind, "existing");
+        const prepared = await runOperation("start_planning", moved, {
+            workflowId: triage.workflowId,
+            evidence: EVIDENCE,
+            operationId: "after-move",
+            expectedRevision: planned.workflow.revision,
+            payload: { actionId: planned.workflow.nextAction.actionId },
+        });
+        assert(prepared.ok && prepared.workflow.nextAction.kind === "plan", JSON.stringify(prepared));
+        const cwd = prepared.workflow.nextAction.planningCwd;
+        assert(cwd && cwd !== moved && cwd !== original);
+        equal(await readFile(join(cwd, "target-only.txt"), "utf8"), "published sibling implementation\n");
+        await git(moved, ["switch", "epic/target"]);
+        await writeFile(join(moved, "second-sibling.txt"), "published after planning\n");
+        await git(moved, ["add", "second-sibling.txt"]);
+        await git(moved, ["commit", "-m", "Publish the next sibling"]);
+        await git(moved, ["switch", "main"]);
+        const { prepareAttachedPlanning } = await import("./planning.ts");
+        await prepareAttachedPlanning(moved, child);
+        equal(await readFile(join(cwd, "second-sibling.txt"), "utf8"), "published after planning\n");
+    } finally {
+        await rm(moved, { recursive: true, force: true });
+    }
+});
+
 test("Plan submission cannot bypass missing target-backed planning preparation", async () => {
-    const root = await fixture.checkout();
+    const root = await checkoutWithImportedFamily();
     const { planning } = await reachPlanning(root);
     const result = await runOperation(
         "plan_written",
@@ -126,11 +178,15 @@ test("Plan submission cannot bypass missing target-backed planning preparation",
     assert(!result.ok);
     assert(result.rejection.message.includes("Start planning"));
     equal((await listEntries(root)).length, 0);
-    equal((await resolveWorkflowPlanLocation(root, child.planName, { readOnly: true })).planningNotStarted, true);
+    equal(
+        (await resolveWorkflowPlanLocation(root, child.planName, { readOnly: true, loadFromTarget: true }))
+            .planningNotStarted,
+        true,
+    );
 });
 
 test("an older unbound workflow binds only the selected child and restores preparation in a fresh process", async () => {
-    const root = await fixture.checkout();
+    const root = await checkoutWithImportedFamily();
     const { planning } = await reachPlanning(root);
     const result = await runOperation("start_planning", root, {
         workflowId: planning.workflowId,
@@ -159,7 +215,7 @@ for (const selection of [
     { ...child, planName: "epic/missing" },
 ]) {
     test(`planning rejects a mismatched or missing selection ${JSON.stringify(selection)} without preparation`, async () => {
-        const root = await fixture.checkout();
+        const root = await checkoutWithImportedFamily();
         const { planning } = await reachPlanning(root);
         const before = await readRecordBytes(root, planning.workflowId);
         const files = await git(root, ["status", "--porcelain"]);
@@ -179,7 +235,7 @@ for (const selection of [
 }
 
 test("a stale planning action cannot prepare a workspace", async () => {
-    const root = await fixture.checkout();
+    const root = await checkoutWithImportedFamily();
     const { planning } = await reachPlanning(root);
     const result = await runOperation("start_planning", root, {
         workflowId: planning.workflowId,

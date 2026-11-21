@@ -1,7 +1,7 @@
-import type { PlanReadAvailability } from "../../../plan-store.ts";
+import type { PlanReadAvailability } from "../../../plan-store/index.ts";
 /** @module ui/workspace/server/owner-dashboard */
 
-import { compareChildPlansByOrder, isSequencePlan } from "../../../plan-store.ts";
+import { compareChildPlansByOrder, isSequencePlan } from "../../../plan-format.ts";
 import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 import { loadPlanSummaries, loadPlanSummaryCatalog } from "./plan-adapter.ts";

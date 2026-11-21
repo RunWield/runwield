@@ -1,20 +1,10 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, TextContent, ToolResultMessage } from "@earendil-works/pi-ai";
-import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ReviewerSubAgentMode } from "../session/subagent-definitions.ts";
 import type { HostValidationMetric } from "./testing/validation-host-fixture.ts";
-import type { RuntimeInteractionRequest } from "../session/session-runtime-interactions.ts";
-import type { WorkflowContext } from "../session/workflow-context-session.ts";
-import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { ReviewAdvisoryInput, ReviewCompletePayload, ReviewFindingInput } from "./review-outcome.ts";
-import type { ValidationLoopArgs } from "./validation-types.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { notDeepStrictEqual as assertNotEquals, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-
-import { ensurePlanIdentity, loadPlan } from "../../plan-store.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { getHomeDir } from "../../constants.ts";
 import { join } from "node:path";
 import { setCustomSetting } from "../settings.ts";
@@ -40,38 +30,57 @@ import {
     runValidationPhase,
     UNEXPECTED_VALIDATION_PORTS,
 } from "./validation-test-helpers.ts";
-
 import {
     createValidationSessionPort,
     type IsolatedAgentSessionOptions,
     type SemanticReviewPort,
 } from "./validation-session-adapter.ts";
+import { type AgentMessage } from "@earendil-works/pi-agent-core";
+import { type AssistantMessage, type TextContent, type ToolResultMessage } from "@earendil-works/pi-ai";
+import { type SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type RuntimeInteractionRequest } from "../session/session-runtime-interactions.ts";
+import { type WorkflowContext } from "../session/workflow-context-session.ts";
+import { type TriageMeta } from "../../tools/plan-written.ts";
+import { type ReviewAdvisoryInput, type ReviewCompletePayload, type ReviewFindingInput } from "./review-outcome.ts";
+import { type ValidationLoopArgs } from "./validation-types.ts";
 
 type ValidatedCiRunAttrs = Record<string, string | number> & Pick<TriageMeta, "executionAgent">;
+
 type ScriptedToolResult = Pick<ToolResultMessage, "role" | "toolName"> &
     Partial<Pick<ToolResultMessage, "toolCallId" | "content" | "isError">> & {
         timestamp?: number | string;
         details?: WorkflowTestToolCall["arguments"];
     };
+
 type ScriptedAssistant = Pick<AssistantMessage, "role" | "content"> &
     Partial<Omit<AssistantMessage, "role" | "content" | "usage">> & { usage?: ScriptedUsage };
+
 type ScriptedUsage = Omit<AssistantMessage["usage"], "cost"> & { cost: Partial<AssistantMessage["usage"]["cost"]> };
+
 type ScriptedMessage = ScriptedToolResult | ScriptedAssistant;
+
 type ReviewScript = {
     runIsolatedAgentSession?: (options: IsolatedAgentSessionOptions) => Promise<ScriptedMessage[]>;
 };
+
 type ScriptedFinding = Pick<ReviewFindingInput, keyof ReviewFindingInput>;
+
 type ScriptedAdvisory = Pick<ReviewAdvisoryInput, keyof ReviewAdvisoryInput>;
+
 type ReviewVerdict = Partial<Pick<ReviewCompletePayload, "approved" | "feedback">> & {
     findings?: ScriptedFinding[];
     advisories?: ScriptedAdvisory[];
 };
+
 type RoundLimitVerdict = Pick<ReviewVerdict, "approved">;
+
 type RootSessionIdentity = { id: string };
+
 type ReviewDiffToolResult = {
     content: TextContent[];
     details: ReviewDiffDetails;
 };
+
 // The core diff tool uses only the call ID and parameters from Pi's execute signature.
 type ReviewDiffTestTool = ToolDefinition & {
     __runwieldReviewDiffs: ReviewDiffTexts;
@@ -83,43 +92,75 @@ function makeValidationUi() {
     return { uiAPI, hostedSession: makeRecordedSession("validation-review-test", uiAPI) };
 }
 
-async function makeValidatedCiRun(attrs: ValidatedCiRunAttrs = {}) {
-    const projectRoot = await makeValidationProjectRoot("p", {
+/**
+ * @typedef {Record<string, string | number> & { executionAgent?: "engineer" | "frontend-engineer" }} ValidatedCiRunAttrs
+ */
+
+/**
+ * @param {ValidatedCiRunAttrs} [attrs]
+ * @param {Record<string, string>} [baselineFiles]
+ * @param {Record<string, string>} [implementationFiles]
+ */
+async function makeValidatedCiRun(
+    attrs: ValidatedCiRunAttrs = {},
+    baselineFiles: Record<string, string> = {},
+    implementationFiles: Record<string, string> = { "workflow.js": "export const scopedWorkflowChange = true;\n" },
+) {
+    const { makeRepo } = await import("../worktree-test-helpers.ts");
+    const { seedPlan: savePlan, seedPlanState: updatePlanFrontMatter } =
+        await import("../testing/plan-state-fixture.ts");
+    const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
+    const { recordPlanEvent } = await import("./plan-lifecycle.ts");
+    const { startActiveExecutionWorkflow, createExecutionStartPorts } = await import("./execution-start.ts");
+    const { finalizePlanImplementation } = await import("./implementation-checkpoint.ts");
+    const root = await makeRepo();
+    await savePlan(root, "p", "# p\n\nvalidation fixture\n", {
         classification: "QUICK_FIX",
-        status: "validated_ci",
+        status: "draft",
         ...attrs,
     });
+    for (const [path, text] of Object.entries(baselineFiles)) await fsWriteFile(`${root}/${path}`, text);
+    await git(root, ["add", "."]);
+    await git(root, ["commit", "--allow-empty", "-m", "canonical Plan fixture setup"]);
     const { uiAPI, hostedSession } = makeValidationUi();
-    await git(projectRoot, ["init", "-b", "main"]);
-    await git(projectRoot, ["config", "user.email", "runwield@example.com"]);
-    await git(projectRoot, ["config", "user.name", "RunWield Test"]);
-    await enterProjectRuntime(projectRoot);
-    await ensurePlanIdentity(projectRoot, "p");
-    await git(projectRoot, ["add", "."]);
-    await git(projectRoot, ["commit", "-m", "validation baseline"]);
-    const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
-    await fsWriteFile(`${projectRoot}/workflow.js`, "export const scopedWorkflowChange = true;\n");
-    const triageMeta: TriageMeta = { classification: "QUICK_FIX", status: "validated_ci", ...attrs };
-    hostedSession.setWorkflowExecutionContext({
-        planName: "p",
-        triageMeta,
+    const execution = await withLocalPlanWorkflow(root, "p", async () => {
+        await recordPlanEvent({ cwd: root, planName: "p", event: "review_approved", currentStatus: "draft" });
+        await recordPlanEvent({ cwd: root, planName: "p", event: "readiness_passed", currentStatus: "approved" });
+        const ready = await loadPlan(root, "p");
+        assertExists(ready);
+        const active = await startActiveExecutionWorkflow({
+            cwd: root,
+            planName: "p",
+            currentStatus: "ready_for_work",
+            triageMeta: ready.attrs,
+            ports: createExecutionStartPorts(),
+        });
+        assertExists(active.executionCwd);
+        for (const [path, text] of Object.entries(implementationFiles))
+            await fsWriteFile(`${active.executionCwd}/${path}`, text);
+        await finalizePlanImplementation({ projectRoot: root, planName: "p", executionContext: active });
+        await recordPlanEvent({
+            cwd: root,
+            planName: "p",
+            event: "mechanical_validation_passed",
+            currentStatus: "implemented",
+        });
+        const plan = await loadPlan(root, "p");
+        assertExists(plan);
+        await updatePlanFrontMatter(root, "p", attrs, plan.attrs, { expectedRevision: plan.revision });
+        return active;
     });
-    const executionAgent = attrs.executionAgent === "frontend-engineer" ? "frontend-engineer" : "engineer";
-    hostedSession.setActiveExecutionWorkflow({
-        planName: "p",
-        triageMeta,
-        executionAgent,
-        projectRoot,
-        executionCwd: projectRoot,
-        baselineTree,
-        executionMode: "worktree",
-        worktreeId: "wt1",
-        worktreeBranch: "runwield/worktree/p-wt1",
-        worktreeBaseBranch: "main",
-    });
-    return { projectRoot, hostedSession, uiAPI };
+    const plan = await loadPlan(root, "p");
+    assertExists(plan);
+    hostedSession.setWorkflowExecutionContext({ planName: "p", triageMeta: plan.attrs });
+    hostedSession.setActiveExecutionWorkflow({ ...execution, triageMeta: plan.attrs });
+    assertExists(execution.executionCwd);
+    return { projectRoot: execution.executionCwd, hostedSession, uiAPI };
 }
 
+/**
+ * @param {{ approved?: boolean, feedback?: string, findings?: Array<Record<string, unknown>>, advisories?: Array<Record<string, unknown>> }} [result]
+ */
 function reviewerMessages(result: ReviewVerdict = {}): ScriptedToolResult[] {
     const approved = result.approved !== false;
     return [
@@ -168,6 +209,9 @@ function providerErrorMessages(errorMessage = "404 Not Found"): ScriptedAssistan
     ];
 }
 
+/**
+ * @param {Record<string, unknown>} [overrides]
+ */
 function reviewPort(overrides: ReviewScript = {}): SemanticReviewPort {
     const overrideRun =
         typeof overrides.runIsolatedAgentSession === "function"
@@ -222,6 +266,8 @@ function reviewPort(overrides: ReviewScript = {}): SemanticReviewPort {
  * One isolated-session stand-in for both roles at the round limit: the Reviewer
  * reports findings, the Reviewer-Feedback Engineer reports the repair done. Only the
  * model is faked; the round loop, the repair dispatch and the lifecycle writes are real.
+ *
+ * @param {{ approved?: boolean }} [reviewer]
  */
 function roundLimitPort(reviewer: RoundLimitVerdict = {}) {
     return reviewPort({
@@ -286,22 +332,27 @@ test("runValidationPhase resumes at validated_ci and skips CI before recording s
 
 test("runValidationPhase reviews the proposed branch patch from validated_ci", async () => {
     const expectedWorkflowContext = {
-        routingIntent: "QUICK_FIX",
+        routingIntent: "PLANNED_CHANGE",
         complexity: "MEDIUM",
         planName: "p",
-        status: "validated_ci",
+        status: "implemented",
     };
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ complexity: "MEDIUM" });
-    const reviewPrompts: string[] = [];
+    const reviewPrompts: string[] = /** @type {string[]} */ [];
     assertObjectMatch(hostedSession.getWorkflowContext() || {}, expectedWorkflowContext);
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", complexity: "MEDIUM" },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            complexity: "MEDIUM",
+        },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewPrompts.push(opts.userRequest);
                 return Promise.resolve(reviewerMessages());
             },
@@ -317,48 +368,24 @@ test("runValidationPhase reviews the proposed branch patch from validated_ci", a
 });
 
 test("AI review and repair receive the same proposed branch patch", async () => {
-    const projectRoot = await makeValidationProjectRoot("p", {
-        classification: "QUICK_FIX",
-        status: "validated_ci",
-    });
-    const { hostedSession } = makeValidationUi();
-    await git(projectRoot, ["init", "-b", "target"]);
-    await git(projectRoot, ["config", "user.email", "runwield@example.com"]);
-    await git(projectRoot, ["config", "user.name", "RunWield Test"]);
-    await fsWriteFile(`${projectRoot}/.gitignore`, "docs/plans/\n");
-    await git(projectRoot, ["add", "."]);
-    await git(projectRoot, ["commit", "-m", "execution baseline"]);
-    const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
-    await fsWriteFile(`${projectRoot}/inherited.js`, "export const inherited = true;\n");
-    await git(projectRoot, ["add", "inherited.js"]);
-    await git(projectRoot, ["commit", "-m", "target behavior"]);
-    await git(projectRoot, ["switch", "-c", "execution"]);
     const implementation =
         Array.from({ length: 40 }, (_, index) => `export const planned${index} = true;`).join("\n") + "\n";
-    await fsWriteFile(`${projectRoot}/plan-change.js`, implementation);
-    hostedSession.setActiveExecutionWorkflow({
-        planName: "p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
-        executionAgent: "engineer",
-        projectRoot,
-        executionCwd: projectRoot,
-        baselineTree,
-        executionMode: "worktree",
-        worktreeId: "wt-target-review",
-        worktreeBranch: "execution",
-        worktreeBaseBranch: "target",
-    });
+    const { projectRoot, hostedSession } = await makeValidatedCiRun(
+        { targetBranch: "target" },
+        { "inherited.js": "export const inherited = true;\n" },
+        { "plan-change.js": implementation },
+    );
     let aiPatch = "";
 
     const result = await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         supportsSemanticRepairHandoff: true,
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: async (opts) => {
-                const tool = opts.customTools!.find(
+            runIsolatedAgentSession: async (/** @type {any} */ opts) => {
+                const tool = opts.customTools?.find(
                     (candidate) => candidate.name === "review_diff",
                 ) as ReviewDiffTestTool;
                 const listed = await tool.execute("list", { command: "list", scope: "full" });
@@ -381,7 +408,8 @@ test("AI review and repair receive the same proposed branch patch", async () => 
                         assertExists(content);
                         aiPatch += content;
                         if (!page.details.truncated) break;
-                        offsetBytes = page.details.nextOffsetBytes!;
+                        assertExists(page.details.nextOffsetBytes);
+                        offsetBytes = page.details.nextOffsetBytes;
                     }
                 }
                 return reviewerMessages({
@@ -404,18 +432,17 @@ test("AI review and repair receive the same proposed branch patch", async () => 
 
 test("runValidationPhase configures Semantic Reviewer with diff tools and isolated session", async () => {
     const { hostedSession } = await makeValidatedCiRun();
-    // Only identity is used at this Pi SessionManager boundary.
     const rootSessionManager = { id: "shared-root-history" } as SessionManager & RootSessionIdentity;
-    const sessionOpts: IsolatedAgentSessionOptions[] = [];
+    const sessionOpts: IsolatedAgentSessionOptions[] = /** @type {any[]} */ [];
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         sessionManager: rootSessionManager,
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 sessionOpts.push(opts);
                 return Promise.resolve(reviewerMessages());
             },
@@ -439,27 +466,27 @@ test("runValidationPhase configures Semantic Reviewer with diff tools and isolat
     assertEquals(sessionOpts[0].includeEditFallback, false);
     assertNotEquals(sessionOpts[0].sessionManager, rootSessionManager);
     assertEquals(
-        (sessionOpts[0].customTools || []).some((tool) => tool.name === "review_diff"),
+        (sessionOpts[0].customTools || []).some((/** @type {{ name: string }} */ tool) => tool.name === "review_diff"),
         true,
     );
 });
 
 test("runValidationPhase rejects an approved verdict reached without inspecting the diff", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun();
-    const reviewPrompts: string[] = [];
+    const reviewPrompts: string[] = /** @type {string[]} */ [];
     let reviewCalls = 0;
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewPrompts.push(opts.userRequest);
                 reviewCalls += 1;
                 if (reviewCalls === 1) {
-                    return Promise.resolve([
+                    return Promise.resolve<ScriptedMessage[]>([
                         {
                             role: "toolResult",
                             toolName: "review_complete",
@@ -480,16 +507,16 @@ test("runValidationPhase rejects an approved verdict reached without inspecting 
 
 test("runValidationPhase does not count a failed review_diff call as inspecting the diff", async () => {
     const { hostedSession } = await makeValidatedCiRun();
-    const reviewPrompts: string[] = [];
+    const reviewPrompts: string[] = /** @type {string[]} */ [];
     let reviewCalls = 0;
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewPrompts.push(opts.userRequest);
                 reviewCalls += 1;
                 if (reviewCalls === 1) {
@@ -518,20 +545,20 @@ test("runValidationPhase does not count a failed review_diff call as inspecting 
 
 test("runValidationPhase nudges the same reviewer session when review_complete is omitted", async () => {
     const { uiAPI, hostedSession } = await makeValidatedCiRun();
-    const reviewOpts: IsolatedAgentSessionOptions[] = [];
+    const reviewOpts: IsolatedAgentSessionOptions[] = /** @type {any[]} */ [];
     let reviewCalls = 0;
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewOpts.push(opts);
                 reviewCalls += 1;
                 if (reviewCalls === 1) {
-                    return Promise.resolve([
+                    return Promise.resolve<ScriptedMessage[]>([
                         {
                             role: "toolResult",
                             toolName: "review_diff",
@@ -555,22 +582,24 @@ test("runValidationPhase nudges the same reviewer session when review_complete i
     // One unfinished review: the nudge keeps the controller request identity, so the
     // model-turn budget accumulates instead of restarting.
     assertEquals(typeof reviewOpts[0].controllerRequestId, "string");
-    assertEquals(reviewOpts[0].controllerRequestId!.length > 0, true);
+    assertEquals(Boolean(reviewOpts[0].controllerRequestId?.length), true);
     assertEquals(reviewOpts[1].controllerRequestId, reviewOpts[0].controllerRequestId);
     assertStringIncludes(uiAPI.messages.join(" "), "AI review needs more time");
 });
 
 test("reviewer nudges keep their context and the next round starts with a new context", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun();
+    /** @typedef {import('./validation-session-adapter.ts').IsolatedAgentSessionOptions} ReviewerSessionOptions */
+    /** @type {ReviewerSessionOptions[]} */
     const reviewOpts: IsolatedAgentSessionOptions[] = [];
     const args = createEngineValidationArgs({
         ...UNEXPECTED_VALIDATION_PORTS,
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {ReviewerSessionOptions} */ opts) => {
                 reviewOpts.push(opts);
                 // A missing verdict requires a nudge, not a new review context.
                 return Promise.resolve(reviewOpts.length === 1 ? [] : reviewerMessages());
@@ -604,15 +633,15 @@ test("reviewer nudges keep their context and the next round starts with a new co
 
 test("runValidationPhase nudges the same Reviewer after real argument validation rejects review_complete", async () => {
     const { hostedSession } = await makeValidatedCiRun();
-    const reviewOpts: IsolatedAgentSessionOptions[] = [];
+    const reviewOpts: IsolatedAgentSessionOptions[] = /** @type {any[]} */ [];
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: async (opts) => {
+            runIsolatedAgentSession: async (/** @type {any} */ opts) => {
                 reviewOpts.push(opts);
                 if (reviewOpts.length === 1) {
                     await assertRejects(
@@ -639,15 +668,15 @@ test("runValidationPhase nudges the same Reviewer after real argument validation
 
 test("runValidationPhase cannot advance from a failed diff lookup without review_complete", async () => {
     const { hostedSession } = await makeValidatedCiRun();
-    const reviewOpts: IsolatedAgentSessionOptions[] = [];
+    const reviewOpts: IsolatedAgentSessionOptions[] = /** @type {any[]} */ [];
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: async (opts) => {
+            runIsolatedAgentSession: async (/** @type {any} */ opts) => {
                 reviewOpts.push(opts);
                 if (reviewOpts.length === 1) {
                     await executeWorkflowTestTools(opts, [
@@ -676,7 +705,12 @@ test("runValidationPhase stops after one unknown Reviewer failure", async () => 
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 1 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 1,
+        },
         semanticReviewPort: reviewPort({
             runIsolatedAgentSession: () => {
                 reviewCalls += 1;
@@ -701,15 +735,20 @@ test("runValidationPhase treats a Reviewer 404 as an operational retry without c
     const { projectRoot, hostedSession, uiAPI } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     await setCustomSetting("retry.baseDelayMs", 1, "project", projectRoot);
     await setCustomSetting("retry.validation.maxDelayMs", 1, "project", projectRoot);
-    const reviewOpts: IsolatedAgentSessionOptions[] = [];
+    const reviewOpts: IsolatedAgentSessionOptions[] = /** @type {any[]} */ [];
 
     const result = await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 1 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 1,
+        },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewOpts.push(opts);
                 return Promise.resolve(reviewOpts.length === 1 ? providerErrorMessages() : reviewerMessages());
             },
@@ -734,7 +773,12 @@ test("runValidationPhase pauses a Reviewer outage without recording feedback or 
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 1 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 1,
+        },
         semanticReviewPort: reviewPort({
             runIsolatedAgentSession: () => Promise.resolve(providerErrorMessages("503 Service Unavailable")),
         }),
@@ -750,10 +794,10 @@ test("runValidationPhase pauses a Reviewer outage without recording feedback or 
 
 test("runValidationPhase dispatches semantic review feedback to Reviewer-Feedback Engineer and records feedback event", async () => {
     const expectedWorkflowContext = {
-        routingIntent: "QUICK_FIX",
+        routingIntent: "PLANNED_CHANGE",
         complexity: "MEDIUM",
         planName: "p",
-        status: "validated_ci",
+        status: "implemented",
     };
     const { projectRoot, hostedSession, uiAPI } = await makeValidatedCiRun({
         complexity: "MEDIUM",
@@ -761,11 +805,13 @@ test("runValidationPhase dispatches semantic review feedback to Reviewer-Feedbac
     });
     const approvedPlanBody = (await loadPlan(projectRoot, "p"))?.body;
     assertExists(approvedPlanBody);
-    const sessions: IsolatedAgentSessionOptions[] = [];
-    const reviewerWorkflowContexts: (WorkflowContext | null)[] = [];
-    const repairWorkflowContexts: (WorkflowContext | null)[] = [];
-    const repairActiveOwners: Array<string | undefined> = [];
-    const repairActivePlanNames: Array<string | null> = [];
+    const sessions: IsolatedAgentSessionOptions[] = /** @type {any[]} */ [];
+    const reviewerWorkflowContexts: (WorkflowContext | null)[] =
+        /** @type {Array<import('../session/workflow-context-session.ts').WorkflowContext | null>} */ [];
+    const repairWorkflowContexts: (WorkflowContext | null)[] =
+        /** @type {Array<import('../session/workflow-context-session.ts').WorkflowContext | null>} */ [];
+    const repairActiveOwners: Array<string | undefined> = /** @type {Array<string | undefined>} */ [];
+    const repairActivePlanNames: Array<string | null> = /** @type {Array<string | null>} */ [];
 
     const result = await runValidationPhase({
         hostedSession,
@@ -773,13 +819,14 @@ test("runValidationPhase dispatches semantic review feedback to Reviewer-Feedbac
         planContent: "# p\n\nApproved Plan body",
         triageMeta: {
             classification: "QUICK_FIX",
-            status: "validated_ci",
+            status: "implemented",
+            validationPhase: "semantic",
             complexity: "MEDIUM",
             executionAgent: "frontend-engineer",
         },
         supportsSemanticRepairHandoff: true,
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 sessions.push(opts);
                 if (opts.agentName === "reviewer-feedback-engineer") {
                     repairWorkflowContexts.push(hostedSession.getWorkflowContext());
@@ -826,7 +873,7 @@ test("runValidationPhase dispatches semantic review feedback to Reviewer-Feedbac
 });
 
 test("runValidationPhase carries existing ledger identities and repair report into the next semantic round", async () => {
-    const ledger = {
+    const ledger: ReviewLedger = {
         sequence: 1,
         items: [
             {
@@ -840,21 +887,28 @@ test("runValidationPhase carries existing ledger identities and repair report in
         ],
     };
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
-    hostedSession.setActiveExecutionWorkflow({
-        ...hostedSession.getActiveExecutionWorkflow()!,
-        reviewLedger: ledger,
-        lastRepairReport: "R1-1 — fixed: added the guard in file.js.",
-    });
-    const reviewPrompts: string[] = [];
-    const reviewModes: (ReviewerSubAgentMode | undefined)[] = [];
+    hostedSession.setActiveExecutionWorkflow(
+        /** @type {any} */ {
+            ...hostedSession.getActiveExecutionWorkflow()!,
+            reviewLedger: ledger,
+            lastRepairReport: "R1-1 — fixed: added the guard in file.js.",
+        },
+    );
+    const reviewPrompts: string[] = /** @type {string[]} */ [];
+    const reviewModes: (ReviewerSubAgentMode | undefined)[] = /** @type {string[]} */ [];
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 1 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 1,
+        },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewPrompts.push(opts.userRequest);
                 reviewModes.push(opts.subAgentDefinition?.options?.reviewerMode);
                 return Promise.resolve(
@@ -881,6 +935,7 @@ test("runValidationPhase carries existing ledger identities and repair report in
 test("round-two origin metrics are recorded separately from durable repair states", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     await setCustomSetting("workflowMetrics", true, "project", projectRoot);
+    /** @type {import('./review-ledger.ts').ReviewLedger} */
     const reviewLedger: ReviewLedger = {
         sequence: 2,
         items: ["R1-1", "R1-2"].map((id) => ({
@@ -900,7 +955,12 @@ test("round-two origin metrics are recorded separately from durable repair state
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 1 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 1,
+        },
         supportsSemanticRepairHandoff: true,
         semanticReviewPort: reviewPort({
             runIsolatedAgentSession: () =>
@@ -926,7 +986,8 @@ test("round-two origin metrics are recorded separately from durable repair state
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line));
-    const metric = records.find((record) => record.event === "validation_attempt" && record.phase === "semantic")!;
+    const metric = records.find((record) => record.event === "validation_attempt" && record.phase === "semantic");
+    assertExists(metric);
     assertEquals(metric.missedOriginalCount, 1);
     assertEquals(metric.repairRegressionCount, 1);
     assertEquals(metric.existingStillOpenCount, 1);
@@ -946,15 +1007,20 @@ test("round-two origin metrics are recorded separately from durable repair state
 
 test("a resumed round two without persisted findings still performs a complete review", async () => {
     const { hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
-    const reviewModes: (ReviewerSubAgentMode | undefined)[] = [];
+    const reviewModes: (ReviewerSubAgentMode | undefined)[] = /** @type {string[]} */ [];
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 1 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 1,
+        },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewModes.push(opts.subAgentDefinition?.options?.reviewerMode);
                 return Promise.resolve(reviewerMessages());
             },
@@ -970,10 +1036,10 @@ test("an interrupted semantic repair pauses without recording validation failure
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         supportsSemanticRepairHandoff: false,
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) =>
+            runIsolatedAgentSession: (/** @type {any} */ opts) =>
                 Promise.resolve(
                     opts.agentName === "reviewer-feedback-engineer"
                         ? []
@@ -989,11 +1055,11 @@ test("an interrupted semantic repair pauses without recording validation failure
     assertEquals(result.kind, "paused");
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(plan?.attrs.status, "implemented");
-    assertEquals(plan?.attrs.worktreeStatus, undefined);
+    assertEquals(plan?.attrs.worktreeStatus, "completed");
 });
 
 test("runValidationPhase gives later semantic rounds a repair-scoped review_diff", async () => {
-    const ledger = {
+    const ledger: ReviewLedger = {
         sequence: 1,
         items: [
             {
@@ -1009,21 +1075,28 @@ test("runValidationPhase gives later semantic rounds a repair-scoped review_diff
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     const repairBaselineTree = await captureWorktreeTree(projectRoot);
     await fsWriteFile(`${projectRoot}/workflow.js`, "export const repairedWorkflowChange = true;\n");
-    hostedSession.setActiveExecutionWorkflow({
-        ...hostedSession.getActiveExecutionWorkflow()!,
-        reviewLedger: ledger,
-        repairBaselineTree,
-        lastRepairReport: "R1-1 — fixed: updated workflow.js.",
-    });
-    const repairDiffTexts: string[] = [];
+    hostedSession.setActiveExecutionWorkflow(
+        /** @type {any} */ {
+            ...hostedSession.getActiveExecutionWorkflow()!,
+            reviewLedger: ledger,
+            repairBaselineTree,
+            lastRepairReport: "R1-1 — fixed: updated workflow.js.",
+        },
+    );
+    const repairDiffTexts: string[] = /** @type {string[]} */ [];
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 1 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 1,
+        },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: async (opts) => {
+            runIsolatedAgentSession: async (/** @type {any} */ opts) => {
                 assertStringIncludes(opts.userRequest, 'scope: "repair"');
                 const repairList = await (opts.customTools![0] as ReviewDiffTestTool).execute("repair-list", {
                     command: "list",
@@ -1050,7 +1123,7 @@ test("runValidationPhase gives later semantic rounds a repair-scoped review_diff
 });
 
 test("runValidationPhase refuses semantic approval while a prior finding is unmentioned", async () => {
-    const ledger = {
+    const ledger: ReviewLedger = {
         sequence: 1,
         items: [
             {
@@ -1064,17 +1137,24 @@ test("runValidationPhase refuses semantic approval while a prior finding is unme
         ],
     };
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
-    hostedSession.setActiveExecutionWorkflow({ ...hostedSession.getActiveExecutionWorkflow()!, reviewLedger: ledger });
-    const reviewPrompts: string[] = [];
+    hostedSession.setActiveExecutionWorkflow(
+        /** @type {any} */ { ...hostedSession.getActiveExecutionWorkflow()!, reviewLedger: ledger },
+    );
+    const reviewPrompts: string[] = /** @type {string[]} */ [];
     let reviewCalls = 0;
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 1 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 1,
+        },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewPrompts.push(opts.userRequest);
                 reviewCalls += 1;
                 if (reviewCalls === 1) return Promise.resolve(reviewerMessages({ approved: true, findings: [] }));
@@ -1095,7 +1175,7 @@ test("runValidationPhase refuses semantic approval while a prior finding is unme
 });
 
 test("runValidationPhase narrows semantic review to verification mode after discovery rounds", async () => {
-    const ledger = {
+    const ledger: ReviewLedger = {
         sequence: 2,
         items: [
             {
@@ -1117,16 +1197,23 @@ test("runValidationPhase narrows semantic review to verification mode after disc
         ],
     };
     const { hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 2 });
-    hostedSession.setActiveExecutionWorkflow({ ...hostedSession.getActiveExecutionWorkflow()!, reviewLedger: ledger });
-    const reviewPrompts: string[] = [];
+    hostedSession.setActiveExecutionWorkflow(
+        /** @type {any} */ { ...hostedSession.getActiveExecutionWorkflow()!, reviewLedger: ledger },
+    );
+    const reviewPrompts: string[] = /** @type {string[]} */ [];
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 2 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 2,
+        },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewPrompts.push(opts.userRequest);
                 return Promise.resolve(
                     reviewerMessages({
@@ -1174,8 +1261,8 @@ test("semantic feedback hands off repair before offering human review", async ()
     assertEquals(result.kind, "semantic_repair_handoff");
     assertEquals(result.semanticRepairHandoff?.semanticRound, 3);
     assertEquals(plan?.attrs.status, "implemented");
-    assertEquals(plan?.attrs.humanReviewMode, undefined);
-    assertEquals(plan?.attrs.humanReviewDecision, undefined);
+    assertEquals(plan?.attrs.humanReviewMode, null);
+    assertEquals(plan?.attrs.humanReviewDecision, null);
 });
 
 test("inline round-limit repair records passing CI before another Reviewer round", async () => {
@@ -1185,6 +1272,7 @@ test("inline round-limit repair records passing CI before another Reviewer round
     });
     let reviewerRuns = 0;
     let ciRuns = 0;
+    /** @type {Array<string | undefined>} */
     const controllerRequestIds: Array<string | undefined> = [];
 
     hostedSession.setInteractionAdapter({
@@ -1200,10 +1288,15 @@ test("inline round-limit repair records passing CI before another Reviewer round
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 2 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 2,
+        },
         supportsSemanticRepairHandoff: false,
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (options) => {
+            runIsolatedAgentSession: (/** @type {any} */ options) => {
                 if (options.agentName === "reviewer-feedback-engineer") return Promise.resolve(repairMessages());
                 reviewerRuns += 1;
                 controllerRequestIds.push(options.controllerRequestId);
@@ -1240,13 +1333,14 @@ test("inline round-limit repair records passing CI before another Reviewer round
 
 test("look again re-enters at the focused reviewer, after the repair and its tests", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 2 });
+    /** @type {Array<"discovery" | "verify">} */
     const modes: ReviewerSubAgentMode[] = [];
     let ciRuns = 0;
     let asks = 0;
     let round = 0;
 
     hostedSession.setInteractionAdapter({
-        requestInteraction: (request) => {
+        requestInteraction: (/** @type {any} */ request) => {
             if (request.type === "select") asks += 1;
             return Promise.resolve({ outcome: "selected", value: "continue" });
         },
@@ -1256,7 +1350,12 @@ test("look again re-enters at the focused reviewer, after the repair and its tes
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 2 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 2,
+        },
         supportsSemanticRepairHandoff: true,
         semanticReviewPort: reviewPort({
             runIsolatedAgentSession: () => {
@@ -1290,32 +1389,34 @@ test("look again re-enters at the focused reviewer, after the repair and its tes
 test("transcript provenance cannot waive production diff inspection", async () => {
     // A provenance label cannot substitute for actual diff read receipts.
     const { projectRoot, hostedSession } = await makeValidatedCiRun();
-    const reviewPrompts: string[] = [];
+    const reviewPrompts: string[] = /** @type {string[]} */ [];
     let reviewCalls = 0;
 
     await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewPrompts.push(opts.userRequest);
                 reviewCalls += 1;
-                return Promise.resolve([
-                    {
-                        role: "toolResult",
-                        toolName: "review_complete",
-                        details: {
-                            outcome: "approved",
-                            approved: true,
-                            feedback: "",
-                            findings: [],
-                            advisories: [],
-                            provenance: "claude-cli-mcp",
+                return Promise.resolve(
+                    /** @type {any} */ [
+                        {
+                            role: "toolResult",
+                            toolName: "review_complete",
+                            details: {
+                                outcome: "approved",
+                                approved: true,
+                                feedback: "",
+                                findings: [],
+                                advisories: [],
+                                provenance: "claude-cli-mcp",
+                            },
                         },
-                    },
-                ]);
+                    ],
+                );
             },
         }),
     });
@@ -1331,12 +1432,12 @@ test("transcript provenance cannot waive production diff inspection", async () =
         hostedSession: second.hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (_opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ _opts) => {
                 untrustedCalls += 1;
                 if (untrustedCalls === 1) {
-                    return Promise.resolve([
+                    return Promise.resolve<ScriptedMessage[]>([
                         {
                             role: "toolResult",
                             toolName: "review_complete",
@@ -1359,7 +1460,7 @@ test("transcript provenance cannot waive production diff inspection", async () =
 
     // The ledger rules remain authoritative for bridge-stamped results too: an
     // accepted verdict that leaves an open ledger identity unmentioned is nudged.
-    const ledger = {
+    const ledger: ReviewLedger = {
         sequence: 1,
         items: [
             {
@@ -1373,23 +1474,27 @@ test("transcript provenance cannot waive production diff inspection", async () =
         ],
     };
     const third = await makeValidatedCiRun({ validationSemanticRounds: 1 });
-    third.hostedSession.setActiveExecutionWorkflow({
-        ...third.hostedSession.getActiveExecutionWorkflow()!,
-        reviewLedger: ledger,
-    });
-    const ledgerPrompts: string[] = [];
+    third.hostedSession.setActiveExecutionWorkflow(
+        /** @type {any} */ { ...third.hostedSession.getActiveExecutionWorkflow()!, reviewLedger: ledger },
+    );
+    const ledgerPrompts: string[] = /** @type {string[]} */ [];
     let ledgerCalls = 0;
     await runValidationPhase({
         hostedSession: third.hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci", validationSemanticRounds: 1 },
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 1,
+        },
         semanticReviewPort: reviewPort({
-            runIsolatedAgentSession: (opts) => {
+            runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 ledgerPrompts.push(opts.userRequest);
                 ledgerCalls += 1;
                 if (ledgerCalls === 1) {
-                    return Promise.resolve([
+                    return Promise.resolve<ScriptedMessage[]>([
                         reviewerMessages()[0],
                         {
                             role: "toolResult",
@@ -1421,11 +1526,12 @@ test("transcript provenance cannot waive production diff inspection", async () =
 test("a non-empty unreadable review patch fails before a Reviewer starts", async () => {
     const { hostedSession } = await makeValidatedCiRun();
     let reviewerCalls = 0;
+    /** @type {import('./validation-types.ts').ValidationLoopArgs} */
     const args: ValidationLoopArgs = {
         ...UNEXPECTED_VALIDATION_PORTS,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         session: createValidationSessionPort(hostedSession, {
             semanticReviewPort: {
                 runIsolatedAgentSession: () => {
@@ -1469,9 +1575,12 @@ test("Git prefix settings cannot let a list-only Reviewer approve unread changes
             hostedSession,
             planName: "p",
             planContent: "# p",
-            triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+            triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
             semanticReviewPort: {
-                runIsolatedAgentSession: async (opts) => {
+                /** @param {import('./validation-session-adapter.ts').IsolatedAgentSessionOptions} opts */
+                runIsolatedAgentSession: async (
+                    opts: import("./validation-session-adapter.ts").IsolatedAgentSessionOptions,
+                ) => {
                     prompts.push(opts.userRequest);
                     if (prompts.length > 2) throw new Error("Review should finish after reading the missing bytes");
                     if (prompts.length === 1) {
@@ -1499,33 +1608,15 @@ test("Git prefix settings cannot let a list-only Reviewer approve unread changes
     }
 });
 
-test("an empty proposed patch still skips semantic review", async () => {
-    const { projectRoot, hostedSession } = await makeValidatedCiRun();
-    await git(projectRoot, ["add", "workflow.js"]);
-    await git(projectRoot, ["commit", "-m", "target already has the change"]);
-    try {
-        await runValidationPhase({
-            hostedSession,
-            planName: "p",
-            planContent: "# p",
-            triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
-            // The default port throws if a Reviewer starts.
-            semanticReviewPort: reviewPort(),
-        });
-        assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
-    } finally {
-        hostedSession.dispose();
-    }
-});
-
 test("verification of an empty repair patch requires no reads from the full patch", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun();
     const repairBaselineTree = await captureWorktreeTree(projectRoot);
+    /** @type {import('./validation-types.ts').ValidationLoopArgs} */
     const args: ValidationLoopArgs = {
         ...UNEXPECTED_VALIDATION_PORTS,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        triageMeta: { classification: "QUICK_FIX", status: "implemented", validationPhase: "semantic" },
         session: createValidationSessionPort(hostedSession, {
             semanticReviewPort: {
                 runIsolatedAgentSession: async (opts) => {
@@ -1557,4 +1648,113 @@ test("verification of an empty repair patch requires no reads from the full patc
     } finally {
         hostedSession.dispose();
     }
+});
+
+test("runValidationPhase offers Code Review after automatic semantic rounds", async () => {
+    const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 2 });
+    const interactions = /** @type {any[]} */ [];
+
+    hostedSession.setInteractionAdapter({
+        requestInteraction: (/** @type {any} */ request) => {
+            interactions.push(request);
+            return Promise.resolve({ outcome: "selected", value: "code_review" });
+        },
+    });
+
+    const result = await runValidationPhase({
+        hostedSession,
+        planName: "p",
+        planContent: "# p",
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 2,
+        },
+        supportsSemanticRepairHandoff: true,
+        semanticReviewPort: roundLimitPort(),
+        localCI: {
+            run: () => Promise.resolve({ kind: "completed", exitCode: 0, output: "" }),
+        },
+    });
+
+    const plan = await loadPlan(projectRoot, "p");
+    assertEquals(interactions.length, 0);
+    assertEquals(result.kind, "semantic_repair_handoff");
+    assertEquals(result.semanticRepairHandoff?.semanticRound, 3);
+    assertEquals(plan?.attrs.status, "implemented");
+    assertEquals(plan?.attrs.humanReviewMode, null);
+    assertEquals(plan?.attrs.humanReviewDecision, null);
+});
+
+test("Stop at the review round limit keeps the passing tests and the open findings", async () => {
+    const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 2 });
+
+    hostedSession.setInteractionAdapter({
+        requestInteraction: (/** @type {any} */ request) =>
+            Promise.resolve(
+                request.type === "select" ? { outcome: "selected", value: "stop" } : { outcome: "canceled" },
+            ),
+    });
+
+    const result = await runValidationPhase({
+        hostedSession,
+        planName: "p",
+        planContent: "# p",
+        triageMeta: {
+            classification: "QUICK_FIX",
+            status: "implemented",
+            validationPhase: "semantic",
+            validationSemanticRounds: 2,
+        },
+        supportsSemanticRepairHandoff: true,
+        semanticReviewPort: roundLimitPort(),
+        localCI: {
+            run: () => Promise.resolve({ kind: "completed", exitCode: 0, output: "" }),
+        },
+    });
+
+    assertEquals(result.kind, "semantic_repair_handoff");
+    assertStringIncludes(result.reason || "", "Dispatching repair");
+    assertEquals(result.semanticRepairHandoff?.semanticRound, 3);
+    // Semantic feedback reopens implementation; Runtime rolls to a repair segment and resumes validation after repair.
+    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "implemented");
+});
+
+test("a retained QUICK_FIX with an empty proposed patch still skips semantic review", async () => {
+    const { withRetainedPlanFixture } = await import("../testing/retained-plan-fixture.ts");
+    const { makeRepo, createTestWorktreeAttempt } = await import("../worktree-test-helpers.ts");
+    const { seedPlan: savePlan } = await import("../testing/plan-state-fixture.ts");
+    const root = await makeRepo();
+    await withRetainedPlanFixture(root, async () => {
+        await savePlan(root, "p", "# Retained quick fix\n", { classification: "QUICK_FIX", status: "validated_ci" });
+        await git(root, ["add", "."]);
+        await git(root, ["commit", "-m", "retained quick fix"]);
+        const entry = await createTestWorktreeAttempt({ projectRoot: root, planName: "p" });
+        const { hostedSession } = makeValidationUi();
+        hostedSession.setActiveExecutionWorkflow({
+            planName: "p",
+            triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+            executionAgent: "engineer",
+            projectRoot: root,
+            executionCwd: entry.path,
+            executionMode: "worktree",
+            worktreeId: entry.id,
+            worktreeBranch: entry.branch,
+            worktreeBaseBranch: entry.baseBranch,
+            worktreeBaseRef: entry.baseRef,
+        });
+        try {
+            const result = await runValidationPhase({
+                hostedSession,
+                planName: "p",
+                planContent: "# p",
+                triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+                semanticReviewPort: reviewPort(),
+            });
+            assertEquals((await loadPlan(entry.path, "p"))?.attrs.status, "reviewed", JSON.stringify(result));
+        } finally {
+            hostedSession.dispose();
+        }
+    });
 });

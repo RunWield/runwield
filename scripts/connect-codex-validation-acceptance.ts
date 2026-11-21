@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -118,12 +118,15 @@ child.on("close", code => process.exit(code ?? 1));
     );
     state = await call("start_planning", envelope(state, { actionId: action(state) }));
     check("native-planning-prepared", state.ok === true && kind(state) === "plan");
-    await mkdir(join(world.fixture, "docs/plans"), { recursive: true });
-    await writeFile(
-        join(world.fixture, "docs/plans/validation-fixture.md"),
-        "# Validation fixture\n\n## Objective\n\nImplement a value module.\n\n## Implementation\n\nAdd value.ts exporting a numeric value.\n\n## Verification\n\nRun sh ./check.sh through Core after each repair. The controlled command exercises distinct failures and interruption. Do not publish during this qualification.\n",
+    state = await call(
+        "plan_written",
+        envelope(state, {
+            actionId: action(state),
+            planName: "validation-fixture",
+            contextMarkdown:
+                "# Validation fixture\n\n## Objective\n\nImplement a value module.\n\n## Implementation\n\nAdd value.ts exporting a numeric value.\n\n## Verification\n\nRun sh ./check.sh through Core after each repair. The controlled command exercises distinct failures and interruption. Do not publish during this qualification.\n",
+        }),
     );
-    state = await call("plan_written", envelope(state, { actionId: action(state), planName: "validation-fixture" }));
     check("native-plan-review", state.ok === true && kind(state) === "review");
     await new ReviewPage(root, state).approve("plan-approved");
     state = await call("status", { workflowId: field(state, "workflow", "workflowId") });

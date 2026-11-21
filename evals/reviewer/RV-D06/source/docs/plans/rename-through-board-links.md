@@ -23,4 +23,4 @@ trusted server configuration, never from link input. The local board store has o
 
 ## Validation
 
-Use Bun 1.4.3. Run `bun run test` against real temporary data and local HTTP servers where needed.
+Use Bun ^1.4.0. Run `bun run test` against real temporary data and local HTTP servers where needed.

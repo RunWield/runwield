@@ -474,7 +474,7 @@ test("remote CLI help and invalid arity do not contact SSH", async () => {
 test("source remote help works without a generated identity and connection explains the build step", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
-        for (const path of ["src/cmd/remote", "src/shared/remote", "scripts", "packaging/remote"]) {
+        for (const path of ["src/cmd/remote", "src/shared/remote", "src/plan-format", "scripts", "packaging/remote"]) {
             await fsMkdir(join(root, path), { recursive: true });
         }
         for (const path of [
@@ -498,6 +498,8 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/remote/sftp-mount.ts",
             "src/shared/remote/model-proof-config.ts",
             "src/constants.ts",
+            "src/shared/cli-name.ts",
+            "src/plan-format/classification.ts",
             "runtime-root.ts",
             "scripts/build-metadata.ts",
             "src/shared/version.js",

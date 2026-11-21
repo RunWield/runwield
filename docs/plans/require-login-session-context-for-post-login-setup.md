@@ -92,7 +92,7 @@ the behavioral authority; add only the smallest pure contract coverage needed fo
       credential mutation runs, with a message that names the missing interactive Session context.
 - [ ] After a normal successful login, model selection and
       `SessionRuntime.switchAgent(..., { agentName: AGENTS.ROUTER
-    })` run without the current optional-pair
+})` run without the current optional-pair
       conditional.
 - [ ] Explicit startup mode still returns after credential setup without opening the auth command's model selector or
       switching Router; `maybeShowModelWelcome` continues to own those later steps.

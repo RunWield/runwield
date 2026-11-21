@@ -21,11 +21,7 @@ interface ThemeSelectionHooks {
 }
 
 interface ThemeCommandUi {
-    promptSelect(
-        title: string,
-        items: ThemeSelectItem[],
-        hooks: ThemeSelectionHooks,
-    ): Promise<string | null>;
+    promptSelect(title: string, items: ThemeSelectItem[], hooks: ThemeSelectionHooks): Promise<string | null>;
 }
 
 interface ThemeCommandOptions {

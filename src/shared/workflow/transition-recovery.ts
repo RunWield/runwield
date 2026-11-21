@@ -10,14 +10,14 @@ import { stat as fsStat } from "node:fs/promises";
  * provable and get on with it, not hand out a diagnosis and stop.
  */
 
-import { inspectPlanStrict, loadPlanStrict } from "../../plan-store.ts";
+import { inspectPlanStrict, loadPlanStrict } from "../../plan-store/index.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import {
     type EffectProver,
     listTransitionRecoveryRecords,
     reconcileTransitionRecoveryRecords,
     type TransitionReconciliation,
-} from "./state-transition.ts";
+} from "../../plan-store/index.ts";
 
 interface SequenceJournalPlan {
     planName: string;

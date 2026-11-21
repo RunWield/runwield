@@ -31,7 +31,7 @@ times. Quick fixes have no Plan, no AI review, and no separate worktree.
 
 ## Planned changes
 
-1. **Planner writes a Plan.** Plans are Markdown files under `docs/plans/`.
+1. **Planner writes a Plan.** Plans have editable Markdown documents in your personal home Project store. Core keeps identity and workflow metadata separately.
 2. **You review it** in the browser. Chat with Planner: it can reply without editing, or revise when the Plan must
    change. The same review stays open. Approve & Run starts work; Approve for Later saves it without starting. You can
    choose who builds it (Engineer, or Frontend Engineer for browser UI work) and whether to work in **Pair** mode.
@@ -68,7 +68,7 @@ Large work becomes an **Epic**: a container Plan that holds the design and a lis
 1. Architect writes the Epic design and you review it.
 2. After approval, the Slicer talks through how to split the work with you: boundaries, order, dependencies, and what
    can wait.
-3. When you confirm, the Slicer writes draft Plans under `docs/plans/<epic-name>/`.
+3. When you confirm, the Slicer creates canonical child drafts under the Epic’s Plan names.
 4. RunWield works through those Plans in order. Each one is planned, reviewed, built, and validated like any other
    Planned Change.
 
@@ -118,13 +118,13 @@ wld plans                          # list active Plans
 wld load-plan <name-or-path>       # review, run, continue, or recover a Plan
 wld plans read <name>              # open a Plan read-only in the browser
 wld plans ui                       # open the Plan Board for this checkout
-wld plans archive <name>           # move a finished Plan to docs/plans/archived/
+wld plans archive <name>           # hide a finished canonical Plan from active listings
 wld plans archive restore <name>   # bring an archived Plan back
 wld plans doctor                   # find and repair problems with Plans and worktrees
 ```
 
 Plans are Markdown with YAML front matter. RunWield manages the front matter; the body is yours to edit with any tool. A
-plain Markdown file you put in `docs/plans/` becomes a Plan the first time you load it.
+plain Markdown file becomes a canonical draft when you explicitly import or load its file path; name lookup does not adopt checkout files.
 
 Finished Plans (`verified`, `user_verified`, `closed_without_verification`) can be archived directly. Other statuses
 need `--force`, and a Plan whose worktree still holds unfinished work can't be archived until you resolve it.
@@ -167,3 +167,82 @@ If code is delivered but Work Record generation fails, choose **Retry Work Recor
 `wld wr retry <plan-name>`. This regenerates only that Plan's record (or its eligible parent Epic) and does not rerun
 the implementation or merge. `wld wr backfill` regenerates missing or failed records across completed Plans; use
 `wld wr backfill --dry-run` to preview its scope.
+
+## Upgrading to personal home Plans
+
+Local `wld` keeps Plans and Work Records under `~/.wld/projects/<projectId>/`. Manual SSH followed by `wld` uses that
+remote account’s home. Back up this directory alongside your code: Git delivery copies are not the live store.
+Managed `wld remote` keeps canonical Plans and Work Records in the initiating laptop account’s home, even for a
+remote-only Project without a laptop checkout. Code, Git worktrees and execution runtime stay on the remote host.
+If the laptop connection is lost, managed work waits for that owner; it does not switch to the remote account’s
+personal Plans. Opening the same repository through manual SSH uses the remote account’s separate store.
+
+Import old documents explicitly:
+
+```sh
+wld plans import docs/plans
+wld plans import /path/to/one-plan.md
+wld wr import docs/work-records
+```
+
+Imports preserve source files. Repeating a committed import does not create duplicate Plans. Unselected checkout files
+stay invisible to ordinary Plan and Work Record lists. An empty store can start a new Plan without import.
+
+A successful interactive repository-folder Plan import offers keeping delivered Plan copies in `docs/plans/`, with Yes
+selected by default. Only an actual answer is saved; cancellation or missing terminal input leaves the choice pending.
+File imports and ordinary startup do not ask. Plan copies default off; Work Record copies default on independently.
+Set `plans.deliveryCopies` and `workRecords.deliveryCopies` separately in Project settings. Copies are publication
+outputs: editing one does not edit the canonical Plan or Work Record.
+
+Use the document paths exposed by RunWield or its browser editor for Plan prose. Agents create Plans through
+`plan_written` with Markdown content and typed definition fields. Do not edit `plan.wld.json` or add lifecycle YAML to
+live Markdown. Existing recorded execution attempts continue through their original owner until delivered or deliberately
+abandoned; importing does not replace or discard their work.
+
+## Plan history
+
+Run `wld plans history <plan-name-or-id>` to list the version ID, milestone, time and reason. An approval, confirmed
+delivery, manual closure or archive adds a version. Plans created before history was enabled can have an empty list. If an Epic passed integration before Core began retaining its Markdown, confirming publication preserves its verified status without adding a delivered version.
+
+```sh
+wld plans history proposal
+wld plans history show proposal <version>
+wld plans history restore proposal <version>
+```
+
+Show prints the named Markdown documents. Restore makes their complete contents current, including optional
+documents added or removed since the milestone. Core keeps the Plan's current name, relationships and workflow
+evidence. A meaningful change to an approved or ready Plan requires fresh review. If another editor changes any
+document during restore, inspect the live documents before retrying.
+
+A Plan ID continues to work after rename or archive. Use `wld plans archive restore <plan-id>` before restoring
+content to an archived Plan. You can also copy one historical Markdown document into the live package as an ordinary
+edit. The frozen files live under the personal Project’s `history/` directory. History works without Git. In a managed
+remote session the initiating laptop owns the versions. The history
+and live documents share a disk, so losing that disk also loses its history. Keep a separate backup.
+
+## Prune archived Plans and Work Records
+
+Preview the eligible items before deleting from personal storage.
+
+```sh
+wld plans prune --dry-run
+wld wr prune --dry-run
+```
+
+Run the same command without `--dry-run` to confirm interactively. Use `--yes` to confirm without a prompt.
+Archiving a Plan or listing Work Records may show a reminder. Neither action deletes anything.
+
+| Project setting                 | Default | What stays                                                  |
+| ------------------------------- | ------: | ----------------------------------------------------------- |
+| `plans.archiveKeepLast`         |      10 | Newest eligible archived families with Work Record coverage |
+| `plans.archiveRetentionDays`    |      14 | Archived families inside the recent window                  |
+| `workRecords.retentionKeepLast` |     100 | Newest Work Records                                         |
+| `workRecords.retentionDays`     |      90 | Work Records inside the recent window                       |
+
+Both protections apply. Set days to zero to use the count alone. A retained archived Plan keeps the records that cover it.
+Unfinished delivery or recording also keeps the evidence it needs. Pruning a family removes its milestone history.
+
+A confirmed prune removes matching copies from their recorded paths in the bound working tree. Use `git status` to
+inspect those deletions before committing them. Missing, renamed and edited copies are skipped. In a managed remote
+session, the laptop removes the canonical items and the execution host handles the repository copies.

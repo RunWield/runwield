@@ -99,15 +99,15 @@ type ResolvePairCheckpointArgs = {
 export type ResolvePairCheckpointResult =
     | { ok: true; checkpoint: CurrentPairCheckpoint }
     | {
-        ok: false;
-        reason:
-            | "checkpoint_missing"
-            | "checkpoint_stale"
-            | "workflow_mismatch"
-            | "user_turn_required"
-            | "later_user_turn_required"
-            | "checkpoint_already_resolved";
-    };
+          ok: false;
+          reason:
+              | "checkpoint_missing"
+              | "checkpoint_stale"
+              | "workflow_mismatch"
+              | "user_turn_required"
+              | "later_user_turn_required"
+              | "checkpoint_already_resolved";
+      };
 
 function getSessionManager(hostedSession: HostedSession): SessionManager | null {
     return hostedSession.getRootSessionManager?.() as SessionManager | null;
@@ -116,24 +116,38 @@ function getSessionManager(hostedSession: HostedSession): SessionManager | null 
 function getEntries(sessionManager: SessionManager | null): PairCheckpointSessionEntry[] {
     if (!sessionManager) return [];
     const entries = sessionManager.getBranch?.() || sessionManager.getEntries?.() || [];
-    return Array.isArray(entries) ? entries as PairCheckpointSessionEntry[] : [];
+    return Array.isArray(entries) ? (entries as PairCheckpointSessionEntry[]) : [];
 }
 
 function isReportedEvent(event: PairCheckpointJournalEvent | null | undefined): event is PairReportedEvent {
-    return event?.version === 1 && event.state === "reported" && typeof event.checkpointId === "string" &&
-        Number.isInteger(event.checkpointNumber) && event.checkpointNumber > 0 &&
-        typeof event.workflowAttemptKey === "string" && typeof event.workflow?.planName === "string" &&
-        typeof event.report?.summary === "string" && typeof event.report.final === "boolean" &&
-        typeof event.source?.runtimeTurnId === "string" && typeof event.source.requestId === "string" &&
-        typeof event.source.attemptId === "string";
+    return (
+        event?.version === 1 &&
+        event.state === "reported" &&
+        typeof event.checkpointId === "string" &&
+        Number.isInteger(event.checkpointNumber) &&
+        event.checkpointNumber > 0 &&
+        typeof event.workflowAttemptKey === "string" &&
+        typeof event.workflow?.planName === "string" &&
+        typeof event.report?.summary === "string" &&
+        typeof event.report.final === "boolean" &&
+        typeof event.source?.runtimeTurnId === "string" &&
+        typeof event.source.requestId === "string" &&
+        typeof event.source.attemptId === "string"
+    );
 }
 
 function isResolvedEvent(event: PairCheckpointJournalEvent | null | undefined): event is PairResolvedEvent {
-    return event?.version === 1 && event.state === "resolved" && typeof event.checkpointId === "string" &&
-        typeof event.workflowAttemptKey === "string" && typeof event.workflow?.planName === "string" &&
+    return (
+        event?.version === 1 &&
+        event.state === "resolved" &&
+        typeof event.checkpointId === "string" &&
+        typeof event.workflowAttemptKey === "string" &&
+        typeof event.workflow?.planName === "string" &&
         ["continue", "revise", "switch_to_autonomous", "stop"].includes(event.decision) &&
-        typeof event.userTurn?.runtimeTurnId === "string" && typeof event.userTurn.requestId === "string" &&
-        typeof event.userTurn.attemptId === "string";
+        typeof event.userTurn?.runtimeTurnId === "string" &&
+        typeof event.userTurn.requestId === "string" &&
+        typeof event.userTurn.attemptId === "string"
+    );
 }
 
 function isClearedEvent(event: PairCheckpointJournalEvent | null | undefined): event is PairClearedEvent {
@@ -147,8 +161,8 @@ function currentRequestProvenance(
     const sessionManager = getSessionManager(hostedSession);
     const attempt = sessionManager ? readRequestAttemptEntries(sessionManager).at(-1) : null;
     if (!attempt || attempt.phase !== "started") return null;
-    const runtimeTurnId = hostedSession.getActiveTurnId?.() ||
-        (requireActiveTurn ? "" : `generated:${attempt.requestId}`);
+    const runtimeTurnId =
+        hostedSession.getActiveTurnId?.() || (requireActiveTurn ? "" : `generated:${attempt.requestId}`);
     if (!runtimeTurnId) return null;
     return {
         runtimeTurnId,
@@ -162,9 +176,10 @@ function currentRequestProvenance(
 export function readCurrentPairCheckpoint(
     sessionManagerOrHostedSession: SessionManager | HostedSession | null,
 ): CurrentPairCheckpoint | null {
-    const sessionManager = sessionManagerOrHostedSession && "getRootSessionManager" in sessionManagerOrHostedSession
-        ? getSessionManager(sessionManagerOrHostedSession)
-        : sessionManagerOrHostedSession as SessionManager | null;
+    const sessionManager =
+        sessionManagerOrHostedSession && "getRootSessionManager" in sessionManagerOrHostedSession
+            ? getSessionManager(sessionManagerOrHostedSession)
+            : (sessionManagerOrHostedSession as SessionManager | null);
     let current: CurrentPairCheckpoint | null = null;
     for (const entry of getEntries(sessionManager)) {
         if (entry.type !== "custom" || entry.customType !== PAIR_CHECKPOINT_CUSTOM_TYPE) continue;
@@ -192,16 +207,13 @@ export function recordPairCheckpointReport(args: RecordPairCheckpointReportArgs)
     }
     const previous = readCurrentPairCheckpoint(sessionManager);
     if (previous) {
-        sessionManager.appendCustomEntry(
-            PAIR_CHECKPOINT_CUSTOM_TYPE,
-            {
-                version: 1,
-                state: "cleared",
-                checkpointId: previous.report.checkpointId,
-                timestampMs: args.timestampMs ?? Date.now(),
-                reason: "superseded",
-            } satisfies PairClearedEvent,
-        );
+        sessionManager.appendCustomEntry(PAIR_CHECKPOINT_CUSTOM_TYPE, {
+            version: 1,
+            state: "cleared",
+            checkpointId: previous.report.checkpointId,
+            timestampMs: args.timestampMs ?? Date.now(),
+            reason: "superseded",
+        } satisfies PairClearedEvent);
     }
     const checkpointNumber = (workflow.pairCheckpointCount || 0) + 1;
     const checkpointWorkflow = { ...workflow, pairCheckpointCount: checkpointNumber };
@@ -248,7 +260,7 @@ export function resolvePairCheckpoint(args: ResolvePairCheckpointArgs): ResolveP
     }
     if (
         current.resolution?.userTurn.requestId === userTurn.requestId ||
-        current.resolution && current.resolution.decision !== "stop" && args.decision !== "revise"
+        (current.resolution && current.resolution.decision !== "stop" && args.decision !== "revise")
     ) {
         return { ok: false, reason: "checkpoint_already_resolved" };
     }
@@ -267,10 +279,7 @@ export function resolvePairCheckpoint(args: ResolvePairCheckpointArgs): ResolveP
     return { ok: true, checkpoint: { report: current.report, resolution: event } };
 }
 
-export function recordPairCheckpointSnapshot(
-    hostedSession: HostedSession,
-    checkpoint: CurrentPairCheckpoint,
-): void {
+export function recordPairCheckpointSnapshot(hostedSession: HostedSession, checkpoint: CurrentPairCheckpoint): void {
     const sessionManager = getSessionManager(hostedSession);
     if (!sessionManager?.appendCustomEntry) return;
     sessionManager.appendCustomEntry(PAIR_CHECKPOINT_CUSTOM_TYPE, checkpoint.report);
@@ -287,24 +296,23 @@ export function clearPairCheckpoint(
     const sessionManager = getSessionManager(hostedSession);
     const current = readCurrentPairCheckpoint(sessionManager);
     if (!current || !sessionManager?.appendCustomEntry) return;
-    sessionManager.appendCustomEntry(
-        PAIR_CHECKPOINT_CUSTOM_TYPE,
-        {
-            version: 1,
-            state: "cleared",
-            checkpointId: current.report.checkpointId,
-            timestampMs,
-            reason,
-        } satisfies PairClearedEvent,
-    );
+    sessionManager.appendCustomEntry(PAIR_CHECKPOINT_CUSTOM_TYPE, {
+        version: 1,
+        state: "cleared",
+        checkpointId: current.report.checkpointId,
+        timestampMs,
+        reason,
+    } satisfies PairClearedEvent);
 }
 
 export function pairCheckpointMatchesWorkflow(
     checkpoint: CurrentPairCheckpoint,
     workflow: import("./hosted-session.ts").ActiveExecutionWorkflow,
 ): boolean {
-    return checkpoint.report.workflow.planName === workflow.planName &&
-        checkpoint.report.workflowAttemptKey === workflowAttemptKey(workflow);
+    return (
+        checkpoint.report.workflow.planName === workflow.planName &&
+        checkpoint.report.workflowAttemptKey === workflowAttemptKey(workflow)
+    );
 }
 
 export function restorePairExecutionState(hostedSession: HostedSession): CurrentPairCheckpoint | null {
@@ -320,7 +328,8 @@ export function restorePairExecutionState(hostedSession: HostedSession): Current
             if (entry.type !== "custom") continue;
             if (
                 entry.customType === PAIR_CHECKPOINT_CUSTOM_TYPE &&
-                entry.data?.state === "reported" && entry.data.checkpointId === current.report.checkpointId
+                entry.data?.state === "reported" &&
+                entry.data.checkpointId === current.report.checkpointId
             ) {
                 afterReport = true;
             }
@@ -332,7 +341,7 @@ export function restorePairExecutionState(hostedSession: HostedSession): Current
     const activeWorkflow = hostedSession.getActiveExecutionWorkflow?.();
     if (activeWorkflow && !pairCheckpointMatchesWorkflow(current, activeWorkflow)) return null;
     if (!snapshot) {
-        hostedSession.setActiveExecutionWorkflow({ ...current.resolution?.workflow || current.report.workflow });
+        hostedSession.setActiveExecutionWorkflow({ ...(current.resolution?.workflow || current.report.workflow) });
     }
     return current;
 }
@@ -343,8 +352,10 @@ export function hasFinalPairAssent(
 ): boolean {
     const current = readCurrentPairCheckpoint(hostedSession);
     return Boolean(
-        current && pairCheckpointMatchesWorkflow(current, workflow) &&
-            current.report.report.final === true && current.resolution?.decision === "continue",
+        current &&
+        pairCheckpointMatchesWorkflow(current, workflow) &&
+        current.report.report.final === true &&
+        current.resolution?.decision === "continue",
     );
 }
 
@@ -371,15 +382,16 @@ export function formatPairCheckpointContext(current: CurrentPairCheckpoint): str
     if (current.resolution.revisionDirection) {
         lines.push(`Revision direction: ${current.resolution.revisionDirection}`);
     }
-    const instruction = current.resolution.decision === "stop"
-        ? "Pair Execution is stopped. A later user request to resume can resolve this same checkpoint again."
-        : current.resolution.decision === "switch_to_autonomous"
-        ? "Continue autonomously. Do not report more Pair checkpoints; typed task completion is still required."
-        : current.resolution.decision === "revise"
-        ? "Apply the recorded revision direction, then report a fresh Pair checkpoint."
-        : report.final
-        ? "The final checkpoint is accepted. Submit typed task completion."
-        : "Continue the approved work, then report a fresh Pair checkpoint.";
+    const instruction =
+        current.resolution.decision === "stop"
+            ? "Pair Execution is stopped. A later user request to resume can resolve this same checkpoint again."
+            : current.resolution.decision === "switch_to_autonomous"
+              ? "Continue autonomously. Do not report more Pair checkpoints; typed task completion is still required."
+              : current.resolution.decision === "revise"
+                ? "Apply the recorded revision direction, then report a fresh Pair checkpoint."
+                : report.final
+                  ? "The final checkpoint is accepted. Submit typed task completion."
+                  : "Continue the approved work, then report a fresh Pair checkpoint.";
     lines.push("", instruction);
     return lines.join("\n");
 }

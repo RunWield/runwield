@@ -39,7 +39,8 @@ const BUNDLED_PLAN_ADAPTER_KEY = Symbol.for("runwield.workspace.plan-adapter-mod
 // Deno import so Vite does not try to resolve Core's JSR imports through Node.
 let bundledProjectArtifacts: Promise<ProjectArtifactsModule> | undefined;
 if (!isAstroDevelopmentMode()) {
-    Reflect.set(globalThis, BUNDLED_PLAN_ADAPTER_KEY, import("./plan-adapter.ts"));
+    if (!Reflect.has(globalThis, BUNDLED_PLAN_ADAPTER_KEY))
+        Reflect.set(globalThis, BUNDLED_PLAN_ADAPTER_KEY, import("./plan-adapter.ts"));
     bundledProjectArtifacts = import("./project-artifacts.ts");
 }
 
@@ -122,7 +123,8 @@ export async function loadOwnerProjectArtifact(projectId: string, artifactType: 
         ? await (Function("specifier", "return import(specifier)") as ProjectArtifactsImporter)(
               new URL("./project-artifacts.ts", import.meta.url).href,
           )
-        : await bundledProjectArtifacts;
+        : await (Reflect.get(globalThis, Symbol.for("runwield.workspace.project-artifacts-module")) ||
+              bundledProjectArtifacts);
     return await module!.readProjectArtifact(root, artifactType, sourceId);
 }
 

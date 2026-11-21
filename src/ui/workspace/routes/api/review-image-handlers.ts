@@ -44,15 +44,21 @@ export async function reviewImageUploadApi(request: Request): Promise<Response> 
         await mkdir(REVIEW_UPLOAD_DIR, { recursive: true });
         const path = join(REVIEW_UPLOAD_DIR, `${crypto.randomUUID()}${extension}`);
         await writeFile(path, bytes);
-        return Response.json({ path, originalName: file.name }, {
-            headers: { "cache-control": "no-store" },
-        });
+        return Response.json(
+            { path, originalName: file.name },
+            {
+                headers: { "cache-control": "no-store" },
+            },
+        );
     } catch (error) {
         const message = error instanceof Error ? error.message : "Image upload failed.";
-        return Response.json({ error: message }, {
-            status: 500,
-            headers: { "cache-control": "no-store" },
-        });
+        return Response.json(
+            { error: message },
+            {
+                status: 500,
+                headers: { "cache-control": "no-store" },
+            },
+        );
     }
 }
 
@@ -79,9 +85,12 @@ export async function reviewImageApi(request: Request, options: ReviewImageOptio
         if (options.projectOnly) {
             for (const value of [rawPath, base]) {
                 if (
-                    isAbsolute(value) || value.includes("\0") || value.includes("\\") ||
+                    isAbsolute(value) ||
+                    value.includes("\0") ||
+                    value.includes("\\") ||
                     /^[a-z][a-z\d+.-]*:/i.test(value)
-                ) throw Object.assign(new Error("Image path is outside this review workspace."), { code: "EACCES" });
+                )
+                    throw Object.assign(new Error("Image path is outside this review workspace."), { code: "EACCES" });
             }
         }
         // Relative image bases are Project-relative, never process-relative.
@@ -89,8 +98,8 @@ export async function reviewImageApi(request: Request, options: ReviewImageOptio
         const root = isPathInside(path, cwd)
             ? cwd
             : !options.projectOnly && isPathInside(path, REVIEW_UPLOAD_DIR)
-            ? REVIEW_UPLOAD_DIR
-            : null;
+              ? REVIEW_UPLOAD_DIR
+              : null;
         if (!root) throw Object.assign(new Error("Image path is outside this review workspace."), { code: "EACCES" });
         const file = resolveWorkspaceFile(root, relative(root, path).replaceAll("\\", "/"), {
             allowRelativeTraversal: true,
@@ -118,8 +127,16 @@ export async function reviewImageApi(request: Request, options: ReviewImageOptio
 
 function hasValidImageMagic(bytes: Uint8Array, extension: string): boolean {
     if (extension === ".png") {
-        return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d &&
-            bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
+        return (
+            bytes[0] === 0x89 &&
+            bytes[1] === 0x50 &&
+            bytes[2] === 0x4e &&
+            bytes[3] === 0x47 &&
+            bytes[4] === 0x0d &&
+            bytes[5] === 0x0a &&
+            bytes[6] === 0x1a &&
+            bytes[7] === 0x0a
+        );
     }
     if (extension === ".jpg" || extension === ".jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8;
     if (extension === ".gif") return bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46;

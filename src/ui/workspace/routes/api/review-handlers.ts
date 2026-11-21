@@ -1,18 +1,18 @@
-import { validateSequenceReviewDecision } from "../../../../shared/workflow/sequence-review.ts";
+import { validateSequenceReviewDecision } from "../../../../plan-store/index.ts";
 /** Review decision transport for Workspace-hosted review surfaces. */
 
 import { normalizePlanClassification } from "../../../../constants.ts";
 import { readPlanApprovalAction } from "../../../../shared/workflow/plan-approval.ts";
-import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../../plan-store.ts";
+import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../../plan-format.ts";
 
-import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../../shared/workflow/sequence-review.ts";
+import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../../plan-store/index.ts";
 import type {
     ReviewImageDecision,
     ReviewImageInput,
     ReviewAnnotationInput,
 } from "../../../../shared/workflow/review-feedback-images.ts";
 import type { PlanQuestionAnswer } from "../../../../shared/plan-questions.ts";
-import type { PlanFrontMatter } from "../../../../plan-store.ts";
+import type { PlanFrontMatter } from "../../../../plan-store/index.ts";
 
 export interface ReviewExecutionPolicy {
     executionAgent?: "engineer" | "frontend-engineer";
@@ -20,6 +20,7 @@ export interface ReviewExecutionPolicy {
 }
 
 export interface ReviewDecisionFields {
+    documentRevision?: string;
     plan?: string;
     questionAnswers?: PlanQuestionAnswer[];
     savedPath?: string;
@@ -57,6 +58,7 @@ export type ReviewRequestBody = Omit<
     ReviewRequestFields;
 
 export interface ReviewPayload {
+    documentRevision?: string;
     reviewRevision?: number;
     classification?: string;
     frontmatter?: Pick<PlanFrontMatter, "classification">;
@@ -245,6 +247,9 @@ async function resolveFromRequest(ctx: ReviewRequestContext, createDecision: Rev
         body = {};
     }
 
+    const documentRevision = ctx.state?.reviewPayload?.documentRevision;
+    if (documentRevision && body.documentRevision !== documentRevision)
+        return jsonError("stale_plan_review", "Plan documents changed. Refresh the review; your draft was kept.", 409);
     const expectedRevision = ctx.state?.reviewPayload?.reviewRevision;
     if (expectedRevision !== undefined && body?.reviewRevision !== expectedRevision) {
         return jsonError(

@@ -10,9 +10,11 @@ test("a failed background model turn reports failure and releases its reader lea
     await withRuntimeCommandFixture(
         "background-delegate-failure-",
         async ({ projectRoot, setModelResponseFactories }) => {
-            setModelResponseFactories([() => {
-                throw Error("model failed");
-            }]);
+            setModelResponseFactories([
+                () => {
+                    throw Error("model failed");
+                },
+            ]);
             const session = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
             const tool = createDelegateAgentTool({
                 hostedSession: session,

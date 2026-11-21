@@ -19,6 +19,7 @@ type RoutedGoldenResult = GoldenScenarioResult & {
 };
 
 export const routerArchitectSlicerScenario = {
+    retainedCheckoutInput: true, // Explicit historical checkout-document workflow fixture.
     name: "project-router-architect-slicer-journey",
     composedTui: true,
     terminal: { columns: 100, rows: 30 },

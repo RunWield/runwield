@@ -186,18 +186,71 @@ export const NO_ISOLATED_AGENT_PORT = Object.freeze({
  * into the next test.
 
  */
-export async function makeValidationProjectRoot(planName = "p", attrs: PlanFrontMatterInput = {}) {
-    const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-root-"));
-    const { savePlan, ensurePlanIdentity } = await import("../../plan-store.ts");
-    await savePlan(root, planName, `# ${planName}\n\nvalidation fixture\n`, {
+export async function makeValidationProjectRoot(
+    planName = "p",
+    attrs: PlanFrontMatterInput = {},
+    markdown = `# ${planName}\n\nvalidation fixture\n`,
+    existingRoot?: string,
+) {
+    const root = existingRoot || (await fsMkdtemp(join(tmpdir(), "runwield-validation-root-")));
+    const { savePlan, ensurePlanIdentity, loadPlan, updatePlanFrontMatter, injectFrontMatter, parsePlanFrontMatter } =
+        await import("../../plan-store.ts");
+    const { pickControllerState } = await import("./controller-state.ts");
+    await savePlan(root, planName, markdown, {
         classification: "FEATURE",
-        status: "in_progress",
         summary: "validation fixture",
         affectedPaths: [],
         planId: crypto.randomUUID(),
         ...attrs,
+        status: "draft",
     });
     await ensurePlanIdentity(root, planName);
+    if (attrs.classification !== "PROJECT") {
+        const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
+        const { rememberNonGitExecutionConsent } = await import("../non-git-execution-consent.ts");
+        const { recordPlanEvent } = await import("./plan-lifecycle.ts");
+        const { startActiveExecutionWorkflow, createExecutionStartPorts } = await import("./execution-start.ts");
+        const { finalizePlanImplementation } = await import("./implementation-checkpoint.ts");
+        await rememberNonGitExecutionConsent("featurePlan", root);
+        await withLocalPlanWorkflow(root, planName, async () => {
+            await recordPlanEvent({ cwd: root, planName, event: "review_approved", currentStatus: "draft" });
+            await recordPlanEvent({ cwd: root, planName, event: "readiness_passed", currentStatus: "approved" });
+            const ready = await loadPlan(root, planName);
+            if (!ready) throw new Error("Validation fixture Plan was not saved.");
+            const execution = await startActiveExecutionWorkflow({
+                cwd: root,
+                planName,
+                currentStatus: "ready_for_work",
+                triageMeta: ready.attrs,
+                ports: createExecutionStartPorts(),
+            });
+            await finalizePlanImplementation({ projectRoot: root, planName, executionContext: execution });
+        });
+    }
+    const plan = await loadPlan(root, planName);
+    if (!plan) throw new Error("Validation fixture Plan was not saved.");
+    const supplied = parsePlanFrontMatter(injectFrontMatter(plan.markdown, { status: "in_progress", ...attrs })).attrs;
+    await updatePlanFrontMatter(
+        root,
+        planName,
+        {
+            validationCheckpoint: undefined,
+            ...pickControllerState(supplied),
+            ...(attrs.humanReviewDecision === null ? { humanReviewDecision: null } : {}),
+            status: supplied.status,
+            validationPhase:
+                supplied.validationPhase ??
+                (supplied.status === "reviewed"
+                    ? "delivery"
+                    : supplied.status === "validated_ci"
+                      ? "semantic"
+                      : undefined),
+        },
+        plan.attrs,
+        {
+            expectedRevision: plan.revision,
+        },
+    );
     return root;
 }
 

@@ -33,8 +33,8 @@ export async function listUserAgentOptions(projectRoot) {
     const defaultModel = settings.getDefaultModel?.() || "";
     const defaultThinkingLevel = settings.getDefaultThinkingLevel?.() || "default";
     const root = projectRoot || "";
-    const fallbackModel = getConfiguredAgentModel(AGENTS.ENGINEER, root) ||
-        (defaultModel ? `${defaultProvider}/${defaultModel}` : "");
+    const fallbackModel =
+        getConfiguredAgentModel(AGENTS.ENGINEER, root) || (defaultModel ? `${defaultProvider}/${defaultModel}` : "");
     const agents = await listAvailableAgents(projectRoot);
     return agents.map((agent) => {
         const reference = getConfiguredAgentModel(agent.name, root) || fallbackModel || agent.model || "";
@@ -46,8 +46,11 @@ export async function listUserAgentOptions(projectRoot) {
             defaults: {
                 model: parsed.ok ? parsed.id : "",
                 provider: parsed.ok ? parsed.provider : "",
-                thinkingLevel: getConfiguredAgentThinkingLevel(agent.name, root) ||
-                    defaultThinkingLevel || agent.thinkingLevel || "default",
+                thinkingLevel:
+                    getConfiguredAgentThinkingLevel(agent.name, root) ||
+                    defaultThinkingLevel ||
+                    agent.thinkingLevel ||
+                    "default",
             },
         };
     });

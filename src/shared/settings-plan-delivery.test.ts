@@ -6,9 +6,13 @@ import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixtur
 test("Plan auto-merge defaults off and accepts only a literal true", async () => {
     await withRuntimeCommandFixture("plan-merge-setting-", async ({ projectRoot }) => {
         assertEquals(shouldAutoMergePlansIntoTargetBranch(projectRoot), false);
-        for (
-            const plans of [true, "true", [], { autoMergeIntoTargetBranch: "true" }, { autoMergeIntoTargetBranch: 1 }]
-        ) {
+        for (const plans of [
+            true,
+            "true",
+            [],
+            { autoMergeIntoTargetBranch: "true" },
+            { autoMergeIntoTargetBranch: 1 },
+        ]) {
             await setCustomSetting("plans", plans, "project", projectRoot);
             assertEquals(shouldAutoMergePlansIntoTargetBranch(projectRoot), false);
         }

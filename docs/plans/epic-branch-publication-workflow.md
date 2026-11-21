@@ -29,7 +29,7 @@ status: "draft"
 ## Context
 
 The earlier package and frontend Plans were removed on 2026-10-26. The
-[Plan Store PRD](../prd/plan-store-prd.md) owns the Plan storage direction.
+[Plan Store PRD](../prd/runwield-core-prd.md#plan-authoring-and-external-adoption) owns the Plan storage direction.
 
 This proposal assumes the Epic branch is proven and ready to merge at `verified`. The merge stays a manual `git`
 operation by the owner. This works, but it leaves the last step of the release outside RunWield:

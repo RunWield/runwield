@@ -77,10 +77,7 @@ export const GOLDEN_TUI_REQUIRED_CAPABILITIES = Object.freeze({
         "recovery:malformed-plan-front-matter",
     ],
     validationWorkflow: VALIDATION_WORKFLOW_REQUIRED_CAPABILITIES,
-    contextIdentity: [
-        "context:plan-engineer-identity",
-        "context:frontend-engineer-identity",
-    ],
+    contextIdentity: ["context:plan-engineer-identity", "context:frontend-engineer-identity"],
     tutorial: ["tutorial:onboarding"],
     durableOutcomes: [
         "durable:plan-lifecycle",
@@ -159,9 +156,9 @@ export function assertGoldenScenarioCoverage(scenarios: GoldenCoverageScenario[]
         }
         assert(
             decorative.length === 0,
-            `Golden TUI coverage assertions must not reuse one broad assertion body for multiple capabilities: ${
-                decorative.join(", ")
-            }`,
+            `Golden TUI coverage assertions must not reuse one broad assertion body for multiple capabilities: ${decorative.join(
+                ", ",
+            )}`,
         );
         for (const capability of declared) {
             if (!known.has(capability)) unknown.push(`${scenario.name}:${capability}`);

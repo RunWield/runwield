@@ -13,10 +13,10 @@ import type { LiveSessionInfo } from "../../../shared/session/live-session-conne
 import type { BrowserNotificationPolicy } from "../../../shared/session/notification-content.ts";
 import type { ImageAttachment } from "../../../shared/session/image-attachments.ts";
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
-import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../shared/workflow/sequence-review.ts";
-import type { PlanFrontMatter } from "../../../plan-store.ts";
+import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../plan-store/index.ts";
+import type { PlanFrontMatter } from "../../../plan-store/index.ts";
 import type { PlanWorktreeExpectation } from "../../../shared/workflow/plan-actions.ts";
-import type { SharedPlanReviewDecision } from "../../../shared/workflow/plan-review-actions.ts";
+import type { SharedPlanReviewDecision } from "../../../plan-store/index.ts";
 import type { ReviewImageDecision } from "../../../shared/workflow/review-feedback-images.ts";
 import type { ThinkingLevel } from "../../../shared/session/named-invocation.ts";
 export interface CodeReviewRefreshContext {
@@ -24,6 +24,9 @@ export interface CodeReviewRefreshContext {
     targetBranch: string;
     targetBaseRef?: string;
 }
+import { capturePlanReviewInput } from "../../../plan-store/index.ts";
+import { withLocalPlanWorkflow } from "../../../plan-store/index.ts";
+
 import fs, { stat as fsStat } from "node:fs/promises";
 export interface LiveCodeReviewOptions {
     projectId: string;
@@ -31,8 +34,8 @@ export interface LiveCodeReviewOptions {
     interactionId: string;
     runwieldSessionId: string;
 }
-import { validateSequenceReviewDecision } from "../../../shared/workflow/sequence-review.ts";
-import { resolveWorkflowPlanLocation } from "../../../shared/workflow/plan-location.ts";
+import { validateSequenceReviewDecision } from "../../../plan-store/index.ts";
+import { resolveWorkflowPlanLocation } from "../../../plan-store/index.ts";
 /* @module ui/workspace/server/session-continuation */
 
 import { mergePlanAssociations } from "../../../shared/session/plan-association.ts";
@@ -44,7 +47,7 @@ import {
     waitForSessionActivationSettlement,
 } from "../../../shared/session/live-session-connection.ts";
 import { createHash } from "node:crypto";
-import { findPlanEvidenceById } from "../../../plan-store.ts";
+import { findPlanEvidenceById } from "../../../plan-store/index.ts";
 import {
     clearMascotEnabledCache,
     getMergedCustomSetting,
@@ -60,8 +63,11 @@ import {
     requireUserAgentOption,
     requireUserModelOption,
 } from "../../../shared/session/user-selection.ts";
-import { normalizeBrowserNotificationPolicy, type NotificationSettingsRecord } from "../../../shared/session/notification-content.ts";
-import { applySharedPlanReviewDecision } from "../../../shared/workflow/plan-review-actions.ts";
+import {
+    normalizeBrowserNotificationPolicy,
+    type NotificationSettingsRecord,
+} from "../../../shared/session/notification-content.ts";
+import { applySharedPlanReviewDecision } from "../../../plan-store/index.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 import { loadReviewFeedbackImages } from "../../../shared/workflow/review-feedback-images.ts";
 import { getWorktreeReviewDiff, WorktreeReviewComparisonError } from "../../../shared/workflow/git-snapshot.ts";
@@ -178,6 +184,7 @@ function safePlanReviewReference(request: RuntimeInteractionRequest) {
         classification,
         expectedRevision: typeof meta.expectedRevision === "string" ? meta.expectedRevision : null,
         reviewedSource: meta.reviewedSource && typeof meta.reviewedSource === "object" ? meta.reviewedSource : null,
+        packageInput: meta.packageInput,
         expectedStatus: typeof meta.expectedStatus === "string" ? meta.expectedStatus : null,
         expectedWorktree:
             meta.expectedWorktree && typeof meta.expectedWorktree === "object" ? meta.expectedWorktree : null,
@@ -892,7 +899,11 @@ export class WorkspaceSessionContinuationService {
                 })),
                 ...templates
                     .filter((template) => !commandRegistry.getCommandDefinition(template.name))
-                    .map((template) => ({ name: template.name, description: template.description, kind: "prompt" as const })),
+                    .map((template) => ({
+                        name: template.name,
+                        description: template.description,
+                        kind: "prompt" as const,
+                    })),
                 ...skills.map((skill) => ({
                     name: `skill:${skill.name}`,
                     description: skill.description,
@@ -1456,29 +1467,45 @@ export class WorkspaceSessionContinuationService {
                     const operation = this.operations.get(options.operationId);
                     if (!operation) throw new Error("Workspace operation is not running.");
                     const root = requireOwnerProjectRoot(this.store, operation.projectId);
-                    const evidence = await loadPlanActionEvidence(root, reviewPlanId);
-                    if (evidence.kind !== "success") throw new Error(evidence.message);
-                    // Freeze the document presented for this interaction. The decision must
-                    // not substitute the latest Plan as the source that the user reviewed.
-                    const plan = Array.isArray(request._meta?.sequenceDocuments)
-                        ? null
-                        : await findPlanEvidenceById(root, reviewPlanId);
-                    request._meta = {
-                        ...request._meta,
-                        expectedRevision: evidence.evidence.revision,
-                        expectedStatus: evidence.evidence.status,
-                        expectedWorktree: evidence.evidence.worktree,
-                        ...(plan &&
-                            !request._meta?.reviewedSource && {
-                                reviewedSource: {
-                                    planName: plan.planName,
-                                    path: plan.path,
-                                    markdown: plan.markdown,
-                                    revision: plan.revision,
-                                    attrs: plan.attrs,
-                                },
-                            }),
-                    };
+                    await withLocalPlanWorkflow(root, reviewPlanId, async () => {
+                        const reviewPlanName = safePlanReviewReference(request)?.planName || reviewPlanId;
+                        const evidence = await loadPlanActionEvidence(root, reviewPlanId);
+                        if (evidence.kind !== "success") throw new Error(evidence.message);
+                        // Freeze the document presented for this interaction. The decision must
+                        // not substitute the latest Plan as the source that the user reviewed.
+                        const plan = Array.isArray(request._meta?.sequenceDocuments)
+                            ? null
+                            : await findPlanEvidenceById(root, reviewPlanId);
+                        if (
+                            plan &&
+                            request._meta?.reviewedSource &&
+                            typeof request._meta.reviewedSource === "object" &&
+                            "revision" in request._meta.reviewedSource &&
+                            request._meta.reviewedSource.revision !== plan.revision
+                        ) {
+                            throw new Error("The Plan changed before review. Reload the Plan and review again.");
+                        }
+                        const packageInput = plan
+                            ? await capturePlanReviewInput(root, reviewPlanName, plan.revision)
+                            : undefined;
+                        request._meta = {
+                            ...request._meta,
+                            packageInput,
+                            expectedRevision: evidence.evidence.revision,
+                            expectedStatus: evidence.evidence.status,
+                            expectedWorktree: evidence.evidence.worktree,
+                            ...(plan &&
+                                !request._meta?.reviewedSource && {
+                                    reviewedSource: {
+                                        planName: plan.planName,
+                                        path: plan.path,
+                                        markdown: plan.markdown,
+                                        revision: plan.revision,
+                                        attrs: plan.attrs,
+                                    },
+                                }),
+                        };
+                    });
                 }
                 const interactionId = String(request.id || crypto.randomUUID());
                 return new Promise<RuntimeInteractionResponse>((resolve, reject) => {
@@ -2228,6 +2255,9 @@ export class WorkspaceSessionContinuationService {
                 const attrs = source.attrs as PlanFrontMatter;
                 const decision = readPlanReviewDecisionMeta(options.response);
                 const actionResult = await applySharedPlanReviewDecision({
+                    packageInput: planReview.packageInput as Parameters<
+                        typeof applySharedPlanReviewDecision
+                    >[0]["packageInput"],
                     cwd: root,
                     planName: source.planName,
                     planPath: source.path,

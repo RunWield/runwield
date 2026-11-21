@@ -10,7 +10,7 @@ import {
     type RuntimeInteractionResponse,
 } from "../session/session-runtime-interactions.ts";
 import type { HostedSession } from "../session/hosted-session.ts";
-import type { SequenceReviewDecision } from "./sequence-review.ts";
+import type { SequenceReviewDecision } from "../../plan-store/index.ts";
 
 export const SESSION_COMPLETE_GUIDANCE =
     "This session is complete. To work on something new, make a new session with `/new` or close `wld`.";

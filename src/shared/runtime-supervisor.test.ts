@@ -161,7 +161,7 @@ test("supervisor preserves failed runtime output while a service keeps stderr op
 });
 
 test(
-    "supervisor restores a real terminal after an image-worker descriptor abort",
+    "supervisor restores a real terminal after image-worker descriptor exhaustion",
     {
         skip: process.platform === "win32" ? "POSIX PTY fixture" : false,
         timeout: 10_000,
@@ -218,7 +218,7 @@ test(
             assert.ok(output.includes("\x1b[?2004l\x1b[?1049l\x1b[?25h"));
             assert.match(output, /RunWield reached the open-file limit/);
             child.kill("SIGTERM");
-            assert.ok([134, 1].includes(await child.exited));
+            assert.ok((await child.exited) > 0, "the launcher must report descriptor exhaustion as a failure");
         } finally {
             clearTimeout(deadline);
             child.kill("SIGKILL");
@@ -236,7 +236,7 @@ test("supervisor explains catchable resource failures without replaying a comman
 });
 
 test(
-    "supervisor survives a real Pi image-worker descriptor abort and explains recovery",
+    "supervisor survives real Pi image-worker descriptor exhaustion and explains recovery",
     {
         skip: process.platform === "win32" ? "POSIX descriptor limit fixture" : false,
     },
@@ -261,7 +261,7 @@ test(
         const result = run("abort");
         assert.equal(result.error, undefined, result.stderr);
         assert.equal(result.signal, null);
-        assert.notEqual(result.status, 0);
+        assert.equal(result.status, 134);
         assert.match(result.stderr, /RunWield runtime stopped unexpectedly/);
     },
 );

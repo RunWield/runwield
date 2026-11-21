@@ -1,9 +1,12 @@
-import { preparePlanWorkflow } from "./plan-preparation.ts";
+import { saveEpicIntegrationReview } from "../../plan-store/index.ts";
+import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { REVIEW_DIFF_FORMAT_ARGS } from "./git-snapshot.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
-import { mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { rm as fsRm } from "node:fs/promises";
 /**
  * @module shared/workflow/epic-integration
  * How an Epic with its own branch finishes.
@@ -19,16 +22,10 @@ import { mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/
  */
 
 import { join } from "node:path";
-import {
-    compareChildPlansByOrder,
-    findPlansByParent,
-    loadPlan,
-    saveChildFeaturePlans,
-    writePlanMarkdownWithRevisionLocked,
-    updatePlanFrontMatter,
-    withPlanCatalogLock,
-} from "../../plan-store.ts";
-import type { PlanFrontMatter } from "../../plan-store.ts";
+import { savePlanProse, preparePlanRepairDraft } from "../../plan-store/index.ts";
+import { compareChildPlansByOrder, parsePlanFrontMatter } from "../../plan-format.ts";
+import { findPlansByParent, loadPlan, saveChildFeaturePlans } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { isGitRepository } from "../git.ts";
@@ -40,11 +37,12 @@ import {
     PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
 } from "./process-output.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
-import { EPIC_INTEGRATION_REPORT_FILE_NAME, getEpicArtifactPath } from "../epic-artifacts.ts";
+import { EPIC_INTEGRATION_REPORT_FILE_NAME } from "../../plan-format.ts";
+import { resolveEpicArtifactPath, saveEpicArtifact } from "../../plan-store/index.ts";
 import type { HostedSession } from "../session/hosted-session.ts";
 import { recordPlanEvent } from "./plan-lifecycle.ts";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
-import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
+
 import { findTargetBranchPlansByParent, prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
@@ -61,7 +59,8 @@ import {
     unaccountedOpenItems,
     type ReviewLedger,
 } from "./review-ledger.ts";
-import { readControllerRecord, StaleControllerWriteError } from "./controller-registry.ts";
+import { readEpicIntegrationReview } from "../../plan-store/index.ts";
+import { StaleControllerWriteError } from "../../plan-store/index.ts";
 import type { EpicIntegrationReviewState } from "./controller-state.ts";
 import { SEMANTIC_REVIEW_CYCLES } from "./validation-types.ts";
 import { formatCodeReviewAnnotations, normalizeHumanReview } from "./validation-human-review.ts";
@@ -737,22 +736,18 @@ async function addRepairChild(
         renderFindings(findings),
         "",
     ].join("\n");
-    const [written] = await withPlanCatalogLock(
-        documentRoot,
-        async () =>
-            await saveChildFeaturePlans(documentRoot, epicPlanName, [
-                {
-                    title,
-                    summary: `Repair ${findings.length} integration finding(s) on ${state.branch}.`,
-                    affectedPaths: [],
-                    dependencies: [],
-                    content,
-                    order: highestOrder + 1,
-                    targetBranch: state.branch,
-                    workKind: "BUG_FIX",
-                },
-            ]),
-    );
+    const [written] = await saveChildFeaturePlans(documentRoot, epicPlanName, [
+        {
+            title,
+            summary: `Repair ${findings.length} integration finding(s) on ${state.branch}.`,
+            affectedPaths: [],
+            dependencies: [],
+            content,
+            order: highestOrder + 1,
+            targetBranch: state.branch,
+            workKind: "BUG_FIX",
+        },
+    ]);
     const child = await loadPlan(documentRoot, written.name);
     if (!child) throw new Error(`Repair child was not saved: ${written.name}`);
     return {
@@ -767,22 +762,6 @@ async function addRepairChild(
 }
 
 /** Give a branch draft a writable document without losing a saved checkout copy. */
-async function prepareRepairDraftDocument(primaryRoot: string, name: string) {
-    const source = await resolveWorkflowPlanLocation(primaryRoot, name, { readOnly: true });
-    if (!source.planningNotStarted) return source;
-    const writable = await prepareSessionPlanningWorktree(primaryRoot, name);
-    if (source.plan && !source.publishedSnapshot && writable.plan) {
-        await writePlanMarkdownWithRevisionLocked(
-            writable.documentRoot,
-            name,
-            writable.plan.path,
-            source.plan.markdown,
-            writable.plan.revision,
-        );
-        writable.plan = await loadPlan(writable.documentRoot, name);
-    }
-    return writable;
-}
 
 /** A temporary detached checkout of the exact Epic commit, owned and removed by the gate. */
 async function withGateCheckout<T>(primaryRoot: string, commit: string, run: (path: string) => Promise<T>): Promise<T> {
@@ -790,6 +769,7 @@ async function withGateCheckout<T>(primaryRoot: string, commit: string, run: (pa
     const path = join(parent, "checkout");
     await runGit(primaryRoot, ["worktree", "add", "--detach", path, commit]);
     try {
+        await enterProjectRuntime(path);
         return await run(path);
     } finally {
         await runGitResult(primaryRoot, ["worktree", "remove", "--force", "--force", path]);
@@ -867,8 +847,8 @@ export async function runEpicIntegrationGate(
         "info",
     );
 
-    const controller = await readControllerRecord(primaryRoot, { planName: epicPlanName, planId: epic.attrs.planId });
-    const saved = controller?.state.epicIntegrationReview;
+    const integrationReview = await readEpicIntegrationReview(primaryRoot, epicPlanName, epic.attrs.planId);
+    const saved = integrationReview.review;
     const round = (saved?.round ?? state.children.filter((child) => isIntegrationRepairChild(child.name)).length) + 1;
     let ledger = saved ? normalizeLedger(saved.ledger) : createLedger();
     if (saved && saved.checkedCommit !== head) ledger = claimReviewFixes(ledger);
@@ -959,16 +939,10 @@ export async function runEpicIntegrationGate(
             ledger = applyRoundFindings(ledger, review.outcome.findings, round).ledger;
             const reviewState: EpicIntegrationReviewState = { round, ledger, checkedCommit: head };
             try {
-                await updatePlanFrontMatter(
-                    location.documentRoot,
-                    epicPlanName,
-                    { epicIntegrationReview: reviewState },
-                    {},
-                    {
-                        expectedRevision: current.revision,
-                        expectedControllerRevision: controller?.revision || 0,
-                    },
-                );
+                await saveEpicIntegrationReview(location.documentRoot, epicPlanName, reviewState, {
+                    expectedRevision: current.revision,
+                    expectedControllerRevision: integrationReview.revision,
+                });
             } catch (error) {
                 if (!(error instanceof StaleControllerWriteError)) throw error;
                 return {
@@ -977,15 +951,21 @@ export async function runEpicIntegrationGate(
                 };
             }
             const findings = [...(checks.finding ? [checks.finding] : []), ...reviewFindings(ledger, review.outcome)];
-            const reportPath = getEpicArtifactPath(
+            const reportPath = await resolveEpicArtifactPath(
                 location.documentRoot,
                 epicPlanName,
                 EPIC_INTEGRATION_REPORT_FILE_NAME,
             );
-            const reportRelativePath = `docs/plans/${epicPlanName}/${EPIC_INTEGRATION_REPORT_FILE_NAME}`;
+            const reportRelativePath = hasCanonicalPlanAccess()
+                ? reportPath
+                : `docs/plans/${epicPlanName}/${EPIC_INTEGRATION_REPORT_FILE_NAME}`;
             if (findings.length) {
-                await fsMkdir(join(location.documentRoot, "docs", "plans", epicPlanName), { recursive: true });
-                await fsWriteFile(reportPath, renderReport(epicPlanName, state, base, findings));
+                await saveEpicArtifact(
+                    location.documentRoot,
+                    epicPlanName,
+                    EPIC_INTEGRATION_REPORT_FILE_NAME,
+                    renderReport(epicPlanName, state, base, findings),
+                );
                 await recordPlanEvent({
                     cwd: primaryRoot,
                     planName: epicPlanName,
@@ -1046,15 +1026,9 @@ export async function runEpicIntegrationGate(
                 const reviewedAt = codeReview.kind === "approved" ? new Date().toISOString() : null;
                 if (takeover) {
                     reviewState.userTakeoverAt = reviewedAt;
-                    await updatePlanFrontMatter(
-                        location.documentRoot,
-                        epicPlanName,
-                        { epicIntegrationReview: reviewState },
-                        {},
-                        {
-                            expectedRevision: latest.revision,
-                        },
-                    );
+                    await saveEpicIntegrationReview(location.documentRoot, epicPlanName, reviewState, {
+                        expectedRevision: latest.revision,
+                    });
                 }
                 await recordPlanEvent({
                     cwd: primaryRoot,
@@ -1074,7 +1048,7 @@ export async function runEpicIntegrationGate(
                 });
                 for (const draft of repairDrafts) {
                     // Branch snapshots need a writable, registered document before lifecycle writes.
-                    if (draft.planningNotStarted) await prepareRepairDraftDocument(primaryRoot, draft.name);
+                    if (draft.planningNotStarted) await preparePlanRepairDraft(primaryRoot, draft.name);
                     await recordPlanEvent({
                         cwd: primaryRoot,
                         planName: draft.name,
@@ -1100,8 +1074,12 @@ export async function runEpicIntegrationGate(
             }
             if (codeReview?.kind === "changes_requested") {
                 findings.push(codeReview.finding);
-                await fsMkdir(join(location.documentRoot, "docs", "plans", epicPlanName), { recursive: true });
-                await fsWriteFile(reportPath, renderReport(epicPlanName, state, base, findings));
+                await saveEpicArtifact(
+                    location.documentRoot,
+                    epicPlanName,
+                    EPIC_INTEGRATION_REPORT_FILE_NAME,
+                    renderReport(epicPlanName, state, base, findings),
+                );
                 await recordPlanEvent({
                     cwd: primaryRoot,
                     planName: epicPlanName,
@@ -1118,7 +1096,7 @@ export async function runEpicIntegrationGate(
             let repairChild: EpicContinuationResolution;
             if (newestDraft) {
                 const writable = newestDraft.planningNotStarted
-                    ? await prepareRepairDraftDocument(primaryRoot, newestDraft.name)
+                    ? await preparePlanRepairDraft(primaryRoot, newestDraft.name)
                     : newestDraft;
                 const draft = writable.plan;
                 if (!draft) throw new Error(`Repair child not found: ${newestDraft.name}`);
@@ -1129,11 +1107,10 @@ export async function runEpicIntegrationGate(
                     ),
                     findings,
                 );
-                await writePlanMarkdownWithRevisionLocked(
+                await savePlanProse(
                     writable.documentRoot,
                     newestDraft.name,
-                    draft.path,
-                    markdown,
+                    parsePlanFrontMatter(markdown).body,
                     draft.revision,
                 );
                 repairChild = {

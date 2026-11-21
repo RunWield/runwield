@@ -7,7 +7,8 @@ import type { MergeRepairError } from "../worktree.ts";
  */
 
 import { AGENTS } from "../../constants.ts";
-import { loadPlan, PlanLockTimeoutError } from "../../plan-store.ts";
+import { PlanLockTimeoutError } from "../../plan-store/index.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { requestHostRepair } from "./validation-host-state.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import type { PhaseContext, UserActionPause, ValidationLoopArgs } from "./validation-types.ts";

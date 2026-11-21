@@ -1,3 +1,4 @@
+import { inspectProjectStorage } from "../../../shared/project-identity.ts";
 import { realpathSync } from "node:fs";
 /** @module ui/workspace/server/owner-projects */
 
@@ -25,6 +26,7 @@ export interface OwnerProjectStore {
 }
 
 export interface OwnerProjectSession {
+    projectId?: string;
     transcriptCwd: string;
 }
 
@@ -57,9 +59,9 @@ export function serializeOwnerProject(project: OwnerProjectRecord, health: Owner
 }
 
 export function listOwnerProjects(store: Pick<OwnerProjectStore, "listProjects" | "getProjectHealth">) {
-    return store.listProjects().map((project) =>
-        serializeOwnerProject(project, store.getProjectHealth(project.projectId))
-    );
+    return store
+        .listProjects()
+        .map((project) => serializeOwnerProject(project, store.getProjectHealth(project.projectId)));
 }
 
 export function requireOwnerProjectRoot(
@@ -80,8 +82,12 @@ export function sessionBelongsToOwnerProject(
 ) {
     const project = store.getProjectById(projectId);
     if (!project) return false;
+    const bindings = inspectProjectStorage(project.currentRoot);
+    if (bindings.length) return bindings.some((binding) => binding.sessionProjectId === session.projectId);
     try {
-        return resolve(realpathSync.native(session.transcriptCwd)) === resolve(realpathSync.native(project.currentRoot));
+        return (
+            resolve(realpathSync.native(session.transcriptCwd)) === resolve(realpathSync.native(project.currentRoot))
+        );
     } catch {
         return resolve(session.transcriptCwd) === resolve(project.currentRoot);
     }

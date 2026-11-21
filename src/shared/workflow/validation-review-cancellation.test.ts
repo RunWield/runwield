@@ -1,6 +1,13 @@
+import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
+import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, savePlan } from "../../plan-store.ts";
+
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
@@ -198,21 +205,78 @@ const reopenFixture = defineGitFixture(async (root) => {
     await git(root, ["commit", "-m", "review reopen fixture"]);
 });
 
+// Bound each observable handoff, rather than charging Git setup, conversation,
+// validation and publication against one shared deadline. A timeout names the stalled step.
+async function awaitReviewStep<T>(name: string, pending: Promise<T>, timeoutMs = 10_000): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            pending,
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(
+                    () => reject(new Error(`Code Review stalled at ${name} after ${timeoutMs}ms`)),
+                    timeoutMs,
+                );
+            }),
+        ]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 for (const revise of [false, true]) {
     test(
         `Code Review reopen projects the same live URL through ${revise ? "revision and CI" : "conversation"} until approval`,
-        { timeout: 30_000 },
+        { timeout: 120_000 },
         async () => {
-            const projectRoot = await reopenFixture.checkout();
-            await savePlan(projectRoot, "p", "# Review reopen\n\nKeep the exported label.", {
-                classification: "QUICK_FIX",
-                status: "reviewed",
-                humanReviewMode: "always",
-                humanReviewDecision: null,
+            const projectRoot = await awaitReviewStep("fixture checkout", reopenFixture.checkout());
+            await seedPlan(projectRoot, "p", "# Review reopen\n\nKeep the exported label.", {
+                classification: "PLANNED_CHANGE",
+                status: "draft",
             });
+            const execution = await withLocalPlanWorkflow(projectRoot, "p", async () => {
+                await recordPlanEvent({
+                    cwd: projectRoot,
+                    planName: "p",
+                    event: "review_approved",
+                    currentStatus: "draft",
+                });
+                await recordPlanEvent({
+                    cwd: projectRoot,
+                    planName: "p",
+                    event: "readiness_passed",
+                    currentStatus: "approved",
+                });
+                const ready = await loadPlan(projectRoot, "p");
+                assertExists(ready);
+                const active = await startActiveExecutionWorkflow({
+                    cwd: projectRoot,
+                    planName: "p",
+                    currentStatus: "ready_for_work",
+                    triageMeta: ready.attrs,
+                    ports: createExecutionStartPorts(),
+                });
+                assertExists(active.executionCwd);
+                await writeFile(join(active.executionCwd, "label.ts"), "export const label = 'first';\n");
+                await finalizePlanImplementation({ projectRoot, planName: "p", executionContext: active });
+                await recordPlanEvent({
+                    cwd: projectRoot,
+                    planName: "p",
+                    event: "mechanical_validation_passed",
+                    currentStatus: "implemented",
+                });
+                await recordPlanEvent({
+                    cwd: projectRoot,
+                    planName: "p",
+                    event: "semantic_review_passed",
+                    currentStatus: "implemented",
+                });
+                await seedPlanState(projectRoot, "p", { humanReviewMode: "always", humanReviewDecision: null });
+                return active;
+            });
+            assertExists(execution.executionCwd);
             const plan = await loadPlan(projectRoot, "p");
             assertExists(plan);
-            await writeFile(join(projectRoot, "label.ts"), "export const label = 'first';\n");
             const host = new SessionHost();
             const session = attachRecorder(host.createSession({ cwd: projectRoot }), makeUi());
             const runtime = new SessionRuntime({
@@ -221,23 +285,25 @@ for (const revise of [false, true]) {
                 ownerProcessKind: "test",
                 ownerInstanceId: crypto.randomUUID(),
             });
-            session.setActiveExecutionWorkflow({
-                planName: "p",
-                triageMeta: plan.attrs,
-                executionAgent: "engineer",
-                projectRoot,
-                executionCwd: projectRoot,
-                baselineTree: await git(projectRoot, ["rev-parse", "HEAD"]),
-                worktreeBaseBranch: "main",
-            });
+            session.setActiveExecutionWorkflow({ ...execution, triageMeta: plan.attrs });
             const opened = [Promise.withResolvers<string>(), Promise.withResolvers<string>()];
             const agentStarted = Promise.withResolvers<void>();
+            const revisionCiRequested = Promise.withResolvers<void>();
+            const revisionCiPassed = Promise.withResolvers<void>();
             const releaseAgent = Promise.withResolvers<void>();
             let rounds = 0;
             let ciRuns = 0;
             const ui = makeUi();
             let browserUrl = "";
             const unsubscribe = session.subscribeRuntimeEvents((event: ReviewProgressObservation) => {
+                if (
+                    ciRuns > 0 &&
+                    event.type === "system_status" &&
+                    event.validationProgress?.stage === "cycle" &&
+                    event.validationProgress.checks.ci === "passed"
+                ) {
+                    revisionCiPassed.resolve();
+                }
                 if (
                     event.type === "system_status" &&
                     event.validationProgress?.stage === "human_review" &&
@@ -266,6 +332,7 @@ for (const revise of [false, true]) {
                 localCI: {
                     run: () => {
                         ciRuns++;
+                        revisionCiRequested.resolve();
                         assertEquals(snapshot()?.liveReviewUrl, firstUrl, "CI must retain the review link");
                         return Promise.resolve({ kind: "completed" as const, exitCode: 0, output: "ok" });
                     },
@@ -275,7 +342,10 @@ for (const revise of [false, true]) {
                         agentStarted.resolve();
                         await releaseAgent.promise;
                         if (revise) {
-                            await writeFile(join(projectRoot, "label.ts"), "export const label = 'revised';\n");
+                            await writeFile(
+                                join(execution.executionCwd!, "label.ts"),
+                                "export const label = 'revised';\n",
+                            );
                             await executeWorkflowTestTools(options, [
                                 { name: "task_completed", arguments: { message: "Updated the label." } },
                             ]);
@@ -287,7 +357,7 @@ for (const revise of [false, true]) {
             });
             let firstUrl = "";
             try {
-                firstUrl = await opened[0]!.promise;
+                firstUrl = await awaitReviewStep("initial review ready", opened[0]!.promise);
                 assertEquals(snapshot()?.liveReviewUrl, firstUrl, "Open Code Review must have the real ready URL");
                 assertEquals(snapshot()?.liveCodeReview, true);
                 const parsed = new URL(firstUrl);
@@ -317,16 +387,24 @@ for (const revise of [false, true]) {
                     );
                     assertEquals(response.status, 200, await response.text());
                 };
-                await respond(false);
-                await agentStarted.promise;
+                await awaitReviewStep("conversation request", respond(false));
+                await awaitReviewStep("conversation agent", agentStarted.promise);
                 assertEquals(session.getActiveInteractions().size, 0, "the Agent turn runs between review requests");
                 assertEquals(snapshot()?.liveReviewUrl, firstUrl, "the conversation must retain the reopen URL");
                 assertEquals(snapshot()?.liveCodeReview, true);
                 releaseAgent.resolve();
-                assertEquals(await opened[1]!.promise, firstUrl, "the real browser surface must reuse its URL");
+                if (revise) {
+                    await awaitReviewStep("revision CI requested", revisionCiRequested.promise);
+                    await awaitReviewStep("revision CI passed", revisionCiPassed.promise);
+                }
+                assertEquals(
+                    await awaitReviewStep("review reopened", opened[1]!.promise),
+                    firstUrl,
+                    "the real browser surface must reuse its URL",
+                );
                 assertEquals(snapshot()?.liveReviewUrl, firstUrl, "the revised review must still be reopenable");
-                await respond(true);
-                const result = await running;
+                await awaitReviewStep("approval", respond(true));
+                const result = await awaitReviewStep("verified publication", running, 30_000);
                 assertEquals(result.kind, "verified", JSON.stringify(result));
                 assertEquals(ciRuns, revise ? 1 : 0);
                 assertEquals(snapshot()?.liveReviewUrl, undefined, "approval must remove the live URL");
@@ -336,7 +414,7 @@ for (const revise of [false, true]) {
                 session.setInteractionAdapter({ requestInteraction: () => ({ outcome: "canceled" }) });
                 releaseAgent.resolve();
                 session.cancelActiveInteractions();
-                await running;
+                await awaitReviewStep("canceled workflow cleanup", running, 30_000);
                 unsubscribe();
                 await runtime.closeSession(session.id);
             }

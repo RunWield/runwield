@@ -1,3 +1,5 @@
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
@@ -5,9 +7,11 @@ import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
-import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.ts";
+import { renamePlan } from "../../plan-store/index.ts";
+import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
-import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
+import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 
 test("an idle Session reopens the complete saved Sequence and saves approval without a model turn", async () => {
     await withRuntimeCommandFixture("reopen-sequence-", async ({ homeDir, projectRoot, setModelResponseFactory }) => {
@@ -16,13 +20,13 @@ test("an idle Session reopens the complete saved Sequence and saves approval wit
             modelTurns++;
             return fauxAssistantMessage(fauxText("Unexpected planning turn"));
         });
-        await savePlan(projectRoot, "sequence", "# Container\n\n## Context\n\nReview both.", {
+        await seedPlan(projectRoot, "sequence", "# Container\n\n## Context\n\nReview both.", {
             classification: "PROJECT",
             type: "sequence",
             status: "draft",
             affectedPaths: [],
         });
-        await savePlan(projectRoot, "sequence/child", "# Child\n\n## Context\n\nImplement.", {
+        await seedPlan(projectRoot, "sequence/child", "# Child\n\n## Context\n\nImplement.", {
             classification: "PLANNED_CHANGE",
             status: "draft",
             parentPlan: "sequence",
@@ -78,6 +82,42 @@ test("an idle Session reopens the complete saved Sequence and saves approval wit
         } finally {
             await runtime.closeAllSessionsWhenIdle();
             fileStore.close();
+            ownerStore.close();
+        }
+    });
+});
+
+test("a saved review does not open a replacement Plan identity", async () => {
+    await withRuntimeCommandFixture("reopen-identity-", async ({ homeDir, projectRoot }) => {
+        await seedPlan(projectRoot, "target", "# Target", {
+            planId: "old-identity",
+            classification: "PLANNED_CHANGE",
+            status: "draft",
+            affectedPaths: [],
+        });
+        const ownerStore = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
+        const runtime = createSessionRuntime({ sessionStore: ownerStore, ownerProcessKind: "test" });
+        try {
+            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
+            await runtime.requestInteraction(sessionId, {
+                type: RuntimeInteractionTypes.PLAN_REVIEW,
+                prompt: "Review target",
+                _meta: { planId: "old-identity", planName: "target", planningAgentName: "planner" },
+            });
+            const original = await loadPlan(projectRoot, "target");
+            assert(original);
+            await renamePlan(projectRoot, "target", "previous-target", original.revision);
+            await seedPlan(projectRoot, "target", "# Replacement", {
+                planId: "replacement-identity",
+                classification: "PLANNED_CHANGE",
+                status: "draft",
+                affectedPaths: [],
+            });
+            const result = await runtime.reopenPlanReview(sessionId);
+            assert(result.kind === "identity_mismatch");
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
             ownerStore.close();
         }
     });

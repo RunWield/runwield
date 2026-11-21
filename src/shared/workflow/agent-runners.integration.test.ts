@@ -1,10 +1,12 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, savePlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { HostedSession } from "../session/hosted-session.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { buildEngineerPausedMessage, runEngineerWithPlan } from "./engineer-runner.ts";
@@ -46,7 +48,7 @@ function createAgentSession(
 
 test("planning runs the real plan_written machinery with the supplied triage context", async () => {
     await withRuntimeCommandFixture("planning-agent-runner-", async ({ projectRoot, setModelMessages }) => {
-        await savePlan(projectRoot, "fixture-plan", "# Fixture Plan", { status: "draft" });
+        await seedPlan(projectRoot, "fixture-plan", "# Fixture Plan", { status: "draft" });
         setModelMessages([
             fauxAssistantMessage(
                 fauxToolCall("plan_written", {

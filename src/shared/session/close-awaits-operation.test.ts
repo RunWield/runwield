@@ -15,9 +15,7 @@ test("closeSession waits for the outer managed operation before disposal", async
     await withRuntimeCommandFixture(
         "close-awaits-operation-",
         async ({ homeDir: home, projectRoot: cwd, setModelResponseFactory }) => {
-            setModelResponseFactory(
-                () => fauxAssistantMessage(fauxText("Managed prompt completed. ".repeat(500))),
-            );
+            setModelResponseFactory(() => fauxAssistantMessage(fauxText("Managed prompt completed. ".repeat(500))));
             const store = openOwnerCoordinationStore({ dbPath: `${home}/owner.sqlite3` });
             const runtime = createSessionRuntime({
                 sessionStore: store,
@@ -41,12 +39,14 @@ test("closeSession waits for the outer managed operation before disposal", async
                     }
                 });
 
-                prompt = runtime.promptManagedSession(created.sessionId, {
-                    initialRequest: "hold the managed operation open",
-                    expectedGeneration: managed.generation,
-                }).finally(() => {
-                    operationSettled = true;
-                });
+                prompt = runtime
+                    .promptManagedSession(created.sessionId, {
+                        initialRequest: "hold the managed operation open",
+                        expectedGeneration: managed.generation,
+                    })
+                    .finally(() => {
+                        operationSettled = true;
+                    });
                 for (let attempt = 0; attempt < 1_000; attempt += 1) {
                     if (runtime.getSessionSnapshot(created.sessionId)?.busy) break;
                     await delay(10);
@@ -66,10 +66,7 @@ test("closeSession waits for the outer managed operation before disposal", async
                 assertEquals(await close, { ok: true, closed: true });
                 assertEquals(runtime.getSessionSnapshot(created.sessionId), null);
                 assertEquals(closeEventSettlement, [true]);
-                assertEquals(
-                    store.inspectSessionActivation(managed.runwieldSessionId).activation?.state,
-                    "idle",
-                );
+                assertEquals(store.inspectSessionActivation(managed.runwieldSessionId).activation?.state, "idle");
                 const transcript = await fsReadFile(cataloged.transcriptPath, "utf8");
                 assertEquals(transcript.includes("hold the managed operation open"), true);
 

@@ -27,7 +27,12 @@ test("suite runs against a sandboxed HOME", async () => {
             sandbox,
             "HOME escaped the sandbox — a test swapped HOME and did not restore it.",
         );
-        assertEquals(await fsStat(sandbox).then((s) => s.isDirectory()).catch(() => false), true);
+        assertEquals(
+            await fsStat(sandbox)
+                .then((s) => s.isDirectory())
+                .catch(() => false),
+            true,
+        );
     });
 });
 
@@ -40,8 +45,5 @@ test("mnemoteca is pointed at a sandbox database", () => {
     const dbPath = process.env["MNEMOTECA_DB_PATH"];
     assert(sandbox, "Expected the suite to be sandboxed.");
     assert(dbPath, "MNEMOTECA_DB_PATH must be set so tests never touch the real memory database.");
-    assert(
-        dbPath.startsWith(sandbox),
-        `MNEMOTECA_DB_PATH (${dbPath}) must live inside the sandbox (${sandbox}).`,
-    );
+    assert(dbPath.startsWith(sandbox), `MNEMOTECA_DB_PATH (${dbPath}) must live inside the sandbox (${sandbox}).`);
 });

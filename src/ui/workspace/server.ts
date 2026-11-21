@@ -8,6 +8,10 @@ import type { ReviewPayload, ReviewRequestState } from "./routes/api/review-hand
 import type { ReviewAgentPayload } from "./routes/api/review-agent-handlers.ts";
 import type { CodeReviewStatus, ReviewConversation } from "../review/review-launcher.ts";
 import type { OwnerRouteContext, OwnerSessionState, OwnerStoreState, ProjectParams } from "./routes/owner-api.ts";
+import { readPlanReviewPresentation, planControllerRoot } from "../../plan-store/index.ts";
+
+import { capturePlanReadContext } from "../../plan-store/index.ts";
+import { readPlanDocumentLink } from "../../plan-store/index.ts";
 import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
 import { serveHttp } from "../../shared/http-server.ts";
 import { env, versions } from "node:process";
@@ -18,7 +22,7 @@ import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
 import { parseWorkRecordMarkdown } from "../../shared/work-records/markdown.ts";
 import { workRecordNotices } from "../../shared/work-records/list.ts";
-import { isEpicArtifactPlanName } from "../../shared/epic-artifacts.ts";
+import { isEpicArtifactPlanName } from "../../plan-format.ts";
 import { RUNWIELD_ROOT, RUNWIELD_SOURCE_ROOT } from "../../../runtime-root.ts";
 import { getCwd, PLAN_UI_TOKEN_HEADER, PLAN_UI_TOKEN_QUERY } from "../../constants.ts";
 import { getWorktreeReviewDiff, WorktreeReviewComparisonError } from "../../shared/workflow/git-snapshot.ts";
@@ -67,6 +71,7 @@ import {
     ownerProjectFileContentApi,
     ownerProjectPlanActionApi,
     ownerProjectPlanDetailApi,
+    ownerProjectPlanDocumentApi,
     ownerProjectPlanProgressApi,
     ownerSidebarApi,
     ownerUsageApi,
@@ -317,6 +322,8 @@ export function createRemoteWorkspaceApp(options: RemoteWorkspaceAppOptions = { 
 }
 
 export function createOwnerWorkspaceApp(options: OwnerWorkspaceAppOptions) {
+    const admissionRoot = planControllerRoot("") || undefined;
+    const packageAccess = capturePlanReadContext();
     const app = createWorkspaceRouter<OwnerWorkspaceRouterState>();
     const store = options.store;
     setAstroOwnerWorkspaceStore(store);
@@ -365,7 +372,14 @@ export function createOwnerWorkspaceApp(options: OwnerWorkspaceAppOptions) {
                 }
                 ctx.state.ownerDevice = ownerDevice;
             }
-            let response = await ctx.next();
+            const projectRoute = /^\/(?:api\/owner\/)?projects\/([^/]+)(?:\/|$)/.exec(path);
+            const responseRoot = projectRoute
+                ? store.getProjectById(decodeURIComponent(projectRoute[1]))?.currentRoot
+                : admissionRoot;
+            // Handlers enforce availability; settings and recovery actions must work without a usable root.
+            const registrationRoute =
+                /^\/projects\/[^/]+\/settings$/.test(path) || /^\/api\/owner\/projects\/[^/]+\/action$/.test(path);
+            let response = await packageAccess(registrationRoute ? undefined : responseRoot, () => ctx.next());
             if (
                 ctx.state.ownerDevice &&
                 ctx.req.method === "GET" &&
@@ -434,6 +448,8 @@ export function createOwnerWorkspaceApp(options: OwnerWorkspaceAppOptions) {
     app.post("/api/owner/projects", registerProjectApi);
     app.post("/api/owner/projects/:projectId/action", projectActionApi);
     app.get("/api/owner/projects/:projectId/plans", ownerProjectBoardApi);
+    app.get("/api/owner/projects/:projectId/plans/:planId/documents/:document", ownerProjectPlanDocumentApi);
+    app.post("/api/owner/projects/:projectId/plans/:planId/documents/:document", ownerProjectPlanDocumentApi);
     app.get("/api/owner/projects/:projectId/plans/view/:view", ownerProjectBoardApi);
     app.get("/api/owner/projects/:projectId/plans/:planId/progress", ownerProjectPlanProgressApi);
     app.get("/api/owner/projects/:projectId/plans/:planId/sessions", ownerProjectPlanSessionsApi);
@@ -505,6 +521,7 @@ export function createOwnerWorkspaceApp(options: OwnerWorkspaceAppOptions) {
 }
 
 function createLocalWorkspaceApp({ cwd, token, skipTokenCheck = false, mnemotecaPort }: LocalWorkspaceAppOptions) {
+    const packageAccess = capturePlanReadContext();
     return {
         handler() {
             return async (request: Request) => {
@@ -513,7 +530,7 @@ function createLocalWorkspaceApp({ cwd, token, skipTokenCheck = false, mnemoteca
                 if (!skipTokenCheck && !hasWorkspaceToken(request, token)) {
                     return new Response("Workspace token required.", { status: 401 });
                 }
-                return await handleLocalWorkspaceRequest(request, { cwd, mnemotecaPort });
+                return await packageAccess(cwd, () => handleLocalWorkspaceRequest(request, { cwd, mnemotecaPort }));
             };
         },
     };
@@ -653,6 +670,7 @@ function linkedDocumentKind(path: string) {
 }
 
 export function createReviewWorkspaceApp(options: ReviewWorkspaceServerOptions) {
+    const packageAccess = capturePlanReadContext();
     const { cwd = getCwd(), token, reviewPayload, reviewType, reviewConversation } = options;
     const reviewAgentState =
         reviewType === "code"
@@ -661,160 +679,187 @@ export function createReviewWorkspaceApp(options: ReviewWorkspaceServerOptions) 
     return {
         cleanup: () => (reviewAgentState ? cleanupReviewAgentState(reviewAgentState) : Promise.resolve()),
         handler() {
-            return async (request: Request) => {
-                const url = new URL(request.url);
-                if (isPublicWorkspaceAsset(url.pathname)) return await handleStaticRoute(url.pathname);
-                if (request.method === "POST" && url.pathname === "/api/upload") {
-                    if (!hasReviewAssetToken(request, token)) {
-                        return new Response("Review token required.", { status: 401 });
+            return async (request: Request) =>
+                await packageAccess(cwd, async () => {
+                    const url = new URL(request.url);
+                    if (isPublicWorkspaceAsset(url.pathname)) return await handleStaticRoute(url.pathname);
+                    if (request.method === "POST" && url.pathname === "/api/upload") {
+                        if (!hasReviewAssetToken(request, token)) {
+                            return new Response("Review token required.", { status: 401 });
+                        }
+                        return await reviewImageUploadApi(request);
                     }
-                    return await reviewImageUploadApi(request);
-                }
-                if (request.method === "GET" && url.pathname === "/api/image") {
-                    if (!hasReviewAssetToken(request, token)) {
-                        return new Response("Review token required.", { status: 401 });
+                    if (request.method === "GET" && url.pathname === "/api/image") {
+                        if (!hasReviewAssetToken(request, token)) {
+                            return new Response("Review token required.", { status: 401 });
+                        }
+                        return await reviewImageApi(request, { cwd });
                     }
-                    return await reviewImageApi(request, { cwd });
-                }
-                if (request.method === "GET" && url.pathname === "/api/file-content") {
-                    if (!hasReviewAssetToken(request, token)) {
-                        return new Response("Review token required.", { status: 401 });
+                    if (request.method === "GET" && url.pathname === "/api/file-content") {
+                        if (!hasReviewAssetToken(request, token)) {
+                            return new Response("Review token required.", { status: 401 });
+                        }
+                        if (typeof reviewPayload.planId === "string") {
+                            try {
+                                const planId = url.searchParams.get("planId") || reviewPayload.planId;
+                                const allowedIds = new Set([
+                                    reviewPayload.planId,
+                                    ...(reviewPayload.sequenceDocuments || []).map((document) => document.planId),
+                                ]);
+                                if (!allowedIds.has(planId))
+                                    return Response.json({ error: "Plan is outside this review." }, { status: 403 });
+                                const document = await readPlanDocumentLink(planId, url.searchParams.get("path") || "");
+                                if (document)
+                                    return Response.json({
+                                        codeFile: true,
+                                        contents: document.body,
+                                        filepath: document.resource,
+                                    });
+                            } catch {
+                                return Response.json(
+                                    { error: "Document link is outside this Project." },
+                                    { status: 403 },
+                                );
+                            }
+                        }
+                        const source = reviewPayload.standaloneReview;
+                        return await reviewFileContentApi(request, {
+                            cwd: source && typeof reviewPayload.agentCwd === "string" ? reviewPayload.agentCwd : cwd,
+                            headRef:
+                                source &&
+                                typeof source === "object" &&
+                                "headRef" in source &&
+                                typeof source.headRef === "string"
+                                    ? source.headRef
+                                    : undefined,
+                            targetBranch:
+                                typeof reviewPayload.targetBranch === "string" ? reviewPayload.targetBranch : undefined,
+                            targetBaseRef:
+                                typeof reviewPayload.targetBaseRef === "string"
+                                    ? reviewPayload.targetBaseRef
+                                    : undefined,
+                        });
                     }
-                    const source = reviewPayload.standaloneReview;
-                    return await reviewFileContentApi(request, {
-                        cwd: source && typeof reviewPayload.agentCwd === "string" ? reviewPayload.agentCwd : cwd,
-                        headRef:
-                            source &&
-                            typeof source === "object" &&
-                            "headRef" in source &&
-                            typeof source.headRef === "string"
-                                ? source.headRef
-                                : undefined,
-                        targetBranch:
-                            typeof reviewPayload.targetBranch === "string" ? reviewPayload.targetBranch : undefined,
-                        targetBaseRef:
-                            typeof reviewPayload.targetBaseRef === "string" ? reviewPayload.targetBaseRef : undefined,
-                    });
-                }
-                if (request.method === "GET" && url.pathname === "/api/open-in/apps") {
-                    if (!hasReviewAssetToken(request, token)) {
-                        return new Response("Review token required.", { status: 401 });
+                    if (request.method === "GET" && url.pathname === "/api/open-in/apps") {
+                        if (!hasReviewAssetToken(request, token)) {
+                            return new Response("Review token required.", { status: 401 });
+                        }
+                        return reviewOpenInAppsApi();
                     }
-                    return reviewOpenInAppsApi();
-                }
-                if (request.method === "POST" && url.pathname === "/api/config") {
-                    if (!hasReviewAssetToken(request, token)) {
-                        return new Response("Review token required.", { status: 401 });
+                    if (request.method === "POST" && url.pathname === "/api/config") {
+                        if (!hasReviewAssetToken(request, token)) {
+                            return new Response("Review token required.", { status: 401 });
+                        }
+                        return reviewLocalConfigApi();
                     }
-                    return reviewLocalConfigApi();
-                }
-                if (request.method === "GET" && url.pathname === "/api/review/revision") {
-                    if (!reviewPayload.reviewRevisionUrl || !hasReviewAssetToken(request, token)) {
-                        return new Response("Review revision unavailable.", { status: 404 });
+                    if (request.method === "GET" && url.pathname === "/api/review/revision") {
+                        if (!reviewPayload.reviewRevisionUrl || !hasReviewAssetToken(request, token)) {
+                            return new Response("Review revision unavailable.", { status: 404 });
+                        }
+                        return Response.json(
+                            { revision: reviewPayload.reviewRevision },
+                            {
+                                headers: { "cache-control": "no-store" },
+                            },
+                        );
                     }
-                    return Response.json(
-                        { revision: reviewPayload.reviewRevision },
-                        {
-                            headers: { "cache-control": "no-store" },
-                        },
-                    );
-                }
-                if (
-                    request.method === "POST" &&
-                    url.pathname === "/api/review/exit" &&
-                    reviewPayload.standaloneReview &&
-                    reviewConversation?.onExit
-                ) {
-                    if (!hasReviewAssetToken(request, token)) {
-                        return new Response("Review token required.", { status: 401 });
-                    }
-                    reviewConversation.onExit();
-                    return Response.json({ ok: true });
-                }
-                if (request.method === "GET" && url.pathname === "/api/review/conversation") {
-                    if (!reviewConversation || !hasReviewAssetToken(request, token)) {
-                        return new Response("Review conversation unavailable.", { status: 404 });
-                    }
-                    await reviewConversation.refresh?.();
-                    if (reviewConversation.completed) reviewConversation.completionDelivered = true;
-                    return Response.json(
-                        {
-                            completed: reviewConversation.completed,
-                            resultMessage: reviewConversation.resultMessage,
-                            standaloneReview: reviewPayload.standaloneReview,
-                            agentLabel: reviewConversation.agentLabel,
-                            revision: reviewConversation.revision,
-                            reviewRevision: reviewPayload.reviewRevision,
-                            ...(reviewConversation.turns && {
-                                turns: reviewConversation.turns,
-                                pending: reviewConversation.pending,
-                            }),
-                            error: reviewConversation.error,
-                            sequenceDocuments: reviewPayload.sequenceDocuments,
-                            plan: typeof reviewPayload.plan === "string" ? reviewPayload.plan : "",
-                            rawPatch: typeof reviewPayload.rawPatch === "string" ? reviewPayload.rawPatch : "",
-                            gitRef: typeof reviewPayload.gitRef === "string" ? reviewPayload.gitRef : "",
-                            reviewStatus: reviewPayload.reviewStatus || null,
-                            events: reviewConversation.events.map((event) => ({ ...event })),
-                        },
-                        { headers: { "cache-control": "no-store" } },
-                    );
-                }
-                if (
-                    reviewType === "code" &&
-                    (url.pathname.startsWith("/api/agents/") ||
-                        url.pathname.startsWith("/api/guide/") ||
-                        url.pathname.startsWith("/api/ai-review/"))
-                ) {
                     if (
-                        !hasReviewAssetToken(request, token) &&
-                        request.headers.get("x-runwield-review-token") !== token
+                        request.method === "POST" &&
+                        url.pathname === "/api/review/exit" &&
+                        reviewPayload.standaloneReview &&
+                        reviewConversation?.onExit
                     ) {
-                        return new Response("Review token required.", { status: 401 });
+                        if (!hasReviewAssetToken(request, token)) {
+                            return new Response("Review token required.", { status: 401 });
+                        }
+                        reviewConversation.onExit();
+                        return Response.json({ ok: true });
                     }
-                    const response = await reviewAgentApi(request, url, reviewAgentState!);
-                    if (response) return response;
-                }
-                if (reviewType === "code" && url.pathname.startsWith("/api/review/widgets/")) {
+                    if (request.method === "GET" && url.pathname === "/api/review/conversation") {
+                        if (!reviewConversation || !hasReviewAssetToken(request, token)) {
+                            return new Response("Review conversation unavailable.", { status: 404 });
+                        }
+                        await reviewConversation.refresh?.();
+                        if (reviewConversation.completed) reviewConversation.completionDelivered = true;
+                        return Response.json(
+                            {
+                                completed: reviewConversation.completed,
+                                resultMessage: reviewConversation.resultMessage,
+                                standaloneReview: reviewPayload.standaloneReview,
+                                agentLabel: reviewConversation.agentLabel,
+                                revision: reviewConversation.revision,
+                                reviewRevision: reviewPayload.reviewRevision,
+                                ...(reviewConversation.turns && {
+                                    turns: reviewConversation.turns,
+                                    pending: reviewConversation.pending,
+                                }),
+                                error: reviewConversation.error,
+                                sequenceDocuments: reviewPayload.sequenceDocuments,
+                                plan: typeof reviewPayload.plan === "string" ? reviewPayload.plan : "",
+                                rawPatch: typeof reviewPayload.rawPatch === "string" ? reviewPayload.rawPatch : "",
+                                gitRef: typeof reviewPayload.gitRef === "string" ? reviewPayload.gitRef : "",
+                                reviewStatus: reviewPayload.reviewStatus || null,
+                                events: reviewConversation.events.map((event) => ({ ...event })),
+                            },
+                            { headers: { "cache-control": "no-store" } },
+                        );
+                    }
                     if (
-                        !hasReviewAssetToken(request, token) &&
-                        request.headers.get("x-runwield-review-token") !== token
+                        reviewType === "code" &&
+                        (url.pathname.startsWith("/api/agents/") ||
+                            url.pathname.startsWith("/api/guide/") ||
+                            url.pathname.startsWith("/api/ai-review/"))
                     ) {
-                        return new Response("Review token required.", { status: 401 });
+                        if (
+                            !hasReviewAssetToken(request, token) &&
+                            request.headers.get("x-runwield-review-token") !== token
+                        ) {
+                            return new Response("Review token required.", { status: 401 });
+                        }
+                        const response = await reviewAgentApi(request, url, reviewAgentState!);
+                        if (response) return response;
                     }
-                    const response = reviewWidgetApi(request, url, {
-                        token,
-                        reviewPayload,
-                        widgets: reviewAgentState!.widgets,
-                    });
-                    if (response) return response;
-                }
-                if (url.pathname.startsWith("/api/review/") || isLegacyReviewApiPath(url.pathname)) {
-                    return await handleReviewApiRequest(
-                        request,
-                        {
-                            cwd,
-                            reviewToken: token,
-                            reviewType,
+                    if (reviewType === "code" && url.pathname.startsWith("/api/review/widgets/")) {
+                        if (
+                            !hasReviewAssetToken(request, token) &&
+                            request.headers.get("x-runwield-review-token") !== token
+                        ) {
+                            return new Response("Review token required.", { status: 401 });
+                        }
+                        const response = reviewWidgetApi(request, url, {
+                            token,
                             reviewPayload,
-                            onDecision: options.onDecision,
-                            keepConversationTurns: Boolean(reviewConversation?.refresh),
-                        },
-                        url.pathname,
-                    );
-                }
-                if (!hasWorkspaceToken(request, token)) return new Response("Review token required.", { status: 401 });
-                const expectedPath = reviewType === "plan" ? "/review/plan" : "/review/code";
-                if (url.pathname === expectedPath) {
-                    const opened = await options.onReviewOpen?.();
-                    if (opened instanceof Response) return opened;
-                    const payload = await currentReviewPagePayload({ cwd, reviewPayload, reviewType, token });
-                    const astroResponse = await renderAstroReviewPage(request, cwd, payload);
-                    if (astroResponse) return astroResponse;
-                    return renderStaticReviewFallback(reviewType, payload);
-                }
-                return new Response("Not found", { status: 404 });
-            };
+                            widgets: reviewAgentState!.widgets,
+                        });
+                        if (response) return response;
+                    }
+                    if (url.pathname.startsWith("/api/review/") || isLegacyReviewApiPath(url.pathname)) {
+                        return await handleReviewApiRequest(
+                            request,
+                            {
+                                cwd,
+                                reviewToken: token,
+                                reviewType,
+                                reviewPayload,
+                                onDecision: options.onDecision,
+                                keepConversationTurns: Boolean(reviewConversation?.refresh),
+                            },
+                            url.pathname,
+                        );
+                    }
+                    if (!hasWorkspaceToken(request, token))
+                        return new Response("Review token required.", { status: 401 });
+                    const expectedPath = reviewType === "plan" ? "/review/plan" : "/review/code";
+                    if (url.pathname === expectedPath) {
+                        const opened = await options.onReviewOpen?.();
+                        if (opened instanceof Response) return opened;
+                        const payload = await currentReviewPagePayload({ cwd, reviewPayload, reviewType, token });
+                        const astroResponse = await renderAstroReviewPage(request, cwd, payload);
+                        if (astroResponse) return astroResponse;
+                        return renderStaticReviewFallback(reviewType, payload);
+                    }
+                    return new Response("Not found", { status: 404 });
+                });
         },
     };
 }
@@ -824,6 +869,10 @@ export function createReviewWorkspaceApp(options: ReviewWorkspaceServerOptions) 
  * recorded target branch is resolved for each refresh.
  */
 async function currentReviewPagePayload({ cwd, reviewPayload, reviewType, token }: CurrentReviewPagePayloadOptions) {
+    if (reviewType === "plan" && typeof reviewPayload.planId === "string") {
+        const presentation = await readPlanReviewPresentation(reviewPayload.planId);
+        if (presentation) Object.assign(reviewPayload, presentation);
+    }
     const payload: WorkspaceReviewPayload = { ...reviewPayload, token, mode: "workflow" };
     if (reviewType === "plan") {
         const relativePlanPath = (path: string | undefined) =>
@@ -946,7 +995,20 @@ function loadAstroHandle() {
                 try {
                     if (!(await isAstroEntryImportable(entryPath))) continue;
                     const entry: AstroRendererModule = await import(/* @vite-ignore */ toFileUrl(entryPath).href);
-                    if (typeof entry.handle === "function") return entry.handle;
+                    if (typeof entry.handle === "function") {
+                        // The renderer consumes the running Core's adapter, including request-local authority.
+                        Reflect.set(
+                            globalThis,
+                            Symbol.for("runwield.workspace.plan-adapter-module"),
+                            import("./server/plan-adapter.ts"),
+                        );
+                        Reflect.set(
+                            globalThis,
+                            Symbol.for("runwield.workspace.project-artifacts-module"),
+                            import("./server/project-artifacts.ts"),
+                        );
+                        return entry.handle;
+                    }
                 } catch (error) {
                     astroImportFailure = true;
                     console.error(
@@ -1622,6 +1684,7 @@ type WorkspaceReviewAgentFields = Pick<
 
 type WorkspaceReviewPayload = Pick<ReviewPayload, keyof ReviewPayload> &
     WorkspaceReviewAgentFields & {
+        planId?: string;
         planPath?: string;
         reviewRevisionUrl?: string;
         plan?: string;

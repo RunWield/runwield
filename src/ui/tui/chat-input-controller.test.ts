@@ -1,11 +1,11 @@
-import * as fs from "node:fs";
-import { mock } from "bun:test";
-import { rename, rm } from "node:fs/promises";
-import { test } from "node:test";
-import { installFakeClipboardCommands } from "./testing/clipboard-command-fixture.ts";
-import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
-import { statSync as fsStatSync } from "node:fs";
 import process from "node:process";
+import * as fs from "node:fs";
+import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
+import { after, test } from "node:test";
+
+import { installFakeClipboardCommands } from "./testing/clipboard-command-fixture.ts";
+import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile, rename, rm } from "node:fs/promises";
+import { statSync as fsStatSync, rmSync } from "node:fs";
 import { ok as assert, throws as assertThrows } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
@@ -13,13 +13,17 @@ import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { admitProjectIdentity } from "../../shared/project-identity.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
-import { savePlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { getSettingsManager } from "../../shared/settings.ts";
 import { createInteractiveTuiComposition, type InteractiveTuiComposition } from "./interactive-tui-composition.ts";
+
 import { createInteractiveCompositionHarness } from "./testing/interactive-composition-fixture.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
+
+import { mock } from "bun:test";
 
 interface DeferredSignal {
     promise: Promise<void>;
@@ -143,7 +147,7 @@ test("composed TUI keeps /plan-review reachable during the original browser revi
             });
             try {
                 await composition.waitForIdle();
-                await savePlan(projectRoot, "target", "# Target\n\nReview this saved Plan.\n", {
+                await seedPlan(projectRoot, "target", "# Target\n\nReview this saved Plan.\n", {
                     classification: "PLANNED_CHANGE",
                     status: "draft",
                     executionAgent: "engineer",
@@ -196,7 +200,11 @@ test("composed TUI keeps /plan-review reachable during the original browser revi
                     {
                         method: "POST",
                         headers: { "content-type": "application/json", "x-runwield-review-token": token },
-                        body: JSON.stringify({ approved: true, approvalAction: "later" }),
+                        body: JSON.stringify({
+                            approved: true,
+                            approvalAction: "later",
+                            documentRevision: (await loadPlan(projectRoot, "target"))!.revision,
+                        }),
                     },
                 );
                 assertEquals(response.ok, true);
@@ -215,6 +223,7 @@ async function seedActiveElsewhereManagedSession(
 ): Promise<ReturnType<typeof openOwnerCoordinationStore>> {
     const store = openOwnerCoordinationStore();
     try {
+        assertEquals((await admitProjectIdentity(projectRoot)).kind, "existing");
         store.registerProject({ root: projectRoot, now: () => "2026-01-01T00:00:01.000Z" });
         const runtime = createSessionRuntime({
             sessionStore: store,
@@ -823,3 +832,9 @@ for (const failure of ["missing-project", "file-limit"] as const) {
         );
     });
 }
+
+const controllerProjectRoots: string[] = [];
+
+after(() => {
+    for (const root of controllerProjectRoots) rmSync(root, { recursive: true, force: true });
+});

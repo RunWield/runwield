@@ -12,6 +12,7 @@ export const PRE_TEST_TASKS = [
     "check",
     "workspace:check",
     "lint",
+    "plan-store:check",
     "doc-links:check",
     "docs:check",
     "skills:sync:check",

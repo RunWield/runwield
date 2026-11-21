@@ -1,3 +1,7 @@
+import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
+import { importPlans } from "../../plan-store/index.ts";
+import { inspectProjectIdentity } from "../../shared/project-identity.ts";
+import { realpath } from "node:fs/promises";
 import {
     cpSync,
     renameSync,
@@ -37,11 +41,17 @@ async function attachHomeWorktree(project: string, home: string, branch: string)
     }
 }
 
+async function importSelectedPlan(project: string, path: string) {
+    const identity = inspectProjectIdentity(project);
+    if (identity.kind !== "existing") throw new Error("Fixture Project must be admitted.");
+    await importPlans(identity.identity.checkoutRoot, await realpath(path));
+}
+
 for (const command of ["load-plan", "plans"]) {
     for (const allow of [false, true]) {
         test(`${command} ${allow ? "override does not authorize" : "refuses"} a registered home document before retired-status repair`, async () => {
             await withRuntimeCommandFixture("selected-plan-directory-", async ({ homeDir: home }) => {
-                const project = await fixture.checkout();
+                const project = await realpath(await fixture.checkout());
                 try {
                     await attachHomeWorktree(project, home, "selected");
                     mkdirSync(join(home, "docs/plans"), { recursive: true });
@@ -61,6 +71,7 @@ for (const command of ["load-plan", "plans"]) {
                         createdAt: new Date().toISOString(),
                         updatedAt: new Date().toISOString(),
                     });
+                    await importSelectedPlan(project, path);
                     const output = await collectOutput(
                         Bun.spawn({
                             cmd: [
@@ -96,7 +107,7 @@ for (const command of ["load-plan", "plans"]) {
 }
 
 test("direct chat startup checks the primary checkout before runtime writers", async () => {
-    const home = await fixture.checkout();
+    const home = await realpath(await fixture.checkout());
     const trees = mkdtempSync(join(tmpdir(), "directory-warning-"));
     const tree = join(trees, "linked");
     try {
@@ -191,7 +202,7 @@ console.log("CANCELED");
 
 test("ACP Load Plan at a registered home root keeps protocol behavior without a terminal gate", async () => {
     await withRuntimeCommandFixture("acp-selected-directory-", async ({ homeDir }) => {
-        const projectRoot = await fixture.checkout();
+        const projectRoot = await realpath(await fixture.checkout());
         await attachHomeWorktree(projectRoot, homeDir, "acp");
         const runtime = createSessionRuntime();
         const messages: string[] = [];
@@ -231,20 +242,22 @@ test("ACP Load Plan at a registered home root keeps protocol behavior without a 
                 updatedAt: new Date().toISOString(),
             });
             const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
-            await runLoadPlanCommand(["acp"], {
-                slashSurface: "acp",
-                sessionRuntime: runtime,
-                sessionId,
-                uiAPI: {
-                    abortActivePrompt: () => {},
-                    appendSystemMessage: (message) => messages.push(message),
-                    appendAgentMessageStart: () => ({ appendText: () => {} }),
-                    requestRender: () => {},
-                    promptSelect: () => Promise.resolve(null),
-                    promptText: () => Promise.resolve(null),
-                    showModelSelector: () => {},
-                },
-            });
+            await withRetainedPlanFixture(projectRoot, () =>
+                runLoadPlanCommand(["acp"], {
+                    slashSurface: "acp",
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: {
+                        abortActivePrompt: () => {},
+                        appendSystemMessage: (message) => messages.push(message),
+                        appendAgentMessageStart: () => ({ appendText: () => {} }),
+                        requestRender: () => {},
+                        promptSelect: () => Promise.resolve(null),
+                        promptText: () => Promise.resolve(null),
+                        showModelSelector: () => {},
+                    },
+                }),
+            );
             assertStringIncludes(messages.join("\n"), "Plan has unknown status: invalid-status");
             assertEquals(messages.join("\n").includes("System or home folder"), false);
         } finally {
@@ -294,7 +307,7 @@ try {
 for (const allow of [false, true]) {
     test(`plans doctor refuses a registered home root before repair${allow ? " even with cwd acknowledgement" : ""}`, async () => {
         await withRuntimeCommandFixture("doctor-selected-directory-", async ({ homeDir: home }) => {
-            const project = await fixture.checkout();
+            const project = await realpath(await fixture.checkout());
             try {
                 await attachHomeWorktree(project, home, "selected");
                 mkdirSync(join(home, "docs/plans"), { recursive: true });
@@ -314,6 +327,7 @@ for (const allow of [false, true]) {
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 });
+                await importSelectedPlan(project, path);
                 const output = await collectOutput(
                     Bun.spawn({
                         cmd: [

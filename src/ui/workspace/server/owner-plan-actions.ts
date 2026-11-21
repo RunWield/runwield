@@ -133,16 +133,16 @@ export async function runOwnerPlanAction(
         const message = error instanceof Error ? error.message : String(error);
         const result = message.includes("current segment")
             ? {
-                kind: "refresh_required" as const,
-                message: "Session segment changed. Refresh and retry.",
-                evidence: {
-                    planId: request.action.planId,
-                    planName: "",
-                    revision: request.action.expectedRevision,
-                    status: request.action.expectedStatus,
-                    worktree: request.action.expectedWorktree,
-                },
-            }
+                  kind: "refresh_required" as const,
+                  message: "Session segment changed. Refresh and retry.",
+                  evidence: {
+                      planId: request.action.planId,
+                      planName: "",
+                      revision: request.action.expectedRevision,
+                      status: request.action.expectedStatus,
+                      worktree: request.action.expectedWorktree,
+                  },
+              }
             : activationUnavailable("Session activation is not available for this Plan action.");
         const status = httpStatusForResult(result);
         store.updateOperationReceipt(receipt.operationId, {

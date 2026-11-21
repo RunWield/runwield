@@ -162,10 +162,10 @@ test("classifyRootSessionLocator silently catalogs Projects and legacy transcrip
     const root = await makeRoot("classifier-automatic-root");
     const store = openFileSessionStore();
     try {
-        assertEquals(
-            await classifyRootSessionLocator({ cwd: root, ownerCoordinationStore: store }),
-            { kind: "uncataloged", reason: "session_project_absent" },
-        );
+        assertEquals(await classifyRootSessionLocator({ cwd: root, ownerCoordinationStore: store }), {
+            kind: "uncataloged",
+            reason: "session_project_absent",
+        });
         const project = store.ensureRuntimeProject({ root });
         const sessionPath = await writeTranscript(root, "legacy-pi");
         const result = await classifyRootSessionLocator({

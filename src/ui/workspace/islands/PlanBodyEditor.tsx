@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { RunWieldButton } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { PLAN_UI_TOKEN_HEADER, PLAN_UI_TOKEN_QUERY } from "../constants.ts";
 import { MarkdownView } from "../components/MarkdownView.tsx";
-import type { PlanBodyResource } from "../../../plan-store.ts";
+import type { PlanBodyResource } from "../../../plan-store/index.ts";
 import type {
     MarkdownEditorHandle,
     WorkspacePlanDocumentMode,
@@ -16,6 +16,10 @@ export interface PlanBodyEditorCapabilities {
 
 export interface PlanBodyEditorPlan
     extends Pick<PlanBodyResource, "planId">, Partial<Pick<PlanBodyResource, "body" | "bodyHash" | "revision">> {
+    documentUrl?: string;
+    onSaved?: (response: SavePlanBodyResponse) => void;
+    resolveLocalLink?: WorkspacePlanDocumentProps["resolveLocalLink"];
+    fragment?: string;
     workspaceKey?: string;
     capabilities?: PlanBodyEditorCapabilities;
 }
@@ -26,6 +30,7 @@ export interface PlanBodyEditorProps {
 }
 
 export interface PlanBodyDraftBase {
+    baseRevision?: string;
     baseBodyHash: string;
 }
 
@@ -34,7 +39,7 @@ export interface PlanBodyDraft extends PlanBodyDraftBase {
     updatedAt?: string;
 }
 
-interface SavePlanBodyResponse extends Partial<Pick<PlanBodyResource, "bodyHash">> {
+interface SavePlanBodyResponse extends Partial<Pick<PlanBodyResource, "revision" | "bodyHash">> {
     error?: string;
     plan?: Partial<Pick<PlanBodyResource, "bodyHash" | "revision">>;
 }
@@ -72,7 +77,7 @@ export function restoredDraftExpectedBodyHash(draft: PlanBodyDraftBase) {
 }
 
 function serializeDraft(draft: PlanBodyDraft) {
-    return JSON.stringify({ body: draft.body, baseBodyHash: draft.baseBodyHash, updatedAt: new Date().toISOString() });
+    return JSON.stringify({ ...draft, updatedAt: new Date().toISOString() });
 }
 
 function readDraft(key: string): PlanBodyDraft | null {
@@ -93,6 +98,7 @@ export function PlanBodyEditor({ plan, initialEdit = false }: PlanBodyEditorProp
     const [bodyHash, setBodyHash] = useState(plan.bodyHash || "");
     const [expectedBodyHash, setExpectedBodyHash] = useState(plan.bodyHash || "");
     const [expectedRevision, setExpectedRevision] = useState(plan.revision || "");
+    const [savedRevision, setSavedRevision] = useState(plan.revision || "");
     const [message, setMessage] = useState("");
     const [draft, setDraft] = useState<PlanBodyDraft | null>(null);
     const [saving, setSaving] = useState(false);
@@ -128,8 +134,11 @@ export function PlanBodyEditor({ plan, initialEdit = false }: PlanBodyEditorProp
 
     useEffect(() => {
         if (!canEdit || !dirty) return;
-        localStorage.setItem(draftKey, serializeDraft({ body, baseBodyHash: expectedBodyHash }));
-    }, [body, canEdit, dirty, draftKey, expectedBodyHash]);
+        localStorage.setItem(
+            draftKey,
+            serializeDraft({ body, baseBodyHash: expectedBodyHash, baseRevision: expectedRevision }),
+        );
+    }, [body, canEdit, dirty, draftKey, expectedBodyHash, expectedRevision]);
 
     function startEdit() {
         if (!canEdit) return;
@@ -141,6 +150,7 @@ export function PlanBodyEditor({ plan, initialEdit = false }: PlanBodyEditorProp
         if (!draft) return;
         setBody(draft.body);
         setExpectedBodyHash(restoredDraftExpectedBodyHash(draft));
+        setExpectedRevision(draft.baseRevision || (plan.documentUrl ? draft.baseBodyHash : ""));
         setMessage(
             draft.baseBodyHash === bodyHash
                 ? "Draft restored. Review before saving."
@@ -159,6 +169,7 @@ export function PlanBodyEditor({ plan, initialEdit = false }: PlanBodyEditorProp
         if (dirty && !confirm("Discard unsaved editor changes and local draft?")) return;
         setBody(savedBody);
         setExpectedBodyHash(bodyHash);
+        setExpectedRevision(savedRevision);
         setMode("read");
         if (dirty) discardDraft();
     }
@@ -169,13 +180,25 @@ export function PlanBodyEditor({ plan, initialEdit = false }: PlanBodyEditorProp
         try {
             const url = new URL(location.href);
             const token = url.searchParams.get(PLAN_UI_TOKEN_QUERY) || "";
-            const response = await fetch(`/api/plans/${encodeURIComponent(plan.planId)}/body`, {
+            const response = await fetch(plan.documentUrl || `/api/plans/${encodeURIComponent(plan.planId)}/body`, {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
+                    ...(plan.documentUrl
+                        ? {
+                              "x-runwield-csrf": decodeURIComponent(
+                                  globalThis.document.cookie
+                                      .split("; ")
+                                      .find((entry) => entry.startsWith("rw_owner_csrf="))
+                                      ?.split("=")
+                                      .slice(1)
+                                      .join("=") || "",
+                              ),
+                          }
+                        : {}),
                     ...(token ? { [PLAN_UI_TOKEN_HEADER]: token } : {}),
                 },
-                body: JSON.stringify({ body, expectedBodyHash, expectedRevision }),
+                body: JSON.stringify({ body, expectedBodyHash, expectedRevision, revision: expectedRevision }),
             });
             const payload: SavePlanBodyResponse = await response.json();
             if (response.status === 409) {
@@ -186,8 +209,10 @@ export function PlanBodyEditor({ plan, initialEdit = false }: PlanBodyEditorProp
                 setMessage(payload.error || "Unable to save Plan body.");
                 return;
             }
-            const nextHash = payload.bodyHash || payload.plan?.bodyHash || "";
-            setExpectedRevision(payload.plan?.revision || expectedRevision);
+            const nextHash = payload.bodyHash || payload.plan?.bodyHash || payload.revision || "";
+            const nextRevision = payload.revision || payload.plan?.revision || expectedRevision;
+            setExpectedRevision(nextRevision);
+            setSavedRevision(nextRevision);
             setBodyHash(nextHash);
             setExpectedBodyHash(nextHash);
             setSavedBody(body);
@@ -195,6 +220,7 @@ export function PlanBodyEditor({ plan, initialEdit = false }: PlanBodyEditorProp
             setDraft(null);
             setMode("read");
             setMessage("Plan body saved.");
+            plan.onSaved?.(payload);
         } finally {
             setSaving(false);
         }
@@ -209,6 +235,8 @@ export function PlanBodyEditor({ plan, initialEdit = false }: PlanBodyEditorProp
                 documentId={`${plan.planId}:${bodyHash || "initial"}`}
                 editorHandleRef={editorHandleRef}
                 onMarkdownChange={setBody}
+                resolveLocalLink={plan.resolveLocalLink}
+                fragment={plan.fragment}
             />
         </Suspense>
     ) : (

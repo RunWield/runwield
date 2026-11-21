@@ -58,7 +58,7 @@ export default function cymbalExtension(pi: ExtensionAPI): void {
         if (event.toolName === "bash" && event.input?.command) {
             commandToInspect = String(event.input.command);
         } else if (event.toolName === "grep" && event.input?.pattern) {
-            const pathArgs = Array.isArray(event.input.path) ? event.input.path.join(" ") : (event.input.path || ".");
+            const pathArgs = Array.isArray(event.input.path) ? event.input.path.join(" ") : event.input.path || ".";
             commandToInspect = `grep "${event.input.pattern}" ${pathArgs}`;
         }
 

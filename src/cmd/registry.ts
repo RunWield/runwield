@@ -496,6 +496,9 @@ export const commandRegistry: Record<string, CommandDefinition> = {
         usage: [
             `${bin("plans")}`,
             `${bin("plans read <plan-name-or-id> [--help]")}`,
+            `${bin("plans history <plan-name-or-id>")}`,
+            `${bin("plans history show <plan-name-or-id> <version>")}`,
+            `${bin("plans history restore <plan-name-or-id> <version>")}`,
             `${bin("plans doctor [--repair] [--help]")}`,
             `${bin("plans share <plan-name-or-id> [--plan-server <url>] [--project-secrets] [--help]")}`,
             `${bin(
@@ -513,7 +516,7 @@ export const commandRegistry: Record<string, CommandDefinition> = {
             `${bin("plans ui --help")}`,
         ],
         notes: [
-            "Default behavior lists active Plans only; plaintext archives under docs/plans/archived/ are hidden from this list.",
+            "The default list shows active Plans. Use plans archive to list archived Plans in the personal store.",
             "Use plans archive with no target to list archived Plans, and plans read to open active or archived markdown in a local read-only browser view.",
             "Use plans share to publish an active saved Plan to a Plan Server; --plan-server overrides planServerUrl for one invocation.",
             "Share output prints secret reviewer and maintainer URLs once; anyone with the maintainer URL can pull, push, close, or unshare.",
@@ -524,7 +527,7 @@ export const commandRegistry: Record<string, CommandDefinition> = {
             "After unshare, old reviewer/maintainer links stop working and other checkouts need deleted-remote recovery before local edits.",
             "Archive moves verified, user_verified, and closed_without_verification Plans by default; other statuses require --force and recoverable worktree states stay blocked.",
             "Use plans archive --all --status verified for best-effort bulk cleanup of active Plans with an exact status match.",
-            "Use plans prune to delete archived Plans that are covered by a Work Record and past the repository retention policy; --yes skips the prompt.",
+            "Use plans prune --dry-run to preview covered archived families past Project retention. Use --yes to confirm deletion.",
             "The Workspace binds to 127.0.0.1 and a random available port by default.",
             "Use --bind/--host only for explicit non-loopback exposure; RunWield prints a plaintext Plan-content warning.",
             "Workspace HTML and APIs require the per-server token in the launch URL or x-runwield-workspace-token header.",
@@ -565,6 +568,7 @@ export const commandRegistry: Record<string, CommandDefinition> = {
             `${bin("wr search <query> --all")}`,
             `${bin("wr read <recordId> [--no-open]")}`,
             `${bin("wr index rebuild")}`,
+            `${bin("wr prune")} [--dry-run] [--yes]`,
             `${bin("wr supersede")}`,
             `${bin("wr supersede <successorRecordId>")}`,
             `${bin("wr supersede <successorRecordId> --confirm <predecessorRecordId>")}`,

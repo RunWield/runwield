@@ -1,10 +1,11 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import { getCwd } from "../../constants.ts";
-import { savePlan } from "../../plan-store.ts";
+
 import { assertEquals, assertExists, assertThrows } from "../../testing/assertions.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
 import { HostedSession } from "../session/hosted-session.ts";
@@ -56,7 +57,7 @@ for (const recorded of [false, true]) {
     test(`Work Records contain only recorded deviations (recorded: ${recorded})`, async () => {
         const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         try {
-            await savePlan(cwd, "cache", "# Search cache", {
+            await seedPlan(cwd, "cache", "# Search cache", {
                 planId: "plan-cache",
                 classification: "PLANNED_CHANGE",
                 status: "verified",
@@ -149,7 +150,7 @@ for (const { mode, label } of completionLabels) {
         test(`Completion label appears once (${mode}, model label: ${modelLabel})`, async () => {
             const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
             try {
-                await savePlan(cwd, "cache", "# Search cache", {
+                await seedPlan(cwd, "cache", "# Search cache", {
                     planId: "plan-cache",
                     classification: mode === "done_enough" ? "PROJECT" : "PLANNED_CHANGE",
                     status: mode === "done_enough" ? "verified" : mode,

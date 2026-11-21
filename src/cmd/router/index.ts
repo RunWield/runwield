@@ -9,10 +9,7 @@ interface RouterCommandOptions {
     sessionPort: InteractiveSessionPort;
 }
 
-export async function runRouterCommand(
-    argv: string[],
-    options: RouterCommandOptions,
-): Promise<void> {
+export async function runRouterCommand(argv: string[], options: RouterCommandOptions): Promise<void> {
     const userRequest = argv.join(" ").trim();
 
     if (userRequest === "help") {

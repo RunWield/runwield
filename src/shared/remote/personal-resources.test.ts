@@ -13,7 +13,11 @@ import {
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { assertPersonalResourcePath, assertPersonalResourcePathSync, configureRemotePersonalResources } from "./personal-resources.ts";
+import {
+    assertPersonalResourcePath,
+    assertPersonalResourcePathSync,
+    configureRemotePersonalResources,
+} from "./personal-resources.ts";
 import {
     getCustomSetting,
     getExactProjectCustomSetting,
@@ -102,18 +106,9 @@ test("remote personal resources select mounted files while project settings keep
             }),
         );
         await fsWriteFile(join(globalRoot, "RUNWIELD.md"), "personal instruction");
-        await fsWriteFile(
-            join(globalRoot, "skills", "personal", "SKILL.md"),
-            "---\nname: personal\n---\nPersonal",
-        );
-        await fsWriteFile(
-            join(project, ".wld", "skills", "personal", "SKILL.md"),
-            "---\nname: personal\n---\nProject",
-        );
-        await fsWriteFile(
-            join(agentsRoot, "skills", "external", "SKILL.md"),
-            "---\nname: external\n---\nExternal",
-        );
+        await fsWriteFile(join(globalRoot, "skills", "personal", "SKILL.md"), "---\nname: personal\n---\nPersonal");
+        await fsWriteFile(join(project, ".wld", "skills", "personal", "SKILL.md"), "---\nname: personal\n---\nProject");
+        await fsWriteFile(join(agentsRoot, "skills", "external", "SKILL.md"), "---\nname: external\n---\nExternal");
         await fsWriteFile(join(agentsRoot, "AGENTS.md"), "external instruction");
         await fsWriteFile(
             join(project, ".wld", "settings.json"),
@@ -223,8 +218,8 @@ test("remote personal resources select mounted files while project settings keep
         if (!linkedSkill) throw new Error("Linked Skill was not selected");
         assertEquals((await expandSkillRecord(linkedSkill)).includes("Linked Skill"), true);
         assertEquals(getPromptTemplatePaths(linked)[0], join(linked, ".wld", "prompts"));
-        const linkedPrompt = (await listPromptTemplates({ cwd: linked })).find((prompt) =>
-            prompt.name === "personal-package"
+        const linkedPrompt = (await listPromptTemplates({ cwd: linked })).find(
+            (prompt) => prompt.name === "personal-package",
         );
         assertEquals(linkedPrompt?.path, join(linked, ".wld", "prompts", "personal-package.md"));
         if (!linkedPrompt) throw new Error("Linked prompt was not selected");
@@ -277,7 +272,10 @@ test("remote personal resources select mounted files while project settings keep
         await symlink("../sibling/SKILL.md", mountedSkill);
         await fsMkdir(join(globalRoot, "skills", "sibling"));
         await fsWriteFile(join(globalRoot, "skills", "sibling", "SKILL.md"), "---\nname: sibling\n---\nValid");
-        assertEquals((await listSkills()).some((skill) => skill.name === "sibling"), true);
+        assertEquals(
+            (await listSkills()).some((skill) => skill.name === "sibling"),
+            true,
+        );
 
         const instruction = join(globalRoot, "RUNWIELD.md");
         await fsRm(instruction);

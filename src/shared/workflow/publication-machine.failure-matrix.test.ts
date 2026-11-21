@@ -11,6 +11,7 @@ import {
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
     realpath as fsRealpath,
+    rename as fsRename,
     rm as fsRm,
     stat as fsStat,
     symlink as fsSymlink,
@@ -42,7 +43,7 @@ type Fixture = {
 
 type DriverResult = { code: number; stdout: string; stderr: string };
 type RawPublicationFailure = { repairRoot?: string };
-type RawPublication = { failure?: RawPublicationFailure };
+type RawPublication = { failure?: RawPublicationFailure; publicationRoot?: string };
 type RawRegistryEntry = { id: string; publication?: RawPublication };
 type RawRegistry = { version: number; entries: RawRegistryEntry[] };
 
@@ -347,17 +348,12 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
             );
 
             assertEquals((await runDriver(fixture.configPath)).code, 1);
-            assert((await fsStat(legacyRoot)).isDirectory());
-            assertEquals(
-                await fsStat(internalRoot)
-                    .then(() => true)
-                    .catch(() => false),
-                false,
-            );
-            await fsWriteFile(`${legacyRoot}/conflict.txt`, "resolved legacy\n");
-            await git(legacyRoot, ["add", "conflict.txt"]);
-            await git(legacyRoot, ["commit", "--no-edit"]);
-
+            assert((await fsStat(internalRoot)).isDirectory());
+            await fsWriteFile(`${internalRoot}/conflict.txt`, "resolved legacy\n");
+            await git(internalRoot, ["add", "conflict.txt"]);
+            await git(internalRoot, ["commit", "--no-edit"]);
+            await fsMkdir(dirname(legacyRoot), { recursive: true });
+            await fsRename(internalRoot, legacyRoot);
             const layout = resolveProjectRuntimeLayout(fixture.projectRoot);
             const registry = JSON.parse(await fsReadFile(layout.primary.worktreeRegistryPath, "utf8")) as RawRegistry;
             const entry = registry.entries.find((candidate) => candidate.id === "attempt-1");
@@ -366,10 +362,11 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
             assertExists(publication);
             publication.failure = publication.failure || {};
             publication.failure.repairRoot = legacyRoot;
+            publication.publicationRoot = legacyRoot;
             const legacyRegistryPath = join(getRunWieldRuntimeDir(primaryRoot), "worktrees.json");
             await fsMkdir(dirname(legacyRegistryPath), { recursive: true });
             await fsWriteFile(legacyRegistryPath, `${JSON.stringify(registry, null, 2)}\n`);
-            await fsRm(layout.primary.internalRoot, { recursive: true });
+            await fsRm(layout.primary.worktreeRegistryPath);
 
             const retry = await runDriver(fixture.configPath);
             assertEquals(retry.code, 0, retry.stderr);

@@ -49,6 +49,95 @@ async function makeFixture() {
     return { rootDir, projectRoot, sessionBaseDir, sessionDir };
 }
 
+test(
+    "local Session creation and reconnect use the same admitted Project across login HOME spellings",
+    { skip: platform === "win32" },
+    async () => {
+        const { withProcessGlobalTestLock } = await import("../../testing/process-global-lock.ts");
+        const { packageFixture } = await import("../testing/plan-package-fixture.ts");
+        const { inspectProjectStorage, inspectSessionProjectRoots } = await import("../project-identity.ts");
+        await withProcessGlobalTestLock(async () => {
+            const base = await realpath(await mkdtemp(join(tmpdir(), "session-home-alias-")));
+            const physical = join(base, "physical");
+            const alias = join(base, "alias");
+            const previous = process.env.HOME;
+            await mkdir(physical);
+            await symlink(physical, alias);
+            try {
+                process.env.HOME = alias;
+                const f = await packageFixture();
+                try {
+                    const binding = inspectProjectStorage(f.root)[0]!;
+                    const sessions = join(alias, ".wld", "sessions");
+                    const store = openFileSessionStore({ baseDir: sessions });
+                    const current = store.ensureRuntimeProject({ root: f.root });
+                    assertEquals(current.projectId, binding.sessionProjectId);
+                    const transcript = await writeTranscript(binding.sessionDirectory, f.root, "alias-test");
+                    const found = await store.ensureSessionCatalogRecord({
+                        projectId: current.projectId,
+                        piSessionId: "alias-test",
+                        transcriptCwd: f.root,
+                        transcriptPath: transcript,
+                        source: "created",
+                    });
+                    assertEquals(inspectSessionProjectRoots(current.projectId), [f.root]);
+                    assertEquals(inspectProjectStorage(f.root)[0]?.sessionStoreEstablished, true);
+                    store.close();
+                    for (const home of [physical, alias]) {
+                        process.env.HOME = home;
+                        const reopened = openFileSessionStore({ baseDir: join(home, ".wld", "sessions") });
+                        try {
+                            assertEquals(reopened.ensureRuntimeProject({ root: f.root }).projectId, current.projectId);
+                            assertEquals(
+                                (await reopened.listProjectSessions(current.projectId)).sessions.map(
+                                    (s) => s.runwieldSessionId,
+                                ),
+                                [found.runwieldSessionId],
+                            );
+                            assertEquals(
+                                reopened.getSessionById(found.runwieldSessionId, current.projectId)?.runwieldSessionId,
+                                found.runwieldSessionId,
+                            );
+                            for (const spelling of [physical, alias]) {
+                                const sessionPath = transcript.replace(physical, spelling);
+                                const classified = await classifyRootSessionLocator({
+                                    cwd: f.root,
+                                    sessionPath,
+                                    ownerCoordinationStore: reopened,
+                                });
+                                assertEquals(classified.kind, "managed");
+                                assertEquals(
+                                    reopened.findSessionByLocator({
+                                        projectId: current.projectId,
+                                        transcriptPath: sessionPath,
+                                    })?.runwieldSessionId,
+                                    found.runwieldSessionId,
+                                );
+                            }
+                            const resumed = await reopened.ensureSessionCatalogRecord({
+                                projectId: current.projectId,
+                                piSessionId: "alias-test",
+                                transcriptCwd: f.root,
+                                transcriptPath: transcript.replace(physical, home),
+                                source: "catalog",
+                            });
+                            assertEquals(resumed.runwieldSessionId, found.runwieldSessionId);
+                        } finally {
+                            reopened.close();
+                        }
+                    }
+                } finally {
+                    await f.cleanup();
+                }
+            } finally {
+                if (previous === undefined) delete process.env.HOME;
+                else process.env.HOME = previous;
+                await rm(base, { recursive: true, force: true });
+            }
+        });
+    },
+);
+
 test("Core catalogs every local Session without creating a Workspace database", async () => {
     const fixture = await makeFixture();
     try {

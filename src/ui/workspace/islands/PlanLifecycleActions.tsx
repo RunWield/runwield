@@ -8,7 +8,8 @@ import {
     PLAN_UI_TOKEN_QUERY,
 } from "../constants.ts";
 
-import type { PlanFrontMatter, PlanResource } from "../../../plan-store.ts";
+import type { PlanFrontMatter } from "../../../plan-format.ts";
+import type { PlanResource } from "../../../plan-store/index.ts";
 import type { PlanActionRequest } from "../../../shared/workflow/plan-actions.ts";
 import type { getPlanLifecycleActionMetadata } from "../../../shared/workflow/plan-lifecycle.ts";
 import type { ACTION_META, ResumeCheck } from "../server/plan-adapter.ts";

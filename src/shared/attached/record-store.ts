@@ -1,8 +1,13 @@
+import {
+    inspectProjectStorage,
+    inspectProjectIdentity,
+    isProjectStorageRootClaimed,
+    type ProjectStorageLocator,
+} from "../project-identity.ts";
 import type { Dirent } from "node:fs";
 import { writeJsonAtomically } from "../private-json-file.ts";
 import { realpathSync, readdirSync, readFileSync } from "node:fs";
 import {
-    readFile as fsReadFile,
     readdir as fsReaddir,
     writeFile as fsWriteFile,
     rm as fsRm,
@@ -31,6 +36,7 @@ import {
 } from "./operations.ts";
 
 import process from "node:process";
+import { encodeAttachedRecord, readAttachedRecord } from "./record-encoding.ts";
 /**
  * @module shared/attached/record-store
  * Durable Attached Workflow Records under `~/.wld/attached/`.
@@ -58,6 +64,8 @@ export interface AcceptedOperation {
 }
 
 export interface AttachedWorkflowRecord {
+    /** Read-time execution root; omitted from persisted records and receipts. */
+    currentProjectRoot?: string;
     validation?: AttachedValidationCheckpoint | null;
     schemaVersion: 1;
     workflowId: string;
@@ -83,6 +91,9 @@ export interface AttachedWorkflowRecord {
 
 /** Where one project's records live. */
 export interface AttachedWorkflowLocation {
+    bindings?: ProjectStorageLocator[];
+    foreignStorageRoot?: boolean;
+    repositoryId?: string;
     projectRoot: string;
     workflowsDir: string;
     /** `~/.wld/attached`. A home directory is required. */
@@ -111,11 +122,19 @@ export function locateAttachedWorkflows(projectRoot: string): AttachedWorkflowLo
     if (!homeDir) throw new Error("home_unavailable: Set HOME to use Attached workflows.");
     const primaryRoot = canonicalPath(resolvePrimaryCheckoutRoot(canonicalPath(projectRoot)));
     const homeBaseDir = join(homeDir, RUNWIELD_DIR_NAME, ATTACHED_DIR_NAME);
-    const location = {
+    const bindings = inspectProjectStorage(primaryRoot);
+    const identity = inspectProjectIdentity(primaryRoot);
+    const location: AttachedWorkflowLocation = {
+        bindings,
+        foreignStorageRoot: !bindings.length && isProjectStorageRootClaimed(primaryRoot),
+        repositoryId: identity.kind === "existing" ? identity.identity.repositoryId : undefined,
         projectRoot: primaryRoot,
-        workflowsDir: join(homeBaseDir, encodeCwdForSessionDir(primaryRoot), WORKFLOWS_DIR_NAME),
+        workflowsDir:
+            bindings[0]?.attachedDirectory ??
+            join(homeBaseDir, encodeCwdForSessionDir(primaryRoot), WORKFLOWS_DIR_NAME),
         homeBaseDir,
     };
+    if (location.bindings?.length || location.foreignStorageRoot) return location;
     return findAliasedLocation(location) ?? location;
 }
 
@@ -182,9 +201,9 @@ function recordPath(workflowsDir: string, workflowId: string): string {
     return join(workflowsDir, `${workflowId}.json`);
 }
 
-async function readRecordAt(path: string): Promise<AttachedWorkflowRecord | null> {
+function readRecordAt(path: string): AttachedWorkflowRecord | null {
     try {
-        const record: AttachedWorkflowRecord = JSON.parse(await fsReadFile(path, "utf8"));
+        const record = readAttachedRecord(path);
         return {
             ...record,
             execution: record.execution ?? null,
@@ -219,38 +238,107 @@ async function findMovedRecord(
     return null;
 }
 
-/** Load a record. Reports `moved` instead of matching a record to another project. */
+/** Lookup does not transfer a linked repository's execution attempt. */
+export function attachedWorkflowBelongsToLocation(
+    location: AttachedWorkflowLocation,
+    record: AttachedWorkflowRecord,
+): boolean {
+    if (!location.bindings?.length) return !location.foreignStorageRoot && record.projectRoot === location.projectRoot;
+    const requestBelongs = location.bindings.some((binding) =>
+        (binding.historicalRoots ?? [binding.attachedRoot]).includes(record.projectRoot),
+    );
+    if (!requestBelongs || !record.execution) return requestBelongs;
+    // Preparation records the actual execution repository independently of the request's origin.
+    const executionRoot = record.execution.projectRoot ?? record.projectRoot;
+    return location.bindings.some(
+        (binding) =>
+            (binding.historicalRoots ?? [binding.attachedRoot]).includes(executionRoot) &&
+            binding.repositoryId === location.repositoryId,
+    );
+}
+
+function recordMatchesStorage(
+    location: AttachedWorkflowLocation,
+    record: AttachedWorkflowRecord,
+    directory: string,
+): boolean {
+    if (!location.bindings?.length)
+        return (
+            !location.foreignStorageRoot &&
+            record.projectRoot === location.projectRoot &&
+            directory === location.workflowsDir
+        );
+    return location.bindings.some(
+        (binding) =>
+            binding.attachedDirectory === directory &&
+            (binding.historicalRoots ?? [binding.attachedRoot]).includes(record.projectRoot),
+    );
+}
+
+export function currentAttachedProjectRoot(record: AttachedWorkflowRecord): string {
+    return record.currentProjectRoot ?? record.projectRoot;
+}
+
+function projectRecord(location: AttachedWorkflowLocation, record: AttachedWorkflowRecord): AttachedWorkflowRecord {
+    return attachedWorkflowBelongsToLocation(location, record)
+        ? { ...record, currentProjectRoot: location.projectRoot }
+        : record;
+}
+
+function workflowDirectories(location: AttachedWorkflowLocation): string[] {
+    return [...new Set([location.workflowsDir, ...(location.bindings ?? []).map((item) => item.attachedDirectory)])];
+}
+
+async function boundRecordPath(location: AttachedWorkflowLocation, workflowId: string): Promise<string> {
+    let found: string | null = null;
+    for (const directory of workflowDirectories(location)) {
+        const path = recordPath(directory, workflowId);
+        const record = await readRecordAt(path);
+        if (!record) continue;
+        if (!recordMatchesStorage(location, record, directory)) continue;
+        if (found && found !== path) throw new Error("Conflicting Attached Workflow identity claims");
+        found = path;
+    }
+    return found ?? recordPath(location.workflowsDir, workflowId);
+}
+
+/** Read the original record through a verified locator; foreign hits retain the moved refusal. */
 export async function loadAttachedWorkflowRecord(
     location: AttachedWorkflowLocation,
     workflowId: string,
 ): Promise<LoadedAttachedWorkflow> {
-    const record = await readRecordAt(recordPath(location.workflowsDir, workflowId));
-    if (record) return { status: record.projectRoot === location.projectRoot ? "found" : "moved", record };
+    const path = await boundRecordPath(location, workflowId);
+    const record = await readRecordAt(path);
+    if (record) {
+        const bound = recordMatchesStorage(location, record, dirname(path));
+        return { status: bound ? "found" : "moved", record: projectRecord(location, record) };
+    }
     const moved = await findMovedRecord(location, workflowId);
     return moved ? { status: "moved", record: moved } : { status: "missing" };
 }
 
-/** Select only this project's latest open workflow; do not scan other project bindings. */
 export async function loadLatestAttachedWorkflowRecord(
     location: AttachedWorkflowLocation,
 ): Promise<AttachedWorkflowRecord | null> {
     let latest: AttachedWorkflowRecord | null = null;
-    try {
-        for await (const entry of await fsReaddir(location.workflowsDir, { withFileTypes: true })) {
-            if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-            const record = await readRecordAt(join(location.workflowsDir, entry.name));
-            if (
-                record &&
-                record.projectRoot === location.projectRoot &&
-                record.state !== "closed" &&
-                (!latest ||
-                    record.updatedAt > latest.updatedAt ||
-                    (record.updatedAt === latest.updatedAt && record.workflowId > latest.workflowId))
-            )
-                latest = record;
+    for (const directory of workflowDirectories(location)) {
+        try {
+            for (const entry of await fsReaddir(directory, { withFileTypes: true })) {
+                if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+                const record = await readRecordAt(join(directory, entry.name));
+                if (
+                    record &&
+                    recordMatchesStorage(location, record, directory) &&
+                    record.state !== "closed" &&
+                    (!latest ||
+                        record.updatedAt > latest.updatedAt ||
+                        (record.updatedAt === latest.updatedAt && record.workflowId > latest.workflowId))
+                )
+                    latest = projectRecord(location, record);
+            }
+        } catch (error) {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
-    } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     return latest;
 }
@@ -312,10 +400,14 @@ async function removeAbandonedTemporaryFiles(path: string): Promise<void> {
 
 /** Receipts are durable workflow snapshots, never a second home for review text. */
 export function withoutAttachedChat(result: AttachedOperationResult): AttachedOperationResult {
-    const clean = structuredClone(result);
+    const clean = { ...result };
     if (clean.ok) delete clean.reviewReply;
     if (clean.workflow) {
-        if (clean.workflow.review) delete clean.workflow.review.chat;
+        clean.workflow = { ...clean.workflow, nextAction: { ...clean.workflow.nextAction } };
+        if (clean.workflow.review) {
+            clean.workflow.review = { ...clean.workflow.review };
+            delete clean.workflow.review.chat;
+        }
         const action = clean.workflow.nextAction;
         if (action.kind === "review" || action.kind === "code_review") delete action.chat;
     }
@@ -324,7 +416,12 @@ export function withoutAttachedChat(result: AttachedOperationResult): AttachedOp
 
 /** Apply privacy on every write, including external Core reconciliation and recovery. */
 export function scrubAttachedChat(record: AttachedWorkflowRecord): AttachedWorkflowRecord {
-    const clean = structuredClone(record);
+    const clean = {
+        ...record,
+        ...(record.review && { review: { ...record.review } }),
+        ...(record.validation && { validation: { ...record.validation } }),
+        acceptedOperations: { ...record.acceptedOperations },
+    };
     if (clean.review && (clean.state !== "awaiting_review" || clean.review.status !== "pending"))
         delete clean.review.chat;
     if (
@@ -335,7 +432,9 @@ export function scrubAttachedChat(record: AttachedWorkflowRecord): AttachedWorkf
             clean.validation.request.interaction.type !== "code_review")
     )
         delete clean.validation.chat;
-    for (const receipt of Object.values(clean.acceptedOperations)) {
+    for (const [id, original] of Object.entries(clean.acceptedOperations)) {
+        const receipt = { ...original };
+        clean.acceptedOperations[id] = receipt;
         receipt.result = withoutAttachedChat(receipt.result);
         const action = receipt.result.workflow?.nextAction;
         if (
@@ -349,7 +448,8 @@ export function scrubAttachedChat(record: AttachedWorkflowRecord): AttachedWorkf
 }
 
 function atomicWrite(path: string, record: AttachedWorkflowRecord): void {
-    writeJsonAtomically(path, scrubAttachedChat(record));
+    const { currentProjectRoot: _currentProjectRoot, ...persisted } = scrubAttachedChat(record);
+    writeJsonAtomically(path, encodeAttachedRecord(persisted));
 }
 
 /**
@@ -386,13 +486,14 @@ export async function transactAttachedWorkflowRecord<Result>(
     workflowId: string,
     decide: (current: AttachedWorkflowRecord | null) => Promise<AttachedRecordDecision<Result>>,
 ): Promise<{ status: "committed"; result: Result } | { status: "busy" }> {
-    await fsMkdir(location.workflowsDir, { recursive: true });
-    const path = recordPath(location.workflowsDir, workflowId);
-    const lockPath = join(location.workflowsDir, `${workflowId}.lock`);
+    const path = await boundRecordPath(location, workflowId);
+    await fsMkdir(dirname(path), { recursive: true });
+    const lockPath = join(dirname(path), `${workflowId}.lock`);
     const token = await acquireLock(lockPath);
     if (!token) return { status: "busy" };
     try {
-        const decision = await decide(await readRecordAt(path));
+        const stored = await readRecordAt(path);
+        const decision = await decide(stored ? projectRecord(location, stored) : null);
         if (decision.next) {
             await removeAbandonedTemporaryFiles(path);
             await atomicWrite(path, decision.next);

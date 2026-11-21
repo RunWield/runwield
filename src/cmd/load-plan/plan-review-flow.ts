@@ -1,7 +1,7 @@
-import { preparePlanWorkflow } from "../../shared/workflow/plan-preparation.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { buildPlanConversationRequest } from "../../shared/workflow/plan-review-conversation.ts";
 import { isSequencePlan } from "../../shared/project-plan.ts";
-import { applySequenceReviewDecision, prepareSequenceReview } from "../../shared/workflow/sequence-review.ts";
+import { applySequenceReviewDecision, prepareSequenceReview } from "../../plan-store/index.ts";
 /**
  * @module cmd/load-plan/plan-review-flow
  * Direct Plan Review handling for Plans loaded from disk.
@@ -12,10 +12,12 @@ import { applySequenceReviewDecision, prepareSequenceReview } from "../../shared
  */
 
 import { AGENTS, CLI_BIN } from "../../constants.ts";
-import { loadPlan, type PlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.ts";
+import { type PlanFrontMatter } from "../../plan-store/index.ts";
+import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { decidePostExecution, decidePostPlanning } from "../../shared/workflow/decisions.ts";
 import { isPlanReviewableWithoutReopen, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../../shared/workflow/plan-approval.ts";
 import {
@@ -328,8 +330,13 @@ export async function reviewLoadedPlanDirectly({
                 ? { outcome: RuntimeInteractionOutcomes.ACCEPTED, value: true }
                 : { outcome: RuntimeInteractionOutcomes.CANCELED, value: false };
         },
-        onUnanswered: ({ reason }) => {
-            uiAPI.appendSystemMessage(`Plan review ended without an answer (${reason}).`, false, "RunWield");
+        onUnanswered: ({ reason, response }) => {
+            const detail = response?.message?.trim();
+            uiAPI.appendSystemMessage(
+                `Plan review ended without an answer (${reason}).${detail ? " " + detail : ""}`,
+                false,
+                "RunWield",
+            );
         },
     });
 

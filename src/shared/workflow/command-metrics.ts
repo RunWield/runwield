@@ -89,22 +89,25 @@ export class SlashCommandMetricsTracker {
     async recordDispatched(): Promise<void> {
         if (this.finished || this.dispatched) return;
         this.dispatched = true;
-        await recordWorkflowMetric({
-            v: 2,
-            category: "command",
-            event: "command_dispatched",
-            recorderId: this.invocationId,
-            seq: 1,
-            phase: "dispatched",
-            commandId: this.invocationId,
-            command: this.command,
-            ...(this.alias ? { alias: this.alias } : {}),
-            kind: this.kind,
-            sourceSurface: this.surface,
-            ...(this.sessionId ? { sessionId: this.sessionId } : {}),
-            ...(this.requestId ? { requestId: this.requestId } : {}),
-            ...(this.executionId ? { executionId: this.executionId } : {}),
-        }, this.projectRoot);
+        await recordWorkflowMetric(
+            {
+                v: 2,
+                category: "command",
+                event: "command_dispatched",
+                recorderId: this.invocationId,
+                seq: 1,
+                phase: "dispatched",
+                commandId: this.invocationId,
+                command: this.command,
+                ...(this.alias ? { alias: this.alias } : {}),
+                kind: this.kind,
+                sourceSurface: this.surface,
+                ...(this.sessionId ? { sessionId: this.sessionId } : {}),
+                ...(this.requestId ? { requestId: this.requestId } : {}),
+                ...(this.executionId ? { executionId: this.executionId } : {}),
+            },
+            this.projectRoot,
+        );
     }
 
     async recordFinish(options: {

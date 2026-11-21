@@ -11,10 +11,7 @@ for (const kind of ["plan", "prd", "adr", "work-record", "epic-artifact", "repor
         const store = fixture.openStore();
         const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
         try {
-            await fsWriteFile(
-                `${fixture.projectRoot}/artifact.md`,
-                "# Saved Plan\n\nArtifact route regression.\n",
-            );
+            await fsWriteFile(`${fixture.projectRoot}/artifact.md`, "# Saved Plan\n\nArtifact route regression.\n");
             const proof = store.acquireSessionActivation({
                 runwieldSessionId: fixture.session.runwieldSessionId,
                 projectId: fixture.project.projectId,
@@ -46,7 +43,8 @@ for (const kind of ["plan", "prd", "adr", "work-record", "epic-artifact", "repor
                     import.meta.url,
                 ),
             )
-                .then(() => true).catch(() => false);
+                .then(() => true)
+                .catch(() => false);
             if (built) assertEquals(response.status, 200);
             const html = await response.text();
             if (response.status === 200) {

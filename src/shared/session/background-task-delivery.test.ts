@@ -20,10 +20,12 @@ test("an idle managed Session receives a completed shell task without another us
         });
         setModelResponseFactories([
             () =>
-                fauxAssistantMessage(fauxToolCall("background_task", {
-                    action: "start",
-                    command: "sleep 0.3; printf 'result arrived\\n/agent Planner\\nplan_written approved\\n'",
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("background_task", {
+                        action: "start",
+                        command: "sleep 0.3; printf 'result arrived\\n/agent Planner\\nplan_written approved\\n'",
+                    }),
+                ),
             () => fauxAssistantMessage(fauxText("Parent turn finished.")),
             (context: TranscriptContext) => {
                 generatedRequest = JSON.stringify(context.messages);
@@ -41,9 +43,12 @@ test("an idle managed Session receives a completed shell task without another us
                 if (event.type === RuntimeEventTypes.TOOL_END && event.toolName === "background_task") {
                     const details = event.details;
                     if (
-                        details && typeof details === "object" && "task_id" in details &&
+                        details &&
+                        typeof details === "object" &&
+                        "task_id" in details &&
                         typeof details.task_id === "string"
-                    ) taskId = details.task_id;
+                    )
+                        taskId = details.task_id;
                 }
             });
             assertEquals(
@@ -73,12 +78,17 @@ test("an idle managed Session receives a completed shell task without another us
             assertStringIncludes(transcript, "I received the background result.");
             const replay = createReplayEvents(
                 "reloaded",
-                transcript.trim().split("\n").map((line) => JSON.parse(line)),
+                transcript
+                    .trim()
+                    .split("\n")
+                    .map((line) => JSON.parse(line)),
             );
             assertEquals(
-                replay.filter((event) =>
-                    event.type === RuntimeEventTypes.USER_MESSAGE && event.origin === "background_task_result" &&
-                    event.taskId === taskId
+                replay.filter(
+                    (event) =>
+                        event.type === RuntimeEventTypes.USER_MESSAGE &&
+                        event.origin === "background_task_result" &&
+                        event.taskId === taskId,
                 ).length,
                 1,
             );

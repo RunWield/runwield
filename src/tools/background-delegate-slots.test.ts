@@ -15,10 +15,12 @@ test("background delegates share shell slots and synchronous reader leases and r
             const gate = new Promise<void>((resolve) => {
                 release = resolve;
             });
-            setModelResponseFactories(Array.from({ length: 3 }, () => async () => {
-                await gate;
-                return fauxAssistantMessage(fauxText("reader done"));
-            }));
+            setModelResponseFactories(
+                Array.from({ length: 3 }, () => async () => {
+                    await gate;
+                    return fauxAssistantMessage(fauxText("reader done"));
+                }),
+            );
             const session = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
             const synchronous = session.acquireDelegatedAgentLease("read");
             const tool = createDelegateAgentTool({
@@ -38,9 +40,8 @@ test("background delegates share shell slots and synchronous reader leases and r
                 return response.details;
             };
             try {
-                const shells = Array.from(
-                    { length: 3 },
-                    () => session.backgroundTasks.startShell({ command: "sleep 20", cwd: projectRoot }),
+                const shells = Array.from({ length: 3 }, () =>
+                    session.backgroundTasks.startShell({ command: "sleep 20", cwd: projectRoot }),
                 );
                 const first = await start();
                 const second = await start();

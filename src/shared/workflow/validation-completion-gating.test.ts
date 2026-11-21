@@ -1,12 +1,10 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { test } from "node:test";
 import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { ensureRootAgentSession } from "../session/session.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
@@ -112,11 +110,15 @@ test("validation repair runs independently and returns structured completion", a
     await withRuntimeCommandFixture(
         "validation-adapter-repair-completion-",
         async ({ setModelResponseFactory, projectRoot }) => {
-            // A repair can be the first workflow operation on a legacy Plan.
-            await mkdir(join(projectRoot, "docs/plans"), { recursive: true });
-            await writeFile(
-                join(projectRoot, "docs/plans/p.md"),
-                "---\nclassification: PLANNED_CHANGE\nstatus: implemented\nhumanReviewMode: none\n---\n# Repair\n",
+            await makeValidationProjectRoot(
+                "p",
+                {
+                    classification: "PLANNED_CHANGE",
+                    status: "implemented",
+                    humanReviewMode: "none",
+                },
+                "# Repair",
+                projectRoot,
             );
             const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
             setModelResponseFactory(() =>

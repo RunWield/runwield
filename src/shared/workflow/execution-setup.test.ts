@@ -1,10 +1,14 @@
+import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
-import { loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.ts";
+import { loadPlan } from "../../plan-store/index.ts";
+
 import { listEntries } from "../worktree-registry.ts";
 import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
@@ -56,7 +60,7 @@ fs.mkdirSync('node_modules', {recursive: true});
 fs.appendFileSync('node_modules/runs', 'run\\n');
 ${options.failure ? "if (!fs.existsSync('node_modules/allow')) { console.error('bootstrap fixture failed'); process.exit(12); }" : ""}
 ${options.mutation ? "fs.writeFileSync('unrelated.txt', 'keep this output');" : ""}
-${options.ignoredPlanMutation ? `fs.appendFileSync('docs/plans/${planName}.md', '\\nSetup changed the Plan');` : ""}
+${options.ignoredPlanMutation ? `fs.mkdirSync('docs/plans', {recursive:true}); fs.appendFileSync('docs/plans/${planName}.md', '\\nSetup changed the Plan');` : ""}
 fs.writeFileSync('node_modules/hook.cjs', "require('node:fs').appendFileSync('node_modules/hook-runs', 'hook\\\\n')");
 `,
     );
@@ -66,7 +70,7 @@ fs.writeFileSync('node_modules/hook.cjs', "require('node:fs').appendFileSync('no
 ${
     options.hookFailure
         ? `if [ ! -f node_modules/allow-hook ]; then
-${options.hookMutation ? "printf 'unrelated hook output\\n' > docs/plans/hook-output.md" : ""}
+${options.hookMutation ? "mkdir -p docs/plans; printf 'unrelated hook output\\n' > docs/plans/hook-output.md" : ""}
 echo hook-fixture-failed >&2
 exit 7
 fi`
@@ -80,11 +84,15 @@ exec bun node_modules/hook.cjs
     await git(root, ["add", "."]);
     await git(root, ["commit", "-m", "fixture setup contract"]);
     await git(root, ["config", "core.hooksPath", ".hooks"]);
-    await savePlan(root, planName, "# Dependency hook", {
+    await seedPlan(root, planName, "# Dependency hook", {
         classification: "PLANNED_CHANGE",
-        status: "ready_for_work",
+        status: "draft",
         planId: "setup-plan",
         summary: "Dependency hook",
+    });
+    await withLocalPlanWorkflow(root, planName, async () => {
+        await recordPlanEvent({ cwd: root, planName, event: "review_approved", currentStatus: "draft" });
+        await recordPlanEvent({ cwd: root, planName, event: "readiness_passed", currentStatus: "approved" });
     });
     const session = new HostedSession({ id: "execution-setup-test", cwd: root });
     session.setInteractionAdapter({ requestInteraction: () => ({ outcome: "text", value: "bun setup.cjs" }) });
@@ -472,7 +480,8 @@ test("ignored Plan and setup settings survive a postcommit receipt interruption 
         const receipt = await readExecutionSetup(cwd);
         assert(receipt);
         const head = await git(cwd, ["rev-parse", "HEAD"]);
-        assert.equal(parsePlanFrontMatter(await git(cwd, ["show", `HEAD:${planPath}`])).attrs.status, "in_progress");
+        assert.equal((await loadPlan(cwd, planName))?.attrs.status, "in_progress");
+        assert.equal(await git(cwd, ["ls-tree", "--name-only", "HEAD", planPath]), "");
         assert.equal(
             JSON.parse(await git(cwd, ["show", "HEAD:.wld/settings.json"])).worktree_setup_command,
             "bun setup.cjs",
@@ -495,17 +504,18 @@ test("ignored Plan and setup settings survive a postcommit receipt interruption 
     }
 });
 
-test("setup cannot rewrite an ignored Plan that will be committed", async () => {
+test("setup writing ignored legacy Markdown preserves the canonical Plan", async () => {
     const f = await fixture({ ignoredPlanMutation: true });
     try {
         const planPath = `docs/plans/${planName}.md`;
         await writeFile(join(f.root, ".git", "info", "exclude"), `/${planPath}\n`);
-        await assert.rejects(f.start, /Worktree setup changed the Plan/);
-        const [attempt] = await listEntries(f.root);
-        assert(attempt);
-        assert.equal(await git(attempt.path, ["rev-parse", "HEAD"]), attempt.baseCommit);
-        assert.match(await readFile(join(attempt.path, planPath), "utf8"), /Setup changed the Plan/);
-        assert.equal(f.session.getActiveExecutionWorkflow(), null);
+        const workflow = await f.start();
+        const cwd = workflow.executionCwd!;
+        assert.match(await readFile(join(cwd, planPath), "utf8"), /Setup changed the Plan/);
+        const plan = await loadPlan(cwd, planName);
+        assert.equal(plan?.attrs.status, "in_progress");
+        assert.doesNotMatch(plan.body, /Setup changed the Plan/);
+        assert.equal(await git(cwd, ["ls-tree", "--name-only", "HEAD", planPath]), "");
     } finally {
         await f.cleanup();
     }
