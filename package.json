@@ -119,7 +119,7 @@
         "@vitejs/plugin-react": "6.1.0",
         "@viz-js/viz": "3.29.0",
         "@xterm/headless": "6.0.0",
-        "@zag-js/dialog": "1.42.0",
+        "@zag-js/dialog": "1.48.0",
         "@zag-js/preact": "1.45.0",
         "astro": "7.4.13",
         "beautiful-mermaid": "1.1.3",
