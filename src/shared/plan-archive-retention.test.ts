@@ -75,7 +75,7 @@ test("collectArchivedPlanUnits groups an Epic parent, child Plans, and manual QA
                 planId: "epic-id",
             });
             await seedPlan(cwd, "epic/01-child", "# Child", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
                 status: "verified",
                 planId: "child-id",

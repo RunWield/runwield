@@ -66,7 +66,7 @@ test("workspace lifecycle action metadata blocks protected status movement and e
         planId: "p1",
         planName: "plan",
         relativePath: "docs/plans/plan.md",
-        attrs: { planId: "p1", status: "draft", classification: "FEATURE" },
+        attrs: { planId: "p1", status: "draft", classification: "PLANNED_CHANGE" },
     });
     assertEquals(summary.actions.allowedManualTargetStatuses.includes("verified"), false);
     assertEquals(summary.actions.allowedManualTargetStatuses.includes("failed"), false);
@@ -116,7 +116,7 @@ test("legacy feedback Plans appear in Draft with no Feedback board column", asyn
     const cwd = await fsMkdtemp(join(tmpdir(), "legacy-feedback-board-"));
     try {
         await withRetainedPlanFixture(cwd, async () => {
-            await savePlan(cwd, "legacy", "# Legacy review\n", { status: "draft", classification: "FEATURE" });
+            await savePlan(cwd, "legacy", "# Legacy review\n", { status: "draft", classification: "PLANNED_CHANGE" });
             const path = join(cwd, "docs/plans/legacy.md");
             await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace('status: "draft"', 'status: "feedback"'));
 
@@ -143,7 +143,7 @@ test("Workspace dev lifecycle projection uses core transitions without mutating 
         planId: "memory-plan-id",
         planName: "memory-plan",
         relativePath: "docs/plans/memory-plan.md",
-        attrs: { planId: "memory-plan-id", status: "draft", classification: "FEATURE" },
+        attrs: { planId: "memory-plan-id", status: "draft", classification: "PLANNED_CHANGE" },
     });
     const moved = applyWorkspaceLifecycleActionInMemory(summary, {
         action: "move_status",
@@ -202,13 +202,13 @@ test("Workspace lifecycle API mutates through lifecycle events and blocks invali
         await savePlan(cwd, "feature", "# Feature", {
             planId: "feature-id",
             status: "draft",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
         });
         await savePlan(cwd, "held", "# Held", {
             planId: "held-id",
             status: "on_hold",
             heldFromStatus: "in_progress",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
         });
         const app = createWorkspaceApp({
             cwd,
@@ -281,7 +281,7 @@ test("Workspace persisted User Verification records attestation and triggers Wor
         await savePlan(cwd, "feature", "# Feature", {
             planId: "feature-id",
             status: "implemented",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             failureReason: "Workflow Validation failed.",
         });
         setModelMessages([
@@ -334,7 +334,7 @@ test("Workspace persisted close without verification triggers Work Record genera
         await savePlan(cwd, "feature", "# Feature", {
             planId: "feature-id",
             status: "implemented",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
         });
         setModelMessages([
             fauxAssistantMessage(
@@ -374,7 +374,7 @@ test("Workspace persisted close preserves closure when Work Record generation fa
         await savePlan(cwd, "feature", "# Feature", {
             planId: "feature-id",
             status: "implemented",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
         });
         setModelMessages([
             fauxAssistantMessage(fauxText("recorder unavailable")),
@@ -411,7 +411,7 @@ test("Workspace lifecycle API requires Resume Check confirmation for staleness w
             status: "on_hold",
             heldFromStatus: "ready_for_work",
             holdStalenessBaseline: "baseline",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
         });
         const app = createWorkspaceApp({
             cwd,
@@ -446,7 +446,7 @@ test("Workspace Resume Check does not expose absolute worktree paths in blocked 
                 worktreeId: "missing-attempt",
                 worktreePath: missingWorktreePath,
                 worktreeBranch: "missing-branch",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
             });
             const app = createWorkspaceApp({
                 cwd,
@@ -500,7 +500,7 @@ test("Workspace APIs return lock-aware 409 responses without mutating locked Pla
             await savePlan(cwd, "locked", "# Locked\n", {
                 planId: "locked-api-id",
                 status: "draft",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
                 collaborationServerUrl: "https://plans.example.test",
                 collaborationSpaceId: "space-1",

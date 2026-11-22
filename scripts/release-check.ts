@@ -331,7 +331,7 @@ export async function smokeTestBinaryPlansUiSurface(binaryPath: string, root: st
     await fsMkdir(join(projectDir, "docs", "plans"), { recursive: true });
     await fsWriteFile(
         join(projectDir, "docs", "plans", "release-plans-ui-smoke.md"),
-        `---\nplanId: release-plans-ui-smoke\nclassification: FEATURE\nstatus: draft\n---\n# Release binary Plans UI smoke\n`,
+        `---\nplanId: release-plans-ui-smoke\nclassification: PLANNED_CHANGE\nstatus: draft\n---\n# Release binary Plans UI smoke\n`,
     );
 
     const child = spawn(binaryPath, ["plans", "ui", "--no-open"], {

@@ -101,7 +101,6 @@ const FOOTER_WORKFLOW_EXCLUDED_DISPLAY_NAMES = new Set(["ideator", "operator", "
 const FOOTER_ROUTING_META = new Map([
     ["QUICK_FIX", { label: "Quick Fix", token: "routingQuickFix" }],
     ["PLANNED_CHANGE", { label: "Planned Change", token: "routingFeature" }],
-    ["FEATURE", { label: "Planned Change", token: "routingFeature" }],
     ["PROJECT", { label: "Epic", token: "routingEpic" }],
 ]);
 const FOOTER_COMPLEXITY_META = new Map([

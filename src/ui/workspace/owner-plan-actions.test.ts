@@ -127,7 +127,7 @@ async function withActionFixture(body: (fixture: ManagedSessionFixture) => Promi
                 await seedPlan(fixture.projectRoot, "demo", "# Demo\n", {
                     planId: "plan-demo",
                     status: "draft",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                 });
                 await body(fixture);
             } finally {

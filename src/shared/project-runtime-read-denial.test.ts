@@ -153,7 +153,8 @@ test("passive reads do not wait for catalog and registry locks held by another p
                 "--eval",
                 `const { listPlanResources } = await import(${JSON.stringify(storeUrl)}); const { inspectProjectIdentity } = await import(${JSON.stringify(new URL("./project-identity.ts", import.meta.url).href)}); const { withRetainedCheckoutSource } = await import(${JSON.stringify(new URL("../plan-store/retained-source.ts", import.meta.url).href)}); await withRetainedCheckoutSource(inspectProjectIdentity(${JSON.stringify(root)}).identity, async () => console.log((await listPlanResources(${JSON.stringify(root)}))[0].planId));`,
             ],
-            timeoutMs: 3_000,
+            // The holder releases only after the read returns. Allow for Bun startup on CI.
+            timeoutMs: 15_000,
         });
         strictEqual(read.code, 0, new TextDecoder().decode(read.stderr));
         strictEqual(new TextDecoder().decode(read.stdout).trim(), "example-id");

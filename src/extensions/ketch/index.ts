@@ -1,12 +1,6 @@
 import { getCwd } from "../../constants.ts";
 import { createKetchTools } from "./tools.ts";
-export {
-    createKetchTools,
-    webCodeSearchToolDef,
-    webDocsSearchToolDef,
-    webFetchToolDef,
-    webSearchToolDef,
-} from "./tools.ts";
+export { createKetchTools } from "./tools.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function ketchExtension(pi: ExtensionAPI): void {

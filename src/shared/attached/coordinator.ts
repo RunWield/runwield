@@ -66,7 +66,7 @@ import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.ts";
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
 import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { normalizeTriageOutcome, type TriageOutcome } from "../workflow/triage-outcome.ts";
+import { toolRegistry, type TriageOutcome } from "@runwield/tools";
 import {
     type AttachedActionReadEnvelope,
     type AttachedReadOperationName,
@@ -801,7 +801,7 @@ export async function triageReport(envelope: TriageReportEnvelope): Promise<Atta
     const decide = async (current: AttachedWorkflowRecord): Promise<Decision> => {
         const checked = await checkWorkflowOperation("triage_report", envelope, current, "triaging");
         if (checked) return checked;
-        const outcome = normalizeTriageOutcome(envelope.payload.outcome);
+        const outcome = toolRegistry.get("triage_report").normalizeOutcome(envelope.payload.outcome);
         if (!outcome) {
             return {
                 result: await rejected(

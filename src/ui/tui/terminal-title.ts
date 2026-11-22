@@ -3,10 +3,8 @@
  * Helpers for RunWield terminal tab/window titles.
  */
 
-import { formatSessionTerminalTitle, sanitizeSessionName } from "../../shared/session-name.ts";
+import { formatSessionTerminalTitle } from "../../shared/session-name.ts";
 import { getTUI } from "./tui.ts";
-
-export { sanitizeSessionName };
 
 /** Format a terminal title from a Session Name. */
 export function formatTerminalTitle(name: string | null | undefined): string {

@@ -3,7 +3,7 @@
  * Confirmation tool for durable Plan requirement replacements.
  */
 
-import { type Static, Type } from "typebox";
+import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.ts";
@@ -17,22 +17,7 @@ import {
     supportsHostedSessionInteraction,
 } from "../shared/session/session-runtime-interactions.ts";
 
-const PARAMETERS = Type.Object(
-    {
-        supersededRequirement: Type.String({
-            minLength: 1,
-            description: "Exact effective Plan requirement the user's instruction replaces.",
-        }),
-        replacementRequirement: Type.String({
-            minLength: 1,
-            description: "Exact replacement requirement the user is being asked to confirm.",
-        }),
-        reason: Type.Optional(Type.String({ minLength: 1, description: "Optional concise reason for the deviation." })),
-    },
-    { additionalProperties: false },
-);
-
-export type PlanDeviationParameters = Static<typeof PARAMETERS>;
+const definition = toolRegistry.get("record_plan_deviation").definition;
 
 export type PlanDeviationDetails =
     | { decision: "inactive"; reason: "plan_execution_inactive" | "missing_execution_context" }
@@ -89,13 +74,9 @@ function sameExecutionIdentity(before: ActiveExecutionWorkflow, after: ActiveExe
 
 export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOptions) {
     if (!hostedSession) throw new Error("createPlanDeviationTool: hostedSession is required");
-    return defineTool<typeof PARAMETERS, PlanDeviationDetails>({
-        name: "record_plan_deviation",
-        exposure: "model-only",
-        label: "Record Plan Deviation",
-        description:
-            "Ask the user to confirm an execution instruction that replaces an effective Plan requirement, then persist the confirmed replacement in the authoritative execution Plan.",
-        parameters: PARAMETERS,
+    return defineTool<typeof definition.parameters, PlanDeviationDetails>({
+        ...definition,
+
         async execute(toolCallId, params, signal): Promise<PlanDeviationResult> {
             const workflow = hostedSession.getActiveExecutionWorkflow?.();
             if (!isActiveExecutionWorkflow(workflow)) {

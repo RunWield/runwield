@@ -1,11 +1,9 @@
+import type { InterviewParameters } from "@runwield/tools";
 import { assertEquals } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
-import {
-    createUserInterviewTool,
-    type InterviewParameters,
-    type InterviewResultDetails,
-} from "../../tools/user-interview.ts";
+import type { InterviewResultDetails } from "@runwield/tools";
+import { createUserInterviewTool } from "../../tools/user-interview.ts";
 import { HostedSession } from "../../shared/session/hosted-session.ts";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 

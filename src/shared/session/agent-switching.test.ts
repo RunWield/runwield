@@ -619,7 +619,7 @@ test("provider switch continues a failed request without changing execution owne
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         const workflow: ActiveExecutionWorkflow = {
             planName: "stable-plan",
-            triageMeta: { classification: "FEATURE", worktreeId: "wt-stable" },
+            triageMeta: { classification: "PLANNED_CHANGE", worktreeId: "wt-stable" },
             executionAgent: "engineer",
             executionStarted: true,
             executionCwd: `${projectRoot}/worktrees/wt-stable`,

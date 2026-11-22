@@ -401,11 +401,11 @@ collaborationRecommendation: false
 });
 
 test("Plan execution policy enforces owner and recommendation matrix", () => {
-    assertEquals(resolvePlanExecutionPolicy({ classification: "FEATURE" }), {
+    assertEquals(resolvePlanExecutionPolicy({ classification: "PLANNED_CHANGE" }), {
         ok: true,
         policy: { executionAgent: "engineer", collaborationRecommendation: "autonomous", source: "absent" },
     });
-    assertEquals(resolvePlanExecutionPolicy({ classification: "FEATURE", frontend: false }), {
+    assertEquals(resolvePlanExecutionPolicy({ classification: "PLANNED_CHANGE", frontend: false }), {
         ok: true,
         policy: {
             executionAgent: "engineer",
@@ -413,13 +413,13 @@ test("Plan execution policy enforces owner and recommendation matrix", () => {
             source: "legacy_frontend_false",
         },
     });
-    assertEquals(resolvePlanExecutionPolicy({ classification: "FEATURE", executionAgent: "engineer" }), {
+    assertEquals(resolvePlanExecutionPolicy({ classification: "PLANNED_CHANGE", executionAgent: "engineer" }), {
         ok: true,
         policy: { executionAgent: "engineer", collaborationRecommendation: "autonomous", source: "canonical" },
     });
     assertEquals(
         resolvePlanExecutionPolicy({
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             executionAgent: "frontend-engineer",
             collaborationRecommendation: "pair",
             frontend: false,
@@ -433,7 +433,7 @@ test("Plan execution policy enforces owner and recommendation matrix", () => {
     // ask the user to steer between increments just as a Frontend Engineer plan can.
     assertEquals(
         resolvePlanExecutionPolicy({
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             executionAgent: "engineer",
             collaborationRecommendation: "pair",
         }),
@@ -468,7 +468,7 @@ test("Plan execution policy enforces owner and recommendation matrix", () => {
 test("injectFrontMatter preserves human review metadata", () => {
     const markdown = "## Plan\n\nBody";
     const withFm = injectFrontMatter(markdown, {
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         complexity: "MEDIUM",
         summary: "Reviewed",
         affectedPaths: [],
@@ -655,7 +655,7 @@ testWithFs("updatePlanStatus fails closed on malformed front matter and preserve
 
             const malformed = [
                 "---",
-                'classification: "FEATURE"',
+                'classification: "PLANNED_CHANGE"',
                 'summary: "bad "quote"',
                 "affectedPaths:",
                 '    - "<|"|src/tools/user-interview.js<|"|"',
@@ -670,7 +670,7 @@ testWithFs("updatePlanStatus fails closed on malformed front matter and preserve
             await assertRejects(
                 () =>
                     updatePlanStatusForTest(cwd, "broken", "approved", {
-                        classification: "FEATURE",
+                        classification: "PLANNED_CHANGE",
                         complexity: "LOW",
                         summary: "Recovered summary",
                         affectedPaths: ["src/tools/user-interview.js"],
@@ -693,7 +693,7 @@ testWithFs("plan-store saves and reloads on-hold metadata without normalizing to
         try {
             await savePlan(cwd, "held-plan", "## Objective\nPause", {
                 planId: "held-plan-id",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 summary: "Paused plan",
                 affectedPaths: ["src/plan-store.js"],
@@ -735,7 +735,7 @@ testWithFs("plan-store saves and reloads manual closure status without verified 
     return await withRetainedPlanFixture(cwd, async () => {
         try {
             await savePlan(cwd, "closed-plan", "## Objective\nClose", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 summary: "Closed plan",
                 affectedPaths: [],
@@ -839,20 +839,20 @@ testWithFs("listPlans sorts by status, classification, then name", async () => {
     return await withRetainedPlanFixture(cwd, async () => {
         try {
             const plans: PlanOrderingFixture[] = [
-                ["z-failed-feature", "FEATURE", "failed"],
+                ["z-failed-feature", "PLANNED_CHANGE", "failed"],
                 ["z-failed-project", "PROJECT", "failed"],
                 ["a-failed-project", "PROJECT", "failed"],
-                ["implemented-feature", "FEATURE", "implemented"],
-                ["ready-feature", "FEATURE", "ready_for_work"],
+                ["implemented-feature", "PLANNED_CHANGE", "implemented"],
+                ["ready-feature", "PLANNED_CHANGE", "ready_for_work"],
                 ["ready-project", "PROJECT", "ready_for_work"],
                 ["decompose-project", "PROJECT", "ready_for_decomposition"],
-                ["draft-feature", "FEATURE", "draft"],
-                ["feedback-feature", "FEATURE", "draft"],
-                ["approved-feature", "FEATURE", "approved"],
-                ["in-progress-feature", "FEATURE", "in_progress"],
-                ["verified-feature", "FEATURE", "verified"],
-                ["closed-feature", "FEATURE", "closed_without_verification"],
-                ["held-feature", "FEATURE", "on_hold"],
+                ["draft-feature", "PLANNED_CHANGE", "draft"],
+                ["feedback-feature", "PLANNED_CHANGE", "draft"],
+                ["approved-feature", "PLANNED_CHANGE", "approved"],
+                ["in-progress-feature", "PLANNED_CHANGE", "in_progress"],
+                ["verified-feature", "PLANNED_CHANGE", "verified"],
+                ["closed-feature", "PLANNED_CHANGE", "closed_without_verification"],
+                ["held-feature", "PLANNED_CHANGE", "on_hold"],
             ];
             for (const [name, classification, status] of plans) {
                 await savePlan(cwd, name, `# ${name}`, {
@@ -901,7 +901,7 @@ testWithFs("plan-store preserves Epic and nested child metadata", async () => {
             });
 
             await savePlan(cwd, "project-breakdown-epic/feature1", "# Child", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 summary: "Child slice",
                 affectedPaths: ["src/plan-store.test.js"],
@@ -947,7 +947,7 @@ testWithFs("listPlans hides archived plans", async () => {
     return await withRetainedPlanFixture(cwd, async () => {
         try {
             await savePlan(cwd, "active-plan", "# Active", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 summary: "Visible plan",
                 affectedPaths: [],
@@ -955,7 +955,7 @@ testWithFs("listPlans hides archived plans", async () => {
                 createdAt: "2026-06-18T00:00:00.000Z",
             });
             await savePlan(cwd, "archived/old-plan", "# Archived\n\n## Context\nHidden plan", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "LOW",
                 summary: "Hidden plan",
                 affectedPaths: [],
@@ -1194,7 +1194,7 @@ testWithFs("deleteArchivedPlanUnit removes a top-level archived Epic unit", asyn
         try {
             await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "verified" });
             await savePlan(cwd, "epic/01-child", "# Child", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
                 status: "verified",
             });
@@ -1602,7 +1602,7 @@ testWithFs("plan-store updates preserve parent-child metadata and unknown front 
             const markdown = injectFrontMatter(
                 "# Child",
                 /** @type {any} */ {
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     parentPlan: "project-breakdown-epic",
                     dependencies: ["feature0"],
                     customFlag: true,
@@ -1801,7 +1801,7 @@ testWithFs("updatePlanFrontMatter preserves and clears Delivery Evidence on part
         };
         try {
             await savePlan(cwd, "delivery", "## Body", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "verified",
                 executionMode: "worktree",
                 deliveryEvidence,
@@ -1837,7 +1837,7 @@ testWithFs("classification updates reject preserved canonical execution policy o
     return await withRetainedPlanFixture(cwd, async () => {
         try {
             await savePlan(cwd, "feature-policy", "# Body", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 executionAgent: "frontend-engineer",
                 collaborationRecommendation: "pair",
             });
@@ -2318,7 +2318,7 @@ testWithFs(
                 body: "## Remote\n\nBody",
                 attrs: {
                     planId: "plan-remote",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     complexity: "MEDIUM",
                     summary: "Remote Title",
                     status: "draft",
@@ -2381,7 +2381,7 @@ testWithFs("updatePlanCollaborationMetadata applies decrypted plan front matter"
             cwd,
             "locked",
             "## Plan\n\nOriginal",
-            lockedPlanFrontMatter({ classification: "FEATURE", summary: "Old summary", status: "draft" }),
+            lockedPlanFrontMatter({ classification: "PLANNED_CHANGE", summary: "Old summary", status: "draft" }),
         );
         const attrs = await updatePlanCollaborationMetadata(
             cwd,
@@ -2535,7 +2535,7 @@ testWithFs("updateArchivedPlanFrontMatter preserves archive metadata while addin
         try {
             await savePlan(cwd, "archived-link", "# Archived Link\n\n## Plan\n\nBody", {
                 planId: "plan-archived-link",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "LOW",
                 summary: "Archived link.",
                 affectedPaths: [],
@@ -2817,7 +2817,7 @@ test("a Plan lock left by a dead process is reclaimed immediately", async () => 
     const cwd = await makeTempDirectory({ prefix: "runwield-dead-lock-" });
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "demo", "# Demo\n", { status: "draft", classification: "FEATURE" });
+            await savePlan(cwd, "demo", "# Demo\n", { status: "draft", classification: "PLANNED_CHANGE" });
             const resolvedCwd = fsRealpathSync(cwd);
             const lockDir = join(getRunWieldRuntimeDir(resolvedCwd), PROJECT_INTERNAL_RUNTIME_DIR_NAME, "plan-locks");
             const lockPath = join(lockDir, "demo.lock");
@@ -2848,7 +2848,7 @@ testWithFs("listPlanResources leaves identity assignment to explicit preparation
     return await withRetainedPlanFixture(cwd, async () => {
         try {
             await savePlan(cwd, "no-id", "# No Id\n", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "ready_for_work",
                 summary: "s",
                 affectedPaths: [],

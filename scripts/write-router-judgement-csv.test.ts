@@ -17,7 +17,7 @@ test("serialized judgement CSV retains human corrections and Router disagreement
                     affectedPaths: ["src/cmd/version/index.js"],
                 },
             ],
-            [{ decisionId: "d1", humanJudgement: "FEATURE", humanNotes: "manual correction" }],
+            [{ decisionId: "d1", humanJudgement: "PLANNED_CHANGE", humanNotes: "manual correction" }],
         ),
     );
 

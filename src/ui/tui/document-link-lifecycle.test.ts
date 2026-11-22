@@ -175,7 +175,7 @@ test("Session replacement revokes old links and binds the new Project before rep
                 assertEquals((await readDocument(oldUrl)).markdown, "# Original Project\n");
                 await composition.runtime.replaceSessionForExecutionFollowUp(composition.sessionId, {
                     planName: "Document link follow-up",
-                    triageMeta: { classification: "FEATURE", complexity: "LOW" },
+                    triageMeta: { classification: "PLANNED_CHANGE", complexity: "LOW" },
                     executionAgent: "engineer",
                     executionCwd: alternateRoot,
                 });

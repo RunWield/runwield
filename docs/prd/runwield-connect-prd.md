@@ -154,7 +154,7 @@ installed adapter metadata. It requires compatible Core on `PATH` and the host's
 package does not establish complete workflow acceptance; Codex's desktop and CLI evidence must be qualified separately.
 
 `wld attached activate` binds one host request to one Attached Workflow Record. Current Router instructions are
-available explicitly by action ID. `triage_report` hands a FEATURE request to the Planner or closes a conversational
+available explicitly by action ID. `triage_report` hands a `PLANNED_CHANGE` request to the Planner or closes a conversational
 route with a role handoff. `plan_written` assigns the Plan ID and Triage front matter. The Plan stays an ordinary draft that Core can open and execute. Claude starts the
 plugin MCP server and lists its tools when the plugin loads; Codex does the same. Before a tool call, Core inspects no prompt or repository
 and writes no workflow state.
@@ -1321,7 +1321,7 @@ evidence under the [compatibility policy](#compatibility-and-honest-availability
 ## Open Questions
 
 - **Claude version and limits:** The matrix records the passing headless journey on Claude Code 2.1.303. The guide
-  discloses FEATURE-only routing, host-instructed role boundaries, no hooks or `/wld:init`, timeout settings, and
+  discloses the Planned Change route for code work, host-instructed role boundaries, no hooks or `/wld:init`, timeout settings, and
   the exact source and permission mode. Which prompts appear in a complete default-permissions headed journey remains
   an acceptance question. Other host/version ranges need their own evidence.
 - **Claude installation and update:** Use the `runwield` marketplace and `wld@runwield` plugin, with Core installed

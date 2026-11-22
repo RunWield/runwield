@@ -1,7 +1,7 @@
 import { isEpicPlan } from "../project-plan.ts";
 /** @module shared/workflow/collaboration-pull */
 
-import { AGENTS, CLI_BIN, normalizePlanClassification } from "../../constants.ts";
+import { AGENTS, CLI_BIN } from "../../constants.ts";
 import { redactSecrets } from "../collaboration/capabilities.ts";
 
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
@@ -97,7 +97,7 @@ export function buildPullRevisionRequest(context: PullRevisionRequest): string {
     const title = String(context.title || context.attrs.title || context.attrs.summary || context.planName);
     const summary = context.attrs.summary ? String(context.attrs.summary) : "(not provided)";
     const localStatus = context.attrs.status ? String(context.attrs.status) : "draft";
-    const classification = normalizePlanClassification(context.attrs.classification || "PLANNED_CHANGE");
+    const classification = context.attrs.classification ?? "PLANNED_CHANGE";
     const text = [
         "## Collaborative Planning Pull Revision Request",
         "",

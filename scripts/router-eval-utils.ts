@@ -4,7 +4,7 @@
  * Shared utilities for Router evaluation CSV generation and scoring.
  */
 
-import { LEGACY_ROUTING_INTENT_FEATURE, ROUTING_INTENT_PLANNED_CHANGE, ROUTING_INTENTS } from "../src/constants.ts";
+import { toolRegistry } from "@runwield/tools";
 
 export type CsvRow<TCell = string> = Record<string, TCell>;
 
@@ -51,11 +51,10 @@ export const ROUTER_JUDGEMENT_COLUMNS = [
     "contextCommit",
 ];
 
-const ROUTING_INTENT_ORDER = new Map(ROUTING_INTENTS.map((intent, index) => [intent, index]));
-ROUTING_INTENT_ORDER.set("FEATURE", ROUTING_INTENT_ORDER.get("PLANNED_CHANGE") ?? 4);
-ROUTING_INTENT_ORDER.set("PROJECT", (ROUTING_INTENT_ORDER.get("PLANNED_CHANGE") ?? 4) + 1);
+const { normalizeRoutingIntent, routingIntents } = toolRegistry.get("triage_report");
+const ROUTING_INTENT_ORDER = new Map(routingIntents.map((intent, index) => [intent, index]));
 const NON_MATERIALIZING = new Set(["INQUIRY", "IDEATION"]);
-const MATERIALIZING = new Set(["OPERATION", "QUICK_FIX", "PLANNED_CHANGE", "FEATURE", "PROJECT"]);
+const MATERIALIZING = new Set(["OPERATION", "QUICK_FIX", "PLANNED_CHANGE", "PROJECT"]);
 
 export function oneLine<TValue>(value: TValue): string {
     return value == null ? "" : String(value).replace(/\s+/g, " ").trim();
@@ -128,20 +127,24 @@ export function parseCsv(text: string): CsvRow[] {
     });
 }
 
-export function normalizeRoutingIntentCell<TValue>(value: TValue): string {
-    const text = oneLine(value).toUpperCase();
-    if (text === LEGACY_ROUTING_INTENT_FEATURE) return ROUTING_INTENT_PLANNED_CHANGE;
-    return ROUTING_INTENTS.includes(text) ? text : "";
+export function normalizeRoutingIntentCell(value: string | null | undefined) {
+    return normalizeRoutingIntent(oneLine(value).toUpperCase()) ?? "";
 }
 
-export function routingIntentDistance<TLeft, TRight>(left: TLeft, right: TRight): number | null {
+export function routingIntentDistance(
+    left: string | null | undefined,
+    right: string | null | undefined,
+): number | null {
     const a = normalizeRoutingIntentCell(left);
     const b = normalizeRoutingIntentCell(right);
     if (!a || !b) return null;
     return Math.abs((ROUTING_INTENT_ORDER.get(a) ?? 0) - (ROUTING_INTENT_ORDER.get(b) ?? 0));
 }
 
-export function classifyRoutingIntentDisagreement<TFrom, TTo>(from: TFrom, to: TTo): string {
+export function classifyRoutingIntentDisagreement(
+    from: string | null | undefined,
+    to: string | null | undefined,
+): string {
     const a = normalizeRoutingIntentCell(from);
     const b = normalizeRoutingIntentCell(to);
     if (!a || !b) return "invalid";
@@ -158,16 +161,13 @@ export function classifyRoutingIntentDisagreement<TFrom, TTo>(from: TFrom, to: T
     if ((NON_MATERIALIZING.has(a) && MATERIALIZING.has(b)) || (MATERIALIZING.has(a) && NON_MATERIALIZING.has(b))) {
         return "answer_action_boundary";
     }
-    if (a === "QUICK_FIX" && (b === ROUTING_INTENT_PLANNED_CHANGE || b === "PROJECT")) {
+    if (a === "QUICK_FIX" && (b === "PLANNED_CHANGE" || b === "PROJECT")) {
         return "scope_underestimated";
     }
-    if ((a === ROUTING_INTENT_PLANNED_CHANGE || a === "PROJECT") && b === "QUICK_FIX") {
+    if ((a === "PLANNED_CHANGE" || a === "PROJECT") && b === "QUICK_FIX") {
         return "scope_overestimated";
     }
-    if (
-        (a === ROUTING_INTENT_PLANNED_CHANGE && b === "PROJECT") ||
-        (a === "PROJECT" && b === ROUTING_INTENT_PLANNED_CHANGE)
-    ) {
+    if ((a === "PLANNED_CHANGE" && b === "PROJECT") || (a === "PROJECT" && b === "PLANNED_CHANGE")) {
         return "feature_project_boundary";
     }
     if (a === "IDEATION" || b === "IDEATION") return "ideation_boundary";
@@ -213,7 +213,7 @@ export function scoreAgainstHuman<TCell>(rows: CsvRow<TCell>[], candidateColumn:
     const corrections: Record<string, number> = {};
 
     for (const row of rows) {
-        const human = normalizeRoutingIntentCell(row.humanJudgement);
+        const human = typeof row.humanJudgement === "string" ? normalizeRoutingIntentCell(row.humanJudgement) : "";
         if (!human) continue;
         const rawCandidate = oneLine(row[candidateColumn]);
         if (!rawCandidate) {

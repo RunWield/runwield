@@ -43,7 +43,7 @@ export async function createRendererFixture(root: string, origin: string): Promi
             `# Fixture Plan ${index}\n\n## Context\n\nMemory plan body ${index}`,
             {
                 planId: `fixture-id-${index}`,
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "draft",
                 summary: `Memory plan body ${index}`,
             },
@@ -51,7 +51,7 @@ export async function createRendererFixture(root: string, origin: string): Promi
     }
     await savePlan(projects[0], "fixture-1", "# Fixture Plan 1\n\n## Context\n\nMemory plan body 1", {
         planId: "fixture-id-1",
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         status: "draft",
         summary: "Memory plan body 1",
     });

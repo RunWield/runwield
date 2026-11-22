@@ -367,7 +367,7 @@ test("manual board movement allows ready_for_decomposition only for Epic plans",
         () =>
             buildPlanEventUpdates("manual_status_change", "approved", {
                 manualTargetStatus: "ready_for_decomposition",
-                triageMeta: { classification: "FEATURE" },
+                triageMeta: { classification: "PLANNED_CHANGE" },
             }),
         Error,
         'manual_status_change cannot move from "approved" to "ready_for_decomposition"',
@@ -586,7 +586,7 @@ test("recordPlanEvent mutates only the selected held plan file", async () => {
                 `${cwd}/docs/plans/epic/child.md`,
                 [
                     "---",
-                    'classification: "FEATURE"',
+                    'classification: "PLANNED_CHANGE"',
                     'complexity: "MEDIUM"',
                     'summary: "Child"',
                     "affectedPaths:",
@@ -632,7 +632,7 @@ test("recordPlanEvent verifies parent Epic when the final child feature is verif
             });
             await savePlan(cwd, "epic/01-first", "# First", {
                 planId: "fixture-epic/01-first",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 summary: "First",
                 affectedPaths: [],
@@ -643,7 +643,7 @@ test("recordPlanEvent verifies parent Epic when the final child feature is verif
             });
             await savePlan(cwd, "epic/02-last", "# Last", {
                 planId: "fixture-epic/02-last",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 summary: "Last",
                 affectedPaths: [],
@@ -659,7 +659,7 @@ test("recordPlanEvent verifies parent Epic when the final child feature is verif
                 currentStatus: "reviewed",
                 details: {
                     ...TEST_DELIVERY_DETAILS,
-                    triageMeta: { classification: "FEATURE", parentPlan: "epic" },
+                    triageMeta: { classification: "PLANNED_CHANGE", parentPlan: "epic" },
                     now: () => new Date("2026-01-02T03:04:05.000Z"),
                 },
             });
@@ -691,7 +691,7 @@ test("recordPlanEvent keeps parent Epic open while child features remain unverif
             });
             await savePlan(cwd, "epic/01-first", "# First", {
                 planId: "fixture-epic/01-first",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 summary: "First",
                 affectedPaths: [],
@@ -701,7 +701,7 @@ test("recordPlanEvent keeps parent Epic open while child features remain unverif
             });
             await savePlan(cwd, "epic/02-last", "# Last", {
                 planId: "fixture-epic/02-last",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 summary: "Last",
                 affectedPaths: [],
@@ -715,7 +715,7 @@ test("recordPlanEvent keeps parent Epic open while child features remain unverif
                 planName: "epic/02-last",
                 event: "validation_passed",
                 currentStatus: "reviewed",
-                details: { ...TEST_DELIVERY_DETAILS, triageMeta: { classification: "FEATURE", parentPlan: "epic" } },
+                details: { ...TEST_DELIVERY_DETAILS, triageMeta: { classification: "PLANNED_CHANGE", parentPlan: "epic" } },
             });
 
             const parent = await loadPlan(cwd, "epic");
@@ -744,7 +744,7 @@ test("buildPlanEventUpdates only marks PROJECT Epic plans done enough", () => {
     assertThrows(
         () =>
             buildPlanEventUpdates("epic_done_enough", "ready_for_work", {
-                triageMeta: { classification: "FEATURE" },
+                triageMeta: { classification: "PLANNED_CHANGE" },
             }),
         Error,
         "epic_done_enough can only apply to PROJECT Epic plans",
@@ -761,7 +761,7 @@ test("isExecutablePlanStatus only accepts ready_for_work", () => {
 test("isEpicPlan detects PROJECT plans by classification", () => {
     assertEquals(isEpicPlan({ classification: "PROJECT" }), true);
     assertEquals(isEpicPlan({ type: "epic" }), false);
-    assertEquals(isEpicPlan({ classification: "FEATURE" }), false);
+    assertEquals(isEpicPlan({ classification: "PLANNED_CHANGE" }), false);
     assertEquals(isEpicPlan(undefined), false);
 });
 
@@ -847,13 +847,13 @@ test("stageValidationPassedInExecutionWorktree keeps reviewed evidence immutable
             await savePlan(projectRoot, "feature", "# Feature", {
                 planId: "fixture-feature",
                 status: "implemented",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
             });
             await savePlan(executionCwd, "feature", "# Feature", {
                 planId: "fixture-feature",
                 status: "reviewed",
                 validatedAt: "2026-01-03T00:00:00.000Z",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 executionMode: "worktree",
                 deliveryEvidence: TEST_DELIVERY_DETAILS.deliveryEvidence,
             });
@@ -970,28 +970,28 @@ test("stageValidationPassedInExecutionWorktree advances the execution-worktree p
             await savePlan(projectRoot, "child-a", "# Child A", {
                 planId: "fixture-child-a",
                 status: "verified",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 ...TEST_DELIVERY_DETAILS,
                 parentPlan: "epic",
             });
             await savePlan(projectRoot, "child-b", "# Child B", {
                 planId: "fixture-child-b",
                 status: "implemented",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
             });
             await savePlan(executionCwd, "epic", "# Stale Epic", epicAttrs);
             await savePlan(executionCwd, "child-a", "# Stale Child A", {
                 planId: "fixture-child-a",
                 status: "verified",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
                 ...TEST_DELIVERY_DETAILS,
             });
             await savePlan(executionCwd, "child-b", "# Stale Child B", {
                 planId: "fixture-child-b",
                 status: "reviewed",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
             });
 
@@ -1040,13 +1040,13 @@ test("stageValidationPassedInExecutionWorktree idempotent retry does not reread 
             await savePlan(projectRoot, "child-a", "# Child A", {
                 planId: "fixture-child-a",
                 status: "implemented",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
             });
             await savePlan(projectRoot, "child-b", "# Child B", {
                 planId: "fixture-child-b",
                 status: "in_progress",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
             });
             await savePlan(executionCwd, "epic", "# Epic", epicAttrs);
@@ -1054,7 +1054,7 @@ test("stageValidationPassedInExecutionWorktree idempotent retry does not reread 
                 await savePlan(executionCwd, name, `# ${name}`, {
                     planId: `fixture-${name}`,
                     status: name === "child-a" ? "reviewed" : "in_progress",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     parentPlan: "epic",
                 });
             }
@@ -1067,7 +1067,7 @@ test("stageValidationPassedInExecutionWorktree idempotent retry does not reread 
             });
             await updatePlanFrontMatterForTest(projectRoot, "child-b", {
                 status: "verified",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 ...TEST_DELIVERY_DETAILS,
                 parentPlan: "epic",
             });
@@ -1106,13 +1106,13 @@ test("stageValidationPassedInExecutionWorktree ignores a sibling reopened only i
             await savePlan(projectRoot, "child-a", "# Child A", {
                 planId: "fixture-child-a",
                 status: "implemented",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
             });
             await savePlan(projectRoot, "child-b", "# Child B", {
                 planId: "fixture-child-b",
                 status: "verified",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 ...TEST_DELIVERY_DETAILS,
                 parentPlan: "epic",
             });
@@ -1121,7 +1121,7 @@ test("stageValidationPassedInExecutionWorktree ignores a sibling reopened only i
                 await savePlan(executionCwd, name, `# ${name}`, {
                     planId: `fixture-${name}`,
                     status: name === "child-a" ? "reviewed" : "verified",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     parentPlan: "epic",
                     ...(name === "child-b" ? TEST_DELIVERY_DETAILS : {}),
                 });
@@ -1135,7 +1135,7 @@ test("stageValidationPassedInExecutionWorktree ignores a sibling reopened only i
             });
             await updatePlanFrontMatterForTest(projectRoot, "child-b", {
                 status: "draft",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
             });
             const retried = await stageValidationPassedInExecutionWorktree({
@@ -1173,13 +1173,13 @@ test("stageValidationPassedInExecutionWorktree does not import a newer primary p
             await savePlan(projectRoot, "child-a", "# Child A", {
                 planId: "fixture-child-a",
                 status: "implemented",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
             });
             await savePlan(projectRoot, "child-b", "# Child B", {
                 planId: "fixture-child-b",
                 status: "verified",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 ...TEST_DELIVERY_DETAILS,
                 parentPlan: "epic",
             });
@@ -1187,14 +1187,14 @@ test("stageValidationPassedInExecutionWorktree does not import a newer primary p
             await savePlan(executionCwd, "child-a", "# Child A", {
                 planId: "fixture-child-a",
                 status: "reviewed",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
                 ...TEST_DELIVERY_DETAILS,
             });
             await savePlan(executionCwd, "child-b", "# Child B", {
                 planId: "fixture-child-b",
                 status: "verified",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
                 ...TEST_DELIVERY_DETAILS,
             });
@@ -1264,7 +1264,7 @@ test("recordPlanEvent enforces FEATURE Delivery Evidence without supplied triage
             await savePlan(projectRoot, "feature", "# Feature", {
                 planId: "fixture-feature",
                 status: "reviewed",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
             });
             await assertRejects(
                 () =>
@@ -1334,23 +1334,23 @@ test("recordPlanEvent explains stale Plan status with a validation action", asyn
 });
 
 test("getPlanLifecycleActionMetadata keeps protected states behind dedicated actions", () => {
-    const draft = getPlanLifecycleActionMetadata("draft", { classification: "FEATURE" });
+    const draft = getPlanLifecycleActionMetadata("draft", { classification: "PLANNED_CHANGE" });
     assertEquals(draft.allowedManualTargetStatuses.includes("verified"), false);
     assertEquals(draft.allowedManualTargetStatuses.includes("failed"), false);
     assertEquals(draft.allowedManualTargetStatuses.includes("on_hold"), false);
     assertEquals(draft.canPutOnHold, true);
     assertEquals(draft.canCloseWithoutVerification, true);
 
-    const failed = getPlanLifecycleActionMetadata("failed", { classification: "FEATURE" });
+    const failed = getPlanLifecycleActionMetadata("failed", { classification: "PLANNED_CHANGE" });
     assertEquals(failed.allowedManualTargetStatuses, []);
     assertEquals(failed.canPutOnHold, true);
 
-    const verified = getPlanLifecycleActionMetadata("verified", { classification: "FEATURE" });
+    const verified = getPlanLifecycleActionMetadata("verified", { classification: "PLANNED_CHANGE" });
     assertEquals(verified.canPutOnHold, false);
     assertEquals(verified.canCloseWithoutVerification, false);
 
     const held = getPlanLifecycleActionMetadata("on_hold", {
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         heldFromStatus: "ready_for_work",
     });
     assertEquals(held.canResumeFromHold, true);

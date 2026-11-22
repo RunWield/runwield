@@ -132,8 +132,8 @@ export type PlanDocumentMetadata = {
     title?: string;
     /** Durable project-scoped resource identity for URL/addressable Plan lookup */
     planId?: string;
-    classification: PlanClassification | "FEATURE";
-    /** Optional nature of planned executable work; legacy classification FEATURE does not imply this. */
+    classification: PlanClassification;
+    /** Optional nature of planned executable work. */
     workKind?: WorkKind;
     /** PROJECT capability: epic (default) or sequence. Invalid values remain visible for correction. */
     type?: string;
@@ -644,7 +644,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { CLI_BIN, normalizeWorkKind, PLANS_DIR_NAME, ROUTING_INTENT_PLANNED_CHANGE } from "./constants.ts";
+import { CLI_BIN, normalizeWorkKind, PLANS_DIR_NAME } from "./constants.ts";
 
 import { normalizeTicketReferences } from "./shared/ticket-references.ts";
 
@@ -1589,7 +1589,7 @@ export async function saveChildFeaturePlans(
             throw new Error(`Invalid child plan name: ${childPlanName}`);
         }
         const policy = resolvePlanExecutionPolicy({
-            classification: ROUTING_INTENT_PLANNED_CHANGE,
+            classification: "PLANNED_CHANGE",
             executionAgent: child.executionAgent,
             collaborationRecommendation: child.collaborationRecommendation,
             frontend: child.frontend,
@@ -1661,7 +1661,7 @@ export async function saveChildFeaturePlans(
         const workKind = normalizeWorkKind(child.workKind);
         if (workKind) metadata.workKind = workKind;
         const policyResult = resolvePlanExecutionPolicy({
-            classification: ROUTING_INTENT_PLANNED_CHANGE,
+            classification: "PLANNED_CHANGE",
             executionAgent: child.executionAgent,
             collaborationRecommendation: child.collaborationRecommendation,
             frontend: child.frontend,

@@ -321,7 +321,7 @@ test("sequential QUICK_FIX completions each run Mechanical Validation", async ()
 test("real Plan review feedback resumes the handler and saved approval settles without another model answer", async () => {
     await withRuntimeCommandFixture("handler-real-plan-review-", async ({ projectRoot, setModelResponseFactories }) => {
         await savePlan(projectRoot, "event-plan", "# Event Plan\n\nImplement the reviewed change.", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "approved",
         });
         const events: CapturedRuntimeEvent[] = [];
@@ -334,7 +334,7 @@ test("real Plan review feedback resumes the handler and saved approval settles w
                 hostedSession,
                 agentName: "planner",
                 triageMeta: {
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     complexity: "MEDIUM",
                     summary: "Reviewed change",
                     affectedPaths: [],

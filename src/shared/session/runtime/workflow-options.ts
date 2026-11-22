@@ -113,7 +113,7 @@ export interface RuntimeValidationResult {
 export function isValidationTriageMeta(
     value: RuntimeTriageInput,
 ): value is import("../../../tools/plan-written.ts").TriageMeta {
-    const classifications = new Set(["QUICK_FIX", "PLANNED_CHANGE", "FEATURE", "PROJECT"]);
+    const classifications = new Set(["QUICK_FIX", "PLANNED_CHANGE", "PROJECT"]);
     const complexities = new Set(["LOW", "MEDIUM", "HIGH"]);
     const statuses = new Set([
         "approved",

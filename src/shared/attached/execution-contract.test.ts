@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { ENGINEER_MESSAGE_DESCRIPTION, IMPLEMENTATION_REPORT_MIN_LENGTH } from "../workflow/implementation-report.ts";
+import { toolRegistry } from "@runwield/tools";
 import { EVIDENCE } from "./attached-test-fixture.ts";
 import {
     ATTACHED_OPERATIONS,
@@ -21,10 +21,11 @@ test("Attached task_completed keeps the exact Core name, message schema, and whi
     assert(payload && typeof payload === "object" && !Array.isArray(payload));
     const properties = payload.properties;
     assert(properties && typeof properties === "object" && !Array.isArray(properties));
+    const { engineerMessageDescription, implementationReportMinLength } = toolRegistry.get("task_completed");
     assertEquals(properties.message, {
         type: "string",
-        minLength: IMPLEMENTATION_REPORT_MIN_LENGTH,
-        description: ENGINEER_MESSAGE_DESCRIPTION,
+        minLength: implementationReportMinLength,
+        description: engineerMessageDescription,
     });
     const message = " \n- Implementation outcome\n  - Verification detail\n";
     const parsed = parseTaskCompletedInput(root, { ...envelope, payload: { actionId: "action", message } });

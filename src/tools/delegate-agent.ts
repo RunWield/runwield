@@ -6,7 +6,7 @@ import { captureForegroundProcess } from "../shared/captured-process.ts";
  */
 
 import { join } from "node:path";
-import { Type } from "typebox";
+import { toolRegistry, type DelegationMode } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -26,46 +26,7 @@ import type { AgentDefinition } from "../shared/session/agents.ts";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
 import { extractAssistantOutput } from "../shared/workflow/workflow-results.ts";
 
-export type DelegationMode = "read" | "write";
-
-/** Every delegation mode, in the order the tool schema lists them. */
-export const DELEGATION_MODES: readonly DelegationMode[] = Object.freeze(["read", "write"]);
-
-const MODE_DESCRIPTIONS: Readonly<Record<DelegationMode, string>> = Object.freeze({
-    read: "read for investigation/review",
-    write: "write for one exclusive implementation task",
-});
-
-/**
- * Build the tool schema with only the modes this Agent may use, so the model never sees a mode it would be refused.
- *
- * @param {readonly DelegationMode[]} modes
- */
-function createParameters(modes: readonly DelegationMode[]) {
-    return Type.Object(
-        {
-            mode: Type.Enum(modes, {
-                description: `Delegation authority. Use ${modes.map((mode) => MODE_DESCRIPTIONS[mode]).join(" and ")}.`,
-            }),
-            role: Type.Optional(
-                Type.Enum([...DELEGATED_ROLE_IDS], {
-                    description:
-                        "Optional Delegated Agent Role. Omit (or use 'general') for an unspecialized delegate. Use 'verification-adversary' to have a read-only delegate attack a draft Plan's outcomes, steps, and verification claims with the cheapest counterfeit implementation; a role's authority ceiling can reduce the requested mode.",
-                }),
-            ),
-            background: Type.Optional(
-                Type.Boolean({ description: "Run a read-only delegate without waiting for its result." }),
-            ),
-            brief: Type.String({
-                minLength: 1,
-                maxLength: 12000,
-                description:
-                    "Self-contained bounded brief for the Delegated Agent. Include all paths, goals, constraints, and expected handoff details.",
-            }),
-        },
-        { additionalProperties: false },
-    );
-}
+const delegateAgent = toolRegistry.get("delegate_agent");
 
 export interface DelegatedAgentSessionOptions {
     hostedSession: HostedSession;
@@ -350,23 +311,10 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
     if (!opts.hostedSession) throw new Error("createDelegateAgentTool: hostedSession is required");
     if (!opts.cwd) throw new Error("createDelegateAgentTool: cwd is required");
     if (!opts.runIsolatedAgentSession) throw new Error("createDelegateAgentTool: runIsolatedAgentSession is required");
-    const allowedModes = DELEGATION_MODES.filter(
-        (mode) => !opts.delegationModes || opts.delegationModes.includes(mode),
-    );
-    if (!allowedModes.length) throw new Error("createDelegateAgentTool: delegationModes must allow at least one mode");
-    const parameters = createParameters(allowedModes);
-    const modeGuidance =
-        allowedModes.length === DELEGATION_MODES.length
-            ? "Use mode 'read' for investigation/review and mode 'write' for one exclusive synchronous implementation task."
-            : `Only mode '${allowedModes[0]}' is available to this Agent.`;
-    const backgroundGuidance = allowedModes.includes("read")
-        ? " Set background: true for independent read-only work and inspect its final task result before relying on it."
-        : "";
-    return defineTool<typeof parameters, DelegateAgentDetails>({
-        name: "delegate_agent",
-        label: "Delegate Agent",
-        description: `Run a bounded context-isolated Delegated Agent Session. ${modeGuidance}${backgroundGuidance}`,
-        parameters,
+    const definition = delegateAgent.define(opts.delegationModes ?? delegateAgent.modes, DELEGATED_ROLE_IDS);
+    const allowedModes = definition.parameters.properties.mode.enum;
+    return defineTool<typeof definition.parameters, DelegateAgentDetails>({
+        ...definition,
         async execute(toolCallId, params, signal, _onUpdate, _ctx): Promise<DelegateAgentResult> {
             const requestedMode: DelegationMode = params.mode === "write" ? "write" : "read";
             const requestedRole = typeof params.role === "string" && params.role ? params.role : DELEGATED_ROLE_GENERAL;

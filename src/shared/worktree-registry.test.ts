@@ -506,7 +506,7 @@ test("worktree registry migration resolves unambiguous legacy plan names", async
             await seedPlan(projectRoot, "demo-plan", "# Demo", {
                 planId: "plan-1",
                 status: "in_progress",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
             });
             const path = getWorktreeRegistryPath(projectRoot);
             await fsMkdir(dirname(path), { recursive: true });
@@ -597,7 +597,7 @@ test("registry migration keeps distinct execution documents ambiguous", async ()
                 await seedPlan(root, "demo-plan", "# Same Plan identity\n", {
                     planId: "plan-1",
                     status: "in_progress",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                 });
             }
             const path = getWorktreeRegistryPath(projectRoot);

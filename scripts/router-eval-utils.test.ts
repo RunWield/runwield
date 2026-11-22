@@ -60,19 +60,19 @@ test("withRouterJudgementMetrics annotates Router agreement columns", () => {
     );
 });
 
-test("withRouterJudgementMetrics aliases legacy FEATURE cells", () => {
+test("withRouterJudgementMetrics leaves FEATURE routing cells unscored", () => {
     assertEquals(
         withRouterJudgementMetrics({
             routerDecision: "FEATURE",
             humanJudgement: "FEATURE",
         }),
         {
-            routerDecision: "PLANNED_CHANGE",
-            humanJudgement: "PLANNED_CHANGE",
-            routerAgreesWithHuman: "TRUE",
+            routerDecision: "",
+            humanJudgement: "",
+            routerAgreesWithHuman: "",
             routerCorrection: "",
-            routerDistanceFromHuman: 0,
-            routerDisagreementKind: "exact",
+            routerDistanceFromHuman: "",
+            routerDisagreementKind: "",
         },
     );
 });
@@ -85,7 +85,7 @@ test("judgement metrics classify corrections and leave invalid judgements unscor
         ["INQUIRY", "PROJECT", 5, "answer_action_boundary"],
         ["PLANNED_CHANGE", "QUICK_FIX", 1, "scope_overestimated"],
         ["PLANNED_CHANGE", "PROJECT", 1, "feature_project_boundary"],
-        ["QUICK_FIX", "feature", 1, "scope_underestimated"],
+        ["QUICK_FIX", "planned_change", 1, "scope_underestimated"],
     ] as const;
     for (const [routerDecision, humanJudgement, distance, kind] of cases) {
         const row = withRouterJudgementMetrics({ routerDecision, humanJudgement });
