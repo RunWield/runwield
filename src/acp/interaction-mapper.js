@@ -22,10 +22,12 @@ function supportsFormElicitation(capabilities) {
  * @param {{ request?: Function, client?: { request?: Function } }} context
  * @param {string} method
  * @param {unknown} params
+ * @param {import('@agentclientprotocol/sdk').SendRequestOptions} [options]
  */
-function requestClient(context, method, params) {
-    if (typeof context.request === "function") return context.request(method, params);
-    if (context.client && typeof context.client.request === "function") return context.client.request(method, params);
+function requestClient(context, method, params, options) {
+    if (typeof context.request === "function") return context.request(method, params, options);
+    if (context.client && typeof context.client.request === "function")
+        return context.client.request(method, params, options);
     return Promise.resolve({ action: "cancel" });
 }
 
@@ -149,7 +151,11 @@ async function requestBrowserQuestion(options) {
  */
 function buildSchema(interaction) {
     if (interaction.type === RuntimeInteractionTypes.SELECT || interaction.type === RuntimeInteractionTypes.APPROVAL) {
-        const oneOf = (interaction.options || []).map((option) => ({ const: option.value, title: option.label }));
+        const oneOf = (interaction.options || []).map((option) => ({
+            const: option.value,
+            title: option.label,
+            ...(option.description ? { description: option.description } : {}),
+        }));
         return {
             type: "object",
             title: interaction.prompt,
@@ -158,6 +164,7 @@ function buildSchema(interaction) {
                     type: "string",
                     title: "Answer",
                     ...(oneOf.length ? { oneOf } : {}),
+                    ...(interaction.defaultValue !== undefined ? { default: interaction.defaultValue } : {}),
                 },
                 ...(interaction.otherOptionValue
                     ? {
@@ -179,7 +186,7 @@ function buildSchema(interaction) {
             answer: {
                 type: "string",
                 title: "Answer",
-                ...(interaction.defaultValue ? { default: interaction.defaultValue } : {}),
+                ...(interaction.defaultValue !== undefined ? { default: interaction.defaultValue } : {}),
                 ...(interaction.placeholder ? { description: interaction.placeholder } : {}),
             },
         },
@@ -188,7 +195,15 @@ function buildSchema(interaction) {
 }
 
 /**
- * @param {{ context: any, acpSessionId: string, clientCapabilities?: unknown, presentChatQuestion?: (interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, signal?: AbortSignal) => Promise<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse> }} options
+ * @typedef {Object} AcpInteractionAdapterOptions
+ * @property {any} context
+ * @property {string} acpSessionId
+ * @property {unknown} [clientCapabilities]
+ * @property {(interaction: import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest, signal?: AbortSignal) => Promise<import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionResponse>} [presentChatQuestion]
+ */
+
+/**
+ * @param {AcpInteractionAdapterOptions} options
  * @returns {import('../shared/session/session-runtime-interactions.ts').RuntimeInteractionAdapter}
  */
 export function createAcpInteractionAdapter({ context, acpSessionId, clientCapabilities, presentChatQuestion }) {
@@ -261,13 +276,24 @@ export function createAcpInteractionAdapter({ context, acpSessionId, clientCapab
                           message: "Chat questions are unavailable.",
                       };
             }
-            const response = await requestClient(context, methods.client.elicitation.create, {
-                mode: "form",
-                sessionId: acpSessionId,
-                message: interaction.prompt,
-                requestedSchema: buildSchema(interaction),
-                _meta: { runwield: { interactionId: interaction.id, interactionType: interaction.type } },
-            });
+            const response = await requestClient(
+                context,
+                methods.client.elicitation.create,
+                {
+                    mode: "form",
+                    sessionId: acpSessionId,
+                    message: interaction.prompt,
+                    requestedSchema: buildSchema(interaction),
+                    _meta: {
+                        runwield: {
+                            interactionId: interaction.id,
+                            interactionType: interaction.type,
+                            ...(interaction.otherOptionValue ? { otherOptionValue: interaction.otherOptionValue } : {}),
+                        },
+                    },
+                },
+                { cancellationSignal: signal },
+            );
             const action = response?.action;
             if (action === "cancel" || action === "decline") {
                 return { outcome: RuntimeInteractionOutcomes.CANCELED, message: `ACP elicitation ${action}.` };
@@ -277,6 +303,9 @@ export function createAcpInteractionAdapter({ context, acpSessionId, clientCapab
                     outcome: RuntimeInteractionOutcomes.UNSUPPORTED,
                     message: "ACP elicitation returned no answer.",
                 };
+            }
+            if (signal?.aborted) {
+                return { outcome: RuntimeInteractionOutcomes.CANCELED, message: "Interaction canceled." };
             }
             const value = response?.content?.answer;
             if (interaction.type === RuntimeInteractionTypes.TEXT) {

@@ -1,10 +1,10 @@
 /** Lazy, TUI-owned loopback reader for Project-relative Markdown mentions. */
 import { realpathSync, statSync } from "node:fs";
-import { reviewHost, type ReviewHostRegistration } from "../workspace/server/review-host.ts";
+import { reviewHost, type ReviewHostRegistration } from "../../shared/browser-host/review-host.ts";
 import { extname } from "node:path";
 import { PLAN_UI_TOKEN_QUERY } from "../../constants.js";
-import { createDocumentReadWorkspaceApp } from "../workspace/server.js";
-import { resolveWorkspaceFile } from "../workspace/routes/api/review-file-handlers.ts";
+import { createDocumentReadWorkspaceApp } from "../../shared/browser-host/standalone.ts";
+import { resolveWorkspaceFile } from "../../shared/browser-host/review-file-handlers.ts";
 
 type DocumentRequestHandler = (request: Request) => Promise<Response>;
 

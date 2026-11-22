@@ -6,7 +6,7 @@ import { parseProviderModel } from "../models/model-validation.ts";
 import { resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { assertPersonalResourcePath, PersonalResourcePathError } from "../remote/personal-resources.ts";
 import { isWorkflowOnlyAgent, loadAgentDef, normalizeAgentInternalName } from "./agents.js";
-import { getPromptTemplatePaths } from "./session.js";
+import { getPromptTemplatePaths } from "./prompt-template-paths.ts";
 import { expandSkillRecord, findSkill } from "./skill-catalog.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
@@ -86,13 +86,7 @@ type PromptTemplateResource = {
     packageSource?: string;
 };
 
-const ALLOWED_PROMPT_FRONT_MATTER = new Set([
-    "description",
-    "argument-hint",
-    "model",
-    "agent",
-    "thinkingLevel",
-]);
+const ALLOWED_PROMPT_FRONT_MATTER = new Set(["description", "argument-hint", "model", "agent", "thinkingLevel"]);
 
 const THINKING_LEVELS = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
@@ -177,38 +171,48 @@ export function isNamedInvocationEntry(entry: { type?: string; customType?: stri
     return entry.type === "custom" && entry.customType === NAMED_INVOCATION_CUSTOM_TYPE;
 }
 
-export function readNamedInvocationPayload(
-    entry: { type?: string; customType?: string; data?: NamedInvocationPayload },
-): NamedInvocationPayload | null {
+export function readNamedInvocationPayload(entry: {
+    type?: string;
+    customType?: string;
+    data?: NamedInvocationPayload;
+}): NamedInvocationPayload | null {
     if (!isNamedInvocationEntry(entry)) return null;
     if (!entry.data || entry.data.version !== NAMED_INVOCATION_VERSION) return null;
     return entry.data;
 }
 
-export function namedInvocationDisplayText(
-    entry: { type?: string; customType?: string; data?: NamedInvocationPayload },
-) {
+export function namedInvocationDisplayText(entry: {
+    type?: string;
+    customType?: string;
+    data?: NamedInvocationPayload;
+}) {
     const payload = readNamedInvocationPayload(entry);
     if (!payload) return "";
     if (payload.kind === "prompt_template") return payload.expandedRequest || payload.compactInvocation || "";
     return payload.compactInvocation || "";
 }
 
-export function namedInvocationCompactText(
-    entry: { type?: string; customType?: string; data?: NamedInvocationPayload },
-) {
+export function namedInvocationCompactText(entry: {
+    type?: string;
+    customType?: string;
+    data?: NamedInvocationPayload;
+}) {
     return readNamedInvocationPayload(entry)?.compactInvocation || "";
 }
 
-export function namedInvocationExpandedText(
-    entry: { type?: string; customType?: string; data?: NamedInvocationPayload },
-) {
+export function namedInvocationExpandedText(entry: {
+    type?: string;
+    customType?: string;
+    data?: NamedInvocationPayload;
+}) {
     return readNamedInvocationPayload(entry)?.expandedRequest || "";
 }
 
-export function namedInvocationImageReferences(
-    entry: { type?: string; customType?: string; data?: NamedInvocationPayload },
-): ImageReference[] {
+export function namedInvocationImageReferences(entry: {
+    type?: string;
+    customType?: string;
+    data?: NamedInvocationPayload;
+}): ImageReference[] {
     return readNamedInvocationPayload(entry)?.imageReferences.map((image) => ({ ...image })) || [];
 }
 
@@ -279,7 +283,7 @@ async function findPromptTemplateResource(cwd: string, name: string): Promise<Pr
     if (!isResourceBaseName(name)) return null;
     const layers = getPromptTemplatePaths(cwd).map((path, index) => ({
         dir: path,
-        source: index === 0 ? "local" as const : index === 1 ? "home" as const : "bundled" as const,
+        source: index === 0 ? ("local" as const) : index === 1 ? ("home" as const) : ("bundled" as const),
     }));
     const fileName = `${name}.md`;
     for (const layer of layers) {
@@ -404,7 +408,9 @@ function expandPromptTemplateBody(body: string, additionalInstructions: string |
 async function sha256Hex(text: string) {
     const bytes = new TextEncoder().encode(text);
     const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
 type AppendableMessage = Parameters<SessionManager["appendMessage"]>[0];
@@ -414,10 +420,7 @@ function isUserMessage(message: AppendableMessage): message is AppendableUserMes
     return typeof message === "object" && message !== null && "role" in message && message.role === "user";
 }
 
-function toCompactUserMessage(
-    message: AppendableUserMessage,
-    text: string,
-): AppendableUserMessage {
+function toCompactUserMessage(message: AppendableUserMessage, text: string): AppendableUserMessage {
     const cloned = structuredClone(message);
     const content = Array.isArray(cloned.content) ? cloned.content : [];
     const nonTextContent = content.filter((block): block is ImageContent => block.type !== "text");

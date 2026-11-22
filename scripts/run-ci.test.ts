@@ -13,7 +13,9 @@ test("CI collects all failures by default and supports explicit fail-fast", asyn
     const root = await fsMkdtemp(join(tmpdir(), "ci-command-fixture-"));
     try {
         const executable = `'${process.execPath.replaceAll("'", "'\\''")}'`;
-        const tasks = Object.fromEntries(PRE_TEST_TASKS.map((name) => [name, `${executable} ${"--eval"} 'void 0'`]));
+        const tasks = Object.fromEntries(
+            ["desktop:setup", ...PRE_TEST_TASKS].map((name) => [name, `${executable} ${"--eval"} 'void 0'`]),
+        );
         await fsWriteFile(
             join(root, "deno.json"),
             JSON.stringify({
@@ -89,19 +91,25 @@ test("runCi starts every pre-test task before waiting and keeps test behind the 
     });
 
     await flushPromises();
-    assertEquals(starts, [...PRE_TEST_TASKS]);
+    assertEquals(starts, ["desktop:setup"]);
+    tasks.get("desktop:setup")?.resolve({ name: "desktop:setup", code: 0 });
+    await flushPromises();
+    await flushPromises();
+    assertEquals(starts, ["desktop:setup", ...PRE_TEST_TASKS]);
+    assertEquals(starts.includes("desktop:build"), true);
+    assertEquals(starts.includes("desktop:check"), true);
 
     for (const taskName of PRE_TEST_TASKS.slice(0, -1)) {
         tasks.get(taskName)?.resolve({ name: taskName, code: 0 });
     }
     await flushPromises();
-    assertEquals(starts, [...PRE_TEST_TASKS]);
+    assertEquals(starts, ["desktop:setup", ...PRE_TEST_TASKS]);
 
     const lastPreTest = PRE_TEST_TASKS.at(-1);
     if (!lastPreTest) throw new Error("PRE_TEST_TASKS must not be empty");
     tasks.get(lastPreTest)?.resolve({ name: lastPreTest, code: 0 });
     await flushPromises();
-    assertEquals(starts, [...PRE_TEST_TASKS, "test:all:suite"]);
+    assertEquals(starts, ["desktop:setup", ...PRE_TEST_TASKS, "test:all:suite"]);
 
     tasks.get("test:all:suite")?.resolve({ name: "test:all:suite", code: 0 });
     assertEquals(await resultPromise, { exitCode: 0, failures: [] });
@@ -119,7 +127,7 @@ test("runCi reports all failed pre-test tasks and skips test", async () => {
         return Promise.resolve({ name: taskName, code: failed.get(taskName) ?? 0 });
     });
 
-    assertEquals(starts, [...PRE_TEST_TASKS]);
+    assertEquals(starts, ["desktop:setup", ...PRE_TEST_TASKS]);
     assertEquals(result, {
         exitCode: 1,
         failures: [
@@ -134,6 +142,7 @@ test("runCi converts a process-start error into a failed pre-test result and wai
     const tasks = new Map<CiTaskName, DeferredTask>();
     const resultPromise = runCi((taskName) => {
         starts.push(taskName);
+        if (taskName === "desktop:setup") return Promise.resolve({ name: taskName, code: 0 });
         if (taskName === "snip:check") throw new Error("could not start subprocess");
         const deferred = deferredTask();
         tasks.set(taskName, deferred);
@@ -141,7 +150,8 @@ test("runCi converts a process-start error into a failed pre-test result and wai
     });
 
     await flushPromises();
-    assertEquals(starts, [...PRE_TEST_TASKS]);
+    await flushPromises();
+    assertEquals(starts, ["desktop:setup", ...PRE_TEST_TASKS]);
 
     for (const taskName of PRE_TEST_TASKS) {
         if (taskName === "snip:check") continue;
@@ -182,6 +192,19 @@ test("source-only CI supports the independently required Golden job", async () =
         },
         { sourceOnly: true },
     );
-    assertEquals(starts, [...PRE_TEST_TASKS, "test:suite"]);
+    assertEquals(starts, ["desktop:setup", ...PRE_TEST_TASKS, "test:suite"]);
     assertEquals(result, { exitCode: 0, failures: [] });
 });
+
+for (const throws of [false, true]) {
+    test(`CI stops before parallel tasks when desktop setup ${throws ? "cannot start" : "fails"}`, async () => {
+        const starts: CiTaskName[] = [];
+        const result = await runCi((name) => {
+            starts.push(name);
+            if (throws) throw new Error("setup could not start");
+            return Promise.resolve({ name, code: 8 });
+        });
+        assertEquals(starts, ["desktop:setup"]);
+        assertEquals(result, { exitCode: 1, failures: [{ name: "desktop:setup", code: throws ? 1 : 8 }] });
+    });
+}

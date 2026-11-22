@@ -278,6 +278,18 @@ publication/recovery semantics. Expected removals are Workspace-hosted runtime e
 the runtime contract for authoritative operations, and platform-specific copies of shared workbench UI. Existing HTTP
 routes and Astro hosting need not disappear.
 
+### Integration Notes
+
+Left by the reviewers of individual children for the integration review. These are places to look, not requirements.
+
+<!-- runwield:integration-notes:start child="local-workspace-desktop/run-a-real-session-in-electron" -->
+
+**local-workspace-desktop/run-a-real-session-in-electron**
+
+- Check questions that arrive after the foreground prompt settles. Full Session parity must allow the answer and return the composer to an accurate state without requiring an active prompt promise. (Child 3; src/acp/client/workspace-session-client.ts answer(), cancel(), and elicitation/create handler.)
+
+<!-- runwield:integration-notes:end child="local-workspace-desktop/run-a-real-session-in-electron" -->
+
 ## Edge Cases & Considerations
 
 - Provider setup and Workspace login are distinct. Existing ambiguous ACP errors must identify the real prerequisite.

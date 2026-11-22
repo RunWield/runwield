@@ -30,7 +30,7 @@ import {
 } from "./update/index.ts";
 import { runSnipFiltersCommand } from "./snip-filters/index.ts";
 import { getMcpCompletions, runMcpCommand } from "./mcp/index.ts";
-import { runWorkspaceCommand } from "./workspace/index.ts";
+
 import { getAgentDisplayName } from "../shared/session/agents.js";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 
@@ -129,6 +129,7 @@ function requireInteractiveCommandContext(options) {
  * @property {string} summary
  * @property {string[]} usage
  * @property {string[]} [notes]
+ * @property {"new" | "help" | "context" | "agent" | "model"} [sessionAction]
  * @property {CommandHandler} execute
  * @property {("cli" | "slash")[]} surfaces
  * @property {("tui" | "acp" | "workspace")[]} [slashSurfaces]
@@ -256,6 +257,7 @@ export const commandRegistry = {
         getArgumentCompletions: getMcpCompletions,
     },
     [COMMAND_NAMES.AGENT]: {
+        sessionAction: "agent",
         name: COMMAND_NAMES.AGENT,
         aliases: ["agents"],
         displayName: "Agent",
@@ -283,6 +285,7 @@ export const commandRegistry = {
             await (await import("./agents/index.ts")).getAgentCompletions(argumentPrefix),
     },
     [COMMAND_NAMES.MODEL]: {
+        sessionAction: "model",
         name: COMMAND_NAMES.MODEL,
         aliases: ["models"],
         displayName: "Model",
@@ -422,6 +425,7 @@ export const commandRegistry = {
         slashSurfaces: ["tui", "workspace"],
     },
     [COMMAND_NAMES.NEW]: {
+        sessionAction: "new",
         name: COMMAND_NAMES.NEW,
         displayName: "New Session",
         description: "Start a new interactive session",
@@ -455,6 +459,7 @@ export const commandRegistry = {
         slashSurfaces: ["tui", "acp", "workspace"],
     },
     [COMMAND_NAMES.CONTEXT]: {
+        sessionAction: "context",
         name: COMMAND_NAMES.CONTEXT,
         displayName: "Context Usage",
         description: "Show active Agent Session context-window usage",
@@ -540,7 +545,7 @@ export const commandRegistry = {
             "Use --bind/--host only for explicit non-loopback exposure; RunWield prints a plaintext Plan-content warning.",
             "Workspace HTML and APIs require the per-server token in the launch URL or x-runwield-workspace-token header.",
         ],
-        execute: async (argv) => await (await import("./plans/index.ts")).runPlansCommand(argv),
+        execute: browserCommandRequiresCli,
         surfaces: ["cli"],
         slashSurfaces: ["workspace"],
     },
@@ -560,7 +565,7 @@ export const commandRegistry = {
             "Owner Workspace uses the owner coordination database and paired-device authorization.",
             "Use plans ui for the temporary current-checkout compatibility Plan Board.",
         ],
-        execute: runWorkspaceCommand,
+        execute: browserCommandRequiresCli,
         surfaces: ["cli"],
     },
     [COMMAND_NAMES.WR]: {
@@ -633,6 +638,7 @@ export const commandRegistry = {
         slashSurfaces: ["tui", "acp"],
     },
     [COMMAND_NAMES.HELP]: {
+        sessionAction: "help",
         name: COMMAND_NAMES.HELP,
         displayName: "Help",
         description: "Show help information",
@@ -948,4 +954,9 @@ export function requiresProjectDirectoryConsent(name, args = []) {
         COMMAND_NAMES.SLEEP,
         COMMAND_NAMES.INIT,
     ].includes(command.name);
+}
+
+/** Browser management commands have metadata here, but execute only in the CLI/browser composition. */
+function browserCommandRequiresCli() {
+    return Promise.reject(new Error("Browser management commands require the CLI or browser Workspace host."));
 }

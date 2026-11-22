@@ -1,5 +1,16 @@
 /** Browser-safe interaction values shared with the Hosted Session broker. */
-import type { RuntimeInteractionRequest } from "./session-runtime-interactions.ts";
+interface ApprovalMetadata {
+    accepted?: boolean;
+    approvalOutcome?: string;
+}
+interface ApprovalValueOption {
+    value: string;
+    label: string;
+    _meta?: ApprovalMetadata;
+}
+export interface ApprovalValueRequest {
+    options?: ApprovalValueOption[];
+}
 export const RuntimeInteractionTypes = Object.freeze({
     SELECT: "select",
     TEXT: "text",
@@ -21,7 +32,7 @@ export const RuntimeInteractionOutcomes = Object.freeze({
     BLOCKED: "blocked",
 });
 
-export function isApprovalAcceptedValue(request: RuntimeInteractionRequest, value: string): boolean {
+export function isApprovalAcceptedValue(request: ApprovalValueRequest, value: string): boolean {
     const options = request.options || [];
     const option = options.find((item) => item.value === value);
     if (option?._meta?.accepted === true || option?._meta?.approvalOutcome === "accepted") return true;

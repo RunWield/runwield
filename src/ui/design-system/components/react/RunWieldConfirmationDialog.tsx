@@ -7,6 +7,8 @@ export interface ConfirmationDialogProps {
     onContinue: () => void;
     onQuit: () => void;
     returnFocus?: RefObject<HTMLButtonElement | null>;
+    continueLabel?: string;
+    quitLabel?: string;
 }
 
 /** Native modal containment, Escape dismissal, and focus restoration. */
@@ -16,6 +18,8 @@ export function RunWieldConfirmationDialog({
     onContinue,
     onQuit,
     returnFocus,
+    continueLabel = "Continue",
+    quitLabel = "Quit",
 }: ConfirmationDialogProps) {
     const dialog = useRef<HTMLDialogElement>(null);
     const quit = useRef<HTMLButtonElement>(null);
@@ -60,10 +64,10 @@ export function RunWieldConfirmationDialog({
             <p className="rw-confirmation-detail">{detail}</p>
             <div className="rw-confirmation-actions">
                 <RunWieldButton variant="primary" onClick={onContinue}>
-                    Continue
+                    {continueLabel}
                 </RunWieldButton>
                 <button ref={quit} type="button" className="secondary-action" onClick={onQuit}>
-                    Quit
+                    {quitLabel}
                 </button>
             </div>
         </dialog>

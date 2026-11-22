@@ -73,7 +73,7 @@ export interface RemoteInteractiveConfig {
     resources: import("./personal-resources.ts").RemotePersonalResources;
     cwd: string;
     memoryCollection: string;
-    review: import("../../ui/workspace/server/review-host.ts").RemoteReviewHostConfig;
+    review: import("../browser-host/review-host.ts").RemoteReviewHostConfig;
 }
 
 /** Admit private bootstrap data before importing the ordinary TUI composition. */
@@ -99,7 +99,7 @@ export async function parseRemoteInteractiveConfig(header: string): Promise<Remo
         !config.resources.globalRoot.startsWith("/")
     )
         throw new Error("Invalid remote interactive configuration");
-    const { validateRemoteReviewHostConfig } = await import("../../ui/workspace/server/review-host.ts");
+    const { validateRemoteReviewHostConfig } = await import("../browser-host/review-host.ts");
     validateRemoteReviewHostConfig(config.review);
     return config;
 }
@@ -117,7 +117,7 @@ export async function runRemoteView(): Promise<void> {
     const clearMemory = configureRemoteMemoryConnection({ ...config.connection, collection: config.memoryCollection });
     const { configureRemoteClipboardConnection } = await import("../../ui/tui/clipboard.ts");
     const clearClipboard = configureRemoteClipboardConnection(config.connection);
-    const { configureRemoteReviewHost } = await import("../../ui/workspace/server/review-host.ts");
+    const { configureRemoteReviewHost } = await import("../browser-host/review-host.ts");
     const clearReviewHost = configureRemoteReviewHost(config.review);
     let clearGuideRunner: (() => void) | undefined;
     let clearModels: (() => void) | undefined;
@@ -129,7 +129,7 @@ export async function runRemoteView(): Promise<void> {
     try {
         const { configureRemoteModelConnection } = await import("../models/model-registry.ts");
         clearModels = await configureRemoteModelConnection(config.connection);
-        const { configureGuideRunner } = await import("../../ui/workspace/routes/api/review-agent-handlers.js");
+        const { configureGuideRunner } = await import("../browser-host/review-agent-handlers.ts");
         const { runRemoteGuideCommand } = await import("./guide-runner.ts");
         clearGuideRunner = configureGuideRunner(runRemoteGuideCommand);
         const tuiModule = await import("../../ui/tui/tui.ts");

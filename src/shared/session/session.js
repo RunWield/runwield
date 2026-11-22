@@ -143,10 +143,8 @@ import { formatGitPromptState, readGitPromptState } from "../git.ts";
 import { sanitizeSessionName } from "../session-name.ts";
 import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
-/** @returns {string | null} */
-function homePromptsDir() {
-    return join(personalGlobalRoot(), "prompts");
-}
+import { getPromptTemplatePaths, homePromptsDir } from "./prompt-template-paths.ts";
+export { getPromptTemplatePaths } from "./prompt-template-paths.ts";
 
 /** Pi provider hooks cannot execute across the remote model transport. */
 const REMOTE_PROVIDER_EXTENSION_OPTIONS = new Map([
@@ -362,20 +360,6 @@ const promptTemplateModelByName = new Map();
  * @property {string | undefined} [packageSource]
  * @property {string | undefined} [packageBaseDir]
  */
-
-/**
- * Resolve prompt template search paths by priority: local > home > bundled.
- *
- * @param {string} [cwd]
- * @returns {string[]}
- */
-export function getPromptTemplatePaths(cwd) {
-    return [
-        ...(cwd ? [join(cwd, ".wld", "prompts")] : []),
-        ...(homePromptsDir() ? [/** @type {string} */ (homePromptsDir())] : []),
-        PROMPT_TEMPLATES_DIR,
-    ];
-}
 
 /**
  * Parse prompt-template markdown metadata.
