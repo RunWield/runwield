@@ -130,7 +130,7 @@ async function captureConsoleOutput(run: () => Promise<void>): Promise<string> {
 async function seedMissingSettledWorktree(projectRoot: string, worktreeId: string): Promise<void> {
     await seedPlan(projectRoot, "demo", "# Demo\n", {
         planId: "plan-command-demo",
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         complexity: "LOW",
         summary: "Doctor command fixture.",
         affectedPaths: [],
@@ -291,7 +291,7 @@ test("plans doctor is report-only without repair", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-readonly-"));
     return await withRetainedPlanReadFixture(cwd, async () => {
         try {
-            await seedPlan(cwd, "missing-id", "# Missing", { status: "ready_for_work", classification: "FEATURE" });
+            await seedPlan(cwd, "missing-id", "# Missing", { status: "ready_for_work", classification: "PLANNED_CHANGE" });
             const registryPath = getWorktreeRegistryPath(cwd);
             await fsMkdir(dirname(registryPath), { recursive: true });
             await fsWriteFile(
@@ -337,7 +337,7 @@ test("plans doctor check preserves controller recovery, Plan identity, and catal
             const layout = await enterProjectRuntime(cwd);
             await seedPlan(cwd, "controller-check", "# Controller check\n", {
                 planId: "plan-controller-check",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "in_progress",
                 summary: "Controller inspection fixture.",
                 affectedPaths: [],
@@ -435,7 +435,7 @@ test("plans doctor applies identity and evidence checks to archived Plans", asyn
             await seedPlan(cwd, "active", "# Active", {
                 planId: "same-plan-id",
                 status: "ready_for_work",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
             });
             await fsMkdir(join(cwd, "docs", "plans", "archived"), { recursive: true });
             await fsWriteFile(
@@ -443,7 +443,7 @@ test("plans doctor applies identity and evidence checks to archived Plans", asyn
                 injectFrontMatter("# Old", {
                     planId: "same-plan-id",
                     status: "verified",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     deliveryEvidence: {
                         version: 1,
                         mode: "worktree_merge",
@@ -481,7 +481,7 @@ test("plans doctor reports archived legacy recovery without importing it", async
                 join(archivedDir, "legacy.md"),
                 injectFrontMatter("# Legacy archived\n", {
                     planId: "plan-legacy-archived",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     status: "failed",
                     worktreeId: "lost-attempt",
                     worktreeStatus: "active",
@@ -525,12 +525,12 @@ test("plans doctor reports a pending import from the live execution document", a
                 primaryPath,
                 injectFrontMatter("# Primary\n", {
                     planId: "plan-execution-import",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                 }),
             );
             const executionDocument = injectFrontMatter("# Execution\n", {
                 planId: "plan-execution-import",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "in_progress",
             });
             await fsWriteFile(executionPath, executionDocument);
@@ -578,7 +578,7 @@ test("plans doctor uses a reopened retired execution document", async () => {
         try {
             await seedPlan(cwd, "reopened", "# Primary\n", {
                 planId: "plan-reopened",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "ready_for_work",
             });
             const unpublishedCommit = await git(cwd, ["rev-parse", "side"]);
@@ -587,7 +587,7 @@ test("plans doctor uses a reopened retired execution document", async () => {
             await admitProjectIdentity(executionRoot);
             await seedPlan(executionRoot, "reopened", "# Execution\n", {
                 planId: "plan-reopened",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "verified",
                 targetBranch: "main",
                 validatedCommit: unpublishedCommit,
@@ -780,7 +780,7 @@ test("plans doctor preserves old live and unattributable Plan locks", async () =
         try {
             const layout = await enterProjectRuntime(cwd);
             await seedPlan(cwd, "live", "# Live lock\n", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "ready_for_work",
             });
             await fsMkdir(layout.selected.planLocksDir, { recursive: true });
@@ -867,7 +867,7 @@ test("plans doctor --repair fixes provable registry drift without touching Git a
         try {
             await seedPlan(cwd, "renamed-plan", "# Renamed\n", {
                 planId: "plan-a",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "in_progress",
                 summary: "s",
                 affectedPaths: [],
@@ -875,7 +875,7 @@ test("plans doctor --repair fixes provable registry drift without touching Git a
             });
             await seedPlan(cwd, "legacy-plan", "# Legacy\n", {
                 planId: "plan-b",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "in_progress",
                 summary: "s",
                 affectedPaths: [],
@@ -957,7 +957,7 @@ test("plans doctor does not report an archived Plan's attempt as a dangling plan
                 join(cwd, "docs", "plans", "archived", "done.md"),
                 injectFrontMatter("# Done\n", {
                     planId: "plan-archived",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     status: "verified",
                     summary: "s",
                     affectedPaths: [],
@@ -994,7 +994,7 @@ test("plans doctor diagnoses a registry conflict instead of going blind on it", 
         try {
             await seedPlan(cwd, "demo", "# Demo\n", {
                 planId: "plan-1",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "in_progress",
                 summary: "s",
                 affectedPaths: [],
@@ -1064,7 +1064,7 @@ test("plans doctor closes a journal whose durable effects the repository proves"
         try {
             await seedPlan(cwd, "demo", "# Demo\n", {
                 planId: "plan-1",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
                 summary: "s",
                 affectedPaths: [],
@@ -1123,7 +1123,7 @@ test("plans doctor keeps a journal whose worktree may still hold work", async ()
         try {
             await seedPlan(cwd, "demo", "# Demo\n", {
                 planId: "plan-1",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "ready_for_work",
                 summary: "s",
                 affectedPaths: [],
@@ -1325,7 +1325,7 @@ test("doctor leaves publication unconfirmed while the publication owner proves r
 
             await seedPlan(cwd, "published", "# Published\n", {
                 planId: "plan-published",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "verified",
                 summary: "s",
                 affectedPaths: [],
@@ -1340,7 +1340,7 @@ test("doctor leaves publication unconfirmed while the publication owner proves r
 
             await seedPlan(cwd, "unpublished", "# Unpublished\n", {
                 planId: "plan-unpublished",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "verified",
                 summary: "s",
                 affectedPaths: [],
@@ -1399,7 +1399,7 @@ test("doctor inspects cached target children without fetching and reports public
             await seedPlan(cwd, "remote-child", "# Remote child\n", {
                 planId: "plan-remote-child",
                 parentPlan: "project",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "verified",
                 summary: "Only the authoritative remote contains this child.",
                 affectedPaths: [],
@@ -1437,7 +1437,7 @@ test("doctor inspects cached target children without fetching and reports public
             await seedPlan(cwd, "remote-child", "# Stale local child\n", {
                 planId: "plan-remote-child",
                 parentPlan: "project",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "ready_for_work",
                 summary: "The local child is behind its authoritative target copy.",
                 affectedPaths: [],
@@ -1479,7 +1479,7 @@ test("doctor inspects cached target children without fetching and reports public
 
             await seedPlan(cwd, "local-publication-claim", "# Local claim\n", {
                 planId: "plan-local-claim",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "verified",
                 summary: "Remote inspection must remain authoritative.",
                 affectedPaths: [],
@@ -1534,7 +1534,7 @@ test("doctor does not prove remote publication while the publication owner can",
 
             await seedPlan(cwd, "remote-published", "# Remote Published\n", {
                 planId: "plan-remote-published",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "verified",
                 summary: "s",
                 affectedPaths: [],
@@ -1657,7 +1657,7 @@ for (const conflict of ["candidate", "target", "live-attempt"]) {
                 };
                 await seedPlan(cwd, "claim", "# Claim\n", {
                     planId: "claim-id",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     status: "verified",
                     targetBranch: conflict === "target" ? "release" : "main",
                     validatedCommit: conflict === "candidate" ? "c".repeat(40) : receipt.validatedCommit,
@@ -1717,7 +1717,7 @@ for (const epicChild of [false, true]) {
                 }
                 await seedPlan(cwd, "settled", "# Settled\n", {
                     planId: "settled-id",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     status: "verified",
                     targetBranch,
                     ...(epicChild ? { parentPlan: "settled-epic" } : {}),
@@ -1771,7 +1771,7 @@ for (const source of ["snapshot", "active-copy", "live-attempt"]) {
                 });
                 await seedPlan(cwd, "retired-epic/child", "# Child\n", {
                     planId: "retired-child-id",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     parentPlan: "retired-epic",
                     status: "verified",
                     targetBranch: "epic/retired",

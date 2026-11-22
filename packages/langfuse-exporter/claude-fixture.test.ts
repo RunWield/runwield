@@ -25,7 +25,7 @@ import { HostedSession } from "../../src/shared/session/hosted-session.ts";
 import { createRootSessionManager } from "../../src/shared/session/root-session.ts";
 import { ClaudeCliExecutionSession } from "../../src/shared/session/backends/claude-cli/execution-session.ts";
 import { deliver } from "./exporter.ts";
-import { attributes, metadata, native, span, withServer } from "./test-fixture.ts";
+import { attributes, metadata, native, span, withServer } from "../../src/testing/langfuse-exporter-fixture.ts";
 
 const repository = defineGitFixture(async (root) => {
     await fsWriteFile(join(root, "README.md"), "usage fixture\n");

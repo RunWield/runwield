@@ -1,19 +1,10 @@
-import { Type } from "typebox";
+import { toolRegistry } from "@runwield/tools";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { appendEpicManualQaSection } from "../plan-store/index.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
 
-const TOOL_PARAMS = Type.Object(
-    {
-        checklistMarkdown: Type.String({
-            minLength: 1,
-            description:
-                "Markdown checklist starting with 'Manual verification steps for <child plan>' and 1 to 6 unchecked items.",
-        }),
-    },
-    { additionalProperties: false },
-);
+const definition = toolRegistry.get("qa_checklist_generated").definition;
 
 type QaChecklistGeneratedDetails = {
     outcome: "recorded" | "already_present" | "rejected";
@@ -32,13 +23,9 @@ export type QaChecklistGeneratedToolOptions = {
 };
 
 export function createQaChecklistGeneratedTool(options: QaChecklistGeneratedToolOptions) {
-    const tool = defineTool<typeof TOOL_PARAMS, QaChecklistGeneratedDetails>({
-        name: "qa_checklist_generated",
-        exposure: "model-only",
-        label: "QA Checklist Generated",
-        description:
-            "Record this Epic child's Manual QA checklist in the Epic artifact. This tool is advisory only: failure never changes verification status.",
-        parameters: TOOL_PARAMS,
+    const tool = defineTool<typeof definition.parameters, QaChecklistGeneratedDetails>({
+        ...definition,
+
         async execute(toolCallId, params): Promise<QaChecklistGeneratedResult> {
             try {
                 const result = await appendEpicManualQaSection({

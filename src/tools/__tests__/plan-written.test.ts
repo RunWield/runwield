@@ -80,7 +80,7 @@ function recordedReviewMetadata(request: RuntimeInteractionRequest): RecordedRev
 
 /**
  * @param {Object} options
- * @param {"FEATURE" | "PROJECT" | "PLANNED_CHANGE"} [options.classification]
+ * @param {"PROJECT" | "PLANNED_CHANGE"} [options.classification]
  * @param {"BUG_FIX" | "FEATURE" | "REFACTOR" | "MAINTENANCE" | "DOCUMENTATION"} [options.workKind]
  * @param {any} [options.reviewResponse]
  * @param {any[]} [options.reviewResponses]
@@ -108,7 +108,7 @@ async function makeHarness(options: HarnessOptions = {}) {
             await fsWriteFile(
                 `${cwd}/docs/plans/${name}.md`,
                 `---
-classification: ${options.classification || "FEATURE"}
+classification: ${options.classification || "PLANNED_CHANGE"}
 status: approved
 ${options.parentPlan ? `parentPlan: ${options.parentPlan}\n` : ""}---
 # ${name}
@@ -166,7 +166,7 @@ ${options.parentPlan ? `parentPlan: ${options.parentPlan}\n` : ""}---
         hostedSession,
         agentName: options.classification === "PROJECT" ? "architect" : "planner",
         triageMeta: {
-            classification: options.classification || "FEATURE",
+            classification: options.classification || "PLANNED_CHANGE",
             ...(options.workKind ? { workKind: options.workKind } : {}),
             complexity: "MEDIUM",
             ...(options.parentPlan ? { parentPlan: options.parentPlan } : {}),
@@ -355,7 +355,7 @@ collaborationRecommendation: sometimes
             const tool = createPlanWrittenTool({
                 hostedSession,
                 agentName: "planner",
-                triageMeta: { classification: "FEATURE", complexity: "MEDIUM" },
+                triageMeta: { classification: "PLANNED_CHANGE", complexity: "MEDIUM" },
             });
 
             const result = await execute(tool);
@@ -626,7 +626,7 @@ Live execution copy.
 });
 
 test("plan_written feature approval returns execution outcome", async () => {
-    const { cwd, tool, readPlan } = await makeHarness({ classification: "FEATURE", approvalAction: "run" });
+    const { cwd, tool, readPlan } = await makeHarness({ classification: "PLANNED_CHANGE", approvalAction: "run" });
     await withRetainedPlanFixture(cwd, async () => {
         const result = await execute(tool);
 
@@ -718,14 +718,14 @@ test("plan_written preserves triage workKind when approved review attrs omit it"
 
 test("plan_written feature approval uses post-review execution metadata for readiness", async () => {
     const { cwd, tool, readPlan } = await makeHarness({
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         reviewResponse: {
             outcome: "accepted",
             _meta: {
                 approved: true,
                 approvalAction: "run",
                 planAttrs: {
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     complexity: "MEDIUM",
                     summary: "Plan the boundary",
                     affectedPaths: ["src/shared/session/session-runtime.ts"],
@@ -747,14 +747,14 @@ test("plan_written feature approval uses post-review execution metadata for read
 
 test("plan_written saved feature approval keeps post-review execution metadata", async () => {
     const { cwd, tool, readPlan } = await makeHarness({
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         reviewResponse: {
             outcome: "accepted",
             _meta: {
                 approved: true,
                 approvalAction: "later",
                 planAttrs: {
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     complexity: "MEDIUM",
                     summary: "Plan the boundary",
                     affectedPaths: ["src/shared/session/session-runtime.ts"],
@@ -777,7 +777,7 @@ test("plan_written saved feature approval keeps post-review execution metadata",
 });
 
 test("plan_written feature approval can save without execution", async () => {
-    const { cwd, tool, events } = await makeHarness({ classification: "FEATURE", approvalAction: "later" });
+    const { cwd, tool, events } = await makeHarness({ classification: "PLANNED_CHANGE", approvalAction: "later" });
     await withRetainedPlanFixture(cwd, async () => {
         const result = await execute(tool);
 
@@ -799,7 +799,7 @@ test("plan_written feature approval can save without execution", async () => {
 
 test("plan_written persists an Epic child relationship in Session workflow context", async () => {
     const { cwd, tool, hostedSession } = await makeHarness({
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         approvalAction: "later",
         parentPlan: "runtime-epic",
     });
@@ -850,7 +850,7 @@ test("plan_written project approval returns decomposition outcome", async () => 
 
 test("plan_written missing approval action safely saves for later", async () => {
     const { cwd, tool, readPlan } = await makeHarness({
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         reviewResponse: { outcome: "accepted", _meta: { approved: true } },
     });
     await withRetainedPlanFixture(cwd, async () => {

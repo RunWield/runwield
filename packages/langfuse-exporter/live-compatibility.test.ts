@@ -1,15 +1,10 @@
-import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals } from "../../src/testing/assertions.ts";
 import { confirm, deliver } from "./exporter.ts";
-import { type JsonRecord, observation, readback, span, withServer } from "./test-fixture.ts";
+import { type LangfuseReadback, readback, span, withServer } from "../../src/testing/langfuse-exporter-fixture.ts";
+import { observation } from "./test-fixture.ts";
 
-interface ProtocolFixture {
-    otlpQueued: JsonRecord;
-}
-const fixture: ProtocolFixture = JSON.parse(
-    await fsReadFile(new URL("./fixtures/protocol.json", import.meta.url), "utf8"),
-);
+import fixture from "./fixtures/protocol.json" with { type: "json" };
 
 for (const defect of [
     "none",
@@ -26,13 +21,12 @@ for (const defect of [
     "extra_status",
 ]) {
     test(`live Langfuse queue acknowledgement remains destination-bound: ${defect}`, async () => {
-        const body = structuredClone(fixture.otlpQueued);
-        // Fixture-only JSON traversal; the production parser independently validates every boundary.
-        const data = body.data as JsonRecord;
-        const payload = data.payload as JsonRecord;
-        const auth = payload.authCheck as JsonRecord;
-        const scope = auth.scope as JsonRecord;
-        const upload = payload.data as JsonRecord;
+        const job = structuredClone(fixture.otlpQueued);
+        const { id, ...acknowledgement } = job;
+        const { data } = acknowledgement;
+        const { payload } = data;
+        const { authCheck: auth, data: upload } = payload;
+        const { scope } = auth;
         if (defect === "wrong_project") scope.projectId = "other-project";
         if (defect === "wrong_key") upload.publicKey = "other-key";
         if (defect === "wrong_file") {
@@ -40,11 +34,14 @@ for (const defect of [
         }
         if (defect === "wrong_version") payload.ingestionVersion = "3";
         if (defect === "invalid_auth") auth.validKey = false;
-        if (defect === "wrong_queue") body.queueQualifiedName = "bull:other-queue";
+        if (defect === "wrong_queue") acknowledgement.queueQualifiedName = "bull:other-queue";
         if (defect === "wrong_name") data.name = "other-job";
-        if (defect === "missing_id") delete body.id;
-        if (defect === "not_queued") body.attemptsMade = 1;
-        if (defect === "extra_status") body.partialSuccess = { rejectedSpans: 1 };
+        if (defect === "not_queued") acknowledgement.attemptsMade = 1;
+        const body = {
+            ...acknowledgement,
+            ...(defect === "missing_id" ? {} : { id }),
+            ...(defect === "extra_status" ? { partialSuccess: { rejectedSpans: 1 } } : {}),
+        };
         await withServer(
             async ({ context }) => {
                 assertEquals(
@@ -60,7 +57,7 @@ for (const defect of [
 }
 for (const kind of ["model_usage", "execution_finished", "tool_call_finished", "validation_attempt"] as const) {
     test(`native empty representations preserve absent evidence: ${kind}`, async () => {
-        let row: JsonRecord;
+        let row: Partial<LangfuseReadback>;
         const o = {
             ...observation({
                 inputCacheBasis: "unknown",
@@ -103,7 +100,7 @@ for (const [sent, stored, status] of [
     [1e-30, 2e-30, "mismatch"],
 ] as const) {
     test(`native cost permits only roundoff, never zero or absence substitution: ${sent} -> ${stored}`, async () => {
-        let row: JsonRecord;
+        let row: LangfuseReadback;
         const o = observation({ costAmount: sent });
         await withServer(
             async ({ context }) => {
@@ -124,6 +121,10 @@ for (const [sent, stored, status] of [
         );
     });
 }
+interface ReplayedReadback extends Partial<LangfuseReadback> {
+    environment?: string;
+}
+
 for (const conflict of [
     "none",
     "usage",
@@ -136,8 +137,8 @@ for (const conflict of [
     "missing_field",
 ] as const) {
     test(`replayed readback must agree in every returned fact: ${conflict}`, async () => {
-        let row: JsonRecord;
-        let repeated: JsonRecord;
+        let row: LangfuseReadback;
+        let repeated: ReplayedReadback;
         await withServer(
             async ({ context }) => {
                 await deliver(observation(), context);
@@ -150,7 +151,7 @@ for (const conflict of [
                     row = readback(span(wire));
                     if (conflict === "extra_value") row.modelId = "original-model";
                     if (conflict === "extra_metadata_value") {
-                        row.metadata = { ...(row.metadata as JsonRecord), extra: "original-value" };
+                        row.metadata = { ...row.metadata, extra: "original-value" };
                     }
                     // Reordered JSON keys are not a conflict; all nested values still must agree.
                     repeated = Object.fromEntries(Object.entries(structuredClone(row)).reverse());
@@ -158,7 +159,7 @@ for (const conflict of [
                     if (conflict === "cost") repeated.totalCost = 0.02;
                     if (conflict === "metadata") {
                         repeated.metadata = {
-                            ...(row.metadata as JsonRecord),
+                            ...row.metadata,
                             extra: "conflict",
                         };
                     }
@@ -170,7 +171,7 @@ for (const conflict of [
                     }
                     if (conflict === "extra_value") repeated.modelId = "changed-model";
                     if (conflict === "extra_metadata_value") {
-                        repeated.metadata = { ...(row.metadata as JsonRecord), extra: "changed-value" };
+                        repeated.metadata = { ...row.metadata, extra: "changed-value" };
                     }
                     if (conflict === "missing_field") delete repeated.model;
                     return Response.json({});

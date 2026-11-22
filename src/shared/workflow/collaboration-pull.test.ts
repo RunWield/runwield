@@ -7,10 +7,10 @@ import {
     selectPullPlanningAgent,
 } from "./collaboration-pull.ts";
 
-test("selectPullPlanningAgent routes PROJECT Plans to Architect and FEATURE Plans to Planner", () => {
+test("selectPullPlanningAgent routes Projects to Architect and Planned Changes to Planner", () => {
     assertEquals(selectPullPlanningAgent({ classification: "PROJECT" }), "architect");
     assertEquals(selectPullPlanningAgent({ type: "epic" }), "planner");
-    assertEquals(selectPullPlanningAgent({ classification: "FEATURE" }), "planner");
+    assertEquals(selectPullPlanningAgent({ classification: "PLANNED_CHANGE" }), "planner");
 });
 
 test("formatPullCommentsForPrompt preserves global, inline, resolved, and unreadable comment context", () => {
@@ -48,7 +48,7 @@ test("buildPullRevisionRequest includes structured metadata and redacts secret-l
         planName: "demo",
         title: "Demo Plan",
         attrs: {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             summary: "Demo summary",
             status: "draft",
             affectedPaths: ["src/demo.js", "src/demo.test.js"],

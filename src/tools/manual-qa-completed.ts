@@ -1,24 +1,22 @@
-import { Type } from "typebox";
+import { toolRegistry } from "@runwield/tools";
 import { defineTool, type SessionManager } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
 import { recordManualQaChecklistMessage } from "../shared/session/workflow-messages.ts";
 import { emitAssistantMessage } from "../shared/session/session-runtime-events.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 
+const definition = toolRegistry.get("manual_qa_completed").definition;
+
 type ManualQaOptions = {
     hostedSession: HostedSession;
     name: string;
     classification: "QUICK_FIX" | "PLANNED_CHANGE";
 };
-const parameters = Type.Object({ checklistMarkdown: Type.String({ minLength: 1 }) }, { additionalProperties: false });
 
 export function createManualQaCompletedTool(options: ManualQaOptions) {
     return defineTool({
-        name: "manual_qa_completed",
-        exposure: "model-only",
-        label: "Manual QA Completed",
-        description: "Submit the manual verification checklist. Call once when the checklist is complete.",
-        parameters,
+        ...definition,
+
         execute(toolCallId, params) {
             const text = params.checklistMarkdown.trim();
             if (!text) {

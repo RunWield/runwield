@@ -1,18 +1,11 @@
 /** Agent Custom Tool for canonical Work Record reads by stable ID. */
 
-import { Type } from "typebox";
+import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { formatWorkRecordReadResult, readWorkRecordById } from "../shared/work-records/index.ts";
 
-export const WORK_RECORD_READ_TOOL_NAME = "work_record_read";
-
-const PARAMETERS = Type.Object(
-    {
-        recordId: Type.String({ minLength: 1, description: "Stable Work Record recordId." }),
-    },
-    { additionalProperties: false },
-);
+const definition = toolRegistry.get("work_record_read").definition;
 
 interface WorkRecordReadToolOptions {
     cwd: string;
@@ -30,12 +23,9 @@ type WorkRecordReadResult = AgentToolResult<WorkRecordReadDetails> & { isError?:
 
 export function createWorkRecordReadTool(opts: WorkRecordReadToolOptions) {
     const accessMode = opts.accessMode || "current";
-    return defineTool<typeof PARAMETERS, WorkRecordReadDetails>({
-        name: WORK_RECORD_READ_TOOL_NAME,
-        label: "Work Record Read",
-        description: "Read canonical Work Record Markdown by stable recordId, subject to agent access mode.",
-        promptSnippet: "Read a Work Record by recordId when search results identify relevant planning context.",
-        parameters: PARAMETERS,
+    return defineTool<typeof definition.parameters, WorkRecordReadDetails>({
+        ...definition,
+
         async execute(_toolCallId, params): Promise<WorkRecordReadResult> {
             try {
                 const result = await readWorkRecordById(opts.cwd, params.recordId, { accessMode });
@@ -54,3 +44,5 @@ export function createWorkRecordReadTool(opts: WorkRecordReadToolOptions) {
         },
     });
 }
+
+export const WORK_RECORD_READ_TOOL_NAME = definition.name;

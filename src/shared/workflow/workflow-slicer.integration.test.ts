@@ -5,6 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ToolParameters } from "@runwield/tools";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
@@ -24,22 +25,7 @@ interface SlicerSessionFixture {
     sessionManager: SessionManager;
 }
 
-type SlicerFinalizeParams = {
-    confirmation: string;
-    children?: Array<{
-        title: string;
-        order: number;
-        summary: string;
-        dependencies: string[];
-        affectedPaths: string[];
-        tickets?: Array<{ url: string }>;
-        executionAgent: "engineer" | "frontend-engineer";
-        collaborationRecommendation: "pair" | "autonomous";
-        worktreeBaseBranch?: string | null;
-        workKind?: "BUG_FIX" | "FEATURE" | "REFACTOR" | "MAINTENANCE" | "DOCUMENTATION";
-        content: string;
-    }>;
-};
+type SlicerFinalizeParams = ToolParameters<"slicer_finalize_decomposition">;
 
 type ToolExecute = NonNullable<ToolDefinition["execute"]>;
 type ToolExecutionContext = Parameters<ToolExecute>[4];

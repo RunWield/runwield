@@ -2,14 +2,14 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
-import { createUserInterviewTool, type InterviewResultDetails } from "../user-interview.ts";
+import type { InterviewResultDetails } from "@runwield/tools";
+import { createUserInterviewTool } from "../user-interview.ts";
 import { HostedSession } from "../../shared/session/hosted-session.ts";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import type { Static } from "typebox";
+import type { InterviewParameters } from "@runwield/tools";
 import type { RuntimeInteractionOption } from "../../shared/session/session-runtime-interactions.ts";
 
 type InterviewTool = ReturnType<typeof createUserInterviewTool>;
-type InterviewParameters = Static<InterviewTool["parameters"]>;
 type InterviewResult = AgentToolResult<InterviewResultDetails>;
 
 interface PromptOverrides {

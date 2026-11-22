@@ -7,17 +7,17 @@ import {
     readPlanApprovalAction,
 } from "./plan-approval.ts";
 
-test("normalizes FEATURE approval actions", () => {
+test("normalizes Planned Change approval actions", () => {
     assertEquals(
-        normalizePlanApprovalAction({ classification: "FEATURE", action: "run" }),
+        normalizePlanApprovalAction({ classification: "PLANNED_CHANGE", action: "run" }),
         PLAN_APPROVAL_ACTIONS.RUN,
     );
     assertEquals(
-        normalizePlanApprovalAction({ classification: "FEATURE", action: "later" }),
+        normalizePlanApprovalAction({ classification: "PLANNED_CHANGE", action: "later" }),
         PLAN_APPROVAL_ACTIONS.LATER,
     );
     assertEquals(
-        normalizePlanApprovalAction({ classification: "FEATURE", action: "decompose" }),
+        normalizePlanApprovalAction({ classification: "PLANNED_CHANGE", action: "decompose" }),
         PLAN_APPROVAL_ACTIONS.LATER,
     );
 });
@@ -38,7 +38,11 @@ test("normalizes PROJECT approval actions", () => {
 });
 
 test("missing, unknown, and untrusted approval actions are deferred", () => {
-    assertEquals(normalizePlanApprovalAction({ classification: "FEATURE" }), PLAN_APPROVAL_ACTIONS.LATER);
+    assertEquals(normalizePlanApprovalAction({ classification: "PLANNED_CHANGE" }), PLAN_APPROVAL_ACTIONS.LATER);
+    assertEquals(
+        normalizePlanApprovalAction({ classification: "FEATURE", action: "run" }),
+        PLAN_APPROVAL_ACTIONS.LATER,
+    );
     assertEquals(
         normalizePlanApprovalAction({ classification: "PROJECT", action: "execute" }),
         PLAN_APPROVAL_ACTIONS.LATER,
@@ -51,7 +55,7 @@ test("missing, unknown, and untrusted approval actions are deferred", () => {
 
 test("classification primary actions are explicit", () => {
     assertEquals(primaryPlanApprovalActionForClassification("PROJECT"), PLAN_APPROVAL_ACTIONS.DECOMPOSE);
-    assertEquals(primaryPlanApprovalActionForClassification("FEATURE"), PLAN_APPROVAL_ACTIONS.RUN);
+    assertEquals(primaryPlanApprovalActionForClassification("PLANNED_CHANGE"), PLAN_APPROVAL_ACTIONS.RUN);
     assertEquals(primaryPlanApprovalActionForClassification(undefined), PLAN_APPROVAL_ACTIONS.RUN);
 });
 

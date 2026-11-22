@@ -6,7 +6,6 @@
 import { getCwd } from "../../constants.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createMnemotecaTools, type MnemotecaToolHost } from "./tools.ts";
-export { memoryToolDef } from "./tools.ts";
 
 /**
  * Register Mnemoteca lifecycle hooks and memory tools.

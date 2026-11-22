@@ -17,7 +17,8 @@ import { createDelegateAgentTool } from "../delegate-agent.ts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import type { DelegateAgentDetails, DelegatedAgentSessionOptions, DelegationMode } from "../delegate-agent.ts";
+import type { DelegateAgentDetails, DelegatedAgentSessionOptions } from "../delegate-agent.ts";
+import type { DelegationMode } from "@runwield/tools";
 
 type DelegateTool = ReturnType<typeof createDelegateAgentTool>;
 interface DelegateToolResult extends Omit<AgentToolResult<DelegateAgentDetails>, "content"> {

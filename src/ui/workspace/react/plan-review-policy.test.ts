@@ -107,8 +107,8 @@ test("the workflow-resolved policy wins over Plan Front Matter", () => {
     assertEquals(policy.collaborationRecommendation, "pair");
 });
 
-test("a FEATURE Plan reads as PLANNED_CHANGE and can still choose its execution policy", () => {
-    const policy = readPlanReviewExecutionPolicy({ classification: "FEATURE" }, null);
+test("a Planned Change renders its classification and can still choose its execution policy", () => {
+    const policy = readPlanReviewExecutionPolicy({ classification: "PLANNED_CHANGE" }, null);
 
     assertEquals(policy.classification, "PLANNED_CHANGE");
     assertEquals(policy.canSelectExecutionPolicy, true);
@@ -187,10 +187,10 @@ test("a PROJECT Epic sends no execution policy with its approval", () => {
     assertEquals(buildPlanReviewExecutionPolicyPayload(epic), {});
 });
 
-test("a legacy FEATURE Plan keeps its execution policy controls through an owner change", () => {
-    const legacy = readPlanReviewExecutionPolicy({ classification: "FEATURE" }, null);
+test("a Planned Change keeps its execution policy controls through an owner change", () => {
+    const initial = readPlanReviewExecutionPolicy({ classification: "PLANNED_CHANGE" }, null);
 
-    const switched = updatePlanReviewExecutionPolicy(legacy, {
+    const switched = updatePlanReviewExecutionPolicy(initial, {
         field: "executionAgent",
         value: "frontend-engineer",
     });

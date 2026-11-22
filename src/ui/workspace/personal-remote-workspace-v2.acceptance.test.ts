@@ -72,7 +72,7 @@ test("unified Workspace search ranks canonical sources and opens Project artifac
     await savePlan(root, "compass-plan", "# Plan heading\n\nSearchable Compass in the body.\n", {
         planId: "compass-plan-id",
         title: "Compass Plan",
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         status: "on_hold",
     });
     const { store, ownerApp, app } = pairedApp(dir);
@@ -329,7 +329,7 @@ test("live Plan reviews use Plan titles and ordinary questions retain their Sess
             await savePlan(fixture.projectRoot, "review-me", "# Review the searchable artifacts\n", {
                 planId: "review-plan-id",
                 title: "Review the searchable artifacts",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "draft",
             });
             await withExistingRuntimeInteraction(
@@ -389,7 +389,7 @@ test("Dashboard shares concurrent reads but refreshes evidence after they finish
 
         await savePlan(projectRoot, "finished", "# Finished\n", {
             planId: "finished-plan",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "user_verified",
             userVerifiedAt: new Date().toISOString(),
         });
@@ -416,20 +416,20 @@ test("personal remote Workspace v2 Dashboard returns eligible completions for cl
     for (let index = 0; index < 6; index += 1) {
         await savePlan(projectOne, `done-${index}`, `# Done ${index}\n`, {
             planId: `one-done-${index}`,
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "user_verified",
             userVerifiedAt: daysAgo(index),
         });
         await savePlan(projectTwo, `done-${index}`, `# Done ${index}\n`, {
             planId: `two-done-${index}`,
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "user_verified",
             userVerifiedAt: daysAgo(index),
         });
     }
     await savePlan(projectOne, "held", "# Held\n", {
         planId: "held-plan",
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         status: "on_hold",
     });
     await savePlan(projectOne, "sequence", "# Sequence\n", {
@@ -517,7 +517,7 @@ test("Dashboard ignores historical attention flags and sorts all ready Plans by 
         ]) {
             await savePlan(root, status, `# ${status}\n`, {
                 planId: status,
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status,
                 humanReviewMode: "always",
                 humanReviewDecision: "changes_requested",
@@ -533,7 +533,7 @@ test("Dashboard ignores historical attention flags and sorts all ready Plans by 
         for (let index = 0; index < 7; index++) {
             await savePlan(root, `ready-${index}`, `# Ready ${index}\n`, {
                 planId: `ready-${index}`,
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "ready_for_work",
                 humanReviewMode: "always",
                 humanReviewDecision: "changes_requested",
@@ -577,7 +577,7 @@ test("Dashboard distinguishes stopped execution from an active Agent and an ordi
     try {
         await savePlan(fixture.projectRoot, "unfinished", "# Unfinished\n", {
             planId: "unfinished",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "in_progress",
         });
         const before = await loadOwnerDashboard(store, service);
@@ -662,12 +662,12 @@ test("personal remote Workspace v2 Dashboard promotes associated live questions 
         await withRuntimeCommandFixture("dashboard-real-associated-", async (fixture) => {
             await savePlan(fixture.projectRoot, "active", "# Active\n", {
                 planId: "active-plan",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "in_progress",
             });
             await savePlan(fixture.projectRoot, "done", "# Done\n", {
                 planId: "done-plan",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "user_verified",
                 userVerifiedAt: new Date().toISOString(),
             });
@@ -759,12 +759,12 @@ test("personal remote Workspace v2 Dashboard uses live evidence for active work 
     await fsMkdir(projectRoot);
     await savePlan(projectRoot, "inactive", "# Inactive\n", {
         planId: "inactive-plan",
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         status: "in_progress",
     });
     await savePlan(projectRoot, "published", "# Published\n", {
         planId: "published-plan",
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         status: "validated",
         verifiedAt: new Date().toISOString(),
     });
@@ -796,7 +796,7 @@ test("personal remote Workspace v2 Dashboard does not mark READY status ready wh
     return await withRetainedPlanFixture(projectRoot, async () => {
         await savePlan(projectRoot, "ready", "# Ready\n", {
             planId: "ready-plan",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "ready_for_work",
         });
         assertEquals((await loadPlan(projectRoot, "ready"))?.readAvailability?.kind, "ready");
@@ -841,7 +841,7 @@ test("Plan workflow API refuses a stale committed generation without starting wo
     const service = createWorkspaceSessionContinuationService({ store: fixture.store });
     await savePlan(fixture.projectRoot, "validate", "# Validate\n\nBody\n", {
         planId: "validate-plan",
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         status: "implemented",
     });
     try {

@@ -15,6 +15,7 @@ export const BUILD_METADATA_SCHEMA = 1;
 const INPUTS = [
     "src",
     "scripts",
+    "packages/tools",
     "third_party/plannotator/packages",
     "brand",
     "packaging/remote/tested-dependencies.json",

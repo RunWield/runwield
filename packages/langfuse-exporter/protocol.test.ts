@@ -1,25 +1,11 @@
-import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../src/testing/assertions.ts";
 import { confirm, deliver } from "./exporter.ts";
-import { captured, type JsonRecord, native, observation, withServer } from "./test-fixture.ts";
-interface PriceModel {
-    modelName: string;
-    prices: Record<string, number>;
-}
-interface ProtocolFixture {
-    sourceCommit: string;
-    models: PriceModel[];
-    v2FieldGroups: string[];
-    v2Pagination: JsonRecord;
-    otlpSuccess: JsonRecord;
-    otlpWarning: JsonRecord;
-    otlpRejected: JsonRecord;
-}
-const fixture: ProtocolFixture = JSON.parse(
-    await fsReadFile(new URL("./fixtures/protocol.json", import.meta.url), "utf8"),
-);
+import { native, withServer } from "../../src/testing/langfuse-exporter-fixture.ts";
+import { captured, observation } from "./test-fixture.ts";
+import fixture from "./fixtures/protocol.json" with { type: "json" };
+
 test("native bucket spelling is supported by the pinned Langfuse primary price catalog", async () => {
     assertEquals(fixture.sourceCommit, "cb2cebae9f8e7d53e8e514780fce8493d680ecfb");
     await captured(observation({ reasoningTokens: 12, cacheWriteTokens: 10 }), (s) => {

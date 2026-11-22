@@ -1,4 +1,4 @@
-import type { InterviewQuestion } from "../tools/user-interview.ts";
+import type { InterviewQuestion } from "@runwield/tools";
 
 export interface PlanQuestionAnswer {
     id: string;

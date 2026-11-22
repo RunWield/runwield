@@ -27,7 +27,7 @@ test("Workspace wrapper protects page routes and serves public assets without to
         await seedPlan(cwd, "workspace-card", "# Workspace Card\n\n## Context\n\nSSR card", {
             planId: "workspace-card-id",
             status: "draft",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             summary: "SSR card",
         });
         const app = createWorkspaceApp({
@@ -79,7 +79,7 @@ test("PlanBoard SSR renders status column board cards", async () => {
         await seedPlan(cwd, "workspace-card", "# Workspace Card\n\n## Context\n\nSSR card\n\nBody", {
             planId: "workspace-card-id",
             status: "draft",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             summary: "SSR card",
         });
         const board = await loadBoard(cwd);
@@ -127,13 +127,13 @@ test("Workspace page routes require Astro handler instead of static React fallba
         await seedPlan(cwd, "one", "# One\n", {
             planId: "duplicate-id",
             status: "draft",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             summary: "One",
         });
         await seedPlan(cwd, "two", "# Two\n", {
             planId: "second-id",
             status: "draft",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             summary: "Two",
         });
         const second = await loadPlan(cwd, "two");
@@ -168,7 +168,7 @@ test("Workspace API and detail route return readable editable Plan body metadata
             await seedPlan(cwd, "detail", "# Detail\n\nReadable body with [RunWield](https://runwield.dev)", {
                 planId: "detail-id",
                 status: "implemented",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "HIGH",
                 summary: "Detail summary",
                 affectedPaths: ["src/ui/workspace/components/PlanDetail.tsx"],
@@ -289,7 +289,7 @@ test("PlanDetail derives Epic UI from classification rather than legacy subtype 
                 planName: "Legacy type plan",
                 title: "Legacy type plan",
                 status: "draft",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 type: "epic",
                 detailKind: "epic",
                 summary: "Feature with legacy metadata",
@@ -314,7 +314,7 @@ test("Workspace detail SSR fallback renders visible empty Plan body state", asyn
         await seedPlan(cwd, "empty-detail", "", {
             planId: "empty-detail-id",
             status: "draft",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             summary: "Empty body detail",
         });
 
@@ -419,7 +419,7 @@ test("Workspace body-save API preserves canonical metadata rejects stale writes 
     }
 });
 
-test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async () => {
+test("Workspace Epic detail SSR-renders child Planned Changes by status", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await seedPlan(cwd, "epic", "# Epic\n\n## Context\n\nEpic summary\n\nEpic body", {
@@ -435,7 +435,7 @@ test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async ()
         await seedPlan(cwd, "epic/done", "# Done\n\n## Context\n\nDone summary", {
             planId: "done-id",
             status: "verified",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             parentPlan: "epic",
             summary: "Done summary",
         });
@@ -443,7 +443,7 @@ test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async ()
         await seedPlan(cwd, "epic/child", "# Child\n\n## Context\n\nChild summary\n\nChild body", {
             planId: "child-id",
             status: "in_progress",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             parentPlan: "epic",
             summary: "Child summary",
             dependencies: ["done", "missing-child"],
@@ -451,7 +451,7 @@ test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async ()
         await seedPlan(cwd, "epic/held", "# Held\n\n## Context\n\nHeld summary", {
             planId: "held-id",
             status: "on_hold",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             parentPlan: "epic",
             summary: "Held summary",
             heldFromStatus: "ready_for_work",
@@ -461,7 +461,7 @@ test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async ()
         await seedPlan(cwd, "epic/failed", "# Failed\n\n## Context\n\nFailed summary", {
             planId: "failed-id",
             status: "failed",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             parentPlan: "epic",
             summary: "Failed summary",
         });
@@ -470,7 +470,7 @@ test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async ()
         await seedPlan(cwd, "missing/orphan", "# Orphan\n\n## Context\n\nOrphan summary", {
             planId: "orphan-id",
             status: "draft",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             parentPlan: "missing",
             summary: "Orphan summary",
         });

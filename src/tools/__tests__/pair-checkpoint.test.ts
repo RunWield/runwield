@@ -1,3 +1,4 @@
+import type { PairCheckpointParameters } from "@runwield/tools";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
@@ -15,7 +16,7 @@ import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testin
 
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import type { TextContent } from "@earendil-works/pi-ai";
-import type { PairCheckpointParameters, PairCheckpointDetails } from "../pair-checkpoint.ts";
+import type { PairCheckpointDetails } from "../pair-checkpoint.ts";
 import type { RequestDispatchKind, RequestPromptMode } from "../../shared/session/request-dispatch.ts";
 
 type PairCheckpointTool = ReturnType<typeof createPairCheckpointTool>;
@@ -57,7 +58,7 @@ function makePairSession(projectRoot = PAIR_PROJECT_ROOT) {
     });
     session.setActiveExecutionWorkflow({
         planName: "visual-plan",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgent: "frontend-engineer",
         executionStarted: true,
         executionAttemptStartedAtMs: 1234,

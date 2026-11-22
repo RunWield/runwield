@@ -127,6 +127,15 @@ const REJECTION_CASES: RejectionCase[] = [
             }),
     },
     {
+        name: "FEATURE as a routing intent",
+        code: "invalid_outcome",
+        input: (triage) =>
+            triageReportInput({
+                ...triage,
+                outcome: { routingIntent: "FEATURE", complexity: "LOW", summary: "s" },
+            }),
+    },
+    {
         name: "an oversized payload",
         code: "payload_too_large",
         input: (triage) =>

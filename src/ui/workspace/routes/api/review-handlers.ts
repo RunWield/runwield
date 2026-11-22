@@ -1,7 +1,7 @@
 import { validateSequenceReviewDecision } from "../../../../plan-store/index.ts";
 /** Review decision transport for Workspace-hosted review surfaces. */
 
-import { normalizePlanClassification } from "../../../../constants.ts";
+import { toolRegistry } from "@runwield/tools";
 import { readPlanApprovalAction } from "../../../../shared/workflow/plan-approval.ts";
 import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../../plan-format.ts";
 
@@ -299,6 +299,9 @@ function validateApprovedExecutionPolicy(
     }
 
     const classification = trustedReviewClassification(reviewPayload);
+    if (!classification) {
+        return jsonError("invalid_classification", "The review Plan classification is unsupported.", 400);
+    }
     if (classification === "PROJECT") {
         return jsonError(
             "project_execution_policy",
@@ -337,7 +340,9 @@ function trustedReviewClassification(reviewPayload?: ReviewPayload) {
             : typeof reviewPayload?.frontmatter?.classification === "string"
               ? reviewPayload.frontmatter.classification
               : "PLANNED_CHANGE";
-    return normalizePlanClassification(classification);
+    if (toolRegistry.get("triage_report").hasRetiredRoutingIntent(undefined, classification)) return null;
+    if (classification === "QUICK_FIX" || classification === "PROJECT") return classification;
+    return "PLANNED_CHANGE";
 }
 
 function readPlanSavePath(planSave?: ReviewPlanSave) {

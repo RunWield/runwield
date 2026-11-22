@@ -44,6 +44,7 @@
         "@radix-ui/react-slot": "1.5.0",
         "@radix-ui/react-tabs": "1.1.21",
         "@radix-ui/react-tooltip": "1.2.16",
+        "@runwield/tools": "workspace:*",
         "@silvia-odwyer/photon-node": "0.3.4",
         "@streamparser/json": "0.0.26",
         "@tailwindcss/vite": "4.3.3",
@@ -91,6 +92,7 @@
         "yargs-parser": "22.0.0",
       },
       "devDependencies": {
+        "@astrojs/astro2tsx": "0.1.4",
         "@sinonjs/fake-timers": "15.4.0",
         "@types/bun": "1.4.4",
         "@types/js-yaml": "4.0.9",
@@ -105,6 +107,12 @@
         "prettier": "3.9.10",
         "typescript": "6.0.3",
         "typescript-eslint": "8.71.1",
+      },
+    },
+    "packages/tools": {
+      "name": "@runwield/tools",
+      "dependencies": {
+        "typebox": "1.3.27",
       },
     },
   },
@@ -692,6 +700,8 @@
     "@rolldown/binding-win32-x64-msvc": ["@rolldown/binding-win32-x64-msvc@1.3.3", "", { "os": "win32", "cpu": "x64" }, "sha512-Ggzyuq1mN7claruAZH10aiiM1N3LRCoMP5xDXPdU514ulL0D2bksCWgFqEmEM2/pDzEP7Dq+dcv7IH452jtr1w=="],
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
+
+    "@runwield/tools": ["@runwield/tools@workspace:packages/tools"],
 
     "@shikijs/core": ["@shikijs/core@4.5.0", "", { "dependencies": { "@shikijs/primitive": "4.5.0", "@shikijs/types": "4.5.0", "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.5", "hast-util-to-html": "^9.0.5" } }, "sha512-6CIgwq+bt2JZ3OSjb/nBkkwEf/CfpHcbam+Mg5Pllco7HAGRQ2/EFhZrrJtbyNTgKwknfVS+llsXGygiDGwJWw=="],
 

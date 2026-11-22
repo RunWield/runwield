@@ -1,31 +1,10 @@
-import { Type } from "typebox";
+import { toolRegistry } from "@runwield/tools";
 import { type AgentToolResult, defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { setCustomSetting } from "../shared/settings.ts";
 
-export const INIT_VERIFICATION_COMMAND_TOOL_NAME = "init_save_verification_command";
-export const INIT_VERIFICATION_COMMAND_PLACEHOLDER = 'echo "verification not implemented yet"';
+const definition = toolRegistry.get("init_save_verification_command").definition;
 
-const PARAMETERS = Type.Object(
-    {
-        command: Type.Optional(
-            Type.String({
-                description: "User-confirmed shell command for project verification.",
-            }),
-        ),
-        setupCommand: Type.Optional(
-            Type.String({
-                description:
-                    "User-confirmed fresh-worktree setup command. An empty string explicitly means no setup is required.",
-            }),
-        ),
-        verificationNotImplemented: Type.Optional(
-            Type.Boolean({
-                description: "Set true when the user confirms that project verification is not implemented.",
-            }),
-        ),
-    },
-    { additionalProperties: false },
-);
+export const INIT_VERIFICATION_COMMAND_PLACEHOLDER = 'echo "verification not implemented yet"';
 
 interface InitVerificationCommandDetails {
     outcome: "saved" | "rejected";
@@ -68,14 +47,9 @@ export function createInitVerificationCommandOperation(
 ): InitVerificationCommandOperation {
     let confirmedCommand: string | undefined;
     let confirmedSetupCommand: string | undefined;
-    const tool = defineTool<typeof PARAMETERS, InitVerificationCommandDetails>({
-        name: INIT_VERIFICATION_COMMAND_TOOL_NAME,
-        label: "Save Init Project Commands",
-        description:
-            "Save user-confirmed verification and/or worktree setup commands to .wld/settings.json during Init. Omitted commands remain unchanged.",
-        promptSnippet:
-            "init_save_verification_command(command | verificationNotImplemented, setupCommand): Save either confirmed project command or both; empty setupCommand means no setup required.",
-        parameters: PARAMETERS,
+    const tool = defineTool<typeof definition.parameters, InitVerificationCommandDetails>({
+        ...definition,
+
         async execute(_toolCallId, params): Promise<InitVerificationCommandResult> {
             const hasVerification = params.command !== undefined || params.verificationNotImplemented !== undefined;
             const command = hasVerification ? resolveVerificationCommand(params) : undefined;
@@ -121,3 +95,5 @@ export function createInitVerificationCommandOperation(
         getConfirmedSetupCommand: () => confirmedSetupCommand,
     };
 }
+
+export const INIT_VERIFICATION_COMMAND_TOOL_NAME = definition.name;

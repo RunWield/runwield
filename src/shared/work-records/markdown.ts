@@ -171,7 +171,7 @@ export function normalizeWorkRecordFrontMatter(attrs: WorkRecordFrontMatterInput
         ).map((recordId) => recordId.toLowerCase()),
     );
     const supersessionProposal = normalizeSupersessionProposal(attrs.supersessionProposal, supersedesIdentities);
-    const rawWorkKind = normalizeWorkKind(attrs.workKind);
+    const rawWorkKind = typeof attrs.workKind === "string" ? normalizeWorkKind(attrs.workKind) : undefined;
     const rawScope = asTrimmedString(attrs.scope);
     const normalizedScope = rawScope === "feature" ? "planned_change" : rawScope;
     const normalized: WorkRecordFrontMatter = {

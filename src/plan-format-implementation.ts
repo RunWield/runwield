@@ -8,10 +8,10 @@ import type {
     PlanTextLoaded,
     PlanTextMalformed,
 } from "./plan-store/index.ts";
+import { toolRegistry } from "@runwield/tools";
 import {
     isPlannedChangeClassification,
-    normalizePlanClassification,
-    normalizeWorkKind,
+    normalizeStoredPlanClassification,
     PLANS_DIR_NAME,
 } from "./plan-format/classification.ts";
 import { extractYaml, test as hasFrontMatter } from "./shared/front-matter.ts";
@@ -24,6 +24,8 @@ import { PLAN_RUNTIME_FIELDS } from "./shared/workflow/controller-state.ts";
 import { isProjectPlan } from "./shared/project-plan.ts";
 import type * as StoredPlanTypes from "./plan-store/index.ts";
 type PlanMetadataValue = StoredPlanTypes.PlanFrontMatterInput[string];
+
+const { normalizeWorkKind } = toolRegistry.get("triage_report");
 
 /**
  * Canonicalize a stored plan name relative to docs/plans/.
@@ -337,7 +339,6 @@ export const PLAN_LIST_STATUS_ORDER = new Map([
 export const PLAN_LIST_CLASSIFICATION_ORDER = new Map([
     ["PROJECT", 0],
     ["PLANNED_CHANGE", 1],
-    ["FEATURE", 1],
     ["QUICK_FIX", 2],
 ]);
 
@@ -453,7 +454,7 @@ export function hasExplicitPolicyValue(value: PlanMetadataValue): boolean {
 export function resolvePlanExecutionPolicy(
     meta: Partial<PlanFrontMatter>,
 ): PlanExecutionPolicySuccess | PlanExecutionPolicyError {
-    const classification = normalizePlanClassification(meta.classification || DEFAULT_FRONT_MATTER.classification);
+    const classification = meta.classification ?? DEFAULT_FRONT_MATTER.classification;
     const explicitAgent = hasExplicitPolicyValue(meta.executionAgent);
     const explicitRecommendation = hasExplicitPolicyValue(meta.collaborationRecommendation);
     const validAgent = normalizeExecutionAgent(meta.executionAgent);
@@ -801,7 +802,7 @@ export function injectFrontMatter(markdown: string, overrides: StoredPlanTypes.P
         planId: Object.hasOwn(overrides, "planId")
             ? normalizePlanId(overrides.planId)
             : normalizePlanId(existingFm.planId),
-        classification: normalizePlanClassification(
+        classification: normalizeStoredPlanClassification(
             overrides.classification ?? existingFm.classification ?? DEFAULT_FRONT_MATTER.classification,
         ),
         workKind: Object.hasOwn(overrides, "workKind")
@@ -975,7 +976,9 @@ export function parsePlanFrontMatter(
         attrs: {
             ...sourceAttrs,
             planId: normalizePlanId(attrs.planId),
-            classification: normalizePlanClassification(attrs.classification || DEFAULT_FRONT_MATTER.classification),
+            classification: normalizeStoredPlanClassification(
+                attrs.classification || DEFAULT_FRONT_MATTER.classification,
+            ),
             ...(attrs.classification === "PROJECT" && attrs.type !== undefined ? { type: String(attrs.type) } : {}),
             workKind: normalizeWorkKind(attrs.workKind),
             complexity: attrs.complexity || DEFAULT_FRONT_MATTER.complexity,
@@ -1379,10 +1382,8 @@ export function comparePlansForList<T extends { name: string; attrs: PlanFrontMa
     if (statusDelta !== 0) return statusDelta;
 
     const classificationDelta =
-        (PLAN_LIST_CLASSIFICATION_ORDER.get(normalizePlanClassification(a.attrs.classification)) ??
-            PLAN_LIST_CLASSIFICATION_ORDER.size) -
-        (PLAN_LIST_CLASSIFICATION_ORDER.get(normalizePlanClassification(b.attrs.classification)) ??
-            PLAN_LIST_CLASSIFICATION_ORDER.size);
+        (PLAN_LIST_CLASSIFICATION_ORDER.get(a.attrs.classification) ?? PLAN_LIST_CLASSIFICATION_ORDER.size) -
+        (PLAN_LIST_CLASSIFICATION_ORDER.get(b.attrs.classification) ?? PLAN_LIST_CLASSIFICATION_ORDER.size);
     if (classificationDelta !== 0) return classificationDelta;
 
     return a.name.localeCompare(b.name);

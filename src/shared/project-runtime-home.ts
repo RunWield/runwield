@@ -155,6 +155,7 @@ export function homeProjectRuntimeLayout(identity: ProjectIdentity): ProjectRunt
         selected: {
             checkoutRoot: identity.checkoutRoot,
             internalRoot: checkout,
+            validationLogsDir: join(checkout, "validation-logs"),
             planLocksDir: join(checkout, "plan-locks"),
             planCatalogLockPath: join(checkout, "plan-locks", "catalog.lock"),
             transitionJournalsDir: join(checkout, "plan-transitions"),

@@ -16,7 +16,7 @@ export const PLAN_APPROVAL_ACTIONS: PlanApprovalActions = Object.freeze({
     LATER: "later",
 });
 
-export type PlanApprovalAction = typeof PLAN_APPROVAL_ACTIONS[keyof typeof PLAN_APPROVAL_ACTIONS];
+export type PlanApprovalAction = (typeof PLAN_APPROVAL_ACTIONS)[keyof typeof PLAN_APPROVAL_ACTIONS];
 
 export interface PlanApprovalOptions {
     classification?: string | null;
@@ -25,14 +25,18 @@ export interface PlanApprovalOptions {
 }
 
 function normalizePlanClassification(classification: string | null | undefined): "PROJECT" | "PLANNED_CHANGE" | "" {
-    const value = String(classification || "").trim().replace(/^['\"]|['\"]$/g, "").toUpperCase();
-    if (value === "PROJECT") return "PROJECT";
-    if (value === "PLANNED_CHANGE" || value === "FEATURE") return "PLANNED_CHANGE";
+    const value = String(classification || "")
+        .trim()
+        .replace(/^['\"]|['\"]$/g, "")
+        .toUpperCase();
+    if (value === "PROJECT" || value === "PLANNED_CHANGE") return value;
     return "";
 }
 
 function normalizeActionValue(action: string | null | undefined): string {
-    return String(action || "").trim().toLowerCase();
+    return String(action || "")
+        .trim()
+        .toLowerCase();
 }
 
 /** Return the immediate approval action for a Plan Classification. */

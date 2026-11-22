@@ -49,7 +49,7 @@ test("serializePlanSummary omits absolute paths and surfaces hierarchy/dependenc
         path: "/tmp/project/docs/plans/epic/child.md",
         attrs: {
             status: "draft",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             parentPlan: "epic",
             summary: "Child",
             dependencies: ["sibling-id"],
@@ -83,16 +83,16 @@ test("serializePlanSummary omits absolute paths and surfaces hierarchy/dependenc
 
 test("buildBoardGroups separates active closed and on-hold Plans", () => {
     const plans = [
-        { name: "active", planName: "active", planId: "a", status: "draft", attrs: {}, classification: "FEATURE" },
+        { name: "active", planName: "active", planId: "a", status: "draft", attrs: {}, classification: "PLANNED_CHANGE" },
         {
             name: "closed",
             planName: "closed",
             planId: "c",
             status: "closed_without_verification",
             attrs: {},
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
         },
-        { name: "hold", planName: "hold", planId: "h", status: "on_hold", attrs: {}, classification: "FEATURE" },
+        { name: "hold", planName: "hold", planId: "h", status: "on_hold", attrs: {}, classification: "PLANNED_CHANGE" },
     ];
     const groups = buildBoardGroups(plans);
     assertEquals(
@@ -127,8 +127,8 @@ test("buildWorkspaceBoard groups top-level cards into status columns and hides r
             planName: "epic/child",
             planId: "child-id",
             status: "draft",
-            attrs: { classification: "FEATURE", parentPlan: "epic" },
-            classification: "FEATURE",
+            attrs: { classification: "PLANNED_CHANGE", parentPlan: "epic" },
+            classification: "PLANNED_CHANGE",
             parentPlan: "epic",
             isEpic: false,
             isChild: true,
@@ -139,8 +139,8 @@ test("buildWorkspaceBoard groups top-level cards into status columns and hides r
             planName: "standalone",
             planId: "standalone-id",
             status: "ready_for_work",
-            attrs: { classification: "FEATURE" },
-            classification: "FEATURE",
+            attrs: { classification: "PLANNED_CHANGE" },
+            classification: "PLANNED_CHANGE",
             isEpic: false,
             isChild: false,
             hierarchyRole: "top-level",
@@ -180,8 +180,8 @@ test("buildWorkspaceBoard keeps closed children with their active Epic instead o
             planName: "epic/closed-child",
             planId: "closed-child-id",
             status: "verified",
-            attrs: { classification: "FEATURE", parentPlan: "epic", status: "verified" },
-            classification: "FEATURE",
+            attrs: { classification: "PLANNED_CHANGE", parentPlan: "epic", status: "verified" },
+            classification: "PLANNED_CHANGE",
             parentPlan: "epic",
             isEpic: false,
             isChild: true,
@@ -207,8 +207,8 @@ test("buildWorkspaceBoard keeps orphan children visible for repair outside main 
             planName: "missing/child",
             planId: "orphan-id",
             status: "draft",
-            attrs: { classification: "FEATURE", parentPlan: "missing" },
-            classification: "FEATURE",
+            attrs: { classification: "PLANNED_CHANGE", parentPlan: "missing" },
+            classification: "PLANNED_CHANGE",
             parentPlan: "missing",
             isEpic: false,
             isChild: true,
@@ -288,19 +288,19 @@ test("loadPlanSummaries marks top-level, Epic, child, and orphan-child hierarchy
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await withRetainedPlanFixture(cwd, async () => {
-            await seedPlan(cwd, "top", "# Top", { planId: "top-id", classification: "FEATURE" });
+            await seedPlan(cwd, "top", "# Top", { planId: "top-id", classification: "PLANNED_CHANGE" });
             await seedPlan(cwd, "epic", "# Epic", {
                 planId: "epic-id",
                 classification: "PROJECT",
             });
             await seedPlan(cwd, "epic/child", "# Child", {
                 planId: "child-id",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
             });
             await seedPlan(cwd, "missing/child", "# Orphan", {
                 planId: "orphan-id",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "missing",
             });
             const byId = new Map((await loadPlanSummaries(cwd)).map((plan) => [plan.planId, plan.hierarchyRole]));
@@ -353,7 +353,7 @@ test("loadWorkspaceDetail returns Epic detail with children grouped by status", 
         });
         await seedPlan(cwd, "epic/child", "# Child", {
             planId: "child-id",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             parentPlan: "epic",
             status: "failed",
         });
@@ -394,7 +394,7 @@ test("workspace adapter exposes Epic dependency health done-enough held and orph
             });
             await seedPlan(cwd, "epic/01-done", "# Done", {
                 planId: "done-id",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
                 status: "verified",
                 verifiedAt: "2026-01-01T00:00:00.000Z",
@@ -402,21 +402,21 @@ test("workspace adapter exposes Epic dependency health done-enough held and orph
             });
             await seedPlan(cwd, "epic/02-blocked", "# Blocked", {
                 planId: "blocked-id",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
                 status: "draft",
                 dependencies: ["01-done", "03-held", "04-missing"],
             });
             await seedPlan(cwd, "epic/03-held", "# Held", {
                 planId: "held-id",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
                 status: "on_hold",
                 holdReason: "child paused",
             });
             await seedPlan(cwd, "missing/child", "# Orphan", {
                 planId: "orphan-id",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 parentPlan: "missing",
                 status: "draft",
                 dependencies: ["other"],

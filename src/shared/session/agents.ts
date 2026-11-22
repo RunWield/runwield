@@ -23,7 +23,7 @@ import {
     UNIVERSAL_AGENT_TOOL_NAMES,
 } from "../../tools/registry.ts";
 import { normalizeBashAllowedCommands, type BashAllowedCommands } from "../bash-command-policy.ts";
-import type { DelegationMode } from "../../tools/delegate-agent.ts";
+import type { DelegationMode } from "@runwield/tools";
 
 type AgentContextContract = "quick-fix" | "plan-execution" | "frontend-plan-execution" | "validation-repair";
 

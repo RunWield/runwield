@@ -36,7 +36,7 @@ type AdapterCheck = (fixture: AdapterFixture) => void | Promise<void>;
 
 async function withAdapter(
     check: AdapterCheck,
-    context: WorkflowContext | null = { routingIntent: "FEATURE", complexity: "LOW" },
+    context: WorkflowContext | null = { routingIntent: "PLANNED_CHANGE", complexity: "LOW" },
 ) {
     await withSessionViewFixture(async ({ runtime, sessionId, session }) => {
         session.replaceWorkflowContext(context);

@@ -119,7 +119,7 @@ test("Codex routes every workflow phase to its packaged action instructions", as
     });
     includesContracts(source.replace(/\s+/g, " "), [
         "For `return_to_host`, report Core's outcome and return to ordinary Codex work",
-        "Unsupported request types do not become FEATURE workflows",
+        "Unsupported request types do not become Planned Changes by changing their Routing Intent",
         "unknown MCP tool, action, or role contract is a recoverable compatibility problem",
     ]);
     const planning = await readGuidance("references/planning.md");

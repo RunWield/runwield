@@ -1,3 +1,5 @@
+import type { PlanClassification } from "../../../constants.ts";
+
 export type PlanExecutionAgent = "engineer" | "frontend-engineer";
 export type PlanCollaborationRecommendation = "autonomous" | "pair";
 
@@ -8,7 +10,7 @@ export type PlanReviewOptions = {
     previousPlan?: string;
     planVersions?: Array<{ plan: string; timestamp: string }>;
     mode: "workflow" | "dev";
-    classification?: "QUICK_FIX" | "FEATURE" | "PROJECT";
+    classification?: PlanClassification;
     frontmatter?: Record<string, unknown>;
     executionPolicy?: {
         executionAgent: PlanExecutionAgent;

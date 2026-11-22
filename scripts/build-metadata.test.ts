@@ -21,6 +21,7 @@ async function fixture() {
     for (const dir of [
         "src/shared",
         "scripts",
+        "packages/tools",
         "third_party/plannotator/packages",
         "brand",
         "packaging/remote",
@@ -41,6 +42,7 @@ async function fixture() {
         "packaging/remote/tested-dependencies.json",
         "src/shared/version.js",
         "scripts/compile-bun.ts",
+        "packages/tools/routing.ts",
         "dist/workspace-runtime/server.mjs",
         "node_modules/@earendil-works/pi-coding-agent/dist/utils/worker.js",
     ]) {
@@ -62,6 +64,9 @@ test("common identity changes for dirty included source and resources, not gener
         assertEquals(await identity(), first);
         await fsWriteFile(join(root, "src/cli.ts"), "dirty, same commit");
         assertNotEquals(await identity(), first);
+        const changedSource = await identity();
+        await fsWriteFile(join(root, "packages/tools/routing.ts"), "changed package source");
+        assertNotEquals(await identity(), changedSource);
         const changed = await identity();
         await fsWriteFile(join(root, "dist/workspace-runtime/server.mjs"), "changed resource");
         assertNotEquals(await identity(), changed);

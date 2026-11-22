@@ -1,3 +1,4 @@
+import type { MultiFileEditParams } from "@runwield/tools";
 import { validateToolArguments, type JsonObject } from "@earendil-works/pi-ai";
 import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
@@ -5,7 +6,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { match as assertMatch, throws as assertThrows } from "node:assert/strict";
 import { join, dirname } from "node:path";
-import { createMultiFileEditTool, type MultiFileEditParams } from "../multi_file_edit.ts";
+import { createMultiFileEditTool } from "../multi_file_edit.ts";
 
 type MultiFileEditTool = ReturnType<typeof createMultiFileEditTool>;
 

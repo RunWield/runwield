@@ -1,30 +1,10 @@
 /** Agent Custom Tool for setting the current Session Name. */
 
-import { type Static, Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
-import { sanitizeSessionName } from "../shared/session-name.ts";
+import { toolRegistry, type SetSessionNameDetails } from "@runwield/tools";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../shared/session/session-runtime-events.ts";
-
-export const SET_SESSION_NAME_TOOL_NAME = "set_session_name";
-
-const PARAMETERS = Type.Object(
-    {
-        name: Type.String({
-            minLength: 1,
-            description:
-                "Short 3-6 word Session Name suitable for /session display and the terminal tab title. Use a concise noun phrase, not a sentence.",
-        }),
-    },
-    { additionalProperties: false },
-);
-
-type SetSessionNameParams = Static<typeof PARAMETERS>;
-
-export interface SetSessionNameDetails {
-    name: string;
-}
 
 type SetSessionNameResult = AgentToolResult<SetSessionNameDetails | null> & { isError?: boolean };
 
@@ -41,17 +21,12 @@ function errorResult(message: string): SetSessionNameResult {
 }
 
 export function createSetSessionNameTool({ hostedSession }: SetSessionNameToolOptions = {}) {
-    return defineTool<typeof PARAMETERS, SetSessionNameDetails | null>({
-        name: SET_SESSION_NAME_TOOL_NAME,
-        label: "Set Session Name",
-        description:
-            "Set or replace the current Session Name. Use this early when the Session is unnamed, or later only when the user asks to rename the Session.",
-        promptSnippet:
-            "Set or replace the current Session Name with a short descriptive name when the Session is unnamed or the user asks to rename it.",
-        parameters: PARAMETERS,
-        async execute(_toolCallId, params: SetSessionNameParams): Promise<SetSessionNameResult> {
+    const tool = toolRegistry.get("set_session_name");
+    return defineTool<typeof tool.definition.parameters, SetSessionNameDetails | null>({
+        ...tool.definition,
+        async execute(_toolCallId, params): Promise<SetSessionNameResult> {
             await Promise.resolve();
-            const name = sanitizeSessionName(params.name);
+            const name = tool.sanitize(params.name);
             if (!name) return errorResult("set_session_name rejected: name is empty after sanitization.");
             if (!hostedSession) return errorResult("set_session_name rejected: no active HostedSession is available.");
 

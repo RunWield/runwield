@@ -26,7 +26,7 @@ test("Manual QA runs the bundled isolated Operator and persists its visible chec
         const messages = await runManualQaChecklistPrompt({
             hostedSession,
             name: "settings-panel",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             context: "## Verification Plan\n- Manual: save settings and reload",
             cwd: projectRoot,
         });
