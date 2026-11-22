@@ -84,7 +84,6 @@ test("Workflow Tool Event is consume-once and settled through the root outbox", 
             routingIntent: "QUICK_FIX",
             complexity: "LOW",
             summary: "Fix it.",
-            classification: "QUICK_FIX",
         },
     });
 
@@ -141,7 +140,6 @@ test("Workflow Tool Event rejects duplicate tool calls after settlement", () => 
                     routingIntent: "QUICK_FIX",
                     complexity: "LOW",
                     summary: "Fix it.",
-                    classification: "QUICK_FIX",
                 },
             }),
         Error,

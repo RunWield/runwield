@@ -6,18 +6,27 @@ import { listCiFiles } from "./ci-files.ts";
 import { lintSource } from "./bun-lint.ts";
 import { requireSupportedBun } from "./check-bun-runtime.ts";
 import { checkOwnedRuntime } from "./check-owned-runtime.ts";
+import { createPackageBoundaryLint, PACKAGE_SOURCE_PATTERN } from "./check-package-boundaries.ts";
 
 requireSupportedBun();
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const files = (await listCiFiles(root)).filter(
-    (file) => /\.(?:jsx?|tsx?|mjs|mts)$/.test(file) && !file.split("/").includes(".astro"),
-);
-const runtimeDiagnostics = await checkOwnedRuntime(root);
+const ciFiles = await listCiFiles(root);
+const files = ciFiles.filter((file) => PACKAGE_SOURCE_PATTERN.test(file) && !file.split("/").includes(".astro"));
+const [runtimeDiagnostics, lintPackageBoundary] = await Promise.all([
+    checkOwnedRuntime(root),
+    createPackageBoundaryLint(root, ciFiles),
+]);
 for (const diagnostic of runtimeDiagnostics)
     console.error(`${diagnostic.file}:${diagnostic.line}: ${diagnostic.message}`);
 let failures = runtimeDiagnostics.length;
 for (const file of files) {
-    const messages = lintSource(await readFile(join(root, file), "utf8"), file);
+    const source = await readFile(join(root, file), "utf8");
+    for (const diagnostic of lintPackageBoundary(source, file)) {
+        console.error(`${file}:${diagnostic.line}: ${diagnostic.message}`);
+        failures += 1;
+    }
+    if (/\.(?:astro|html)$/.test(file)) continue;
+    const messages = lintSource(source, file);
     for (const message of messages) {
         console.error(`${file}:${message.line}:${message.column}: ${message.ruleId ?? "parser"}: ${message.message}`);
         failures += 1;

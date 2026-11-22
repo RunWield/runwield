@@ -17,13 +17,13 @@ function makeValidationUi() {
 
 test("runValidationLoop fails closed when worktree validation context is missing target branch metadata", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         status: "implemented",
     });
     const { hostedSession } = makeValidationUi();
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
-        triageMeta: { classification: "FEATURE", status: "implemented" },
+        triageMeta: { classification: "PLANNED_CHANGE", status: "implemented" },
         executionAgent: "engineer",
         projectRoot,
         executionCwd: projectRoot,
@@ -36,7 +36,7 @@ test("runValidationLoop fails closed when worktree validation context is missing
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "FEATURE", status: "implemented" },
+        triageMeta: { classification: "PLANNED_CHANGE", status: "implemented" },
         semanticReviewPort: NO_ISOLATED_AGENT_PORT,
         localCI: {
             run: () => Promise.resolve({ kind: "completed", exitCode: 0, output: "should not run" }),

@@ -3,7 +3,8 @@
  * Command to set or show the current session name.
  */
 
-import { sanitizeSessionName, setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
+import { toolRegistry } from "@runwield/tools";
+import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
 import { theme } from "../../ui/theme/theme.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 
@@ -29,9 +30,10 @@ export async function runNameCommand(argv: string[], options: NameCommandOptions
         return;
     }
 
-    const name = sanitizeSessionName(argv.join(" "));
+    const { sanitize } = toolRegistry.get("set_session_name");
+    const name = sanitize(argv.join(" "));
     if (!name) {
-        const currentName = sanitizeSessionName(sessionRuntime.getSessionSnapshot(sessionId)?.name || "");
+        const currentName = sanitize(sessionRuntime.getSessionSnapshot(sessionId)?.name || "");
         if (currentName) {
             uiAPI.appendSystemMessage(theme.fg("dim", `Session name: ${currentName}`));
         } else {

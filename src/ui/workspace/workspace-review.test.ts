@@ -727,7 +727,7 @@ test("review guide jobs ground provider prompt in Plan payload", async () => {
                     "diff --git a/src/a.js b/src/a.js\n--- a/src/a.js\n+++ b/src/a.js\n@@ -1 +1,2 @@\n export const a = 1;\n+export const b = 2;\n",
                 gitRef: "review target",
                 planContent: "# Plan\nShip the user-facing explanation.",
-                planAttrs: { classification: "FEATURE", complexity: "HIGH" },
+                planAttrs: { classification: "PLANNED_CHANGE", complexity: "HIGH" },
             },
             runGuideCommand: (prompt) => {
                 capturedPrompt = prompt;
@@ -766,7 +766,7 @@ test("review guide jobs ground provider prompt in Plan payload", async () => {
 
         assertStringIncludes(capturedPrompt, "# Plan");
         assertStringIncludes(capturedPrompt, "Ship the user-facing explanation.");
-        assertStringIncludes(capturedPrompt, '"classification": "FEATURE"');
+        assertStringIncludes(capturedPrompt, '"classification": "PLANNED_CHANGE"');
         await state.widgets.cleanup();
     } finally {
         if (previousCommand === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
@@ -1074,14 +1074,14 @@ test("Plan approval preserves annotations, global images, and the edited Plan", 
     }
 });
 
-test("Plan approval transports canonical FEATURE execution policy", async () => {
+test("Plan approval transports Planned Change execution policy", async () => {
     const token = "plan-policy-secret";
     const { promise } = registerReviewDecisionPromise(token);
     try {
         const app = createReviewWorkspaceApp({
             cwd: getCwd(),
             token,
-            reviewPayload: { classification: "FEATURE", frontmatter: { classification: "FEATURE" } },
+            reviewPayload: { classification: "PLANNED_CHANGE", frontmatter: { classification: "PLANNED_CHANGE" } },
             reviewType: "plan",
         }).handler();
 
@@ -1125,7 +1125,7 @@ test("invalid Plan approval execution policy leaves review open for retry", asyn
         const app = createReviewWorkspaceApp({
             cwd: getCwd(),
             token,
-            reviewPayload: { classification: "FEATURE", frontmatter: { classification: "FEATURE" } },
+            reviewPayload: { classification: "PLANNED_CHANGE", frontmatter: { classification: "PLANNED_CHANGE" } },
             reviewType: "plan",
         }).handler();
 

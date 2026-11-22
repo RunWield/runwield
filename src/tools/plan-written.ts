@@ -25,9 +25,9 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../plan-sto
 import { rememberPlannedVerificationCommand } from "../shared/workflow/planned-verification-command.ts";
 
 import { pathToFileURL as toFileUrl } from "node:url";
-import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
-import { CLI_BIN, normalizePlanClassification, normalizeWorkKind } from "../constants.ts";
+import { toolRegistry, type WorkKind } from "@runwield/tools";
+import { CLI_BIN, type PlanClassification } from "../constants.ts";
 import { planDocumentMarkdown, resolvePlanExecutionPolicy } from "../plan-format.ts";
 import { ensurePlanIdentity, loadPlan } from "../plan-store/index.ts";
 import { assertNotReservedEpicArtifactPlanName } from "../plan-format.ts";
@@ -56,9 +56,12 @@ import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-event
 import type { HostedSession } from "../shared/session/hosted-session.ts";
 import type { PlanFrontMatter } from "../plan-store/index.ts";
 
+const planWritten = toolRegistry.get("plan_written");
+const triageReport = toolRegistry.get("triage_report");
+
 export interface TriageMeta extends Partial<PlanFrontMatter> {
-    classification?: "QUICK_FIX" | "PLANNED_CHANGE" | "FEATURE" | "PROJECT";
-    workKind?: "BUG_FIX" | "FEATURE" | "REFACTOR" | "MAINTENANCE" | "DOCUMENTATION";
+    classification?: PlanClassification;
+    workKind?: WorkKind;
     complexity?: "LOW" | "MEDIUM" | "HIGH";
 }
 
@@ -150,90 +153,6 @@ function parsePlanReviewMeta(meta: InteractionMeta | undefined): PlanReviewMeta 
         cancellationReason: typeof source.cancellationReason === "string" ? source.cancellationReason : undefined,
     };
 }
-
-const TOOL_PARAMS = Type.Object({
-    definition: Type.Optional(
-        Type.Object({
-            summary: Type.Optional(Type.String()),
-            affectedPaths: Type.Optional(Type.Array(Type.String())),
-            workKind: Type.Optional(
-                Type.Union(
-                    (["BUG_FIX", "FEATURE", "REFACTOR", "MAINTENANCE", "DOCUMENTATION"] as const).map((value) =>
-                        Type.Literal(value),
-                    ),
-                ),
-            ),
-            complexity: Type.Optional(Type.Union([Type.Literal("LOW"), Type.Literal("MEDIUM"), Type.Literal("HIGH")])),
-            tickets: Type.Optional(Type.Array(Type.Object({ url: Type.String() }))),
-            supersedes: Type.Optional(Type.Array(Type.String())),
-            frontend: Type.Optional(Type.Boolean()),
-            devServerCommand: Type.Optional(Type.String()),
-            devServerUrl: Type.Optional(Type.String()),
-            devServerHmr: Type.Optional(Type.Boolean()),
-        }),
-    ),
-    planType: Type.Optional(Type.Union([Type.Literal("epic"), Type.Literal("sequence")])),
-    targetBranch: Type.Optional(Type.String()),
-    order: Type.Optional(Type.Number({ minimum: 0 })),
-    contextMarkdown: Type.Optional(
-        Type.String({ description: "Create or revise canonical Plan prose without YAML front matter." }),
-    ),
-    validationMarkdown: Type.Optional(
-        Type.String({ description: "Verification instructions as Markdown without front matter." }),
-    ),
-    expectedRevision: Type.Optional(
-        Type.String({ description: "Current Plan revision, required when replacing existing prose." }),
-    ),
-    parentPlan: Type.Optional(Type.String()),
-    dependencies: Type.Optional(Type.Array(Type.String())),
-
-    verificationCommand: Type.Optional(
-        Type.Object({
-            command: Type.String({
-                description: "Exact full-project verification command, not a focused diagnostic or quoted example.",
-            }),
-            intent: Type.Union([Type.Literal("discovered"), Type.Literal("user_selected")], {
-                description:
-                    "discovered fills missing configuration only. user_selected is for the user's explicit full-project command, including deliberate replacement of a saved command.",
-            }),
-        }),
-    ),
-    planName: Type.String({
-        description: "Plan filename without extension (kebab-case preferred), e.g. implement-memory-system",
-    }),
-    plans: Type.Optional(
-        Type.Array(
-            Type.Object({
-                planName: Type.String({
-                    description: "Child Plan name or ID, in declared execution order. Write every child first.",
-                }),
-                executionAgent: Type.Optional(
-                    Type.Union([Type.Literal("engineer"), Type.Literal("frontend-engineer")]),
-                ),
-                collaborationRecommendation: Type.Optional(
-                    Type.Union([Type.Literal("autonomous"), Type.Literal("pair")]),
-                ),
-            }),
-            {
-                minItems: 1,
-                description:
-                    "Complete child set for a PROJECT type: sequence. Omit when resuming to load its saved children.",
-            },
-        ),
-    ),
-    executionAgent: Type.Optional(
-        Type.Union([Type.Literal("engineer"), Type.Literal("frontend-engineer")], {
-            description:
-                "Canonical execution owner. Use frontend-engineer only when the planned change's primary outcome is materially visual or interactive browser UI; otherwise engineer, including TUI work and incidental frontend-file edits. Omit to default to engineer. PROJECT Epics are non-executable and must omit this.",
-        }),
-    ),
-    collaborationRecommendation: Type.Optional(
-        Type.Union([Type.Literal("autonomous"), Type.Literal("pair")], {
-            description:
-                "Suggested execution style. Use pair when live user judgment between increments is worth the interruptions, otherwise omit or use autonomous. PROJECT Epics are non-executable and must omit this.",
-        }),
-    ),
-});
 
 /**
  * Build the planner/architect revision request after the user submits feedback
@@ -364,8 +283,8 @@ async function resolveTriageMeta(
     }
     return {
         ...meta,
-        classification: normalizePlanClassification(meta.classification),
-        workKind: normalizeWorkKind(meta.workKind),
+        classification: meta.classification ?? "PLANNED_CHANGE",
+        workKind: triageReport.normalizeWorkKind(meta.workKind),
     };
 }
 
@@ -383,19 +302,9 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
     if (!hostedSession) throw new Error("createPlanWrittenTool: hostedSession is required");
     const cwd = hostedSession.cwd;
     const reviewPlanVersions = new Map<string, PlanReviewVersion[]>();
-    return defineTool<typeof TOOL_PARAMS, ToolResultDetails | null>({
-        exposure: "model-only",
-        name: "plan_written",
-        label: "Plan Written",
-        description:
-            "Create a canonical Plan with contextMarkdown and validationMarkdown, or submit an existing Plan for user review. " +
-            "Triggers review and (on approval) a save-vs-execute/decompose prompt. Execution or Slicer dispatch runs " +
-            "after your turn ends — the workflow dispatcher picks it up from this tool's outcome. " +
-            "Call this once after writing the plan; the user reviews it in a browser UI. " +
-            "If the user submits feedback instead of approving, the tool result contains that feedback so you can " +
-            "reply in chat or revise in this same session. Revise and call plan_written when the answer changes scope, behavior, a decision, or verification; when in doubt, revise. RunWield keeps an unchanged Plan review open. For a PROJECT with type: sequence, submit its complete child list in plans; " +
-            "all documents open together and approval executes the children in order. A later submission may name only the container.",
-        parameters: TOOL_PARAMS,
+    return defineTool<typeof planWritten.definition.parameters, ToolResultDetails | null>({
+        ...planWritten.definition,
+
         async execute(toolCallId, params, _signal, onUpdate, _ctx) {
             const planName = String(params.planName || "")
                 .trim()
@@ -943,8 +852,8 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 const approvedBase: TriageMeta = { ...effectiveMeta, ...reviewPlanAttrs };
                 const approvedMeta: TriageMeta = {
                     ...approvedBase,
-                    classification: normalizePlanClassification(approvedBase.classification),
-                    workKind: normalizeWorkKind(approvedBase.workKind),
+                    classification: approvedBase.classification ?? "PLANNED_CHANGE",
+                    workKind: triageReport.normalizeWorkKind(approvedBase.workKind),
                 };
                 const action = normalizePlanApprovalAction({
                     classification: approvedMeta.classification,

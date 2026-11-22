@@ -10,9 +10,11 @@ import { test } from "node:test";
 import { match as assertMatch, doesNotMatch as assertNotMatch } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import { createWriteToolDefinition, type ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import type { TextContent } from "@earendil-works/pi-ai";
+import { toolRegistry } from "@runwield/tools";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../docs-file-tools.ts";
+import { createSingleEditToolDefinition } from "../edit.ts";
 
 type DocsTool = ReturnType<typeof createWriteDocsToolDefinition | typeof createEditDocsToolDefinition>;
 
@@ -40,14 +42,14 @@ type FixtureExecute = (
     ctx: ExtensionToolContext,
 ) => Promise<FixtureDocsResult>;
 
-async function executeTool(tool: DocsTool, params: FixtureDocsParams) {
+async function executeTool(tool: DocsTool, params: FixtureDocsParams, context: Partial<ExtensionToolContext> = {}) {
     const execute = tool.execute as FixtureExecute;
     return await execute(
         "docs-tool-call-1",
         params,
         new AbortController().signal,
         () => {},
-        {} as ExtensionToolContext,
+        context as ExtensionToolContext,
     );
 }
 
@@ -55,6 +57,50 @@ function toolText(result: FixtureDocsResult) {
     const typed = result;
     return (typed.content || []).map((item) => item.text || "").join("\n");
 }
+
+test("write_docs uses the registry definition with a Pi-compatible schema", () => {
+    const definition = toolRegistry.get("write_docs").definition;
+    const tool = createWriteDocsToolDefinition("/tmp");
+
+    assertEquals(definition.parameters, createWriteToolDefinition("/tmp").parameters);
+    assertEquals(tool.parameters, definition.parameters);
+    assertEquals(tool.description, definition.description);
+    assertEquals(tool.promptSnippet, definition.promptSnippet);
+    assertEquals(tool.promptGuidelines, definition.promptGuidelines);
+});
+
+test("edit_docs shares the registry's single-replacement schema and preserves legacy argument preparation", () => {
+    const definition = toolRegistry.get("edit_docs").definition;
+    const tool = createEditDocsToolDefinition("/tmp");
+
+    assertEquals(tool.parameters, definition.parameters);
+    assertEquals(createSingleEditToolDefinition("/tmp").parameters, definition.parameters);
+    assertEquals(tool.description, definition.description);
+    assertEquals(tool.promptSnippet, definition.promptSnippet);
+    assertEquals(tool.promptGuidelines, definition.promptGuidelines);
+    assertEquals(tool.prepareArguments?.({ file_path: "guide.md", edits: [{ oldText: "old", newText: "new" }] }), {
+        path: "guide.md",
+        oldText: "old",
+        newText: "new",
+    });
+});
+
+test("Markdown adapters forward the active tool context to Pi", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
+    try {
+        const fallback = join(dir, "fallback");
+        const context = { cwd: join(dir, "active") };
+        await executeTool(createWriteDocsToolDefinition(fallback), { path: "guide.md", content: "# Old\n" }, context);
+        await executeTool(
+            createEditDocsToolDefinition(fallback),
+            { path: "guide.md", oldText: "Old", newText: "New" },
+            context,
+        );
+        assertEquals(await fsReadFile(join(context.cwd, "guide.md"), "utf8"), "# New\n");
+    } finally {
+        await fsRm(dir, { recursive: true });
+    }
+});
 
 test("edit_docs reports a failed match without dumping the document", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));

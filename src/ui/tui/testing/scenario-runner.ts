@@ -644,7 +644,7 @@ function planReviewClassification(plan: string | undefined) {
     if (typeof plan !== "string") return null;
     try {
         const classification = parsePlanFrontMatter(plan).attrs.classification;
-        return classification === "FEATURE" ? "PLANNED_CHANGE" : classification || null;
+        return classification || null;
     } catch {
         return null;
     }
@@ -1092,7 +1092,7 @@ export async function runGoldenScenario(
                 try {
                     for (let reviewIndex = 0; reviewIndex < decisions.length; reviewIndex += 1) {
                         const triageMeta = typed.triageMeta || {
-                            classification: "FEATURE",
+                            classification: "PLANNED_CHANGE",
                             complexity: "LOW",
                             summary: "Golden Plan Review contract",
                         };

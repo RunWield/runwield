@@ -173,8 +173,7 @@ export function reviewSourceStillMatches(
 function validatedClassification(
     classification: PlanFrontMatter["classification"] | undefined,
 ): "PROJECT" | "PLANNED_CHANGE" | null {
-    if (classification === "PROJECT") return "PROJECT";
-    if (classification === "PLANNED_CHANGE" || classification === "FEATURE") return "PLANNED_CHANGE";
+    if (classification === "PROJECT" || classification === "PLANNED_CHANGE") return classification;
     return null;
 }
 

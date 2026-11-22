@@ -3,7 +3,8 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../src/testing/assertions.ts";
 import { deliver } from "./exporter.ts";
-import { observation, withServer } from "./test-fixture.ts";
+import { withServer } from "../../src/testing/langfuse-exporter-fixture.ts";
+import { observation } from "./test-fixture.ts";
 type TimeoutHandle = ReturnType<typeof setTimeout>;
 
 for (const [body, expected] of [

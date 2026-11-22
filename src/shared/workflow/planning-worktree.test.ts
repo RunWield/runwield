@@ -69,7 +69,7 @@ const fixture = defineGitFixture(async (repo) => {
         "epic/01-child",
         {
             planId: "plan-child-01",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "draft",
             parentPlan: "epic",
@@ -88,7 +88,7 @@ const fixture = defineGitFixture(async (repo) => {
         "epic/01-child",
         {
             planId: "plan-child-01",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "draft",
             parentPlan: "epic",
@@ -1030,7 +1030,7 @@ testRetainedPlanning("target discovery errors stop the catalog before stale over
         "epic/01-child",
         {
             planId: "different-child-id",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "draft",
             parentPlan: "epic",
@@ -1165,7 +1165,7 @@ testRetainedPlanning("published-only read snapshots cannot be used as archive do
         "epic/01-child",
         {
             planId: "plan-child-01",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "user_verified",
             parentPlan: "epic",
             targetBranch: "epic-target",
@@ -1219,7 +1219,7 @@ testRetainedPlanning("target checkout lists and loads an untracked child from th
         "epic/99-local",
         {
             planId: "local-child",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "draft",
             parentPlan: "epic",
             targetBranch: "epic-target",
@@ -1257,7 +1257,7 @@ testRetainedPlanning(
             repo,
             "epic/99-unrelated",
             {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "draft",
                 parentPlan: "epic",
                 targetBranch: "epic-target",
@@ -1365,7 +1365,7 @@ testRetainedPlanning(
             repo,
             "epic/production05b",
             {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "draft",
                 parentPlan: "epic",
                 targetBranch: "epic-target",
@@ -1480,7 +1480,7 @@ testRetainedPlanning("Resume planning rejects an off-target untracked draft with
         repo,
         "epic/unrelated",
         {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "draft",
             parentPlan: "epic",
             targetBranch: "epic-target",

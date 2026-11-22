@@ -115,7 +115,7 @@ test("recordWorkflowMetric reports write failures without throwing", async () =>
         await fsWriteFile(runwieldPath, "blocks the metrics directory");
 
         const record = await recordWorkflowMetric(
-            { category: "routing", event: "dispatch_selected", details: { routingIntent: "FEATURE" } },
+            { category: "routing", event: "dispatch_selected", details: { routingIntent: "PLANNED_CHANGE" } },
             projectRoot,
         );
 

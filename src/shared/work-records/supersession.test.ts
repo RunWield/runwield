@@ -467,7 +467,7 @@ test("generation preserves its successor when supersession rollback is incomplet
             });
             await seedPlan(cwd, "successor", "# Successor\n\n## Plan\n\nReplace old work.", {
                 planId: "plan-successor",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "LOW",
                 summary: "Replacement result.",
                 affectedPaths: [],

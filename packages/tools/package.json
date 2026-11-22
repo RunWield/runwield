@@ -1,0 +1,9 @@
+{
+    "name": "@runwield/tools",
+    "private": true,
+    "type": "module",
+    "exports": "./index.ts",
+    "dependencies": {
+        "typebox": "1.3.27"
+    }
+}

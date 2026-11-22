@@ -35,7 +35,7 @@ test("HostedSession rejects ownerless active execution workflows", () => {
         () =>
             session.setActiveExecutionWorkflow({
                 planName: "p",
-                triageMeta: { classification: "FEATURE" },
+                triageMeta: { classification: "PLANNED_CHANGE" },
             } as ActiveExecutionWorkflow),
         Error,
         "requires executionAgent",
@@ -47,7 +47,7 @@ test("HostedSession validates Pair execution runtime state", () => {
     const session = new HostedSession({ id: "pair-state", cwd: "/work/pair-state" });
     session.setActiveExecutionWorkflow({
         planName: "visual-plan",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgent: "frontend-engineer",
         collaborationStyle: "pair",
         collaborationRecommendation: "pair",
@@ -85,7 +85,7 @@ test("HostedSession validates execution attempt timestamp", () => {
     const session = new HostedSession({ id: "attempt-timestamp", cwd: "/work/attempt-timestamp" });
     session.setActiveExecutionWorkflow({
         planName: "visual-plan",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgent: "frontend-engineer",
         executionStarted: true,
         executionAttemptStartedAtMs: 1234,
@@ -229,7 +229,7 @@ test("HostedSession preserves workflow context across empty root manager swap an
     });
     session.setWorkflowExecutionContext({
         planName: "epic-name/footer-plan",
-        triageMeta: { classification: "FEATURE", complexity: "MEDIUM", parentPlan: "epic-name" },
+        triageMeta: { classification: "PLANNED_CHANGE", complexity: "MEDIUM", parentPlan: "epic-name" },
     });
 
     const secondManager = makeSessionManager("context-swap-b");
@@ -269,7 +269,7 @@ test("HostedSession null root manager does not clear workflow context", () => {
     });
     session.setWorkflowExecutionContext({
         planName: "footer-plan",
-        triageMeta: { classification: "FEATURE", complexity: "MEDIUM" },
+        triageMeta: { classification: "PLANNED_CHANGE", complexity: "MEDIUM" },
     });
 
     session.setRootSessionManager(null);
@@ -289,7 +289,7 @@ test("HostedSession triage setter preserves plan name without persistence", () =
     });
     session.setWorkflowExecutionContext({
         planName: "footer-plan",
-        triageMeta: { classification: "FEATURE", complexity: "MEDIUM" },
+        triageMeta: { classification: "PLANNED_CHANGE", complexity: "MEDIUM" },
     });
     session.setRootSessionManager(null);
 
@@ -310,7 +310,7 @@ test("HostedSession plan setter preserves triage fields without persistence", ()
     });
     session.setWorkflowExecutionContext({
         planName: "footer-plan",
-        triageMeta: { classification: "FEATURE", complexity: "MEDIUM" },
+        triageMeta: { classification: "PLANNED_CHANGE", complexity: "MEDIUM" },
     });
     session.setRootSessionManager(null);
 

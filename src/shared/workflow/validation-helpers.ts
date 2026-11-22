@@ -155,7 +155,7 @@ export const __dirname = dirname(fromFileUrl(import.meta.url));
 interface RunManualQaChecklistPromptOptions {
     hostedSession: import("../session/hosted-session.ts").HostedSession;
     name: string;
-    classification: "QUICK_FIX" | "PLANNED_CHANGE" | "FEATURE";
+    classification: "QUICK_FIX" | "PLANNED_CHANGE";
     context: string;
     cwd: string;
 }
@@ -167,7 +167,7 @@ interface RunManualQaChecklistPromptOptions {
  * @param {Object} args
  * @param {import('../session/hosted-session.ts').HostedSession} args.hostedSession
  * @param {string} args.name
- * @param {"QUICK_FIX"|"PLANNED_CHANGE"|"FEATURE"} args.classification
+ * @param {"QUICK_FIX"|"PLANNED_CHANGE"} args.classification
  * @param {string} args.context
  * @param {string} args.cwd
  * @returns {Promise<import('@earendil-works/pi-agent-core').AgentMessage[]>}
@@ -179,11 +179,10 @@ export async function runManualQaChecklistPrompt({
     context,
     cwd,
 }: RunManualQaChecklistPromptOptions) {
-    const normalizedClassification = classification === "FEATURE" ? "PLANNED_CHANGE" : classification;
     const userRequest = [
         "Prepare the post-verification checklist from this source material.",
         `Name: ${name}`,
-        `Classification: ${normalizedClassification}`,
+        `Classification: ${classification}`,
         "",
         "### Source context",
         context,
@@ -199,9 +198,7 @@ export async function runManualQaChecklistPrompt({
             sessionManager: SessionManager.inMemory(cwd),
             subAgentDefinition: { id: SUBAGENTS.MANUAL_QA },
             includeEditFallback: false,
-            customTools: [
-                createManualQaCompletedTool({ hostedSession, name, classification: normalizedClassification }),
-            ],
+            customTools: [createManualQaCompletedTool({ hostedSession, name, classification })],
         },
         "manual_qa_completed",
     );
@@ -213,7 +210,7 @@ export async function runManualQaChecklistPrompt({
 interface PresentManualQaChecklistOptions {
     hostedSession: import("../session/hosted-session.ts").HostedSession;
     name: string;
-    classification: "QUICK_FIX" | "PLANNED_CHANGE" | "FEATURE";
+    classification: "QUICK_FIX" | "PLANNED_CHANGE";
     context: string;
     cwd: string;
 }
@@ -225,7 +222,7 @@ interface PresentManualQaChecklistOptions {
  * @param {Object} args
  * @param {import('../session/hosted-session.ts').HostedSession} args.hostedSession
  * @param {string} args.name
- * @param {"QUICK_FIX"|"PLANNED_CHANGE"|"FEATURE"} args.classification
+ * @param {"QUICK_FIX"|"PLANNED_CHANGE"} args.classification
  * @param {string} args.context
  * @param {string} args.cwd
  * @returns {Promise<void>}

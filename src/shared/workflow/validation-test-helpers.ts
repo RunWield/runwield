@@ -197,7 +197,7 @@ export async function makeValidationProjectRoot(
         await import("../../plan-store.ts");
     const { pickControllerState } = await import("./controller-state.ts");
     await savePlan(root, planName, markdown, {
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         summary: "validation fixture",
         affectedPaths: [],
         planId: crypto.randomUUID(),

@@ -23,7 +23,7 @@ test("landing selection honors legacy target edits only when no delivery branch 
 });
 
 for (const autoMerge of [false, true]) {
-    test(`legacy standalone FEATURE records the configured default and resumes its landing (${autoMerge})`, async () => {
+    test(`standalone Planned Change records the configured default and resumes its landing (${autoMerge})`, async () => {
         await withRuntimeCommandFixture("delivery-start-", async () => {
             const root = await repo.checkout();
             return await withRetainedPlanFixture(root, async () => {
@@ -37,7 +37,7 @@ for (const autoMerge of [false, true]) {
                     await setCustomSetting("plans", { autoMergeIntoTargetBranch: autoMerge }, "project", root);
                     await seedPlan(root, "legacy", "# Legacy\n", {
                         planId: "legacy",
-                        classification: "FEATURE",
+                        classification: "PLANNED_CHANGE",
                         status: "ready_for_work",
                         affectedPaths: [],
                     });

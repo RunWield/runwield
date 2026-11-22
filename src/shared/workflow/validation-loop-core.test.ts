@@ -57,7 +57,7 @@ import {
 const footerExecutionRepo = defineGitFixture((repoPath) =>
     withRetainedPlanFixture(repoPath, async () => {
         await seedPlan(repoPath, "footer-plan", "# footer-plan\n\nvalidation fixture\n", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "ready_for_work",
             summary: "validation fixture",
@@ -147,7 +147,7 @@ async function makePlannedReviewWorktree() {
         await setCustomSetting("codereview", "none", "project", projectRoot);
         await seedPlan(projectRoot, "p", "# p\n\nvalidation fixture\n", {
             planId: "test:p",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "validated_ci",
             summary: "validation fixture",
             affectedPaths: [],
@@ -168,7 +168,7 @@ async function makePlannedReviewWorktree() {
         );
         hostedSession.setActiveExecutionWorkflow({
             planName: "p",
-            triageMeta: { classification: "FEATURE", status: "validated_ci" },
+            triageMeta: { classification: "PLANNED_CHANGE", status: "validated_ci" },
             executionAgent: "engineer",
             projectRoot,
             executionCwd: worktree.path,
@@ -258,7 +258,7 @@ for (const interruption of ["abandoned catalog lock", "Git commit hook"]) {
                         hostedSession: fixture.hostedSession,
                         planName: "p",
                         planContent: plan.body,
-                        triageMeta: { classification: "FEATURE", status: "reviewed" },
+                        triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed" },
                         git: createGitPort(),
                         localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
                         workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
@@ -381,7 +381,7 @@ for (const malformed of [false, true])
                         hostedSession: fixture.hostedSession,
                         planName: "p",
                         planContent: plan.body,
-                        triageMeta: { classification: "FEATURE", status: "reviewed" },
+                        triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed" },
                         git: createGitPort(),
                         localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
                         workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
@@ -450,7 +450,7 @@ for (const sealed of [false, true]) {
                     hostedSession: fixture.hostedSession,
                     planName: "p",
                     planContent: "# stale Plan",
-                    triageMeta: { classification: "FEATURE", status: "reviewed", targetBranch: "main" },
+                    triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed", targetBranch: "main" },
                     git: createGitPort(),
                     localCI: { run: () => Promise.reject(new Error("Unexpected CI")) },
                     workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
@@ -552,7 +552,7 @@ for (const targetBranch of ["release/next", " origin/release/next ", undefined])
                     hostedSession: fixture.hostedSession,
                     planName: "p",
                     planContent: "# stale Plan",
-                    triageMeta: { classification: "FEATURE", status: "validated_ci", targetBranch: "main" },
+                    triageMeta: { classification: "PLANNED_CHANGE", status: "validated_ci", targetBranch: "main" },
                     git: createGitPort(),
                     workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
                     semanticReviewPort: NO_ISOLATED_AGENT_PORT,
@@ -621,14 +621,14 @@ test("startActiveExecutionWorkflow seeds footer workflow context from Plan front
 
 test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE plans", async () => {
     const { projectRoot, hostedSession } = await makeLifecycleRun("reviewed", {
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         humanReviewMode: "none",
         humanReviewDecision: "not_required",
     });
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
         triageMeta: {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "reviewed",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
@@ -644,7 +644,7 @@ test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE plans",
         planName: "p",
         planContent: "# p",
         triageMeta: {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "reviewed",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
@@ -668,7 +668,7 @@ test("runValidationLoop shows why FEATURE validation fails when workflow diff is
                 hostedSession,
                 planName: "p",
                 planContent: "# p",
-                triageMeta: { classification: "FEATURE", status: "validated_ci" },
+                triageMeta: { classification: "PLANNED_CHANGE", status: "validated_ci" },
                 semanticReviewPort: NO_ISOLATED_AGENT_PORT,
             });
 
@@ -778,7 +778,7 @@ test("runValidationLoop starts at implemented and records only the mechanical pa
 test("validation returns a lifecycle invariant when controller preparation reads malformed YAML", async () => {
     const projectRoot = await makeRepo();
     return await withRetainedPlanFixture(projectRoot, async () => {
-        await seedPlan(projectRoot, "p", "# Plan\n", { classification: "FEATURE", status: "implemented" });
+        await seedPlan(projectRoot, "p", "# Plan\n", { classification: "PLANNED_CHANGE", status: "implemented" });
         const hostedSession = attachRecorder(
             new HostedSession({ id: "malformed-validation", cwd: projectRoot }),
             makeUi(),
@@ -790,7 +790,7 @@ test("validation returns a lifecycle invariant when controller preparation reads
                 hostedSession,
                 planName: "p",
                 planContent: "# Stale cached Plan",
-                triageMeta: { classification: "FEATURE", status: "implemented" },
+                triageMeta: { classification: "PLANNED_CHANGE", status: "implemented" },
                 semanticReviewPort: NO_ISOLATED_AGENT_PORT,
                 localCI: { run: () => Promise.reject(new Error("Malformed Plans must not run CI")) },
             });
@@ -826,7 +826,7 @@ test("validation recovers an unregistered execution checkout before selecting a 
                 "# Implemented execution Plan\n",
                 {
                     planId: "recovered-validation-plan",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     status: "implemented",
                 },
                 { expectedRevision: executionPlan?.revision },
@@ -837,10 +837,10 @@ test("validation recovers an unregistered execution checkout before selecting a 
                 hostedSession,
                 planName: "footer-plan",
                 planContent: "# Cached Plan",
-                triageMeta: { classification: "FEATURE", status: "ready_for_work" },
+                triageMeta: { classification: "PLANNED_CHANGE", status: "ready_for_work" },
                 executionContext: {
                     planName: "footer-plan",
-                    triageMeta: { classification: "FEATURE", status: "ready_for_work" },
+                    triageMeta: { classification: "PLANNED_CHANGE", status: "ready_for_work" },
                     projectRoot,
                     executionMode: "worktree",
                     executionCwd,

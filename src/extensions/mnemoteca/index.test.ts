@@ -12,7 +12,7 @@ import type {
     ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import type { MemoryParams, memoryToolDef } from "./tools.ts";
+import type { ToolEntry, MemoryParams } from "@runwield/tools";
 import type { HelperBinaryExec, HelperBinaryExecOptions, HelperBinaryExecResult } from "../helper-binary-exec.ts";
 
 type FixtureExec = (...args: Parameters<HelperBinaryExec>) => HelperBinaryExecResult | Promise<HelperBinaryExecResult>;
@@ -38,7 +38,10 @@ type FixtureToolExecutor = (
     context: FixtureToolContext,
 ) => Promise<FixtureToolResult>;
 
-interface RegisteredTool extends Omit<ToolDefinition<typeof memoryToolDef.parameters, MemoryParams>, "execute"> {
+interface RegisteredTool extends Omit<
+    ToolDefinition<ToolEntry<"memory">["definition"]["parameters"], MemoryParams>,
+    "execute"
+> {
     execute: FixtureToolExecutor;
 }
 

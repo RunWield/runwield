@@ -1,6 +1,6 @@
 import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { extractRouterDecisionsFromEntries } from "./extract-router-decisions.ts";
+import { extractRouterDecisionsFromEntries, normalizeTriageDetails } from "./extract-router-decisions.ts";
 
 test("extractRouterDecisionsFromEntries pairs router user request with triage_report", () => {
     const rows = extractRouterDecisionsFromEntries(
@@ -116,7 +116,7 @@ test("extractRouterDecisionsFromEntries ignores sessions without active-agent ro
 });
 
 for (const details of [
-    { routingIntent: "FEATURE", complexity: "MEDIUM", summary: "Build it", affectedPaths: ["src/a.js"] },
+    { routingIntent: "PLANNED_CHANGE", complexity: "MEDIUM", summary: "Build it", affectedPaths: ["src/a.js"] },
     { classification: "QUICK_FIX", complexity: "LOW", summary: "Fix it", affectedPaths: ["src/a.js"] },
 ]) {
     test(`persisted routing extraction preserves ${"routingIntent" in details ? "canonical" : "legacy"} intent and tool evidence`, () => {
@@ -145,7 +145,7 @@ for (const details of [
         assertEquals(rows[0].requestText, "Make the change");
         assertEquals(rows[0].routingIntent, details.routingIntent ?? details.classification);
         assertEquals(rows[0].intentSource, "routingIntent" in details ? "routingIntent" : "classification");
-        assertEquals(rows[0].classification, "routingIntent" in details ? "FEATURE" : undefined);
+        assertEquals(rows[0].classification, "routingIntent" in details ? "PLANNED_CHANGE" : undefined);
         assertEquals(rows[0].complexity, details.complexity);
         assertEquals(rows[0].summary, details.summary);
         assertEquals(rows[0].affectedPaths, ["src/a.js"]);
@@ -153,3 +153,21 @@ for (const details of [
         assertEquals(rows[0].discoveryToolCount, 2);
     });
 }
+
+test("routing extraction falls back to a canonical classification and rejects FEATURE", () => {
+    const details = { complexity: "MEDIUM", summary: "Build it", affectedPaths: ["src/a.ts"] };
+    assertEquals(normalizeTriageDetails({ ...details, routingIntent: "NOPE", classification: "PLANNED_CHANGE" }), {
+        ...details,
+        routingIntent: "PLANNED_CHANGE",
+        classification: "PLANNED_CHANGE",
+        intentSource: "classification",
+    });
+    assertEquals(
+        normalizeTriageDetails({ ...details, routingIntent: "FEATURE", classification: "PLANNED_CHANGE" }),
+        null,
+    );
+    assertEquals(
+        normalizeTriageDetails({ ...details, routingIntent: "PLANNED_CHANGE", classification: "FEATURE" }),
+        null,
+    );
+});

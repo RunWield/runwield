@@ -1,19 +1,12 @@
 /** Agent Custom Tool for canonical Work Record search. */
 
-import { Type } from "typebox";
+import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { formatWorkRecordSearchResults, searchWorkRecords } from "../shared/work-records/index.ts";
 import type { WorkRecordMnemotecaPort } from "../shared/work-records/mnemoteca-port.ts";
 
-export const WORK_RECORD_SEARCH_TOOL_NAME = "work_record_search";
-
-const PARAMETERS = Type.Object(
-    {
-        query: Type.String({ minLength: 1, description: "Work Record search query." }),
-    },
-    { additionalProperties: false },
-);
+const definition = toolRegistry.get("work_record_search").definition;
 
 interface WorkRecordSearchToolOptions {
     cwd: string;
@@ -35,12 +28,9 @@ type WorkRecordSearchResult = AgentToolResult<WorkRecordSearchDetails> & { isErr
 export function createWorkRecordSearchTool(opts: WorkRecordSearchToolOptions) {
     const accessMode = opts.accessMode || "current";
     const mnemotecaPort = opts.mnemotecaPort;
-    return defineTool<typeof PARAMETERS, WorkRecordSearchDetails>({
-        name: WORK_RECORD_SEARCH_TOOL_NAME,
-        label: "Work Record Search",
-        description: "Search canonical Work Records through the derived index and return hydrated Markdown metadata.",
-        promptSnippet: "Search current usable Work Records for planning context by query.",
-        parameters: PARAMETERS,
+    return defineTool<typeof definition.parameters, WorkRecordSearchDetails>({
+        ...definition,
+
         async execute(_toolCallId, params): Promise<WorkRecordSearchResult> {
             try {
                 const result = await searchWorkRecords(opts.cwd, params.query, { accessMode, mnemotecaPort });
@@ -64,3 +54,5 @@ export function createWorkRecordSearchTool(opts: WorkRecordSearchToolOptions) {
         },
     });
 }
+
+export const WORK_RECORD_SEARCH_TOOL_NAME = definition.name;

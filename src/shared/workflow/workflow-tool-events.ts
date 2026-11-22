@@ -6,6 +6,7 @@
  * audit data only.
  */
 
+import type { TriageOutcome } from "@runwield/tools";
 import type { HostedSession } from "../session/hosted-session.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 
@@ -22,15 +23,6 @@ export type WorkflowToolEventKind =
     | "manual_qa_completed";
 
 export type WorkflowToolEventOwnerKind = "root" | "isolated";
-
-export interface TriageReportEventPayload {
-    routingIntent: "INQUIRY" | "IDEATION" | "OPERATION" | "QUICK_FIX" | "PLANNED_CHANGE" | "PROJECT" | "FEATURE";
-    complexity: "LOW" | "MEDIUM" | "HIGH";
-    summary: string;
-    classification?: "INQUIRY" | "IDEATION" | "OPERATION" | "QUICK_FIX" | "PLANNED_CHANGE" | "FEATURE" | "PROJECT";
-    workKind?: "BUG_FIX" | "FEATURE" | "REFACTOR" | "MAINTENANCE" | "DOCUMENTATION";
-    sessionName?: string;
-}
 
 export interface PlanWrittenEventPayload {
     outcome:
@@ -77,7 +69,7 @@ export interface QaChecklistGeneratedEventPayload {
 }
 
 export type WorkflowToolEventPayloadByKind = {
-    triage_report: TriageReportEventPayload;
+    triage_report: TriageOutcome;
     plan_written: PlanWrittenEventPayload;
     task_completed: TaskCompletedEventPayload;
     review_diff: ReviewDiffEventPayload;

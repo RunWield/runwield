@@ -9,17 +9,10 @@
  */
 
 import { createEditToolDefinition, type EditToolDetails, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type, type Static } from "typebox";
-const singleEditSchema = Type.Object(
-    {
-        path: Type.String({ description: "Path to the file to edit (relative or absolute)." }),
-        oldText: Type.String({
-            description: "Exact text to replace. It must match one unique region in the file.",
-        }),
-        newText: Type.String({ description: "Replacement text for oldText." }),
-    },
-    { additionalProperties: false },
-);
+import { toolRegistry } from "@runwield/tools";
+import type { Static } from "typebox";
+
+const singleEditSchema = toolRegistry.get("edit_docs").definition.parameters;
 
 type SingleEditArguments = Static<typeof singleEditSchema>;
 export type SingleEditToolDefinition = ToolDefinition<typeof singleEditSchema, EditToolDetails | undefined>;

@@ -1,17 +1,6 @@
-import {
-    ROUTING_INTENT_PLANNED_CHANGE,
-    LEGACY_ROUTING_INTENT_FEATURE,
-    normalizeWorkKind,
-} from "./plan-format/classification.ts";
-export {
-    ROUTING_INTENT_PLANNED_CHANGE,
-    LEGACY_ROUTING_INTENT_FEATURE,
-    WORK_KINDS,
-    PLANS_DIR_NAME,
-    normalizePlanClassification,
-    isPlannedChangeClassification,
-    normalizeWorkKind,
-} from "./plan-format/classification.ts";
+import { toolRegistry, type RoutingIntent } from "@runwield/tools";
+export type { RoutingIntent, WorkKind } from "@runwield/tools";
+export { PLANS_DIR_NAME, isPlannedChangeClassification } from "./plan-format/classification.ts";
 
 export { CLI_BIN } from "./shared/cli-name.ts";
 /**
@@ -75,28 +64,11 @@ export const SNIP_FILTERS_DIR = resolveBundledResourcePath("snip-filters");
 /** Path to the bundled Catppuccin Mocha theme JSON. */
 export const CATPPUCCIN_MOCHA_THEME_PATH = resolveBundledResourcePath("ui", "theme", "catppuccin-mocha.json");
 
-export type RoutingIntent = "INQUIRY" | "IDEATION" | "OPERATION" | "QUICK_FIX" | "PLANNED_CHANGE" | "PROJECT";
+export const { normalizeWorkKind, workKinds: WORK_KINDS } = toolRegistry.get("triage_report");
+
 export type PlanClassification = Extract<RoutingIntent, "QUICK_FIX" | "PLANNED_CHANGE" | "PROJECT">;
-export type WorkKind = "BUG_FIX" | "FEATURE" | "REFACTOR" | "MAINTENANCE" | "DOCUMENTATION";
 
-/** Allowed Routing Intent values emitted by the router. */
-export const ROUTING_INTENTS = [
-    "INQUIRY",
-    "IDEATION",
-    "OPERATION",
-    "QUICK_FIX",
-    "PLANNED_CHANGE",
-    "FEATURE",
-    "PROJECT",
-];
-
-export function normalizeRoutingIntent(value: unknown): RoutingIntent | null {
-    if (typeof value !== "string") return null;
-    if (value === LEGACY_ROUTING_INTENT_FEATURE) return ROUTING_INTENT_PLANNED_CHANGE;
-    return ROUTING_INTENTS.includes(value) ? (value as RoutingIntent) : null;
-}
-
-export function formatPlannedWorkLabel(workKind: unknown) {
+export function formatPlannedWorkLabel(workKind: string | null | undefined) {
     switch (normalizeWorkKind(workKind)) {
         case "BUG_FIX":
             return "Planned bug fix";
@@ -112,9 +84,6 @@ export function formatPlannedWorkLabel(workKind: unknown) {
             return "Planned change";
     }
 }
-
-/** Allowed complexity values emitted by triage. */
-export const COMPLEXITIES = ["LOW", "MEDIUM", "HIGH"];
 
 /** Directory name where canonical Work Record markdown files are stored. */
 export const WORK_RECORDS_DIR_NAME = "docs/work-records";

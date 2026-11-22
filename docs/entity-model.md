@@ -96,8 +96,8 @@ erDiagram
   the Plan file and its front matter.
 - **Ownership:** Router owns the Triage Report. Planner or Architect owns Plan drafting. Plan Lifecycle owns Plan Status
   transitions from recorded Plan Events. Plannotator supplies review decisions and Feedback.
-- **Lifecycle:** `PLANNED_CHANGE` and `PROJECT` are the Plan-producing classifications. Legacy `FEATURE` classification
-  input normalizes to `PLANNED_CHANGE`; `FEATURE` remains a Work Kind value when describing the nature of work.
+- **Lifecycle:** `PLANNED_CHANGE` and `PROJECT` are the Plan-producing classifications. The Plan store loads older
+  Plan files with `classification: FEATURE` as `PLANNED_CHANGE`. The Work Kind `FEATURE` describes new functionality.
 - **Source-of-truth caveats:** `Workflow Decision` tells callers what to do next without directly changing Plan Status.
   Durable status changes come from Plan Events applied through Plan Lifecycle.
 
@@ -145,7 +145,7 @@ erDiagram
 | Toolset and Custom Tool    | Effective tool names and call IDs         | Agent definition/tool registry plus runtime custom tool binding  | Tool registry and Agent Session binding          | Tool call events are runtime evidence, not durable project knowledge by default.     |
 | User Request               | Submitted natural-language request        | Session transcript                                               | Active Session/Router turn                       | May materialize into a Plan, operation, answer, or no-plan quick fix.                |
 | Triage Report              | Current-turn structured Router result     | Session transcript/tool result and workflow context marker       | Router and Agent Handler                         | Classification snapshot; later artifacts carry durable state.                        |
-| Routing Intent             | Canonical enum value                      | Triage Report and Plan front matter when materialized            | Router/workflow normalization                    | Legacy `FEATURE` normalizes to `PLANNED_CHANGE`.                                     |
+| Routing Intent             | Canonical enum value                      | Triage Report and Plan front matter when materialized            | Router/workflow normalization                    | Selects the workflow and responsible Agent.                                          |
 | Plan                       | `docs/plans/**/*.md` path and `planId`    | Repository Markdown with YAML Front Matter                       | Plan store and Plan Lifecycle                    | Workspace Plan Board cards are projections over Plan files.                          |
 | Epic                       | PROJECT Plan identity                     | Repository Plan Markdown                                         | Plan Lifecycle and Slicer                        | Container for decomposition; not directly executed.                                  |
 | Child PLANNED_CHANGE Plan  | Child Plan identity plus `parentPlan`     | Repository Plan Markdown                                         | Plan Lifecycle                                   | Executes and validates independently from its Epic.                                  |

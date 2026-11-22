@@ -25,7 +25,7 @@ test("benchmark resume preserves completed rows while normalizing legacy labels 
                     {
                         requestText: "fix it",
                         routerDecision: "QUICK_FIX",
-                        humanJudgement: "FEATURE",
+                        humanJudgement: "PLANNED_CHANGE",
                     },
                 ],
                 {
@@ -301,7 +301,7 @@ test("buildRouterGoldenReport scores router decisions", () => {
     assertEquals(
         buildRouterGoldenReport([
             { humanJudgement: "INQUIRY", routerDecision: "INQUIRY" },
-            { humanJudgement: "FEATURE", routerDecision: "QUICK_FIX" },
+            { humanJudgement: "PLANNED_CHANGE", routerDecision: "QUICK_FIX" },
             { humanJudgement: "", routerDecision: "PROJECT" },
         ]),
         {

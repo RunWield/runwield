@@ -119,8 +119,8 @@ test("readLatestTriageOutcome normalizes the latest current-turn report", () => 
             summary: "old",
         }),
         triageToolResult({
-            routingIntent: "FEATURE",
-            classification: "FEATURE",
+            routingIntent: "PLANNED_CHANGE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             summary: "current",
             sessionName: "current feature",

@@ -35,7 +35,7 @@ test("owner dashboard stream authenticates and completes with verified rows", as
     try {
         await seedPlan(root, "finished", "# Finished\n", {
             planId: "stream-plan",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "user_verified",
             userVerifiedAt: new Date().toISOString(),
         });
@@ -161,18 +161,18 @@ test("one Project streams a finished row before its unrelated live socket respon
     try {
         await seedPlan(fixture.projectRoot, "blocked", "# Blocked\n", {
             planId: "blocked-plan",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "in_progress",
         });
         await seedPlan(fixture.projectRoot, "finished", "# Finished\n", {
             planId: "early-plan",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "user_verified",
             userVerifiedAt: new Date().toISOString(),
         });
         await seedPlan(fixture.projectRoot, "validated", "# Validated\n", {
             planId: "validated-plan",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "validated",
         });
         await enterProjectRuntime(fixture.projectRoot);
@@ -346,7 +346,7 @@ test("unreadable publication registry fails the finished card before unrelated P
         const other = store.registerProject({ root: second, displayName: "Other" });
         await seedPlan(first, "validated", "# Validated\n", {
             planId: "validated-plan",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "validated",
         });
         await enterProjectRuntime(first);
@@ -413,7 +413,7 @@ test("standalone Sessions linked to one on-hold Plan remain distinct", async () 
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     try {
         const project = store.registerProject({ root, displayName: "Test" });
-        await seedPlan(root, "held", "# Held\n", { planId: "held-plan", classification: "FEATURE", status: "on_hold" });
+        await seedPlan(root, "held", "# Held\n", { planId: "held-plan", classification: "PLANNED_CHANGE", status: "on_hold" });
         const operation = (sessionId: string) => ({
             projectId: project.projectId,
             runwieldSessionId: sessionId,
@@ -469,7 +469,7 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
         try {
             await seedPlan(root, "finished", "# Finished\n", {
                 planId: "scope-plan",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "user_verified",
                 userVerifiedAt: new Date().toISOString(),
             });
@@ -519,7 +519,7 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
             // A fresh producer must reread Plan content even when Git metadata is unchanged.
             await seedPlan(root, "added-after-completion", "# Added after completion\n", {
                 planId: "fresh-scope-plan",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "user_verified",
                 userVerifiedAt: new Date().toISOString(),
             });
@@ -556,7 +556,7 @@ test("archived Sessions stay under Plans in dashboard and sidebar but leave stan
     try {
         await seedPlan(fixture.projectRoot, "archive-plan", "# Archive Plan\n", {
             planId: "archive-plan",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "on_hold",
         });
         let proof = store.acquireSessionActivation({
@@ -725,7 +725,7 @@ test("dashboard keeps Promise identity and publishes later Project while first w
         store.registerProject({ root: second, displayName: "Available" });
         await seedPlan(second, "finished", "# Finished\n", {
             planId: "available-plan",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "user_verified",
             userVerifiedAt: new Date().toISOString(),
         });

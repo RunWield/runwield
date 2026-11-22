@@ -33,7 +33,7 @@ test("footer workflow label formats eligible routing context", () => {
     const parts = buildFooterWorkflowLabelParts(
         { displayName: "Planner", agentName: "planner" },
         {
-            routingIntent: "FEATURE",
+            routingIntent: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             planName: "my-awesome-plan",
         },

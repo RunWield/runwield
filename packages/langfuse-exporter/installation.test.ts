@@ -39,16 +39,16 @@ import { recordWorkflowMetric } from "../../src/shared/workflow/metrics.ts";
 import { withProcessGlobalTestLock } from "../../src/testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../../src/ui/theme/theme.js";
 import {
-    type JsonRecord,
+    type LangfuseReadback,
     attributes,
     copyProduction,
     metadata,
     native,
-    observation,
     readback,
     span,
     withServer,
-} from "./test-fixture.ts";
+} from "../../src/testing/langfuse-exporter-fixture.ts";
+import { observation } from "./test-fixture.ts";
 
 test("production-only copy loads and sends without repository configuration or dependencies", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-"));
@@ -94,7 +94,7 @@ test("real absolute-directory install, owner approval, grant, journal, and worke
             oldCwd = getCwd(),
             oldPrompt = globalThis.prompt,
             oldExit = process.exitCode;
-        const rows = new Map<string, JsonRecord>();
+        const rows = new Map<string, LangfuseReadback>();
         let proxyFailure = false,
             visible = true;
         try {

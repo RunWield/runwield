@@ -364,7 +364,7 @@ test("Runtime replacement carries MCP ownership to the new Session", async () =>
             });
             const replacementId = await runtime.replaceSessionForExecutionFollowUp(sessionId, {
                 planName: "mcp-replacement",
-                triageMeta: { classification: "FEATURE", complexity: "LOW" },
+                triageMeta: { classification: "PLANNED_CHANGE", complexity: "LOW" },
                 executionAgent: "engineer",
                 executionCwd: fixture.projectRoot,
             });

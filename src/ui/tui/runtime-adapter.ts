@@ -124,7 +124,6 @@ export function attachTuiRuntimeAdapter({
         if (validationSessionActive) return true;
         return (
             currentRoutingIntent === "PLANNED_CHANGE" ||
-            currentRoutingIntent === "FEATURE" ||
             currentRoutingIntent === "PROJECT" ||
             currentRoutingIntent === "QUICK_FIX"
         );

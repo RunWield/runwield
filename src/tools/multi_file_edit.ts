@@ -1,3 +1,4 @@
+import { toolRegistry, type MultiFileEdit, type MultiFileEditParams } from "@runwield/tools";
 import { createHash } from "node:crypto";
 import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
@@ -15,75 +16,11 @@ import { readFile as fsReadFile, unlink, writeFile as fsWriteFile } from "node:f
 
 import { defineTool, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
 import { isAbsolute, join } from "node:path";
 import { getHomeDir } from "../constants.ts";
 import { operatePlanFile, resolvePlanFileTarget, savePlanFileBatch, type PlanFileResult } from "../plan-store/index.ts";
 
-const fileEditSchema = Type.Object(
-    {
-        path: Type.String({
-            description: "Path to the file for this replacement, relative to root or the session cwd.",
-        }),
-        oldText: Type.String({
-            description: "Exact text to replace in this file. It must match one unique, non-overlapping region.",
-        }),
-        newText: Type.String({ description: "Replacement text for oldText." }),
-    },
-    { additionalProperties: false },
-);
-
-const PARAMETERS = Type.Object(
-    {
-        root: Type.Optional(
-            Type.String({
-                description:
-                    "Optional base directory for relative edit paths. Defaults to the session working directory.",
-            }),
-        ),
-        edits: Type.Array(fileEditSchema, {
-            minItems: 1,
-            description:
-                "One or more replacements. Use edit instead when there is exactly one replacement in one file.",
-        }),
-    },
-    { additionalProperties: false },
-);
-
-interface MultiFileEdit {
-    path: string;
-    oldText: string;
-    newText: string;
-}
-
-export interface MultiFileEditParams {
-    root?: string;
-    edits: MultiFileEdit[];
-}
-
-type LineEnding = "\n" | "\r\n";
-
-interface StripBomResult {
-    bom: string;
-    text: string;
-}
-
-interface DiffStringResult {
-    diff: string;
-    firstChangedLine: number | undefined;
-}
-
-interface AppliedEditResult {
-    baseContent: string;
-    newContent: string;
-}
-
-interface EditMatch {
-    index: number;
-    length: number;
-    newText: string;
-    editIdx: number;
-}
+const multiFileEdit = toolRegistry.get("multi_file_edit");
 
 interface PreparedFileEdit {
     path: string;
@@ -187,7 +124,10 @@ interface MultiFileEditDetails {
 
 type MultiFileEditResult = AgentToolResult<MultiFileEditDetails | null> & { isError?: boolean };
 
-type MultiFileEditToolDefinition = ToolDefinition<typeof PARAMETERS, MultiFileEditDetails | null>;
+type MultiFileEditToolDefinition = ToolDefinition<
+    typeof multiFileEdit.definition.parameters,
+    MultiFileEditDetails | null
+>;
 type PrepareArgumentsFunction = NonNullable<MultiFileEditToolDefinition["prepareArguments"]>;
 type InputCandidate = Parameters<PrepareArgumentsFunction>[0];
 
@@ -202,48 +142,6 @@ interface InputRecord {
 
 function isInputRecord(input: InputCandidate): input is InputRecord {
     return Boolean(input) && typeof input === "object" && !Array.isArray(input);
-}
-
-/**
- * Strip UTF-8 BOM if present.
- *
- * @param {string} content
- * @returns {{ bom: string, text: string }}
- */
-function stripBom(content: string): StripBomResult {
-    if (content.startsWith("\uFEFF")) {
-        return { bom: "\uFEFF", text: content.slice(1) };
-    }
-    return { bom: "", text: content };
-}
-
-/**
- * @param {string} text
- * @returns {string}
- */
-function normalizeToLF(text: string): string {
-    return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-/**
- * @param {string} text
- * @param {string} ending
- * @returns {string}
- */
-function restoreLineEndings(text: string, ending: LineEnding): string {
-    if (ending === "\r\n") return text.replace(/\n/g, "\r\n");
-    return text;
-}
-
-/**
- * @param {string} content
- * @returns {string}
- */
-function detectLineEnding(content: string): LineEnding {
-    const crlfIdx = content.indexOf("\r\n");
-    const lfIdx = content.indexOf("\n");
-    if (lfIdx === -1 || crlfIdx === -1) return "\n";
-    return crlfIdx < lfIdx ? "\r\n" : "\n";
 }
 
 /**
@@ -266,89 +164,6 @@ function resolveRoot(root: string, cwd: string): string {
     const trimmed = root.trim();
     if (!trimmed) return cwd;
     return resolveToBaseDir(trimmed, cwd);
-}
-
-/**
- * @param {string} oldContent
- * @param {string} newContent
- * @returns {{ diff: string, firstChangedLine: number | undefined }}
- */
-function generateDiffString(oldContent: string, newContent: string): DiffStringResult {
-    const oldLines = oldContent.split("\n");
-    const newLines = newContent.split("\n");
-    const maxLen = Math.max(oldLines.length, newLines.length);
-    const pad = String(maxLen).length;
-    const result: string[] = [];
-    let firstChangedLine: number | undefined;
-
-    for (let i = 0; i < maxLen; i++) {
-        const oldLine = i < oldLines.length ? oldLines[i] : undefined;
-        const newLine = i < newLines.length ? newLines[i] : undefined;
-
-        if (oldLine !== newLine) {
-            if (firstChangedLine === undefined) firstChangedLine = i + 1;
-            if (oldLine !== undefined) result.push(`-${String(i + 1).padStart(pad)} ${oldLine}`);
-            if (newLine !== undefined) result.push(`+${String(i + 1).padStart(pad)} ${newLine}`);
-        } else {
-            result.push(` ${String(i + 1).padStart(pad)} ${oldLine}`);
-        }
-    }
-
-    return { diff: result.join("\n"), firstChangedLine };
-}
-
-/**
- * @param {string} normalizedContent
- * @param {MultiFileEdit[]} edits
- * @param {string} path
- * @returns {{ baseContent: string, newContent: string }}
- */
-function applyEdits(normalizedContent: string, edits: MultiFileEdit[], path: string): AppliedEditResult {
-    const normalizedEdits = edits.map((edit) => ({
-        oldText: normalizeToLF(edit.oldText),
-        newText: normalizeToLF(edit.newText),
-    }));
-
-    for (let i = 0; i < normalizedEdits.length; i++) {
-        if (normalizedEdits[i].oldText.length === 0) {
-            throw new Error(`edits[${i}].oldText must not be empty for ${path}.`);
-        }
-    }
-
-    const matches: EditMatch[] = [];
-    for (let i = 0; i < normalizedEdits.length; i++) {
-        const { oldText } = normalizedEdits[i];
-        const idx = normalizedContent.indexOf(oldText);
-        if (idx === -1) {
-            throw new Error(`edits[${i}].oldText was not found in ${path}. It must match exactly.`);
-        }
-        if (normalizedContent.indexOf(oldText, idx + 1) !== -1) {
-            throw new Error(`edits[${i}].oldText was found multiple times in ${path}. Add more context.`);
-        }
-        matches.push({ index: idx, length: oldText.length, newText: normalizedEdits[i].newText, editIdx: i });
-    }
-
-    matches.sort((a, b) => a.index - b.index);
-    for (let i = 1; i < matches.length; i++) {
-        const prev = matches[i - 1];
-        const curr = matches[i];
-        if (prev.index + prev.length > curr.index) {
-            throw new Error(`edits[${prev.editIdx}] and edits[${curr.editIdx}] overlap in ${path}.`);
-        }
-    }
-
-    let newContent = normalizedContent;
-    for (let i = matches.length - 1; i >= 0; i--) {
-        const match = matches[i];
-        newContent =
-            newContent.substring(0, match.index) + match.newText + newContent.substring(match.index + match.length);
-    }
-
-    if (normalizedContent === newContent) {
-        throw new Error(`No changes made to ${path}. The replacement(s) produced identical content.`);
-    }
-
-    return { baseContent: normalizedContent, newContent };
 }
 
 /**
@@ -412,20 +227,10 @@ function groupEditsByPath(edits: MultiFileEdit[]): Map<string, MultiFileEdit[]> 
  * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition}
  */
 export function createMultiFileEditTool(cwd: string) {
-    return defineTool<typeof PARAMETERS, MultiFileEditDetails | null>({
-        name: "multi_file_edit",
-        label: "multi_file_edit",
-        description:
-            "Edit one or more files by applying multiple exact-text replacements. Each edits[] item includes its own path, oldText, and newText. Use edit for a single replacement in a single file.",
-        promptSnippet:
-            "Apply multiple exact-text replacements across one or more files with edits[].path, edits[].oldText, and edits[].newText",
-        promptGuidelines: [
-            "Use multi_file_edit when a task needs multiple replacements or touches multiple files",
-            "Each edits[] item must include path, oldText, and newText",
-            "Use edit instead for exactly one replacement in one file",
-            "Within each file, oldText entries are matched against the original file content and must not overlap",
-        ],
-        parameters: PARAMETERS,
+    return defineTool<typeof multiFileEdit.definition.parameters, MultiFileEditDetails | null>({
+        ...multiFileEdit.definition,
+        promptGuidelines: [...multiFileEdit.definition.promptGuidelines],
+
         prepareArguments: prepareMultiFileEditArguments,
         async execute(_toolCallId, params, _signal, _onUpdate, _ctx): Promise<MultiFileEditResult> {
             const typedParams: MultiFileEditParams = params;
@@ -449,9 +254,7 @@ export function createMultiFileEditTool(cwd: string) {
                     const result: PreparedFileEdit[] = [];
                     for (const target of targets) {
                         const original = target.owner?.content ?? (await readOrdinarySource(target.path));
-                        const { bom, text } = stripBom(original);
-                        const { newContent } = applyEdits(normalizeToLF(text), target.edits, target.label);
-                        const replacement = bom + restoreLineEndings(newContent, detectLineEnding(text));
+                        const replacement = multiFileEdit.apply(original, target.edits, target.label);
                         result.push({ path: target.path, original, replacement, plan: target.owner });
                     }
                     return result;
@@ -478,10 +281,7 @@ export function createMultiFileEditTool(cwd: string) {
                 const diffSections = [];
                 let firstChangedLine;
                 for (const [i, edit] of prepared.entries()) {
-                    const diff = generateDiffString(
-                        normalizeToLF(stripBom(edit.original).text),
-                        normalizeToLF(stripBom(edit.replacement).text),
-                    );
+                    const diff = multiFileEdit.diff(edit.original, edit.replacement);
                     diffSections.push(`--- ${targets[i].label}\n${diff.diff}`);
                     firstChangedLine ??= diff.firstChangedLine;
                 }

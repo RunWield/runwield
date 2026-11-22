@@ -10,7 +10,7 @@ test("Workspace Plan review carries revision history, returns feedback to Core, 
     await withRuntimeCommandFixture("workspace-plan-review-http-", async (fixture) => {
         await savePlan(fixture.projectRoot, "review-plan", "# Scope\n\nRevised requirement.\n", {
             planId: "review-plan",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "draft",
         });
         await withExistingRuntimeInteraction(
@@ -22,7 +22,7 @@ test("Workspace Plan review carries revision history, returns feedback to Core, 
                     planId: "review-plan",
                     planName: "review-plan",
                     planningAgentName: "planner",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     expectedStatus: "draft",
                     previousPlan: "# Scope\n\nOriginal requirement.\n",
                     planVersions: [

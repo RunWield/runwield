@@ -36,7 +36,7 @@ import type { SessionRuntime } from "../src/shared/session/session-runtime.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ImageAttachment } from "../src/shared/session/image-attachments.ts";
-import type { TriageOutcome, TriageOutcomeInput } from "../src/shared/workflow/triage-outcome.ts";
+import type { TriageOutcome, TriageOutcomeInput } from "@runwield/tools";
 
 type BenchmarkBashProperties = {
     command: TString;

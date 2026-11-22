@@ -4,7 +4,7 @@
  * Persists RunWield workflow footer context in Pi's append-only session stream.
  */
 
-import { COMPLEXITIES, normalizeRoutingIntent } from "../../constants.ts";
+import { toolRegistry } from "@runwield/tools";
 
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { SegmentHandoffPayload } from "../workflow/execution-segment-handoff.ts";
@@ -118,20 +118,21 @@ interface PersistedContinuationEntry extends PersistedCustomSessionEntry {
     data?: SegmentHandoffPayload;
 }
 
+const { complexities, hasRetiredRoutingIntent, normalizeRoutingIntent } = toolRegistry.get("triage_report");
+
 export const WORKFLOW_CONTEXT_CUSTOM_TYPE = "runwield.workflow_context";
 export const SEGMENT_LINEAGE_CUSTOM_TYPE = "runwield.segment_lineage";
 export const PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE = "runwield.pending_segment_continuation";
 
-export function normalizeWorkflowRoutingIntent(value: unknown): string {
+export function normalizeWorkflowRoutingIntent(value: string | null | undefined) {
     if (typeof value !== "string") return "";
-    const normalized = normalizeRoutingIntent(value.trim().toUpperCase());
-    return normalized || "";
+    return normalizeRoutingIntent(value.trim().toUpperCase()) ?? "";
 }
 
 export function normalizeWorkflowComplexity(value: unknown): string {
     if (typeof value !== "string") return "";
     const normalized = value.trim().toUpperCase();
-    return COMPLEXITIES.includes(normalized) ? normalized : "";
+    return complexities.find((complexity) => complexity === normalized) ?? "";
 }
 
 export function normalizeWorkflowPlanName(value: unknown): string {
@@ -177,13 +178,16 @@ function progressFactsFromTriageMeta(triageMeta: WorkflowContextTriageMeta | nul
 export function normalizeWorkflowContext(value: unknown): WorkflowContext | null {
     if (!value || typeof value !== "object") return null;
     const data = value as RawWorkflowContext;
-    const routingIntent = normalizeWorkflowRoutingIntent(data.routingIntent);
+    const routingValue = typeof data.routingIntent === "string" ? data.routingIntent.trim().toUpperCase() : undefined;
+    const classification = typeof data.classification === "string" ? data.classification.trim() : undefined;
+    const routingIntent = normalizeRoutingIntent(routingValue);
+    const retiredClassification = hasRetiredRoutingIntent(undefined, classification?.toUpperCase());
     const complexity = normalizeWorkflowComplexity(data.complexity);
     const planName = normalizeWorkflowPlanName(data.planName);
     const parentPlan = normalizeWorkflowPlanName(data.parentPlan);
 
     const context: WorkflowContext = {};
-    if (routingIntent && complexity) {
+    if (routingIntent && complexity && !retiredClassification) {
         context.routingIntent = routingIntent;
         context.complexity = complexity;
         if (typeof data.summary === "string" && data.summary.trim()) context.summary = data.summary.trim();
@@ -192,9 +196,7 @@ export function normalizeWorkflowContext(value: unknown): WorkflowContext | null
     if (parentPlan) context.parentPlan = parentPlan;
     if (typeof data.planId === "string" && data.planId.trim()) context.planId = data.planId.trim();
     if (typeof data.status === "string" && data.status.trim()) context.status = data.status.trim();
-    if (typeof data.classification === "string" && data.classification.trim()) {
-        context.classification = data.classification.trim();
-    }
+    if (classification && !retiredClassification) context.classification = classification;
     if (Array.isArray(data.progressFacts)) {
         context.progressFacts = data.progressFacts
             .filter((fact) => fact && typeof fact === "object")
@@ -214,7 +216,8 @@ export function recordWorkflowTriageContext(
     sessionManager: WorkflowContextStore | undefined | null,
     details: WorkflowTriageContextDetails,
 ): WorkflowContext | null {
-    const routingIntent = normalizeWorkflowRoutingIntent(details.routingIntent);
+    const routingIntent =
+        typeof details.routingIntent === "string" ? normalizeWorkflowRoutingIntent(details.routingIntent) : "";
     const complexity = normalizeWorkflowComplexity(details.complexity);
     if (!routingIntent || !complexity) return readPersistedWorkflowContext(sessionManager);
     return recordWorkflowContext(sessionManager, {
@@ -246,9 +249,13 @@ export function deriveWorkflowContextFromExecutionWorkflow(
     planName?: unknown,
 ): WorkflowContext | null {
     const triageMeta = workflow?.triageMeta && typeof workflow.triageMeta === "object" ? workflow.triageMeta : null;
-    const routingIntent =
-        normalizeWorkflowRoutingIntent(triageMeta?.routingIntent) ||
-        normalizeWorkflowRoutingIntent(triageMeta?.classification);
+    const routingValue =
+        typeof triageMeta?.routingIntent === "string" ? triageMeta.routingIntent.trim().toUpperCase() : undefined;
+    const classification =
+        typeof triageMeta?.classification === "string" ? triageMeta.classification.trim().toUpperCase() : undefined;
+    const routingIntent = hasRetiredRoutingIntent(routingValue, classification)
+        ? null
+        : (normalizeRoutingIntent(routingValue) ?? normalizeRoutingIntent(classification));
     const complexity = normalizeWorkflowComplexity(triageMeta?.complexity);
     const normalizedPlanName = normalizeWorkflowPlanName(workflow?.planName || planName);
     const parentPlan = normalizeWorkflowPlanName(triageMeta?.parentPlan);

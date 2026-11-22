@@ -114,7 +114,7 @@ test("Runtime event factory supplies shared identity defaults and rejects partia
         () =>
             createSessionRuntimeEvent("session-1", {
                 type: RuntimeEventTypes.WORKFLOW_CONTEXT_CHANGED,
-                workflowContext: { routingIntent: "FEATURE" },
+                workflowContext: { routingIntent: "PLANNED_CHANGE" },
             }),
         TypeError,
         "routingIntent and complexity must be provided together",
