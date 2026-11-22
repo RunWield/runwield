@@ -48,6 +48,7 @@ function inspectPath(target: DesktopTarget, path: string): void {
                 "src/ui/desktop/preload.ts",
                 "src/ui/desktop/bridge.ts",
                 "src/ui/desktop/saved-session-bridge.ts",
+                "src/ui/desktop/draft-bridge.ts",
             ].includes(name)
         )
             return;

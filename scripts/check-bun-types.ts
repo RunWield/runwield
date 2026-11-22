@@ -2,10 +2,10 @@ import ts from "typescript";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
-import { requirePinnedBun } from "./check-bun-runtime.ts";
+import { requireSupportedBun } from "./check-bun-runtime.ts";
 import { walkSourceFiles } from "./source-files.ts";
 
-requirePinnedBun();
+requireSupportedBun();
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const configPath = resolve(root, "tsconfig.bun.json");
 const loaded = ts.readConfigFile(configPath, ts.sys.readFile);

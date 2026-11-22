@@ -284,3 +284,22 @@
         display: none;
     }
 }
+
+/* Retained bindings stay reachable even before saved history registration. */
+.project-bindings {
+    display: grid;
+    gap: 0.25rem;
+}
+.project-binding {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    text-align: left;
+}
+.project-binding[aria-current="page"] {
+    background: var(--rw-accent-soft);
+    color: var(--rw-accent);
+}
+.project-binding-waiting {
+    color: var(--rw-warning);
+}

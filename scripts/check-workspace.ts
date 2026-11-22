@@ -3,10 +3,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import process from "node:process";
-import { requirePinnedBun } from "./check-bun-runtime.ts";
+import { requireSupportedBun } from "./check-bun-runtime.ts";
 import { captureScriptProcess } from "./script-process.ts";
 
-requirePinnedBun();
+requireSupportedBun();
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = process.argv.slice(2);
 const { values } = parseArgs({

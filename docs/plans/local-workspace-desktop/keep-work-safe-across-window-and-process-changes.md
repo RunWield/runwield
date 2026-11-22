@@ -29,7 +29,7 @@ dependencies:
     - "continue-saved-sessions-in-desktop"
 targetBranch: "epic/local-workspace-desktop"
 userVerifiedAt: null
-status: "in_progress"
+status: "implemented"
 ---
 
 # Keep Work Safe Across Window and Process Changes

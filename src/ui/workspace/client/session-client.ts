@@ -43,6 +43,16 @@ export interface SessionClientItem {
     status?: "in_progress" | "completed" | "failed";
 }
 
+/** Lightweight navigation evidence. Does not contain transcripts or nested views. */
+export interface SessionBindingSummary {
+    sessionId: string;
+    durableSessionId: string;
+    projectId: string;
+    project: string;
+    phase: SessionClientView["phase"];
+    hasQuestion: boolean;
+}
+
 export interface SessionClientView {
     connectionId: string;
     project: string;
@@ -53,11 +63,18 @@ export interface SessionClientView {
     items: SessionClientItem[];
     question: SessionClientQuestion | null;
     error: string;
+    /** Main recovery evidence remains visible until a deliberate continuation. */
+    recoveryNotice?: string;
     generation?: number | null;
     archivedAt?: string | null;
     configuration?: import("../../../acp/workspace-contract.ts").WorkspaceConfiguration;
     queued?: SessionQueuedDraft[];
     operationId?: string;
+    bindings?: SessionBindingSummary[];
+    /** Canonical live evidence, separate from unsent client drafts. */
+    sessionInfo?: import("../../../acp/workspace-contract.ts").WorkspaceJsonRecord | null;
+    pendingConfiguration?: import("../../../acp/workspace-contract.ts").WorkspaceJsonRecord | null;
+    coreQueuedMessages?: import("../../../acp/workspace-contract.ts").WorkspaceJsonRecord[];
 }
 
 export interface WorkspaceSessionClient {
@@ -71,6 +88,8 @@ export interface WorkspaceSessionClient {
 }
 
 export interface SessionQueuedDraft {
+    /** Restored intent must wait for a deliberate Send with its saved request ID. */
+    restored?: boolean;
     requestId: string;
     text: string;
     images: import("../../../shared/session/session-input-contract.ts").SessionImageTransfer[];

@@ -792,14 +792,30 @@ as passing only after a successful process exit and a fresh report of executed t
 validation; explicitly skipped tests remain skipped. Reusing a report directory cannot reuse evidence from an earlier
 invocation, including for files that fail-fast leaves unexecuted.
 
-**Requirement: Preserve work and report uncertainty.** After remote loss, disconnect is neither completion nor
-abandonment. Remote edits and project artifacts remain on the server; completed personal saves and history remain on
+**Requirement: Preserve work and report uncertainty.** Presentation, runtime, or remote loss is neither completion nor
+abandonment. Local desktop recovery reads Core history and receipts before continuation; an idle repaired Session does
+not prove an interrupted action succeeded. An unknown accepted outcome remains uncertain and cannot authorize replay.
+Owned shutdown waits for canonical settlement, including retained Background Tasks; cancellation notification delivery
+or process exit alone is not proof. Another process's observed work is not cancelled by the desktop close/drain path.
+Desktop behavior and source evidence are in [Desktop Workspace](runwield-workspace-prd.md#desktop-workspace).
+
+After remote loss, remote edits and project artifacts remain on the server; completed personal saves and history remain on
 the laptop. Unreceived output is not claimed as saved. Reconnect restores saved context and checks remote workflow
 evidence before further work. It reports proven or uncertain results without automatically repeating a model request,
 tool effect, validation, repair, or publication. The user chooses workflow continuation; internal repair follows the
 shared automatic-recovery rules. Session-save reconciliation follows the
 [laptop-owned save contract](#laptop-owned-remote-session-saves); process shutdown follows
 [Remote connection](#remote-connection).
+
+**Local desktop recovery acceptance scenarios (source contract):**
+
+- Given owned work or a retained Background Task, close/drain waits for committed generation and activation evidence.
+  Unknown evidence reports unsettled and keeps shutdown retryable. A separate TUI/browser owner's work continues.
+- Given runtime loss or main relaunch, re-admit the Project and inspect original submission receipts without executing
+  saved payloads. An accepted receipt does not imply success without its recorded result; unknown stays uncertain.
+  No prompt, answer, workflow decision, or publication action is replayed automatically.
+- Given forced termination, restore saved Session evidence without inventing cancellation or workflow completion.
+  Internal Session repair remains automatic; deliberate continuation does not require manual bookkeeping repair.
 
 **Remote recovery acceptance scenarios:**
 
@@ -1017,7 +1033,7 @@ increases; they do not alone prove deadlock. Missing reports after a timeout rem
 guidance, not an additional runtime admission gate; existing validation commands and repair limits remain unchanged.
 
 **Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
-load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
+load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the supported Bun
 runtime and cannot report success without running the Astro checker.
 
 **Requirement: Repair the latest observed CI failure.** After repair exhaustion, Engineer follow-up retains the latest
@@ -2395,6 +2411,13 @@ provider support documented in terms of current configuration.
 
 ### Installation and updates
 
+**Requirement: Supported development runtime.** Local source, test, build, and release commands accept the Bun
+range in `package.json` (`^1.4.0`: at least 1.4.0 and below 2.0.0). CI and release artifacts use the exact
+`.bun-version` pin for repeatable builds.
+
+- Given Bun 1.4.4 or another stable version in the supported range, the runtime check permits local commands.
+- Given Bun below 1.4.0, Bun 2.x, or another runtime, the check stops with the required range and detected runtime.
+
 **Scope and maturity:** Current Linux/macOS shell installation and Candidate release baseline. The public macOS tap
 provides RunWield and Mnemoteca packages. Windows releases and checks, including WinGet manifest preparation and
 submission, are paused by owner decision. Existing Windows assets and runtime code remain available. Runtime layout
@@ -2786,10 +2809,21 @@ transcript, and Plan Associations; opening or continuing archived work does not 
   the existing live connection. This harness is not evidence of a manual real-TUI journey.
 - Observe retained Background Tasks after the foreground response. A snapshot gap refreshes committed evidence without
   repeated prompts or duplicate messages; Stop can settle retained work without a pending foreground Promise.
+- Run several desktop Sessions in one Project and across Projects. Switching views preserves each operation and
+  pending question; another client still cannot become a second writer for the same operation.
+- Reattach a view after close or renderer failure. Refresh current history, questions, staged configuration, and Core
+  queued messages; do not replace newer evidence with a delayed response or append committed live output twice.
+- Restore persisted unsent intent after process loss. Read receipt evidence first; only deliberate Send can submit
+  input with no receipt under its original identity. Unknown outcomes require new deliberate continuation input.
 
-Client-local queued drafts are unsent intent, not durable accepted work. Window/process recovery remains the desktop
-supervisor target; [Workspace source evidence](../desktop-workbench-contract.md#saved-session-source-evidence) does
-not establish installed-app or headed acceptance. Ordinary local ACP history stays independent of Workspace
+Client-local queued drafts are unsent intent, not durable accepted work. Desktop persists text, images, queues, and
+request identity privately; this store grants no writer authority. Parallel desktop bindings preserve independent
+Project/Session identity, questions, configuration, and observations while views change or close. Core still admits
+only one writer per operation. Local recovery re-admits bindings and reads receipts; it does not execute saved intent.
+Desktop retention, Quit choices, preferences, and evidence limits belong to
+[Desktop Workspace](runwield-workspace-prd.md#desktop-workspace). The
+[window/process source evidence](../desktop-workbench-contract.md#window-and-process-source-evidence) does not establish
+installed-app or manual headed acceptance. Ordinary local ACP history stays independent of Workspace
 registration/SQLite. Desktop bounds and extension schemas belong to the
 [Session contract](../desktop-workbench-contract.md#workspace-session-protocol-version-1).
 

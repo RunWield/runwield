@@ -1,4 +1,4 @@
-import { requirePinnedBun } from "./check-bun-runtime.ts";
+import { requireSupportedBun } from "./check-bun-runtime.ts";
 import { tmpdir } from "node:os";
 import {
     copyFile as fsCopyFile,
@@ -498,7 +498,7 @@ async function runIsolatedSuite(sandboxRoot, roots, excludedPaths, options) {
 }
 
 export async function main(args = process.argv.slice(2)) {
-    requirePinnedBun();
+    requireSupportedBun();
     const {
         excludedPaths,
         failFast,

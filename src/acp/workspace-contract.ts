@@ -121,6 +121,8 @@ export const WORKSPACE_SESSION_OPERATIONS = [
     "configure",
     "answer",
     "unarchive",
+    "drain",
+    "resolveSubmission",
 ] as const;
 export type WorkspaceSessionOperation = (typeof WORKSPACE_SESSION_OPERATIONS)[number];
 export const WORKSPACE_HISTORY_PAGE_LIMIT = 200;
@@ -286,3 +288,28 @@ export interface WorkspaceCommandRequest {
     wireSessionId: string;
     text: string;
 }
+
+/** Evidence about this connection's work, not a cancellation notification acknowledgement. */
+export type WorkspaceSettlementResult = import("../shared/session/session-submission-contract.ts").OwnedWorkSettlement;
+export type WorkspaceSessionSettlement =
+    import("../shared/session/session-submission-contract.ts").OwnedSessionSettlement;
+export type WorkspaceSubmissionKind = import("../shared/session/session-submission-contract.ts").SubmissionKind;
+export interface WorkspaceSubmissionMetadata {
+    context: WorkspaceProjectContext;
+    wireSessionId: string;
+    sessionId: string;
+    requestId: string;
+    kind: WorkspaceSubmissionKind;
+    expectedGeneration: number;
+    text: string;
+    images: import("../shared/session/session-input-contract.ts").SessionImageTransfer[];
+}
+export interface WorkspaceResolveSubmissionRequest {
+    context: WorkspaceProjectContext;
+    sessionId?: string;
+    requestId: string;
+    kind: WorkspaceSubmissionKind;
+    expectedGeneration: number;
+}
+export type WorkspaceSubmissionResolution =
+    import("../shared/session/session-submission-contract.ts").SubmissionResolution;

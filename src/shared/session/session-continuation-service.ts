@@ -20,6 +20,8 @@ import type { SessionListOptions } from "./session-history.ts";
 import { validateSessionInput } from "./session-input-contract.ts";
 import { normalizeInteractionResponse } from "./session-runtime-interactions.ts";
 
+import type { OwnedWorkSettlement, SubmissionLookup } from "./session-submission-contract.ts";
+
 export interface ContinuationServiceOptions {
     store: OwnerCoordinationStore;
     ownerProcessKind?: NonNullable<Parameters<typeof createSessionRuntime>[0]>["ownerProcessKind"];
@@ -44,6 +46,8 @@ export interface ContinuationOperationRecord<Request extends RuntimeInteractionR
     projectId: string;
     events: SessionRuntimeEvent[];
     remote?: boolean;
+    eventSequence?: number;
+    eventEvictedThrough?: number;
     sessionInfo?: LiveSessionInfo | null;
     queuedMessages?: RuntimeQueuedMessage[];
     error?: string;
@@ -59,6 +63,10 @@ export interface ContinuationOperationRecord<Request extends RuntimeInteractionR
 }
 export interface ContinuationOperationSnapshot<Request extends RuntimeInteractionRequest = RuntimeInteractionRequest> {
     operationId: string;
+    /** This operation's live events belong after this committed generation. */
+    eventsAfterGeneration?: number;
+    eventSequence?: number;
+    eventEvictedThrough?: number;
     status: string;
     projectId?: string;
     events: SessionRuntimeEvent[];
@@ -83,6 +91,10 @@ interface CreateRequest {
 interface PendingCreateRequest {
     requestHash: string;
     settled: Promise<void>;
+}
+interface SteeringRecordedResult {
+    ok: boolean;
+    queued?: boolean;
 }
 type OperationListener<Request extends RuntimeInteractionRequest> = (
     snapshot: ContinuationOperationSnapshot<Request>,
@@ -124,7 +136,7 @@ export interface InteractionRecoveryResult {
 }
 import { createHash } from "node:crypto";
 import { listSavedSessions } from "./session-history.ts";
-import { appendLiveSessionEvent } from "./live-session-events.ts";
+import { appendLiveSessionEvent, clearLiveSessionEvents, liveSessionEventSequence } from "./live-session-events.ts";
 import {
     projectLiveSessionInfo,
     readLiveSessionConnection,
@@ -215,10 +227,14 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
     operationChanges = new Map<string, Set<OperationChangeListener>>();
     createRequests = new Map<string, CreateRequest>();
     pendingCreateRequests = new Map<string, PendingCreateRequest>();
+    private steeringSubmissions = new Map<string, Promise<SteeringRecordedResult>>();
     retainedSessions = new Map<string, RetainedSession>();
     closingRetainedSessions = new Map<string, ReturnType<SessionRuntime["closeSessionWhenIdle"]>>();
     openingContinuations = new Map<string, number>();
     backgroundOperations = new Set<Promise<void>>();
+    drainedSessionIds = new Set<string>();
+    draining = false;
+    drainPromise: Promise<OwnedWorkSettlement> | null = null;
     closed = false;
     closing: Promise<void> | null = null;
     /** Adapter resource cleanup. Core has already settled Runtime work. */
@@ -264,6 +280,131 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
                 console.error("[Session] Background operation failed:", error);
             },
         );
+    }
+
+    /** Stop only Runtime instances held by this continuation owner. Never forward remote cancellation. */
+    drainOwnedWork(runwieldSessionId?: string): Promise<OwnedWorkSettlement> {
+        if (!runwieldSessionId && this.drainPromise) return this.drainPromise;
+        if (!runwieldSessionId) this.draining = true;
+        const drain = (async () => {
+            const owned = new Set<string>(
+                [...this.drainedSessionIds].filter((id) => !runwieldSessionId || id === runwieldSessionId),
+            );
+            for (const op of this.operations.values()) {
+                if (
+                    !op.remote &&
+                    op.runwieldSessionId &&
+                    (!runwieldSessionId || op.runwieldSessionId === runwieldSessionId)
+                ) {
+                    owned.add(op.runwieldSessionId);
+                    this.drainedSessionIds.add(op.runwieldSessionId);
+                }
+            }
+            const matches = (id: string) => !runwieldSessionId || id === runwieldSessionId;
+            // Admissions can still be opening a Runtime. Wait for those real owners,
+            // canceling newly opened instances before waiting on foreground settlement.
+            while (true) {
+                const sessions = this.runtime.listSessions().filter((session) => {
+                    const id = this.runtime.getSessionSnapshot(session.id)?.managed?.runwieldSessionId || "";
+                    if (id && matches(id)) {
+                        owned.add(id);
+                        this.drainedSessionIds.add(id);
+                    }
+                    return !runwieldSessionId || id === runwieldSessionId;
+                });
+                for (const session of sessions) this.runtime.cancelSession(session.id);
+                const opening = runwieldSessionId
+                    ? this.openingContinuations.has(runwieldSessionId)
+                    : this.pendingCreateRequests.size > 0 || this.openingContinuations.size > 0;
+                const running = [...this.operations.values()].some(
+                    (op) =>
+                        !op.remote &&
+                        op.status === "running" &&
+                        (!runwieldSessionId || op.runwieldSessionId === runwieldSessionId),
+                );
+                if (!opening && !running && (runwieldSessionId || !this.backgroundOperations.size)) {
+                    await Promise.all(sessions.map((session) => this.runtime.closeSessionWhenIdle(session.id)));
+                    break;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+            await Promise.allSettled(
+                [...this.steeringSubmissions]
+                    .filter(
+                        ([operationId]) =>
+                            !runwieldSessionId ||
+                            this.store.getOperationReceipt(operationId)?.runwieldSessionId === runwieldSessionId,
+                    )
+                    .map(([, submission]) => submission),
+            );
+            if (runwieldSessionId) await this.closingRetainedSessions.get(runwieldSessionId);
+            else await Promise.all(this.closingRetainedSessions.values());
+            const evidence = [...owned].map((sessionId) => ({
+                sessionId,
+                ...this.store.inspectSessionActivation(sessionId),
+            }));
+            const sessions = evidence.map((item) => ({
+                sessionId: item.sessionId,
+                state: item.activation?.state || "unknown",
+                generation: item.generation?.generation ?? null,
+            }));
+            const settled = evidence.every(
+                (item) =>
+                    item.generation &&
+                    (item.activation?.state === "idle" ||
+                        (item.activation?.state === "active" &&
+                            item.activation.ownerInstanceId &&
+                            item.activation.ownerInstanceId !== this.ownerInstanceId)),
+            );
+            return { status: settled ? ("settled" as const) : ("unsettled" as const), sessions };
+        })();
+        if (!runwieldSessionId) {
+            this.drainPromise = drain;
+            void drain
+                .finally(() => {
+                    this.drainPromise = null;
+                })
+                .catch(() => {});
+        }
+        return drain;
+    }
+
+    /** Read receipts by their original identity. This path cannot execute saved input. */
+    resolveSubmission(options: SubmissionLookup) {
+        const receipt = this.store.findOperationReceiptByRequest({
+            projectId: options.projectId,
+            runwieldSessionId: options.runwieldSessionId || undefined,
+            requestId: options.requestId,
+            deviceId: null,
+        });
+        if (receipt && receipt.projectId !== options.projectId) {
+            const session = this.store.getSessionById(receipt.runwieldSessionId);
+            if (!session || !sessionBelongsToOwnerProject(this.store, session, options.projectId))
+                throw new Error("Session not found.");
+        }
+        const pending = this.createRequests.get(`:${options.projectId}:${options.requestId}`);
+        return {
+            result:
+                receipt?.resultBody && typeof receipt.resultBody.ok === "boolean"
+                    ? {
+                          ok: Boolean(receipt.resultBody.ok),
+                          ...(typeof receipt.resultBody.queued === "boolean"
+                              ? { queued: Boolean(receipt.resultBody.queued) }
+                              : {}),
+                      }
+                    : null,
+            status: receipt
+                ? ["completed", "failed", "conflict"].includes(receipt.status)
+                    ? ("accepted" as const)
+                    : ("unknown" as const)
+                : pending
+                  ? ("unknown" as const)
+                  : ("no_receipt" as const),
+            sessionId: receipt?.runwieldSessionId || null,
+            operationId: receipt?.operationId || pending?.operationId || null,
+            outcome: receipt?.status || null,
+            generation: receipt?.resultGeneration ?? null,
+        };
     }
 
     close() {
@@ -405,7 +546,7 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
                 const record = this.operations.get(currentOperationId);
                 if (record?.status === "running") {
                     record.runtimeSessionId = nextId;
-                    record.events = [];
+                    clearLiveSessionEvents(record.events);
                     record.runwieldSessionId =
                         this.runtime.getSessionSnapshot(nextId)?.managed?.runwieldSessionId || null;
                 }
@@ -421,6 +562,8 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
                     projectId: this.operations.get(operationId)?.projectId || "",
                     runwieldSessionId,
                     runtimeSessionId: sessionId,
+                    expectedGeneration:
+                        this.store.inspectSessionActivation(runwieldSessionId).activation?.expectedGeneration ?? -1,
                     events: [],
                 });
                 this.runtime.setInteractionAdapter(
@@ -479,7 +622,7 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
                 record.runtimeSessionId = event.newSessionId;
                 record.runwieldSessionId =
                     this.runtime.getSessionSnapshot(event.newSessionId)?.managed?.runwieldSessionId || null;
-                record.events = [];
+                clearLiveSessionEvents(record.events);
             }
             unsubscribe = this.runtime.subscribeSessionEvents(event.newSessionId, receive);
         };
@@ -938,6 +1081,7 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
     }
 
     async steerOperation(options: SteeringRequest) {
+        if (this.draining) throw new Error("Session connection is draining.");
         validateSessionInput(options.text, options.images);
         const operation = this.operations.get(options.operationId);
         if (
@@ -950,13 +1094,46 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
         const activation = this.store.inspectSessionActivation(operation.runwieldSessionId).activation;
         if (activation?.state !== "active" || !activation.operationId) return { ok: true, queued: false };
         await this.watchRemoteNotifications(activation.operationId, operation);
-        return await readLiveSessionConnection(operation.runwieldSessionId, activation.operationId, {
-            action: "steer",
-            inputSurface: this.inputSurface,
+        // The canonical receipt precedes the live-owner command. Losing either process
+        // after this reservation leaves uncertainty, never permission to replay input.
+        const receipt = this.store.createOrGetOperationReceipt({
+            deviceId: null,
+            projectId: options.projectId,
+            runwieldSessionId: operation.runwieldSessionId,
             requestId: options.requestId,
-            text: options.text,
-            images: options.images,
+            kind: "continuation",
+            requestHash: stableHash({
+                kind: "steering",
+                session: operation.runwieldSessionId,
+                text: options.text,
+                images: options.images,
+            }),
         });
+        if (!receipt.wasCreated) {
+            const pending = this.steeringSubmissions.get(receipt.operationId);
+            if (pending) return await pending;
+            if (receipt.status !== "completed")
+                throw new Error("Steering outcome requires refresh; it was not replayed.");
+            const recorded: SteeringRecordedResult = receipt.resultBody;
+            return recorded;
+        }
+        const submission = (async () => {
+            const result = await readLiveSessionConnection(operation.runwieldSessionId!, activation.operationId!, {
+                action: "steer",
+                inputSurface: this.inputSurface,
+                requestId: options.requestId,
+                text: options.text,
+                images: options.images,
+            });
+            this.store.updateOperationReceipt(receipt.operationId, { status: "completed", resultBody: result });
+            return result;
+        })();
+        this.steeringSubmissions.set(receipt.operationId, submission);
+        try {
+            return await submission;
+        } finally {
+            this.steeringSubmissions.delete(receipt.operationId);
+        }
     }
 
     async bootstrap(options: SessionBootstrapRequest) {
@@ -1034,6 +1211,7 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
     }
 
     async createSession(options: SessionCreateRequest): Promise<CreateSessionResult> {
+        if (this.draining) throw new Error("Session connection is draining.");
         validateSessionInput(options.text, options.images);
         if (!options.text?.trim() && !options.images?.length) throw new Error("A message or image is required.");
         await Promise.resolve();
@@ -1158,6 +1336,7 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
                     generation: operation?.generation ?? null,
                 };
             }
+            if (this.draining) throw new Error("Session connection is draining.");
             const operationId = crypto.randomUUID();
             this.createRequests.set(createKey, { requestHash, operationId });
             this.setOperation(operationId, {
@@ -1256,6 +1435,7 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
     }
 
     async startContinuation(options: SessionContinuationRequest) {
+        if (this.draining) throw new Error("Session connection is draining.");
         validateSessionInput(options.text, options.images);
         if (!options.text?.trim() && !options.images?.length) throw new Error("A message or image is required.");
         this.openingContinuations.set(
@@ -1584,7 +1764,15 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
                 operation.runwieldSessionId === runwieldSessionId &&
                 operation.status === "running",
         );
-        if (local) return { state, generation, operation: this.getOperation(local[0]) };
+        if (local)
+            return {
+                state,
+                generation,
+                operation: {
+                    ...this.getOperation(local[0]),
+                    eventsAfterGeneration: local[1].createReceipt ? -1 : local[1].expectedGeneration,
+                },
+            };
         const retained = this.retainedSessions.get(runwieldSessionId);
         const tasks = retained ? this.runtime.getSessionBackgroundTaskState(retained.sessionId) : null;
         if (retained && (tasks?.active || tasks?.pending)) {
@@ -1622,6 +1810,8 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
             remote: true,
             generation,
             events: live.events,
+            eventSequence: live.eventSequence,
+            eventEvictedThrough: live.eventEvictedThrough,
             sessionInfo: live.sessionInfo,
             queuedMessages: live.queuedMessages,
         });
@@ -1647,7 +1837,14 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
                 },
             });
         }
-        return { state, generation, operation: this.getOperation(operationId) };
+        return {
+            state,
+            generation,
+            operation: {
+                ...this.getOperation(operationId),
+                eventsAfterGeneration: inspected.activation?.expectedGeneration ?? -1,
+            },
+        };
     }
 
     async refreshOperation(operationId: string) {
@@ -1683,6 +1880,7 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
             return {
                 operationId,
                 ...snapshot,
+                ...(live.remote ? {} : liveSessionEventSequence(live.events)),
                 sessionInfo,
                 queuedMessages: live.runtimeSessionId
                     ? this.runtime.getQueuedMessages(live.runtimeSessionId)
@@ -1705,6 +1903,9 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
             generation: durable.resultGeneration,
             error: durable.errorMessage || durable.errorCode,
             events: live?.events || [],
+            ...(live?.remote
+                ? { eventSequence: live.eventSequence, eventEvictedThrough: live.eventEvictedThrough }
+                : liveSessionEventSequence(live?.events || [])),
             sessionInfo,
             queuedMessages: live?.runtimeSessionId
                 ? this.runtime.getQueuedMessages(live.runtimeSessionId)

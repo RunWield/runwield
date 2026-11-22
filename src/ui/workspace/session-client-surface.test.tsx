@@ -501,6 +501,10 @@ test(
                 "help does not advertise unsupported actions",
             );
             await surface.fill("#session-message", "/settings");
+            await surface.waitFor(() => {
+                const send = surface.container.querySelector<HTMLButtonElement>(".session-send-button");
+                return send?.getAttribute("aria-label") === "Send" && !send.disabled;
+            });
             await surface.click("Send");
             await act(async () => {
                 await new Promise((resolve) => setTimeout(resolve, 100));
@@ -514,6 +518,10 @@ test(
             );
             await surface.fill("#session-message", "/new");
             const oldBinding = runtime.binding().sessionId;
+            await surface.waitFor(() => {
+                const send = surface.container.querySelector<HTMLButtonElement>(".session-send-button");
+                return send?.getAttribute("aria-label") === "Send" && !send.disabled;
+            });
             await surface.click("Send");
             await surface.wait((view) => view.phase === "idle" && view.sessionId !== oldBinding);
             assert.equal(runtime.view().durableSessionId, "");
@@ -669,6 +677,152 @@ test("generation refresh retains paged history and the reader's position", { tim
         await surface.waitFor(() => Boolean(surface!.container.textContent?.includes("History message 100.")));
         assert.equal(surface.container.querySelector('[role="alert"]'), null);
         assert.equal(fixture.provider.requests.length, 0);
+    } finally {
+        await surface?.cleanup();
+        await fixture.cleanup();
+    }
+});
+
+test("parallel composers keep equal drafts isolated when a background send settles", { timeout: 60000 }, async () => {
+    const fixture = await makeSessionProcessFixture();
+    const runtime = fixture.launch(true);
+    await runtime.wait((view) => view.connection === "ready");
+    const registered = await runtime.client.registerProject({ root: fixture.project });
+    assert.ok(registered.status === "ok");
+    await runtime.client.openProject({ projectId: registered.project.projectId });
+    await runtime.client.create();
+    const first = runtime.binding();
+    const surface = await mountSurface(runtime, true);
+    try {
+        fixture.provider.enqueue({ text: "First binding held.", hold: true });
+        await surface.fill("#session-message", "Identical text must not clear another draft.");
+        await surface.click("Send");
+        await surface.wait((view) => view.items.some((item) => item.text === "First binding held."));
+        await surface.click("New Session");
+        await surface.wait((view) => view.phase === "idle" && view.sessionId !== first.sessionId);
+        const second = runtime.binding();
+        await surface.fill("#session-message", "Identical text must not clear another draft.");
+        fixture.provider.release();
+        await surface.wait(
+            (view) => view.bindings?.find((binding) => binding.sessionId === first.sessionId)?.phase === "idle",
+        );
+        assert.equal(surface.field("#session-message").value, "Identical text must not clear another draft.");
+        await act(() => runtime.client.load(first.sessionId));
+        await surface.wait((view) => view.sessionId === first.sessionId);
+        await surface.waitFor(() => surface.field("#session-message").value === "");
+        await act(() => runtime.client.load(second.sessionId));
+        assert.equal(surface.field("#session-message").value, "Identical text must not clear another draft.");
+        assert.equal(runtime.view().bindings?.length, 2);
+        assert.equal(fixture.provider.requests.length, 1);
+    } finally {
+        fixture.provider.release();
+        try {
+            await surface.cleanup();
+        } finally {
+            await fixture.cleanup();
+        }
+    }
+});
+
+test("first accepted held turn waits for committed history without a transient error", { timeout: 60000 }, async () => {
+    const fixture = await makeSessionProcessFixture();
+    const runtime = fixture.launch(true);
+    const registered = await runtime.client.registerProject({ root: fixture.project });
+    assert.ok(registered.status === "ok");
+    await runtime.client.openProject({ projectId: registered.project.projectId });
+    const surface = await mountSurface(runtime, true);
+    const alerts: string[] = [];
+    const views: SessionClientView[] = [];
+    const stop = runtime.client.observe((view) => views.push(view));
+    const observer = new surface.browser.MutationObserver(() => {
+        for (const alert of surface.container.querySelectorAll('[role="alert"]')) alerts.push(alert.textContent || "");
+    });
+    observer.observe(surface.container, { subtree: true, childList: true, characterData: true });
+    try {
+        await surface.click("New Session");
+        await surface.wait((view) => view.phase === "idle" && Boolean(view.sessionId));
+        fixture.provider.enqueue({ text: "First accepted held response.", hold: true });
+        await surface.fill("#session-message", "First accepted held prompt.");
+        await surface.waitFor(() => !surface.button("Send").disabled);
+        await surface.click("Send");
+        await surface.wait((view) => view.items.some((item) => item.text === "First accepted held response."));
+        assert.ok(runtime.view().durableSessionId);
+        assert.equal(runtime.view().generation, null, "saved identity is not a committed generation");
+        assert.equal(
+            runtime.sentMethods.filter((method) => method === "_dev.runwield/workspace/sessions/history").length,
+            0,
+            "the surface must wait for committed evidence, not just the durable identity",
+        );
+        assert.deepEqual(alerts, []);
+        fixture.provider.release();
+        await surface.wait((view) => view.phase === "idle" && view.generation !== null);
+        await surface.waitFor(() => runtime.sentMethods.includes("_dev.runwield/workspace/sessions/history"));
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        });
+        const conversation = surface.container.querySelector('[aria-label="Conversation"]')!;
+        for (const text of ["First accepted held prompt.", "First accepted held response."]) {
+            assert.equal(
+                conversation.textContent?.split(text).length,
+                2,
+                `${text} appears once after canonical refresh`,
+            );
+            for (const view of views) assert.ok(view.items.filter((item) => item.text === text).length <= 1);
+        }
+        assert.deepEqual(views.map((view) => view.error).filter(Boolean), []);
+        assert.deepEqual(alerts, [], "no intermediate render may show a history error");
+        assert.equal(fixture.provider.requests.length, 1);
+    } finally {
+        observer.disconnect();
+        stop();
+        fixture.provider.release();
+        await surface.cleanup();
+        await fixture.cleanup();
+    }
+});
+
+test("a delayed history response cannot enter another selected Session", { timeout: 60000 }, async () => {
+    const fixture = await makeSessionProcessFixture();
+    const runtime = fixture.launch(true);
+    let surface: Awaited<ReturnType<typeof mountSurface>> | undefined;
+    try {
+        const registered = await runtime.client.registerProject({ root: fixture.project });
+        assert.ok(registered.status === "ok");
+        await runtime.client.openProject({ projectId: registered.project.projectId });
+        fixture.provider.enqueue(
+            { text: "History only for the first binding." },
+            { text: "History only for the second binding." },
+        );
+        await runtime.client.create();
+        await runtime.client.send(runtime.binding(), "First binding prompt.");
+        const first = runtime.binding();
+        await runtime.client.create();
+        await runtime.client.send(runtime.binding(), "Second binding prompt.");
+        const second = runtime.binding();
+        await runtime.client.load(first.sessionId);
+        const delayed = runtime.delayNextResponse("_dev.runwield/workspace/sessions/history");
+        surface = await mountSurface(runtime, true);
+        await delayed.received;
+        const secondHistory = runtime.delayNextResponse("_dev.runwield/workspace/sessions/history");
+        await act(() => runtime.client.load(second.sessionId));
+        await secondHistory.received;
+        await act(async () => {
+            secondHistory.release();
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        });
+        await surface.waitFor(() =>
+            Boolean(surface!.container.textContent?.includes("History only for the second binding.")),
+        );
+        await act(async () => {
+            delayed.release();
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        });
+        const conversation = surface.container.querySelector('[aria-label="Conversation"]')!;
+        assert.doesNotMatch(conversation.textContent || "", /History only for the first binding|First binding prompt/);
+        assert.equal(conversation.textContent?.split("History only for the second binding.").length, 2);
+        assert.equal(surface.container.querySelector('[role="alert"]'), null);
+        assert.equal(runtime.view().sessionId, second.sessionId);
+        assert.equal(fixture.provider.requests.length, 2);
     } finally {
         await surface?.cleanup();
         await fixture.cleanup();

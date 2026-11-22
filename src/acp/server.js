@@ -1903,7 +1903,17 @@ function createRunWieldAcpServer(context) {
         );
     }
 
-    for (const operation of ["history", "snapshot", "options", "command", "configure", "answer", "unarchive"]) {
+    for (const operation of [
+        "history",
+        "snapshot",
+        "options",
+        "command",
+        "configure",
+        "answer",
+        "unarchive",
+        "drain",
+        "resolveSubmission",
+    ]) {
         app.onRequest(
             "_dev.runwield/workspace/sessions/" + operation,
             (params) => params,

@@ -96,8 +96,24 @@ test(
             await page.getByRole("button", { name: "Session", exact: true }).click();
             equal(await page.getByLabel("Message", { exact: true }).inputValue(), "Draft stays on Project A");
             await sidebar.getByRole("button", { name: "+ New Session", exact: true }).click();
-            await page.getByRole("alert").filter({ hasText: "Close the current Session" }).waitFor();
+            await page.waitForFunction(
+                () => (document.querySelector("#session-message") as HTMLTextAreaElement)?.value === "",
+            );
+            await page.getByLabel("Message", { exact: true }).fill("Unsent composer in Project A");
+            const retainedComposer = sidebar.getByRole("button", { name: "New Session 2 Idle", exact: true });
+            await retainedComposer.waitFor();
+            await first.locator(".session-list-item").first().click();
+            await page.getByText("Saved answer 11.", { exact: true }).waitFor();
             equal(await page.getByLabel("Message", { exact: true }).inputValue(), "Draft stays on Project A");
+            await retainedComposer.click();
+            await page.waitForFunction(
+                () =>
+                    (document.querySelector("#session-message") as HTMLTextAreaElement)?.value ===
+                    "Unsent composer in Project A",
+            );
+            equal(await page.getByLabel("Message", { exact: true }).inputValue(), "Unsent composer in Project A");
+            const retainedCount = await sidebar.locator(".project-binding").count();
+            equal(retainedCount, 2, "selecting a composer must not create a replacement");
             await page.getByRole("button", { name: "Close Session", exact: true }).click();
             await page.getByText("No Session open", { exact: true }).waitFor();
             await sidebar.getByRole("button", { name: "Project A settings", exact: true }).click();
