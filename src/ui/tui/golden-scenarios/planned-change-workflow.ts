@@ -93,6 +93,7 @@ interface CapturedProjectState {
 }
 
 interface CapturedPublication {
+    deliveredText?: string;
     remotePlanFields?: string[];
     remotePlanAttrs?: CapturedPlanAttrs;
     controllerState?: WorkflowControllerState;
@@ -1096,7 +1097,9 @@ export const plannedChangeValidationFailureRetryScenario: GoldenScenario = {
             statuses: ["implemented"],
             timeoutMs: 90000,
         },
-        { type: "waitForEvent", event: "runtime:tool:start:task_completed", timeoutMs: 90000 },
+        { type: "waitForEvent", event: "runtime:validation-ci:failed", timeoutMs: 90000 },
+        { type: "waitForEventCount", event: "runtime:tool:start:task_completed", count: 2, timeoutMs: 90000 },
+        { type: "waitForEvent", event: "runtime:validation-ci:passed", timeoutMs: 90000 },
         { type: "waitForRemotePlanStatus", planName: "validation-retry", statuses: ["verified"], timeoutMs: 90000 },
         {
             type: "waitForWorktreeRegistryStatus",
@@ -1104,7 +1107,7 @@ export const plannedChangeValidationFailureRetryScenario: GoldenScenario = {
             statuses: ["absent"],
             timeoutMs: 90000,
         },
-        { type: "capturePublicationState", planName: "validation-retry", deliveredPath: "ci-fix.txt" },
+        { type: "capturePublicationState", planName: "validation-retry", deliveredPath: "golden-validation-retry.txt" },
     ],
     assertions: [
         assertsGoldenCoverage("recovery:validation-failure-retry", (result) => {
@@ -1112,6 +1115,11 @@ export const plannedChangeValidationFailureRetryScenario: GoldenScenario = {
             assertScreenIncludes(result, "Repaired retry fixture after CI failure.");
             const publication = result.state.publication as CapturedPublication;
             const attrs = publication.remotePlanAttrs;
+            assertEquals(
+                publication.deliveredText,
+                "repaired",
+                "Expected the published branch to contain the CI repair.",
+            );
             const ciRuns = countVisibleOccurrences(result, "Running the tests in");
             assert(ciRuns >= 2, `Expected failed CI plus retry CI; saw ${ciRuns} CI runs.`);
             const completedTurns = result.events.filter(
