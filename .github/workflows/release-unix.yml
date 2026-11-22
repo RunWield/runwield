@@ -23,7 +23,7 @@ jobs:
     source:
         name: ${{ matrix.runner }} source ${{ matrix.shard }}
         runs-on: ${{ matrix.runner }}
-        timeout-minutes: 50
+        timeout-minutes: 75
         strategy:
             fail-fast: false
             matrix:
