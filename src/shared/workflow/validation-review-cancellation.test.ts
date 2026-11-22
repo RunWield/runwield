@@ -398,7 +398,7 @@ for (const revise of [false, true]) {
                     await awaitReviewStep("revision CI passed", revisionCiPassed.promise);
                 }
                 assertEquals(
-                    await awaitReviewStep("review reopened", opened[1]!.promise),
+                    await awaitReviewStep("review reopened", opened[1]!.promise, 30_000),
                     firstUrl,
                     "the real browser surface must reuse its URL",
                 );

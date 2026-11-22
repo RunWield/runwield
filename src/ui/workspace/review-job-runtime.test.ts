@@ -6,6 +6,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { spawnForegroundProcess } from "../../shared/foreground-process.ts";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
 
 // A compiled parent must not dispatch its private commands to a different installed wld.
@@ -24,17 +25,17 @@ if (process.argv[2]) {
     else for await (const chunk of process.stdin) {}
     console.log(JSON.stringify({ owner: "parent", command: process.argv[2] }));
 } else {
-    for (const command of ["ai-review", "guided-review"]) {
-        const result = await runWldJobCommand("review patch", new AbortController().signal, process.cwd(), {}, command);
-        console.log(result.stdout.trim());
-    }
-    process.env.FIXTURE_CLOSE_STDIN = "1";
-    for (const command of ["ai-review", "guided-review"]) {
+    const command = process.env.FIXTURE_REVIEW_JOB;
+    assert(command === "ai-review" || command === "guided-review");
+    if (process.env.FIXTURE_CLOSE_STDIN === "1") {
         await assert.rejects(
             () => runWldJobCommand("review patch".repeat(262144), new AbortController().signal, process.cwd(), {}, command),
             { code: "EPIPE" },
         );
         console.log(command + " rejects incomplete prompt delivery");
+    } else {
+        const result = await runWldJobCommand("review patch", new AbortController().signal, process.cwd(), {}, command);
+        console.log(result.stdout.trim());
     }
 }
 `,
@@ -51,23 +52,40 @@ if (process.argv[2]) {
             timeoutMs: 60_000,
         });
         assertEquals(build.success, true, new TextDecoder().decode(build.stderr));
-        const result = await captureForegroundProcess(executable, {
-            args: [],
-            cwd: projectRoot,
-            timeoutMs: 10_000,
-            env: {
-                ...process.env,
-                PATH: `${bin}${delimiter}${process.env.PATH || ""}`,
-                RUNWIELD_GUIDED_REVIEW_COMMAND: "",
-                RUNWIELD_AI_REVIEW_COMMAND: "",
-            },
-        });
-        assertEquals(result.success, true, new TextDecoder().decode(result.stderr));
-        const stdout = new TextDecoder().decode(result.stdout);
-        assertStringIncludes(stdout, '{"owner":"parent","command":"ai-review"}');
-        assertStringIncludes(stdout, '{"owner":"parent","command":"guided-review"}');
-        assertEquals(stdout.includes("stale installation"), false);
-        assertStringIncludes(stdout, "ai-review rejects incomplete prompt delivery");
-        assertStringIncludes(stdout, "guided-review rejects incomplete prompt delivery");
+        // Give each compiled invocation its own bounded deadline and failure output.
+        for (const command of ["ai-review", "guided-review"]) {
+            for (const closeStdin of [false, true]) {
+                const child = spawnForegroundProcess({
+                    command: executable,
+                    cwd: projectRoot,
+                    timeoutMs: 30_000,
+                    env: {
+                        ...process.env,
+                        PATH: `${bin}${delimiter}${process.env.PATH || ""}`,
+                        RUNWIELD_GUIDED_REVIEW_COMMAND: "",
+                        RUNWIELD_AI_REVIEW_COMMAND: "",
+                        FIXTURE_REVIEW_JOB: command,
+                        FIXTURE_CLOSE_STDIN: closeStdin ? "1" : "0",
+                    },
+                });
+                const [result, stdout, stderr] = await Promise.all([
+                    child.done,
+                    new Response(child.stdout).text(),
+                    new Response(child.stderr).text(),
+                ]);
+                assertEquals(
+                    result.exitCode,
+                    0,
+                    `${command} (close stdin: ${closeStdin}) ended by ${result.terminatedBy ?? "exit"}\nstdout: ${stdout}\nstderr: ${stderr}`,
+                );
+                assertEquals(stdout.includes("stale installation"), false);
+                assertStringIncludes(
+                    stdout,
+                    closeStdin
+                        ? `${command} rejects incomplete prompt delivery`
+                        : `{"owner":"parent","command":"${command}"}`,
+                );
+            }
+        }
     });
 });

@@ -1669,28 +1669,43 @@ test("legacy migration rechecks registry after the active legacy registry writer
     }
 });
 
-test("runtime adoption preserves the source while legacy migration lock records are initializing", async () => {
+test("runtime adoption retries after an initializing legacy migration releases its locks", async () => {
     const project = await makeMigrationProject();
+    const originalRead = fsPromises.readFile;
     let lockHolder: NativeProcess | undefined;
     try {
-        const source = join(getRunWieldRuntimeDir(project.primaryRoot), "controller", "plans", "plan.json");
+        const runtimeDir = getRunWieldRuntimeDir(project.primaryRoot);
+        const source = join(runtimeDir, "controller", "plans", "plan.json");
+        const registryLock = join(runtimeDir, "worktrees.lock");
         const signalPath = join(project.primaryRoot, ".migration-lock-test-release");
         await writeText(source, "x\n");
-        lockHolder = spawnDriver("hold-initializing-migration-locks", project.primaryRoot, signalPath);
-        await readReadyLine(lockHolder.stdout);
-        const blocked = await migrateLegacyProjectRuntimeState(project.selectedRoot);
-        if (blocked.kind !== "blocked") throw new Error("Expected adoption to wait for the legacy writer");
-        assertEquals(blocked.reason, "active_legacy_writer");
-        assertEquals(await fsReadFile(source, "utf8"), "x\n");
+        const child = spawnDriver("hold-initializing-migration-locks", project.primaryRoot, signalPath);
+        lockHolder = child;
+        await readReadyLine(child.stdout);
+        let released = false;
+        Object.defineProperty(fsPromises, "readFile", {
+            configurable: true,
+            value: async (...args: Parameters<typeof fsPromises.readFile>) => {
+                const contents = await originalRead(...args);
+                if (!released && args[0] === registryLock && args[1] === "utf8") {
+                    // Give adoption the empty record it observed, then let its next attempt see the release.
+                    assertEquals(contents, "");
+                    assertEquals(await fsReadFile(source, "utf8"), "x\n");
+                    await writeText(signalPath, "release\n");
+                    assert((await child.status).success);
+                    lockHolder = undefined;
+                    released = true;
+                }
+                return contents;
+            },
+        });
 
-        await writeText(signalPath, "release\n");
-        const status = await lockHolder.status;
-        lockHolder = undefined;
-        assert(status.success);
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "ready") throw new Error(JSON.stringify(result));
+        assert(released, "Expected adoption to encounter an initializing legacy lock");
         assertEquals(await fsReadFile(join(result.layout.primary.controllerPlansDir, "plan.json"), "utf8"), "x\n");
     } finally {
+        Object.defineProperty(fsPromises, "readFile", { configurable: true, value: originalRead });
         lockHolder?.kill("SIGKILL");
         await lockHolder?.status.catch(() => {});
         await project.cleanup();

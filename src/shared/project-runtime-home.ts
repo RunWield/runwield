@@ -111,6 +111,14 @@ async function info(path: string): Promise<Stats | null> {
         throw error;
     }
 }
+async function existingRealpath(path: string): Promise<string | null> {
+    try {
+        return await fs.realpath(path);
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+        throw error;
+    }
+}
 async function directoryEntries(path: string): Promise<string[]> {
     try {
         return await fs.readdir(path);
@@ -193,8 +201,8 @@ async function checkoutRoots(identity: ProjectIdentity): Promise<string[]> {
     // those attempts; absence supplies no source tree to admit or migrate.
     const present: string[] = [];
     for (const root of roots) {
-        const stat = await info(root);
-        if (stat) present.push(await fs.realpath(root));
+        const path = await existingRealpath(root);
+        if (path) present.push(path);
     }
     return present;
 }
@@ -401,8 +409,8 @@ async function validateLegacyEvidence(
                 );
             for (const entry of registry.entries) {
                 await assertSafePath(entry.path, entry.path);
-                const existing = await info(entry.path);
-                const original = existing ? await fs.realpath(entry.path) : entry.path;
+                const existing = await existingRealpath(entry.path);
+                const original = existing ?? entry.path;
                 const moved =
                     transfer && transfer.roots.includes(original) ? relocated(original, transfer.mappings) : original;
                 if (
@@ -526,7 +534,7 @@ async function inventory(
         if (isRuntimeLock(mapping, path) && Date.now() - stat.mtimeMs < 30_000)
             refuse("active_legacy_writer", [path], "A legacy publication writer is active. Retry after it settles.");
         const inRepository = repository || (mapping.repository && Boolean(await info(join(path, ".git"))));
-        for (const entry of await directoryEntries(path)) {
+        for (const entry of (await directoryEntries(path)).sort()) {
             // Checkout-owned runtime is inventoried separately, never carried as a second authority with code.
             if (
                 inRepository &&
@@ -876,10 +884,30 @@ async function removeEmptyTree(path: string): Promise<void> {
     }
 }
 export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promise<ProjectRuntimeMigrationReadyResult> {
-    verifyExecutionAccountHome(identity);
-    const result = await enterPinnedProjectRuntime(identity);
-    verifyExecutionAccountHome(identity);
-    return result;
+    for (let attempt = 0; ; attempt++) {
+        verifyExecutionAccountHome(identity);
+        try {
+            const result = await enterPinnedProjectRuntime(identity);
+            verifyExecutionAccountHome(identity);
+            return result;
+        } catch (error) {
+            // A legacy migration can release its registry lock while admission inventories the checkout.
+            // Rebuild the inventory after releasing our own locks before transferring any files.
+            const lockPath =
+                error instanceof ProjectRuntimeEntryRefusedError && error.reason === "active_legacy_writer"
+                    ? error.paths[0]
+                    : error instanceof Error && "code" in error && error.code === "ENOENT" && "path" in error
+                      ? error.path
+                      : undefined;
+            if (
+                attempt >= 3 ||
+                typeof lockPath !== "string" ||
+                !["worktrees.lock", "layout-migration.lock"].includes(basename(lockPath))
+            )
+                throw error;
+            await new Promise((resolveTimer) => setTimeout(resolveTimer, 100));
+        }
+    }
 }
 async function enterPinnedProjectRuntime(identity: ProjectIdentity): Promise<ProjectRuntimeMigrationReadyResult> {
     const layout = homeProjectRuntimeLayout(identity);

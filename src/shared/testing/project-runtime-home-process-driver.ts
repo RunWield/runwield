@@ -73,19 +73,6 @@ if (command === "hold-registry") {
     if (!completed) throw new Error("Reader never reached the transfer journal");
     console.log(JSON.stringify(result));
 } else {
-    if (boundary === "early-payload-link" || boundary === "staged-payload-link") {
-        const originalRead = fs.readdir;
-        const sourceRoot = join(getRunWieldRuntimeDir(root), "internal");
-        const repositoryPaths = [join(sourceRoot, "worktrees", "attempt"), join(sourceRoot, "plan-staging", "attempt")];
-        Object.defineProperty(fs, "readdir", {
-            value: async (...args: Parameters<typeof fs.readdir>) => {
-                // Visit !link before .git to exercise recovery with incomplete Git metadata.
-                if (args[1] === undefined && repositoryPaths.includes(String(args[0])))
-                    return (await originalRead(args[0])).sort();
-                return await originalRead(...args);
-            },
-        });
-    }
     const originalCopy = fs.copyFile;
     const originalRename = fs.rename;
     const originalRemove = fs.rm;
