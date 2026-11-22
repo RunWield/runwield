@@ -1776,23 +1776,20 @@ export class SessionContinuationService<Request extends RuntimeInteractionReques
         const retained = this.retainedSessions.get(runwieldSessionId);
         const tasks = retained ? this.runtime.getSessionBackgroundTaskState(retained.sessionId) : null;
         if (retained && (tasks?.active || tasks?.pending)) {
-            return {
-                state: "active",
+            const operation: ContinuationOperationSnapshot<Request> = {
+                operationId: `retained:${runwieldSessionId}`,
+                status: "running",
+                projectId,
+                runwieldSessionId,
                 generation,
-                operation: {
-                    operationId: `retained:${runwieldSessionId}`,
-                    status: "running",
-                    projectId,
-                    runwieldSessionId,
-                    generation,
-                    events: [],
-                    sessionInfo: projectLiveSessionInfo(this.runtime.getSessionSnapshot(retained.sessionId)),
-                    queuedMessages: [],
-                    liveInteraction: null,
-                    pendingConfiguration: null,
-                    error: null,
-                },
+                events: [],
+                sessionInfo: projectLiveSessionInfo(this.runtime.getSessionSnapshot(retained.sessionId)),
+                queuedMessages: [],
+                liveInteraction: null,
+                pendingConfiguration: null,
+                error: null,
             };
+            return { state: "active", generation, operation };
         }
         const operationId = inspected.activation?.operationId;
         if (state !== "active" || !operationId) return { state, generation, operation: null };

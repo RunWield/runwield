@@ -333,7 +333,7 @@ test(
             const quitFailure = await desktop.application.evaluate(
                 ({ app, dialog }) =>
                     new Promise<string>((resolve) => {
-                        dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+                        dialog.showMessageBox = () => Promise.resolve({ response: 1, checkboxChecked: false });
                         dialog.showErrorBox = (title, message) => resolve(`${title}: ${message}`);
                         app.quit();
                     }),

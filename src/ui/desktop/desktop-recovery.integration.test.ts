@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { DesktopDraftStore } from "./draft-store.ts";
@@ -211,8 +211,17 @@ test(
             equal(application.process().pid, mainPid);
             process.kill(runtimePid, 0);
             equal(fixture.provider.requests.length, 1);
+            await next.waitForFunction(
+                () =>
+                    document.querySelector<HTMLTextAreaElement>("#session-message")?.value ===
+                    "Do not restart this live operation with its renderer.",
+            );
             fixture.provider.release();
             await next.getByText("Ready", { exact: true }).waitFor();
+            await next.waitForFunction(
+                () => document.querySelector<HTMLTextAreaElement>("#session-message")?.value === "",
+            );
+            equal(await next.getByRole("button", { name: "Send", exact: true }).isDisabled(), true);
             equal(await next.getByText("The same operation survived renderer death.", { exact: false }).count(), 1);
             await application.evaluate(
                 ({ BrowserWindow }) =>
@@ -231,7 +240,7 @@ test(
             });
             const composer = await reopened;
             await composer.waitForFunction(
-                async () =>
+                () =>
                     new Promise<boolean>((resolve) => {
                         const stop = (globalThis as DesktopWindow).runwieldSession.observe((next) => {
                             resolve(next.bindings?.length === 2 && next.durableSessionId === "");
@@ -334,7 +343,7 @@ test(
         try {
             fixture.provider.enqueue({ text: "Held operation before runtime loss.", hold: true });
             desktop = await launchDesktop(fixture);
-            const { page } = desktop;
+            let { page } = desktop;
             await page.getByRole("button", { name: "New Session", exact: true }).click();
             await page.getByText("Ready", { exact: true }).waitFor();
             await page.getByLabel("Message", { exact: true }).fill("Do not automatically repeat this operation.");
@@ -367,6 +376,10 @@ test(
                 await new Promise((resolve) => setTimeout(resolve, 20));
             }
             process.kill(desktop.runtimePid, "SIGKILL");
+            await page.getByRole("button", { name: "Restart runtime", exact: true }).waitFor();
+            page = await reopenWindow(desktop);
+            await page.getByRole("button", { name: "Restart runtime", exact: true }).waitFor({ timeout: 4000 });
+            equal((await view(page)).phase, "interrupted");
             await page.getByRole("button", { name: "Restart runtime", exact: true }).click();
             await page.evaluate(() => (globalThis as DesktopWindow).runwieldWorkbench.read());
             await page.waitForFunction(
@@ -412,3 +425,113 @@ test(
         }
     },
 );
+
+async function reopenWindow({ application }: Desktop) {
+    await application.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        return new Promise<void>((resolve) => {
+            window.once("closed", resolve);
+            window.close();
+        });
+    });
+    const replacement = application.waitForEvent("window");
+    await application.evaluate(({ app }) => app.emit("activate"));
+    return replacement;
+}
+
+test("replacement window opens Projects when its selected Project is disabled", { timeout: 40000 }, async () => {
+    const fixture = await makeSessionProcessFixture();
+    let desktop: Desktop | undefined;
+    try {
+        desktop = await launchDesktop(fixture);
+        const { page } = desktop;
+        await page.getByRole("button", { name: "New Session", exact: true }).click();
+        await page.getByText("Ready", { exact: true }).waitFor();
+        const bound = await view(page);
+        const projectId = bound.bindings![0].projectId;
+        await page.evaluate(
+            async ({ projectId, sessionId }) => {
+                const desktop = globalThis as DesktopWindow;
+                const nav = await desktop.runwieldWorkbench.read();
+                await desktop.runwieldWorkbench.write({
+                    ...nav,
+                    selectedProjectId: projectId,
+                    selectedSessionId: sessionId,
+                    showSession: true,
+                });
+                await desktop.runwieldProjects.setProjectEnabled({ projectId, enabled: false });
+            },
+            { projectId, sessionId: bound.sessionId },
+        );
+        const next = await reopenWindow(desktop);
+        await next.getByRole("heading", { name: "Projects", exact: true }).waitFor({ timeout: 4000 });
+        const recovered = await view(next);
+        equal(recovered.connection, "ready");
+        equal(recovered.sessionId, "");
+        equal(recovered.bindings?.find((binding) => binding.sessionId === bound.sessionId)?.phase, "interrupted");
+    } finally {
+        try {
+            await desktop?.close();
+        } finally {
+            await fixture.cleanup();
+        }
+    }
+});
+
+test("Projects shows the recovery copy notice when corrupt drafts leave no Session", { timeout: 40000 }, async () => {
+    const fixture = await makeSessionProcessFixture();
+    let desktop: Desktop | undefined;
+    try {
+        const directory = join(fixture.home, "electron-profile", "desktop-intent");
+        await mkdir(directory, { recursive: true });
+        await writeFile(join(directory, "drafts.json"), "truncated draft data");
+        desktop = await launchDesktop(fixture, { entry: true });
+        await desktop.page.getByRole("heading", { name: "Projects", exact: true }).waitFor();
+        const notice = desktop.page.getByRole("alert").filter({ hasText: "A private recovery copy was preserved" });
+        await notice.waitFor({ timeout: 4000 });
+        equal((await view(desktop.page)).sessionId, "");
+        const copy = (await readdir(directory)).find((name) => name !== "drafts.json");
+        ok(copy);
+        ok((await notice.textContent())?.includes(copy));
+        equal(await readFile(join(directory, copy), "utf8"), "truncated draft data");
+    } finally {
+        try {
+            await desktop?.close();
+        } finally {
+            await fixture.cleanup();
+        }
+    }
+});
+
+test("late acceptance leaves newer composer input in the replacement window", { timeout: 40000 }, async () => {
+    const fixture = await makeSessionProcessFixture();
+    let desktop: Desktop | undefined;
+    try {
+        desktop = await launchDesktop(fixture);
+        const { page } = desktop;
+        fixture.provider.enqueue({ text: "Held until replacement has edited its draft", hold: true });
+        await page.getByRole("button", { name: "New Session", exact: true }).click();
+        await page.getByText("Ready", { exact: true }).waitFor();
+        await page.getByLabel("Message", { exact: true }).fill("Earlier input");
+        await page.getByRole("button", { name: "Send", exact: true }).click();
+        await page.getByText("Held until replacement has edited its draft", { exact: true }).waitFor();
+        const next = await reopenWindow(desktop);
+        const composer = next.getByLabel("Message", { exact: true });
+        await next.waitForFunction(
+            () => document.querySelector<HTMLTextAreaElement>("#session-message")?.value === "Earlier input",
+        );
+        await composer.fill("Newer edit");
+        fixture.provider.release();
+        await next.getByText("Ready", { exact: true }).waitFor();
+        equal(await composer.inputValue(), "Newer edit");
+        equal(await next.getByRole("button", { name: "Send", exact: true }).isEnabled(), true);
+        equal(fixture.provider.requests.length, 1);
+    } finally {
+        fixture.provider.release();
+        try {
+            await desktop?.close();
+        } finally {
+            await fixture.cleanup();
+        }
+    }
+});

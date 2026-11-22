@@ -32,9 +32,19 @@ ipcRenderer.on(`${SESSION_CHANNEL}view`, (_event, view: SessionClientView) => {
     current = view;
     for (const listener of listeners) listener(structuredClone(current));
 });
+const draftAcceptedListeners = new Set<(binding: SessionBinding, requestId: string) => void>();
+ipcRenderer.on(`${DRAFT_CHANNEL}accepted`, (_event, context: SessionBinding, requestId: string) => {
+    for (const listener of draftAcceptedListeners) listener(context, requestId);
+});
 const client: WorkspaceSavedSessionClient & WorkspaceDraftClient = {
     editQueuedDraft: (context, requestId) =>
         ipcRenderer.invoke(`${DRAFT_CHANNEL}editQueued`, { ...context, requestId }),
+    onDraftAccepted(listener) {
+        draftAcceptedListeners.add(listener);
+        return () => {
+            draftAcceptedListeners.delete(listener);
+        };
+    },
     readDraft: (context) => ipcRenderer.invoke(`${DRAFT_CHANNEL}read`, context),
     writeDraft: (context, composer) => ipcRenderer.invoke(`${DRAFT_CHANNEL}write`, { ...context, composer }),
     discardDraft: (context) => ipcRenderer.invoke(`${DRAFT_CHANNEL}discard`, context),

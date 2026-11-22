@@ -3,7 +3,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { access, realpath } from "node:fs/promises";
-import { isAbsolute, resolve, sep } from "node:path";
+import { resolve, sep } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { AcpWorkspaceSessionClient } from "../../acp/client/workspace-session-client.ts";
@@ -182,6 +182,8 @@ export async function startDesktopSupervisor({
             input: Readable.toWeb(runtime.stdout),
             output: Writable.toWeb(runtime.stdin),
         });
+        client.setRendererAttached(false);
+        if (shutdown) client.setSubmissionDispatchPaused(true);
         return { runtime, exited, client };
     }
     let { runtime, exited, client } = startRuntime();
@@ -200,19 +202,34 @@ export async function startDesktopSupervisor({
     let recovering = true;
     let restart: Promise<void> | null = null;
     let observingRenderer: Electron.WebContents | null = null;
-    const publish = () => {
-        if (
-            window &&
+    function renderer(): Electron.WebContents | null {
+        return window &&
             !window.isDestroyed() &&
             observingRenderer === window.webContents &&
-            window.webContents.getURL() === DESKTOP_URL
-        )
-            window.webContents.send(`${SESSION_CHANNEL}view`, view);
-    };
+            observingRenderer.getURL() === DESKTOP_URL
+            ? observingRenderer
+            : null;
+    }
+    const publish = () => renderer()?.send(`${SESSION_CHANNEL}view`, view);
+    async function acceptDraft(location: DesktopDraftLocator, requestId: string) {
+        const owner = client;
+        const bound = owner.getBindingView(location.composerKey);
+        await drafts.accepted(location, requestId);
+        if (owner !== client) return;
+        inFlight.delete(submissionKey(location.composerKey, requestId));
+        if (!bound) return;
+        const { connectionId, project, sessionId } = bound;
+        renderer()?.send(`${DRAFT_CHANNEL}accepted`, { connectionId, project, sessionId }, requestId);
+    }
     function connectObservers() {
         const owner = client;
         owner.onSubmission(async ({ phase, submission }) => {
             if (owner !== client) throw new Error("Runtime was replaced.");
+            if (phase === "withdrawn") {
+                // Keep the prepared record for deliberate receipt lookup; no request reached Core.
+                inFlight.delete(submissionKey(submission.wireSessionId, submission.requestId));
+                return;
+            }
             if (shutdown && phase === "prepared") throw new Error("RunWield is stopping. Input was not sent.");
             const location = locator(submission.wireSessionId);
             if (submission.sessionId) location.durableSessionId = submission.sessionId;
@@ -227,8 +244,7 @@ export async function startDesktopSupervisor({
                 });
                 inFlight.add(submissionKey(submission.wireSessionId, submission.requestId));
             } else {
-                await drafts.accepted(location, submission.requestId);
-                inFlight.delete(submissionKey(submission.wireSessionId, submission.requestId));
+                await acceptDraft(location, submission.requestId);
             }
         });
         owner.observe((next) => {
@@ -236,6 +252,7 @@ export async function startDesktopSupervisor({
             const notice = uncertainties.get(next.sessionId);
             view = {
                 ...next,
+                draftNotice: drafts.notice,
                 bindings: next.bindings?.map((binding) =>
                     uncertainties.has(binding.sessionId) && binding.phase === "idle"
                         ? { ...binding, phase: "interrupted" }
@@ -369,33 +386,33 @@ export async function startDesktopSupervisor({
         )
             throw new Error("Untrusted desktop sender.");
     }
-    const attached = new WeakSet<Electron.WebContents>();
+    let rendererEpoch = 0;
+    const attachments = new WeakMap<Electron.WebContents, Promise<void>>();
     function detachRenderer(contents: Electron.WebContents): void {
-        // This is synchronous: idle polling can resume before any replacement view attaches.
-        for (const bound of client.getBindingViews())
-            for (const draft of bound.queued || []) client.queue(bound, { ...draft, restored: true });
-        attached.delete(contents);
-        if (observingRenderer === contents) observingRenderer = null;
+        attachments.delete(contents);
+        if (!window || window.isDestroyed() || window.webContents !== contents) return;
+        rendererEpoch++;
+        observingRenderer = null;
+        client.setRendererAttached(false);
     }
     ipcMain.handle(`${SESSION_CHANNEL}observe`, async (event, payload?: DesktopRequest) => {
         trusted(event);
         if (payload !== undefined) throw new Error("Invalid observation request.");
-        await restored;
-        if (restart) await restart;
-        if (!attached.has(event.sender)) {
-            attached.add(event.sender);
-            for (const bound of client.getBindingViews()) {
-                for (const draft of bound.queued || []) client.queue(bound, { ...draft, restored: true });
-            }
-            try {
+        const epoch = rendererEpoch;
+        let attachment = attachments.get(event.sender);
+        if (!attachment) {
+            attachment = (async () => {
+                await restored;
+                if (restart) await restart.catch(console.error);
                 await client.reattachViews();
                 trusted(event);
+                if (rendererEpoch !== epoch) throw new Error("Renderer was detached.");
                 observingRenderer = event.sender;
-            } catch (error) {
-                attached.delete(event.sender);
-                throw error;
-            }
+                client.setRendererAttached(true);
+            })();
+            attachments.set(event.sender, attachment);
         }
+        await attachment;
         trusted(event);
         publish();
     });
@@ -433,7 +450,6 @@ export async function startDesktopSupervisor({
             }
             return {
                 composer: entry?.composer || null,
-                notice: drafts.notice,
                 submittedRequestIds: entry?.submitted.map((item) => item.requestId) || [],
             };
         });
@@ -547,7 +563,7 @@ export async function startDesktopSupervisor({
                             expectedGeneration: priorSubmission.expectedGeneration,
                         });
                         if (resolution.status === "accepted") {
-                            await drafts.accepted(location, requestId);
+                            await acceptDraft(location, requestId);
                             if (!resolution.result?.ok) {
                                 uncertainties.set(
                                     payload.sessionId,
@@ -580,10 +596,15 @@ export async function startDesktopSupervisor({
                     return;
                 }
                 case "queue": {
+                    const epoch = rendererEpoch;
+                    const owner = client;
                     const location = locator(payload.sessionId);
                     await drafts.bind(location);
                     await drafts.queue(location, payload.draft!);
-                    return client.queue(payload, payload.draft!);
+                    return owner.queue(payload, {
+                        ...payload.draft!,
+                        ...(epoch !== rendererEpoch ? { restored: true } : {}),
+                    });
                 }
                 case "removeQueued": {
                     await drafts.accepted(locator(payload.sessionId), payload.requestId!);
@@ -686,8 +707,26 @@ export async function startDesktopSupervisor({
         trusted(event);
         if (payload !== undefined) throw new Error("Invalid preferences request.");
         await restored;
-        if (restart) await restart;
-        return preferences.read().navigation;
+        if (restart) await restart.catch(console.error);
+        trusted(event);
+        const { navigation } = preferences.read();
+        if (!navigation.selectedProjectId || view.connection !== "ready" || observingRenderer) return navigation;
+        const owner = client;
+        const projects = await owner.listProjects().catch((error: Error) => {
+            console.error("Could not verify the saved Project destination:", error.message);
+            return null;
+        });
+        trusted(event);
+        if (
+            !projects ||
+            owner !== client ||
+            projects.projects.some((row) => row.projectId === navigation.selectedProjectId && row.enabled)
+        )
+            return navigation;
+        owner.clearSelection();
+        const fallback = { ...navigation, selectedProjectId: "", selectedSessionId: "", showSession: false };
+        await preferences.update({ navigation: fallback }).catch(console.error);
+        return fallback;
     });
     ipcMain.handle("desktop:preferences:write", async (event, navigation: DesktopNavigation) => {
         trusted(event);
@@ -730,6 +769,7 @@ export async function startDesktopSupervisor({
             connectObservers();
             await restoreBindings();
             await client.reattachViews();
+            client.setRendererAttached(Boolean(observingRenderer));
         })().finally(() => {
             recovering = false;
             restart = null;
@@ -758,6 +798,7 @@ export async function startDesktopSupervisor({
             await shutdown;
             return settled;
         }
+        client.setSubmissionDispatchPaused(true);
         shutdown = (async () => {
             await restored;
             if (restart) await restart;
@@ -785,7 +826,10 @@ export async function startDesktopSupervisor({
             );
             return false;
         } finally {
-            if (!settled) shutdown = null;
+            if (!settled) {
+                shutdown = null;
+                client.setSubmissionDispatchPaused(false);
+            }
         }
     }
     stopDesktopForUpdate = stopAndQuit;

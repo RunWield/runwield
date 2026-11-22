@@ -86,17 +86,20 @@ export async function launchDesktop(fixture: SessionFixture, options: { entry?: 
     };
     const tracker = setInterval(trackChildren, 100);
     mainProcess.once("exit", () => clearInterval(tracker));
+    function killChildren() {
+        for (const pid of new Set([...knownChildren, ...orphanCandidates])) {
+            try {
+                process.kill(pid, "SIGKILL");
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+            }
+        }
+    }
     let closed = false;
     async function close() {
         if (closed) {
             clearInterval(tracker);
-            for (const pid of new Set([...knownChildren, ...orphanCandidates])) {
-                try {
-                    process.kill(pid, "SIGKILL");
-                } catch (error) {
-                    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-                }
-            }
+            killChildren();
             return;
         }
         trackChildren();
@@ -104,7 +107,7 @@ export async function launchDesktop(fixture: SessionFixture, options: { entry?: 
         // Native dialog is the external boundary. Cleanup chooses Stop, not a weaker production path.
         await application
             .evaluate(({ dialog }) => {
-                dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+                dialog.showMessageBox = () => Promise.resolve({ response: 1, checkboxChecked: false });
             })
             .catch(() => {});
         const mainExited =
@@ -127,21 +130,12 @@ export async function launchDesktop(fixture: SessionFixture, options: { entry?: 
             ]);
         } catch (error) {
             console.error(diagnostics);
-            for (const pid of new Set([...knownChildren, ...orphanCandidates])) {
-                try {
-                    process.kill(pid, "SIGKILL");
-                } catch {}
-            }
             mainProcess.kill("SIGKILL");
             throw error;
         } finally {
             clearTimeout(timer!);
             clearInterval(tracker);
-            for (const pid of new Set([...knownChildren, ...orphanCandidates])) {
-                try {
-                    process.kill(pid, "SIGKILL");
-                } catch {}
-            }
+            killChildren();
         }
     }
     try {
@@ -170,14 +164,16 @@ export async function launchDesktop(fixture: SessionFixture, options: { entry?: 
             (await page.locator(".project-session:not([hidden]) .session-client").count());
         if (!options.entry && !restored) {
             const link = page.getByRole("button", { name: "Link Project", exact: true });
-            if (await link.count()) await link.click();
-            await page.getByRole("button", { name: "Open", exact: true }).click();
+            const open = page.getByRole("button", { name: "Open", exact: true });
+            await link.or(open).first().waitFor();
+            if (await link.isVisible()) await link.click();
+            await open.click();
             await page.getByText("No Session open", { exact: true }).waitFor();
         }
         trackChildren();
         const [runtimePid] = sourceChildren();
         if (!runtimePid) throw new Error(`No source ACP child of Electron PID ${mainProcess.pid}. ${diagnostics}`);
-        async function secondLaunch() {
+        const secondLaunch = async () => {
             const child = spawn(executablePath, args, { cwd: desktopRoot, env, stdio: "ignore" });
             let timer: ReturnType<typeof setTimeout> | undefined;
             try {
@@ -190,8 +186,8 @@ export async function launchDesktop(fixture: SessionFixture, options: { entry?: 
                 clearTimeout(timer);
                 if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
             }
-        }
-        async function crashMain() {
+        };
+        const crashMain = async () => {
             if (closed) return;
             closed = true;
             clearInterval(tracker);
@@ -219,7 +215,7 @@ export async function launchDesktop(fixture: SessionFixture, options: { entry?: 
                 }
                 if (alive) throw new Error(`Desktop main died but owned subprocess ${pid} is still alive.`);
             }
-        }
+        };
         return {
             application,
             page,

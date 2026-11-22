@@ -118,8 +118,10 @@ test("invalid image input cannot replace saved private intent", async () => {
     const f = await fixture();
     try {
         await f.store.write(locator, composer);
-        await rejects(async () =>
-            f.store.write(locator, { ...composer, images: [{ ...composer.images[0], base64: "not base64" }] }),
+        await rejects(
+            Promise.resolve().then(() =>
+                f.store.write(locator, { ...composer, images: [{ ...composer.images[0], base64: "not base64" }] }),
+            ),
         );
         deepEqual((await (await DesktopDraftStore.open(f.root)).read(locator))?.composer, composer);
     } finally {

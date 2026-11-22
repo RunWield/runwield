@@ -29,7 +29,7 @@ interface SessionClientSurfaceProps {
 type DraftImage = import("../client/session-drafts.ts").SessionDraftImage;
 type BindingDraft = import("../client/session-drafts.ts").SessionComposerDraft;
 type PersistentSessionClient = WorkspaceSessionClient & import("../client/session-drafts.ts").WorkspaceDraftClient;
-function viewIdentity(view: SessionClientView | null): string {
+function viewIdentity(view: SessionBinding | null): string {
     return view ? `${view.connectionId}:${view.project}:${view.sessionId}` : "";
 }
 const PHASE_LABELS: Record<SessionClientView["phase"], string> = {
@@ -47,9 +47,8 @@ export function SessionClientSurface({ client, projects, workbench }: SessionCli
     const [view, setView] = useState<SessionClientView | null>(null);
     const persistent = "readDraft" in client ? (client as PersistentSessionClient) : null;
     const [loadedDrafts, setLoadedDrafts] = useState<Set<string>>(new Set());
-    const loadingDrafts = useRef(new Set<string>());
     const submittedDraftIds = useRef(new Set<string>());
-    const [draftNotice, setDraftNotice] = useState("");
+    const acceptedDuringRead = useRef(new Map<string, Set<string>>());
     const saved = projects && "readProject" in client ? (client as WorkspaceSavedSessionClient) : null;
     const {
         context,
@@ -169,24 +168,45 @@ export function SessionClientSurface({ client, projects, workbench }: SessionCli
             }),
         [client],
     );
+    useEffect(
+        () =>
+            persistent?.onDraftAccepted((binding, requestId) => {
+                const key = viewIdentity(binding);
+                acceptedDuringRead.current.get(key)?.add(requestId);
+                clearDraft(key, requestId);
+            }),
+        [persistent],
+    );
+    function clearDraft(key: string, requestId: string) {
+        setDrafts((old) =>
+            old[key]?.requestId === requestId
+                ? {
+                      ...old,
+                      [key]: { text: "", images: [], requestId: crypto.randomUUID() },
+                  }
+                : old,
+        );
+    }
     useEffect(() => {
-        if (!persistent || !view?.sessionId || loadedDrafts.has(identity) || loadingDrafts.current.has(identity))
+        if (!persistent || !view?.sessionId || loadedDrafts.has(identity) || acceptedDuringRead.current.has(identity))
             return;
-        loadingDrafts.current.add(identity);
+        const accepted = new Set<string>();
+        acceptedDuringRead.current.set(identity, accepted);
         const binding = { connectionId: view.connectionId, project: view.project, sessionId: view.sessionId };
         void persistent
             .readDraft(binding)
             .then((snapshot) => {
                 if (!mounted.current) return;
                 for (const requestId of snapshot.submittedRequestIds || []) submittedDraftIds.current.add(requestId);
-                if (snapshot.composer) setDrafts((old) => ({ ...old, [identity]: snapshot.composer! }));
-                setDraftNotice(snapshot.notice);
+                const composer = snapshot.composer;
+                if (composer && !accepted.has(composer.requestId))
+                    setDrafts((old) => ({ ...old, [identity]: composer }));
                 setLoadedDrafts((old) => new Set([...old, identity]));
             })
             .catch((caught: Error) => {
-                loadingDrafts.current.delete(identity);
                 if (mounted.current) setError(caught.message);
-            });
+            })
+            .finally(() => acceptedDuringRead.current.delete(identity));
     }, [persistent, identity, view?.sessionId, loadedDrafts]);
     useEffect(() => {
         if (!persistent || !view?.sessionId || !intent || !loadedDrafts.has(identity)) return;
@@ -322,9 +342,7 @@ export function SessionClientSurface({ client, projects, workbench }: SessionCli
                     requestId,
                 );
             else await client.send(binding, sentDraft);
-            setDraft((current) => (current === sentDraft ? "" : current));
-            setImages((current) => current.filter((image) => !sentImages.some((sent) => sent.id === image.id)));
-            setRequestIdentity(crypto.randomUUID());
+            clearDraft(identity, requestId);
         } catch (caught) {
             if (mounted.current) setError(caught instanceof Error ? caught.message : "The message was not sent.");
         } finally {
@@ -462,7 +480,6 @@ export function SessionClientSurface({ client, projects, workbench }: SessionCli
     const modelValue = configuration ? `${configuration.provider}\u001f${configuration.model}` : "";
     return (
         <main className="session-client">
-            {draftNotice && <p role="alert">{draftNotice}</p>}
             <header className="session-client-header">
                 <h1>Session</h1>
                 <RunWieldButton onClick={() => setContextOpen(!contextOpen)} aria-expanded={contextOpen}>

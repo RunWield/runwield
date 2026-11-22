@@ -166,6 +166,9 @@ export function ProjectWorkbench({ projects, sessions, workbench, initialNavigat
     }
     const refreshKey = `${revision}:${view?.durableSessionId || ""}:${view?.generation ?? ""}:${view?.archivedAt || ""}`;
     const project = rows.find((row) => row.projectId === settings);
+    const runtimeInterrupted = workbench && view?.connection === "disconnected";
+    const connectionStatus =
+        !runtimeInterrupted && view?.connection !== "ready" ? view?.error || "Connecting to runtime…" : "";
     return (
         <div className="project-workbench">
             <ProjectSidebar
@@ -236,7 +239,7 @@ export function ProjectWorkbench({ projects, sessions, workbench, initialNavigat
                         </button>
                     )}
                 </header>
-                {workbench && view?.connection === "disconnected" && (
+                {runtimeInterrupted && (
                     <div role="alert" className="session-client-error">
                         <p>Runtime interrupted. Saved work and unsent input were not sent again.</p>
                         <button
@@ -256,6 +259,11 @@ export function ProjectWorkbench({ projects, sessions, workbench, initialNavigat
                             Restart runtime
                         </button>
                     </div>
+                )}
+                {view?.draftNotice && (
+                    <p role="alert" className="session-client-error">
+                        {view.draftNotice}
+                    </p>
                 )}
                 {error && selected && !settings && <p role="alert">{error}</p>}
                 <section className="project-entry" hidden={selected && !settings} aria-label="Projects">
@@ -281,11 +289,7 @@ export function ProjectWorkbench({ projects, sessions, workbench, initialNavigat
                         )}
                     </header>
                     {error && <p role="alert">{error}</p>}
-                    <p role="status">
-                        {pending
-                            ? "Working…"
-                            : status || (view?.connection !== "ready" ? view?.error || "Connecting to runtime…" : "")}
-                    </p>
+                    <p role="status">{pending ? "Working…" : status || connectionStatus}</p>
                     <button
                         type="button"
                         className="secondary-action"

@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { DesktopDraftStore } from "./draft-store.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { makeSessionProcessFixture, waitForSession } from "../../acp/client/testing/session-process-fixture.ts";
-import type { SessionClientView, WorkspaceSessionClient } from "../workspace/client/session-client.ts";
+import type {
+    SessionClientView,
+    WorkspaceSessionClient,
+    WorkspaceSavedSessionClient,
+} from "../workspace/client/session-client.ts";
+import type { WorkspaceDraftClient } from "../workspace/client/session-drafts.ts";
 import { launchDesktop } from "./testing/desktop-fixture.ts";
 
 interface DesktopGlobals {
@@ -95,7 +100,7 @@ for (const reopen of ["activate", "second launch"] as const) {
 }
 
 interface DraftDesktopGlobals extends DesktopGlobals {
-    runwieldSession: WorkspaceSessionClient & import("../workspace/client/session-drafts.ts").WorkspaceDraftClient;
+    runwieldSession: WorkspaceSavedSessionClient & WorkspaceDraftClient;
 }
 type DraftDesktopWindow = typeof globalThis & DraftDesktopGlobals;
 
@@ -379,48 +384,39 @@ test(
             const { page } = desktop;
             await page.getByRole("button", { name: "New Session", exact: true }).click();
             await page.getByText("Ready", { exact: true }).waitFor();
-            const first = await readView(page);
+            const { connectionId, project, sessionId } = await readView(page);
+            const binding = { connectionId, project, sessionId };
             await page.getByLabel("Message", { exact: true }).fill("Background binding private input.");
             await page.getByRole("button", { name: "New Session", exact: true }).click();
             await page.getByText("Ready", { exact: true }).waitFor();
             await page.getByLabel("Message", { exact: true }).fill("Selected binding must keep this exact draft.");
-            const firstComposer = await page.evaluate(async (binding) => {
-                const client = (globalThis as DraftDesktopWindow).runwieldSession;
-                return (
-                    await client.readDraft({
-                        connectionId: binding.connectionId,
-                        project: binding.project,
-                        sessionId: binding.sessionId,
-                    })
-                ).composer;
-            }, first);
+            const firstDraft = await page.evaluate(
+                (binding) => (globalThis as DraftDesktopWindow).runwieldSession.readDraft(binding),
+                binding,
+            );
+            const firstComposer = firstDraft.composer;
             ok(firstComposer);
             await page.evaluate(
                 async ({ binding, composer }) => {
-                    const client = (globalThis as DraftDesktopWindow)
-                        .runwieldSession as import("../workspace/client/session-client.ts").WorkspaceSavedSessionClient;
+                    const client = (globalThis as DraftDesktopWindow).runwieldSession;
                     await client.sendImages(
-                        { connectionId: binding.connectionId, project: binding.project, sessionId: binding.sessionId },
+                        binding,
                         composer.text,
                         composer.images.map(({ mimeType, base64 }) => ({ mimeType, base64 })),
                         composer.requestId,
                     );
                 },
-                { binding: first, composer: firstComposer },
+                { binding, composer: firstComposer },
             );
-            equal((await readView(page)).sessionId === first.sessionId, false);
+            equal((await readView(page)).sessionId === binding.sessionId, false);
             equal(
                 await page.getByLabel("Message", { exact: true }).inputValue(),
                 "Selected binding must keep this exact draft.",
             );
-            const accepted = await page.evaluate(async (binding) => {
-                const client = (globalThis as DraftDesktopWindow).runwieldSession;
-                return client.readDraft({
-                    connectionId: binding.connectionId,
-                    project: binding.project,
-                    sessionId: binding.sessionId,
-                });
-            }, first);
+            const accepted = await page.evaluate(
+                (binding) => (globalThis as DraftDesktopWindow).runwieldSession.readDraft(binding),
+                binding,
+            );
             equal(accepted.composer, null);
             equal(fixture.provider.requests.length, 1);
             ok(JSON.stringify(fixture.provider.requests[0].messages).includes(firstComposer.text));
@@ -643,7 +639,7 @@ test(
                 );
             });
             const before = await page.evaluate(
-                async (binding) => (globalThis as DraftDesktopWindow).runwieldSession.readDraft(binding),
+                (binding) => (globalThis as DraftDesktopWindow).runwieldSession.readDraft(binding),
                 binding,
             );
             ok(before.composer);

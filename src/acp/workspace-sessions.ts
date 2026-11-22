@@ -161,7 +161,7 @@ export class WorkspaceSessionConnection {
             resolveSubmission: ["context", "sessionId", "requestId", "kind", "expectedGeneration"],
         };
         const keys = allowed[operation as keyof typeof allowed];
-        if (!keys || Object.keys(request).some((key) => !keys.includes(key)))
+        if (!keys || Object.keys(request).some((key) => !keys.some((allowedKey) => allowedKey === key)))
             throw new RequestError(-32602, "Unsupported Session request.");
         if (operation === "drain") return await this.drain();
         if (operation === "resolveSubmission") {

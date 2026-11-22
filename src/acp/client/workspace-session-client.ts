@@ -63,7 +63,7 @@ interface WorkspaceCloseResponse {
 }
 
 export interface WorkspaceSubmissionEvent {
-    phase: "prepared" | "accepted";
+    phase: "prepared" | "withdrawn" | "accepted";
     submission: WorkspaceSubmissionMetadata;
 }
 export type WorkspaceSubmissionObserver = (event: WorkspaceSubmissionEvent) => Promise<void>;
@@ -173,6 +173,7 @@ class SessionState {
     pending: PendingQuestion | null = null;
     turn: Promise<void> | null = null;
     polling: ReturnType<typeof setTimeout> | null = null;
+    pollingSlow = false;
     observationCursor = "";
     launchConfiguration: import("../workspace-contract.ts").WorkspaceConfigurationSelection = {};
     committedItems: SessionClientItem[] = [];
@@ -193,6 +194,13 @@ class SessionState {
 export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, WorkspaceProjectClient {
     private draining = false;
     private drainingPromise: Promise<WorkspaceSettlementResult> | null = null;
+    private submissionDispatchPaused = false;
+
+    /** Block input while the host flushes local intent before requesting drain. */
+    setSubmissionDispatchPaused(paused: boolean): void {
+        this.submissionDispatchPaused = paused;
+    }
+
     private readonly submissionObservers = new Set<WorkspaceSubmissionObserver>();
     /** Host persistence boundary. Prepared observers finish before input crosses the wire. */
     onSubmission(observer: WorkspaceSubmissionObserver): () => void {
@@ -235,6 +243,7 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
     private context: WorkspaceProjectContext | null = null;
     private selecting = false;
     private opening = false;
+    private rendererAttached = true;
     private attaching = 0;
     private reattachment: Promise<void> | null = null;
 
@@ -517,9 +526,11 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
         if (!draft.requestId) throw new Error("A stable request ID is required.");
         state.rejectedQueued.delete(draft.requestId);
         const existing = state.queuedDrafts.findIndex((item) => item.requestId === draft.requestId);
-        if (existing >= 0) state.queuedDrafts[existing] = structuredClone(draft);
-        else state.queuedDrafts.push(structuredClone(draft));
+        const queued = structuredClone(this.rendererAttached ? draft : { ...draft, restored: true });
+        if (existing >= 0) state.queuedDrafts[existing] = queued;
+        else state.queuedDrafts.push(queued);
         state.view.queued = structuredClone(state.queuedDrafts);
+        this.startObservation(state);
         this.emit();
     }
     removeQueued(binding: SessionBinding, requestId: string): void {
@@ -751,63 +762,105 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
         }
     }
 
-    private startObservation(state: SessionState): void {
-        if (!this.workspaceAdmission || !state.context || state.polling || this.attaching) return;
-        const epoch = state.epoch;
-        const sessionId = state.view.sessionId;
-        const poll = async () => {
-            state.polling = null;
-            if (!this.current(state, epoch)) return;
-            try {
-                await this.reconcile(state);
-                if (!this.current(state, epoch)) return;
-                this.emit();
-                if (
-                    !this.draining &&
-                    !state.turn &&
-                    !state.dispatchingQueued &&
-                    state.view.phase === "idle" &&
-                    state.queuedDrafts.length &&
-                    !state.queuedDrafts[0].restored &&
-                    !this.attaching &&
-                    !state.rejectedQueued.has(state.queuedDrafts[0].requestId)
-                ) {
-                    const draft = state.queuedDrafts[0];
-                    state.dispatchingQueued = true;
-                    void this.sendImages(
-                        { connectionId: state.view.connectionId, project: state.view.project, sessionId },
-                        draft.text,
-                        draft.images,
-                        draft.requestId,
-                    )
-                        .then(
-                            () => {
-                                if (this.bindings.get(sessionId) !== state) return;
-                                this.removeQueued(
-                                    { connectionId: state.view.connectionId, project: state.view.project, sessionId },
-                                    draft.requestId,
-                                );
-                            },
-                            (error: Error) => {
-                                if (this.bindings.get(sessionId) !== state) return;
-                                state.rejectedQueued.add(draft.requestId);
-                                state.view.error = error.message;
-                                this.emit();
-                            },
-                        )
-                        .finally(() => {
-                            state.dispatchingQueued = false;
-                        });
-                }
-            } catch (error) {
-                if (!this.current(state, epoch)) return;
-                state.view.error = error instanceof Error ? error.message : "Observation failed.";
-                state.view.phase = "interrupted";
-                this.emit();
+    setRendererAttached(attached: boolean): void {
+        this.rendererAttached = attached;
+        if (attached) {
+            if (this.selected) this.startObservation(this.selected);
+            return;
+        }
+        for (const state of this.bindings.values()) {
+            for (let i = 0; i < state.queuedDrafts.length; i++) {
+                const draft = state.queuedDrafts[i];
+                if (!draft.restored) state.queuedDrafts[i] = { ...draft, restored: true };
             }
-            if (this.current(state, epoch)) state.polling = setTimeout(poll, 250);
+            state.view.queued = structuredClone(state.queuedDrafts);
+        }
+        this.emit();
+    }
+
+    private observesAtFullRate(state: SessionState): boolean {
+        const queued = state.queuedDrafts[0];
+        return Boolean(
+            state.turn ||
+            state.pending ||
+            state.view.phase === "streaming" ||
+            state.view.phase === "awaiting_answer" ||
+            state.view.phase === "canceling" ||
+            (this.rendererAttached &&
+                (state === this.selected ||
+                    (queued && !queued.restored && !state.rejectedQueued.has(queued.requestId)))),
+        );
+    }
+
+    private startObservation(state: SessionState): void {
+        const epoch = state.epoch;
+        if (!this.workspaceAdmission || !state.context || this.attaching || !this.current(state, epoch)) return;
+        if (state.polling) {
+            if (!state.pollingSlow || !this.observesAtFullRate(state)) return;
+            clearTimeout(state.polling);
+        }
+        const schedule = (immediate = false) => {
+            const fullRate = this.observesAtFullRate(state);
+            state.pollingSlow = !fullRate;
+            state.polling = setTimeout(
+                async () => {
+                    if (!this.current(state, epoch)) return;
+                    if (fullRate && !this.observesAtFullRate(state)) {
+                        schedule();
+                        return;
+                    }
+                    state.pollingSlow = false;
+                    try {
+                        await this.reconcile(state);
+                        if (!this.current(state, epoch)) return;
+                        this.emit();
+                        this.dispatchQueued(state);
+                    } catch (error) {
+                        if (!this.current(state, epoch)) return;
+                        state.view.error = error instanceof Error ? error.message : "Observation failed.";
+                        state.view.phase = "interrupted";
+                        this.emit();
+                    }
+                    if (this.current(state, epoch)) schedule();
+                },
+                fullRate ? (immediate ? 0 : 250) : 2000,
+            );
         };
-        state.polling = setTimeout(poll, 0);
+        schedule(true);
+    }
+
+    private dispatchQueued(state: SessionState): void {
+        const draft = state.queuedDrafts[0];
+        if (
+            !draft ||
+            draft.restored ||
+            !this.rendererAttached ||
+            this.draining ||
+            this.submissionDispatchPaused ||
+            this.attaching ||
+            state.turn ||
+            state.dispatchingQueued ||
+            state.view.phase !== "idle" ||
+            state.rejectedQueued.has(draft.requestId)
+        )
+            return;
+        const { connectionId, project, sessionId } = state.view;
+        const binding = { connectionId, project, sessionId };
+        state.dispatchingQueued = true;
+        void this.prepareSubmission(binding, draft.text, draft.images, draft.requestId)
+            .then((submission) => this.dispatchSubmission(submission, draft))
+            .then((sent) => {
+                if (sent && this.bindings.get(sessionId) === state) this.removeQueued(binding, draft.requestId);
+            })
+            .catch((error: Error) => {
+                if (this.bindings.get(sessionId) !== state || state.queuedDrafts[0] !== draft) return;
+                state.rejectedQueued.add(draft.requestId);
+                state.view.error = error.message;
+                this.emit();
+            })
+            .finally(() => {
+                state.dispatchingQueued = false;
+            });
     }
 
     /** Refresh all retained views before a replacement renderer receives observations. Never replay input. */
@@ -815,7 +868,8 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
         if (this.reattachment) return this.reattachment;
         this.attaching++;
         const operation = (async () => {
-            await this.ready();
+            await this.initialized;
+            if (this.emptyView.connection !== "ready" || this.disposed) return;
             const states = [...this.bindings.values()];
             for (const state of states) {
                 state.epoch++;
@@ -823,20 +877,18 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
                 state.polling = null;
                 state.observationCursor = "";
             }
-            const errors = await Promise.all(
+            await Promise.all(
                 states.map(async (state) => {
                     try {
                         await this.reconcile(state, true);
-                        return null;
                     } catch (error) {
+                        if (this.bindings.get(state.view.sessionId) !== state || state.view.connection !== "ready")
+                            return;
                         state.view.phase = "interrupted";
                         state.view.error = error instanceof Error ? error.message : "Observation failed.";
-                        return new Error(state.view.error);
                     }
                 }),
             );
-            const failure = errors.find((error) => error !== null);
-            if (failure) throw failure;
         })().finally(() => {
             this.attaching--;
             this.reattachment = null;
@@ -849,6 +901,12 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
     async listProjects(): Promise<WorkspaceListProjectsResult> {
         await this.ready();
         return this.connection.agent.request<WorkspaceListProjectsResult>("_dev.runwield/workspace/projects/list", {});
+    }
+    clearSelection(): void {
+        this.context = null;
+        this.emptyView.project = "";
+        this.selected = null;
+        this.emit();
     }
     async openProject(request: WorkspaceProjectRequest): Promise<WorkspaceOpenProjectResult> {
         await this.ready();
@@ -996,6 +1054,7 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
             : undefined;
         if (existing) {
             this.selected = existing;
+            this.startObservation(existing);
             this.emit();
             return;
         }
@@ -1122,6 +1181,13 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
 
     /** Send an explicitly prepared original kind. Never convert an interrupted steering into a prompt. */
     async submitPrepared(submission: WorkspaceSubmissionMetadata): Promise<void> {
+        await this.dispatchSubmission(submission);
+    }
+
+    private async dispatchSubmission(
+        submission: WorkspaceSubmissionMetadata,
+        queued?: SessionQueuedDraft,
+    ): Promise<boolean> {
         await this.ready();
         if (this.draining) throw new Error("Session connection is draining.");
         const binding = {
@@ -1139,7 +1205,17 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
                 (!submission.sessionId || submission.sessionId !== state.view.durableSessionId))
         )
             throw new Error("Resolve the original submission before using a different Session identity.");
+        // Detachment replaces the queued intent synchronously. The captured item can no longer authorize dispatch.
+        if (queued && state.queuedDrafts[0] !== queued) return false;
         await this.submissionEvent("prepared", submission);
+        if (queued && state.queuedDrafts[0] !== queued) {
+            await this.submissionEvent("withdrawn", submission);
+            return false;
+        }
+        if (this.submissionDispatchPaused) {
+            await this.submissionEvent("withdrawn", submission);
+            throw new Error("RunWield is stopping. Input was not sent.");
+        }
         if (this.draining) throw new Error("Session connection is draining.");
         this.binding(binding);
         if (submission.kind === "steering") {
@@ -1149,12 +1225,11 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
                 prompt: this.submissionPrompt(submission),
             });
             await this.submissionEvent("accepted", submission);
-            return;
+            return true;
         }
         if (state.turn || state.view.phase !== "idle") throw new Error("Wait for the current turn to settle.");
         state.view.error = "";
         state.view.phase = "streaming";
-        this.emit();
         const turn = this.connection.agent
             .request<import("@agentclientprotocol/sdk").PromptResponse>("session/prompt", {
                 ...this.metadata(state, submission.requestId, submission.expectedGeneration),
@@ -1182,7 +1257,10 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
                 this.emit();
             });
         state.turn = turn;
+        this.startObservation(state);
+        this.emit();
         await turn;
+        return true;
     }
     private submissionPrompt(submission: WorkspaceSubmissionMetadata) {
         return [
@@ -1368,9 +1446,11 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
     async dispose(): Promise<void> {
         if (this.disposed) return;
         await this.initialized;
-        if (this.emptyView.connection !== "ready")
+        const status = this.emptyView.connection;
+        // An incompatible peer never accepted Session requests and cannot be asked to drain.
+        if (status !== "ready" && status !== "incompatible")
             throw new Error("Cannot confirm settlement on a disconnected runtime.");
-        if (this.workspaceAdmission) {
+        if (status === "ready" && this.workspaceAdmission) {
             const result = await this.drain();
             if (result.status !== "settled")
                 throw new Error("Runtime work is not settled. Keep the connection open and retry.");

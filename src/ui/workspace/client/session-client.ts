@@ -65,6 +65,7 @@ export interface SessionClientView {
     error: string;
     /** Main recovery evidence remains visible until a deliberate continuation. */
     recoveryNotice?: string;
+    draftNotice?: string;
     generation?: number | null;
     archivedAt?: string | null;
     configuration?: import("../../../acp/workspace-contract.ts").WorkspaceConfiguration;

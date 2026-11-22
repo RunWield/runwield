@@ -50,13 +50,10 @@ test(
                 ok(saved);
                 const manifest = store.readSessionManifest(saved.runwieldSessionId, saved.projectId);
                 ok(manifest);
-                const refusals = await desktop.page.evaluate(async (view) => {
+                const { connectionId, project, sessionId } = before;
+                const binding = { connectionId, project, sessionId };
+                const refusals = await desktop.page.evaluate(async (binding) => {
                     const client = (globalThis as DesktopWindow).runwieldSession;
-                    const binding = {
-                        connectionId: view.connectionId,
-                        project: view.project,
-                        sessionId: view.sessionId,
-                    };
                     const unexpected = { ...binding, unexpected: "field" };
                     const operations = [
                         () => client.send({ ...binding, connectionId: "foreign" }, "Do not send"),
@@ -89,7 +86,11 @@ test(
                         () => Reflect.apply(client.load, client, [42]),
                         () => client.answer(binding, { requestId: "stale", action: "accept", answer: "late" }),
                         () =>
-                            client.answer(binding, { requestId: "stale", action: "accept", answer: "x".repeat(65537) }),
+                            client.answer(binding, {
+                                requestId: "stale",
+                                action: "accept",
+                                answer: "x".repeat(65537),
+                            }),
                         () =>
                             Reflect.apply(client.answer, client, [binding, { requestId: "stale", action: "invented" }]),
                     ];
@@ -109,7 +110,7 @@ test(
                         }
                     }
                     return errors;
-                }, before);
+                }, binding);
                 equal(refusals.length, 21);
                 ok(refusals.every((error) => error !== "ACCEPTED"));
                 match(refusals[0], /does not belong/);
@@ -223,19 +224,20 @@ test("main refuses requests after its own window leaves the allowed origin", { t
     let desktop: Desktop | undefined;
     try {
         desktop = await launchDesktop(fixture);
-        const view = await readView(desktop);
+        const { connectionId, project, sessionId } = await readView(desktop);
+        const binding = { connectionId, project, sessionId };
         await desktop.application.evaluate(async ({ BrowserWindow }) => {
             await BrowserWindow.getAllWindows()[0].loadURL("data:text/html,<title>Foreign origin</title>");
         });
         await desktop.page.waitForURL("data:text/html,<title>Foreign origin</title>");
-        const result = await desktop.page.evaluate(async (view) => {
+        const result = await desktop.page.evaluate(async (binding) => {
             try {
-                await (globalThis as DesktopWindow).runwieldSession.cancel(view);
+                await (globalThis as DesktopWindow).runwieldSession.cancel(binding);
                 return "ACCEPTED";
             } catch (error) {
                 return String(error);
             }
-        }, view);
+        }, binding);
         match(result, /Untrusted desktop sender/);
         equal(fixture.provider.requests.length, 0);
     } finally {

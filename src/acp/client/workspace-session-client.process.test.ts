@@ -628,3 +628,82 @@ test(
         }
     },
 );
+
+for (const pause of ["history", "persistence"] as const) {
+    test(`detached queue stays unsent during ${pause}`, { timeout: 40000 }, async () => {
+        const fixture = await makeSessionProcessFixture();
+        try {
+            const runtime = fixture.launch(true);
+            const registration = await runtime.client.registerProject({ root: fixture.project });
+            ok(registration.status === "ok");
+            await runtime.client.openProject({ projectId: registration.project.projectId });
+            await runtime.client.create();
+            fixture.provider.enqueue({ text: "Baseline saved" }, { text: "Deliberate continuation" });
+            const binding = runtime.binding();
+            await runtime.client.send(binding, "Baseline prompt");
+            const draft = { requestId: "queued-after-baseline", text: "Follow-up held before dispatch", images: [] };
+            const history =
+                pause === "history" ? runtime.delayNextResponse("_dev.runwield/workspace/sessions/history") : null;
+            const persistence = Promise.withResolvers<void>();
+            const prepared = Promise.withResolvers<void>();
+            const stop = runtime.client.onSubmission(async ({ phase, submission }) => {
+                if (phase !== "prepared" || submission.requestId !== draft.requestId) return;
+                prepared.resolve();
+                await persistence.promise;
+            });
+            runtime.client.queue(binding, draft);
+            await (history?.received ?? prepared.promise);
+            runtime.client.setRendererAttached(false);
+            history?.release();
+            persistence.resolve();
+            const snapshot = runtime.delayNextResponse("_dev.runwield/workspace/sessions/snapshot");
+            await snapshot.received;
+            snapshot.release();
+            stop();
+            await runtime.client.reattachViews();
+            runtime.client.setRendererAttached(true);
+            equal(runtime.sentMethods.filter((method) => method === "session/prompt").length, 1);
+            equal(runtime.view().queued?.[0]?.restored, true);
+            await runtime.client.sendImages(binding, draft.text, draft.images, draft.requestId);
+            equal(fixture.provider.requests.length, 2);
+            ok(JSON.stringify(fixture.provider.requests[1].messages).includes(draft.text));
+        } finally {
+            await fixture.cleanup();
+        }
+    });
+}
+
+test("only the active Session polls at full rate without a renderer", { timeout: 40000 }, async () => {
+    const fixture = await makeSessionProcessFixture();
+    try {
+        const runtime = fixture.launch(true);
+        const registration = await runtime.client.registerProject({ root: fixture.project });
+        ok(registration.status === "ok");
+        const project = { projectId: registration.project.projectId };
+        await runtime.client.openProject(project);
+        for (let i = 0; i < 3; i++) await runtime.client.create();
+        const snapshotMethod = "_dev.runwield/workspace/sessions/snapshot";
+        const polls = () => runtime.sentMethods.filter((method) => method === snapshotMethod).length;
+        const before = polls();
+        await waitForSession(() => polls() > before);
+        runtime.client.setRendererAttached(false);
+        const detached = polls();
+        await new Promise((resolve) => setTimeout(resolve, 850));
+        equal(polls(), detached, "detached idle bindings do not poll at the watched rate");
+
+        fixture.provider.enqueue({ text: "Keep observing active output", hold: true });
+        const turn = runtime.client.send(runtime.binding(), "Observe this held turn");
+        await runtime.wait((view) => view.items.some((item) => item.text === "Keep observing active output"));
+        const active = polls();
+        await waitForSession(
+            () => polls() >= active + 2,
+            () => "active polling stopped after detachment",
+            1200,
+        );
+        fixture.provider.release();
+        await turn;
+    } finally {
+        fixture.provider.release();
+        await fixture.cleanup();
+    }
+});
