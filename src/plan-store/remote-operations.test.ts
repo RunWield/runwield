@@ -319,7 +319,7 @@ test("home-owned snapshot publication retains frozen documents without touching 
         ok("snapshotId" in repeated.result);
         equal(repeated.result.snapshotId, sealed.result.snapshotId);
     } finally {
-        await connection?.control.close();
+        await connection?.close();
         if (moved) await rename(`${fixture.root}-unavailable`, fixture.root);
         await fixture.cleanup();
     }
@@ -385,7 +385,7 @@ test("retained delivery permits owner-side record persistence and index reconcil
         ok("records" in query.result);
         equal(query.result.records.length, 1);
     } finally {
-        await connection?.control.close();
+        await connection?.close();
         if (moved) await rename(`${fixture.root}-unavailable`, fixture.root);
         await fixture.cleanup();
     }
@@ -497,15 +497,34 @@ async function connectOwner(owner: HomeProjectOwner) {
     const control = startRemoteControlService(build);
     const binding = control.registerProjectStore(owner);
     const endpoint = `http://127.0.0.1:${control.port}`;
-    for (const action of ["handshake", "readiness"]) {
-        const response = await fetch(`${endpoint}/${action}`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${control.credential}` },
-            body: action === "handshake" ? JSON.stringify(build) : undefined,
-        });
-        equal(response.status, 200);
+    const headers = { Authorization: `Bearer ${control.credential}` };
+    try {
+        for (const action of ["handshake", "readiness"]) {
+            const response = await fetch(`${endpoint}/${action}`, {
+                method: "POST",
+                headers,
+                body: action === "handshake" ? JSON.stringify(build) : undefined,
+            });
+            equal(response.status, 200);
+            await response.text();
+        }
+    } catch (error) {
+        await control.close();
+        throw error;
     }
-    return { control, client: new ProjectStoreClient(endpoint, control.credential, binding) };
+    // This synthetic connection must send the same health messages as a remote Client.
+    const health = setInterval(() => {
+        void fetch(`${endpoint}/health`, { method: "POST", headers })
+            .then((response) => response.text())
+            .catch(() => {});
+    }, 1000);
+    return {
+        client: new ProjectStoreClient(endpoint, control.credential, binding),
+        async close() {
+            clearInterval(health);
+            await control.close();
+        },
+    };
 }
 
 test("family QA retries recover the child effect and finish the exact parent artifact", async () => {

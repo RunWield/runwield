@@ -3317,12 +3317,15 @@ async function runComposedTuiScenarioInScope(
                     const remotePath = await runGoldenGit(["remote", "get-url", remote], getCwd());
                     const startedAt = performance.now();
                     let latestStatus = "";
+                    let lastLookupError = "";
                     while (!expectedStatuses.has(latestStatus)) {
                         if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for published Plan ${planName} status ${[...expectedStatuses].join(
                                     " or ",
-                                )}; latest=${latestStatus || "unreadable"}`,
+                                )}; latest=${latestStatus || "unreadable"}. Last lookup error: ${
+                                    lastLookupError || "none"
+                                }. Recent events: ${events.slice(-12).join(", ")}`,
                             );
                         }
                         const published = await readGoldenPublishedPlan(
@@ -3330,7 +3333,10 @@ async function runComposedTuiScenarioInScope(
                             planName,
                             remotePath,
                             `refs/heads/${targetBranch}`,
-                        ).catch(() => null);
+                        ).catch((error: Error) => {
+                            lastLookupError = error.message;
+                            return null;
+                        });
                         latestStatus = published ? String(published.attrs.status || "") : "";
                         await terminal.flush();
                         await new Promise((resolve) => setTimeout(resolve, 20));
