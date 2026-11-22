@@ -512,11 +512,11 @@ test("runtime entry reuses Git answers only while repository evidence is unchang
         try {
             await writeGitLoggingWrapper(binDir, log, originalPath);
             process.env["PATH"] = `${binDir}${delimiter}${originalPath}`;
-            await settleGitEvidence();
 
             assertEquals((await migrateLegacyProjectRuntimeState(project.selectedRoot)).kind, "ready");
-            await migrateLegacyProjectRuntimeState(project.selectedRoot);
+            // Initial adoption can update Git config. Let that evidence age before priming the cache.
             await settleGitEvidence();
+            assertEquals((await migrateLegacyProjectRuntimeState(project.selectedRoot)).kind, "ready");
             await fsWriteFile(log, "");
             assertEquals((await migrateLegacyProjectRuntimeState(project.selectedRoot)).kind, "ready");
             assertEquals(await readRuntimeGitReads(log), []);
@@ -1669,22 +1669,27 @@ test("legacy migration rechecks registry after the active legacy registry writer
     }
 });
 
-test("legacy migration waits while another migration initializes its lock records", async () => {
+test("runtime adoption preserves the source while legacy migration lock records are initializing", async () => {
     const project = await makeMigrationProject();
     let lockHolder: NativeProcess | undefined;
     try {
-        let layout = resolveProjectRuntimeLayout(project.selectedRoot);
-        const signalPath = join(project.primaryRoot, ".migration-lock-test-started");
-        await writeText(join(getRunWieldRuntimeDir(project.primaryRoot), "controller", "plans", "plan.json"), "x\n");
+        const source = join(getRunWieldRuntimeDir(project.primaryRoot), "controller", "plans", "plan.json");
+        const signalPath = join(project.primaryRoot, ".migration-lock-test-release");
+        await writeText(source, "x\n");
         lockHolder = spawnDriver("hold-initializing-migration-locks", project.primaryRoot, signalPath);
         await readReadyLine(lockHolder.stdout);
-        await writeText(signalPath, "start\n");
+        const blocked = await migrateLegacyProjectRuntimeState(project.selectedRoot);
+        if (blocked.kind !== "blocked") throw new Error("Expected adoption to wait for the legacy writer");
+        assertEquals(blocked.reason, "active_legacy_writer");
+        assertEquals(await fsReadFile(source, "utf8"), "x\n");
+
+        await writeText(signalPath, "release\n");
+        const status = await lockHolder.status;
+        lockHolder = undefined;
+        assert(status.success);
         const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
         if (result.kind !== "ready") throw new Error(JSON.stringify(result));
-        layout = result.layout;
-        assertEquals(await fsReadFile(join(layout.primary.controllerPlansDir, "plan.json"), "utf8"), "x\n");
-        await lockHolder.status;
-        lockHolder = undefined;
+        assertEquals(await fsReadFile(join(result.layout.primary.controllerPlansDir, "plan.json"), "utf8"), "x\n");
     } finally {
         lockHolder?.kill("SIGKILL");
         await lockHolder?.status.catch(() => {});
