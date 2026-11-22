@@ -78,7 +78,7 @@ test("Plan Branch uses origin's default and explicit remote sources", async () =
 test("only standalone Planned Changes without an authored Plan Branch adopt one", async () => {
     await withRuntimeCommandFixture("plan-adoption-gate-", async ({ projectRoot }) => {
         assertEquals(shouldAdoptPlanBranch(projectRoot, { classification: "PLANNED_CHANGE" }), true);
-        assertEquals(shouldAdoptPlanBranch(projectRoot, { classification: "FEATURE" }), true);
+        assertEquals(shouldAdoptPlanBranch(projectRoot, { classification: "PLANNED_CHANGE" }), true);
         assertEquals(shouldAdoptPlanBranch(projectRoot, { classification: "PROJECT" }), false);
         assertEquals(shouldAdoptPlanBranch(projectRoot, { classification: "QUICK_FIX" }), false);
         assertEquals(

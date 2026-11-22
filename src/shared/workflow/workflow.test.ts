@@ -208,7 +208,7 @@ writeFileSync(process.env.RUNWIELD_CYMBAL_MARKER, realpathSync(process.cwd()) + 
             try {
                 const result = await startActiveExecutionWorkflow({
                     planName: "indexed-plan",
-                    triageMeta: { planId: PLAN_UNDER_TEST, classification: "FEATURE" },
+                    triageMeta: { planId: PLAN_UNDER_TEST, classification: "PLANNED_CHANGE" },
                     currentStatus: "ready_for_work",
                     hostedSession,
                     ports: createExecutionStartPorts(),
@@ -680,7 +680,7 @@ test("startActiveExecutionWorkflow prompts once and uses CWD for non-Git in-plac
         const prompts: string[] = [];
         const result = await startActiveExecutionWorkflow({
             planName: "non-git-plan",
-            triageMeta: { planId: "plan-under-test", classification: "FEATURE" },
+            triageMeta: { planId: "plan-under-test", classification: "PLANNED_CHANGE" },
             currentStatus: "ready_for_work",
             hostedSession,
             ports: createExecutionStartPorts(),
@@ -712,7 +712,7 @@ test("startActiveExecutionWorkflow cancels non-Git execution without consent", a
             () =>
                 startActiveExecutionWorkflow({
                     planName: "non-git-plan",
-                    triageMeta: { planId: PLAN_UNDER_TEST, classification: "FEATURE" },
+                    triageMeta: { planId: PLAN_UNDER_TEST, classification: "PLANNED_CHANGE" },
                     currentStatus: "ready_for_work",
                     hostedSession,
                     ports: createExecutionStartPorts(),
@@ -741,7 +741,7 @@ test("startActiveExecutionWorkflow does not activate Frontend Engineer before no
                     planName: "visual-plan",
                     triageMeta: {
                         planId: PLAN_UNDER_TEST,
-                        classification: "FEATURE",
+                        classification: "PLANNED_CHANGE",
                         executionAgent: "frontend-engineer",
                     },
                     currentStatus: "ready_for_work",
@@ -774,7 +774,7 @@ test("readLatestPlanOutcome returns the latest plan_written outcome", () => {
             details: {
                 planName: "first",
                 outcome: "approved_execute",
-                triageMeta: { classification: "FEATURE" },
+                triageMeta: { classification: "PLANNED_CHANGE" },
                 feedback: "Keep the selected command.",
             },
         },
@@ -782,7 +782,7 @@ test("readLatestPlanOutcome returns the latest plan_written outcome", () => {
     assertEquals(readLatestPlanOutcome(messages), {
         outcome: "approved_execute",
         planName: "first",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         feedback: "Keep the selected command.",
         images: [{ base64: "YXBwcm92ZWQ=", mimeType: "image/png" }],
     });
@@ -844,7 +844,7 @@ test("finalizePlanImplementation checkpoints worktree changes before lifecycle c
 
         const executionContext: ExecutionContext = {
             planName: "feature-plan",
-            triageMeta: { classification: "FEATURE" },
+            triageMeta: { classification: "PLANNED_CHANGE" },
             executionAgent: "engineer",
             executionMode: "worktree",
             projectRoot,
@@ -857,7 +857,7 @@ test("finalizePlanImplementation checkpoints worktree changes before lifecycle c
         const result = await finalizePlanImplementation({
             projectRoot,
             planName: "feature-plan",
-            triageMeta: { classification: "FEATURE", summary: "Preserve completed implementation work." },
+            triageMeta: { classification: "PLANNED_CHANGE", summary: "Preserve completed implementation work." },
             executionContext,
             executionReport: "- Implemented.",
         });
@@ -892,7 +892,7 @@ test("finalizePlanImplementation restores missing execution_started before lifec
 
         const executionContext: ExecutionContext = {
             planName: "feature-plan",
-            triageMeta: { classification: "FEATURE" },
+            triageMeta: { classification: "PLANNED_CHANGE" },
             executionAgent: "engineer",
             executionMode: "worktree",
             projectRoot,
@@ -905,7 +905,7 @@ test("finalizePlanImplementation restores missing execution_started before lifec
         await finalizePlanImplementation({
             projectRoot,
             planName: "feature-plan",
-            triageMeta: { classification: "FEATURE", summary: "Recover lifecycle marker order." },
+            triageMeta: { classification: "PLANNED_CHANGE", summary: "Recover lifecycle marker order." },
             executionContext,
             executionReport: "- Implemented after marker recovery.",
         });
@@ -974,7 +974,7 @@ test("finalizePlanImplementation fails closed without durable execution context"
                 finalizePlanImplementation({
                     projectRoot,
                     planName: "feature-plan",
-                    triageMeta: { classification: "FEATURE" },
+                    triageMeta: { classification: "PLANNED_CHANGE" },
                     executionContext: null,
                 }),
             Error,
@@ -990,7 +990,7 @@ test("startActiveExecutionWorkflow records attempt timestamp only after executio
         const hostedSession = makeHostedSession("attempt-clock-workflow", projectRoot);
         const result = await startActiveExecutionWorkflow({
             planName: "clock-plan",
-            triageMeta: { planId: "plan-under-test", classification: "FEATURE" },
+            triageMeta: { planId: "plan-under-test", classification: "PLANNED_CHANGE" },
             currentStatus: "ready_for_work",
             hostedSession,
             ports: { ...createExecutionStartPorts(), now: () => 4242 },
@@ -1004,7 +1004,7 @@ test("startActiveExecutionWorkflow records attempt timestamp only after executio
 
 test("execution preparation ignores Plan body edits the user owns", async () => {
     const projectRoot = await makeWorkflowProject([
-        { name: "body-plan", status: "ready_for_work", classification: "FEATURE" },
+        { name: "body-plan", status: "ready_for_work", classification: "PLANNED_CHANGE" },
     ]);
     return await withRetainedPlanFixture(projectRoot, async () => {
         const stored = await loadPlan(projectRoot, "body-plan");
@@ -1018,7 +1018,7 @@ test("execution preparation ignores Plan body edits the user owns", async () => 
 
         const result = await startActiveExecutionWorkflow({
             planName: "body-plan",
-            triageMeta: { planId: PLAN_UNDER_TEST, classification: "FEATURE" },
+            triageMeta: { planId: PLAN_UNDER_TEST, classification: "PLANNED_CHANGE" },
             currentStatus: "ready_for_work",
             hostedSession,
             ports: createExecutionStartPorts(),
@@ -1038,7 +1038,7 @@ test("execution preparation still refuses when lifecycle front matter drifts", a
         try {
             await seedPlan(projectRoot, "fm-plan", "# FM Plan\n", {
                 planId: "plan-fm",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "ready_for_work",
                 summary: "s",
                 affectedPaths: [],
@@ -1051,7 +1051,7 @@ test("execution preparation still refuses when lifecycle front matter drifts", a
                 () =>
                     startActiveExecutionWorkflow({
                         planName: "fm-plan",
-                        triageMeta: { planId: "plan-fm", classification: "FEATURE" },
+                        triageMeta: { planId: "plan-fm", classification: "PLANNED_CHANGE" },
                         currentStatus: "ready_for_work",
                         hostedSession,
                         ports: {

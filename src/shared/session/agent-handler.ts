@@ -36,7 +36,6 @@ import {
 import {
     type PlanWrittenEventPayload,
     settleWorkflowToolEvent,
-    type TriageReportEventPayload,
     type WorkflowToolEvent,
 } from "../workflow/workflow-tool-events.ts";
 import { loadPlan } from "../../plan-store/index.ts";
@@ -46,6 +45,7 @@ import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { isValidationCheckpoint, validationCheckpointCanResume } from "../workflow/validation-checkpoint.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { TriageOutcome } from "@runwield/tools";
 import type { ImageAttachment } from "./image-attachments.ts";
 
 type ActiveExecutionWorkflow = import("./hosted-session.ts").ActiveExecutionWorkflow;
@@ -303,7 +303,7 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
         const triageEvent = rootWorkflowEvent?.kind === "triage_report" ? rootWorkflowEvent : null;
         if (triageEvent?.kind === "triage_report") {
             try {
-                const triage = triageEvent.payload as TriageReportEventPayload;
+                const triage = triageEvent.payload as TriageOutcome;
                 const validationResult = await dispatchPostTriage({
                     hostedSession,
                     triage,

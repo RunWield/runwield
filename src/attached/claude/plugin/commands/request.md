@@ -28,7 +28,7 @@ closed routing record. An unknown handoff role requires compatible Core/plugin u
    `workflow.revision`, and `workflow.nextAction.actionId` in each lifecycle call. Check that the action contract is `runwield.attached.triage/1`
    for the Router or `runwield.attached.planner/1` for the Planner. If another contract is returned, stop and tell the
    user to update local RunWield Core and the Claude Code RunWield plugin: Core returned an unsupported role contract.
-3. Call `triage_report` after Triage. For a FEATURE Plan, show the setup preview before writing the Plan, then call
+3. Call `triage_report` after Triage. For a Planned Change, show the setup preview before writing the Plan, then call
    `plan_written` with the Plan name. Follow the next result. A rejection with a pending action lets you repair the
    input and retry with a new `operationId`; reuse an ID only when retrying a call that returned no result.
 4. When `workflow.nextAction.kind` is `review`, show `review.url`. Wait with MCP `status` using `{ workflowId, waitForRevision: <current revision>, timeoutMs: 30000 }` while the browser review is pending. Core returns compact status when the revision or action changes, or when the wait times out; repeat with the returned revision if still pending. Do not poll with shell sleep or request full status. After feedback, dispatch the Planner with the new action ID and tell that worker to fetch its own complete instructions with `get_instructions`; revise the Plan and call `plan_written` with the current revision. The live browser page is reused for the next round. Browser edits are already saved; do not apply them twice.

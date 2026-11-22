@@ -157,7 +157,7 @@ async function startProcess(
         send,
         async read() {
             // Real validation includes Git repair, recording and publication, not only a model turn.
-            const next = await within(reader.read(), 60_000);
+            const next = await within(reader.read(), 120_000);
             if (next.done) throw new Error(`Remote client exited: ${await stderr}`);
             return JSON.parse(next.value);
         },

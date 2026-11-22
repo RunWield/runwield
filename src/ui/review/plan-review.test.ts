@@ -151,7 +151,7 @@ test("submitPlanForReview serves a real review and records approval metadata", a
             planName: "plan",
             planPath,
             triageMeta: {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 workKind: "DOCUMENTATION",
                 complexity: "MEDIUM",
                 summary: "Add the thing",
@@ -339,7 +339,7 @@ classification: PROJECT
             cwd: dir,
             planName: "plan",
             planPath,
-            triageMeta: { classification: "FEATURE", complexity: "MEDIUM", summary: "Feature", affectedPaths: [] },
+            triageMeta: { classification: "PLANNED_CHANGE", complexity: "MEDIUM", summary: "Feature", affectedPaths: [] },
             browser: scriptedBrowser.browser,
         });
         const attrs = (await loadPlan(dir, "plan"))?.attrs;

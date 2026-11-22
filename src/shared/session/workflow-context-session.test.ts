@@ -108,16 +108,25 @@ test("workflow context normalization accepts canonical intents and sanitized pla
         routingIntent: "OPERATION",
         complexity: "LOW",
     });
+    assertEquals(normalizeWorkflowContext({ routingIntent: "operation", classification: "NOPE", complexity: "low" }), {
+        routingIntent: "OPERATION",
+        classification: "NOPE",
+        complexity: "LOW",
+    });
+    assertEquals(
+        normalizeWorkflowContext({ routingIntent: "operation", classification: "FEATURE", complexity: "low" }),
+        null,
+    );
     assertEquals(normalizeWorkflowContext({ routingIntent: "PLANNED_CHANGE", complexity: "bad", planName: "p.md" }), {
         planName: "p",
     });
 });
 
-test("workflow context derives execution metadata with legacy feature normalization", () => {
+test("workflow context derives execution metadata from canonical routing", () => {
     assertEquals(
         deriveWorkflowContextFromExecutionWorkflow({
             planName: "docs/plans/epic-name/footer-plan.md",
-            triageMeta: { classification: "FEATURE", complexity: "medium", parentPlan: "epic-name" },
+            triageMeta: { classification: "PLANNED_CHANGE", complexity: "medium", parentPlan: "epic-name" },
         }),
         {
             routingIntent: "PLANNED_CHANGE",
@@ -129,14 +138,21 @@ test("workflow context derives execution metadata with legacy feature normalizat
     assertEquals(
         deriveWorkflowContextFromExecutionWorkflow({
             planName: "docs/plans/fallback-plan.md",
-            triageMeta: { routingIntent: "NOPE", classification: "FEATURE", complexity: "medium" },
+            triageMeta: { routingIntent: "NOPE", classification: "PLANNED_CHANGE", complexity: "medium" },
         }),
         { routingIntent: "PLANNED_CHANGE", complexity: "MEDIUM", planName: "fallback-plan" },
     );
     assertEquals(
+        deriveWorkflowContextFromExecutionWorkflow({
+            planName: "docs/plans/fallback-plan.md",
+            triageMeta: { routingIntent: "FEATURE", classification: "PLANNED_CHANGE", complexity: "medium" },
+        }),
+        { planName: "fallback-plan" },
+    );
+    assertEquals(
         deriveWorkflowContextFromExecutionWorkflow(
             {
-                triageMeta: { routingIntent: "NOPE", classification: "bad", complexity: "medium" },
+                triageMeta: { routingIntent: "PLANNED_CHANGE", classification: "FEATURE", complexity: "medium" },
             },
             "docs/plans/name-only.md",
         ),
@@ -191,7 +207,7 @@ test("workflow context derives current checkpoint facts from execution metadata"
         deriveWorkflowContextFromExecutionWorkflow({
             planName: "recover-plan",
             triageMeta: {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 status: "implemented",
                 validationCheckpoint: {
@@ -216,7 +232,7 @@ test("workflow context derives current checkpoint facts from execution metadata"
 
 test("workflow context records normalized execution context without duplicate markers", () => {
     const sessionManager = makeSessionManager();
-    const context = { routingIntent: "FEATURE", complexity: "medium", planName: "docs/plans/footer-plan.md" };
+    const context = { routingIntent: "PLANNED_CHANGE", complexity: "medium", planName: "docs/plans/footer-plan.md" };
 
     recordNormalizedWorkflowContext(sessionManager, context);
     recordNormalizedWorkflowContext(sessionManager, context);

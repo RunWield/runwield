@@ -314,8 +314,7 @@ likely blast radius without reproducing, instrumenting, or fixing the issue. _Av
 mini-debugger
 
 **Routing Intent**: The Triage field selecting the workflow and Agent: `INQUIRY`, `IDEATION`, `OPERATION`, `QUICK_FIX`,
-`PLANNED_CHANGE`, or `PROJECT`; legacy `FEATURE` normalizes to `PLANNED_CHANGE`. _Avoid_: Classification, route type,
-request kind, category
+`PLANNED_CHANGE`, or `PROJECT`. _Avoid_: Classification, route type, request kind, category
 
 **INQUIRY**: The fallback Routing Intent for non-materializing understanding work such as questions about repository
 state, architecture, Plans, history, trade-offs, or casual discussion. _Avoid_: Question, investigation, research task
@@ -342,8 +341,8 @@ substantial documentation updates. Use only after `PLANNED_CHANGE` routing has b
 remain `INQUIRY`, direct repository/doc operations remain `OPERATION`, and bounded typo-level documentation edits can
 remain `QUICK_FIX`. _Avoid_: INQUIRY, OPERATION, QUICK_FIX, Routing Intent
 
-**Legacy FEATURE Classification**: The old Routing Intent and Plan Classification value that means PLANNED_CHANGE rather
-than necessarily new functionality. _Avoid_: Enhancement, new feature
+**Legacy FEATURE Classification**: A value in older Plan files that the Plan store reads as `PLANNED_CHANGE`. The
+Plan's Work Kind, when present, describes the requested change. _Avoid_: Enhancement, new feature
 
 **PROJECT**: The Routing Intent for architectural planning, and the non-executable container Plan Classification.
 `type: epic` (the default when absent) uses Architect and Slicer; `type: sequence` contains complete Planner-authored
@@ -452,8 +451,8 @@ after the original Plan was lost. _Avoid_: Draft record, ad hoc note, memory
 **Work Record Provenance**: Source evidence for a Work Record, including source Plans when available and stable
 file-level code evidence when constructed from existing code. _Avoid_: Line references, raw diff log, chat evidence
 
-**Plan Classification**: The Plan front matter workflow shape, limited to `PLANNED_CHANGE` and `PROJECT`; legacy
-`FEATURE` means `PLANNED_CHANGE`. _Avoid_: Routing intent, request type, work kind
+**Plan Classification**: The Plan front matter workflow shape, limited to `PLANNED_CHANGE` and `PROJECT`. _Avoid_:
+Routing intent, request type, work kind
 
 **Plan Status**: The lifecycle state of a Plan: `draft`, `approved`, `ready_for_decomposition`,
 `ready_for_work`, `in_progress`, `failed`, `implemented`, `reviewed`, `verified`, `user_verified`,

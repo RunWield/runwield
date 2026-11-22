@@ -1,9 +1,10 @@
 import { test } from "node:test";
-import { readFile as fsReadFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../src/testing/assertions.ts";
 import { confirm, deliver } from "./exporter.ts";
-import { type JsonRecord, observation, type ObservationFields, readback, span, withServer } from "./test-fixture.ts";
+import { type LangfuseReadback, readback, span, withServer } from "../../src/testing/langfuse-exporter-fixture.ts";
+import { observation, type ObservationFields } from "./test-fixture.ts";
+import fixture from "./fixtures/protocol.json" with { type: "json" };
 
 const confirmationCases: ObservationFields[] = [
     {},
@@ -18,7 +19,7 @@ const confirmationCases: ObservationFields[] = [
 ];
 for (const fields of confirmationCases) {
     test(`bounded v2 lookup confirms matching native metrics and correlation: ${JSON.stringify(fields)}`, async () => {
-        let row: JsonRecord;
+        let row: LangfuseReadback;
         await withServer(
             async ({ context, requests }) => {
                 const o = observation(fields);
@@ -72,7 +73,7 @@ for (const field of [
     "model",
 ]) {
     test(`readback mismatch in ${field} is not confirmation`, async () => {
-        let row: JsonRecord;
+        let row: LangfuseReadback;
         await withServer(
             async ({ context }) => {
                 const o = observation();
@@ -82,10 +83,9 @@ for (const field of [
             (wire) => {
                 if (wire.method === "POST") {
                     row = readback(span(wire));
-                    row[field] = "MISMATCH";
                     return Response.json({});
                 }
-                return Response.json({ data: [row], meta: {} });
+                return Response.json({ data: [{ ...row, [field]: "MISMATCH" }], meta: {} });
             },
         );
     });
@@ -104,9 +104,9 @@ for (const field of [
     "totalUsage",
     "totalCost",
     "model",
-]) {
+] as const) {
     test(`incomplete v2 data missing ${field} cannot falsely confirm`, async () => {
-        let row: JsonRecord;
+        let row: Partial<LangfuseReadback>;
         await withServer(
             async ({ context }) => {
                 await deliver(observation(), context);
@@ -126,7 +126,7 @@ for (const field of [
     });
 }
 test("unexpected inferred zero cost is a mismatch, not proof of an unavailable-cost observation", async () => {
-    let row: JsonRecord;
+    let row: LangfuseReadback;
     await withServer(
         async ({ context }) => {
             const o = observation({ costSource: "unavailable", costAmount: null });
@@ -145,7 +145,7 @@ test("unexpected inferred zero cost is a mismatch, not proof of an unavailable-c
     );
 });
 test("incorrect destination totals cannot hide duplicated usage", async () => {
-    let row: JsonRecord;
+    let row: LangfuseReadback;
     await withServer(
         async ({ context }) => {
             await deliver(observation(), context);
@@ -168,7 +168,7 @@ test("incorrect destination totals cannot hide duplicated usage", async () => {
     );
 });
 test("changed availability metadata cannot be confirmed even when usage numbers match", async () => {
-    let row: JsonRecord;
+    let row: LangfuseReadback;
     await withServer(
         async ({ context }) => {
             await deliver(observation(), context);
@@ -177,8 +177,7 @@ test("changed availability metadata cannot be confirmed even when usage numbers 
         (wire) => {
             if (wire.method === "POST") {
                 row = readback(span(wire));
-                if (row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata))
-                    row.metadata.usage_complete = false;
+                row.metadata.usage_complete = false;
                 return Response.json({});
             }
             return Response.json({ data: [row], meta: {} });
@@ -204,7 +203,7 @@ test("unrelated observations are not presence evidence", async () => {
     );
 });
 test("cursor pagination reaches a matching row before returning present", async () => {
-    let row: JsonRecord;
+    let row: LangfuseReadback;
     await withServer(
         async ({ context, requests }) => {
             await deliver(observation(), context);
@@ -224,7 +223,7 @@ test("cursor pagination reaches a matching row before returning present", async 
     );
 });
 test("identical observations across bounded pages confirm the same immutable fact", async () => {
-    let row: JsonRecord;
+    let row: LangfuseReadback;
     await withServer(
         async ({ context }) => {
             await deliver(observation(), context);
@@ -311,7 +310,7 @@ test("confirmation deadline includes its response body", async () => {
     );
 });
 test("workflow span can confirm without model usage or a parent observation", async () => {
-    let row: JsonRecord;
+    let row: Partial<LangfuseReadback>;
     const o = {
         ...observation({ outcome: "succeeded", elapsedMs: 2.75 }),
         kind: "execution_finished" as const,
@@ -334,7 +333,7 @@ test("workflow span can confirm without model usage or a parent observation", as
     );
 });
 test("query pages larger than the explicit limit cannot confirm presence", async () => {
-    let row: JsonRecord;
+    let row: LangfuseReadback;
     await withServer(
         async ({ context }) => {
             await deliver(observation(), context);
@@ -371,7 +370,7 @@ test("confirmation redirects do not forward project credentials", async () => {
     });
 });
 test("a destination-derived total is allowed only when it equals the sent known buckets", async () => {
-    let row: JsonRecord;
+    let row: LangfuseReadback;
     await withServer(
         async ({ context }) => {
             await deliver(observation(), context);
@@ -394,10 +393,7 @@ test("a destination-derived total is allowed only when it equals the sent known 
     );
 });
 test("source-pinned empty usage and zero total confirm absence without inventing a measurement", async () => {
-    let row: JsonRecord;
-    const fixture: AbsentUsageFixture = JSON.parse(
-        await fsReadFile(new URL("./fixtures/protocol.json", import.meta.url), "utf8"),
-    );
+    let row: LangfuseReadback;
     const o = observation({
         inputCacheBasis: "unknown",
         costSource: "unavailable",
@@ -417,6 +413,3 @@ test("source-pinned empty usage and zero total confirm absence without inventing
         },
     );
 });
-interface AbsentUsageFixture {
-    v2AbsentUsage: JsonRecord;
-}

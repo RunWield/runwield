@@ -20,7 +20,7 @@ import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-f
 import { getLockHostname, isLockHolderGone, isLockHolderUnattributable } from "../process-liveness.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
-import { type TriageOutcome } from "../workflow/triage-outcome.ts";
+import { type TriageOutcome } from "@runwield/tools";
 import {
     type AttachedReviewChat,
     type AttachedExecution,

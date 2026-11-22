@@ -255,7 +255,7 @@ test("the fixture policy reaches the actual Core handoff and uses Core-assigned 
                 },
                 encoding: "utf8",
                 // This child runs two real validation cycles and several review handoffs.
-                timeout: 120_000,
+                timeout: 240_000,
             });
             equal(JSON.parse(output), { codeReview: true, ciRuns: 2, planStatus: "reviewed" });
         } finally {

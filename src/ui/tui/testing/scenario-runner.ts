@@ -644,7 +644,7 @@ function planReviewClassification(plan: string | undefined) {
     if (typeof plan !== "string") return null;
     try {
         const classification = parsePlanFrontMatter(plan).attrs.classification;
-        return classification === "FEATURE" ? "PLANNED_CHANGE" : classification || null;
+        return classification || null;
     } catch {
         return null;
     }
@@ -1092,7 +1092,7 @@ export async function runGoldenScenario(
                 try {
                     for (let reviewIndex = 0; reviewIndex < decisions.length; reviewIndex += 1) {
                         const triageMeta = typed.triageMeta || {
-                            classification: "FEATURE",
+                            classification: "PLANNED_CHANGE",
                             complexity: "LOW",
                             summary: "Golden Plan Review contract",
                         };
@@ -3317,12 +3317,15 @@ async function runComposedTuiScenarioInScope(
                     const remotePath = await runGoldenGit(["remote", "get-url", remote], getCwd());
                     const startedAt = performance.now();
                     let latestStatus = "";
+                    let lastLookupError = "";
                     while (!expectedStatuses.has(latestStatus)) {
                         if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for published Plan ${planName} status ${[...expectedStatuses].join(
                                     " or ",
-                                )}; latest=${latestStatus || "unreadable"}`,
+                                )}; latest=${latestStatus || "unreadable"}. Last lookup error: ${
+                                    lastLookupError || "none"
+                                }. Recent events: ${events.slice(-12).join(", ")}`,
                             );
                         }
                         const published = await readGoldenPublishedPlan(
@@ -3330,7 +3333,10 @@ async function runComposedTuiScenarioInScope(
                             planName,
                             remotePath,
                             `refs/heads/${targetBranch}`,
-                        ).catch(() => null);
+                        ).catch((error: Error) => {
+                            lastLookupError = error.message;
+                            return null;
+                        });
                         latestStatus = published ? String(published.attrs.status || "") : "";
                         await terminal.flush();
                         await new Promise((resolve) => setTimeout(resolve, 20));

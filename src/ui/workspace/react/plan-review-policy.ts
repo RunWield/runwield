@@ -31,8 +31,7 @@ export type PlanReviewExecutionPolicy = {
 };
 
 export type PlanReviewExecutionPolicyChange =
-    | { field: "executionAgent"; value: string }
-    | { field: "collaborationRecommendation"; value: string };
+    { field: "executionAgent"; value: string } | { field: "collaborationRecommendation"; value: string };
 
 /**
  * Resolve the execution policy the review surface starts from.
@@ -46,20 +45,19 @@ export function readPlanReviewExecutionPolicy(
     payload: PlanReviewPolicyPayload | null | undefined,
     parsedFrontmatter: PlanReviewFrontmatter | null | undefined,
 ): PlanReviewExecutionPolicy {
-    const frontmatter = payload?.frontmatter && typeof payload.frontmatter === "object"
-        ? payload.frontmatter
-        : parsedFrontmatter || {};
-    const classification = normalizePlanReviewClassification(
-        readScalar(payload?.classification) || readScalar(frontmatter.classification) || "PLANNED_CHANGE",
-    );
-    const executionPolicy = payload?.executionPolicy && typeof payload.executionPolicy === "object"
-        ? payload.executionPolicy
-        : {};
-    const executionAgent = readExecutionAgent(executionPolicy.executionAgent) ||
+    const frontmatter =
+        payload?.frontmatter && typeof payload.frontmatter === "object" ? payload.frontmatter : parsedFrontmatter || {};
+    const classification =
+        readScalar(payload?.classification) || readScalar(frontmatter.classification) || "PLANNED_CHANGE";
+    const executionPolicy =
+        payload?.executionPolicy && typeof payload.executionPolicy === "object" ? payload.executionPolicy : {};
+    const executionAgent =
+        readExecutionAgent(executionPolicy.executionAgent) ||
         readExecutionAgent(payload?.executionAgent) ||
         readExecutionAgent(frontmatter.executionAgent) ||
         (frontmatter.frontend === true ? "frontend-engineer" : "engineer");
-    const collaborationRecommendation = readCollaborationRecommendation(executionPolicy.collaborationRecommendation) ||
+    const collaborationRecommendation =
+        readCollaborationRecommendation(executionPolicy.collaborationRecommendation) ||
         readCollaborationRecommendation(payload?.collaborationRecommendation) ||
         readCollaborationRecommendation(frontmatter.collaborationRecommendation) ||
         "autonomous";
@@ -79,8 +77,8 @@ export function updatePlanReviewExecutionPolicy(
     if (change.field === "executionAgent") {
         next.executionAgent = readExecutionAgent(change.value) || current.executionAgent;
     } else {
-        next.collaborationRecommendation = readCollaborationRecommendation(change.value) ||
-            current.collaborationRecommendation;
+        next.collaborationRecommendation =
+            readCollaborationRecommendation(change.value) || current.collaborationRecommendation;
     }
     return normalizePlanReviewExecutionPolicy(next);
 }
@@ -95,20 +93,13 @@ export function buildPlanReviewExecutionPolicyPayload(policy: PlanReviewExecutio
 }
 
 function normalizePlanReviewExecutionPolicy(policy: PlanReviewExecutionPolicy): PlanReviewExecutionPolicy {
-    // Decide selectability from the normalized classification, so a legacy
-    // `FEATURE` Plan is not silently denied its execution policy controls.
-    const classification = normalizePlanReviewClassification(policy.classification);
     return {
-        classification,
-        canSelectExecutionPolicy: classification === "PLANNED_CHANGE",
+        classification: policy.classification,
+        canSelectExecutionPolicy: policy.classification === "PLANNED_CHANGE",
         executionAgent: readExecutionAgent(policy.executionAgent) || "engineer",
-        collaborationRecommendation: readCollaborationRecommendation(policy.collaborationRecommendation) ||
-            "autonomous",
+        collaborationRecommendation:
+            readCollaborationRecommendation(policy.collaborationRecommendation) || "autonomous",
     };
-}
-
-function normalizePlanReviewClassification(value: string): string {
-    return value === "FEATURE" ? "PLANNED_CHANGE" : value;
 }
 
 /** Front Matter values reach the browser quoted; strip one matching pair of quotes. */
@@ -116,8 +107,8 @@ function readScalar(value: string | undefined): string | undefined {
     if (typeof value !== "string") return undefined;
     const trimmed = value.trim();
     if (
-        trimmed.length >= 2 && ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-            (trimmed.startsWith("'") && trimmed.endsWith("'")))
+        trimmed.length >= 2 &&
+        ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'")))
     ) {
         return trimmed.slice(1, -1);
     }

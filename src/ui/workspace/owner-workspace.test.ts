@@ -158,14 +158,14 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
     await fsWriteFile(`${projectRoot}/src/referenced.ts`, "export const referenced = true;\n");
     await seedPlan(projectRoot, "owner-plan", "# Owner Plan\n\n## Context\n\nVisible owner plan", {
         planId: "owner-plan-id",
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         complexity: "LOW",
         summary: "Visible owner plan",
         status: "draft",
     });
     await seedPlan(projectRoot, "held-plan", "# Held Plan\n\n## Context\n\nVisible held plan", {
         planId: "held-plan-id",
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         complexity: "LOW",
         summary: "Visible held plan",
         status: "on_hold",

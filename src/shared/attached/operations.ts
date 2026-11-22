@@ -8,16 +8,14 @@ import type { PlanAuthoringDefinition } from "../../plan-store/index.ts";
  * coordinator reads or writes a record, so the CLI and MCP carriers hold no rules.
  */
 
-import {
-    ENGINEER_MESSAGE_DESCRIPTION,
-    IMPLEMENTATION_REPORT_MIN_LENGTH,
-    normalizeImplementationReport,
-} from "../workflow/implementation-report.ts";
+import { toolRegistry, type TriageOutcome, type TriageOutcomeInput } from "@runwield/tools";
 import type { CompatibilityAssessment } from "./compatibility.ts";
 import type { CodexRoleDispatch } from "./codex-role-settings.ts";
 import type { ActiveExecutionWorkflow } from "../session/hosted-session.ts";
-import { ROUTING_INTENTS, WORK_KINDS } from "../../constants.ts";
-import { TRIAGE_COMPLEXITIES, type TriageOutcome, type TriageOutcomeInput } from "../workflow/triage-outcome.ts";
+
+const { routingIntents, complexities, workKinds } = toolRegistry.get("triage_report");
+const { engineerMessageDescription, implementationReportMinLength, normalizeReport } =
+    toolRegistry.get("task_completed");
 
 export type AttachedJsonValue = string | number | boolean | null | AttachedJsonValue[] | AttachedJsonObject;
 export type AttachedJsonObject = { [key: string]: AttachedJsonValue };
@@ -756,12 +754,12 @@ export function parseStartExecutionInput(projectRoot: string, input: AttachedJso
 export function parseTaskCompletedInput(projectRoot: string, input: AttachedJsonValue | undefined) {
     return parse(input, (): TaskCompletedEnvelope =>
         readWorkflowEnvelope(projectRoot, input, ["actionId", "message"], (payload) => {
-            if (typeof payload.message !== "string" || payload.message.length < IMPLEMENTATION_REPORT_MIN_LENGTH) {
+            if (typeof payload.message !== "string" || payload.message.length < implementationReportMinLength) {
                 reject("invalid_input", "payload.message", "task_completed.message must be a non-empty string.");
             }
             return {
                 actionId: readIdentifier(payload, "actionId", "payload.actionId"),
-                message: normalizeImplementationReport(payload.message),
+                message: normalizeReport(payload.message),
             };
         }),
     );
@@ -1014,11 +1012,11 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
                 properties: {
                     routingIntent: {
                         type: "string",
-                        enum: ROUTING_INTENTS.filter((intent) => intent !== "FEATURE"),
+                        enum: [...routingIntents],
                     },
-                    complexity: { type: "string", enum: [...TRIAGE_COMPLEXITIES] },
+                    complexity: { type: "string", enum: [...complexities] },
                     summary: { type: "string", maxLength: MAX_SUMMARY_LENGTH },
-                    workKind: { type: "string", enum: WORK_KINDS },
+                    workKind: { type: "string", enum: [...workKinds] },
                     sessionName: { type: "string", maxLength: MAX_SHORT_TEXT_LENGTH },
                 },
             },
@@ -1105,8 +1103,8 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
             actionId: IDENTIFIER_SCHEMA,
             message: {
                 type: "string",
-                minLength: IMPLEMENTATION_REPORT_MIN_LENGTH,
-                description: ENGINEER_MESSAGE_DESCRIPTION,
+                minLength: implementationReportMinLength,
+                description: engineerMessageDescription,
             },
         }),
     },

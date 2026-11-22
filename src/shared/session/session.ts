@@ -90,26 +90,9 @@ import {
     normalizeRuntimeUsage,
     RuntimeEventTypes,
 } from "./session-runtime-events.ts";
-import mnemotecaExtension, { memoryToolDef } from "../../extensions/mnemoteca/index.ts";
-import cymbalExtension, {
-    codeBatchToolDef,
-    codeImpactToolDef,
-    codeImplsToolDef,
-    codeImportersToolDef,
-    codeInvestigateToolDef,
-    codeOutlineToolDef,
-    codeRefsToolDef,
-    codeSearchToolDef,
-    codeShowToolDef,
-    codeStructureToolDef,
-    codeTraceToolDef,
-} from "../../extensions/cymbal/index.ts";
-import ketchExtension, {
-    webCodeSearchToolDef,
-    webDocsSearchToolDef,
-    webFetchToolDef,
-    webSearchToolDef,
-} from "../../extensions/ketch/index.ts";
+import mnemotecaExtension from "../../extensions/mnemoteca/index.ts";
+import cymbalExtension from "../../extensions/cymbal/index.ts";
+import ketchExtension from "../../extensions/ketch/index.ts";
 import snipExtension from "../../extensions/snip/index.ts";
 import reAnchorExtension from "../../extensions/re-anchor/index.ts";
 import { ensureCymbalBinary, ensureMnemotecaBinary, hasSnipBinary } from "../runtime-preflight.ts";
@@ -177,10 +160,13 @@ import { createSessionContextProjection, estimateContextTextTokens } from "./ses
 import { installEarlySteeringInterruption } from "./early-steering.ts";
 import { loadSubAgentDefinition } from "./subagent-definitions.ts";
 import { formatGitPromptState, readGitPromptState } from "../git.ts";
-import { sanitizeSessionName } from "../session-name.ts";
+import { toolRegistry } from "@runwield/tools";
 import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
 import type { AgentSessionEvent, PromptOptions } from "@earendil-works/pi-coding-agent";
+
+const triageReport = toolRegistry.get("triage_report");
+const setSessionName = toolRegistry.get("set_session_name");
 
 export type SessionRoot = AgentSession | ExecutionSession;
 type ModelCompatibility = NonNullable<RunWieldModel["compat"]> & SamplingCompatibility;
@@ -279,7 +265,7 @@ interface ResolveModelOptions {
 interface AssembleFinalSystemPromptWithContextProjectionResult {
     prompt: string;
     projection: SessionContextProjection;
-    effectiveToolDefinitions: ToolDefinition[];
+    effectiveToolDefinitions: PromptToolDefinition[];
 }
 
 interface SessionSubAgentDefinition {
@@ -329,7 +315,7 @@ export interface BuildAgentSessionResult {
     promptState: SessionPromptState;
     tools: string[];
     finalCustomTools: ToolDefinition[];
-    effectiveToolDefinitions: ToolDefinition[];
+    effectiveToolDefinitions: PromptToolDefinition[];
     resolvedModel: ResolvedSessionModel;
     resolvedThinkingLevel: string | undefined;
     resolvedTemperature: number | undefined;
@@ -1632,7 +1618,7 @@ function resolvePromptSessionName(options: SystemPromptContextProjectionOptions)
         options.sessionManager?.getSessionName?.(),
     ];
     for (const value of names) {
-        const name = sanitizeSessionName(value || "");
+        const name = setSessionName.sanitize(value || "");
         if (name) return name;
     }
     return "";
@@ -1654,8 +1640,12 @@ function createContextProjectionItem(
     return { label, tokens, ...extra };
 }
 
-function mapToolDefinitionsByName(toolDefinitions: ToolDefinition[]): Map<string, ToolDefinition> {
-    const map = new Map<string, ToolDefinition>();
+type PromptToolDefinition = Pick<ToolDefinition, "name" | "label" | "description" | "promptSnippet" | "parameters"> & {
+    promptGuidelines?: readonly string[];
+};
+
+function mapToolDefinitionsByName(toolDefinitions: PromptToolDefinition[]): Map<string, PromptToolDefinition> {
+    const map = new Map<string, PromptToolDefinition>();
     for (const tool of toolDefinitions) {
         if (tool?.name) map.set(tool.name, tool);
     }
@@ -1669,7 +1659,7 @@ function mapToolDefinitionsByName(toolDefinitions: ToolDefinition[]): Map<string
  */
 function serializeToolContextForProjection(
     name: string,
-    tool: ToolDefinition | undefined,
+    tool: PromptToolDefinition | undefined,
     fallbackDescription: string,
 ): string {
     const parts = [`Tool: ${name}`];
@@ -1759,24 +1749,7 @@ export async function assembleFinalSystemPromptWithContextProjection(
         wrapPlanSafeFileTool(createEditToolDefinition(cwd), { cwd, mode: "edit" }),
     ];
 
-    const extensionTools = [
-        memoryToolDef,
-        codeSearchToolDef,
-        codeShowToolDef,
-        codeOutlineToolDef,
-        codeBatchToolDef,
-        codeRefsToolDef,
-        codeImpactToolDef,
-        codeTraceToolDef,
-        codeInvestigateToolDef,
-        codeStructureToolDef,
-        codeImplsToolDef,
-        codeImportersToolDef,
-        webSearchToolDef,
-        webFetchToolDef,
-        webCodeSearchToolDef,
-        webDocsSearchToolDef,
-    ];
+    const extensionTools = toolRegistry.list("extension").map((name) => toolRegistry.get(name).definition);
 
     let finalSystemPrompt = agentDef.systemPrompt;
     const hasGlobalAgentsPlaceholder = finalSystemPrompt.includes("{{GLOBAL_AGENTSMD}}");
@@ -1792,11 +1765,7 @@ export async function assembleFinalSystemPromptWithContextProjection(
         buildSessionNameReminder(tools, options),
     );
 
-    const effectiveToolMap = mapToolDefinitionsByName([
-        ...piTools,
-        ...extensionTools,
-        ...finalCustomTools,
-    ] as ToolDefinition[]);
+    const effectiveToolMap = mapToolDefinitionsByName([...piTools, ...extensionTools, ...finalCustomTools]);
     const customToolMap = new Map<string, string>();
     for (const [name, tool] of effectiveToolMap.entries()) {
         customToolMap.set(name, tool.promptSnippet || tool.description);
@@ -2250,12 +2219,18 @@ export async function buildAgentSession({
         finalCustomTools.push(createArtifactWrittenTool({ hostedSession: targetHostedSession, agentName }));
     }
 
-    if (tools.includes("triage_report") && !finalCustomTools.find((t) => t.name === "triage_report")) {
+    if (
+        tools.includes(triageReport.definition.name) &&
+        !finalCustomTools.find((t) => t.name === triageReport.definition.name)
+    ) {
         const { createTriageReportTool } = await import("../../tools/triage-report.ts");
         finalCustomTools.push(createTriageReportTool({ hostedSession: targetHostedSession || undefined }));
     }
 
-    if (tools.includes("set_session_name") && !finalCustomTools.find((t) => t.name === "set_session_name")) {
+    if (
+        tools.includes(setSessionName.definition.name) &&
+        !finalCustomTools.find((t) => t.name === setSessionName.definition.name)
+    ) {
         const { createSetSessionNameTool } = await import("../../tools/set-session-name.ts");
         finalCustomTools.push(createSetSessionNameTool({ hostedSession: targetHostedSession || undefined }));
     }
@@ -2705,11 +2680,11 @@ export async function composeClaudeCliBridgedTools({
         const { createReviewCompletedTool } = await import("../../tools/review-complete.ts");
         finalCustomTools.push(createReviewCompletedTool({ hostedSession, agentName: agentDef.displayName }));
     }
-    if (declared.has("triage_report") && hostedSession && !hasTool("triage_report")) {
+    if (declared.has(triageReport.definition.name) && hostedSession && !hasTool(triageReport.definition.name)) {
         const { createTriageReportTool } = await import("../../tools/triage-report.ts");
         finalCustomTools.push(createTriageReportTool({ hostedSession }));
     }
-    if (declared.has("set_session_name") && !hasTool("set_session_name")) {
+    if (declared.has(setSessionName.definition.name) && !hasTool(setSessionName.definition.name)) {
         const { createSetSessionNameTool } = await import("../../tools/set-session-name.ts");
         finalCustomTools.push(createSetSessionNameTool({ hostedSession }));
     }
@@ -4142,7 +4117,7 @@ interface RootSessionMetadata {
     tools: string[];
     finalCustomTools: ToolDefinition[];
     callerCustomTools?: ToolDefinition[];
-    effectiveToolDefinitions: ToolDefinition[];
+    effectiveToolDefinitions: PromptToolDefinition[];
     mcpToolNames?: string[];
     projectStateContext: string;
     cwd: string;
@@ -4443,7 +4418,7 @@ function publishTransitionSteeringCancellation(
 
 function assembleToolExposureDefinitions(
     toolNames: string[],
-    definitions: ToolDefinition[],
+    definitions: PromptToolDefinition[],
     projection: SessionContextProjection | undefined,
 ): Array<AssembleToolExposureDefinitionsResult> {
     const byName = new Map(definitions.map((tool) => [tool.name, tool]));

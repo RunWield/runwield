@@ -103,7 +103,7 @@ test("Pair capability requires an attached conversational host, not a checkpoint
 test("post-execution decisions keep Pair pauses out of validation", () => {
     const options: PostExecutionOptions = {
         planName: "visual-plan",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgentName: "frontend-engineer",
     };
 
@@ -152,7 +152,7 @@ test("deliberate Pair resume preserves execution attempt timestamp", () => {
     const session = new HostedSession({ id: "pair-timestamp-resume", cwd: getCwd() });
     session.setActiveExecutionWorkflow({
         planName: "visual-plan",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgent: "frontend-engineer",
         executionStarted: true,
         executionAttemptStartedAtMs: 12345,

@@ -3,7 +3,7 @@
  * Vision fallback Custom Tool for text-only primary models.
  */
 
-import { Type } from "typebox";
+import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai/compat";
@@ -13,27 +13,10 @@ import { readImageRef, resolveVisionFallbackModel } from "../shared/session/imag
 import { RuntimeUsageTotals } from "../shared/session/runtime-usage-totals.ts";
 import type { ExecutionOutcome, ModelUsageObservation } from "../shared/workflow/execution-metrics.ts";
 
+const definition = toolRegistry.get("see_image").definition;
+
 export const DEFAULT_SEE_IMAGE_PROMPT =
     "Describe this image in detail for a text-only coding agent. Include all visible UI/content, readable text and error messages, relevant layout, controls, highlighted regions, and visual state. If text or details are unclear, say so explicitly.";
-
-const PARAMETERS = Type.Object(
-    {
-        imageRef: Type.String({
-            minLength: 1,
-            description:
-                "Image reference to inspect. Use attachment:<uuid> for pasted session images, or a safe project-relative image path.",
-        }),
-        question: Type.Optional(
-            Type.String({
-                minLength: 1,
-                maxLength: 2000,
-                description:
-                    "Optional focused question about the image. Defaults to a detailed general description request.",
-            }),
-        ),
-    },
-    { additionalProperties: false },
-);
 
 interface TextContentBlock {
     type?: string;
@@ -90,12 +73,9 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
     if (!opts.completeSimpleFn) throw new Error("see_image requires a model completion function");
     const modelRegistry = remote ? undefined : getModelRegistry();
 
-    return defineTool<typeof PARAMETERS, SeeImageDetails>({
-        name: "see_image",
-        label: "see_image",
-        description:
-            "Inspect an image only using the configured visionFallback.model. imageRef must be an attachment:<uuid> reference or a safe project-relative .png, .jpg, .jpeg, .gif, or .webp path. This tool cannot inspect documents, source files, or other non-image files; use the appropriate file-reading tool instead. Returns a textual description for text-only primary models.",
-        parameters: PARAMETERS,
+    return defineTool<typeof definition.parameters, SeeImageDetails>({
+        ...definition,
+
         async execute(_toolCallId, params, signal, _onUpdate, _ctx): Promise<SeeImageResult> {
             try {
                 const image = await readImageRef(params.imageRef, {

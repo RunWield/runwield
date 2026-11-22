@@ -61,7 +61,7 @@ test("recommendGuidedReview applies child Planned Change and visual path signals
     assertEquals(projectRecommendation.reasons.includes("child Planned Change Epic context"), false);
 
     const featureRecommendation = recommendGuidedReview({
-        planAttrs: { classification: "FEATURE", dependencies: ["child"], parentPlan: "epic" },
+        planAttrs: { classification: "PLANNED_CHANGE", dependencies: ["child"], parentPlan: "epic" },
         planContent: "backend change",
         diffText: "diff --git a/src/ui/panel.js b/src/ui/panel.js\n+change",
     });
@@ -151,7 +151,7 @@ test("buildGuidedReviewPrompt asks for strict JSON and Plan-grounded changed-fil
         gitRef: "test",
         changedFiles: ["src/a.js"],
         planContent: "# Plan\nExplain the product reason.",
-        planAttrs: { classification: "FEATURE" },
+        planAttrs: { classification: "PLANNED_CHANGE" },
     });
     assertEquals(prompt.includes("Return ONLY JSON"), true);
     assertEquals(prompt.includes('"data_flow"'), true);

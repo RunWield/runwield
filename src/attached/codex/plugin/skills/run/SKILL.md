@@ -59,7 +59,7 @@ role, resolve `instructions.dispatch`, and answer the original request. Do not r
 record. Conversation replies stay in Codex, not Core.
 
 For `return_to_host`, report Core's outcome and return to ordinary Codex work. Unsupported request types do not become
-FEATURE workflows by changing their classification. An unknown MCP tool, action, or role contract is a recoverable
+Planned Changes by changing their Routing Intent. An unknown MCP tool, action, or role contract is a recoverable
 compatibility problem: show the diagnostic, tell the user to update local RunWield Core and the Codex RunWield plugin to
 compatible versions, and stop without substitution. Leave any delivery workflow open.
 

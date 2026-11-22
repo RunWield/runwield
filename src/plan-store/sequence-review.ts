@@ -125,7 +125,7 @@ async function sequenceMembers(cwd: string, planName: string): Promise<StoredPla
         const identities = new Set<string>(parent.attrs.planId ? [parent.attrs.planId] : []);
         for (const child of children) {
             const plan = await requirePlan(cwd, child.name);
-            if (!["PLANNED_CHANGE", "FEATURE"].includes(plan.attrs.classification)) {
+            if (plan.attrs.classification !== "PLANNED_CHANGE") {
                 throw new Error(`Sequence child ${child.name} must be a PLANNED_CHANGE, not another PROJECT.`);
             }
             const order = plan.attrs.order;

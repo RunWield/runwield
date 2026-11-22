@@ -33,8 +33,7 @@ import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { switchActiveAgent } from "../session/agent-switching.ts";
 import { runRootTurn } from "../session/session.ts";
 import { getAgentDisplayName } from "../session/agents.ts";
-import { sanitizeSessionName } from "../session-name.ts";
-import { normalizeTriageOutcome, type TriageOutcome, type TriageOutcomeInput } from "./triage-outcome.ts";
+import { toolRegistry, type TriageOutcome, type TriageOutcomeInput } from "@runwield/tools";
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
@@ -63,6 +62,9 @@ import type { DeferredPlanExecution } from "../session/session-runtime.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 
 export { runLocalCI, runMechanicalValidation } from "./validation.ts";
+
+const { normalizeOutcome: normalizeTriageOutcome } = toolRegistry.get("triage_report");
+const { sanitize: sanitizeSessionName } = toolRegistry.get("set_session_name");
 
 interface TriageToolResultMessage {
     role: "toolResult";

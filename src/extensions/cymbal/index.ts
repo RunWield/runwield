@@ -6,19 +6,6 @@ import { getCwd } from "../../constants.ts";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createCymbalTools, type CymbalToolHost } from "./tools.ts";
-export {
-    codeBatchToolDef,
-    codeImpactToolDef,
-    codeImplsToolDef,
-    codeImportersToolDef,
-    codeInvestigateToolDef,
-    codeOutlineToolDef,
-    codeRefsToolDef,
-    codeSearchToolDef,
-    codeShowToolDef,
-    codeStructureToolDef,
-    codeTraceToolDef,
-} from "./tools.ts";
 
 /**
  * Register Cymbal lifecycle hooks and tools.

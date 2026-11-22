@@ -6,7 +6,7 @@ import { CodeReviewSurface } from "./CodeReviewSurface.tsx";
 import { PlanReviewSurface } from "./PlanReviewSurface.tsx";
 
 const PLAN_FRONT_MATTER = `---
-classification: "FEATURE"
+classification: "PLANNED_CHANGE"
 complexity: "MEDIUM"
 summary: "Fixture test plan for exercising every Plan Review UI interaction"
 affectedPaths:
@@ -222,7 +222,7 @@ const DEV_LINKED_FILES = {
 `,
 };
 
-const PROJECT_PLAN_FIXTURE = PLAN_FIXTURE.replace('classification: "FEATURE"', 'classification: "PROJECT"')
+const PROJECT_PLAN_FIXTURE = PLAN_FIXTURE.replace('classification: "PLANNED_CHANGE"', 'classification: "PROJECT"')
     .replace(
         'summary: "Fixture test plan for exercising every Plan Review UI interaction"',
         'summary: "Fixture PROJECT Epic for exercising approval and Slicer review actions"',
@@ -889,9 +889,9 @@ export function ReviewDevSurface({ surface, presentation = "standalone", variant
                   token: `dev-plan-review-${planVariant}`,
                   mode: "dev",
                   agentLabel: "Planner",
-                  classification: "FEATURE",
+                  classification: "PLANNED_CHANGE",
                   frontmatter: {
-                      classification: "FEATURE",
+                      classification: "PLANNED_CHANGE",
                       executionAgent: "frontend-engineer",
                       collaborationRecommendation: "autonomous",
                   },

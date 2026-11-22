@@ -1,7 +1,7 @@
 import { admitProjectIdentity } from "../project-identity.ts";
 import fsPromises from "node:fs/promises";
 import { type NativeFileLock, openNativeFileLock } from "../native-file-lock.ts";
-import { lstat as fsLstat, mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { lstat as fsLstat, mkdir as fsMkdir, rm as fsRm } from "node:fs/promises";
 import process from "node:process";
 import { setInterval } from "node:timers";
 import { dirname, join } from "node:path";
@@ -79,30 +79,18 @@ if (command === "migrate") {
 }
 
 async function holdInitializingMigrationLocks(checkoutRoot: string, signalPath: string): Promise<void> {
-    const layout = resolveProjectRuntimeLayout(checkoutRoot);
-    const registryLockPath = join(getRunWieldRuntimeDir(layout.primary.checkoutRoot), "worktrees.lock");
-    await fsMkdir(dirname(layout.primary.layoutMigrationLockPath), { recursive: true });
-    await fsMkdir(dirname(registryLockPath), { recursive: true });
-    (await fsPromises.open(layout.primary.layoutMigrationLockPath, "wx")).close();
-    (await fsPromises.open(registryLockPath, "wx")).close();
+    const runtimeDir = getRunWieldRuntimeDir(checkoutRoot);
+    const migrationLockPath = join(runtimeDir, "internal", "layout-migration.lock");
+    const registryLockPath = join(runtimeDir, "worktrees.lock");
+    await fsMkdir(dirname(migrationLockPath), { recursive: true });
+    await (await fsPromises.open(migrationLockPath, "wx")).close();
+    await (await fsPromises.open(registryLockPath, "wx")).close();
     console.log(JSON.stringify({ ready: true, lockPath: registryLockPath }));
     while (!(await fsLstat(signalPath).catch(() => null))) {
         await new Promise((resolveTimer) => setTimeout(resolveTimer, 5));
     }
-    await new Promise((resolveTimer) => setTimeout(resolveTimer, 50));
-    const now = Date.now();
-    const owner = JSON.stringify({
-        token: crypto.randomUUID(),
-        pid: process.pid,
-        hostname: getLockHostname(),
-        createdAtMs: now,
-        updatedAtMs: now,
-    });
-    await fsWriteFile(layout.primary.layoutMigrationLockPath, owner);
-    await fsWriteFile(registryLockPath, owner);
-    await new Promise((resolveTimer) => setTimeout(resolveTimer, 50));
     await fsRm(registryLockPath);
-    await fsRm(layout.primary.layoutMigrationLockPath);
+    await fsRm(migrationLockPath);
 }
 
 async function holdLegacyPlanLock(checkoutRoot: string, planName: string): Promise<never> {

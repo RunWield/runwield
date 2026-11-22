@@ -19,9 +19,7 @@ const meta = (classification: TriageMeta["classification"], extra: Partial<Triag
 // if someone gives `requiresImplementationDiff` its own body, this is where the two
 // have to be pulled apart deliberately.
 test("routing and evidence read through one rule", () => {
-    // FEATURE is a legacy alias for PLANNED_CHANGE, not a third behavior. Pinned here
-    // because "FEATURE is excluded" is the natural wrong guess from the name alone.
-    for (const classification of ["PLANNED_CHANGE", "PROJECT", "FEATURE"] as const) {
+    for (const classification of ["PLANNED_CHANGE", "PROJECT"] as const) {
         assertEquals(shouldRunWorkflowValidation(meta(classification)), true);
         assertEquals(requiresImplementationDiff(meta(classification)), true);
     }

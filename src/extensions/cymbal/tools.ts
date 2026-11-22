@@ -1,64 +1,15 @@
-import { Type } from "typebox";
+import { toolRegistry, type CodeBatchOperation, type CodeBatchParams } from "@runwield/tools";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HelperBinaryExec } from "../helper-binary-exec.ts";
+
+const codeBatch = toolRegistry.get("code_batch");
 
 export interface CymbalToolHost {
     cwd: string;
     exec: HelperBinaryExec;
 }
 
-export const MAX_CODE_BATCH_OPERATIONS = 5;
 export const MAX_CODE_BATCH_OUTPUT_CHARS = 50_000;
-
-const codeBatchShowOperationSchema = Type.Object(
-    {
-        op: Type.Literal("show"),
-        target: Type.String({ description: "Symbol name or file path (e.g. file.js:10-20) to show." }),
-    },
-    { additionalProperties: false },
-);
-const codeBatchOutlineOperationSchema = Type.Object(
-    {
-        op: Type.Literal("outline"),
-        file: Type.String({ description: "File path to outline." }),
-    },
-    { additionalProperties: false },
-);
-const codeBatchOperationSchema = Type.Union([codeBatchShowOperationSchema, codeBatchOutlineOperationSchema]);
-const codeBatchParametersSchema = Type.Object(
-    {
-        operations: Type.Array(codeBatchOperationSchema, {
-            minItems: 1,
-            maxItems: MAX_CODE_BATCH_OPERATIONS,
-            description:
-                "One to five known code show/outline reads. Results follow request order. Search is not supported.",
-        }),
-    },
-    { additionalProperties: false },
-);
-
-type CodeBatchOperation = { op: "show"; target: string } | { op: "outline"; file: string };
-interface CodeBatchParams {
-    operations: CodeBatchOperation[];
-}
-interface SearchParams {
-    query: string;
-    textSearch?: boolean;
-}
-interface SymbolParams {
-    symbol: string;
-}
-interface TargetParams {
-    target: string;
-}
-interface FileParams {
-    file: string;
-}
-interface InputRecord {
-    op?: string;
-    target?: string;
-    file?: string;
-}
 
 interface CymbalSourceLine {
     line: number;
@@ -207,150 +158,24 @@ function parseNativeBatchResults(
     return results;
 }
 
-export const codeSearchToolDef = defineTool({
-    name: "code_search",
-    label: "Code Search",
-    description: "Search for symbols or full text using cymbal.",
-    promptSnippet: "Search project code and symbols efficiently",
-    parameters: Type.Object({
-        query: Type.String({
-            description: "Symbol name or search query. DO NOT use spaces unless you want an exact phrase match.",
-        }),
-        textSearch: Type.Optional(
-            Type.Boolean({ description: "Set to true to perform a full-text regex grep instead of symbol search." }),
-        ),
-    }),
-    execute() {
-        throw new Error("Not implemented");
-    },
-});
-export const codeStructureToolDef = defineTool({
-    name: "code_structure",
-    label: "Code Structure",
-    description:
-        "Show the structural shape of the indexed codebase (entry points, most referenced symbols, largest packages).",
-    promptSnippet: "Show the structural shape of the codebase",
-    parameters: Type.Object({}),
-    execute() {
-        throw new Error("Not implemented");
-    },
-});
-export const codeImplsToolDef = defineTool({
-    name: "code_impls",
-    label: "Code Impls",
-    description:
-        "Find local types that declare themselves as implementing, conforming to, or extending the given symbol name.",
-    promptSnippet: "Find implementations or subclasses of a type",
-    parameters: Type.Object({ symbol: Type.String({ description: "Symbol name" }) }),
-    execute() {
-        throw new Error("Not implemented");
-    },
-});
-export const codeImportersToolDef = defineTool({
-    name: "code_importers",
-    label: "Code Importers",
-    description: "Find files that import a given file or package.",
-    promptSnippet: "Find files that import a file or package",
-    parameters: Type.Object({ target: Type.String({ description: "File path or package name" }) }),
-    execute() {
-        throw new Error("Not implemented");
-    },
-});
-export const codeShowToolDef = defineTool({
-    name: "code_show",
-    label: "Code Show",
-    description: "Read source code of a specific symbol or file.",
-    promptSnippet: "Read source code of a specific symbol or file",
-    parameters: Type.Object({ target: Type.String({ description: "Symbol name or file path (e.g. file.js:10-20)" }) }),
-    execute() {
-        throw new Error("Not implemented");
-    },
-});
-export const codeOutlineToolDef = defineTool({
-    name: "code_outline",
-    label: "Code Outline",
-    description: "Show symbols defined in a file.",
-    promptSnippet: "Show symbols defined in a file",
-    parameters: Type.Object({ file: Type.String({ description: "File path" }) }),
-    execute() {
-        throw new Error("Not implemented");
-    },
-});
-export const codeBatchToolDef = defineTool({
-    name: "code_batch",
-    label: "Code Batch",
-    description:
-        "Batch multiple known Cymbal show and outline reads in one call. Supports only show and outline; use code_search separately for discovery.",
-    promptSnippet: "Batch multiple known code_show/code_outline reads; search is not supported",
-    parameters: codeBatchParametersSchema,
-    execute() {
-        throw new Error("Not implemented");
-    },
-});
-export const codeRefsToolDef = defineTool({
-    name: "code_refs",
-    label: "Code Refs",
-    description: "Find references to a symbol.",
-    promptSnippet: "Find references to a symbol across indexed files",
-    parameters: Type.Object({ symbol: Type.String({ description: "Symbol name" }) }),
-    execute() {
-        throw new Error("Not implemented");
-    },
-});
-export const codeImpactToolDef = defineTool({
-    name: "code_impact",
-    label: "Code Impact",
-    description: "Find the impact of changing a symbol.",
-    promptSnippet: "Transitive impact analysis of a symbol",
-    parameters: Type.Object({ symbol: Type.String({ description: "Symbol name" }) }),
-    execute() {
-        throw new Error("Not implemented");
-    },
-});
-export const codeTraceToolDef = defineTool({
-    name: "code_trace",
-    label: "Code Trace",
-    description: "Trace relationships for a symbol.",
-    promptSnippet: "Trace symbol relationships as a graph",
-    parameters: Type.Object({ symbol: Type.String({ description: "Symbol name" }) }),
-    execute() {
-        throw new Error("Not implemented");
-    },
-});
-export const codeInvestigateToolDef = defineTool({
-    name: "code_investigate",
-    label: "Code Investigate",
-    description: "Investigate a symbol in depth.",
-    promptSnippet: "Investigate a symbol in depth",
-    parameters: Type.Object({ symbol: Type.String({ description: "Symbol name" }) }),
-    execute() {
-        throw new Error("Not implemented");
-    },
-});
-
-function asInputRecord(value: object): InputRecord {
-    return value as InputRecord;
-}
-
 export function validateCodeBatchParams(params: CodeBatchParams): string | null {
     if (!params || typeof params !== "object") return "code_batch requires an operations array.";
     if (!Array.isArray(params.operations)) return "code_batch requires an operations array.";
     if (params.operations.length === 0) return "code_batch requires at least one operation.";
-    if (params.operations.length > MAX_CODE_BATCH_OPERATIONS) {
-        return `code_batch supports at most ${MAX_CODE_BATCH_OPERATIONS} operations per call.`;
+    if (params.operations.length > codeBatch.maxOperations) {
+        return `code_batch supports at most ${codeBatch.maxOperations} operations per call.`;
     }
     for (let i = 0; i < params.operations.length; i++) {
         const operation = params.operations[i];
         if (!operation || typeof operation !== "object") return `operations[${i}] must be an object.`;
-        const record = asInputRecord(operation);
-        if (record.op === "show") {
-            if (typeof record.target !== "string" || record.target.trim().length === 0) {
+        if (operation.op === "show") {
+            if (typeof operation.target !== "string" || operation.target.trim().length === 0) {
                 return `operations[${i}].target must be a non-empty string for show.`;
             }
             continue;
         }
-        if (record.op === "outline") {
-            if (typeof record.file !== "string" || record.file.trim().length === 0) {
+        if (operation.op === "outline") {
+            if (typeof operation.file !== "string" || operation.file.trim().length === 0) {
                 return `operations[${i}].file must be a non-empty string for outline.`;
             }
             continue;
@@ -414,55 +239,49 @@ export function createCymbalTools(host: CymbalToolHost): ToolDefinition[] {
         };
     }
     return [
-        {
-            ...codeSearchToolDef,
+        defineTool({
+            ...toolRegistry.get("code_search").definition,
             async execute(_id, params, signal) {
-                const typed = params as SearchParams;
                 const args = ["search"];
-                if (typed.textSearch) args.push("--text");
-                args.push(typed.query);
-                return await runTool(args, typed, signal);
+                if (params.textSearch) args.push("--text");
+                args.push(params.query);
+                return await runTool(args, params, signal);
             },
-        },
-        {
-            ...codeStructureToolDef,
+        }),
+        defineTool({
+            ...toolRegistry.get("code_structure").definition,
             async execute(_id, params, signal) {
                 return await runTool(["structure"], params, signal);
             },
-        },
-        {
-            ...codeImplsToolDef,
+        }),
+        defineTool({
+            ...toolRegistry.get("code_impls").definition,
             async execute(_id, params, signal) {
-                const typed = params as SymbolParams;
-                return await runTool(["impls", typed.symbol], typed, signal);
+                return await runTool(["impls", params.symbol], params, signal);
             },
-        },
-        {
-            ...codeImportersToolDef,
+        }),
+        defineTool({
+            ...toolRegistry.get("code_importers").definition,
             async execute(_id, params, signal) {
-                const typed = params as TargetParams;
-                return await runTool(["importers", typed.target], typed, signal);
+                return await runTool(["importers", params.target], params, signal);
             },
-        },
-        {
-            ...codeShowToolDef,
+        }),
+        defineTool({
+            ...toolRegistry.get("code_show").definition,
             async execute(_id, params, signal) {
-                const typed = params as TargetParams;
-                return await runTool(["show", typed.target], typed, signal);
+                return await runTool(["show", params.target], params, signal);
             },
-        },
-        {
-            ...codeOutlineToolDef,
+        }),
+        defineTool({
+            ...toolRegistry.get("code_outline").definition,
             async execute(_id, params, signal) {
-                const typed = params as FileParams;
-                return await runTool(["outline", typed.file], typed, signal);
+                return await runTool(["outline", params.file], params, signal);
             },
-        },
-        {
-            ...codeBatchToolDef,
+        }),
+        defineTool({
+            ...codeBatch.definition,
             async execute(_id, params, signal) {
-                const typed = params as CodeBatchParams;
-                const validationError = validateCodeBatchParams(typed);
+                const validationError = validateCodeBatchParams(params);
                 if (validationError) {
                     return {
                         content: [{ type: "text" as const, text: validationError }],
@@ -471,7 +290,7 @@ export function createCymbalTools(host: CymbalToolHost): ToolDefinition[] {
                     };
                 }
                 const groups = new Map<CodeBatchOperation["op"], CodeBatchOperation[]>();
-                for (const operation of typed.operations) {
+                for (const operation of params.operations) {
                     const group = groups.get(operation.op) ?? [];
                     group.push(operation);
                     groups.set(operation.op, group);
@@ -493,10 +312,10 @@ export function createCymbalTools(host: CymbalToolHost): ToolDefinition[] {
                 }
                 const separator = "\n\n---\n\n";
                 const sectionBudget = Math.floor(
-                    (MAX_CODE_BATCH_OUTPUT_CHARS - separator.length * (typed.operations.length - 1)) /
-                        typed.operations.length,
+                    (MAX_CODE_BATCH_OUTPUT_CHARS - separator.length * (params.operations.length - 1)) /
+                        params.operations.length,
                 );
-                const sections = typed.operations.map((operation, index) =>
+                const sections = params.operations.map((operation, index) =>
                     formatCodeBatchSection(
                         index,
                         operation,
@@ -507,41 +326,37 @@ export function createCymbalTools(host: CymbalToolHost): ToolDefinition[] {
                 return {
                     content: [{ type: "text" as const, text: sections.map((section) => section.text).join(separator) }],
                     details: {
-                        operationCount: typed.operations.length,
+                        operationCount: params.operations.length,
                         truncated: sections.some((section) => section.details.truncated),
                         results: sections.map((section) => section.details),
                     },
                     isError: sections.every((section) => section.details.status === "error"),
                 };
             },
-        },
-        {
-            ...codeRefsToolDef,
+        }),
+        defineTool({
+            ...toolRegistry.get("code_refs").definition,
             async execute(_id, params, signal) {
-                const typed = params as SymbolParams;
-                return await runTool(["refs", typed.symbol], typed, signal);
+                return await runTool(["refs", params.symbol], params, signal);
             },
-        },
-        {
-            ...codeImpactToolDef,
+        }),
+        defineTool({
+            ...toolRegistry.get("code_impact").definition,
             async execute(_id, params, signal) {
-                const typed = params as SymbolParams;
-                return await runTool(["impact", typed.symbol], typed, signal);
+                return await runTool(["impact", params.symbol], params, signal);
             },
-        },
-        {
-            ...codeTraceToolDef,
+        }),
+        defineTool({
+            ...toolRegistry.get("code_trace").definition,
             async execute(_id, params, signal) {
-                const typed = params as SymbolParams;
-                return await runTool(["trace", typed.symbol], typed, signal);
+                return await runTool(["trace", params.symbol], params, signal);
             },
-        },
-        {
-            ...codeInvestigateToolDef,
+        }),
+        defineTool({
+            ...toolRegistry.get("code_investigate").definition,
             async execute(_id, params, signal) {
-                const typed = params as SymbolParams;
-                return await runTool(["investigate", typed.symbol], typed, signal);
+                return await runTool(["investigate", params.symbol], params, signal);
             },
-        },
+        }),
     ];
 }

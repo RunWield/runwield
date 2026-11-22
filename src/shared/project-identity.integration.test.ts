@@ -241,6 +241,7 @@ test("real runtime entry preserves independently pinned runtime and legacy Sessi
                 selected: {
                     checkoutRoot: canonicalRoot,
                     internalRoot: selected,
+                    validationLogsDir: join(selected, "validation-logs"),
                     planLocksDir: join(selected, "plan-locks"),
                     planCatalogLockPath: join(selected, "plan-locks", "catalog.lock"),
                     transitionJournalsDir: join(selected, "plan-transitions"),
