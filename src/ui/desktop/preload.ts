@@ -1,3 +1,6 @@
+import type { DesktopWorkbenchClient } from "../workspace/client/desktop-workbench.ts";
+import type { WorkspaceDraftClient } from "../workspace/client/session-drafts.ts";
+import { DRAFT_CHANNEL } from "./draft-bridge.ts";
 import { contextBridge, ipcRenderer } from "electron";
 import type {
     SessionBinding,
@@ -29,7 +32,22 @@ ipcRenderer.on(`${SESSION_CHANNEL}view`, (_event, view: SessionClientView) => {
     current = view;
     for (const listener of listeners) listener(structuredClone(current));
 });
-const client: WorkspaceSavedSessionClient = {
+const draftAcceptedListeners = new Set<(binding: SessionBinding, requestId: string) => void>();
+ipcRenderer.on(`${DRAFT_CHANNEL}accepted`, (_event, context: SessionBinding, requestId: string) => {
+    for (const listener of draftAcceptedListeners) listener(context, requestId);
+});
+const client: WorkspaceSavedSessionClient & WorkspaceDraftClient = {
+    editQueuedDraft: (context, requestId) =>
+        ipcRenderer.invoke(`${DRAFT_CHANNEL}editQueued`, { ...context, requestId }),
+    onDraftAccepted(listener) {
+        draftAcceptedListeners.add(listener);
+        return () => {
+            draftAcceptedListeners.delete(listener);
+        };
+    },
+    readDraft: (context) => ipcRenderer.invoke(`${DRAFT_CHANNEL}read`, context),
+    writeDraft: (context, composer) => ipcRenderer.invoke(`${DRAFT_CHANNEL}write`, { ...context, composer }),
+    discardDraft: (context) => ipcRenderer.invoke(`${DRAFT_CHANNEL}discard`, context),
     readProject: (request) => saved("readProject", { projectId: request.projectId }),
     listSessions: (request) => saved("listSessions", { request }),
     history: (request) => saved("history", { request }),
@@ -89,8 +107,48 @@ const projects: DesktopProjectClient = {
     pickDirectory: () => ipcRenderer.invoke(`${PROJECT_CHANNEL}pick`, { connectionId: binding().connectionId }),
     candidate: () => ipcRenderer.invoke(`${PROJECT_CHANNEL}candidate`, { connectionId: binding().connectionId }),
 };
+const newSessionListeners = new Set<() => void>();
+let pendingNewSession = false;
+const flushListeners = new Set<() => Promise<void>>();
+ipcRenderer.on("desktop:new-session", () => {
+    if (!newSessionListeners.size) pendingNewSession = true;
+    else for (const listener of newSessionListeners) listener();
+});
+ipcRenderer.on("desktop:flush-drafts", async (_event, requestId: string) => {
+    try {
+        await Promise.all([...flushListeners].map((listener) => listener()));
+        await ipcRenderer.invoke("desktop:flushed-drafts", { requestId });
+    } catch (error) {
+        await ipcRenderer.invoke("desktop:flushed-drafts", {
+            requestId,
+            error: error instanceof Error ? error.message : "Draft save failed.",
+        });
+    }
+});
+const workbench: DesktopWorkbenchClient = {
+    read: () => ipcRenderer.invoke("desktop:preferences:read"),
+    write: (navigation) => ipcRenderer.invoke("desktop:preferences:write", navigation),
+    restartRuntime: () => ipcRenderer.invoke("desktop:restart-runtime"),
+    onNewSession(listener) {
+        newSessionListeners.add(listener);
+        if (pendingNewSession) {
+            pendingNewSession = false;
+            queueMicrotask(listener);
+        }
+        return () => {
+            newSessionListeners.delete(listener);
+        };
+    },
+    flushDrafts(listener) {
+        flushListeners.add(listener);
+        return () => {
+            flushListeners.delete(listener);
+        };
+    },
+};
 if (process.isMainFrame) {
     contextBridge.exposeInMainWorld("runwieldSession", client);
+    contextBridge.exposeInMainWorld("runwieldWorkbench", workbench);
     contextBridge.exposeInMainWorld("runwieldProjects", projects);
     contextBridge.exposeInMainWorld("runwieldLinks", {
         open(href: string): Promise<void> {

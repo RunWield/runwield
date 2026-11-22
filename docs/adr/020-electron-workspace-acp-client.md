@@ -114,7 +114,8 @@ Unsent client queues remain client intent, not a second durable work authority. 
 Core evidence without replaying effects. Oversized live deltas retain a bounded tail; canonical settled history owns
 the full text. Semantic commands use Core's Workspace registry and existing configuration authority rather than model
 prompts or renderer-owned command execution. Question defaults and choice descriptions cross the semantic interface
-without authorizing an answer. This does not select process reconnect or supervisor recovery behavior.
+without authorizing an answer. Local recovery uses the supervisor boundary below; it does not select a remote
+reconnect transport.
 
 Review content and decisions are structured data rendered with the shared review components. Large files and images
 use bounded transfers/resource references tied to the selected runtime, not renderer-side arbitrary filesystem access.
@@ -129,22 +130,41 @@ the optional development Project argument supply candidates, never admission aut
 and separate Node-target bundles for main and sandbox-compatible preload. This is not an installer or release.
 The [engineering contract](../desktop-workbench-contract.md) holds setup commands and scoped evidence.
 
-The distribution and supervisor targets are distinct from this minimal controlled-shutdown host:
+The source-development host uses the single-instance supervisor and local recovery decision below. Distribution is
+separate: source execution does not establish installation or three-platform qualification.
 
 Ship a compatible platform-specific `wld` executable with each desktop release and launch it over stdio. The initial
 product does not depend on a globally installed CLI, Bun, Node, or a development server. Existing `wld` user settings,
 provider setup, Projects, and saved Sessions remain usable. Bundling does not overwrite a user's shell installation.
 An external executable override is not required for the first product; development can use an explicit source build.
 
-One desktop instance per user supervises its local runtime connection, which can serve multiple Projects and Sessions.
+One desktop instance per user supervises one local runtime connection and one window. Any number of Sessions can run
+in parallel within or across Projects. Window selection is not Session ownership. Each binding retains its Project,
+question, configuration, observation cursor, and queue; switching never requires Close or retargets another binding.
+A second launch focuses or recreates the existing window instead of starting another runtime.
 All operations carry explicit Project and Session identity; neither process cwd nor the currently selected UI tab
 authorizes an operation. The runtime remains the writer authority when a separate TUI or browser is also open.
 
 Closing a window keeps running local work and the desktop supervisor alive. Reopening reattaches the renderer. Explicit
 Quit with active work offers staying open or stopping and quitting; stopping waits for Core cancellation and durable
 settlement before process disposal. An unexpected process exit leaves interrupted work recoverable from Core evidence.
-Restarting the connection may reload observations, but never automatically resubmits an uncertain prompt, decision, or
-publication action. An always-on service that survives application exit is a separate future capability.
+Renderer failure replaces only the view. Runtime Restart or main relaunch re-admits Projects and reloads Sessions from
+Core history and receipt evidence. Reattachment refreshes snapshots and history before live updates. Generation checks,
+event-eviction sequences, and a Core-owned commit boundary keep stale or already committed live output from duplicating
+history. Recovery never automatically resubmits a prompt, answer, decision, or publication action.
+
+Main owns a private, atomic, owner-only draft store for unsent text, image bytes, queues, and original request identities.
+It is client intent, not a second transcript or execution authority. Persisted intent survives view and process changes;
+forced termination can lose edits not yet written. Restored queues require deliberate Send. A read-only Core receipt
+lookup distinguishes recorded acceptance, no receipt, and uncertainty without taking a prompt payload or starting work.
+Unknown outcomes stay visible and cannot trigger a resend. Accepted or explicitly discarded intent is retired; corrupt
+bytes are preserved with a notice. Main also owns private navigation and window preferences, which grant no access.
+
+Negotiated close and connection drain await canonical Core settlement of this continuation owner's work, including
+retained Background Tasks. They do not cancel another process's work that desktop only observes. Quit uses one shared
+in-flight stop operation: flush private intent, block dispatch, await acknowledged drain, then dispose. Failed or
+unsettled evidence keeps the app open for retry. The later updater must use this same boundary, not its own kill path.
+An always-on service that survives application exit is a separate future capability.
 
 Use Vite for the desktop renderer and separate esbuild bundles for Node main and sandbox preload. Retain Bun as
 repository orchestration. Packaging tooling must

@@ -222,6 +222,8 @@ interface ProjectSidebarProps {
     onProjects: () => void;
     onNew: () => void;
     onLogo: () => void;
+    expandedProjects?: string[];
+    onExpandedProjects?: (projects: string[]) => void;
     collapsed: boolean;
     onCollapse: () => void;
     panelRef: RefObject<HTMLElement | null>;
@@ -245,23 +247,33 @@ export function ProjectSidebar({
     onNew,
     onLogo,
     collapsed,
+    expandedProjects,
+    onExpandedProjects,
     onCollapse,
     panelRef,
     onRefreshProjects,
 }: ProjectSidebarProps) {
-    const [expanded, setExpanded] = useState<string[]>(() => {
+    const [localExpanded, setLocalExpanded] = useState<string[]>(() => {
+        if (expandedProjects) return expandedProjects;
         try {
             return JSON.parse(preference("runwield:desktop:expanded-projects", "[]")) as string[];
         } catch {
             return [];
         }
     });
+    const expanded = expandedProjects || localExpanded;
+    function setExpanded(update: (old: string[]) => string[]) {
+        const next = update(expanded);
+        if (onExpandedProjects) onExpandedProjects(next);
+        else setLocalExpanded(next);
+    }
     const [width, setWidth] = useState(() =>
         Math.max(220, Math.min(480, Number(preference("runwield:owner:sidebar-width", "280")) || 280)),
     );
     const drag = useRef<{ x: number; width: number } | null>(null);
     const style: CSSProperties = { width };
     useEffect(() => {
+        if (onExpandedProjects) return;
         try {
             localStorage.setItem("runwield:desktop:expanded-projects", JSON.stringify(expanded));
         } catch {
@@ -341,6 +353,45 @@ export function ProjectSidebar({
                                 ⚙
                             </RunWieldButton>
                         </div>
+                        {Boolean(view?.bindings?.some((binding) => binding.projectId === project.projectId)) && (
+                            <section
+                                className="project-bindings"
+                                aria-label={`${project.displayName || project.rootLabel} open Sessions`}
+                            >
+                                {view?.bindings
+                                    ?.filter((binding) => binding.projectId === project.projectId)
+                                    .map((binding, index) => (
+                                        <RunWieldButton
+                                            key={binding.sessionId}
+                                            title={binding.sessionId}
+                                            className="project-binding"
+                                            aria-current={view.sessionId === binding.sessionId ? "page" : undefined}
+                                            onClick={() =>
+                                                onOpen(project.projectId, binding.durableSessionId || binding.sessionId)
+                                            }
+                                        >
+                                            <span>
+                                                {binding.durableSessionId
+                                                    ? `Session ${binding.durableSessionId.slice(0, 8)}`
+                                                    : `New Session ${index + 1}`}
+                                            </span>
+                                            <span className={binding.hasQuestion ? "project-binding-waiting" : "muted"}>
+                                                {binding.hasQuestion
+                                                    ? "Answer needed"
+                                                    : binding.phase === "streaming"
+                                                      ? "Running"
+                                                      : binding.phase === "canceling"
+                                                        ? "Stopping…"
+                                                        : binding.phase === "idle"
+                                                          ? "Idle"
+                                                          : binding.phase === "interrupted"
+                                                            ? "Interrupted"
+                                                            : "Loading…"}
+                                            </span>
+                                        </RunWieldButton>
+                                    ))}
+                            </section>
+                        )}
                         <div hidden={!expanded.includes(project.projectId)}>
                             {client && (
                                 <ProjectSessionList

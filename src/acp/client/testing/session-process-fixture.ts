@@ -8,6 +8,7 @@ import { Writable } from "node:stream";
 import { defineCommittedGitFixture } from "../../../shared/git-test-fixture.ts";
 import type { InterviewQuestion } from "../../../tools/user-interview.ts";
 import { AcpWorkspaceSessionClient } from "../workspace-session-client.ts";
+import type { WorkspaceJsonRecord } from "../../workspace-contract.ts";
 import type { SessionBinding, SessionClientView } from "../../../ui/workspace/client/session-client.ts";
 
 interface ProviderContent {
@@ -114,6 +115,9 @@ export async function startSessionProvider() {
         emit: (text: string) => {
             for (const response of streams) writeChunk(response, { role: "assistant", content: text }, null);
         },
+        emitThinking: (text: string) => {
+            for (const response of streams) writeChunk(response, { reasoning_content: text }, null);
+        },
         release: () => {
             for (const finish of [...held]) finish();
         },
@@ -130,6 +134,7 @@ interface ProviderToolCall {
     function: { name: string; arguments: string };
 }
 interface ProviderDelta {
+    reasoning_content?: string;
     role?: string;
     content?: string;
     tool_calls?: ProviderToolCall[];
@@ -247,8 +252,20 @@ export async function makeSessionProcessFixture() {
 }
 interface WireMethod {
     method?: string;
+    id?: string | number;
+    result?: WorkspaceJsonRecord;
+}
+export interface DelayedWireResponse {
+    received: Promise<void>;
+    readonly result: WorkspaceJsonRecord | null;
+    release(): void;
+}
+interface ResponseGate extends DelayedWireResponse {
+    capture(deliver: () => void, result: WorkspaceJsonRecord | null): void;
 }
 export interface SessionProcess {
+    /** Delay one genuine subprocess response, while later frames continue through the transport. */
+    delayNextResponse(method: string): DelayedWireResponse;
     sentMethods: string[];
     child: ChildProcessWithoutNullStreams;
     client: AcpWorkspaceSessionClient;
@@ -271,13 +288,19 @@ function launchSessionProcess(project: string, env: NodeJS.ProcessEnv, workspace
     const exited = new Promise<void>((resolve) => child.once("close", () => resolve()));
     const sentMethods: string[] = [];
     let pendingWire = "";
+    const requests = new Map<string | number, string>();
+    const responseGates = new Map<string, ResponseGate[]>();
+    const allGates: ResponseGate[] = [];
     const output = new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller) {
             pendingWire += Buffer.from(chunk).toString("utf8");
             let boundary: number;
             while ((boundary = pendingWire.indexOf("\n")) >= 0) {
                 const frame: WireMethod = JSON.parse(pendingWire.slice(0, boundary));
-                if (frame.method) sentMethods.push(frame.method);
+                if (frame.method) {
+                    sentMethods.push(frame.method);
+                    if (frame.id !== undefined) requests.set(frame.id, frame.method);
+                }
                 pendingWire = pendingWire.slice(boundary + 1);
             }
             controller.enqueue(chunk);
@@ -290,7 +313,23 @@ function launchSessionProcess(project: string, env: NodeJS.ProcessEnv, workspace
         project,
         input: new ReadableStream<Uint8Array>({
             start(controller) {
-                child.stdout.on("data", (chunk: Buffer) => controller.enqueue(chunk));
+                let pending = "";
+                const decoder = new TextDecoder();
+                child.stdout.on("data", (chunk: Buffer) => {
+                    pending += decoder.decode(chunk, { stream: true });
+                    let boundary: number;
+                    while ((boundary = pending.indexOf("\n")) >= 0) {
+                        const line = pending.slice(0, boundary + 1);
+                        pending = pending.slice(boundary + 1);
+                        const frame: WireMethod = JSON.parse(line);
+                        const method = !frame.method && frame.id !== undefined ? requests.get(frame.id) : undefined;
+                        const gate = method ? responseGates.get(method)?.shift() : undefined;
+                        if (method && frame.id !== undefined) requests.delete(frame.id);
+                        const deliver = () => controller.enqueue(Buffer.from(line));
+                        if (gate) gate.capture(deliver, frame.result || null);
+                        else deliver();
+                    }
+                });
                 child.stdout.once("end", () => controller.close());
                 child.stdout.once("error", (error) => controller.error(error));
             },
@@ -305,6 +344,34 @@ function launchSessionProcess(project: string, env: NodeJS.ProcessEnv, workspace
         current = view;
     });
     return {
+        delayNextResponse(method) {
+            let captured: (() => void) | null = null;
+            let released = false;
+            let result: WorkspaceJsonRecord | null = null;
+            let received: () => void = () => {};
+            const gate: ResponseGate = {
+                received: new Promise<void>((resolve) => {
+                    received = resolve;
+                }),
+                get result() {
+                    return result;
+                },
+                capture(deliver, value) {
+                    result = value;
+                    received();
+                    if (released) deliver();
+                    else captured = deliver;
+                },
+                release() {
+                    released = true;
+                    captured?.();
+                    captured = null;
+                },
+            };
+            responseGates.set(method, [...(responseGates.get(method) || []), gate]);
+            allGates.push(gate);
+            return gate;
+        },
         sentMethods,
         child,
         client,
@@ -317,6 +384,7 @@ function launchSessionProcess(project: string, env: NodeJS.ProcessEnv, workspace
                 () => `${JSON.stringify(current)}\n${stderr}`,
             ),
         shutdown: async () => {
+            for (const gate of allGates) gate.release();
             const timer = setTimeout(() => child.kill("SIGKILL"), 3000);
             try {
                 await client.dispose();

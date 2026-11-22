@@ -341,17 +341,20 @@ test(
                 () => ready.includes("\n"),
                 () => stderr,
             );
-            const unavailable = (error: Error) => {
-                ok("data" in error && JSON.stringify(error.data).includes("session_stop_unavailable"));
-                return true;
-            };
-            await rejects(reader.client.close(reader.binding()), unavailable);
-            equal(reader.view().durableSessionId, seeded.sessionId, "failed Close must preserve the binding");
+            const otherWriter = run("inspect", seeded.sessionId);
+            await reader.client.close(reader.binding());
+            equal(reader.view().sessionId, "", "Close detaches this client's binding");
+            equal(
+                run("inspect", seeded.sessionId),
+                otherWriter,
+                "Close must not stop or change another process's writer",
+            );
+            equal(writer.exitCode, null, "the separate owner remains alive after Close");
+            equal(await readFile(seeded.transcriptPath, "utf8"), transcriptBefore);
             const released = new Promise<void>((resolve) => writer!.once("close", () => resolve()));
             writer.stdin.end("release\n");
             await released;
             writer = null;
-            await reader.client.close(reader.binding());
             equal(fixture.provider.requests.length, 0);
             deepEqual(fixture.provider.failures, []);
         } finally {
@@ -475,6 +478,72 @@ test(
             store.close();
         } finally {
             await owner.shutdown();
+            await fixture.cleanup();
+        }
+    },
+);
+
+test(
+    "first bootstrap writer stays protected and its settled history is fresh without a provider",
+    { timeout: 60000 },
+    async () => {
+        const fixture = await makeSessionProcessFixture();
+        try {
+            const writer = fixture.launch(true);
+            const registered = await writer.client.registerProject({ root: fixture.project });
+            ok(registered.status === "ok");
+            const projectId = registered.project.projectId;
+            await writer.client.openProject({ projectId });
+            const reader = fixture.launch(true);
+            const { context } = await reader.client.readProject({ projectId });
+            await writer.client.create();
+            fixture.provider.enqueue({ text: "First bootstrap held response.", hold: true });
+            const turn = writer.client.send(writer.binding(), "First bootstrap accepted prompt.");
+            await writer.wait((view) => view.items.some((item) => item.text === "First bootstrap held response."));
+            const sessionId = writer.view().durableSessionId;
+            ok(sessionId);
+            equal(writer.view().generation, null);
+            const store = openFileSessionStore({ baseDir: join(fixture.home, ".wld", "sessions") });
+            try {
+                const active = store.inspectSessionActivation(sessionId);
+                equal(active.activation?.state, "active");
+                equal(active.generation, null);
+                await rejects(
+                    reader.client.history({ context, sessionId }),
+                    "uncommitted live output is not saved history",
+                );
+                deepEqual(
+                    store.inspectSessionActivation(sessionId),
+                    active,
+                    "passive history cannot settle the bootstrap writer",
+                );
+                fixture.provider.release();
+                await turn;
+                for (const name of ["settings", "auth", "models"])
+                    await writeFile(join(fixture.home, ".wld", `${name}.json`), "{}");
+                const committed = store.inspectSessionActivation(sessionId);
+                ok(committed.generation);
+                const history = await reader.client.history({ context, sessionId });
+                equal(history.generation, committed.generation.generation);
+                deepEqual(
+                    history.events
+                        .filter((event) => ["user_message", "assistant_text_delta"].includes(event.type))
+                        .map((event) => event.text ?? event.delta),
+                    ["First bootstrap accepted prompt.", "First bootstrap held response."],
+                );
+                deepEqual(await reader.client.history({ context, sessionId }), history);
+                deepEqual(
+                    store.inspectSessionActivation(sessionId),
+                    committed,
+                    "fresh committed reads do not acquire a writer",
+                );
+                equal(fixture.provider.requests.length, 1);
+                deepEqual(fixture.provider.failures, []);
+            } finally {
+                store.close();
+            }
+        } finally {
+            fixture.provider.release();
             await fixture.cleanup();
         }
     },

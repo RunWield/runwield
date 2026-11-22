@@ -43,3 +43,17 @@ Manual verification steps for local-workspace-desktop/continue-saved-sessions-in
 - [ ] Keep a TUI open on the same Session. Continue work in desktop, then continue from TUI with a changed configuration. Confirm both views show the same Session and current configuration.
 
 <!-- runwield:manual-qa:end child="local-workspace-desktop/continue-saved-sessions-in-desktop" -->
+
+<!-- runwield:manual-qa:start child="local-workspace-desktop/keep-work-safe-across-window-and-process-changes" -->
+
+## Keep Work Safe Across Window and Process Changes
+
+Manual verification steps for local-workspace-desktop/keep-work-safe-across-window-and-process-changes
+
+- [ ] Start work in two Sessions, including one with a pending question. Switch between them and confirm each Session keeps its own progress and the question stays with the correct Session.
+- [ ] Enter unsent text, attach an image, and queue a follow-up. Close and reopen the window. Confirm the content returns as unsent and no request runs until you select Send.
+- [ ] Close the window while work is running, then reopen it. Confirm work continued and the view shows current progress or the same pending question.
+- [ ] Quit while work is running. Choose Stay open and confirm work continues. Repeat and choose Stop and quit; confirm the app waits for work to settle before it exits.
+- [ ] Restart after a runtime interruption. Confirm the app reports uncertain work and does not repeat an action until you choose to continue.
+
+<!-- runwield:manual-qa:end child="local-workspace-desktop/keep-work-safe-across-window-and-process-changes" -->

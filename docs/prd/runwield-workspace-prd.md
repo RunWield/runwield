@@ -144,8 +144,10 @@ Each capability owns its browser requirements and links to Core for shared behav
 **Scope and maturity:** The source-development Electron client opens Projects without an argument, registers and
 manages existing directories through Core, and reuses existing provider settings. A separate source runtime supports
 streamed conversation, structured answers, Stop, controlled shutdown, discovery, provider-independent paged history,
-reversible archive, images, configuration, unsent queues, steering, and retained background observations. One Session
-view remains open at a time; Project navigation cannot retarget it. It is not an installed or released application.
+reversible archive, images, configuration, unsent queues, steering, and retained background observations. Any number of
+Sessions can run in parallel within or across Projects. Selecting one view never stops or retargets another binding.
+The single-instance supervisor keeps work alive without a window and restores persisted drafts and navigation after
+view or process loss. It is not an installed or released application.
 Full-workbench parity and free local installation on Windows, macOS, and Linux remain targets. See accepted
 [ADR-020](../adr/020-electron-workspace-acp-client.md), the
 [local desktop Epic](../plans/local-workspace-desktop.md), and the
@@ -179,7 +181,20 @@ settings; an embedded launch of `wld workspace serve` alone does not meet this r
 artifacts, and Core approval/recovery rules as TUI and browser clients. Changing or closing a view does not duplicate a
 Session or authorize execution. Window close allows running local work to continue while the application remains
 running. Explicit application exit handles owned active work deliberately and leaves saved continuation recoverable.
-Interrupted or disconnected presentation is never successful completion evidence.
+Interrupted or disconnected presentation is never successful completion evidence. One desktop instance owns the local
+runtime; a second launch focuses or recreates its window. A renderer crash replaces presentation without stopping work.
+Native Quit offers **Stay open** or **Stop and quit** for active or uncertain work. Stop and quit preserves drafts,
+blocks dispatch, and exits only after Core confirms owned settlement, including retained Background Tasks. A failed or
+unsettled drain keeps the app open for retry and does not cancel another process's observed work.
+
+Main privately persists unsent text, image bytes, queues, and request identity per Project/Session, including composers
+without a saved ID. Persisted intent survives window close, renderer loss, Quit, and main/runtime restart. Edits not yet
+written at forced termination can be lost. Restored intent requires deliberate Send; uncertain accepted input is not
+resent. A corrupt store preserves its bytes and shows a notice. Core remains the only authority for accepted work.
+Runtime loss offers **Restart runtime**; Restart and main relaunch rebuild from Core evidence without automatic replay.
+Window bounds, sidebar collapse, expanded Projects, and selected Project/Session restore from main-owned preferences.
+Unavailable destinations fall back to Projects without granting access. Native menus provide New Session, Close window,
+Quit, and standard edit/window shortcuts.
 
 **Requirement: Install and update a compatible application.** Desktop includes a compatible runtime without requiring a
 separate CLI or development toolchain. It preserves existing data and keeps the independent shell installation usable.
@@ -201,17 +216,21 @@ runtime authority remains in [Core Session continuity](runwield-core-prd.md#sess
 - With no provider/default, use Project settings and see Core's specific New Session prerequisite with external
   `wld login` and restart guidance, not Workspace sign-in. With existing Core configuration, complete model work
   without credential import or settings copies. Provider outages retain their actual error.
-- Visit settings during an open Session; its Project and pending answers cannot change silently. Close it explicitly
-  before opening Session work in another Project.
+- Run two Sessions in one Project and another in a second Project. Switch views and visit settings without Close;
+  work continues independently, questions keep their destination, and sidebar indicators show running/waiting work.
 - Given an admitted Project and configured provider, create a Session and see output
   before the turn finishes. Project identity, active saved ID, connection state, and waiting questions remain visible.
 - Answer a listed choice or Other in the shared form; the exact answer reaches the waiting tool and the next provider
   request once. Stop a held stream or question, wait for settlement, then send another prompt.
-- Close the Session and application, launch again, load its known saved ID, and continue with committed history. This
-  does not imply integrated reviews or process reconnect.
-- Lose the runtime during a turn: show disconnection, keep the draft in the open view, and do not report success or
-  automatically resubmit input. Controlled shutdown settles owned work before process disposal; keeping work alive
-  after window close remains a supervisor target.
+- Close and reopen the window during work, including by a second launch. The same runtime and operations continue;
+  fresh history and observations show output once. Kill the renderer; its replacement restores the selected binding.
+- Quit during work: Stay open keeps work unchanged; Stop and quit waits for canonical settlement. Slow or failed
+  drain keeps the application open, and concurrent Quit requests cannot dispose twice.
+- Lose the runtime during a turn, then use Restart runtime; relaunch after main loss. Restore persisted text, images,
+  queues, and navigation without sending them. An unknown receipt result stays interrupted until deliberate new input.
+- Restore drafts in two Sessions after window close, renderer loss, Quit, and main loss. Send reuses the original
+  request identity only after receipt reconciliation; acceptance, discard, and Project removal retire matching intent.
+  Corruption preserves a private copy with a notice; unavailable navigation falls back to Projects.
 - Without provider setup, discover named Sessions, page committed history and read saved configuration/images.
   Opening an archived conversation leaves it archived; explicit Unarchive keeps its ID, transcript, and associations.
 - Use the mounted Project/Session sidebar across conversation, Projects, and settings. Each Project loads five recent
@@ -225,10 +244,17 @@ runtime authority remains in [Core Session continuity](runwield-core-prd.md#sess
 These saved-Session scenarios have automated source evidence. Headed macOS arm64 source checks also cover
 provider-free history/configuration and draft refusal, two-Project five-row paging, archived open/Unarchive,
 image-only acceptance, and a real full-TUI PTY round trip on the same durable ID. Desktop observed the TUI's Engineer
-selection and new content once while preserving its unsent draft. These checks used a controlled local HTTP provider;
-remaining headed journeys are pending. See the [scoped evidence](../desktop-workbench-contract.md#saved-session-headed-checks-macos-arm64-source-build). Process reconnect,
-window/supervisor lifetime, integrated reviews, dashboard/Plan/attention navigation, in-app provider setup, browser
-retirement, and installed-platform qualification remain with their sibling Plans.
+selection and new content once while preserving its unsent draft. These checks used a controlled local HTTP provider.
+See the [saved-Session evidence](../desktop-workbench-contract.md#saved-session-headed-checks-macos-arm64-source-build).
+Local lifetime and recovery have separate [automated source evidence](../desktop-workbench-contract.md#window-and-process-source-evidence)
+and [headed macOS source checks](../desktop-workbench-contract.md#window-and-process-headed-checks-macos-arm64-source-build).
+The headed checks cover three parallel Sessions across two Projects, window/renderer/runtime/main recovery, idle Quit,
+and restored drafts/navigation. A focused rerun verified the history-read repair. After macOS permissions were granted,
+a separate native retry verified actual Stay open and Stop and quit sheet choices, no exit during suspended-runtime
+settlement, canonical receipts, OS Command-N/W/Q, Dock activation, second-launch reopening, and byte-identical restored
+image/draft/queue intent without provider replay. This is macOS source-build evidence, not installed-app or three-platform
+qualification. Integrated reviews, dashboard/Plan/attention navigation, in-app provider setup, browser retirement, updater installation, and
+installed-platform qualification remain with their sibling Plans. An unattended service and remote runtime remain future scope.
 
 Automated native and shared-DOM evidence and a manual macOS arm64 real-provider check are recorded in the
 [engineering contract](../desktop-workbench-contract.md#acceptance-evidence). They do not qualify installed platforms.
@@ -645,9 +671,9 @@ The source desktop now implements the Project/Session part of navigation and hea
 independent recent lists, New Session, Project settings, collapse/resize preferences, and narrow overlay behavior.
 The logo returns to the last Session or Projects when none exists. Dashboard, Plan grouping/navigation, and attention
 additions remain the [dashboard child](../plans/local-workspace-desktop/find-and-act-on-work-that-needs-attention.md).
-Desktop Archived Sessions uses General / Archived Sessions tabs and bounded paging. Its single open Session still
-requires explicit Close before switching; sidebar browsing alone never changes execution context. Headed layout and
-keyboard acceptance remain to be checked for this slice.
+Desktop Archived Sessions uses General / Archived Sessions tabs and bounded paging. Parallel bindings continue while
+the selected Project/Session changes; navigation never changes another binding's execution context. Native lifetime,
+preferences, menus, and their evidence limits follow [Desktop Workspace](#desktop-workspace).
 
 **Requirement: Restore archived Sessions from Project settings.** Project settings has General and Archived Sessions
 tabs. Archived Sessions lists archived names in pages, links to their conversations, and offers Unarchive. Unarchive
@@ -744,7 +770,8 @@ Session. Restored history raises no alerts. Delivery errors are diagnosable and 
 The desktop source client reuses the composer, timeline, question forms, and saved-list presentation for the
 conversation subset: committed chronology/configuration, Activity/Thinking, supported commands, image bytes/previews,
 unsent queue, steering, Stop, and reversible archive. Failed sends and navigation keep the open draft and images.
-Desktop does not yet promise draft/queue survival after app exit or reconnect; browser refresh behavior below is
+Desktop privately restores persisted drafts/images/queues after view or process loss as defined in
+[Desktop Workspace](#desktop-workspace); it never sends restored input automatically. Browser refresh behavior below is
 unchanged. Session context shows configuration; integrated Plan/Workflow context and reviews remain sibling work.
 The desktop Project/Session navigation sidebar is separate from this Session context panel. Shared Core extraction
 does not change browser HTTP URLs, authentication, CSRF, notifications, or review launch behavior.

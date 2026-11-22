@@ -103,6 +103,8 @@ interface BoundSession {
     context: WorkspaceProjectContext;
     durableId: string;
     operationId: string;
+    closing?: boolean;
+    accepting?: Promise<{ operationId: string }>;
     createRequest?: Pick<MutationMetadata, "requestId" | "configuration">;
 }
 interface MutationMetadata extends WorkspaceProjectContext {
@@ -127,6 +129,8 @@ export interface StandardRequest {
 /** ACP is a transport adapter. All negotiated execution belongs to the same Core continuation owner as HTTP. */
 export class WorkspaceSessionConnection {
     private service: SessionContinuationService | null = null;
+    private draining = false;
+    private drainPromise: Promise<import("./workspace-contract.ts").WorkspaceSettlementResult> | null = null;
     private readonly bindings = new Map<string, BoundSession>();
     constructor(private readonly projects: WorkspaceProjectConnection) {}
     async dispatch(operation: string, json: string) {
@@ -134,6 +138,8 @@ export class WorkspaceSessionConnection {
     }
     private async dispatchRequest(operation: string, json: string) {
         const request = parseWorkspaceRequest(json);
+        if (this.draining && !["history", "snapshot", "options", "drain", "resolveSubmission"].includes(operation))
+            throw new RequestError(-32002, "Session connection is draining.");
         const allowed = {
             history: ["context", "sessionId", "cursor", "limit"],
             snapshot: ["context", "sessionId", "wireSessionId", "cursor"],
@@ -151,10 +157,31 @@ export class WorkspaceSessionConnection {
             ],
             answer: ["context", "sessionId", "operationId", "interactionId", "requestId", "response"],
             unarchive: ["context", "sessionId"],
+            drain: [],
+            resolveSubmission: ["context", "sessionId", "requestId", "kind", "expectedGeneration"],
         };
         const keys = allowed[operation as keyof typeof allowed];
-        if (!keys || Object.keys(request).some((key) => !keys.includes(key)))
+        if (!keys || Object.keys(request).some((key) => !keys.some((allowedKey) => allowedKey === key)))
             throw new RequestError(-32602, "Unsupported Session request.");
+        if (operation === "drain") return await this.drain();
+        if (operation === "resolveSubmission") {
+            const input: import("./workspace-contract.ts").WorkspaceResolveSubmissionRequest = JSON.parse(json);
+            this.projects.admitContext(input.context, input.sessionId || undefined);
+            required(input.requestId);
+            if (
+                !["prompt", "bootstrap", "steering"].includes(input.kind) ||
+                !Number.isInteger(input.expectedGeneration)
+            )
+                throw new RequestError(-32602, "Invalid submission identity.");
+            if (input.kind !== "bootstrap") required(input.sessionId!);
+            return this.owner().resolveSubmission({
+                projectId: input.context.projectId,
+                runwieldSessionId: input.sessionId,
+                requestId: input.requestId,
+                kind: input.kind,
+                expectedGeneration: input.expectedGeneration,
+            });
+        }
         if (operation === "history") return await this.history(JSON.parse(json));
         if (operation === "snapshot") return await this.snapshot(JSON.parse(json));
         if (operation === "options") return await this.options(JSON.parse(json));
@@ -307,6 +334,7 @@ export class WorkspaceSessionConnection {
             generation: live.generation,
             operationId: live.operation?.operationId || "",
             count: live.operation?.events.length || 0,
+            sequence: live.operation?.eventSequence || 0,
         });
         const previous = request.cursor ? decode(request.cursor) : null;
         if (previous && previous.sessionId !== identity)
@@ -316,7 +344,15 @@ export class WorkspaceSessionConnection {
             generation: live.generation,
             state: live.state,
             cursor,
-            gap: Boolean(previous && (previous.generation !== live.generation || truncated)),
+            gap: Boolean(
+                previous &&
+                (previous.generation !== live.generation ||
+                    truncated ||
+                    (previous.operationId === (live.operation?.operationId || "") &&
+                        typeof previous.sequence === "number" &&
+                        (previous.sequence < (live.operation?.eventEvictedThrough || 0) ||
+                            previous.sequence > (live.operation?.eventSequence || 0)))),
+            ),
             operation,
         };
     }
@@ -467,8 +503,10 @@ export class WorkspaceSessionConnection {
         return meta;
     }
     private bound(request: StandardRequest, settlement = false): BoundSession {
+        if (this.draining && !settlement) throw new RequestError(-32002, "Session connection is draining.");
         const binding = this.bindings.get(required(request.sessionId!));
         if (!binding) throw new Error("Unknown wire Session ID.");
+        if (binding.closing && !settlement) throw new RequestError(-32002, "Session binding is closing.");
         const meta = this.metadata(request);
         if (
             meta.connectionId !== binding.context.connectionId ||
@@ -480,6 +518,7 @@ export class WorkspaceSessionConnection {
         return binding;
     }
     async open(request: StandardRequest, load: boolean) {
+        if (this.draining) throw new RequestError(-32002, "Session connection is draining.");
         const meta = this.metadata(request);
         const context = {
             connectionId: meta.connectionId,
@@ -550,8 +589,8 @@ export class WorkspaceSessionConnection {
         if (!binding.durableId)
             binding.createRequest = { requestId: meta.requestId, configuration: meta.configuration };
         const creating = binding.createRequest?.requestId === meta.requestId;
-        const accepted = !creating
-            ? await service.startContinuation({
+        const acceptance = !creating
+            ? service.startContinuation({
                   projectId: binding.context.projectId,
                   runwieldSessionId: binding.durableId,
                   requestId: meta.requestId,
@@ -559,13 +598,17 @@ export class WorkspaceSessionConnection {
                   text: message,
                   images,
               })
-            : await service.createSession({
+            : service.createSession({
                   projectId: binding.context.projectId,
                   requestId: meta.requestId,
                   text: message,
                   images,
                   ...(meta.configuration ?? binding.createRequest?.configuration),
               });
+        binding.accepting = acceptance;
+        const accepted = await acceptance.finally(() => {
+            binding.accepting = undefined;
+        });
         binding.operationId = accepted.operationId;
         // A v1 prompt returns on foreground settlement; retained background work remains Core-owned.
         let forwarded = "";
@@ -638,12 +681,39 @@ export class WorkspaceSessionConnection {
         if (binding.operationId) await service.cancelOperation({ operationId: binding.operationId });
     }
     async closeSession(request: StandardRequest) {
-        this.bound(request, true);
-        await this.stop(request);
-        this.bindings.delete(request.sessionId!);
-        return {};
+        const binding = this.bound(request, true);
+        // No stop(): that API intentionally permits explicit cancellation of a remote owner.
+        // Close and application drain must never forward cancellation to that owner.
+        binding.closing = true;
+        await binding.accepting;
+        // A new composer can have an accepted operation before its durable identity exists.
+        let local = binding.operationId ? this.owner().operations.get(binding.operationId) : null;
+        while (local && local.status === "running" && !local.runwieldSessionId) {
+            if (local.runtimeSessionId) this.owner().runtime.cancelSession(local.runtimeSessionId);
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            local = this.owner().operations.get(binding.operationId);
+        }
+        const durableId = binding.durableId || local?.runwieldSessionId || "";
+        const result: import("./workspace-contract.ts").WorkspaceSettlementResult = durableId
+            ? await this.owner().drainOwnedWork(durableId)
+            : { status: "settled", sessions: [] };
+        if (result.status === "settled") this.bindings.delete(request.sessionId!);
+        return { _meta: { [WORKSPACE_EXTENSION]: result } };
+    }
+    drain() {
+        if (this.drainPromise) return this.drainPromise;
+        this.draining = true;
+        const drain = this.owner().drainOwnedWork();
+        this.drainPromise = drain;
+        void drain
+            .finally(() => {
+                this.drainPromise = null;
+            })
+            .catch(() => {});
+        return drain;
     }
     async archive(request: StandardRequest) {
+        if (this.draining) throw new RequestError(-32002, "Session connection is draining.");
         const meta = this.metadata(request);
         const bound = this.bindings.has(request.sessionId!) ? this.bound(request) : undefined;
         const context = bound?.context || {

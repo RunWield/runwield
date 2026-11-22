@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { DesktopWorkbenchClient } from "../client/desktop-workbench.ts";
+import { useEffect, useLayoutEffect, useRef, useState, type SetStateAction } from "react";
 import type {
     SessionBinding,
     SessionClientView,
@@ -21,8 +22,15 @@ import "../static/workspace-styles/session-composer.css";
 import "./session-client-surface.css";
 
 interface SessionClientSurfaceProps {
+    workbench?: DesktopWorkbenchClient;
     client: WorkspaceSessionClient;
     projects?: import("../client/project-client.ts").WorkspaceProjectClient;
+}
+type DraftImage = import("../client/session-drafts.ts").SessionDraftImage;
+type BindingDraft = import("../client/session-drafts.ts").SessionComposerDraft;
+type PersistentSessionClient = WorkspaceSessionClient & import("../client/session-drafts.ts").WorkspaceDraftClient;
+function viewIdentity(view: SessionBinding | null): string {
+    return view ? `${view.connectionId}:${view.project}:${view.sessionId}` : "";
 }
 const PHASE_LABELS: Record<SessionClientView["phase"], string> = {
     empty: "No Session open",
@@ -35,8 +43,12 @@ const PHASE_LABELS: Record<SessionClientView["phase"], string> = {
 };
 
 /** Shared Session composition; the host supplies operations, not runtime authority. */
-export function SessionClientSurface({ client, projects }: SessionClientSurfaceProps) {
+export function SessionClientSurface({ client, projects, workbench }: SessionClientSurfaceProps) {
     const [view, setView] = useState<SessionClientView | null>(null);
+    const persistent = "readDraft" in client ? (client as PersistentSessionClient) : null;
+    const [loadedDrafts, setLoadedDrafts] = useState<Set<string>>(new Set());
+    const submittedDraftIds = useRef(new Set<string>());
+    const acceptedDuringRead = useRef(new Map<string, Set<string>>());
     const saved = projects && "readProject" in client ? (client as WorkspaceSavedSessionClient) : null;
     const {
         context,
@@ -44,7 +56,62 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
         error: optionsError,
         retry: retryOptions,
     } = useSessionOptions({ client: saved, view, projects });
-    const [images, setImages] = useState<(SessionImageTransfer & { id: string; name: string })[]>([]);
+    // Unsent intent only. Core and the client remain the transcript and queue owners.
+    const [drafts, setDrafts] = useState<Record<string, BindingDraft>>({});
+    const identity = viewIdentity(view);
+    const intent = drafts[identity];
+    const flushDraft = useRef<() => Promise<void>>(async () => {});
+    flushDraft.current = async () => {
+        if (persistent && view?.sessionId && intent && loadedDrafts.has(identity))
+            await persistent.writeDraft(
+                { connectionId: view.connectionId, project: view.project, sessionId: view.sessionId },
+                intent,
+            );
+    };
+    useEffect(() => workbench?.flushDrafts(() => flushDraft.current()), [workbench]);
+    const draft = intent?.text || "";
+    const images = intent?.images || [];
+    function setDraft(value: SetStateAction<string>) {
+        setDrafts((old) => {
+            const current = old[identity];
+            if (!current) return old;
+            return {
+                ...old,
+                [identity]: {
+                    ...current,
+                    text: typeof value === "function" ? value(current.text) : value,
+                    requestId:
+                        submittedDraftIds.current.has(current.requestId) ||
+                        pendingSends.current.has(current.requestId) ||
+                        pendingQueue.current.get(identity) === current.requestId
+                            ? crypto.randomUUID()
+                            : current.requestId,
+                },
+            };
+        });
+    }
+    function setImages(value: SetStateAction<DraftImage[]>) {
+        setDrafts((old) => {
+            const current = old[identity];
+            if (!current) return old;
+            return {
+                ...old,
+                [identity]: {
+                    ...current,
+                    images: typeof value === "function" ? value(current.images) : value,
+                    requestId:
+                        submittedDraftIds.current.has(current.requestId) ||
+                        pendingSends.current.has(current.requestId) ||
+                        pendingQueue.current.get(identity) === current.requestId
+                            ? crypto.randomUUID()
+                            : current.requestId,
+                },
+            };
+        });
+    }
+    function setRequestIdentity(requestId: string) {
+        setDrafts((old) => (old[identity] ? { ...old, [identity]: { ...old[identity], requestId } } : old));
+    }
     const [historyEvents, setHistoryEvents] = useState<WorkspaceHistoryEvent[]>([]);
     const [olderCursor, setOlderCursor] = useState<string | null>(null);
     const [historyPending, setHistoryPending] = useState(false);
@@ -62,11 +129,9 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
     }, []);
     const previousBinding = useRef("");
     const bindingEpoch = useRef(0);
-    const requestIdentity = useRef<string>(crypto.randomUUID());
     const pendingSends = useRef(new Set<string>());
-    const pendingQueue = useRef("");
+    const pendingQueue = useRef(new Map<string, string>());
     const [knownId, setKnownId] = useState("");
-    const [draft, setDraft] = useState("");
     const [error, setError] = useState("");
     const [changing, setChanging] = useState(false);
     const [sending, setSending] = useState(false);
@@ -85,25 +150,79 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
     useEffect(
         () =>
             client.observe((next) => {
-                const identity = `${next.connectionId}:${next.project}:${next.sessionId || ""}`;
+                const identity = viewIdentity(next);
+                setDrafts((old) =>
+                    old[identity]
+                        ? old
+                        : {
+                              ...old,
+                              [identity]: { text: "", images: [], requestId: crypto.randomUUID() },
+                          },
+                );
                 if (previousBinding.current !== identity) {
                     previousBinding.current = identity;
                     bindingEpoch.current++;
-                    setDraft("");
-                    setImages([]);
-                    requestIdentity.current = crypto.randomUUID();
+                    setError("");
                 }
                 setView(next);
             }),
         [client],
     );
+    useEffect(
+        () =>
+            persistent?.onDraftAccepted((binding, requestId) => {
+                const key = viewIdentity(binding);
+                acceptedDuringRead.current.get(key)?.add(requestId);
+                clearDraft(key, requestId);
+            }),
+        [persistent],
+    );
+    function clearDraft(key: string, requestId: string) {
+        setDrafts((old) =>
+            old[key]?.requestId === requestId
+                ? {
+                      ...old,
+                      [key]: { text: "", images: [], requestId: crypto.randomUUID() },
+                  }
+                : old,
+        );
+    }
+    useEffect(() => {
+        if (!persistent || !view?.sessionId || loadedDrafts.has(identity) || acceptedDuringRead.current.has(identity))
+            return;
+        const accepted = new Set<string>();
+        acceptedDuringRead.current.set(identity, accepted);
+        const binding = { connectionId: view.connectionId, project: view.project, sessionId: view.sessionId };
+        void persistent
+            .readDraft(binding)
+            .then((snapshot) => {
+                if (!mounted.current) return;
+                for (const requestId of snapshot.submittedRequestIds || []) submittedDraftIds.current.add(requestId);
+                const composer = snapshot.composer;
+                if (composer && !accepted.has(composer.requestId))
+                    setDrafts((old) => ({ ...old, [identity]: composer }));
+                setLoadedDrafts((old) => new Set([...old, identity]));
+            })
+            .catch((caught: Error) => {
+                if (mounted.current) setError(caught.message);
+            })
+            .finally(() => acceptedDuringRead.current.delete(identity));
+    }, [persistent, identity, view?.sessionId, loadedDrafts]);
+    useEffect(() => {
+        if (!persistent || !view?.sessionId || !intent || !loadedDrafts.has(identity)) return;
+        void persistent
+            .writeDraft({ connectionId: view.connectionId, project: view.project, sessionId: view.sessionId }, intent)
+            .catch((caught: Error) => {
+                if (mounted.current) setError(caught.message);
+            });
+    }, [persistent, identity, intent, loadedDrafts]);
     useEffect(() => {
         if (view?.phase === "awaiting_answer") question.current?.querySelector<HTMLElement>("input, textarea")?.focus();
         else if (view?.phase === "idle") document.getElementById("session-message")?.focus();
-    }, [view?.phase, view?.question?.requestId]);
+    }, [view?.phase, view?.question?.requestId, loadedDrafts, identity]);
     useEffect(() => {
-        if (view?.durableSessionId) setKnownId(view.durableSessionId);
-    }, [view?.durableSessionId]);
+        if (view?.sessionId) setKnownId(view.durableSessionId || "");
+    }, [view?.sessionId, view?.durableSessionId]);
     useEffect(() => {
         const epoch = ++historyEpoch.current;
         const identity = `${view?.connectionId}:${view?.project}:${view?.durableSessionId}`;
@@ -113,7 +232,9 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
             oldestEventId.current = "";
             setOlderCursor(null);
         }
-        if (saved && context && view?.durableSessionId) {
+        // Bootstrap can expose its durable identity while the first writer still has no committed history.
+        // Keep live output until Core supplies a generation; an identity alone is not saved evidence.
+        if (saved && context && view?.durableSessionId && view.generation != null) {
             void saved
                 .history({ context, sessionId: view.durableSessionId, limit: 200 })
                 .then(async (history) => {
@@ -145,13 +266,19 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
         };
     }, [saved, context, view?.durableSessionId, view?.generation]);
     useEffect(() => {
-        if (pendingQueue.current && view?.queued?.some((item) => item.requestId === pendingQueue.current)) {
-            setDraft("");
-            setImages([]);
-            pendingQueue.current = "";
-            requestIdentity.current = crypto.randomUUID();
+        const requestId = pendingQueue.current.get(identity);
+        if (requestId && view?.queued?.some((item) => item.requestId === requestId)) {
+            setDrafts((old) =>
+                old[identity]?.requestId === requestId
+                    ? {
+                          ...old,
+                          [identity]: { text: "", images: [], requestId: crypto.randomUUID() },
+                      }
+                    : old,
+            );
+            pendingQueue.current.delete(identity);
         }
-    }, [view?.queued]);
+    }, [identity, view?.queued]);
     if (!view)
         return (
             <main className="session-client">
@@ -168,11 +295,13 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
     const active = Boolean(view.sessionId);
     const idle = view.phase === "idle";
     const working = view.phase === "streaming" || view.phase === "awaiting_answer" || Boolean(view.operationId);
-    const canCompose = available && active && (idle || Boolean(saved));
-    const canSubmit = canCompose && (idle || view.phase === "streaming");
+    const canCompose = available && active && (!persistent || loadedDrafts.has(identity)) && (idle || Boolean(saved));
+    const canSubmit = canCompose && (idle || view.phase === "streaming" || Boolean(view.recoveryNotice));
     const status =
         view.connection === "ready"
-            ? PHASE_LABELS[view.phase]
+            ? view.phase === "idle" && pendingSends.current.has(intent?.requestId || "")
+                ? "Saving input…"
+                : PHASE_LABELS[view.phase]
             : view.connection === "connecting"
               ? "Connecting…"
               : view.connection === "incompatible"
@@ -190,9 +319,9 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
         }
     }
     async function send() {
-        if ((!draft.trim() && !images.length) || pendingSends.current.has(requestIdentity.current) || !canSubmit)
+        if ((!draft.trim() && !images.length) || pendingSends.current.has(intent?.requestId || "") || !canSubmit)
             return;
-        const requestId = requestIdentity.current;
+        const requestId = intent?.requestId || "";
         pendingSends.current.add(requestId);
         setSending(true);
         following.current = true;
@@ -204,6 +333,7 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
                 sentDraft,
                 sentImages.map(({ mimeType, base64 }) => ({ mimeType, base64 })),
             );
+            if (persistent && intent) await persistent.writeDraft(binding, intent);
             if (saved)
                 await saved.sendImages(
                     binding,
@@ -212,9 +342,7 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
                     requestId,
                 );
             else await client.send(binding, sentDraft);
-            setDraft((current) => (current === sentDraft ? "" : current));
-            setImages((current) => current.filter((image) => !sentImages.some((sent) => sent.id === image.id)));
-            requestIdentity.current = crypto.randomUUID();
+            clearDraft(identity, requestId);
         } catch (caught) {
             if (mounted.current) setError(caught instanceof Error ? caught.message : "The message was not sent.");
         } finally {
@@ -258,14 +386,16 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
             filesBusy.current = false;
         }
     }
-    function queue() {
+    async function queue() {
         if (!saved || !canCompose || (!draft.trim() && !images.length)) return;
         try {
             const transfers = images.map(({ mimeType, base64 }) => ({ mimeType, base64 }));
             validateSessionInput(draft, transfers);
-            pendingQueue.current = requestIdentity.current;
-            saved.queue(binding, { requestId: requestIdentity.current, text: draft, images: transfers });
+            pendingQueue.current.set(identity, intent?.requestId || "");
+            if (persistent && intent) await persistent.writeDraft(binding, intent);
+            saved.queue(binding, { requestId: intent?.requestId || "", text: draft, images: transfers });
         } catch (caught) {
+            pendingQueue.current.delete(identity);
             setError(caught instanceof Error ? caught.message : "Could not queue message.");
         }
     }
@@ -365,7 +495,7 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
             <section className="session-client-controls" aria-label="Session controls">
                 <RunWieldButton
                     variant="primary"
-                    disabled={!available || active || view.phase === "loading"}
+                    disabled={!available || (active && !view.bindings) || view.phase === "loading"}
                     onClick={() => void change(() => client.create())}
                 >
                     New Session
@@ -382,13 +512,15 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
                         value={knownId}
                         onChange={(event) => setKnownId(event.target.value)}
                         maxLength={512}
-                        disabled={!available || active || view.phase === "loading"}
+                        disabled={!available || (active && !view.bindings) || view.phase === "loading"}
                         autoComplete="off"
                         spellCheck={false}
                     />
                     <RunWieldButton
                         type="submit"
-                        disabled={!available || active || !knownId.trim() || view.phase === "loading"}
+                        disabled={
+                            !available || (active && !view.bindings) || !knownId.trim() || view.phase === "loading"
+                        }
                     >
                         Load
                     </RunWieldButton>
@@ -399,6 +531,21 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
                 >
                     Close Session
                 </RunWieldButton>
+                {persistent && (
+                    <RunWieldButton
+                        disabled={!canCompose || sending || (!draft && !images.length)}
+                        onClick={() =>
+                            void change(async () => {
+                                await persistent.discardDraft(binding);
+                                setDraft("");
+                                setImages([]);
+                                setRequestIdentity(crypto.randomUUID());
+                            })
+                        }
+                    >
+                        Discard draft
+                    </RunWieldButton>
+                )}
             </section>
             {contextOpen && (
                 <aside className="session-client-context" aria-label="Session context">
@@ -461,6 +608,11 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
                         Load older history
                     </RunWieldButton>
                 )}
+                {view.recoveryNotice && (
+                    <p role="alert" className="session-client-error">
+                        {view.recoveryNotice}
+                    </p>
+                )}
                 <SessionTimeline
                     items={items}
                     emptyMessage={
@@ -506,6 +658,32 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
                                         setError("Keep or send your current draft before editing a queued message.");
                                         return;
                                     }
+                                    if (persistent) {
+                                        const previous = intent!;
+                                        setDrafts((old) => ({
+                                            ...old,
+                                            [identity]: {
+                                                text: item.text,
+                                                requestId: item.requestId,
+                                                images: item.images.map((image) => ({
+                                                    ...image,
+                                                    id: crypto.randomUUID(),
+                                                    name: "Queued image",
+                                                })),
+                                            },
+                                        }));
+                                        void persistent
+                                            .editQueuedDraft(binding, item.requestId)
+                                            .catch((caught: Error) => {
+                                                setDrafts((old) =>
+                                                    old[identity]?.requestId === item.requestId
+                                                        ? { ...old, [identity]: previous }
+                                                        : old,
+                                                );
+                                                setError(caught.message);
+                                            });
+                                        return;
+                                    }
                                     setDraft(item.text);
                                     setImages(
                                         item.images.map((image) => ({
@@ -514,12 +692,25 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
                                             name: "Queued image",
                                         })),
                                     );
-                                    requestIdentity.current = item.requestId;
+                                    setRequestIdentity(item.requestId);
                                     saved?.removeQueued(binding, item.requestId);
                                 }}
                             >
                                 Edit
                             </RunWieldButton>
+                            {item.restored && (
+                                <RunWieldButton
+                                    disabled={!canSubmit || sending}
+                                    onClick={() =>
+                                        void change(async () => {
+                                            await saved?.sendImages(binding, item.text, item.images, item.requestId);
+                                            saved?.removeQueued(binding, item.requestId);
+                                        })
+                                    }
+                                >
+                                    Send queued message
+                                </RunWieldButton>
+                            )}
                             <RunWieldButton onClick={() => saved?.removeQueued(binding, item.requestId)}>
                                 Remove queued message
                             </RunWieldButton>
@@ -536,7 +727,7 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
                     controlsDisabled={!available || !active}
                     canSend={
                         canSubmit &&
-                        !pendingSends.current.has(requestIdentity.current) &&
+                        !pendingSends.current.has(intent?.requestId || "") &&
                         Boolean(draft.trim() || images.length)
                     }
                     canQueue={canCompose && Boolean(draft.trim() || images.length)}
@@ -545,7 +736,7 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
                     maxLength={65536}
                     onDraftChange={(text) => {
                         setDraft(text);
-                        requestIdentity.current = crypto.randomUUID();
+                        setRequestIdentity(crypto.randomUUID());
                     }}
                     onCommand={(text) => {
                         if (
@@ -567,7 +758,7 @@ export function SessionClientSurface({ client, projects }: SessionClientSurfaceP
                             setDraft(
                                 result.action === "agent" || result.action === "model" ? `/${result.action} ` : "",
                             );
-                            requestIdentity.current = crypto.randomUUID();
+                            setRequestIdentity(crypto.randomUUID());
                         });
                         return true;
                     }}

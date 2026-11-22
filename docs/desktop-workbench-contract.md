@@ -3,8 +3,9 @@
 This inventory maps the local workbench to its runtime owners. It guides the
 [desktop Epic](plans/local-workspace-desktop.md) and its
 [first Session client](plans/local-workspace-desktop/run-a-real-session-in-electron.md).
-It records source-development Project entry, provider configuration reuse, the Session boundary, and later parity
-targets. It defines the implemented Project and Session extension schemas, not future extensions or an installed/released app. Product requirements remain in
+It records source-development Project entry, provider configuration reuse, parallel Sessions, local process recovery,
+and later parity targets. It defines the implemented Project and Session extension schemas, not future extensions or
+an installed/released app. Product requirements remain in
 [Workspace](prd/runwield-workspace-prd.md#desktop-workspace) and
 [ACP](prd/runwield-acp-protocol-prd.md#workspace-client-access).
 
@@ -14,13 +15,15 @@ Shared React components serve desktop and future hosted SaaS. There is no ACP mi
 workbench. The current browser remains operational until child 12 retires that workbench. Standalone review, document,
 and question hosts and the Plan share server remain supported.
 
-Electron main owns the connection and subprocess, not Sessions or canonical stores. The renderer receives semantic
-operations and serializable views through a validated preload bridge. `wld` owns execution, writer admission,
+Electron main owns the single-instance supervisor, connection, and subprocess, not Sessions or canonical stores.
+The renderer receives semantic operations and serializable views through a validated preload bridge. `wld` owns execution, writer admission,
 questions, committed history, and workflow decisions. Neither client caches nor displayed state authorize mutations.
 
 The development app opens Projects without an argument. A native picker or optional `--project` supplies a candidate,
 not authorization. Core registers and admits Projects on one persistent connection. Model work reuses existing Core
-credentials and defaults; one Session view remains open at a time. The runtime uses the launcher's explicit Bun executable and this checkout's `src/cli.ts acp`, not a PATH-selected global command.
+credentials and defaults. Any number of Sessions can run in parallel within one Project or across Projects. The window
+selects one view; selection never stops or retargets another binding. The runtime uses the launcher's explicit Bun
+executable and this checkout's `src/cli.ts acp`, not a PATH-selected global command.
 Connection identity, Project locator, wire Session ID, durable Session ID, message/tool IDs, and question request
 identity are separate values. Discovery uses standard `session/list`; passive history does not activate model work.
 
@@ -99,10 +102,11 @@ guidance directs the user to external `wld login`, then desktop restart. This ad
 
 ## Workspace Session protocol version 1
 
-The same opt-in advertises `WorkspaceSessionCapability`. The following named TypeScript schemas are from
+The same opt-in advertises `WorkspaceSessionCapability`. The following named TypeScript schemas are based on
 [`src/acp/workspace-contract.ts`](../src/acp/workspace-contract.ts). `WorkspaceProjectContext` is defined above; `WorkspaceProjectCapability` is `{version:1}`;
 `WorkspaceJsonRecord` maps string keys to JSON values or `undefined`. No schema grants filesystem access or exposes
-credentials. Extension requests reject unsupported top-level keys.
+credentials. Extension requests reject unsupported top-level keys. Settlement and receipt-resolution shapes below
+expand the aliases from the shared Core submission contract; they do not create a second authority.
 
 ```ts
 export type WorkspaceJson = string | number | boolean | null | WorkspaceJson[] | WorkspaceJsonRecord;
@@ -124,6 +128,8 @@ export const WORKSPACE_SESSION_OPERATIONS = [
     "configure",
     "answer",
     "unarchive",
+    "drain",
+    "resolveSubmission",
 ] as const;
 export type WorkspaceSessionOperation = (typeof WORKSPACE_SESSION_OPERATIONS)[number];
 export const WORKSPACE_HISTORY_PAGE_LIMIT = 200;
@@ -284,21 +290,53 @@ export interface WorkspaceArchiveResult {
     archivedAt: string | null;
 }
 
+export interface WorkspaceSettlementResult {
+    status: "settled" | "unsettled";
+    sessions: WorkspaceSessionSettlement[];
+}
+export interface WorkspaceSessionSettlement {
+    sessionId: string;
+    state: string;
+    generation: number | null;
+}
+export type WorkspaceSubmissionKind = "prompt" | "bootstrap" | "steering";
+export interface WorkspaceResolveSubmissionRequest {
+    context: WorkspaceProjectContext;
+    sessionId?: string;
+    requestId: string;
+    kind: WorkspaceSubmissionKind;
+    expectedGeneration: number;
+}
+export interface SubmissionRecordedResult {
+    ok: boolean;
+    queued?: boolean;
+}
+export interface WorkspaceSubmissionResolution {
+    result: SubmissionRecordedResult | null;
+    status: "no_receipt" | "accepted" | "unknown";
+    sessionId: string | null;
+    operationId: string | null;
+    outcome: string | null;
+    generation: number | null;
+}
+
 export interface WorkspaceSessionListMetadata extends WorkspaceProjectContext {
     archiveState?: "active" | "archived" | "all";
     limit?: number;
 }
 ```
 
-| Extension suffix | Request                     | Result                     |
-| ---------------- | --------------------------- | -------------------------- |
-| `history`        | `WorkspaceHistoryRequest`   | `WorkspaceHistoryResult`   |
-| `snapshot`       | `WorkspaceSnapshotRequest`  | `WorkspaceSnapshotResult`  |
-| `options`        | `WorkspaceOptionsRequest`   | `WorkspaceOptionsResult`   |
-| `command`        | `WorkspaceCommandRequest`   | `SessionCommandResult`     |
-| `configure`      | `WorkspaceConfigureRequest` | `WorkspaceConfigureResult` |
-| `answer`         | `WorkspaceAnswerRequest`    | `WorkspaceAnswerResult`    |
-| `unarchive`      | `WorkspaceUnarchiveRequest` | `WorkspaceArchiveResult`   |
+| Extension suffix    | Request                             | Result                          |
+| ------------------- | ----------------------------------- | ------------------------------- |
+| `history`           | `WorkspaceHistoryRequest`           | `WorkspaceHistoryResult`        |
+| `snapshot`          | `WorkspaceSnapshotRequest`          | `WorkspaceSnapshotResult`       |
+| `options`           | `WorkspaceOptionsRequest`           | `WorkspaceOptionsResult`        |
+| `command`           | `WorkspaceCommandRequest`           | `SessionCommandResult`          |
+| `configure`         | `WorkspaceConfigureRequest`         | `WorkspaceConfigureResult`      |
+| `answer`            | `WorkspaceAnswerRequest`            | `WorkspaceAnswerResult`         |
+| `unarchive`         | `WorkspaceUnarchiveRequest`         | `WorkspaceArchiveResult`        |
+| `drain`             | `{}`                                | `WorkspaceSettlementResult`     |
+| `resolveSubmission` | `WorkspaceResolveSubmissionRequest` | `WorkspaceSubmissionResolution` |
 
 `command` returns Core's named shapes from
 [`session-input-contract.ts`](../src/shared/session/session-input-contract.ts):
@@ -349,10 +387,15 @@ Snapshots carry current operation state, events, and live interaction identity i
 most 500 operation events and trims oldest events against a 2 MiB serialized-operation budget. If the first retained
 event has an oversized coalesced `delta`, it keeps its last 32,768 characters before further trimming. This preserves
 new output while canonical history supplies the full text after settlement. With a supplied prior cursor, generation
-changes or truncation report `gap:true`. The semantic client polls while idle and active, reconciles stable
-identities, and refreshes canonical history on generation change or gap instead of replaying work or appending duplicate
-messages. Another process's work uses the existing Core live connection. A v1 prompt response ends its foreground wait,
-not retained Background Tasks or the observation. Process restart/reconnect and supervisor lifetime remain child 4.
+changes, payload truncation, or event eviction since that cursor report `gap:true`. Core supplies monotonic
+`eventSequence` and `eventEvictedThrough` values; a stable retained event count does not prove continuity. The semantic
+client polls while idle and active, reconciles stable identities, and refreshes canonical history on generation change or gap instead of replaying work or appending duplicate
+messages. Results from an old connection, binding, or read epoch cannot overwrite newer evidence. Reconciliation keeps
+current questions, staged configuration, Session information, and Core queued messages separate from client drafts.
+`operation.eventsAfterGeneration` marks the committed-generation boundary for its live event buffer. Once loaded
+history advances beyond that boundary, history replaces the buffer instead of appending the same text again.
+Another process's work uses the existing Core live connection. A v1 prompt response ends its foreground wait,
+not retained Background Tasks or the observation. Local restart and supervisor lifetime follow the contract below.
 
 Standard new/load/prompt/cancel/close/delete/config methods remain the mapping for their existing semantics;
 `_session/steering` handles eligible active work. Standard mutation metadata separates durable `requestId` and
@@ -377,9 +420,11 @@ The shared semantic interface preserves `SessionClientQuestion.defaultValue?:str
 semantic client's selected execution context or bound Session. Sidebar reads for Project B cannot redirect Project A's
 draft, images, queue, or pending answer.
 
-Explicit Queue stores editable/removable **unsent** intent in shared client state. It is not accepted Core work or a
-durable app-exit queue. When available, dispatch retains its request ID and submits once; rejection retains the draft
-and images. Send during eligible work steers; a pending question does not become implicit steering. Ordinary ACP keeps
+Explicit Queue stores editable/removable **unsent** intent. Desktop persists it privately with drafts and images;
+this is not accepted Core work. While the view remains attached, eligible queued input can dispatch once when work
+settles. Window detachment or recovery holds remaining queued input as unsent until deliberate Send. Dispatch retains
+its request ID; rejection retains the draft and images. Send during eligible work steers; a pending question does not
+become implicit steering. Ordinary ACP keeps
 its existing cross-writer queued-prompt behavior; there is no new queue-management RPC.
 
 Desktop text is limited to 65,536 characters. Image selection, paste, and drop send bytes only: PNG/JPEG/GIF/WebP,
@@ -393,6 +438,69 @@ configuration staging, operation listeners, retained Sessions, background work, 
 `session-continuation-service.ts`. Both negotiated ACP and the HTTP workbench call these owners through the public
 `session-runtime.ts` interface. The HTTP adapter retains URLs, authorization, CSRF, browser notifications, and
 review-specific presentation/launch behavior. The old HTTP workbench remains operational and does not migrate to ACP.
+
+## Window lifetime, Quit, and recovery
+
+One main-process supervisor admits one desktop instance per user. A second launch focuses or recreates its window;
+it does not start a second runtime. Closing the last window detaches presentation only, on all target operating
+systems. The supervisor, runtime, Session bindings, operations, and questions remain. Each binding keeps its own
+Project, observation cursor, question, configuration, and queue. Sidebar indicators show running work and questions.
+Opening another Project or Session never requires Close. Explicit Session Close is separate from closing the window.
+
+A replacement view must pass sender validation and refresh every binding's snapshot and history before live updates.
+A renderer crash creates a replacement window without stopping runtime work. Main owns private navigation preferences:
+window bounds, sidebar collapse, expanded Projects, and selected Project/Session. These are projections, not access
+grants. Missing or disabled destinations fall back to Projects. Native menus provide New Session, Close window, Quit,
+and standard edit/window commands with platform shortcuts.
+
+### Acknowledged settlement
+
+Negotiated `session/close` waits for Core to settle that binding's owned work. Its response carries
+`WorkspaceSettlementResult` under `_meta["dev.runwield/workspace"]`; only `settled` removes the binding.
+`_dev.runwield/workspace/sessions/drain` takes exactly `{}` and settles all work owned by this connection's Core
+continuation owner, including retained Background Tasks. Neither path forwards cancellation to another TUI or browser
+owner that desktop only observes. An explicit Stop can still target cross-owner work under existing Core rules.
+
+Drain blocks new dispatch and shares one in-flight request. Core waits for operations, pending admission, and retained
+resources, then checks canonical generation and activation evidence. `settled` means this owner's work is settled,
+not that all Sessions in other processes are idle. Unknown or missing evidence returns `unsettled`. A cancel
+notification, idle display, empty snapshot, or closed pipe is not settlement proof.
+
+Native Quit checks Core evidence, including background work. With running or uncertain work it offers **Stay open**
+(default) and **Stop and quit**. Stay open changes nothing. Stop and quit blocks new input, flushes drafts and
+preferences, awaits drain, then disposes the client and runtime. A failed or unsettled drain keeps the app open with
+an error and permits retry. Concurrent Quit requests cannot start overlapping disposal. The supervisor exposes this
+same stop boundary for a later updater; update installation is not implemented here.
+
+### Private drafts and receipt recovery
+
+Main stores unsent text, image bytes, queued follow-ups, and submission identities in Electron's per-user data
+directory, not the Project, transcript, or logs. Validated preload operations are the renderer's only access. Writes
+are atomic and owner-only. Entries use Project registration plus durable Session ID, or a composer key before Core
+accepts the first message. They retain request identity, submission kind, and expected generation when dispatch starts.
+Existing text/image limits still apply. Accepted input, explicit discard/removal, and Project removal retire only the
+corresponding intent. A corrupt file is preserved privately with a visible recovery notice.
+
+Persisted drafts and queues survive window close, renderer replacement, deliberate Quit, and main/runtime restart.
+Edits not yet written when a process is forcibly killed can be lost. Restored input is unsent; recovery never dispatches
+it automatically. Core queued messages remain separate accepted evidence, not restored client drafts.
+
+Runtime loss interrupts all bindings and offers **Restart runtime**. Restart or relaunch after main loss re-admits
+Projects, resolves saved submissions, and loads current Sessions from Core evidence. The read-only
+`_dev.runwield/workspace/sessions/resolveSubmission` accepts admitted context, original request ID, kind, expected
+generation, and a durable Session ID except for `bootstrap`. It accepts no prompt or image payload and cannot create
+or continue work. Results mean:
+
+- `accepted`: Core has a terminal receipt; inspect `result` and `outcome`, not the label alone, for success.
+- `no_receipt`: Core found no acceptance receipt. Only a deliberate Send can submit the saved input with its original
+  identity, kind, and generation under current admission.
+- `unknown`: acceptance or outcome is unresolved. Keep uncertainty visible; do not resend that input. The user can
+  inspect saved history and use new input for deliberate continuation.
+
+An accepted receipt without a proven result also stays uncertain. Recovery does not replay prompts, answers, workflow
+or review decisions, or publication. Core repairs its own saved Session state; an idle repaired Session is not proof
+that an interrupted action succeeded. Application exit is not an always-on service. Forced OS termination can prevent
+graceful settlement and must not be reported as successful cancellation.
 
 ## Capability inventory
 
@@ -411,7 +519,7 @@ mapping owned by that child, not a callable endpoint.
 | Attachments, images and resources                                        | Core prompt validation; `routes/owner-session-api.js`, `islands/SessionSurface.jsx`                                              | Standard image/resource prompt blocks where supported; bounded host transfers                      | Select/paste/drop only supported content. Refuse size/type/access violations. No renderer filesystem access. No attachment control in child 1.                                                                                              | 3                                         |
 | Queued input, steering and background output                             | Core continuation/live operations; ACP and HTTP adapters                                                                         | `_session/steering`, version 1 snapshots; client-only unsent queue                                 | Preserve queued intent and delayed results after a prompt ends. Negotiate support; an unknown update is not completed work.                                                                                                                 | 3                                         |
 | Stop, close, archive/unarchive                                           | Core Session lifecycle; `routes/owner-session-api.js`, `src/acp/server.js`                                                       | Standard cancel notification and close request; `session/delete` archive and version 1 `unarchive` | Stop a held stream/question, await settlement, then send again. Close retains history. Delete is reversible archive, never close or transcript deletion. Dismiss forms and refuse late answers.                                             | 1 Stop/close; 3 archive                   |
-| Receipts, writer admission, force recovery and reconnect                 | Core Session/owner-coordination and continuation owners                                                                          | Implemented receipts and snapshots; process recovery remains child 4                               | Preserve locks, generations and durable evidence. Refuse stale/conflicting writers. Connection loss interrupts work; never resubmit uncertain input automatically.                                                                          | 3 services; 4 recovery                    |
+| Receipts, writer admission, force recovery and reconnect                 | Core Session/owner-coordination and continuation owners                                                                          | Implemented receipts, read-only resolution, snapshots, close settlement and drain                  | Preserve locks, generations and durable evidence. Refuse stale/conflicting writers. Connection loss interrupts work; never resubmit uncertain input automatically.                                                                          | 3 services; 4 recovery                    |
 | Project/Session sidebar shell                                            | Core Project admission and Session history; `react/ProjectWorkbench.tsx`, `react/ProjectSidebar.tsx`                             | Project group, standard list, version 1 history                                                    | Five recent Sessions per Project, five-row Show more, independent retry, New Session and settings. Read contexts do not retarget bound work. Preserve expansion/scroll, collapse/resize and narrow overlay.                                 | 3                                         |
 | `/`, dashboard APIs, Plan navigation and dashboard stream                | Plan/Session/registry owners aggregated by `server/owner-dashboard.ts`; `routes/owner-api.js`                                    | Proposed dashboard read/observe extension                                                          | Preserve incremental attention sections, Project progress and partial failures. Projection is not authority. An unavailable section is not an empty successful result.                                                                      | 7                                         |
 | Attention notifications and navigation                                   | Runtime attention evidence; `browser/workspace-notifications.ts`, `browser/session-tab-notifications.ts`                         | Proposed attention observation plus native host adapter                                            | Preserve notification policy and deliberate navigation. Permission denial does not block work. No fabricated completion or automatic external navigation.                                                                                   | 7; 4 lifetime                             |
@@ -462,8 +570,8 @@ bun run desktop:dev
 
 Open Project selects an existing directory; review its path and optional name, then Link Project. Cancel changes
 nothing. The optional `--project /absolute/project` follows the same registration/admission checks. Settings supports
-relink, enable/disable, full Session rescan, and removal without deleting files or saved Sessions. An open Session
-keeps its binding; close it explicitly before selecting another Project for Session work.
+relink, enable/disable, full Session rescan, and removal without deleting files or saved Sessions. Open Sessions keep
+their bindings while another Project or Session is selected; their work continues independently.
 
 For model work, configure Core credentials and a default model externally with `wld login`, then restart desktop.
 Existing global, Project, and linked-worktree settings are read in place. Missing setup leaves Project management
@@ -488,7 +596,8 @@ bun run desktop:test
 bun scripts/run-tests.js src/acp/client/workspace-session-client.test.ts src/acp/client/workspace-session-client.process.test.ts src/acp/sdk-client-settlement.test.ts src/ui/workspace/session-client-surface.test.tsx src/ui/workspace/session-question-form.test.tsx scripts/check-desktop.test.ts
 ```
 
-`desktop:test` builds first, then runs all three native integration files. Direct focused native runs require
+`desktop:test` builds first, then runs six native integration files and the private draft-store suite (seven files).
+Direct focused native runs require
 `desktop:setup` and `desktop:build` first. Missing binaries, artifacts, or a Linux display fail; they are not skips.
 Native tests use private HOME, a disposable Git Project, isolated database paths, and a controlled HTTP provider.
 They do not need the owner's provider credentials.
@@ -540,6 +649,140 @@ Project entry adds these focused checks; child 1 and shared question-form covera
 The dedicated desktop type checks and runtime graph gate also passed. Existing in-process SDK coverage establishes
 wire behavior but cannot alone establish the subprocess or Electron boundary. Retained browser Artifact Review,
 review routes, no-form questions, and background-delivery regression checks pass after building Workspace assets.
+
+### Window and process source evidence
+
+The current `bun run desktop:test` run passed all seven files on the current macOS development environment
+(99.7 seconds). It includes the existing entry, Session, and security suites plus:
+
+- [Lifetime tests](../src/ui/desktop/desktop-lifecycle.integration.test.ts): close/reopen and second-instance admission,
+  parallel bindings, restored drafts/images/queues, private preferences, and no dispatch from detached views.
+- [Quit tests](../src/ui/desktop/desktop-quit.integration.test.ts): Stay open, shared Stop and quit, and no exit while
+  the real runtime is suspended before settlement.
+- [Recovery tests](../src/ui/desktop/desktop-recovery.integration.test.ts): runtime Restart, renderer replacement,
+  main relaunch, receipt reconciliation, and no automatic resubmission of uncertain input.
+- [Draft-store tests](../src/ui/desktop/draft-store.test.ts): atomic private intent, acceptance/discard identity,
+  Project removal, and preserved corruption notices.
+
+These automated assertions protect the source-development contract with a controlled provider. They do not establish
+installation, Windows/Linux qualification, updater installation, or an unattended service. The separate
+[headed window/process record](#window-and-process-headed-checks-macos-arm64-source-build) below records the checks,
+the repaired history-read error, and the successful native OS retry after permission was granted. Earlier headed
+evidence covers its named slices only. Protocol schemas and behavior above are derived from current source; this run does not claim that every
+focused protocol suite or full CI was executed.
+
+### Window and process headed checks: macOS arm64 source build
+
+These checks used Bun 1.4.3, Electron 45.2.3, the built `runwield://app/` origin, two disposable Git Projects,
+and the controlled HTTP provider from `makeSessionProcessFixture`. They are partial source-build acceptance evidence,
+not an installed-platform pass. `bun run install:locked` and `bun run desktop:setup` passed before launch.
+
+The normal command ran successfully with isolated `HOME`, `USERPROFILE`, `CFFIXED_USER_HOME`, temporary/database
+paths, and Project roots:
+
+```sh
+PATH=/tmp/runwield-bun-1.4.3/bun-darwin-aarch64:$PATH
+bun run desktop:dev -- --project /absolute/disposable-project --cdp-port 9337
+```
+
+The command built and opened the native app, not an HTTP/HMR substitute. Main PID was 23134; its source ACP child was 23302. `lsof` confirmed that Electron's application-support files were inside the private HOME. Screenshot:
+`/tmp/keep-safe-normal-launch.png`. Further checks used a temporary `/tmp/keep-safe-headed.ts` Playwright `_electron`
+harness with a visible native window, an explicit private profile, the same source CLI, and the same controlled
+provider. No product configuration or dialog replacement was added. Inspection used the worktree session
+`keep-safe-ad76732e32f7`, socket directory `/tmp/ks-ab`, and `agent-browser --cdp 9337`.
+
+The content viewport was 1440×900 CSS pixels at device scale 2. The native minimum was also checked at 700×550
+content pixels. Both had no horizontal document overflow. The checks established:
+
+- Three Sessions stayed bound at once: A1 waited for a question, A2 streamed in Project A, and B1 streamed in Project B.
+  Their durable IDs were `47e7fc23-0758-4d13-84c2-80910ea6eaa4`,
+  `1d3d97f8-a994-46e1-ab41-0eec32beab60`, and `88f0a16b-2d78-47b8-b7c0-5363146429a7`.
+  Sidebar labels distinguished **Answer needed** and **Running**. Switching retained separate image/text drafts in A1
+  and B1 and a queued follow-up in A1. Screenshot: `/tmp/keep-safe-three-parallel-1440.png`.
+- Closing the real `BrowserWindow` left main 32833 and ACP child 32858 alive. Output was emitted while no window
+  existed. A second native launch recreated the window, changing renderer PID 32859 to 53409 without another
+  provider request. A1's unanswered question, text/image draft, and unsent queue returned. A later B1 history check
+  found the detached output once. Screenshots: `/tmp/keep-safe-question-reopened.png` and
+  `/tmp/keep-safe-project-b-uncertain-draft.png`.
+- Only a deliberate Submit answer advanced A1. A2 and B1 remained running. The queued follow-up remained unsent and
+  the ordinary draft/image stayed intact. Screenshot: `/tmp/keep-safe-answer-with-other-work.png`.
+- Renderer SIGKILL replaced renderer 53409 with 57381 while main 32833 and ACP child 32858 survived. The selected A1
+  draft, image, and queue returned. Runtime SIGKILL then labelled all bindings **Interrupted** and exposed
+  **Restart runtime**. Deliberate restart created ACP child 59599, restored A1 as idle from evidence, and retained A2
+  and B1 as interrupted. No input was replayed. Screenshots: `/tmp/keep-safe-renderer-restored.png`,
+  `/tmp/keep-safe-runtime-interrupted.png`, and `/tmp/keep-safe-runtime-restarted.png`.
+- Main SIGKILL and relaunch changed main 32833 to 63891 and ACP child to 63914. Selected A1, both expanded Projects,
+  collapsed navigation, 1440×900 content bounds, and exact A1 draft/image/queue returned. Later B1 selection showed
+  **The previous input outcome is uncertain. It was not sent again.** Its separate draft/image also returned.
+  Screenshots: `/tmp/keep-safe-main-restored-preferences.png` and `/tmp/keep-safe-project-b-uncertain-draft.png`.
+- A deliberate idle Quit exited main 75466; relaunch as main 76251 restored selected B1 and its draft/image without
+  provider traffic. Screenshot: `/tmp/keep-safe-idle-quit-restored.png`. Minimum-size screenshot:
+  `/tmp/keep-safe-native-minimum.png`.
+
+The provider count was 3 for the three initial operations, remained 3 through window replacement, became 4 only after
+Submit answer, and stayed 4 through renderer/runtime/main recovery. A separate held operation for the real native Quit
+attempt made request 5. There were no provider failures, renderer console/page errors, or failed renderer asset
+requests in the captured records. Build output included the existing `quikdown` CommonJS-in-ESM warning; normal native
+launch also printed a macOS sandbox-extension warning but loaded the sandboxed app. Temporary records are
+`/tmp/keep-safe-summary.jsonl`, `/tmp/keep-safe-final-acceptance-status.json`, and `/tmp/keep-safe-cleanup.json`.
+
+**History acceptance defect repaired:** The earlier three-parallel screenshot contains a
+`desktop:saved:history` error during a new Session's first held response. The surface now waits for a committed
+generation, not just a durable ID, before reading history. The native parallel regression checks all emitted views
+and rendered alerts, once-only content, and canonical history after settlement. DOM tests cover the first held turn
+and delayed-history switch isolation; a process test proves bootstrap writer protection and fresh provider-free
+history after settlement. A separate macOS arm64 headed follow-up at 1440×900 used two parallel Projects, a private
+profile, CDP 9346, and named browser session `ksh-d51c682f`. It found no history alerts or renderer errors during the
+held turns or settlement; both canonical histories contained each prompt and response once, with two provider
+requests. Screenshots: `/tmp/keep-safe-history-held-parallel-fixed.png` and `/tmp/keep-safe-history-settled-fixed.png`.
+The follow-up fixture and browser session were removed. This was a focused history rerun, not a repeat of the full
+lifecycle acceptance or the native OS checks below.
+
+**Native OS retry after permission grant:** The earlier run was blocked by macOS accessibility and screen-capture
+permissions. The retry returned `AXIsProcessTrusted=true` and `CGPreflightScreenCaptureAccess=true`. It used a new
+private HOME/profile, two disposable Projects, Bun 1.4.3, the same built source app at `runwield://app/`, a 1440×900
+content viewport, CDP 9347, and named browser session `ksn-d51c682f` in `/tmp/ks-native-ab`. The temporary harness was
+`/tmp/keep-safe-native-retry.ts`; no native dialog or product operation was replaced.
+
+- OS Command-N created separate bindings: two idle composers in Project A, then a held Session in A and a held Session
+  in B. Targeted CGEvent Command-N changed the binding list. Foreground System Events Command-N also created B's
+  binding. The held durable IDs were `c00e7651-35f2-4ec4-bf50-991113893ae8` and
+  `dfc9607b-42bb-4cf7-820d-bf13d4af4d1d`; their provider requests counted once each.
+- Foreground System Events Command-W reduced the native window count to zero while main 62391 and ACP processes
+  62404/62406 stayed alive. A targeted background CGEvent Command-W did not close the window; dispatched events alone
+  were not counted as success. Output was emitted with no window. With only one Electron app running, clicking its
+  actual Dock item recreated the window: renderer 62405 became 62975, main/runtime and A's operation identity stayed
+  unchanged, and the provider count stayed 1. Text, image, queue identity, and detached output returned.
+- Foreground System Events Command-Q opened the real native sheet. Its AX tree exposed **Stay open** and **Stop and
+  quit**. Window-only `screencapture -x -o -l` captured the sheet without unrelated desktop content:
+  `/tmp/keep-safe-native-quit-sheet.png` and `/tmp/keep-safe-native-quit-window.png`. AX clicked **Stay open** by name;
+  both streams accepted further output, A's operation ID stayed `2e47a323-5f46-4627-a8cf-74efcc976b55`, the queue stayed
+  unsent, and provider count stayed 2. Screenshot: `/tmp/keep-safe-native-after-stay.png`.
+- Command-Q opened the native sheet again. Both real ACP processes were suspended with SIGSTOP before AX clicked
+  **Stop and quit**. After 11 seconds, main remained alive, both ACP processes had state `T`, and both canonical
+  activations were still active with no committed generation. A new create request was refused with **RunWield is
+  stopping or recovering. Try again after it settles.** Screenshot: `/tmp/keep-safe-native-stop-waits.png`.
+  SIGCONT allowed settlement; main and both ACP processes then exited. Canonical activations were idle at generation
+  0; receipts for operations `2e47a323-5f46-4627-a8cf-74efcc976b55` and
+  `f5856fe1-7ddc-4f99-b09a-3a221196aefd` were completed at generation 0. Each transcript contained one user input,
+  one held response, and one post-Stay-open output, with assistant stop reason `aborted`. A completed submission
+  receipt here does not mean a delivery workflow was successfully published.
+- Relaunch as main 64862 restored A's selected Session, exact draft text, byte-identical image, and unsent queue
+  request `dd1e2806-7d13-4737-ae8e-aa805447b3b6`, with provider count still 2. Screenshot:
+  `/tmp/keep-safe-native-stop-relaunch-restored.png`. A further Command-W and actual second executable launch recreated
+  the window under main 64862 and the same ACP processes 64865/64867, with renderer 65550 and no new provider request.
+  Final idle Command-Q exited normally.
+
+The retry had no provider failures, renderer/page errors, or failed renderer requests. Records include
+`/tmp/keep-safe-native-os-summary.json`, `/tmp/keep-safe-native-canonical-receipts.json`,
+`/tmp/keep-safe-native-suspended-processes.txt`, and `/tmp/keep-safe-native-os-final-status.json`. All known retry
+processes exited, CDP 9347 was released, private HOME and Project roots were removed, and its browser session was
+closed. The prior native-permission blocker is resolved for this macOS source run; this is not installed-app or
+Windows/Linux qualification.
+
+All known fixture processes exited or were stopped, port 9337 was released, the private HOME and both Project roots
+were removed, and the named browser session was closed. Screenshot and record paths are temporary local evidence.
+Full CI and Windows/Linux qualification were not run by this headed check.
 
 ### Saved-Session source evidence
 
@@ -649,6 +892,7 @@ An isolated HOME showed the actual missing-default error. After relaunch with no
 The UI returned to Ready; renderer errors and console were empty, renderer storage was `{}`, and the 1440×868 content
 viewport had no horizontal overflow. Screenshot: `/tmp/de-9b3-existing-provider.png`.
 
+This earlier Project-entry check predates parallel bindings; its switch refusal is not current behavior.
 A final headed pass checked home-warning Tab containment, invalid-root retry with retained inputs, missing-root
 settings, relink, disable/enable, and full rescan at 900×900. Removal retained a Project marker file and unchanged
 SHA-256 hashes for all saved Session files; re-add created a different registration ID. Attempting another Project

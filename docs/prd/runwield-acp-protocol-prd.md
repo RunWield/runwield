@@ -316,7 +316,8 @@ requirement.
 through a persistent SDK 1.4.0 / ACP v1 connection. Discovery, passive paged history, images, configuration, unsent
 queues, steering, form answers, Stop, and reversible archive use an explicit Core-admitted Project binding. The version 1 Workspace Project group
 implements list, open, register, relink, enable/disable, remove, and rescan on that same connection. Version 1 Session extensions supply history, snapshots, options, semantic commands, configuration, answers, and
-Unarchive. Full-workbench parity remains a target. See
+Unarchive, acknowledged owned-work drain, and read-only submission receipt resolution. Multiple independent Session
+bindings share one connection; selecting a view never changes another binding. Full-workbench parity remains a target. See
 [Desktop Workspace](runwield-workspace-prd.md#desktop-workspace), accepted
 [ADR-020](../adr/020-electron-workspace-acp-client.md), and the
 [protocol baseline and capability inventory](../desktop-workbench-contract.md).
@@ -351,12 +352,21 @@ before a saved ID exists. Wire IDs, JSON-RPC IDs, and durable receipt IDs remain
 replay identical recorded outcomes without a second effect and reject conflicting content; retries must pass current
 admission. Applicable generation checks reject stale writes. Configure exposes committed versus staged choices;
 Agent/model changes during local work stage until settlement, while supported thinking changes can apply immediately.
-Independent per-Project read contexts never change the bound execution context.
+Independent per-Project read contexts never change the bound execution context. Each parallel binding retains its
+own Project, question, configuration, queue, and observation cursor.
+
+Negotiated standard `session/close` awaits Core settlement and returns evidence in Workspace response metadata.
+The version 1 `drain` extension takes an empty request and waits for all work this continuation owner owns, including
+retained Background Tasks. Both paths preserve another TUI/browser owner's observed work. Drain blocks dispatch and
+shares one in-flight operation. Only canonical generation and activation evidence can report `settled`; missing or
+unknown evidence reports `unsettled`. A cancel notification or dead pipe is not an acknowledgement of settlement.
+Ordinary external ACP clients do not need these extensions.
 
 Standard list defaults to 30 with maximum 100. History is bounded to 200 events; observation retains at most 500 events
 and trims against a 2 MiB serialized-operation budget, preserving a bounded tail of oversized live deltas until
 canonical history supplies the full settled text. Opaque cursors bind their query/Session; history cursors also
-bind generation. Gaps or generation changes refresh canonical history, not effects. The client observes idle and
+bind generation. Gaps include event eviction between polls, detected by monotonic event sequence rather than retained
+count alone. Gaps or generation changes refresh canonical history, not effects. The client observes idle and
 cross-owner work, including background results after foreground return. Exact named schemas and input limits are in
 the [Session protocol contract](../desktop-workbench-contract.md#workspace-session-protocol-version-1).
 
@@ -368,6 +378,21 @@ visibly. Shared question views retain text defaults and choice descriptions with
 subscription or process interruption. Stable runtime/Project/Session identity and authoritative revisions prevent
 cross-host aliasing, stale decisions, and duplicate effects. Transport reconnect never independently grants permission
 to replay a prompt or workflow action. File and review resources stay scoped to the selected runtime.
+
+Current local recovery loads fresh snapshots/history for every binding before applying observations. Delayed results
+from old connections, bindings, or read epochs cannot move generations backwards. Snapshot reconciliation retains
+questions, staged configuration, Session information, and Core queued messages without confusing them with unsent
+client intent. `eventsAfterGeneration` identifies the commit boundary of an operation's live buffer; history beyond
+that generation replaces those events instead of duplicating their text.
+
+The negotiated `resolveSubmission` read accepts original request identity, kind, expected generation, admitted context,
+and a durable Session ID except for bootstrap. It accepts no input payload and cannot create or execute work. It returns
+`accepted` with recorded evidence, `no_receipt`, or `unknown`. Accepted is not itself a success claim. Recovery never
+resubmits input; a deliberate Send with no receipt retains the original identity and admission checks. Unknown or
+unproven accepted outcomes remain uncertain and wait for deliberate new continuation input. Exact schemas and close
+metadata are in the [local lifetime contract](../desktop-workbench-contract.md#window-lifetime-quit-and-recovery).
+Desktop private draft retention and native Quit behavior belong to
+[Desktop Workspace](runwield-workspace-prd.md#desktop-workspace).
 
 **Requirement: Distinguish authentication domains.** Core model-provider configuration is independent of a future
 Workspace account and of remote-host trust. Local ACP use does not require hosted Workspace identity. Runtime network
@@ -413,8 +438,24 @@ History and negotiated load remain passive even for archived Sessions; model wor
   continuity/configuration and writer exclusion. A separate headed macOS arm64 source check ran the full TUI under a
   PTY: desktop continued while TUI was idle, TUI selected Engineer and continued, and idle desktop observed both once
   without losing its unsent draft. This used a controlled provider, not installed qualification.
-- **Sibling targets:** Reconnect/supervisor lifetime, integrated review/workflow parity, provider setup, hosted identity,
-  remote runtime, browser retirement, and installed-platform qualification are not established by this slice.
+- **Current development slice:** Bind Sessions in two Projects and two in one Project. Concurrent work and questions
+  keep their destination during navigation; ordinary writer admission still excludes a second writer per operation.
+- **Current development slice:** Negotiated Close and drain wait for owned turn/background settlement, report canonical
+  evidence, and leave another continuation owner's work running. Failed or unknown evidence cannot permit disposal.
+- **Current development slice:** After runtime Restart or main relaunch, resolve original receipt identities without a
+  prompt payload. Restore unsent queues without dispatch. Accepted outcomes do not repeat effects; unknown outcomes
+  remain uncertain. Ordinary external ACP behavior stays available without Workspace negotiation.
+- **Current development slice:** Evict events while a client falls behind without changing retained count; the sequence
+  reports a gap. Delay history/snapshot replies across a newer generation or binding replacement; newer state wins.
+  Once history crosses `eventsAfterGeneration`, even a delayed prompt response cannot duplicate live transcript text.
+- **Evidence limit:** Native tests and headed macOS arm64 source checks cover parallel Sessions, window/process
+  recovery, restored intent without replay, native Quit choices and settlement, Dock activation, and OS shortcuts.
+  See the [source evidence](../desktop-workbench-contract.md#window-and-process-source-evidence) and
+  [headed record](../desktop-workbench-contract.md#window-and-process-headed-checks-macos-arm64-source-build).
+  These checks do not qualify an installed app or Windows/Linux behavior.
+- **Sibling targets:** Integrated review/workflow parity, provider setup, hosted identity, remote runtime, browser
+  retirement, updater installation, unattended service, and installed-platform qualification are not established by
+  this slice.
 - An older runtime lacks a required workbench capability; the client explains incompatibility and sends no dependent
   mutation. An ordinary external ACP client continues working without the extension.
 - A duplicate action, stale revision, or wrong-Project Session reference receives the same authoritative rejection or

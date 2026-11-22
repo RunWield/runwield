@@ -1,5 +1,9 @@
 import { validateSessionInput, type SessionImageTransfer } from "../../shared/session/session-input-contract.ts";
 import type {
+    WorkspaceSettlementResult,
+    WorkspaceSubmissionMetadata,
+    WorkspaceResolveSubmissionRequest,
+    WorkspaceSubmissionResolution,
     WorkspaceHistoryRequest,
     WorkspaceHistoryResult,
     WorkspaceSnapshotRequest,
@@ -54,6 +58,16 @@ export interface AcpWorkspaceSessionOptions {
     output: WritableStream<Uint8Array>;
 }
 
+interface WorkspaceCloseResponse {
+    _meta?: { [WORKSPACE_EXTENSION]: WorkspaceSettlementResult };
+}
+
+export interface WorkspaceSubmissionEvent {
+    phase: "prepared" | "withdrawn" | "accepted";
+    submission: WorkspaceSubmissionMetadata;
+}
+export type WorkspaceSubmissionObserver = (event: WorkspaceSubmissionEvent) => Promise<void>;
+
 interface RunWieldMetadata {
     otherOptionValue?: string;
     persistedSessionId?: string;
@@ -73,6 +87,10 @@ const REQUIRED_METHODS = ["session/new", "session/load", "session/prompt", "sess
 
 function errorText(error: Error | string): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+function jsonRecord(value: import("../workspace-contract.ts").WorkspaceJson | undefined): WorkspaceJsonRecord | null {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
 /** Only the server's current primitive form subset is supported, not general JSON Schema. */
@@ -148,36 +166,96 @@ function questionView(params: CreateElicitationRequest, requestId: string): Sess
     };
 }
 
+class SessionState {
+    historyRead: Promise<void> | null = null;
+    epoch = 0;
+    readVersion = 0;
+    pending: PendingQuestion | null = null;
+    turn: Promise<void> | null = null;
+    polling: ReturnType<typeof setTimeout> | null = null;
+    pollingSlow = false;
+    observationCursor = "";
+    launchConfiguration: import("../workspace-contract.ts").WorkspaceConfigurationSelection = {};
+    committedItems: SessionClientItem[] = [];
+    committedGeneration: number | null = null;
+    committedEventIds = new Set<string>();
+    commandItems: SessionClientView["items"] = [];
+    readonly seenEvents = new Set<string>();
+    readonly rejectedQueued = new Set<string>();
+    dispatchingQueued = false;
+    readonly queuedDrafts: SessionQueuedDraft[] = [];
+    constructor(
+        readonly view: SessionClientView,
+        readonly context: WorkspaceProjectContext | null,
+    ) {}
+}
+
 /** A persistent ACP v1 connection. The host supplies stdio, never Core runtime objects. */
 export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, WorkspaceProjectClient {
+    private draining = false;
+    private drainingPromise: Promise<WorkspaceSettlementResult> | null = null;
+    private submissionDispatchPaused = false;
+
+    /** Block input while the host flushes local intent before requesting drain. */
+    setSubmissionDispatchPaused(paused: boolean): void {
+        this.submissionDispatchPaused = paused;
+    }
+
+    private readonly submissionObservers = new Set<WorkspaceSubmissionObserver>();
+    /** Host persistence boundary. Prepared observers finish before input crosses the wire. */
+    onSubmission(observer: WorkspaceSubmissionObserver): () => void {
+        this.submissionObservers.add(observer);
+        return () => this.submissionObservers.delete(observer);
+    }
+    private async submissionEvent(phase: WorkspaceSubmissionEvent["phase"], submission: WorkspaceSubmissionMetadata) {
+        for (const observer of this.submissionObservers) await observer({ phase, submission });
+    }
+    async resolveSubmission(request: WorkspaceResolveSubmissionRequest): Promise<WorkspaceSubmissionResolution> {
+        await this.ready();
+        if (!this.workspaceAdmission) throw new Error("Workspace admission is required.");
+        return await this.connection.agent.request("_dev.runwield/workspace/sessions/resolveSubmission", request);
+    }
+    drain(): Promise<WorkspaceSettlementResult> {
+        if (this.drainingPromise) return this.drainingPromise;
+        this.draining = true;
+        const drain = (async (): Promise<WorkspaceSettlementResult> => {
+            await this.ready();
+            if (!this.workspaceAdmission) throw new Error("Workspace admission is required for acknowledged drain.");
+            return await this.connection.agent.request("_dev.runwield/workspace/sessions/drain", {});
+        })();
+        this.drainingPromise = drain;
+        void drain
+            .finally(() => {
+                this.drainingPromise = null;
+            })
+            .catch(() => {});
+        return drain;
+    }
     private readonly connection: ClientConnection;
     private readonly initialized: Promise<void>;
     private readonly listeners = new Set<(view: SessionClientView) => void>();
-    private readonly view: SessionClientView;
-    private pending: PendingQuestion | null = null;
-    private turn: Promise<void> | null = null;
+    private readonly emptyView: SessionClientView;
+    private readonly bindings = new Map<string, SessionState>();
+    private selected: SessionState | null = null;
     private sequence = 0;
     private disposed = false;
     private readonly workspaceAdmission: boolean;
     private context: WorkspaceProjectContext | null = null;
     private selecting = false;
-    private polling: ReturnType<typeof setTimeout> | null = null;
-    private observationCursor = "";
-    private launchConfiguration: import("../workspace-contract.ts").WorkspaceConfigurationSelection = {};
-    private committedItems: SessionClientItem[] = [];
-    private committedOperationId = "";
-    private committedEventIds = new Set<string>();
-    private commandItems: SessionClientView["items"] = [];
-    private readonly seenEvents = new Set<string>();
-    private readonly rejectedQueued = new Set<string>();
-    private dispatchingQueued = false;
-    private readonly queuedDrafts: SessionQueuedDraft[] = [];
+    private opening = false;
+    private rendererAttached = true;
+    private attaching = 0;
+    private reattachment: Promise<void> | null = null;
+
+    private get view(): SessionClientView {
+        return this.selected?.view || this.emptyView;
+    }
 
     constructor(options: AcpWorkspaceSessionOptions) {
         if ((!options.workspaceAdmission && !isAbsolute(options.project)) || !options.connectionId)
             throw new Error("An absolute Project and connection identity are required.");
         this.workspaceAdmission = options.workspaceAdmission === true;
-        this.view = {
+        this.emptyView = {
             connectionId: options.connectionId,
             project: options.project,
             connection: "connecting",
@@ -187,24 +265,27 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
             items: [],
             question: null,
             error: "",
+            generation: null,
+            archivedAt: null,
         };
         const app = client({ name: "RunWield Workspace" });
         app.onNotification("session/update", ({ params }) => this.update(params));
         app.onRequest("elicitation/create", ({ params, requestId, signal }) => {
+            const state = "sessionId" in params ? this.bindings.get(String(params.sessionId)) : undefined;
             if (
                 this.disposed ||
                 signal.aborted ||
                 !("sessionId" in params) ||
-                params.sessionId !== this.view.sessionId ||
-                this.pending ||
-                this.view.phase === "canceling"
+                !state ||
+                state.pending ||
+                state.view.phase === "canceling"
             )
                 return { action: "cancel" };
             try {
                 const question = questionView(params, `${typeof requestId}:${requestId}:${++this.sequence}`);
                 return new Promise<CreateElicitationResponse>((resolve) => {
-                    const abort = () => this.dismissQuestion();
-                    this.pending = {
+                    const abort = () => this.dismissQuestion(state);
+                    state.pending = {
                         view: question,
                         resolve: (response) => {
                             signal.removeEventListener("abort", abort);
@@ -212,12 +293,12 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
                         },
                     };
                     signal.addEventListener("abort", abort, { once: true });
-                    this.view.question = question;
-                    this.view.phase = "awaiting_answer";
+                    state.view.question = question;
+                    state.view.phase = "awaiting_answer";
                     this.emit();
                 });
             } catch (error) {
-                this.view.error = error instanceof Error ? error.message : "Unsupported question.";
+                state.view.error = error instanceof Error ? error.message : "Unsupported question.";
                 this.emit();
                 return { action: "cancel" };
             }
@@ -225,10 +306,16 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
         this.connection = app.connect(ndJsonStream(options.output, options.input));
         this.initialized = this.initialize();
         void this.connection.closed.then(() => {
-            this.dismissQuestion();
-            this.view.connection = "disconnected";
-            if (this.view.phase !== "empty") this.view.phase = "interrupted";
-            if (!this.disposed) this.view.error = "The runtime disconnected. Input was not sent again.";
+            this.emptyView.connection = "disconnected";
+            for (const state of this.bindings.values()) {
+                state.epoch++;
+                if (state.polling) clearTimeout(state.polling);
+                state.polling = null;
+                this.dismissQuestion(state);
+                state.view.connection = "disconnected";
+                state.view.phase = "interrupted";
+                if (!this.disposed) state.view.error = "The runtime disconnected. Input was not sent again.";
+            }
             this.emit();
         });
     }
@@ -275,17 +362,19 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
         this.emit();
     }
 
-    private metadata(requestId?: string, expectedGeneration = this.view.generation ?? 0) {
+    private metadata(state: SessionState, requestId?: string, expectedGeneration = state.view.generation ?? 0) {
         return this.workspaceAdmission
             ? {
                   _meta: {
                       [WORKSPACE_EXTENSION]: {
-                          ...this.context!,
+                          ...state.context!,
                           ...(requestId
                               ? {
                                     requestId,
                                     expectedGeneration,
-                                    ...(!this.view.durableSessionId ? { configuration: this.launchConfiguration } : {}),
+                                    ...(!state.view.durableSessionId
+                                        ? { configuration: state.launchConfiguration }
+                                        : {}),
                                 }
                               : {}),
                       },
@@ -337,18 +426,20 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
         selection: import("../workspace-contract.ts").WorkspaceConfigurationSelection,
     ): Promise<void> {
         await this.ready();
-        this.binding(binding);
-        if (!this.context) throw new Error("Open a registered Project first.");
-        if (this.view.durableSessionId) {
+        if (this.draining) throw new Error("Session connection is draining.");
+        const state = this.binding(binding);
+        if (!state.context) throw new Error("Open a registered Project first.");
+        if (state.view.durableSessionId) {
             await this.configure({
-                context: this.context,
-                sessionId: this.view.durableSessionId,
+                context: state.context,
+                sessionId: state.view.durableSessionId,
                 requestId: crypto.randomUUID(),
-                expectedGeneration: this.view.generation ?? 0,
+                expectedGeneration: state.view.generation ?? 0,
                 ...selection,
             });
         } else {
-            const options = await this.sessionOptions(this.context);
+            const options = await this.sessionOptions(state.context);
+            this.binding(binding);
             if (selection.agentName && !options.agents.some((agent) => agent.name === selection.agentName))
                 throw new Error("Unsupported Agent.");
             if (
@@ -358,13 +449,15 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
                 throw new Error("Unsupported model.");
             if (selection.thinkingLevel && !options.thinkingLevels.includes(selection.thinkingLevel))
                 throw new Error("Unsupported thinking level.");
-            this.launchConfiguration = { ...this.launchConfiguration, ...selection };
-            this.view.configuration = {
-                agentName: selection.agentName || this.view.configuration?.agentName || options.defaults.agentName,
-                model: selection.model || this.view.configuration?.model || options.defaults.model,
-                provider: selection.provider || this.view.configuration?.provider || options.defaults.provider,
+            state.launchConfiguration = { ...state.launchConfiguration, ...selection };
+            state.view.configuration = {
+                agentName: selection.agentName || state.view.configuration?.agentName || options.defaults.agentName,
+                model: selection.model || state.view.configuration?.model || options.defaults.model,
+                provider: selection.provider || state.view.configuration?.provider || options.defaults.provider,
                 thinkingLevel:
-                    selection.thinkingLevel || this.view.configuration?.thinkingLevel || options.defaults.thinkingLevel,
+                    selection.thinkingLevel ||
+                    state.view.configuration?.thinkingLevel ||
+                    options.defaults.thinkingLevel,
             };
             this.emit();
         }
@@ -379,89 +472,114 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
         binding: SessionBinding,
         text: string,
     ): Promise<import("../../shared/session/session-input-contract.ts").SessionCommandResult> {
-        this.binding(binding);
+        const state = this.binding(binding);
         await this.ready();
-        if (!this.context || this.view.phase !== "idle")
+        if (this.draining) throw new Error("Session connection is draining.");
+        if (!state.context || state.view.phase !== "idle")
             throw new Error("Wait for the Session to finish before using commands.");
         const result = await this.connection.agent.request<
             import("../../shared/session/session-input-contract.ts").SessionCommandResult
         >("_dev.runwield/workspace/sessions/command", {
-            context: this.context,
+            context: state.context,
             wireSessionId: binding.sessionId,
             text,
         });
         this.binding(binding);
         if (result.action === "new") {
             await this.close(binding);
-            await this.create();
+            await this.open(undefined, state.context);
         } else if (result.action === "configure" && result.selection)
             await this.stageConfiguration(binding, result.selection);
         else if (result.message) {
             const item = { id: `command:${crypto.randomUUID()}`, kind: "system" as const, text: result.message };
-            this.commandItems.push(item);
-            this.view.items.push(item);
-            this.committedItems = structuredClone(this.view.items);
+            state.commandItems.push(item);
+            state.view.items.push(item);
+            state.committedItems = structuredClone(state.view.items);
             this.emit();
         }
         return result;
     }
     async configure(request: WorkspaceConfigureRequest): Promise<void> {
         await this.ready();
+        if (this.draining) throw new Error("Session connection is draining.");
         await this.connection.agent.request("_dev.runwield/workspace/sessions/configure", request);
-        if (this.view.generation != null) await this.refreshHistory();
+        await this.refreshRequest(request);
     }
     async unarchive(request: WorkspaceSessionRequest): Promise<void> {
         await this.ready();
+        if (this.draining) throw new Error("Session connection is draining.");
         await this.connection.agent.request("_dev.runwield/workspace/sessions/unarchive", request);
-        await this.refreshHistory();
+        await this.refreshRequest(request);
     }
     async archive(request: WorkspaceSessionRequest, confirmed = false): Promise<void> {
         await this.ready();
+        if (this.draining) throw new Error("Session connection is draining.");
         await this.connection.agent.request("session/delete", {
             sessionId: request.sessionId,
             _meta: { [WORKSPACE_EXTENSION]: { ...request.context, confirmed } },
         });
-        await this.refreshHistory();
+        await this.refreshRequest(request);
     }
     queue(binding: SessionBinding, draft: SessionQueuedDraft): void {
-        this.binding(binding);
+        const state = this.binding(binding);
         validateSessionInput(draft.text, draft.images);
         if (!draft.requestId) throw new Error("A stable request ID is required.");
-        this.rejectedQueued.delete(draft.requestId);
-        const existing = this.queuedDrafts.findIndex((item) => item.requestId === draft.requestId);
-        if (existing >= 0) this.queuedDrafts[existing] = structuredClone(draft);
-        else this.queuedDrafts.push(structuredClone(draft));
-        this.view.queued = structuredClone(this.queuedDrafts);
+        state.rejectedQueued.delete(draft.requestId);
+        const existing = state.queuedDrafts.findIndex((item) => item.requestId === draft.requestId);
+        const queued = structuredClone(this.rendererAttached ? draft : { ...draft, restored: true });
+        if (existing >= 0) state.queuedDrafts[existing] = queued;
+        else state.queuedDrafts.push(queued);
+        state.view.queued = structuredClone(state.queuedDrafts);
+        this.startObservation(state);
         this.emit();
     }
     removeQueued(binding: SessionBinding, requestId: string): void {
-        this.binding(binding);
-        this.rejectedQueued.delete(requestId);
-        const index = this.queuedDrafts.findIndex((draft) => draft.requestId === requestId);
-        if (index >= 0) this.queuedDrafts.splice(index, 1);
-        this.view.queued = structuredClone(this.queuedDrafts);
+        const state = this.binding(binding);
+        state.rejectedQueued.delete(requestId);
+        const index = state.queuedDrafts.findIndex((draft) => draft.requestId === requestId);
+        if (index >= 0) state.queuedDrafts.splice(index, 1);
+        state.view.queued = structuredClone(state.queuedDrafts);
         this.emit();
     }
-    private async refreshHistory(): Promise<void> {
-        if (!this.context || !this.view.durableSessionId) return;
-        const history = await this.history({ context: this.context, sessionId: this.view.durableSessionId });
-        this.view.generation = history.generation;
-        this.view.archivedAt = history.archivedAt;
-        this.view.configuration = history.configuration;
-        this.view.items = [];
-        this.seenEvents.clear();
-        this.applyEvents(history.events);
-        this.view.items.push(...structuredClone(this.commandItems));
-        this.committedItems = structuredClone(this.view.items);
-        this.committedEventIds = new Set(this.seenEvents);
+    private async refreshHistory(state: SessionState): Promise<void> {
+        const read = this.readHistory(state);
+        state.historyRead = read;
+        await read;
+        // A newer read can supersede this one. Callers that are about to prepare
+        // input still need its admitted generation before choosing metadata.
+        if (state.historyRead !== read) await state.historyRead;
+    }
+    private async readHistory(state: SessionState): Promise<void> {
+        if (!state.context || !state.view.durableSessionId) return;
+        const epoch = state.epoch;
+        const version = ++state.readVersion;
+        const durableId = state.view.durableSessionId;
+        const history = await this.history({ context: state.context, sessionId: durableId });
+        if (
+            !this.current(state, epoch) ||
+            version !== state.readVersion ||
+            durableId !== state.view.durableSessionId ||
+            history.generation < (state.view.generation ?? 0)
+        )
+            return;
+        state.view.generation = history.generation;
+        state.view.archivedAt = history.archivedAt;
+        state.view.configuration = history.configuration;
+        state.view.items = [];
+        state.seenEvents.clear();
+        this.applyEvents(state, history.events);
+        state.view.items.push(...structuredClone(state.commandItems));
+        state.committedItems = structuredClone(state.view.items);
+        state.committedGeneration = history.generation;
+        state.committedEventIds = new Set(state.seenEvents);
         this.emit();
     }
-    private applyEvents(events: WorkspaceJsonRecord[]): void {
+    private applyEvents(state: SessionState, events: WorkspaceJsonRecord[]): void {
         for (let index = 0; index < events.length; index++) {
             const event = events[index];
-            const identity = String(event.eventId || `${this.view.operationId}:${index}`);
-            if (this.seenEvents.has(identity)) continue;
-            this.seenEvents.add(identity);
+            const identity = String(event.eventId || `${state.view.operationId}:${index}`);
+            if (state.seenEvents.has(identity)) continue;
+            state.seenEvents.add(identity);
             const type = event.type;
             const kind =
                 type === "user_message"
@@ -474,10 +592,10 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
             if (kind !== "system") {
                 const id = `${kind}:${event.messageId || identity}`;
                 const text = String(kind === "user" ? event.text || "" : event.delta || "");
-                const item = this.view.items.find((item) => item.id === id);
+                const item = state.view.items.find((item) => item.id === id);
                 if (item) item.text += text;
                 else
-                    this.view.items.push({
+                    state.view.items.push({
                         id,
                         kind,
                         text,
@@ -497,16 +615,16 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
                     });
             } else if (type === "tool_start" || type === "tool_update" || type === "tool_end") {
                 const id = `tool:${event.toolCallId}`;
-                let item = this.view.items.find((item) => item.id === id);
+                let item = state.view.items.find((item) => item.id === id);
                 if (!item) {
                     item = { id, kind: "tool", text: "" };
-                    this.view.items.push(item);
+                    state.view.items.push(item);
                 }
                 item.title = String(event.title || "Tool");
                 item.status = type === "tool_end" ? (event.isError ? "failed" : "completed") : "in_progress";
                 if (event.content) item.text = JSON.stringify(event.content);
             } else if (type === "system_status" || type === "agent_changed" || type === "terminal_error") {
-                this.view.items.push({
+                state.view.items.push({
                     id: identity,
                     kind: "system",
                     text: String(event.message || event.agentName || ""),
@@ -514,146 +632,285 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
             }
         }
     }
-    private startObservation(): void {
-        if (!this.workspaceAdmission || !this.context || this.polling) return;
-        const sessionId = this.view.sessionId;
-        const poll = async () => {
-            this.polling = null;
-            if (this.disposed || this.view.sessionId !== sessionId || !this.context) return;
-            try {
-                const snapshot = await this.snapshot({
-                    context: this.context,
-                    sessionId: this.view.durableSessionId,
-                    wireSessionId: sessionId,
-                    cursor: this.observationCursor || undefined,
-                });
-                if (this.view.sessionId !== sessionId) return;
-                if (
-                    this.view.generation != null &&
-                    (snapshot.generation === null || snapshot.generation < this.view.generation)
-                ) {
-                    this.polling = setTimeout(poll, 250);
-                    return;
-                }
-                const changed = snapshot.generation !== null && snapshot.generation !== this.view.generation;
-                this.observationCursor = snapshot.cursor;
-                const operation = snapshot.operation;
-                if (snapshot.sessionId) this.view.durableSessionId = snapshot.sessionId;
-                if (typeof operation?.runwieldSessionId === "string")
-                    this.view.durableSessionId = operation.runwieldSessionId;
-                if (changed || snapshot.gap) {
-                    await this.refreshHistory();
-                }
-                if (snapshot.generation !== null) this.view.generation = snapshot.generation;
-                if (operation) {
-                    this.view.operationId = String(operation.operationId || "");
-                    if (this.committedOperationId !== this.view.operationId && Array.isArray(operation.events)) {
-                        this.view.items = structuredClone(this.committedItems);
-                        this.seenEvents.clear();
-                        for (const identity of this.committedEventIds) this.seenEvents.add(identity);
-                        this.applyEvents(
-                            operation.events.filter((event): event is WorkspaceJsonRecord =>
-                                Boolean(event && typeof event === "object" && !Array.isArray(event)),
-                            ),
-                        );
-                    }
-                    const interaction = operation.liveInteraction as WorkspaceJsonRecord | null;
-                    const request = interaction?.request as WorkspaceJsonRecord | null;
-                    if (interaction && request && !this.pending) {
-                        const options = Array.isArray(request.options) ? request.options : [];
-                        const choices = options.flatMap((option) =>
-                            option &&
-                            typeof option === "object" &&
-                            !Array.isArray(option) &&
-                            typeof option.value === "string" &&
-                            typeof option.label === "string"
-                                ? [
-                                      {
-                                          value: option.value,
-                                          label: option.label,
-                                          ...(typeof option.description === "string"
-                                              ? { description: option.description }
-                                              : {}),
-                                      },
-                                  ]
-                                : [],
-                        );
-                        this.view.question = {
-                            requestId: String(interaction.interactionId),
-                            interactionId: String(interaction.interactionId),
-                            prompt: String(request.prompt || ""),
-                            mode: request.type === "approval" ? "approval" : choices.length ? "select" : "text",
-                            required: request.allowEmpty !== true,
-                            placeholder: String(request.placeholder || ""),
-                            ...(typeof request.defaultValue === "string" ? { defaultValue: request.defaultValue } : {}),
-                            choices,
-                            allowOther: Boolean(request.otherOptionValue),
-                            ...(typeof request.otherOptionValue === "string"
-                                ? { otherOptionValue: request.otherOptionValue }
-                                : {}),
-                        };
-                        this.view.phase = "awaiting_answer";
-                    } else if (!this.pending) {
-                        this.view.question = null;
-                        if (snapshot.state === "active") this.view.phase = "streaming";
-                    }
-                } else {
-                    // Missing live transport while active is not settlement evidence.
-                    if (snapshot.state === "idle") this.view.operationId = undefined;
-                    this.view.question = null;
-                    if (!this.turn && snapshot.state !== "active") this.view.phase = "idle";
-                }
-                this.emit();
-                if (
-                    !this.turn &&
-                    !this.dispatchingQueued &&
-                    this.view.phase === "idle" &&
-                    this.queuedDrafts.length &&
-                    !this.rejectedQueued.has(this.queuedDrafts[0].requestId)
-                ) {
-                    const draft = this.queuedDrafts[0];
-                    this.dispatchingQueued = true;
-                    void this.sendImages(
-                        { connectionId: this.view.connectionId, project: this.view.project, sessionId },
-                        draft.text,
-                        draft.images,
-                        draft.requestId,
-                    )
-                        .then(
-                            () => {
-                                if (this.view.sessionId !== sessionId) return;
-                                this.removeQueued(
-                                    { connectionId: this.view.connectionId, project: this.view.project, sessionId },
-                                    draft.requestId,
-                                );
-                            },
-                            (error: Error) => {
-                                if (this.view.sessionId !== sessionId) return;
-                                this.rejectedQueued.add(draft.requestId);
-                                this.view.error = error.message;
-                                this.emit();
-                            },
-                        )
-                        .finally(() => {
-                            this.dispatchingQueued = false;
-                        });
-                }
-            } catch (error) {
-                this.view.error = error instanceof Error ? error.message : "Observation failed.";
-                this.emit();
+    private async reconcile(state: SessionState, forceHistory = false, attempt = 0): Promise<void> {
+        if (!this.workspaceAdmission || !state.context) return;
+        const epoch = state.epoch;
+        const sessionId = state.view.sessionId;
+        const historyVersion = state.readVersion;
+        const snapshot = await this.snapshot({
+            context: state.context,
+            sessionId: state.view.durableSessionId,
+            wireSessionId: sessionId,
+            cursor: state.observationCursor || undefined,
+        });
+        if (!this.current(state, epoch)) return;
+        if (
+            historyVersion !== state.readVersion ||
+            (state.view.generation != null &&
+                (snapshot.generation === null || snapshot.generation < state.view.generation))
+        ) {
+            if (forceHistory) {
+                if (attempt >= 3) throw new Error("Session evidence changed during refresh. Refresh again.");
+                await this.reconcile(state, true, attempt + 1);
             }
-            if (!this.disposed && this.view.sessionId === sessionId) this.polling = setTimeout(poll, 250);
+            return;
+        }
+        const changed = snapshot.generation !== null && snapshot.generation !== state.view.generation;
+        const operation = snapshot.operation;
+        if (snapshot.sessionId) state.view.durableSessionId = snapshot.sessionId;
+        if (typeof operation?.runwieldSessionId === "string") state.view.durableSessionId = operation.runwieldSessionId;
+        if ((forceHistory || changed || snapshot.gap) && snapshot.generation !== null) {
+            await this.refreshHistory(state);
+        }
+        // History can advance while this snapshot is in flight. Never move evidence backward.
+        if (!this.current(state, epoch)) return;
+        if (
+            state.view.generation != null &&
+            (snapshot.generation === null || snapshot.generation < state.view.generation)
+        ) {
+            if (forceHistory) {
+                if (attempt >= 3) throw new Error("Session evidence changed during refresh. Refresh again.");
+                await this.reconcile(state, true, attempt + 1);
+            }
+            return;
+        }
+        state.observationCursor = snapshot.cursor;
+        if (snapshot.generation !== null) state.view.generation = snapshot.generation;
+        if (operation) {
+            state.view.operationId = String(operation.operationId || "");
+            state.view.sessionInfo = jsonRecord(operation.sessionInfo);
+            state.view.pendingConfiguration = jsonRecord(operation.pendingConfiguration);
+            state.view.coreQueuedMessages = Array.isArray(operation.queuedMessages)
+                ? operation.queuedMessages.flatMap((entry) => {
+                      const record = jsonRecord(entry);
+                      return record ? [record] : [];
+                  })
+                : [];
+            // Canonical history owns the whole event buffer once its generation crosses
+            // the Core-owned admission boundary, even if the prompt response is delayed.
+            const eventsCommitted =
+                typeof operation.eventsAfterGeneration === "number" &&
+                state.committedGeneration !== null &&
+                state.committedGeneration > operation.eventsAfterGeneration;
+            if (Array.isArray(operation.events)) {
+                state.view.items = structuredClone(state.committedItems);
+                state.seenEvents.clear();
+                for (const identity of state.committedEventIds) state.seenEvents.add(identity);
+                if (!eventsCommitted)
+                    this.applyEvents(
+                        state,
+                        operation.events.filter((event): event is WorkspaceJsonRecord =>
+                            Boolean(event && typeof event === "object" && !Array.isArray(event)),
+                        ),
+                    );
+            }
+            const interaction = operation.liveInteraction as WorkspaceJsonRecord | null;
+            const request = interaction?.request as WorkspaceJsonRecord | null;
+            if (interaction && request && !state.pending && state.view.phase !== "canceling") {
+                const options = Array.isArray(request.options) ? request.options : [];
+                const choices = options.flatMap((option) =>
+                    option &&
+                    typeof option === "object" &&
+                    !Array.isArray(option) &&
+                    typeof option.value === "string" &&
+                    typeof option.label === "string"
+                        ? [
+                              {
+                                  value: option.value,
+                                  label: option.label,
+                                  ...(typeof option.description === "string"
+                                      ? { description: option.description }
+                                      : {}),
+                              },
+                          ]
+                        : [],
+                );
+                state.view.question = {
+                    requestId: String(interaction.interactionId),
+                    interactionId: String(interaction.interactionId),
+                    prompt: String(request.prompt || ""),
+                    mode: request.type === "approval" ? "approval" : choices.length ? "select" : "text",
+                    required: request.allowEmpty !== true,
+                    placeholder: String(request.placeholder || ""),
+                    ...(typeof request.defaultValue === "string" ? { defaultValue: request.defaultValue } : {}),
+                    choices,
+                    allowOther: Boolean(request.otherOptionValue),
+                    ...(typeof request.otherOptionValue === "string"
+                        ? { otherOptionValue: request.otherOptionValue }
+                        : {}),
+                };
+                state.view.phase = "awaiting_answer";
+            } else if (!state.pending) {
+                state.view.question = null;
+                if (snapshot.state === "active" && state.view.phase !== "canceling") state.view.phase = "streaming";
+                else if (snapshot.state === "idle" && !state.turn) state.view.phase = "idle";
+            }
+        } else {
+            // Missing live transport while active is not settlement evidence.
+            if (snapshot.state === "idle") state.view.operationId = undefined;
+            if (!state.pending) state.view.question = null;
+            state.view.sessionInfo = null;
+            state.view.pendingConfiguration = null;
+            state.view.coreQueuedMessages = [];
+            if (!state.turn && !state.pending && snapshot.state === "idle") state.view.phase = "idle";
+            else if (snapshot.state === "active" && state.view.phase !== "canceling") state.view.phase = "streaming";
+        }
+        if (state.pending && state.view.phase !== "canceling") state.view.phase = "awaiting_answer";
+        if (!state.pending && snapshot.state !== "idle" && snapshot.state !== "active") {
+            state.view.phase = "interrupted";
+            state.view.error = "Session state requires reconciliation. Input was not sent again.";
+        }
+    }
+
+    setRendererAttached(attached: boolean): void {
+        this.rendererAttached = attached;
+        if (attached) {
+            if (this.selected) this.startObservation(this.selected);
+            return;
+        }
+        for (const state of this.bindings.values()) {
+            for (let i = 0; i < state.queuedDrafts.length; i++) {
+                const draft = state.queuedDrafts[i];
+                if (!draft.restored) state.queuedDrafts[i] = { ...draft, restored: true };
+            }
+            state.view.queued = structuredClone(state.queuedDrafts);
+        }
+        this.emit();
+    }
+
+    private observesAtFullRate(state: SessionState): boolean {
+        const queued = state.queuedDrafts[0];
+        return Boolean(
+            state.turn ||
+            state.pending ||
+            state.view.phase === "streaming" ||
+            state.view.phase === "awaiting_answer" ||
+            state.view.phase === "canceling" ||
+            (this.rendererAttached &&
+                (state === this.selected ||
+                    (queued && !queued.restored && !state.rejectedQueued.has(queued.requestId)))),
+        );
+    }
+
+    private startObservation(state: SessionState): void {
+        const epoch = state.epoch;
+        if (!this.workspaceAdmission || !state.context || this.attaching || !this.current(state, epoch)) return;
+        if (state.polling) {
+            if (!state.pollingSlow || !this.observesAtFullRate(state)) return;
+            clearTimeout(state.polling);
+        }
+        const schedule = (immediate = false) => {
+            const fullRate = this.observesAtFullRate(state);
+            state.pollingSlow = !fullRate;
+            state.polling = setTimeout(
+                async () => {
+                    if (!this.current(state, epoch)) return;
+                    if (fullRate && !this.observesAtFullRate(state)) {
+                        schedule();
+                        return;
+                    }
+                    state.pollingSlow = false;
+                    try {
+                        await this.reconcile(state);
+                        if (!this.current(state, epoch)) return;
+                        this.emit();
+                        this.dispatchQueued(state);
+                    } catch (error) {
+                        if (!this.current(state, epoch)) return;
+                        state.view.error = error instanceof Error ? error.message : "Observation failed.";
+                        state.view.phase = "interrupted";
+                        this.emit();
+                    }
+                    if (this.current(state, epoch)) schedule();
+                },
+                fullRate ? (immediate ? 0 : 250) : 2000,
+            );
         };
-        this.polling = setTimeout(poll, 0);
+        schedule(true);
+    }
+
+    private dispatchQueued(state: SessionState): void {
+        const draft = state.queuedDrafts[0];
+        if (
+            !draft ||
+            draft.restored ||
+            !this.rendererAttached ||
+            this.draining ||
+            this.submissionDispatchPaused ||
+            this.attaching ||
+            state.turn ||
+            state.dispatchingQueued ||
+            state.view.phase !== "idle" ||
+            state.rejectedQueued.has(draft.requestId)
+        )
+            return;
+        const { connectionId, project, sessionId } = state.view;
+        const binding = { connectionId, project, sessionId };
+        state.dispatchingQueued = true;
+        void this.prepareSubmission(binding, draft.text, draft.images, draft.requestId)
+            .then((submission) => this.dispatchSubmission(submission, draft))
+            .then((sent) => {
+                if (sent && this.bindings.get(sessionId) === state) this.removeQueued(binding, draft.requestId);
+            })
+            .catch((error: Error) => {
+                if (this.bindings.get(sessionId) !== state || state.queuedDrafts[0] !== draft) return;
+                state.rejectedQueued.add(draft.requestId);
+                state.view.error = error.message;
+                this.emit();
+            })
+            .finally(() => {
+                state.dispatchingQueued = false;
+            });
+    }
+
+    /** Refresh all retained views before a replacement renderer receives observations. Never replay input. */
+    reattachViews(): Promise<void> {
+        if (this.reattachment) return this.reattachment;
+        this.attaching++;
+        const operation = (async () => {
+            await this.initialized;
+            if (this.emptyView.connection !== "ready" || this.disposed) return;
+            const states = [...this.bindings.values()];
+            for (const state of states) {
+                state.epoch++;
+                if (state.polling) clearTimeout(state.polling);
+                state.polling = null;
+                state.observationCursor = "";
+            }
+            await Promise.all(
+                states.map(async (state) => {
+                    try {
+                        await this.reconcile(state, true);
+                    } catch (error) {
+                        if (this.bindings.get(state.view.sessionId) !== state || state.view.connection !== "ready")
+                            return;
+                        state.view.phase = "interrupted";
+                        state.view.error = error instanceof Error ? error.message : "Observation failed.";
+                    }
+                }),
+            );
+        })().finally(() => {
+            this.attaching--;
+            this.reattachment = null;
+            this.emit();
+            for (const state of this.bindings.values()) this.startObservation(state);
+        });
+        this.reattachment = operation;
+        return operation;
     }
     async listProjects(): Promise<WorkspaceListProjectsResult> {
         await this.ready();
         return this.connection.agent.request<WorkspaceListProjectsResult>("_dev.runwield/workspace/projects/list", {});
     }
+    clearSelection(): void {
+        this.context = null;
+        this.emptyView.project = "";
+        this.selected = null;
+        this.emit();
+    }
     async openProject(request: WorkspaceProjectRequest): Promise<WorkspaceOpenProjectResult> {
         await this.ready();
-        if (this.view.sessionId || this.view.phase === "loading" || this.selecting)
-            throw new Error("Close the current Session before selecting another Project.");
+        if (this.selecting) throw new Error("Wait for Project selection to settle.");
         this.selecting = true;
         try {
             const result = await this.connection.agent.request<WorkspaceOpenProjectResult>(
@@ -667,7 +924,8 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
             )
                 throw new Error("Stale Project context.");
             this.context = result.context;
-            this.view.project = result.context.canonicalRoot;
+            this.emptyView.project = result.context.canonicalRoot;
+            this.selected = null;
             this.emit();
             return result;
         } finally {
@@ -712,85 +970,163 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
 
     observe(listener: (view: SessionClientView) => void): () => void {
         this.listeners.add(listener);
-        listener(structuredClone(this.view));
+        if (!this.attaching) listener(this.selectedView());
         return () => this.listeners.delete(listener);
     }
 
+    getBindingView(sessionId: string): SessionClientView | undefined {
+        const state = this.bindings.get(sessionId);
+        return state ? structuredClone(state.view) : undefined;
+    }
+
+    getBindingViews(): SessionClientView[] {
+        return [...this.bindings.values()].map((state) => structuredClone(state.view));
+    }
+
+    private selectedView(): SessionClientView {
+        return {
+            ...structuredClone(this.view),
+            bindings: [...this.bindings.values()].map((state) => ({
+                sessionId: state.view.sessionId,
+                durableSessionId: state.view.durableSessionId,
+                projectId: state.context?.projectId || "",
+                project: state.view.project,
+                phase: state.view.phase,
+                hasQuestion: Boolean(state.view.question),
+            })),
+        };
+    }
+
     private emit(): void {
-        for (const listener of this.listeners) listener(structuredClone(this.view));
+        if (this.attaching) return;
+        for (const listener of this.listeners) listener(this.selectedView());
     }
 
     private async ready(): Promise<void> {
         await this.initialized;
-        if (this.disposed || this.view.connection !== "ready")
-            throw new Error(this.view.error || "Runtime disconnected.");
+        if (this.disposed || this.emptyView.connection !== "ready")
+            throw new Error(this.emptyView.error || "Runtime disconnected.");
     }
 
-    private binding(binding: SessionBinding): void {
-        if (
-            !this.view.sessionId ||
-            binding.connectionId !== this.view.connectionId ||
-            binding.project !== this.view.project ||
-            binding.sessionId !== this.view.sessionId
-        ) {
+    private binding(binding: SessionBinding): SessionState {
+        const state = this.bindings.get(binding.sessionId);
+        if (!state || binding.connectionId !== state.view.connectionId || binding.project !== state.view.project) {
             throw new Error("This request does not belong to the active Project and Session.");
         }
+        return state;
     }
 
-    private async open(sessionId?: string): Promise<void> {
+    private current(state: SessionState, epoch: number): boolean {
+        return (
+            !this.disposed &&
+            this.emptyView.connection === "ready" &&
+            this.bindings.get(state.view.sessionId) === state &&
+            state.epoch === epoch
+        );
+    }
+
+    private async refreshRequest(request: WorkspaceSessionRequest): Promise<void> {
+        await Promise.all(
+            [...this.bindings.values()]
+                .filter(
+                    (state) =>
+                        state.context?.projectId === request.context.projectId &&
+                        state.view.durableSessionId === request.sessionId &&
+                        state.view.generation != null,
+                )
+                .map((state) => this.refreshHistory(state)),
+        );
+    }
+
+    private async open(sessionId?: string, context = this.context): Promise<void> {
         await this.ready();
+        if (this.draining) throw new Error("Session connection is draining.");
         if (this.selecting) throw new Error("Wait for Project selection to settle.");
-        if (this.workspaceAdmission && !this.context) throw new Error("Open a registered Project first.");
-        if (this.view.sessionId || this.view.phase === "loading") throw new Error("Close the current Session first.");
+        if (this.workspaceAdmission && !context) throw new Error("Open a registered Project first.");
+        if (!this.workspaceAdmission && this.bindings.size) throw new Error("Close the current Session first.");
+        if (this.opening) throw new Error("Wait for the Session operation to settle.");
+        const existing = sessionId
+            ? [...this.bindings.values()].find(
+                  (state) =>
+                      state.context?.projectId === context?.projectId &&
+                      (state.view.durableSessionId === sessionId || state.view.sessionId === sessionId),
+              )
+            : undefined;
+        if (existing) {
+            this.selected = existing;
+            this.startObservation(existing);
+            this.emit();
+            return;
+        }
         if (sessionId !== undefined && (!sessionId.trim() || sessionId.length > 512))
             throw new Error("Enter a saved Session ID.");
-        this.view.phase = "loading";
-        this.view.error = "";
-        this.view.items = [];
+        const state = new SessionState(
+            {
+                ...structuredClone(this.emptyView),
+                project: context?.canonicalRoot || this.emptyView.project,
+                items: [],
+                question: null,
+                sessionId: "",
+                durableSessionId: "",
+            },
+            context ? { ...context } : null,
+        );
+        this.opening = true;
+        this.selected = state;
+        state.view.phase = "loading";
+        state.view.error = "";
+        state.view.items = [];
         // Replay can arrive before the load response. Bind its requested wire ID now.
-        this.view.sessionId = sessionId || "";
+        state.view.sessionId = sessionId || "";
+        if (sessionId) this.bindings.set(sessionId, state);
         this.emit();
         try {
-            const request: NewSessionRequest = { cwd: this.view.project, mcpServers: [], ...this.metadata() };
+            const request: NewSessionRequest = { cwd: state.view.project, mcpServers: [], ...this.metadata(state) };
             let result: LoadSessionResponse;
             if (sessionId) {
                 result = await this.connection.agent.request("session/load", { ...request, sessionId });
                 if (this.workspaceAdmission && "sessionId" in result && typeof result.sessionId === "string")
-                    this.view.sessionId = result.sessionId;
+                    state.view.sessionId = result.sessionId;
             } else {
                 const created = await this.connection.agent.request("session/new", request);
-                this.view.sessionId = created.sessionId;
+                state.view.sessionId = created.sessionId;
                 result = created;
             }
+            if (sessionId && state.view.sessionId !== sessionId) this.bindings.delete(sessionId);
+            this.bindings.set(state.view.sessionId, state);
             const meta = result._meta?.runwield as RunWieldMetadata | undefined;
             if (
-                !this.view.sessionId ||
+                !state.view.sessionId ||
                 typeof meta?.persistedSessionId !== "string" ||
                 (!this.workspaceAdmission && !meta.persistedSessionId)
             ) {
                 throw new Error("The runtime did not return a durable Session identity.");
             }
-            if (this.view.connection !== "ready")
+            if (this.emptyView.connection !== "ready")
                 throw new Error("The runtime disconnected while opening the Session.");
-            this.view.durableSessionId = meta.persistedSessionId;
+            state.view.durableSessionId = meta.persistedSessionId;
             if (meta.history) {
-                this.view.generation = meta.history.generation;
-                this.view.configuration = meta.history.configuration;
-                this.view.archivedAt = meta.history.archivedAt;
-                this.applyEvents(meta.history.events);
-                this.committedItems = structuredClone(this.view.items);
-                this.committedEventIds = new Set(this.seenEvents);
+                state.view.generation = meta.history.generation;
+                state.view.configuration = meta.history.configuration;
+                state.view.archivedAt = meta.history.archivedAt;
+                this.applyEvents(state, meta.history.events);
+                state.committedItems = structuredClone(state.view.items);
+                state.committedGeneration = meta.history.generation;
+                state.committedEventIds = new Set(state.seenEvents);
             }
-            this.view.phase = "idle";
-            this.startObservation();
+            state.view.phase = "idle";
+            this.startObservation(state);
         } catch (error) {
-            this.view.phase = this.view.connection === "ready" ? "empty" : "interrupted";
-            this.view.sessionId = "";
-            this.view.durableSessionId = "";
-            this.view.items = [];
-            this.view.error = error instanceof Error ? error.message : "Could not open Session.";
+            this.bindings.delete(state.view.sessionId);
+            state.view.connection = this.emptyView.connection;
+            state.view.phase = state.view.connection === "ready" ? "empty" : "interrupted";
+            state.view.sessionId = "";
+            state.view.durableSessionId = "";
+            state.view.items = [];
+            state.view.error = error instanceof Error ? error.message : "Could not open Session.";
             throw error;
         } finally {
+            this.opening = false;
             this.emit();
         }
     }
@@ -805,6 +1141,138 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
     send(binding: SessionBinding, text: string): Promise<void> {
         return this.sendImages(binding, text, []);
     }
+    /** The client alone chooses the original send kind and committed generation. No wire mutation. */
+    async prepareSubmission(
+        binding: SessionBinding,
+        text: string,
+        images: SessionImageTransfer[],
+        requestId: string,
+        expectedGeneration?: number,
+    ): Promise<WorkspaceSubmissionMetadata> {
+        await this.ready();
+        if (this.draining) throw new Error("Session connection is draining.");
+        const state = this.binding(binding);
+        if (!this.workspaceAdmission || !state.context) throw new Error("Workspace admission is required.");
+        validateSessionInput(text, images);
+        if (
+            !requestId.trim() ||
+            requestId.length > 512 ||
+            (expectedGeneration !== undefined && (!Number.isInteger(expectedGeneration) || expectedGeneration < 0))
+        )
+            throw new Error("Invalid submission identity.");
+        if (!state.turn && state.view.phase === "streaming") await this.reconcile(state);
+        if (!state.turn && state.view.phase === "idle" && expectedGeneration === undefined)
+            await this.refreshHistory(state);
+        this.binding(binding);
+        const kind =
+            state.view.phase === "streaming" ? "steering" : !state.view.durableSessionId ? "bootstrap" : "prompt";
+        if (state.view.phase !== "idle" && kind !== "steering") throw new Error("Wait for the current turn to settle.");
+        return {
+            context: { ...state.context },
+            wireSessionId: binding.sessionId,
+            sessionId: state.view.durableSessionId,
+            kind,
+            requestId,
+            expectedGeneration: expectedGeneration ?? state.view.generation ?? 0,
+            text,
+            images: images.map((image) => ({ ...image })),
+        };
+    }
+
+    /** Send an explicitly prepared original kind. Never convert an interrupted steering into a prompt. */
+    async submitPrepared(submission: WorkspaceSubmissionMetadata): Promise<void> {
+        await this.dispatchSubmission(submission);
+    }
+
+    private async dispatchSubmission(
+        submission: WorkspaceSubmissionMetadata,
+        queued?: SessionQueuedDraft,
+    ): Promise<boolean> {
+        await this.ready();
+        if (this.draining) throw new Error("Session connection is draining.");
+        const binding = {
+            connectionId: this.emptyView.connectionId,
+            project: submission.context.canonicalRoot,
+            sessionId: submission.wireSessionId,
+        };
+        const state = this.binding(binding);
+        if (!state.context || JSON.stringify(state.context) !== JSON.stringify(submission.context))
+            throw new Error("Submission Project context changed.");
+        validateSessionInput(submission.text, submission.images);
+        if (
+            (submission.kind === "bootstrap" && state.view.durableSessionId) ||
+            (submission.kind !== "bootstrap" &&
+                (!submission.sessionId || submission.sessionId !== state.view.durableSessionId))
+        )
+            throw new Error("Resolve the original submission before using a different Session identity.");
+        // Detachment replaces the queued intent synchronously. The captured item can no longer authorize dispatch.
+        if (queued && state.queuedDrafts[0] !== queued) return false;
+        await this.submissionEvent("prepared", submission);
+        if (queued && state.queuedDrafts[0] !== queued) {
+            await this.submissionEvent("withdrawn", submission);
+            return false;
+        }
+        if (this.submissionDispatchPaused) {
+            await this.submissionEvent("withdrawn", submission);
+            throw new Error("RunWield is stopping. Input was not sent.");
+        }
+        if (this.draining) throw new Error("Session connection is draining.");
+        this.binding(binding);
+        if (submission.kind === "steering") {
+            await this.connection.agent.request("_session/steering", {
+                sessionId: binding.sessionId,
+                ...this.metadata(state, submission.requestId, submission.expectedGeneration),
+                prompt: this.submissionPrompt(submission),
+            });
+            await this.submissionEvent("accepted", submission);
+            return true;
+        }
+        if (state.turn || state.view.phase !== "idle") throw new Error("Wait for the current turn to settle.");
+        state.view.error = "";
+        state.view.phase = "streaming";
+        const turn = this.connection.agent
+            .request<import("@agentclientprotocol/sdk").PromptResponse>("session/prompt", {
+                ...this.metadata(state, submission.requestId, submission.expectedGeneration),
+                sessionId: binding.sessionId,
+                prompt: this.submissionPrompt(submission),
+            })
+            .then(
+                async (result) => {
+                    const meta = result._meta?.runwield as RunWieldMetadata | undefined;
+                    if (meta?.persistedSessionId) state.view.durableSessionId = meta.persistedSessionId;
+                    await this.submissionEvent("accepted", { ...submission, sessionId: state.view.durableSessionId });
+                    await this.refreshHistory(state);
+                    if (state.view.connection === "ready") state.view.phase = "idle";
+                },
+                (error: Error) => {
+                    state.view.error = errorText(error);
+                    // A refused or lost response is not evidence that input had no effect.
+                    state.view.phase = "interrupted";
+                    throw error;
+                },
+            )
+            .finally(() => {
+                this.dismissQuestion(state);
+                state.turn = null;
+                this.emit();
+            });
+        state.turn = turn;
+        this.startObservation(state);
+        this.emit();
+        await turn;
+        return true;
+    }
+    private submissionPrompt(submission: WorkspaceSubmissionMetadata) {
+        return [
+            ...(submission.text ? [{ type: "text" as const, text: submission.text }] : []),
+            ...submission.images.map((image) => ({
+                type: "image" as const,
+                data: image.base64,
+                mimeType: image.mimeType,
+            })),
+        ];
+    }
+
     async sendImages(
         binding: SessionBinding,
         text: string,
@@ -812,42 +1280,21 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
         requestId: string = crypto.randomUUID(),
         expectedGeneration?: number,
     ): Promise<void> {
-        await this.ready();
-        this.binding(binding);
         if (this.workspaceAdmission) {
-            validateSessionInput(text, images);
-            if (!this.turn && this.view.phase === "streaming" && this.context && this.view.durableSessionId) {
-                const live = await this.snapshot({ context: this.context, sessionId: this.view.durableSessionId });
-                if (live.state === "idle" && !live.operation) this.view.phase = "idle";
-            }
-            if (!this.turn && this.view.phase === "idle" && expectedGeneration === undefined)
-                await this.refreshHistory();
-        } else if (!text.trim() || text.length > 128_000)
-            throw new Error("Enter a message of at most 128,000 characters.");
-        if (this.turn || this.view.phase !== "idle") {
-            if (this.workspaceAdmission && this.view.phase === "streaming") {
-                await this.connection.agent.request("_session/steering", {
-                    sessionId: binding.sessionId,
-                    ...this.metadata(requestId),
-                    prompt: [
-                        ...(text ? [{ type: "text" as const, text }] : []),
-                        ...images.map((image) => ({
-                            type: "image" as const,
-                            data: image.base64,
-                            mimeType: image.mimeType,
-                        })),
-                    ],
-                });
-                return;
-            }
-            throw new Error("Wait for the current turn to settle.");
+            const submission = await this.prepareSubmission(binding, text, images, requestId, expectedGeneration);
+            return await this.submitPrepared(submission);
         }
-        this.view.error = "";
-        this.view.phase = "streaming";
+        await this.ready();
+        if (this.draining) throw new Error("Session connection is draining.");
+        const state = this.binding(binding);
+        if (!text.trim() || text.length > 128_000) throw new Error("Enter a message of at most 128,000 characters.");
+        if (state.turn || state.view.phase !== "idle") throw new Error("Wait for the current turn to settle.");
+        state.view.error = "";
+        state.view.phase = "streaming";
         this.emit();
         const turn = this.connection.agent
             .request<import("@agentclientprotocol/sdk").PromptResponse>("session/prompt", {
-                ...this.metadata(requestId, expectedGeneration ?? this.view.generation ?? 0),
+                ...this.metadata(state, requestId, expectedGeneration ?? state.view.generation ?? 0),
                 sessionId: binding.sessionId,
                 prompt: [
                     ...(text ? [{ type: "text" as const, text }] : []),
@@ -861,34 +1308,34 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
             .then(
                 async (result) => {
                     const meta = result._meta?.runwield as RunWieldMetadata | undefined;
-                    if (meta?.persistedSessionId) this.view.durableSessionId = meta.persistedSessionId;
+                    if (meta?.persistedSessionId) state.view.durableSessionId = meta.persistedSessionId;
                     if (this.workspaceAdmission) {
-                        await this.refreshHistory();
-                        this.committedOperationId = meta?.operationId || "";
+                        await this.refreshHistory(state);
                     }
-                    if (this.view.connection === "ready") this.view.phase = "idle";
+                    if (state.view.connection === "ready") state.view.phase = "idle";
                 },
                 (error: Error) => {
-                    this.view.error = errorText(error);
-                    this.view.phase = this.view.connection === "ready" ? "idle" : "interrupted";
+                    state.view.error = errorText(error);
+                    state.view.phase = state.view.connection === "ready" ? "idle" : "interrupted";
                     throw error;
                 },
             )
             .finally(() => {
-                this.dismissQuestion();
-                this.turn = null;
+                this.dismissQuestion(state);
+                state.turn = null;
                 this.emit();
             });
-        this.turn = turn;
+        state.turn = turn;
         await turn;
     }
 
     async answer(binding: SessionBinding, response: SessionQuestionAnswer): Promise<void> {
         await this.ready();
-        this.binding(binding);
-        if (this.workspaceAdmission && !this.pending) {
-            const question = this.view.question;
-            if (!question || question.requestId !== response.requestId || !this.context)
+        if (this.draining) throw new Error("Session connection is draining.");
+        const state = this.binding(binding);
+        if (this.workspaceAdmission && !state.pending) {
+            const question = state.view.question;
+            if (!question || question.requestId !== response.requestId || !state.context)
                 throw new Error("This question is no longer waiting for an answer.");
             if (
                 response.action === "accept" &&
@@ -899,9 +1346,9 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
             if (response.action === "accept" && question.required && !response.answer?.trim())
                 throw new Error("An answer is required.");
             await this.connection.agent.request("_dev.runwield/workspace/sessions/answer", {
-                context: this.context,
-                sessionId: this.view.durableSessionId,
-                operationId: this.view.operationId,
+                context: state.context,
+                sessionId: state.view.durableSessionId,
+                operationId: state.view.operationId,
                 interactionId: question.interactionId,
                 requestId: crypto.randomUUID(),
                 response: {
@@ -910,13 +1357,13 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
                     ...(response.otherAnswer !== undefined ? { otherAnswer: response.otherAnswer } : {}),
                 },
             });
-            this.view.question = null;
-            this.view.phase = "streaming";
+            state.view.question = null;
+            state.view.phase = "streaming";
             this.emit();
             return;
         }
-        const pending = this.pending;
-        if (!pending || response.requestId !== pending.view.requestId || this.view.phase !== "awaiting_answer") {
+        const pending = state.pending;
+        if (!pending || response.requestId !== pending.view.requestId || state.view.phase !== "awaiting_answer") {
             throw new Error("This question is no longer waiting for an answer.");
         }
         if (response.action === "accept") {
@@ -927,9 +1374,9 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
             }
             if (response.otherAnswer !== undefined && !pending.view.allowOther)
                 throw new Error("Other text is not supported.");
-            this.pending = null;
-            this.view.question = null;
-            this.view.phase = "streaming";
+            state.pending = null;
+            state.view.question = null;
+            state.view.phase = "streaming";
             pending.resolve({
                 action: "accept",
                 content: {
@@ -938,88 +1385,99 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
                 },
             });
         } else {
-            this.dismissQuestion(response.action);
-            this.view.phase = "streaming";
+            this.dismissQuestion(state, response.action);
+            state.view.phase = "streaming";
         }
         this.emit();
     }
 
-    private dismissQuestion(action: "cancel" | "decline" = "cancel"): void {
-        const pending = this.pending;
-        this.pending = null;
-        this.view.question = null;
+    private dismissQuestion(state: SessionState, action: "cancel" | "decline" = "cancel"): void {
+        const pending = state.pending;
+        state.pending = null;
+        state.view.question = null;
         pending?.resolve({ action });
     }
 
     async cancel(binding: SessionBinding): Promise<void> {
         await this.ready();
-        this.binding(binding);
-        const turn = this.turn;
+        const state = this.binding(binding);
+        const turn = state.turn;
         if (!turn && !this.workspaceAdmission) throw new Error("There is no active prompt to stop.");
-        this.view.phase = "canceling";
-        this.view.question = null;
+        state.view.phase = "canceling";
+        state.view.question = null;
         this.emit();
         // Send cancellation before releasing the form so it cannot start another provider turn.
-        await this.connection.agent.notify("session/cancel", { sessionId: binding.sessionId, ...this.metadata() });
-        this.dismissQuestion();
+        await this.connection.agent.notify("session/cancel", { sessionId: binding.sessionId, ...this.metadata(state) });
+        this.dismissQuestion(state);
         await turn;
     }
 
     async close(binding: SessionBinding): Promise<void> {
         await this.ready();
-        this.binding(binding);
-        if (this.view.phase === "loading") throw new Error("Wait for the Session operation to settle.");
-        if (this.turn) await this.cancel(binding);
-        this.view.phase = "loading";
+        const state = this.binding(binding);
+        if (state.view.phase === "loading") throw new Error("Wait for the Session operation to settle.");
+        if (state.turn && !this.workspaceAdmission) await this.cancel(binding);
+        state.epoch++;
+        if (state.polling) clearTimeout(state.polling);
+        state.polling = null;
+        state.view.phase = "loading";
         this.emit();
         try {
-            await this.connection.agent.request("session/close", { sessionId: binding.sessionId, ...this.metadata() });
+            const result = await this.connection.agent.request<WorkspaceCloseResponse>("session/close", {
+                sessionId: binding.sessionId,
+                ...this.metadata(state),
+            });
+            if (this.workspaceAdmission && result._meta?.[WORKSPACE_EXTENSION]?.status !== "settled")
+                throw new Error("Session work is not settled. Keep the connection open and retry.");
         } catch (error) {
-            this.view.phase = this.view.connection === "ready" ? "idle" : "interrupted";
+            state.view.phase = "interrupted";
+            this.startObservation(state);
             this.emit();
             throw error;
         }
-        this.dismissQuestion();
-        if (this.polling) clearTimeout(this.polling);
-        this.polling = null;
-        this.observationCursor = "";
-        this.seenEvents.clear();
-        this.committedEventIds.clear();
-        this.committedItems = [];
-        this.commandItems = [];
-        this.launchConfiguration = {};
-        this.committedOperationId = "";
-        this.queuedDrafts.splice(0);
-        this.view.queued = [];
-        this.view.sessionId = "";
-        this.view.durableSessionId = "";
-        this.view.generation = null;
-        this.view.archivedAt = null;
-        this.view.configuration = undefined;
-        this.view.operationId = undefined;
-        this.rejectedQueued.clear();
-        this.view.phase = "empty";
+        state.epoch++;
+        this.dismissQuestion(state);
+        if (state.polling) clearTimeout(state.polling);
+        this.bindings.delete(binding.sessionId);
+        if (this.selected === state) this.selected = null;
         this.emit();
     }
 
     async dispose(): Promise<void> {
         if (this.disposed) return;
         await this.initialized;
-        if (this.view.sessionId && this.view.connection === "ready") {
-            await this.close({
-                connectionId: this.view.connectionId,
-                project: this.view.project,
-                sessionId: this.view.sessionId,
-            });
+        const status = this.emptyView.connection;
+        // An incompatible peer never accepted Session requests and cannot be asked to drain.
+        if (status !== "ready" && status !== "incompatible")
+            throw new Error("Cannot confirm settlement on a disconnected runtime.");
+        if (status === "ready" && this.workspaceAdmission) {
+            const result = await this.drain();
+            if (result.status !== "settled")
+                throw new Error("Runtime work is not settled. Keep the connection open and retry.");
+        } else {
+            await Promise.all(
+                [...this.bindings.values()].map((state) =>
+                    this.close({
+                        connectionId: state.view.connectionId,
+                        project: state.view.project,
+                        sessionId: state.view.sessionId,
+                    }),
+                ),
+            );
         }
+        await Promise.allSettled([...this.bindings.values()].flatMap((state) => (state.turn ? [state.turn] : [])));
         this.disposed = true;
-        this.dismissQuestion();
+        for (const state of this.bindings.values()) {
+            state.epoch++;
+            if (state.polling) clearTimeout(state.polling);
+        }
         this.connection.close();
         await this.connection.closed;
     }
 
     private update(notification: SessionNotification): void {
-        if (!this.view.sessionId || notification.sessionId !== this.view.sessionId) return;
+        const state = this.bindings.get(notification.sessionId);
+        if (!state || !state.view.sessionId || notification.sessionId !== state.view.sessionId) return;
         const update = notification.update;
         const kind = update.sessionUpdate;
         if (kind === "user_message_chunk" || kind === "agent_message_chunk" || kind === "agent_thought_chunk") {
@@ -1027,15 +1485,15 @@ export class AcpWorkspaceSessionClient implements WorkspaceSavedSessionClient, W
             const itemKind =
                 kind === "user_message_chunk" ? "user" : kind === "agent_thought_chunk" ? "thinking" : "assistant";
             const id = `${itemKind}:${update.messageId || `unidentified-${++this.sequence}`}`;
-            const item = this.view.items.find((item) => item.id === id);
+            const item = state.view.items.find((item) => item.id === id);
             if (item) item.text += update.content.text;
-            else this.view.items.push({ id, kind: itemKind, text: update.content.text });
+            else state.view.items.push({ id, kind: itemKind, text: update.content.text });
         } else if (kind === "tool_call" || kind === "tool_call_update") {
             const id = `tool:${update.toolCallId}`;
-            let item = this.view.items.find((item) => item.id === id);
+            let item = state.view.items.find((item) => item.id === id);
             if (!item) {
                 item = { id, kind: "tool", text: "" };
-                this.view.items.push(item);
+                state.view.items.push(item);
             }
             if (update.title) item.title = update.title;
             if (update.status === "completed" || update.status === "failed" || update.status === "in_progress")

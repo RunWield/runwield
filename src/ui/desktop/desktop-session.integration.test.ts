@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, match, ok } from "node:assert/strict";
 import { readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { makeSessionProcessFixture } from "../../acp/client/testing/session-process-fixture.ts";
@@ -290,8 +290,7 @@ test(
             );
             const reopened = await launchDesktop(fixture);
             desktops.push(reopened);
-            await reopened.page.getByLabel("Saved Session ID").fill(saved);
-            await reopened.page.getByRole("button", { name: "Load", exact: true }).click();
+            equal(await reopened.page.getByLabel("Saved Session ID").inputValue(), saved);
             await reopened.page.getByText("Ready", { exact: true }).waitFor();
             await reopened.page.getByLabel("Message", { exact: true }).fill("Continue after closing the globalThis.");
             await reopened.page.getByRole("button", { name: "Send", exact: true }).click();
@@ -324,12 +323,34 @@ test(
             await page.getByLabel("Message", { exact: true }).fill("Do not replay this prompt.");
             await page.getByRole("button", { name: "Send", exact: true }).click();
             await page.getByText("Output before runtime death.", { exact: true }).waitFor();
+            const savedId = await page.getByLabel("Saved Session ID").inputValue();
             process.kill(desktop.runtimePid, "SIGKILL");
             await page.getByText("Disconnected", { exact: true }).waitFor();
             equal(await page.getByRole("button", { name: "Send", exact: true }).isDisabled(), true);
             equal(await page.getByText("Ready", { exact: true }).count(), 0);
             equal(fixture.provider.requests.length, 1);
             equal(await page.getByLabel("Message", { exact: true }).inputValue(), "Do not replay this prompt.");
+            const quitFailure = await desktop.application.evaluate(
+                ({ app, dialog }) =>
+                    new Promise<string>((resolve) => {
+                        dialog.showMessageBox = () => Promise.resolve({ response: 1, checkboxChecked: false });
+                        dialog.showErrorBox = (title, message) => resolve(`${title}: ${message}`);
+                        app.quit();
+                    }),
+            );
+            match(quitFailure, /still open/i);
+            process.kill(desktop.application.process().pid!, 0);
+            await page.getByRole("button", { name: "Restart runtime", exact: true }).click();
+            await page.waitForFunction(
+                (savedId) => document.querySelector<HTMLInputElement>("#saved-session-id")?.value === savedId,
+                savedId,
+            );
+            equal(await page.getByLabel("Saved Session ID").inputValue(), savedId);
+            await page
+                .getByRole("region", { name: "Conversation", exact: true })
+                .getByText("Do not replay this prompt.", { exact: true })
+                .waitFor();
+            equal(fixture.provider.requests.length, 1, "runtime recovery reads history without sending input");
             await desktop.close();
         } finally {
             try {

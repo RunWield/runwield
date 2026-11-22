@@ -4,13 +4,18 @@ import { mkdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:
 import { join } from "node:path";
 import { makeSessionProcessFixture } from "../../acp/client/testing/session-process-fixture.ts";
 import type { DesktopProjectClient } from "../workspace/client/project-client.ts";
-import type { SessionClientView, WorkspaceSessionClient } from "../workspace/client/session-client.ts";
+import type { SessionClientView, WorkspaceSavedSessionClient } from "../workspace/client/session-client.ts";
 import { launchDesktop } from "./testing/desktop-fixture.ts";
 
 type Desktop = Awaited<ReturnType<typeof launchDesktop>>;
+interface HistoryEvidence {
+    alerts: string[];
+    views: SessionClientView[];
+}
 interface DesktopGlobals {
     runwieldProjects: DesktopProjectClient;
-    runwieldSession: WorkspaceSessionClient;
+    runwieldSession: WorkspaceSavedSessionClient;
+    historyEvidence: HistoryEvidence;
 }
 type DesktopWindow = typeof globalThis & DesktopGlobals;
 function list(desktop: Desktop) {
@@ -35,7 +40,7 @@ function view(desktop: Desktop) {
             new Promise<SessionClientView>((resolve) => {
                 const stop = (globalThis as DesktopWindow).runwieldSession.observe((value) => {
                     resolve(value);
-                    queueMicrotask(stop);
+                    queueMicrotask(() => stop());
                 });
             }),
     );
@@ -209,6 +214,7 @@ test(
             await writeFile(authPath, authBefore);
             fixture.provider.enqueue({ text: "Configured after restart." });
             desktop = await launchDesktop(fixture);
+            await desktop.page.getByRole("button", { name: "Session", exact: true }).click();
             await desktop.page.getByRole("button", { name: "New Session", exact: true }).click();
             await desktop.page.getByText("Ready", { exact: true }).waitFor();
             await desktop.page.getByLabel("Message", { exact: true }).fill("Use existing configuration.");
@@ -239,48 +245,179 @@ test(
 );
 
 test(
-    "another Project cannot retarget an open streaming Session on the persistent connection",
-    { timeout: 50000 },
+    "parallel native navigation keeps answers, drafts and images on their named bindings",
+    { timeout: 70000 },
     async () => {
         const fixture = await makeSessionProcessFixture();
         const second = join(fixture.home, "second project ; literal");
         let desktop: Desktop | undefined;
         try {
             await mkdir(second);
-            fixture.provider.enqueue({ text: "Held entry turn.", hold: true });
+            fixture.provider.enqueue(
+                { text: "Held entry turn.", hold: true },
+                { question: { type: "text", prompt: "Answer only the second Project" } },
+                { text: "Held parallel turn.", hold: true },
+                { text: "Second Project answer received." },
+            );
             desktop = await launchDesktop(fixture);
             const { page } = desktop;
+            const sidebar = page.getByRole("complementary", { name: "Workspace navigation" });
+            await page.evaluate(() => {
+                const host = globalThis as DesktopWindow;
+                host.historyEvidence = { alerts: [], views: [] };
+                host.runwieldSession.observe((view) => host.historyEvidence.views.push(view));
+                new MutationObserver(() => {
+                    for (const alert of document.querySelectorAll('[role="alert"]'))
+                        host.historyEvidence.alerts.push(alert.textContent || "");
+                }).observe(document.body, { subtree: true, childList: true, characterData: true });
+            });
             await page.getByRole("button", { name: "New Session", exact: true }).click();
             await page.getByText("Ready", { exact: true }).waitFor();
             await page.getByLabel("Message", { exact: true }).fill("Keep this binding.");
             await page.getByRole("button", { name: "Send", exact: true }).click();
             await page.getByText("Held entry turn.", { exact: true }).waitFor();
+            deepEqual(await page.getByRole("alert").allTextContents(), [], "first held turn has no history error");
             const before = await view(desktop);
+            await page.getByLabel("Message", { exact: true }).fill("Draft for the first Project only.");
             await page.getByRole("button", { name: "Projects", exact: true }).click();
             await picker(desktop, second);
             await page.getByRole("button", { name: "Open Project", exact: true }).click();
             await page.getByRole("button", { name: "Link Project", exact: true }).click();
-            await page.getByRole("button", { name: "Open", exact: true }).nth(1).click();
-            await page.getByRole("alert").filter({ hasText: "Close the current Session" }).waitFor();
-            const after = await view(desktop);
-            equal(after.connectionId, before.connectionId);
-            equal(after.sessionId, before.sessionId);
-            equal(after.project, before.project);
-            equal(fixture.provider.requests.length, 1);
-            await page.getByRole("button", { name: "Settings", exact: true }).nth(1).click();
-            await page.getByRole("button", { name: "Full Session rescan", exact: true }).waitFor();
-            await page.getByRole("button", { name: "Session", exact: true }).click();
-            await page.getByRole("button", { name: "Stop", exact: true }).click();
-            await page.getByText("Ready", { exact: true }).waitFor();
-            await page.getByRole("button", { name: "Close Session", exact: true }).click();
-            await page.getByText("No Session open", { exact: true }).waitFor();
-            await page.getByRole("button", { name: "Projects", exact: true }).click();
             await page.getByRole("button", { name: "Open", exact: true }).nth(1).click();
             await page.getByText("No Session open", { exact: true }).waitFor();
             const next = await view(desktop);
             equal(next.connectionId, before.connectionId);
             equal(next.project, await realpath(second));
             equal(next.sessionId, "");
+            equal(next.bindings?.find((binding) => binding.sessionId === before.sessionId)?.phase, "streaming");
+            equal(fixture.provider.requests.length, 1);
+            await page.getByRole("button", { name: "New Session", exact: true }).click();
+            await page.getByLabel("Message", { exact: true }).fill("Ask in the second Project.");
+            await page.getByRole("button", { name: "Send", exact: true }).click();
+            await page.getByRole("heading", { name: "Answer only the second Project", exact: true }).waitFor();
+            const waiting = await view(desktop);
+            await page.getByLabel("Message", { exact: true }).fill("Queued only for the waiting Session.");
+            await page.getByRole("button", { name: "Queue", exact: true }).click();
+            await page
+                .getByRole("list", { name: "Unsent follow-ups" })
+                .getByText("Queued only for the waiting Session.", { exact: true })
+                .waitFor();
+            await page.waitForFunction(
+                () => (document.querySelector("#session-message") as HTMLTextAreaElement)?.value === "",
+            );
+            await page.getByLabel("Message", { exact: true }).fill("Draft for the waiting Session only.");
+            const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
+            await page
+                .locator('input[type="file"]')
+                .setInputFiles({ name: "waiting.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+            await page.getByRole("img", { name: "waiting.png", exact: true }).waitFor();
+            await sidebar.getByRole("button", { name: "+ New Session", exact: true }).click();
+            await page.locator(".session-client-status").getByText("Ready", { exact: true }).waitFor();
+            await page.getByLabel("Message", { exact: true }).fill("Run a second Session in this Project.");
+            await page.getByRole("button", { name: "Send", exact: true }).click();
+            await page.getByText("Held parallel turn.", { exact: true }).waitFor();
+            deepEqual(
+                await page.getByRole("alert").allTextContents(),
+                [],
+                "first held parallel turn has no history error",
+            );
+            const parallel = await view(desktop);
+            ok(parallel.sessionId !== waiting.sessionId);
+            equal(parallel.project, waiting.project);
+            equal(await page.getByRole("list", { name: "Unsent follow-ups" }).count(), 0);
+            await page.getByLabel("Message", { exact: true }).fill("Draft for the parallel Session only.");
+            await sidebar.getByTitle(waiting.sessionId, { exact: true }).click();
+            await page.getByRole("heading", { name: "Answer only the second Project", exact: true }).waitFor();
+            equal(
+                await page.getByLabel("Message", { exact: true }).inputValue(),
+                "Draft for the waiting Session only.",
+            );
+            await page.getByRole("img", { name: "waiting.png", exact: true }).waitFor();
+            equal(
+                await page.getByRole("img", { name: "waiting.png", exact: true }).getAttribute("src"),
+                `data:image/png;base64,${png}`,
+            );
+            await page
+                .getByRole("list", { name: "Unsent follow-ups" })
+                .getByText("Queued only for the waiting Session.", { exact: true })
+                .waitFor();
+            await page.getByRole("button", { name: "Remove queued message", exact: true }).click();
+            await page.getByRole("list", { name: "Unsent follow-ups" }).waitFor({ state: "hidden" });
+            await page
+                .getByRole("textbox", { name: "Answer", exact: true })
+                .fill("Exact answer for the second Project.");
+            await page.getByRole("button", { name: "Submit answer", exact: true }).click();
+            await page.getByText("Second Project answer received.", { exact: true }).waitFor();
+            equal(fixture.provider.requests.length, 4);
+            const answerContext = JSON.stringify(fixture.provider.requests[3].messages);
+            ok(answerContext.includes("Exact answer for the second Project."));
+            ok(answerContext.includes("Ask in the second Project."));
+            ok(!answerContext.includes("Keep this binding."));
+            ok(!answerContext.includes("Run a second Session in this Project."));
+            ok(!answerContext.includes("Draft for"));
+            await sidebar.getByTitle(before.sessionId, { exact: true }).click();
+            await page.getByText("Held entry turn.", { exact: true }).waitFor();
+            equal(await page.getByLabel("Message", { exact: true }).inputValue(), "Draft for the first Project only.");
+            equal(await page.getByRole("img", { name: "waiting.png", exact: true }).count(), 0);
+            equal((await view(desktop)).connectionId, before.connectionId);
+            await page.getByRole("button", { name: "Stop", exact: true }).click();
+            await page.locator(".session-client-status").getByText("Ready", { exact: true }).waitFor();
+            const stopped = await view(desktop);
+            equal(stopped.bindings?.find((binding) => binding.sessionId === parallel.sessionId)?.phase, "streaming");
+            await sidebar.getByTitle(parallel.sessionId, { exact: true }).click();
+            await page.getByText("Held parallel turn.", { exact: true }).waitFor();
+            equal(
+                await page.getByLabel("Message", { exact: true }).inputValue(),
+                "Draft for the parallel Session only.",
+            );
+            fixture.provider.release();
+            await page.locator(".session-client-status").getByText("Ready", { exact: true }).waitFor();
+            const settled = await view(desktop);
+            ok(settled.generation !== null);
+            const history = await page.evaluate(
+                async ({ projectId, sessionId }) => {
+                    const client = (globalThis as DesktopWindow).runwieldSession;
+                    const { context } = await client.readProject({ projectId });
+                    return client.history({ context, sessionId });
+                },
+                {
+                    projectId: settled.bindings!.find((binding) => binding.sessionId === settled.sessionId)!.projectId,
+                    sessionId: settled.durableSessionId,
+                },
+            );
+            deepEqual(
+                history.events
+                    .filter((event) => ["user_message", "assistant_text_delta"].includes(event.type))
+                    .map((event) => event.text ?? event.delta),
+                ["Run a second Session in this Project.", "Held parallel turn."],
+            );
+            equal(
+                await page
+                    .getByRole("region", { name: "Conversation" })
+                    .getByText("Held parallel turn.", { exact: true })
+                    .count(),
+                1,
+            );
+            const evidence = await page.evaluate(() => (globalThis as DesktopWindow).historyEvidence);
+            deepEqual(evidence.alerts, [], "no intermediate render may show the history error");
+            deepEqual(evidence.views.map((view) => view.error).filter(Boolean), []);
+            for (const text of [
+                "Keep this binding.",
+                "Held entry turn.",
+                "Run a second Session in this Project.",
+                "Held parallel turn.",
+            ])
+                for (const emitted of evidence.views)
+                    ok(emitted.items.filter((item) => item.text === text).length <= 1, `${text} is never duplicated`);
+            ok(
+                evidence.views.some(
+                    (view) =>
+                        view.sessionId === parallel.sessionId && view.durableSessionId && view.generation === null,
+                ),
+                "the first held turn exposes an identity before committed history",
+            );
+            equal(fixture.provider.requests.length, 4);
+            deepEqual(desktop.errors, []);
         } finally {
             fixture.provider.release();
             try {
