@@ -515,8 +515,8 @@ test("runtime entry reuses Git answers only while repository evidence is unchang
             await settleGitEvidence();
 
             assertEquals((await migrateLegacyProjectRuntimeState(project.selectedRoot)).kind, "ready");
-            await migrateLegacyProjectRuntimeState(project.selectedRoot);
             await settleGitEvidence();
+            await migrateLegacyProjectRuntimeState(project.selectedRoot);
             await fsWriteFile(log, "");
             assertEquals((await migrateLegacyProjectRuntimeState(project.selectedRoot)).kind, "ready");
             assertEquals(await readRuntimeGitReads(log), []);
