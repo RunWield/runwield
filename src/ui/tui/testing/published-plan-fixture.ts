@@ -8,7 +8,12 @@ import { parsePlanFrontMatter } from "../../../plan-format.ts";
 
 async function remoteGit(root: string, remote: string, args: string[]) {
     const result = await captureForegroundProcess("git", { cwd: root, args: ["--git-dir", remote, ...args] });
-    if (result.code !== 0) throw new Error("Golden publication evidence is not available in the remote target.");
+    if (result.code !== 0) {
+        const stderr = new TextDecoder().decode(result.stderr).trim();
+        throw new Error(
+            `Golden publication Git ${args[0]} failed (exit ${result.code})${stderr ? `: ${stderr}` : ""}.`,
+        );
+    }
     return new TextDecoder().decode(result.stdout);
 }
 
