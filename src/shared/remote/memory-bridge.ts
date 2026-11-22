@@ -1,4 +1,4 @@
-import type { MemoryParams } from "../../extensions/mnemoteca/tools.ts";
+import type { MemoryParams } from "@runwield/tools";
 import { getCwd } from "../../constants.ts";
 import { resolveMemoryCollection } from "../memory-collection.ts";
 

@@ -290,7 +290,7 @@ test("Work Record backfill previews eligible sources, child skips, and existing 
     try {
         await seedPlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-standalone",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Built standalone feature.",
             affectedPaths: [],
@@ -299,7 +299,7 @@ test("Work Record backfill previews eligible sources, child skips, and existing 
         });
         await seedPlan(cwd, "already-recorded", "# Already\n\n## Plan\n\nBody", {
             planId: "plan-existing",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Existing record.",
             affectedPaths: [],
@@ -318,7 +318,7 @@ test("Work Record backfill previews eligible sources, child skips, and existing 
         });
         await seedPlan(cwd, "epic/01-child", "# Child\n\n## Plan\n\nBody", {
             planId: "plan-child",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Child feature.",
             affectedPaths: [],
@@ -360,7 +360,7 @@ test("Work Record generation writes a record and active Plan backlink", async ()
     try {
         await seedPlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-standalone",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Built standalone feature.",
             affectedPaths: [],
@@ -395,7 +395,7 @@ test("Work Record generation always includes confirmed Plan Deviations", async (
     try {
         await seedPlan(cwd, "deviated", "# Deviated\n\n## Plan\n\nReplace nav.", {
             planId: "plan-deviated",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Built deviated feature.",
             affectedPaths: [],
@@ -451,7 +451,7 @@ test("Work Record generation includes confirmed child Plan Deviations in Epic re
         });
         await seedPlan(cwd, "epic/01-child", "# Child\n\n## Plan\n\nReplace nav.", {
             planId: "plan-child-deviated",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Child feature.",
             affectedPaths: [],
@@ -518,7 +518,7 @@ test("Work Record generation rejects missing and self Recorder proposals before 
         try {
             await seedPlan(cwd, testCase.name, `# ${testCase.name}\n\n## Plan\n\nBody`, {
                 planId: `plan-${testCase.name}`,
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "LOW",
                 summary: "Proposal validation fixture.",
                 affectedPaths: [],
@@ -551,7 +551,7 @@ test("Work Record generation preserves canonical state when the external index i
     try {
         await seedPlan(cwd, "index-unavailable", "# Index Unavailable\n\n## Plan\n\nBody", {
             planId: "plan-index-unavailable",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Built while the derived index was unavailable.",
             affectedPaths: [],
@@ -599,7 +599,7 @@ test("Work Record generation distills the task completion report into the summar
         const executionReport = "- Implemented the settings save action.\n- Verification passed: deno task ci.";
         await seedPlan(cwd, "reported", "# Reported\n\n## Plan\n\nBody", {
             planId: "plan-reported",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Built reported feature.",
             affectedPaths: [],
@@ -636,7 +636,7 @@ test("Work Record generation includes deterministic Plan record requirements", a
         const required = "The generated Work Record must include the approved delivery decision.";
         await seedPlan(cwd, "required-note", `# Required note\n\n## Work Record Requirements\n\n${required}\n`, {
             planId: "plan-required-note",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Built the requested feature.",
             affectedPaths: [],
@@ -665,7 +665,7 @@ test("Work Record generation discloses skipped verification reason fallback", as
     try {
         await seedPlan(cwd, "closed", "# Closed\n\n## Plan\n\nBody", {
             planId: "plan-closed",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Closed work.",
             affectedPaths: [],
@@ -693,7 +693,7 @@ test("Work Record generation preserves User Verification attribution and note", 
     try {
         await seedPlan(cwd, "user-verified", "# User Verified\n\n## Plan\n\nBody", {
             planId: "plan-user-verified",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "User accepted work.",
             affectedPaths: [],
@@ -730,7 +730,7 @@ test("Work Record backfill updates archived Plan backlinks", async () => {
     try {
         await seedPlan(cwd, "archived-source", "# Archived Source\n\n## Plan\n\nBody", {
             planId: "plan-archived",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Archived completed feature.",
             affectedPaths: [],
@@ -759,7 +759,7 @@ test("Work Record backfill retries failed Plan backlinks", async () => {
     try {
         await seedPlan(cwd, "retry", "# Retry\n\n## Plan\n\nBody", {
             planId: "plan-retry",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Retry failed Work Record generation.",
             affectedPaths: [],
@@ -799,7 +799,7 @@ test("Work Record generation rejects empty structured sections and records failu
     try {
         await seedPlan(cwd, "empty", "# Empty\n\n## Plan\n\nBody", {
             planId: "plan-empty",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Empty output.",
             affectedPaths: [],
@@ -829,7 +829,7 @@ test("Work Record generation records failure backlink without changing terminal 
     try {
         await seedPlan(cwd, "bad", "# Bad\n\n## Plan\n\nBody", {
             planId: "plan-bad",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Bad generated output.",
             affectedPaths: [],
@@ -859,7 +859,7 @@ test("Work Record backfill preview does not create docs/work-records", async () 
     try {
         await seedPlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-dry-run",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Dry-run source.",
             affectedPaths: [],
@@ -881,7 +881,7 @@ test("Work Record backfill ignores non-linkable existing records and generates a
     try {
         await seedPlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-needs-approved",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "LOW",
             summary: "Needs approved internal record.",
             affectedPaths: [],

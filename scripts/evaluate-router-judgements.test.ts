@@ -10,7 +10,7 @@ import {
 test("summarizeJudgements compares router against human labels", () => {
     const summary = summarizeJudgements([
         {
-            humanJudgement: "FEATURE",
+            humanJudgement: "PLANNED_CHANGE",
             routerDecision: "QUICK_FIX",
         },
         {

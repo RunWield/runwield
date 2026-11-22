@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { decidePostExecution, decidePostPlanning } from "./decisions.ts";
 
 const fallbackTriageMeta: TriageMeta = {
-    classification: "FEATURE",
+    classification: "PLANNED_CHANGE",
     complexity: "LOW",
     summary: "fallback",
     affectedPaths: ["src/a.js"],

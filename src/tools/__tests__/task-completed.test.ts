@@ -1,3 +1,4 @@
+import type { PairCheckpointParameters } from "@runwield/tools";
 import { throws as assertThrows } from "node:assert/strict";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -19,8 +20,8 @@ import type {
     SessionRuntimeEvent,
 } from "../../shared/session/session-runtime-events.ts";
 import type { PairCheckpointDecision } from "../../shared/session/pair-checkpoint-session.ts";
-import type { PairCheckpointDetails, PairCheckpointParameters } from "../pair-checkpoint.ts";
-import type { BrowserPreflightOutcome, TaskCompletedDetails } from "../task-completed.ts";
+import type { PairCheckpointDetails } from "../pair-checkpoint.ts";
+import type { BrowserPreflightOutcome, TaskCompletedDetails } from "@runwield/tools";
 
 interface ObservedCompletionEvent extends Partial<Omit<RuntimeAssistantTextDeltaEvent, "type">> {
     type: SessionRuntimeEvent["type"];
@@ -333,7 +334,7 @@ test("task_completed rejects a mismatched active workflow owner without side eff
     hostedSession.setEventSink({ emit: (event: ObservedCompletionEvent) => events.push(event) });
     hostedSession.setActiveExecutionWorkflow({
         planName: "visual-plan",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgent: "frontend-engineer",
     });
     const tool = createTaskCompletedTool({ hostedSession, agentName: "engineer" });
@@ -352,7 +353,7 @@ test("task_completed rejects a provisional workflow before execution starts", as
     hostedSession.setEventSink({ emit: (event: ObservedCompletionEvent) => events.push(event) });
     hostedSession.setActiveExecutionWorkflow({
         planName: "visual-plan",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgent: "frontend-engineer",
         executionStarted: false,
         collaborationStyle: "autonomous",
@@ -372,7 +373,7 @@ test("task_completed rejects a paused Pair turn without terminal side effects", 
     hostedSession.setEventSink({ emit: (event: ObservedCompletionEvent) => events.push(event) });
     hostedSession.setActiveExecutionWorkflow({
         planName: "visual-plan",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgent: "frontend-engineer",
         collaborationStyle: "pair",
         pairCheckpointCount: 1,
@@ -396,7 +397,7 @@ test("task_completed records a final Pair checkpoint before accepting completion
     });
     hostedSession.setActiveExecutionWorkflow({
         planName: "visual-plan",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgent: "frontend-engineer",
         executionStarted: true,
         executionAttemptStartedAtMs: 1000,
@@ -509,7 +510,7 @@ test("final Pair assent cannot authorize a different execution attempt", async (
     });
     const workflow: ActiveExecutionWorkflow = {
         planName: "visual-plan",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgent: "frontend-engineer",
         executionStarted: true,
         executionAttemptStartedAtMs: 1000,
@@ -556,7 +557,7 @@ for (const outcome of ["succeeded", "failed", "externally_blocked"] satisfies Br
             });
             hostedSession.setActiveExecutionWorkflow({
                 planName: "visual-plan",
-                triageMeta: { classification: "FEATURE" },
+                triageMeta: { classification: "PLANNED_CHANGE" },
                 executionAgent: "frontend-engineer",
                 executionStarted: true,
                 executionAttemptStartedAtMs: 1000,
@@ -636,7 +637,7 @@ test("task_completed labels validation repair Frontend Engineer completion", asy
         const hostedSession = new HostedSession({ id: "task-completed-repair", cwd: projectRoot });
         hostedSession.setActiveExecutionWorkflow({
             planName: "visual-plan",
-            triageMeta: { classification: "FEATURE" },
+            triageMeta: { classification: "PLANNED_CHANGE" },
             executionAgent: "frontend-engineer",
             executionStarted: true,
             executionAttemptStartedAtMs: 500,

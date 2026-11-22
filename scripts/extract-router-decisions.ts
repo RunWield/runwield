@@ -9,9 +9,9 @@ import process from "node:process";
 
 import { basename, join } from "node:path";
 import { parseArgs } from "../src/shared/cli-args.ts";
-import { ROUTING_INTENTS } from "../src/constants.ts";
+import { toolRegistry } from "@runwield/tools";
 
-const PLAN_ROUTING_INTENTS = ["FEATURE", "PROJECT"];
+const { hasRetiredRoutingIntent, normalizeRoutingIntent } = toolRegistry.get("triage_report");
 
 export interface RouterDecision {
     decisionId: string;
@@ -101,10 +101,6 @@ interface RouterExtractionArguments {
     "sessions-dir"?: string;
 }
 
-function asRoutingIntent<TValue>(value: TValue): string | null {
-    return typeof value === "string" && ROUTING_INTENTS.includes(value) ? value : null;
-}
-
 function asStringArray<TValue>(value: TValue): string[] {
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
@@ -114,9 +110,10 @@ export function normalizeTriageDetails(
 ): RouterTriageDecision | null {
     if (!details || typeof details !== "object" || Array.isArray(details)) return null;
     const record = details;
-    const directIntent = asRoutingIntent(record.routingIntent);
-    const legacyIntent = asRoutingIntent(record.classification);
-    const routingIntent = directIntent || legacyIntent;
+    if (hasRetiredRoutingIntent(record.routingIntent, record.classification)) return null;
+    const directIntent = normalizeRoutingIntent(record.routingIntent);
+    const reportedClassification = normalizeRoutingIntent(record.classification);
+    const routingIntent = directIntent || reportedClassification;
     if (!routingIntent) return null;
 
     const normalized: RouterTriageDecision = {
@@ -127,7 +124,7 @@ export function normalizeTriageDetails(
         intentSource: directIntent ? "routingIntent" : "classification",
     };
 
-    if (PLAN_ROUTING_INTENTS.includes(routingIntent)) {
+    if (routingIntent === "PLANNED_CHANGE" || routingIntent === "PROJECT") {
         normalized.classification = routingIntent;
     }
 

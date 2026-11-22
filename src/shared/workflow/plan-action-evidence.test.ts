@@ -19,7 +19,7 @@ async function makeProject(existingRoot?: string): Promise<{ root: string; revis
     await seedPlan(root, "demo", "# Demo\n\nBody\n", {
         planId: "plan-demo",
         status: "draft",
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
     });
     const plan = await loadPlan(root, "demo");
     if (!plan?.revision) throw new Error("fixture Plan was not saved");
@@ -46,7 +46,7 @@ test("rejects stale Plan revision before lifecycle mutation", async () => {
         {
             planId: "plan-demo",
             status: "draft",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
         },
         { expectedRevision: revision },
     );
@@ -74,7 +74,7 @@ test("rejects replaced worktree evidence before lifecycle mutation", async () =>
                 planId: "plan-demo",
                 status: "on_hold",
                 heldFromStatus: "in_progress",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
             },
             { expectedRevision: revision },
         );
@@ -83,7 +83,7 @@ test("rejects replaced worktree evidence before lifecycle mutation", async () =>
             planId: "plan-demo",
             status: "on_hold",
             heldFromStatus: "in_progress",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             executionMode: "worktree",
             worktreeId: "attempt-two",
         });
@@ -153,7 +153,7 @@ test("requires recovery when the registered execution Plan is missing", async ()
         await seedPlan(root, "demo", "# Demo\n\nBody\n", {
             planId: "plan-demo",
             status: "draft",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
         });
         const revision = (await loadPlan(root, "demo"))!.revision;
         const executionRoot = await attachExecutionWorktree(root, "rw/demo-1");
@@ -164,7 +164,7 @@ test("requires recovery when the registered execution Plan is missing", async ()
             {
                 planId: "plan-demo",
                 status: "in_progress",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 worktreeId: "attempt-one",
                 worktreeStatus: "active",
                 worktreeBranch: "rw/demo-1",
@@ -204,14 +204,14 @@ test("registry owns mutable worktree facts while Plan validation state owns life
             {
                 planId: "plan-demo",
                 status: "ready_for_work",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
             },
             { expectedRevision: revision },
         );
         await seedPlan(executionRoot, "demo", "# Demo\n\nImplemented\n", {
             planId: "plan-demo",
             status: "implemented",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             executionMode: "worktree",
             worktreeId: "attempt-one",
             worktreePath: "/stale/path",
@@ -271,7 +271,7 @@ test("live execution Plan owns action evidence when the primary copy is stale", 
         await seedPlan(executionRoot, "demo", "# Demo\n\nImplemented\n", {
             planId: "plan-demo",
             status: "implemented",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             executionMode: "worktree",
             worktreeId: "attempt-one",
             worktreePath: executionRoot,

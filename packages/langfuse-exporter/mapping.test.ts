@@ -3,16 +3,8 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { assertEquals } from "../../src/testing/assertions.ts";
 import { deliver, type MetricsExportKind } from "./exporter.ts";
-import {
-    attributes,
-    captured,
-    metadata,
-    native,
-    observation,
-    type ObservationFields,
-    span,
-    withServer,
-} from "./test-fixture.ts";
+import { attributes, metadata, native, span, withServer } from "../../src/testing/langfuse-exporter-fixture.ts";
+import { captured, observation, type ObservationFields } from "./test-fixture.ts";
 
 test("complete measured request has native non-overlapping buckets and supplied estimated USD cost", async () => {
     await captured(observation({ reasoningTokens: 12 }), (s, wire) => {

@@ -2,7 +2,8 @@
 import { writeFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Type } from "typebox";
-import { createMnemotecaTools, type MemoryParams } from "../../extensions/mnemoteca/tools.ts";
+import { createMnemotecaTools } from "../../extensions/mnemoteca/tools.ts";
+import type { MemoryParams } from "@runwield/tools";
 import { denoHelperBinaryExec } from "../../extensions/helper-binary-exec.ts";
 import { assembleFinalSystemPrompt } from "../session/session.ts";
 import { loadAgentDef } from "../session/agents.ts";

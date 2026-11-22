@@ -3,6 +3,7 @@
  * Canonical Work Record schema constants and types.
  */
 
+import type { WorkKind } from "@runwield/tools";
 import type { TicketReference } from "../ticket-references.ts";
 
 export const WORK_RECORD_KIND = "work_record";
@@ -49,7 +50,7 @@ export type WorkRecordStatus = "pending_verification" | "draft" | "approved" | "
 export type WorkRecordScope = "planned_change" | "feature" | "epic" | "quick_fix";
 export type WorkRecordOrigin = "internal" | "external";
 export type WorkRecordCompletionMode = "verified" | "closed_without_verification" | "user_verified" | "done_enough";
-export type WorkRecordWorkKind = "BUG_FIX" | "FEATURE" | "REFACTOR" | "MAINTENANCE" | "DOCUMENTATION";
+export type WorkRecordWorkKind = WorkKind;
 
 export interface WorkRecordEvidence {
     path: string;

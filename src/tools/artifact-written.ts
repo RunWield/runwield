@@ -1,3 +1,4 @@
+import { toolRegistry } from "@runwield/tools";
 import { readPlanSessionArtifact } from "../plan-store/index.ts";
 import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 /**
@@ -6,7 +7,6 @@ import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "
  */
 
 import { isAbsolute, relative, resolve, sep as SEPARATOR } from "node:path";
-import { Type } from "typebox";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
 import type { SessionArtifactKind, SessionArtifactReference } from "../shared/session/file-session-store-types.ts";
@@ -16,32 +16,7 @@ import {
     RuntimeInteractionTypes,
 } from "../shared/session/session-runtime-interactions.ts";
 
-const TOOL_PARAMS = Type.Object(
-    {
-        path: Type.String({
-            minLength: 1,
-            description: "Project-relative path to the completed Markdown artifact.",
-        }),
-        kind: Type.Union(
-            [
-                Type.Literal("plan"),
-                Type.Literal("prd"),
-                Type.Literal("adr"),
-                Type.Literal("work-record"),
-                Type.Literal("epic-artifact"),
-                Type.Literal("report"),
-            ],
-            { description: "The artifact's durable role in this Session." },
-        ),
-        title: Type.Optional(
-            Type.String({
-                minLength: 1,
-                description: "Human-readable title. Omit to use the first Markdown heading or filename.",
-            }),
-        ),
-    },
-    { additionalProperties: false },
-);
+const definition = toolRegistry.get("artifact_written").definition;
 
 interface ArtifactWrittenDetails {
     outcome: "registered" | "reviewed" | "feedback" | "rejected";
@@ -102,14 +77,9 @@ function assertKindPath(kind: SessionArtifactKind, path: string): void {
 }
 
 export function createArtifactWrittenTool(options: ArtifactWrittenOptions = {}) {
-    return defineTool<typeof TOOL_PARAMS, ArtifactWrittenDetails>({
-        name: "artifact_written",
-        exposure: "model-only",
-        label: "Artifact Written",
-        description:
-            "Register a completed, meaningful Markdown artifact with the current RunWield Session. " +
-            "Use this after writing a PRD, ADR, report, Work Record, or other explicit deliverable; do not register files merely mentioned or edited during implementation.",
-        parameters: TOOL_PARAMS,
+    return defineTool<typeof definition.parameters, ArtifactWrittenDetails>({
+        ...definition,
+
         async execute(_toolCallId, params, signal): Promise<ArtifactWrittenResult> {
             try {
                 const hostedSession = options.hostedSession;

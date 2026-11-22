@@ -29,8 +29,8 @@ import {
     readback,
     span,
     withServer,
-    type JsonRecord,
-} from "../../../packages/langfuse-exporter/test-fixture.ts";
+    type LangfuseReadback,
+} from "../../testing/langfuse-exporter-fixture.ts";
 import {
     configureJourneyModel,
     journeyRows,
@@ -70,7 +70,7 @@ test("collected producer evidence agrees with the owner report and Langfuse acro
         return await withRetainedPlanFixture(root, async () => {
             const runtime = createSessionRuntime();
             const model = await configureJourneyModel();
-            const received = new Map<string, JsonRecord>();
+            const received = new Map<string, LangfuseReadback>();
             let loseNext = false;
             let lostSpanId = "";
             async function pi() {

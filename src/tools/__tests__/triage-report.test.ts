@@ -3,14 +3,12 @@ import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.ts";
 import type { TextContent } from "@earendil-works/pi-ai";
-import type { Static } from "typebox";
 import type { RuntimeSystemStatusEvent } from "../../shared/session/session-runtime-events.ts";
 import { createTriageReportTool } from "../triage-report.ts";
-import type { TriageOutcome } from "../../shared/workflow/triage-outcome.ts";
+import type { ToolParameters, TriageOutcome } from "@runwield/tools";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
-type TriageTool = ReturnType<typeof createTriageReportTool>;
-type TriageParameters = Static<TriageTool["parameters"]>;
+type TriageParameters = ToolParameters<"triage_report">;
 type FixtureTriageEvent = Partial<Pick<RuntimeSystemStatusEvent, "message">>;
 
 interface FixtureTriageResult {
@@ -106,11 +104,12 @@ test("triage_report accepts documentation Work Kind only for planned changes", a
     });
 });
 
-test("triage_report execute preserves plan classification only for PLANNED_CHANGE and PROJECT", async () => {
+test("triage_report execute keeps FEATURE as a Work Kind for a planned change", async () => {
     const tool = createTriageReportTool();
 
     const feature = await (tool.execute as FixtureExecute)("call-1", {
-        routingIntent: "FEATURE",
+        routingIntent: "PLANNED_CHANGE",
+        workKind: "FEATURE",
         complexity: "MEDIUM",
         summary: "plan feature",
         sessionName: "plan feature",
@@ -130,6 +129,7 @@ test("triage_report execute preserves plan classification only for PLANNED_CHANG
 
     assertEquals(feature.details.routingIntent, "PLANNED_CHANGE");
     assertEquals(feature.details.classification, "PLANNED_CHANGE");
+    assertEquals(feature.details.workKind, "FEATURE");
     assertEquals(operation.details.routingIntent, "OPERATION");
     assert(!("classification" in operation.details));
     assertEquals(quickFix.details.routingIntent, "QUICK_FIX");
@@ -139,12 +139,6 @@ test("triage_report execute preserves plan classification only for PLANNED_CHANG
 test("triage_report execute normalizes legacy classification params", async () => {
     const tool = createTriageReportTool();
 
-    const legacyFeature = await (tool.execute as FixtureExecute)("call-0", {
-        classification: "FEATURE",
-        complexity: "MEDIUM",
-        summary: "legacy feature",
-        sessionName: "legacy feature",
-    });
     const result = await (tool.execute as FixtureExecute)("call-1", {
         classification: "PROJECT",
         complexity: "HIGH",
@@ -152,10 +146,29 @@ test("triage_report execute normalizes legacy classification params", async () =
         sessionName: "legacy project",
     });
 
-    assertEquals(legacyFeature.details.routingIntent, "PLANNED_CHANGE");
-    assertEquals(legacyFeature.details.classification, "PLANNED_CHANGE");
     assertEquals(result.details.routingIntent, "PROJECT");
     assertEquals(result.details.classification, "PROJECT");
+});
+
+test("triage_report rejects FEATURE routing before applying session effects", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const events: FixtureTriageEvent[] = [];
+        const hostedSession = new HostedSession({ id: "triage-invalid", cwd: projectRoot });
+        hostedSession.setEventSink({ emit: (event: FixtureTriageEvent) => events.push(event) });
+        const tool = createTriageReportTool({ hostedSession });
+        await assertRejects(
+            () =>
+                Reflect.apply(tool.execute, tool, [
+                    "call-1",
+                    { routingIntent: "FEATURE", complexity: "LOW", summary: "invalid routing" },
+                ]),
+            TypeError,
+            "routingIntent",
+        );
+        assertEquals(events, []);
+        assertEquals(await readMetrics(), []);
+        assertEquals(hostedSession.isAgentTransitioning(), false);
+    });
 });
 
 test("triage_report execute sanitizes sessionName when provided and omits it when absent", async () => {

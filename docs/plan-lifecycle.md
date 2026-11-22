@@ -180,7 +180,7 @@ normalized status. Neither legacy value is a board column or manual status targe
 `ready_for_decomposition`: An Epic PROJECT Plan has been approved and can be opened by the Slicer. This is not an
 executable status.
 
-`ready_for_work`: The executable status for PLANNED_CHANGE Plans (including legacy FEATURE). For a PROJECT Epic, it
+`ready_for_work`: The executable status for PLANNED_CHANGE Plans. For a PROJECT Epic, it
 means decomposition has been finalized and child Planned Changes can be selected; the Epic itself is still a container,
 not executable implementation work.
 
@@ -449,7 +449,7 @@ mechanical. It preserves identity/context fields such as `classification`, `comp
 
 The Readiness Gate is classification-aware.
 
-For PLANNED_CHANGE Plans (including legacy FEATURE), the gate does not call an LLM. It promotes `approved` to
+For PLANNED_CHANGE Plans, the gate does not call an LLM. It promotes `approved` to
 `ready_for_work`.
 
 For PROJECT Epics, the gate records `epic_readiness_passed` and promotes `approved` to `ready_for_decomposition`. The

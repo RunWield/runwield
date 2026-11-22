@@ -322,7 +322,7 @@ async function checkWorkspacePairingAndArtifacts(exe: string, env: Record<string
         await fsMkdir(join(projectRoot, "docs", "plans"), { recursive: true });
         await fsWriteFile(
             join(projectRoot, "docs", "plans", "dashboard-smoke.md"),
-            `---\nplanId: windows-dashboard-smoke\nclassification: FEATURE\nstatus: user_verified\nuserVerifiedAt: "${new Date().toISOString()}"\n---\n# Windows Dashboard smoke\n`,
+            `---\nplanId: windows-dashboard-smoke\nclassification: PLANNED_CHANGE\nstatus: user_verified\nuserVerifiedAt: "${new Date().toISOString()}"\n---\n# Windows Dashboard smoke\n`,
         );
         await fsWriteFile(
             join(projectRoot, "artifact.md"),

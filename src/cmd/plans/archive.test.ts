@@ -128,7 +128,7 @@ archiveTest("bulk archive moves matching parents, their children, and standalone
         summary: "Done epic",
     });
     await seedPlan(projectRoot, "epic/01-child", "# Child", {
-        classification: "FEATURE",
+        classification: "PLANNED_CHANGE",
         parentPlan: "epic",
         status: "draft",
         summary: "Child",

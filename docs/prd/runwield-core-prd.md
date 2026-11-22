@@ -267,6 +267,11 @@ manual edits apply after `/reload`. Hiding the mascot keeps the written identity
 Only `PLANNED_CHANGE` and `PROJECT` produce Plans. After enough discovery, Router explains the chosen type of work, its
 complexity, and its rationale, then hands off once to the responsible specialist.
 
+**Requirement: Accept only current Routing Intents.** RunWield rejects `FEATURE` in either Triage Report routing field
+and leaves the workflow waiting for a valid report. `FEATURE` remains a Work Kind for `PLANNED_CHANGE`. When the Plan
+store reads or imports older Plan files with `classification: FEATURE`, it interprets the classification as
+`PLANNED_CHANGE` and preserves any separately recorded Work Kind.
+
 **Requirement: Evaluate routing against fixed repository context.** Router benchmark rows can pin a full commit hash.
 Each pinned row sees that commit's files in a temporary worktree that the run removes at the end; the owner's checkout
 stays as it is. Rows without a pin use the current checkout. An invalid pin records a row error, and later valid rows
@@ -279,6 +284,9 @@ conversation history, global settings, memory, and external sources are separate
   Mechanical Validation.
 - When a request needs planned implementation, Planner prepares a Planned Change; when it needs coordinated independent
   deliveries, Architect and Slicer shape an Epic. A planned bug keeps the `BUG_FIX` Work Kind.
+- A Triage Report with `FEATURE` in either routing field triggers no handoff. A new report with
+  `routingIntent: PLANNED_CHANGE` and `workKind: FEATURE` hands off to Planner. An older Plan file with
+  `classification: FEATURE` still loads as a Planned Change.
 - Given rows pinned to different commits, Router sees each row's committed files, and the dirty checkout stays
   unchanged, including after row failures or timeouts.
 

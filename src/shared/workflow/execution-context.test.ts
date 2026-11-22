@@ -29,7 +29,7 @@ test("resolveValidationExecutionContext blocks FEATURE validation without durabl
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await seedPlan(cwd, "p", "# Plan", { classification: "FEATURE", status: "implemented" });
+            await seedPlan(cwd, "p", "# Plan", { classification: "PLANNED_CHANGE", status: "implemented" });
             const result = await resolveValidationExecutionContext({ projectRoot: cwd, planName: "p", triageMeta: {} });
             assertEquals(result.kind, "blocked");
             if (result.kind === "blocked") assertEquals(result.reason, "unknown_execution_mode");
@@ -44,7 +44,7 @@ test("resolveValidationExecutionContext accepts explicit non-Git mode", async ()
     return await withRetainedPlanFixture(cwd, async () => {
         try {
             await seedPlan(cwd, "p", "# Plan", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
                 executionMode: "non_git_in_place",
             });
@@ -133,9 +133,9 @@ test("resolveValidationExecutionContext allows a legacy creation tree to differ 
             await git(worktreePath, ["add", "dependency.txt"]);
             await git(worktreePath, ["commit", "-m", "integrate dependency before retry"]);
             const baselineTree = await git(worktreePath, ["rev-parse", "HEAD^{tree}"]);
-            await seedPlan(worktreePath, "p", "# Plan", { classification: "FEATURE", status: "implemented" });
+            await seedPlan(worktreePath, "p", "# Plan", { classification: "PLANNED_CHANGE", status: "implemented" });
             await seedPlan(projectRoot, "p", "# Plan", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
                 executionBaselineTree: baselineTree,
                 worktreeId: "wt-1",
@@ -183,10 +183,10 @@ test("resolveValidationExecutionContext fixes a stale registry path from Git", a
             const branch = "runwield/worktree/p-stale-path";
             await git(projectRoot, ["worktree", "add", "-b", branch, actualPath, "HEAD"]);
             await enterProjectRuntime(actualPath);
-            await seedPlan(actualPath, "p", "# Plan", { classification: "FEATURE", status: "implemented" });
+            await seedPlan(actualPath, "p", "# Plan", { classification: "PLANNED_CHANGE", status: "implemented" });
             await seedPlan(projectRoot, "p", "# Plan", {
                 planId: "plan-p",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
                 executionMode: "worktree",
                 worktreeId: "wt-stale",
@@ -233,7 +233,7 @@ test("resolveValidationExecutionContext recovers missing worktree metadata from 
             await git(worktreePath, ["add", "file.txt"]);
             await git(worktreePath, ["commit", "-m", "implement p"]);
             await seedPlan(projectRoot, "p", "# Plan", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
                 failureReason: "CI validation failed.",
             });
@@ -298,7 +298,7 @@ test("resolveValidationExecutionContext repairs a saved baseline that hides comp
             await git(worktreePath, ["commit", "-m", "establish execution baseline"]);
             const registryBaselineTree = await git(worktreePath, ["rev-parse", "HEAD^{tree}"]);
             await seedPlan(projectRoot, "p", "# Plan", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
                 executionMode: "worktree",
                 executionBaselineTree: creationTree,
@@ -345,7 +345,7 @@ test("resolveValidationExecutionContext ignores stale caller and session context
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await seedPlan(cwd, "p", "# Plan", { classification: "FEATURE", status: "implemented" });
+            await seedPlan(cwd, "p", "# Plan", { classification: "PLANNED_CHANGE", status: "implemented" });
             const result = await resolveValidationExecutionContext({
                 projectRoot: cwd,
                 planName: "p",
@@ -365,7 +365,7 @@ test("resolveValidationExecutionContext uses imported controller mode instead of
     return await withRetainedPlanFixture(cwd, async () => {
         try {
             await seedPlan(cwd, "p", "# Plan", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
                 executionMode: "worktree",
                 executionBaselineTree: "tree",
@@ -400,7 +400,7 @@ test("resolveValidationExecutionContext recovers committed worktree baseline wit
             await git(worktreePath, ["add", "file.txt"]);
             await git(worktreePath, ["commit", "-m", "implement p"]);
             await seedPlan(projectRoot, "p", "# Plan", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
                 worktreeId: "wt-1",
                 worktreePath,
@@ -468,12 +468,12 @@ test("resolveValidationExecutionContext makes registry identity authoritative ov
             await enterProjectRuntime(worktreePath);
             await seedPlan(worktreePath, "p", "# Plan", {
                 planId: "worktree-plan-id",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
             });
             await seedPlan(projectRoot, "p", "# Plan", {
                 planId: "canonical-plan-id",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
                 executionMode: "worktree",
                 executionBaselineTree: baselineTree,
@@ -533,7 +533,7 @@ test("a damaged worktree registry blocks with commands instead of a stack trace"
         try {
             await seedPlan(projectRoot, "p", "# Plan", {
                 planId: "plan-ambiguous",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
                 executionMode: "worktree",
             });
@@ -586,10 +586,10 @@ test("resolveValidationExecutionContext replaces a stale caller path with the sa
             const otherPath = `${parent}/other`;
             await git(projectRoot, ["worktree", "add", "-b", "runwield/worktree/p-wt", worktreePath, "HEAD"]);
             await enterProjectRuntime(worktreePath);
-            await seedPlan(worktreePath, "p", "# Plan", { classification: "FEATURE", status: "implemented" });
+            await seedPlan(worktreePath, "p", "# Plan", { classification: "PLANNED_CHANGE", status: "implemented" });
             await fsMkdir(otherPath);
             await seedPlan(projectRoot, "p", "# Plan", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "implemented",
                 executionMode: "worktree",
                 executionBaselineTree: baselineTree,
@@ -645,7 +645,7 @@ for (const primaryBranch of [false, true]) {
                 if (primaryBranch) await git(projectRoot, ["switch", "-c", branch]);
                 await seedPlan(projectRoot, "p", "# Plan", {
                     planId: "primary-guard-plan",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     status: "implemented",
                     executionMode: "worktree",
                     worktreeId: "primary-guard",

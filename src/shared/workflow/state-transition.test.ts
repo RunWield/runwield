@@ -122,7 +122,7 @@ test("failed transitions leave populated journals in the linked checkout that ow
         const container = await fsMkdtemp(join(tmpdir(), "rw-transition-journal-tree-"));
         const selected = join(container, "selected");
         try {
-            await savePlan(root, "demo", "# Demo\n", { status: "implemented", classification: "FEATURE" });
+            await savePlan(root, "demo", "# Demo\n", { status: "implemented", classification: "PLANNED_CHANGE" });
             await git(root, ["add", "docs"]);
             await git(root, ["commit", "-m", "add Plan"]);
             await git(root, ["worktree", "add", "-b", "worktree/transition-journal", selected, "HEAD"]);
@@ -177,7 +177,7 @@ test("Plan front matter transition commits and removes settled journal", async (
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "demo", "# Demo", { status: "draft", classification: "FEATURE" });
+            await savePlan(cwd, "demo", "# Demo", { status: "draft", classification: "PLANNED_CHANGE" });
             const result = await runPlanFrontMatterTransition({
                 projectRoot: cwd,
                 planName: "demo",
@@ -197,7 +197,7 @@ test("Plan front matter transition records its committed metric through the real
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         await savePlan(projectRoot, "metric-demo", "# Metric demo", {
             status: "draft",
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
         });
 
         const result = await runPlanFrontMatterTransition({
@@ -228,7 +228,7 @@ test("stale transition preconditions block without leaving unresolved recovery j
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "demo", "# Demo", { status: "draft", classification: "FEATURE" });
+            await savePlan(cwd, "demo", "# Demo", { status: "draft", classification: "PLANNED_CHANGE" });
             const current = await loadPlan(cwd, "demo");
             assert(current?.revision);
             const result = await runValidationOutcomeTransition({
@@ -250,7 +250,7 @@ test("execution preparation transition locks resources and journals blocked effe
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "demo", "# Demo", { status: "ready_for_work", classification: "FEATURE" });
+            await savePlan(cwd, "demo", "# Demo", { status: "ready_for_work", classification: "PLANNED_CHANGE" });
             // Interrupted after the worktree exists: that is the state a journal is for.
             const result = await runExecutionPreparationTransition({
                 projectRoot: cwd,
@@ -403,12 +403,12 @@ test("semantic transition matrix records operation-specific resources, effects, 
         const cwd = await makeProject();
         await withRetainedPlanFixture(cwd, async () => {
             try {
-                await savePlan(cwd, "demo", "# Demo", { status: "ready_for_work", classification: "FEATURE" });
+                await savePlan(cwd, "demo", "# Demo", { status: "ready_for_work", classification: "PLANNED_CHANGE" });
                 await savePlan(cwd, "epic", "# Epic", { status: "ready_for_work", classification: "PROJECT" });
-                await savePlan(cwd, "epic/01-demo", "# Demo child", { status: "verified", classification: "FEATURE" });
+                await savePlan(cwd, "epic/01-demo", "# Demo child", { status: "verified", classification: "PLANNED_CHANGE" });
                 await savePlan(cwd, "epic/02-other", "# Other child", {
                     status: "verified",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                 });
                 assert(testCase.expectedResources.length > 0, `${testCase.name} names locked resources`);
                 assert(testCase.expectedEffect.length > 0, `${testCase.name} names expected effect`);
@@ -424,7 +424,7 @@ test("semantic transition matrix records operation-specific resources, effects, 
                 try {
                     await savePlan(failedCwd, "demo", "# Demo", {
                         status: "ready_for_work",
-                        classification: "FEATURE",
+                        classification: "PLANNED_CHANGE",
                     });
                     // Fail after a durable effect is marked: that is the case a journal
                     // exists for. A fault before any effect is a plain rejection and must
@@ -453,7 +453,7 @@ test("semantic transition matrix records operation-specific resources, effects, 
             const cleanCwd = await makeProject();
             await withRetainedPlanFixture(cleanCwd, async () => {
                 try {
-                    await savePlan(cleanCwd, "demo", "# Demo", { status: "ready_for_work", classification: "FEATURE" });
+                    await savePlan(cleanCwd, "demo", "# Demo", { status: "ready_for_work", classification: "PLANNED_CHANGE" });
                     const cleanFailure = await runValidationOutcomeTransition({
                         projectRoot: cleanCwd,
                         planName: "demo",
@@ -476,7 +476,7 @@ test("semantic transitions allow nested same-Plan lifecycle events they own", as
         try {
             await savePlan(cwd, "nested", "# Nested", {
                 status: "ready_for_work",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 planId: "plan-nested",
             });
             const plan = await loadPlan(cwd, "nested");
@@ -559,7 +559,7 @@ test("a rejected precondition leaves no journal and the Plan stays usable", asyn
         try {
             await savePlan(cwd, "demo", "# Demo\n", {
                 planId: "p-1",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "draft",
                 summary: "s",
                 affectedPaths: [],
@@ -593,7 +593,7 @@ test("Plan Recovery supersedes an unresolved journal and clears it", async () =>
         try {
             await savePlan(cwd, "demo", "# Demo\n", {
                 planId: "p-1",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "in_progress",
                 summary: "s",
                 affectedPaths: [],
@@ -641,7 +641,7 @@ test("reconciliation closes settled journals but keeps ones with durable effects
         try {
             await savePlan(cwd, "demo", "# Demo\n", {
                 planId: "p-1",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "draft",
                 summary: "s",
                 affectedPaths: [],
@@ -687,7 +687,7 @@ test("a transition undoes the Plan write it can prove it made", async () => {
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "demo", "# Demo\n", { status: "implemented", classification: "FEATURE" });
+            await savePlan(cwd, "demo", "# Demo\n", { status: "implemented", classification: "PLANNED_CHANGE" });
             const before = await loadPlan(cwd, "demo");
             assert(before);
 
@@ -725,7 +725,7 @@ test("a transition refuses to undo Front Matter written outside RunWield", async
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "demo", "# Demo\n", { status: "implemented", classification: "FEATURE" });
+            await savePlan(cwd, "demo", "# Demo\n", { status: "implemented", classification: "PLANNED_CHANGE" });
             const before = await loadPlan(cwd, "demo");
             assert(before);
 
@@ -788,7 +788,7 @@ test("a failed transition reverts its own Front Matter without touching an edite
         try {
             await savePlan(cwd, "demo", "# Demo\n\noriginal prose\n", {
                 status: "implemented",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
             });
             const before = await loadPlan(cwd, "demo");
             assert(before);
@@ -840,7 +840,7 @@ test("a user body edit does not block a Front Matter transition", async () => {
         try {
             await savePlan(cwd, "demo", "# Demo\n\noriginal prose\n", {
                 status: "ready_for_work",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
             });
             const before = await loadPlan(cwd, "demo");
             assert(before);
@@ -871,8 +871,8 @@ test("a stranded Plan does not block lifecycle work on unrelated Plans", async (
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "alpha", "# A\n", { status: "implemented", classification: "FEATURE", planId: "p-a" });
-            await savePlan(cwd, "beta", "# B\n", { status: "implemented", classification: "FEATURE", planId: "p-b" });
+            await savePlan(cwd, "alpha", "# A\n", { status: "implemented", classification: "PLANNED_CHANGE", planId: "p-a" });
+            await savePlan(cwd, "beta", "# B\n", { status: "implemented", classification: "PLANNED_CHANGE", planId: "p-b" });
             const stranded = await runValidationOutcomeTransition({
                 projectRoot: cwd,
                 planName: "alpha",
@@ -918,7 +918,7 @@ test("reconciliation closes a record whose effects a prover accounts for", async
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "demo", "# Demo\n", { status: "verified", classification: "FEATURE", planId: "p-1" });
+            await savePlan(cwd, "demo", "# Demo\n", { status: "verified", classification: "PLANNED_CHANGE", planId: "p-1" });
             const failure = await runValidationOutcomeTransition({
                 projectRoot: cwd,
                 planName: "demo",
@@ -956,7 +956,7 @@ test("an execution start cancelled mid-apply does not strand the Plan", async ()
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "demo", "# Demo\n", { status: "ready_for_work", classification: "FEATURE" });
+            await savePlan(cwd, "demo", "# Demo\n", { status: "ready_for_work", classification: "PLANNED_CHANGE" });
 
             // Killed after prepare, before any effect was marked — what cancelling an
             // approved execution actually leaves behind.
@@ -1013,7 +1013,7 @@ test("a journal keeps its before-facts across state changes", async () => {
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "demo", "# Demo\n", { status: "implemented", classification: "FEATURE" });
+            await savePlan(cwd, "demo", "# Demo\n", { status: "implemented", classification: "PLANNED_CHANGE" });
             // Interrupt after an effect is marked, which rewrites the record at "applying".
             const failure = await runValidationOutcomeTransition({
                 projectRoot: cwd,

@@ -1,6 +1,6 @@
 import type { FileSessionManifest } from "../shared/session/file-session-store-types.ts";
 import type { JsonRecord, JsonValue } from "../shared/jsonc.ts";
-import type { InterviewResultDetails } from "../tools/user-interview.ts";
+import type { InterviewResultDetails } from "@runwield/tools";
 import type {
     AgentConnection,
     AvailableCommand,

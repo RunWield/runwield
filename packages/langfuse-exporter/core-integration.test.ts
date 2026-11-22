@@ -9,7 +9,7 @@ import {
     type MetricsJournalRow,
 } from "../../src/shared/workflow/metrics-export-record.ts";
 import { deliver } from "./exporter.ts";
-import { span, withServer } from "./test-fixture.ts";
+import { span, withServer } from "../../src/testing/langfuse-exporter-fixture.ts";
 
 test("Core nested execution references link exported spans in one trace", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-"));

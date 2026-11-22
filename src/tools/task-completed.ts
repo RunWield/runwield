@@ -5,10 +5,9 @@
  * active workflow.
  */
 
-import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.ts";
 import { AGENTS } from "../constants.ts";
 import { recordAcceptedTaskCompletion } from "../shared/session/task-completion-session.ts";
 import { readRequestAttemptEntries } from "../shared/session/request-dispatch.ts";
@@ -23,41 +22,13 @@ import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../shared/workflow/execution-agent.ts";
 
 import {
-    ENGINEER_MESSAGE_DESCRIPTION,
-    IMPLEMENTATION_REPORT_MIN_LENGTH,
-    normalizeImplementationReport,
-} from "../shared/workflow/implementation-report.ts";
+    toolRegistry,
+    type TaskCompletedDetails,
+    type TaskCompletedReportKind,
+    type ToolParameters,
+} from "@runwield/tools";
 
-const DEFAULT_MESSAGE_DESCRIPTION = "Concise summary of the task you completed and what you verified.";
-const FRONTEND_ENGINEER_MESSAGE_DESCRIPTION =
-    ENGINEER_MESSAGE_DESCRIPTION +
-    " Include final URL/route, headed-browser checks, relevant viewports/states, diagnostics, and visible evidence; Pair checkpoint acceptance is not verification evidence.";
-
-export type BrowserPreflightOutcome = "succeeded" | "failed" | "externally_blocked";
-type ActiveExecutionWorkflow = import("../shared/session/hosted-session.ts").ActiveExecutionWorkflow;
-export type TaskCompletedDetails =
-    | {
-          outcome: "rejected";
-          reason:
-              | "execution_not_started"
-              | "pair_execution_paused"
-              | "wrong_execution_owner"
-              | "pair_final_checkpoint_pending"
-              | "pair_checkpoint_context_unavailable"
-              | "background_tasks_pending"
-              | "background_cleanup_failed";
-      }
-    | {
-          outcome: "pair_completion_checkpoint";
-          checkpointId: string;
-          checkpointNumber: number;
-          decision: "pending";
-      }
-    | {
-          outcome: "task_completed";
-          message: string;
-          browserPreflightOutcome?: BrowserPreflightOutcome;
-      };
+const taskCompleted = toolRegistry.get("task_completed");
 
 type TaskCompletedResult = AgentToolResult<TaskCompletedDetails> & { terminate: boolean };
 
@@ -81,31 +52,10 @@ function isValidationRepairAgent(agentName: string): boolean {
     return normalized === AGENTS.REVIEWER_FEEDBACK_ENGINEER || normalized === "validation-repair-engineer";
 }
 
-function buildToolParams(agentName: string) {
-    const normalized = normalizeAgentName(agentName);
-    const messageDescription =
-        normalized === "frontend-engineer"
-            ? FRONTEND_ENGINEER_MESSAGE_DESCRIPTION
-            : isExecutionAgent(agentName) || isValidationRepairAgent(agentName)
-              ? ENGINEER_MESSAGE_DESCRIPTION
-              : DEFAULT_MESSAGE_DESCRIPTION;
-    return Type.Object({
-        message: Type.String({
-            description: messageDescription,
-            minLength: IMPLEMENTATION_REPORT_MIN_LENGTH,
-        }),
-        ...(normalized === "frontend-engineer"
-            ? {
-                  browserPreflightOutcome: Type.Union(
-                      [Type.Literal("succeeded"), Type.Literal("failed"), Type.Literal("externally_blocked")],
-                      {
-                          description:
-                              "Content-free browser/dev-server preflight outcome: succeeded, failed, or externally_blocked.",
-                      },
-                  ),
-              }
-            : {}),
-    });
+function reportKindForAgent(agentName: string): TaskCompletedReportKind {
+    if (normalizeAgentName(agentName) === "frontend-engineer") return "frontend-implementation";
+    if (isExecutionAgent(agentName) || isValidationRepairAgent(agentName)) return "implementation";
+    return "summary";
 }
 
 function isInitialPairCompletionCheckpoint(
@@ -119,28 +69,6 @@ function isInitialPairCompletionCheckpoint(
     );
 }
 
-function buildToolDescription(): string {
-    return (
-        "Declare that you have finished the execution task you were assigned. " +
-        "For PLANNED_CHANGE and PROJECT workflows, this signals the orchestrator to begin saved-plan validation. " +
-        "For OPERATION work, the Operator must self-verify before calling this tool and no RunWield validation loop runs afterward. " +
-        "For QUICK_FIX work, the Engineer must verify before calling this tool; RunWield then runs no-plan Mechanical Validation. " +
-        "For frontend UI/UX work, include the dev server URL, headed browser checks performed, and visible evidence. " +
-        "Call when your assigned work is done, and include a concise " +
-        "report in the required `message` parameter, following its description for content and format. " +
-        "A first eligible call with running Background Tasks rejects and lists them; another call cancels remaining " +
-        "tasks and accepts completion. Check task status or cancel them yourself before retrying. " +
-        "Calling it again is harmless — if the workflow or user asks for another report, comply. " +
-        "DO NOT call this tool when you are blocked: a step is impossible, two steps contradict each other, " +
-        "something the work depends on does not exist, a credential, permission, service, or artifact you need is " +
-        "unavailable, or any part of the assignment could not be done. A blocker ends your turn in plain text — " +
-        "say exactly what stopped you and what would unblock it, and stop. Calling this tool while blocked starts " +
-        "validation over work that never happened, or reports the Plan as done when it is not. " +
-        "If you need to ask the user a clarifying question before finishing, DO NOT call this tool — " +
-        "just output the question in text."
-    );
-}
-
 export function createTaskCompletedTool({
     hostedSession,
     agentName = "agent",
@@ -148,14 +76,10 @@ export function createTaskCompletedTool({
 }: TaskCompletedToolOptions) {
     if (!hostedSession) throw new Error("createTaskCompletedTool: hostedSession is required");
     const targetHostedSession = hostedSession;
-    const PARAMETERS = buildToolParams(agentName);
-    return defineTool<typeof PARAMETERS, TaskCompletedDetails>({
-        name: "task_completed",
-        exposure: "model-only",
-        label: "Task Completed",
-        description: buildToolDescription(),
-        parameters: PARAMETERS,
-        async execute(_toolCallId, params, _signal): Promise<TaskCompletedResult> {
+    const definition = taskCompleted.define(reportKindForAgent(agentName));
+    return defineTool<typeof definition.parameters, TaskCompletedDetails>({
+        ...definition,
+        async execute(_toolCallId, params: ToolParameters<"task_completed">, _signal): Promise<TaskCompletedResult> {
             await Promise.resolve();
             const activeWorkflow = targetHostedSession.getActiveExecutionWorkflow?.();
             const normalizedAgentName = normalizeAgentName(agentName);
@@ -197,7 +121,9 @@ export function createTaskCompletedTool({
                     terminate: false,
                 };
             }
-            const report = normalizeImplementationReport(params.message);
+            const report = taskCompleted.normalizeReport(params.message);
+            const browserPreflightOutcome =
+                "browserPreflightOutcome" in params ? params.browserPreflightOutcome : undefined;
             if (
                 isInitialPairCompletionCheckpoint(activeWorkflow) &&
                 !hasFinalPairAssent(targetHostedSession, activeWorkflow)
@@ -222,9 +148,7 @@ export function createTaskCompletedTool({
                         report: {
                             summary: report,
                             final: true,
-                            ...(params.browserPreflightOutcome
-                                ? { browserPreflightOutcome: params.browserPreflightOutcome as BrowserPreflightOutcome }
-                                : {}),
+                            ...(browserPreflightOutcome ? { browserPreflightOutcome } : {}),
                         },
                         timestampMs: now(),
                     });
@@ -357,7 +281,7 @@ export function createTaskCompletedTool({
                             checkpointCount: completedWorkflow.pairCheckpointCount || 0,
                             switchedToAutonomous: completedWorkflow.pairSwitchedToAutonomous === true,
                             capabilityLost: completedWorkflow.pairCapabilityLost === true,
-                            browserPreflightOutcome: params.browserPreflightOutcome,
+                            browserPreflightOutcome,
                             elapsedMs,
                         },
                     },
@@ -370,9 +294,7 @@ export function createTaskCompletedTool({
                 details: {
                     outcome: "task_completed",
                     message: report,
-                    ...(normalizedAgentName === "frontend-engineer"
-                        ? { browserPreflightOutcome: params.browserPreflightOutcome as BrowserPreflightOutcome }
-                        : {}),
+                    ...(normalizedAgentName === "frontend-engineer" ? { browserPreflightOutcome } : {}),
                 },
                 terminate: true,
             };

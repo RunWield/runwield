@@ -57,7 +57,7 @@ test("resolveEpicContinuation selects the earliest non-terminal child by order",
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         await writePlan(cwd, "epic/01-done", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "validated",
             summary: "Done",
@@ -67,7 +67,7 @@ test("resolveEpicContinuation selects the earliest non-terminal child by order",
             createdAt: "2026-01-01T00:00:00.000Z",
         });
         await writePlan(cwd, "epic/03-ready", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "ready_for_work",
             summary: "Ready",
@@ -77,7 +77,7 @@ test("resolveEpicContinuation selects the earliest non-terminal child by order",
             createdAt: "2026-01-01T00:00:00.000Z",
         });
         await writePlan(cwd, "epic/02-draft", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "draft",
             summary: "Draft",
@@ -153,7 +153,7 @@ test("a completed sequence reports no remaining children after its final child",
             createdAt: "2026-01-01T00:00:00.000Z",
         });
         await writePlan(cwd, "epic/01-done", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "reviewed",
             parentPlan: "epic",
@@ -188,7 +188,7 @@ test("resolveEpicContinuation stops on the first blocked child instead of skippi
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         await writePlan(cwd, "epic/01-done", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "verified",
             summary: "Done",
@@ -198,7 +198,7 @@ test("resolveEpicContinuation stops on the first blocked child instead of skippi
             createdAt: "2026-01-01T00:00:00.000Z",
         });
         await writePlan(cwd, "epic/02-hold", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "on_hold",
             summary: "Hold",
@@ -208,7 +208,7 @@ test("resolveEpicContinuation stops on the first blocked child instead of skippi
             createdAt: "2026-01-01T00:00:00.000Z",
         });
         await writePlan(cwd, "epic/03-ready", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "ready_for_work",
             summary: "Ready",
@@ -229,7 +229,7 @@ test("resolveEpicContinuation requires dependencies to be verified", async () =>
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         await writePlan(cwd, "epic/01-done", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "verified",
             summary: "Done",
@@ -239,7 +239,7 @@ test("resolveEpicContinuation requires dependencies to be verified", async () =>
             createdAt: "2026-01-01T00:00:00.000Z",
         });
         await writePlan(cwd, "epic/02-next", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             complexity: "MEDIUM",
             status: "ready_for_work",
             summary: "Next",
@@ -271,7 +271,7 @@ test("presentEpicChildPlan shows the loading notice and the same details as the 
             path,
             [
                 "---",
-                `classification: "FEATURE"`,
+                `classification: "PLANNED_CHANGE"`,
                 `complexity: "MEDIUM"`,
                 `status: "ready_for_work"`,
                 `parentPlan: "epic"`,
@@ -332,14 +332,14 @@ for (const orders of [
         const cwd = await makeProject();
         return await withRetainedPlanFixture(cwd, async () => {
             await writePlan(cwd, "epic/00-done", {
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 status: "verified",
                 parentPlan: "epic",
                 order: 0,
             });
             for (const [index, order] of orders.entries()) {
                 await writePlan(cwd, `epic/0${index + 1}-next`, {
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     status: "draft",
                     parentPlan: "epic",
                     ...(order === undefined ? {} : { order }),
@@ -355,7 +355,7 @@ for (const orders of [
 test("a completed family needs no next-child order to finish continuation", async () => {
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
-        await writePlan(cwd, "epic/done", { classification: "FEATURE", status: "verified", parentPlan: "epic" });
+        await writePlan(cwd, "epic/done", { classification: "PLANNED_CHANGE", status: "verified", parentPlan: "epic" });
         const resolution = await resolveEpicContinuation({ cwd, completedPlanName: "epic/done" });
         assertEquals(resolution.kind, "none");
         assertEquals(resolution.reason, "no_remaining_children");

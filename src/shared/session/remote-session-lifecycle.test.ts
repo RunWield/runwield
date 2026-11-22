@@ -149,6 +149,9 @@ test("remote rollover keeps native lock exclusion and rejects stale old payload 
         const monitor = spawnNativeProcess(process.execPath, processOptions(f, "monitor"));
         const reader = monitor.stdout.pipeThrough(decodeTextStream()).pipeThrough(lines()).getReader();
         const errors = new Response(monitor.stderr).text();
+        const enteredRollover = Promise.withResolvers<void>();
+        const resumeRollover = Promise.withResolvers<void>();
+        let rolling: ReturnType<typeof f.owner.rollover> | undefined;
         try {
             const ready = await within(reader.read());
             assert(ready.value);
@@ -157,6 +160,19 @@ test("remote rollover keeps native lock exclusion and rejects stale old payload 
             f.owner.handle(f.request("append", 1, customEntry()));
             const segment = f.store.getCurrentSessionSegment(f.session.runwieldSessionId);
             assert(segment);
+            const sessionManager = Object.assign(
+                SessionManager.inMemory(
+                    f.remoteProject,
+                    undefined,
+                    parseRemoteSessionTranscript(f.owner.inspect().contents),
+                ),
+                {
+                    async dispose() {
+                        enteredRollover.resolve();
+                        await resumeRollover.promise;
+                    },
+                },
+            );
             const hosted = new HostedSession({
                 id: "laptop-owned-remote",
                 cwd: f.remoteProject,
@@ -174,13 +190,9 @@ test("remote rollover keeps native lock exclusion and rejects stale old payload 
                     workflowContext: null,
                     tutorialContext: null,
                 },
-                sessionManager: SessionManager.inMemory(
-                    f.remoteProject,
-                    undefined,
-                    parseRemoteSessionTranscript(f.owner.inspect().contents),
-                ),
+                sessionManager,
             });
-            const rolling = f.owner.rollover({
+            rolling = f.owner.rollover({
                 hostedSession: hosted,
                 transcriptCwd: f.cwd,
                 kind: "semantic_repair",
@@ -192,7 +204,14 @@ test("remote rollover keeps native lock exclusion and rejects stale old payload 
                     lastFindingsText: "saved findings",
                 },
             });
+            await within(Promise.race([enteredRollover.promise, rolling]));
+            // Keep rollover paused until another process has tested the real lock.
+            assertEquals(await contender(f), {
+                excluded: true,
+                reason: "Session is open in another RunWield surface",
+            });
             assertThrows(() => f.owner.handle(f.request("append", 2, customEntry("late", "effect-1"))), Error, "Stale");
+            resumeRollover.resolve();
             const result = await within(rolling);
             const writer = monitor.stdin.getWriter();
             await writer.write(new Uint8Array([1]));
@@ -201,7 +220,6 @@ test("remote rollover keeps native lock exclusion and rejects stale old payload 
             const sample = await within(reader.read());
             assert(sample.value);
             const observations: ProcessReply = JSON.parse(sample.value);
-            assert((observations.excludedSamples ?? 0) > 0);
             assertEquals(observations.violations, 0);
             assertEquals((await within(monitor.status)).code, 0, await errors);
             const fresh = freshOwner(f);
@@ -217,6 +235,8 @@ test("remote rollover keeps native lock exclusion and rejects stale old payload 
             assertEquals(await fsReadFile(f.transcriptPath, "utf8"), f.initial + customEntry());
             fresh.markUncertain();
         } finally {
+            resumeRollover.resolve();
+            await rolling?.catch(() => undefined);
             try {
                 monitor.kill("SIGKILL");
             } catch {

@@ -2107,7 +2107,7 @@ test("SessionRuntime routes execution continuation input to the resolved Plan ow
     await runtime.switchAgent(sessionId, { agentName: "planner" });
     await runtime.setActiveExecutionWorkflow(sessionId, {
         planName: "p",
-        triageMeta: { classification: "FEATURE" },
+        triageMeta: { classification: "PLANNED_CHANGE" },
         executionAgent: "engineer",
         executionCwd: runtimeProjectRoot(),
         validationContinuation: true,
@@ -4140,7 +4140,7 @@ test("SessionRuntime snapshot derives workflow context from active execution wor
     const hostedSession = sessionHost.requireSession(sessionId);
     hostedSession.setActiveExecutionWorkflow({
         planName: "footer-plan",
-        triageMeta: { classification: "FEATURE", complexity: "MEDIUM" },
+        triageMeta: { classification: "PLANNED_CHANGE", complexity: "MEDIUM" },
         executionAgent: "engineer",
     });
 
@@ -4167,7 +4167,7 @@ test("SessionRuntime snapshot prefers explicit workflow context over active exec
     });
     hostedSession.setActiveExecutionWorkflow({
         planName: "fallback-plan",
-        triageMeta: { classification: "FEATURE", complexity: "MEDIUM" },
+        triageMeta: { classification: "PLANNED_CHANGE", complexity: "MEDIUM" },
         executionAgent: "engineer",
     });
 

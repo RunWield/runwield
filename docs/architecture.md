@@ -662,8 +662,8 @@ The six routing intents have distinct ceremony:
 - `INQUIRY` and `IDEATION` switch to a specialist and preserve that specialist as the root agent.
 - `OPERATION` is direct non-code work. It observes `task_completed` but performs no mechanical validation.
 - `QUICK_FIX` is direct code work with no Plan or worktree. `task_completed` gates Mechanical Validation.
-- `PLANNED_CHANGE` creates and reviews a Plan, then executes only after readiness. `FEATURE` remains a Work Kind and a
-  legacy classification value that normalizes to `PLANNED_CHANGE`.
+- `PLANNED_CHANGE` creates and reviews a Plan, then executes only after readiness. `FEATURE` is a Work Kind. The Plan
+  store reads or imports older Plan files with `classification: FEATURE` as `PLANNED_CHANGE`.
 - `PROJECT` creates an Epic container. It is decomposed into child PLANNED_CHANGE Plans and is never executed directly.
 
 `workflow-results.ts` extracts structured outcomes. `decisions.ts` converts them into semantic actions such as

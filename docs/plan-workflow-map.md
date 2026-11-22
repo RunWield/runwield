@@ -59,7 +59,7 @@ Request
 │  ├─ IDEATION → Ideator → exploration; later implementation needs routing
 │  ├─ OPERATION → Operator → T task_completed → finish; no validation
 │  ├─ QUICK_FIX → Engineer → T task_completed → Q: no-plan CI loop
-│  ├─ FEATURE / PLANNED_CHANGE → P: Planner
+│  ├─ PLANNED_CHANGE → P: Planner
 │  └─ PROJECT → P: Architect
 └─ U load-plan / resume / direct review → R: saved-state entry
 

@@ -78,7 +78,9 @@ export interface TestSandboxEnvironment extends Record<string, string> {
     WLD_TEST_SANDBOX_HOME: string;
 }
 
-const TEST_FILE_TIMEOUT_MS = 10 * 60 * 1000;
+const TEST_FILE_TIMEOUT_MS = Number(process.env.WLD_TEST_FILE_TIMEOUT_MS || 10 * 60 * 1000);
+if (!Number.isSafeInteger(TEST_FILE_TIMEOUT_MS) || TEST_FILE_TIMEOUT_MS < 1)
+    throw new Error("WLD_TEST_FILE_TIMEOUT_MS must be a positive integer.");
 const REPO_ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
 const TEST_FILE_PATTERN = /(^|\/)(test|.+[._]test)\.(js|mjs|jsx|ts|tsx|mts)$/;
 const SKIP_DIRS = new Set([

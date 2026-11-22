@@ -106,7 +106,7 @@ const journeyFixture = defineGitFixture(async (repo) => {
             "epic/01-done",
             {
                 planId: "plan-child-01",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 status: "validated",
                 parentPlan: "epic",
@@ -122,7 +122,7 @@ const journeyFixture = defineGitFixture(async (repo) => {
             "epic/02-next",
             {
                 planId: "plan-child-02",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 status: "ready_for_work",
                 parentPlan: "epic",
@@ -323,7 +323,7 @@ test("Epic child loading rejects a primary-only name removed from the target", a
             "epic/02-obsolete",
             {
                 planId: "obsolete-child",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 status: "ready_for_work",
                 parentPlan: "epic",
@@ -353,7 +353,7 @@ test("Loading an Epic does not publish stale primary children back to its branch
                 "epic/02-obsolete",
                 {
                     planId: "obsolete-child",
-                    classification: "FEATURE",
+                    classification: "PLANNED_CHANGE",
                     complexity: "MEDIUM",
                     status: "ready_for_work",
                     parentPlan: "epic",
@@ -416,7 +416,7 @@ test("Epic branch target lookup preserves non-Git child Plan loading", async () 
             "epic/02-next",
             {
                 planId: "plain-child",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 status: "ready_for_work",
                 parentPlan: "epic",
@@ -575,7 +575,7 @@ test("A published sequence keeps its parent open while a target-only child remai
             "epic/01-done",
             {
                 planId: "plan-child-01",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 status: "reviewed",
                 parentPlan: "epic",
@@ -724,7 +724,7 @@ test("Epic branch continuation ignores stale primary completed child status", as
             "epic/01-done",
             {
                 planId: "plan-child-01",
-                classification: "FEATURE",
+                classification: "PLANNED_CHANGE",
                 complexity: "MEDIUM",
                 status: "ready_for_work",
                 parentPlan: "epic",

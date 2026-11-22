@@ -141,7 +141,7 @@ async function makeRealRecoveryProject(
     await runGit(projectRoot, ["config", "user.name", "RunWield Test"]);
     return await withRetainedPlanFixture(projectRoot, async () => {
         await seedPlan(projectRoot, "recovery-contract", "# Plan\n\nrecovery fixture\n", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "failed",
             summary: "test plan",
             affectedPaths: [],
@@ -872,7 +872,7 @@ test("recovery cancel at the first menu leaves unrelated repairable state untouc
         const journalPath = `${planFixtureJournalDirectory(project.projectRoot)}/unrelated-record.json`;
         const journalBefore = await fsReadFile(journalPath);
         await seedPlan(project.projectRoot, "unrelated-plan", "# Unrelated Plan\n", {
-            classification: "FEATURE",
+            classification: "PLANNED_CHANGE",
             status: "draft",
             summary: "unrelated fixture plan",
             affectedPaths: [],
