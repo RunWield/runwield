@@ -1,8 +1,8 @@
 import { serveHttp } from "../http-server.ts";
 import { test } from "node:test";
-import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { join } from "node:path";
+import { mkdir as fsMkdir, readdir as fsReaddir, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
     createAssistantMessageEventStream,
@@ -20,7 +20,8 @@ import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
 
 test("bounded remote see_image records vision requests, not verification turns", async (t) => {
     await withWorkflowMetricsFixture(async (fixture) => {
-        const personal = join(fixture.homeDir, ".wld");
+        const laptopHome = join(dirname(fixture.projectRoot), "laptop");
+        const personal = join(laptopHome, ".wld");
         await fsMkdir(personal, { recursive: true });
         await fsWriteFile(
             join(fixture.projectRoot, ".wld", "settings.json"),
@@ -33,8 +34,13 @@ test("bounded remote see_image records vision requests, not verification turns",
         let primaryRequests = 0;
         let visionResponse = fauxAssistantMessage(fauxText("remote vision"));
         let networkFailure = false;
-        const stream: ProviderStreams["streamSimple"] = (model) => {
+        const stream: ProviderStreams["streamSimple"] = (model, context) => {
+            const request = JSON.stringify(context);
+            assertEquals(request.includes(laptopHome), false);
             if (model.id === "vision") {
+                assertEquals(context.messages.length, 1);
+                assertEquals(context.messages[0].role, "user");
+                assertEquals(request.includes(fixture.projectRoot), false);
                 const now = Date.now();
                 const pending = new UsageReporter().query(
                     [fixture.projectRoot],
@@ -106,6 +112,7 @@ test("bounded remote see_image records vision requests, not verification turns",
             const { session } = await createBoundedRemoteModelSession({
                 cwd: fixture.projectRoot,
                 mount: { globalRoot: personal, lost: new Promise<void>(() => {}), close: () => Promise.resolve() },
+                personalOwner: { kind: "managed-remote", identity: laptopHome },
                 connection: { port: server.addr.transport === "tcp" ? server.addr.port : 0, credential },
                 provider: "remote-usage",
                 modelId: "primary",
@@ -250,6 +257,8 @@ test("bounded remote see_image records vision requests, not verification turns",
                     assertEquals(report.totals.activeDays, 0);
                     assertEquals(report.totals.tokens.exclusions > 0, true);
                 });
+                assertEquals(await fsReaddir(personal), []);
+                await assertRejects(() => fsStat(join(fixture.homeDir, ".wld", "projects")), Error, "ENOENT");
             } finally {
                 session.dispose();
             }

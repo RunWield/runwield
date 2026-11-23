@@ -40,6 +40,7 @@ export async function runRemoteModelProofEntry(): Promise<void> {
         proof: input.proof,
         connection: input.connection,
         cwd: input.cwd,
+        personalOwner: input.personalOwner,
         // The supervisor owns this mount. It terminates the proof process on loss.
         mount: { ...input.mount, lost: new Promise<void>(() => {}), close: () => Promise.resolve() },
         signal: abort.signal,

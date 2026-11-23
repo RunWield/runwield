@@ -16,7 +16,11 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve, relative, sep } from "node:path";
 import { getHomeDir } from "@runwield/resources/home";
-import { remoteProjectOwner, type ProjectPersonalOwner } from "@runwield/resources/personal";
+import {
+    remotePersonalResourcesActive,
+    remoteProjectOwner,
+    type ProjectPersonalOwner,
+} from "@runwield/resources/personal";
 import {
     ensurePrivateDir,
     openNativeFileLock,
@@ -620,8 +624,10 @@ export function inspectSessionStorageBindings(): ProjectSessionStorageBinding[] 
 }
 
 function readOwnedProjectRecords(): ProjectRecord[] {
+    // Managed Sessions carry their own bindings and never scan the execution account's local registry.
+    const launch = trustedLaunchContext.getStore();
+    if (launch ? launch.personalOwner.kind === "managed-remote" : remotePersonalResourcesActive()) return [];
     const context = contextFor({});
-    if (context.personalOwner.kind !== "execution-account") return [];
     const directory = checkIdentityDirectories(context.executionAccountHome, ".wld", "projects");
     let names: string[];
     try {

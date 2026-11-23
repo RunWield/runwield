@@ -2011,6 +2011,8 @@ remote personal store. Managed operations use the initiating laptop's registered
   its valid identity marker. Conflicting or malformed evidence is preserved.
 - Given manual SSH, ownership remains the remote execution account. Given an explicit managed launch owner, ownership
   remains that owner, never an inference from the mount path or an automatic fallback after disconnection.
+- Given a managed remote Session with a saved binding, passive Session reads use that binding and skip the remote
+  execution account's local Project registry.
 
 Plans and execution runtime use their responsible account’s home Project tree. Managed remote launches retain
 personal Plan authority on the laptop and Git execution authority on the remote account. Adopted original attempts

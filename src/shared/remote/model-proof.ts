@@ -2,6 +2,7 @@ import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "
 /* Explicit, one-turn LIVE proof. This is not an interactive remote Session. */
 import { isAbsolute, join, relative } from "node:path";
 import type { RemoteModelConnection } from "./model-bridge.ts";
+import type { RemotePersonalResources } from "./personal-resources.ts";
 import type { RemoteMount } from "./sftp-mount.ts";
 import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";
 import { parseRemoteModelProof, type RemoteModelProof } from "./model-proof-config.ts";
@@ -15,6 +16,7 @@ function inside(root: string, path: string): boolean {
 export async function runRemoteModelProof(options: {
     proof: RemoteModelProof;
     mount: RemoteMount;
+    personalOwner?: RemotePersonalResources["personalOwner"];
     connection: RemoteModelConnection;
     cwd: string;
     signal?: AbortSignal;
@@ -47,6 +49,7 @@ export async function runRemoteModelProof(options: {
     let toolResult: string | undefined;
     const { session } = await createBoundedRemoteModelSession({
         mount: options.mount,
+        personalOwner: options.personalOwner,
         connection: options.connection,
         cwd: project,
         provider: proof.provider,

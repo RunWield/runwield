@@ -161,6 +161,7 @@ async function runOwnedModelProof(
                     proof: header.modelProof,
                     connection: { port: header.port, credential: header.credential },
                     cwd: header.view.cwd,
+                    personalOwner: header.personalOwner,
                     mount: {
                         globalRoot: mount.globalRoot,
                         agentsRoot: mount.agentsRoot,
