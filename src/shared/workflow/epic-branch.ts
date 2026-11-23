@@ -16,11 +16,10 @@ import { rm as fsRm } from "node:fs/promises";
  */
 
 import { join, relative } from "node:path";
-import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { parsePlanFrontMatter, projectPlanType } from "@runwield/plans/format";
 import { ensurePlanIdentity, findPlansByParent, loadPlan } from "../../plan-store/index.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import { isPlannedChangeClassification } from "../../constants.ts";
-import { projectPlanType } from "../project-plan.ts";
 import { isGitRepository } from "../git.ts";
 import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";

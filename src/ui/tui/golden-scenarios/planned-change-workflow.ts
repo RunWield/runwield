@@ -9,9 +9,9 @@ import { assertEquals, assertStringIncludes } from "../../../testing/assertions.
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
 
-import { type PlanFrontMatter } from "../../../plan-format.ts";
+import { type PlanFrontMatter } from "@runwield/plans/format";
 import type { TutorialContext } from "../../../shared/session/tutorial-context-session.ts";
-import type { WorkflowControllerState } from "../../../shared/workflow/controller-state.ts";
+import type { WorkflowControllerState } from "@runwield/plans/controller-state";
 import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import type {
     ConsumedScriptedInteraction,

@@ -11,7 +11,7 @@ import { stat as fsStat } from "node:fs/promises";
  */
 
 import { refreshPlanExecutionReference, reopenPlanReview } from "../../plan-store/index.ts";
-import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
+import { resolvePlanExecutionPolicy } from "@runwield/plans/format";
 import { loadPlan } from "../../plan-store/index.ts";
 
 import { resolveValidationExecutionContext } from "../../shared/workflow/execution-context.ts";
@@ -28,9 +28,9 @@ import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
-import type { PlanStatus } from "../../shared/workflow/plan-lifecycle.ts";
+import type { PlanStatus } from "@runwield/plans/lifecycle";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
 
@@ -145,7 +145,7 @@ export function assertRecoveryWorktreeIsManaged(
  * @param {Object} opts
  * @param {string} opts.projectRoot
  * @param {{ planName: string, path: string, body: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter, revision?: string }} opts.plan
- * @param {import('../../shared/workflow/plan-lifecycle.ts').PlanStatus} opts.currentStatus
+ * @param {import('@runwield/plans/lifecycle').PlanStatus} opts.currentStatus
  * @param {RecoveryWorktreeContext | null | undefined} [opts.worktreeContext]
  * @param {PlanSessionSurface} opts.session
  */

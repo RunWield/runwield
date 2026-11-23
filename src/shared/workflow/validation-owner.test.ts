@@ -24,7 +24,7 @@ import {
     readValidationReviewState,
     validationCheckpointCanResume,
 } from "./validation-checkpoint.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 
 type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;

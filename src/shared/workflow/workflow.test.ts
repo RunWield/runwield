@@ -41,7 +41,7 @@ import {
     findById as findWorktreeRegistryEntryById,
     listEntries as listWorktreeRegistryEntries,
 } from "../worktree-registry.ts";
-import { type PlanFrontMatterInput } from "../../plan-format.ts";
+import { type PlanFrontMatterInput } from "@runwield/plans/format";
 import { type SessionRuntimeEventSink } from "../session/session-host.ts";
 
 /**

@@ -478,7 +478,6 @@ test("source remote help works without a generated identity and connection expla
             "src/cmd/remote",
             "src/shared/remote",
             "src/shared/session",
-            "src/plan-format",
             "scripts",
             "packaging/remote",
         ]) {
@@ -506,7 +505,6 @@ test("source remote help works without a generated identity and connection expla
             "src/constants.ts",
             "src/shared/session/agent-registry.ts",
             "src/shared/cli-name.ts",
-            "src/plan-format/classification.ts",
             "runtime-root.ts",
             "scripts/build-metadata.ts",
             "src/shared/version.js",

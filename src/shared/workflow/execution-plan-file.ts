@@ -13,7 +13,7 @@ import {
     mergeFrontMatterText,
     parsePlanFrontMatter,
     planDocumentMarkdown,
-} from "../../plan-format.ts";
+} from "@runwield/plans/format";
 import { atomicWriteTextFileIfAbsent } from "../atomic-text-file.ts";
 
 /**

@@ -1,6 +1,6 @@
 import { loadPlan, updatePlanFrontMatter, withPlanLock } from "../plan-store.ts";
 import { findActiveByPlanName } from "../shared/worktree-registry.ts";
-import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.ts";
+import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { makeValidationCheckpoint } from "../shared/workflow/validation-checkpoint.ts";
 import { currentPackageSelection, recoverGeneratedManualQaArtifact, packageWorkflowLocks } from "./workflows.ts";
 

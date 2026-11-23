@@ -21,6 +21,16 @@ import type { ValidationOperationalFailure } from "./validation-operational-erro
 import type { ReviewLedger } from "./review-ledger.ts";
 import type { ReviewDiffScope, ReviewInspection } from "./review-inspection.ts";
 
+import type {
+    ValidationInteractionRequest as StoredInteractionRequest,
+    ValidationInteractionResponse as StoredInteractionResponse,
+} from "@runwield/plans/controller-state";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
+
+/** Live requests may carry callbacks that the validation host strips before saving the wait. */
+export type ValidationInteractionRequest = StoredInteractionRequest<RuntimeInteractionRequest["_meta"]>;
+export type ValidationInteractionResponse = StoredInteractionResponse<RuntimeInteractionResponse["_meta"]>;
+
 /** The phase that should run next for a Plan. */
 export type ValidationPhaseName = "mechanical" | "semantic" | "delivery";
 
@@ -96,41 +106,6 @@ export type ValidationWorkflowState = {
     repairBaselineTree?: string;
     lastRepairReport?: string;
     humanReviewCycle?: number;
-};
-
-/** A user interaction request (engine-owned mirror of the runtime interaction request). */
-export type ValidationInteractionRequest = {
-    id?: string;
-    type:
-        | "select"
-        | "text"
-        | "approval"
-        | "link"
-        | "plan_review"
-        | "code_review"
-        | "pair_checkpoint"
-        | "plan_deviation_confirmation";
-    prompt: string;
-    options?: Array<{
-        value: string;
-        label: string;
-        description?: string;
-        _meta?: Record<string, unknown>;
-    }>;
-    defaultValue?: string;
-    placeholder?: string;
-    allowEmpty?: boolean;
-    toolCallId?: string;
-    _meta?: Record<string, unknown>;
-};
-
-/** A user interaction response (engine-owned mirror of the runtime interaction response). */
-export type ValidationInteractionResponse = {
-    outcome: string;
-    value?: string | boolean;
-    valueLabel?: string;
-    message?: string;
-    _meta?: Record<string, unknown>;
 };
 
 /**

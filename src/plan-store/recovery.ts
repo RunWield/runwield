@@ -15,7 +15,7 @@ import {
     writePlanMarkdownWithRevision,
     type PlanFrontMatter,
 } from "../plan-store.ts";
-import { buildPlanEventUpdates, type PlanStatus } from "../shared/workflow/plan-lifecycle.ts";
+import { buildPlanEventUpdates, type PlanStatus } from "@runwield/plans/lifecycle";
 import { writeControllerState } from "./controllers.ts";
 import { currentPackageProject, readRecoveryExecution } from "./workflows.ts";
 import { recoveryPlanSnapshot, runPlanFrontMatterTransition, runReviewReopenTransition } from "./transitions.ts";

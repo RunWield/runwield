@@ -14,7 +14,7 @@ import {
     type RuntimeCommandFixture,
 } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import type { PlanFrontMatter } from "../../plan-format.ts";
+import type { PlanFrontMatter } from "@runwield/plans/format";
 import {
     seedPlan as savePlan,
     seedPlanController as writeControllerState,

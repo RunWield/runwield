@@ -30,7 +30,7 @@ import {
     pickControllerState,
     type WorkflowControllerState,
     WORKTREE_CONTEXT_FIELDS,
-} from "../shared/workflow/controller-state.ts";
+} from "@runwield/plans/controller-state";
 import {
     enterProjectRuntime,
     inspectProjectRuntimeReadAccess,
@@ -1358,7 +1358,7 @@ async function runPlanTransition<T>({
 }
 
 /**
- * Semantic boundary for lifecycle Plan Events owned by plan-lifecycle.ts.
+ * Apply Plan Events defined by @runwield/plans/lifecycle to stored Plans.
  */
 export async function runPlanLifecycleEventTransition<T>(
     opts: TransitionOptionsBase & {

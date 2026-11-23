@@ -7,17 +7,21 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 
-import { getPlanRevisionForText, injectFrontMatter, parsePlanFrontMatter } from "../../plan-format.ts";
+import {
+    getPlanRevisionForText,
+    injectFrontMatter,
+    parsePlanFrontMatter,
+    type PlanFrontMatter,
+} from "@runwield/plans/format";
 import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
 
 import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
-import type { PlanFrontMatter } from "../../plan-format.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { startActiveExecutionWorkflow } from "./workflow.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { listEntries, updateEntry } from "../worktree-registry.ts";
 import { findReusableWorktree } from "../worktree.ts";
 

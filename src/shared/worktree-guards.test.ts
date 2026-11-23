@@ -15,7 +15,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../testing/as
 
 import { loadPlan } from "../plan-store/index.ts";
 
-import type { PlanFrontMatterInput } from "../plan-format.ts";
+import type { PlanFrontMatterInput } from "@runwield/plans/format";
 import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 
 async function savePlanForTest(cwd: string, planName: string, content: string, attrs: PlanFrontMatterInput) {

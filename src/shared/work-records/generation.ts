@@ -6,20 +6,28 @@ import { currentWorkRecordOwner } from "./owner.ts";
  * Generate canonical internal Work Records from completed Plans.
  */
 
-import { type PlanFrontMatter, type PlanTextLoaded } from "../../plan-format.ts";
-import type { PlanDeviation } from "../plan-deviations.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 import type {
+    GeneratedWorkRecordSections,
     WorkRecordCompletionMode,
     WorkRecordFrontMatter,
     WorkRecordResource,
     WorkRecordScope,
-    WorkRecordSections,
     WorkRecordSupersessionCandidate,
-} from "./schema.ts";
+} from "@runwield/plans/work-record-schema";
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
-import { compareChildPlansByOrder, isChildFeaturePlan, isProjectPlan } from "../../plan-format.ts";
+import {
+    type PlanFrontMatter,
+    type PlanTextLoaded,
+    type PlanDeviation,
+    compareChildPlansByOrder,
+    isChildFeaturePlan,
+    isProjectPlan,
+    dedupeTicketReferencesByUrl,
+    readPlanDeviations,
+    renderPlanDeviationsForWorkRecord,
+} from "@runwield/plans/format";
 import {
     ensurePlanIdentity,
     listArchivedPlans,
@@ -33,8 +41,6 @@ import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts"
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "../workflow/validation-session-adapter.ts";
 import { settleWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
-import { dedupeTicketReferencesByUrl } from "../ticket-references.ts";
-import { readPlanDeviations, renderPlanDeviationsForWorkRecord } from "../plan-deviations.ts";
 import { buildWorkRecordFileName, deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import { applyWorkRecordSupersession, WorkRecordSupersessionRollbackError } from "./supersession.ts";
@@ -74,11 +80,7 @@ export interface WorkRecordSource {
     existingRecord?: WorkRecordResource;
 }
 
-export interface GeneratedWorkRecordSections extends Pick<WorkRecordSections, "title" | "summary"> {
-    outOfScope?: string;
-    futurePlanningNotes?: string;
-    supersessionProposals?: WorkRecordSupersessionCandidate[];
-}
+export type { GeneratedWorkRecordSections } from "@runwield/plans/work-record-schema";
 
 export interface GenerationOptions {
     /** Cancellation of the recording operation. */

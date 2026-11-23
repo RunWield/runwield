@@ -334,7 +334,7 @@ export interface ProjectStoreDeviation {
     operationId: string;
     planId: string;
     expectedRevision: string;
-    proposal: import("../shared/plan-deviations.ts").PlanDeviationProposal;
+    proposal: import("@runwield/plans/format").PlanDeviationProposal;
 }
 export interface ProjectStoreSequenceSnapshot {
     kind: "sequence-snapshot";
@@ -500,7 +500,7 @@ export interface ProjectStoreRecordQuery {
     accessMode: "current" | "all";
 }
 export interface ProjectStoreRecordResources {
-    recordResources: import("../shared/work-records/schema.ts").WorkRecordResource[];
+    recordResources: import("@runwield/plans/work-record-schema").WorkRecordResource[];
 }
 export interface ProjectStoreRecordQueryResult {
     recordSearch: import("../shared/work-records/search.ts").WorkRecordSearchResult;

@@ -3,7 +3,7 @@ import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 /** Shared Plan action evidence and lifecycle executor. */
 
 import { type PlanFrontMatter } from "../../plan-store/index.ts";
-import { getPlanRevisionForText } from "../../plan-format.ts";
+import { getPlanRevisionForText } from "@runwield/plans/format";
 import { findPlanEvidenceById, loadPlan } from "../../plan-store/index.ts";
 import {
     prepareWorktreeRegistry,
@@ -11,8 +11,8 @@ import {
     WorktreeRegistryAmbiguityError,
 } from "../worktree-registry.ts";
 import { RegisteredPlanDocumentUnavailableError } from "../../plan-store/index.ts";
-import { getPlanLifecycleActionMetadata, recordPlanEvent } from "./plan-lifecycle.ts";
-import type { PlanEvent, PlanStatus } from "./plan-lifecycle.ts";
+import { getPlanLifecycleActionMetadata, type PlanEvent, type PlanStatus } from "@runwield/plans/lifecycle";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { PlanningNotStartedError } from "../../plan-store/index.ts";
 
 export type PlanActionName =

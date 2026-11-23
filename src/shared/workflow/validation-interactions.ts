@@ -9,6 +9,7 @@
 
 import { type ValidationInteractionRequest, ValidationInteractionTypes } from "./validation-ports.ts";
 import type { ValidationInteractionResponse } from "./validation-ports.ts";
+import type { PendingHostDecision } from "@runwield/plans/controller-state";
 import type { UserActionChoice, UserActionPause, ValidationLoopArgs } from "./validation-types.ts";
 import { emitStatus } from "./validation-emit.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
@@ -86,7 +87,7 @@ export async function requestInteraction(
     }
     if (accepted) return accepted;
     // Strip process-local callbacks before saving a browser wait.
-    const hostRequest =
+    const hostRequest: PendingHostDecision =
         pending && sameHostIdentity(pending.identity, identity)
             ? pending
             : { kind: "decision" as const, identity, interaction: JSON.parse(JSON.stringify(request)) };

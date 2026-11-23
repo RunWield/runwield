@@ -20,7 +20,7 @@ import type {
     RuntimeInteractionResponse,
 } from "../session/session-runtime-interactions.ts";
 import type { runCodeReview } from "../../ui/review/code-review.ts";
-import type { PlanStatus } from "./plan-lifecycle.ts";
+import type { PlanStatus } from "@runwield/plans/lifecycle";
 import type { IsolatedAgentSessionOptions } from "./validation-session-adapter.ts";
 import type { CodeReviewConversation } from "./validation-types.ts";
 import type { ValidationLoopArgs } from "./validation.ts";
@@ -403,7 +403,7 @@ const conversationFixture = defineGitFixture(async (root) => {
 
 async function makeReviewedGitConversation() {
     const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
-    const { recordPlanEvent } = await import("./plan-lifecycle.ts");
+    const { recordPlanEvent } = await import("../../plan-store/index.ts");
     const { startActiveExecutionWorkflow, createExecutionStartPorts } = await import("./execution-start.ts");
     const { finalizePlanImplementation } = await import("./implementation-checkpoint.ts");
     const root = await conversationFixture.checkout();

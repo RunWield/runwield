@@ -10,10 +10,10 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { seedPlanState } from "../testing/plan-state-fixture.ts";
-import { type PlanFrontMatterInput } from "../../plan-format.ts";
+import { type PlanFrontMatterInput } from "@runwield/plans/format";
 import { loadPlan } from "../../plan-store/index.ts";
 import { presentEpicChildPlan, resolveEpicContinuation } from "./epic-continuation.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 
 import type { HostedSession } from "../session/hosted-session.ts";
 import type { RuntimeSystemStatusEvent } from "../session/session-runtime-events.ts";

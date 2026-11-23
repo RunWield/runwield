@@ -9,7 +9,7 @@ import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.ts";
-import { hashPlanBody } from "../../plan-format.ts";
+import { hashPlanBody } from "@runwield/plans/format";
 import {
     createPulledCollaborationPlan,
     listPlanResources,

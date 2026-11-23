@@ -4,7 +4,7 @@ import { withLocalPlanWorkflow } from "../../../plan-store/index.ts";
 import { selectedPackage } from "../../../plan-store/workflows.ts";
 import { packagePublicationInput } from "../../../plan-store/index.ts";
 import { readPublishedDeliverySources } from "../../../plan-store/index.ts";
-import { parsePlanFrontMatter } from "../../../plan-format.ts";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
 
 async function remoteGit(root: string, remote: string, args: string[]) {
     const result = await captureForegroundProcess("git", { cwd: root, args: ["--git-dir", remote, ...args] });

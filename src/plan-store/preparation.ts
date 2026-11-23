@@ -12,7 +12,7 @@ import {
     type PackageWorkflowSelection,
 } from "./workflows.ts";
 /** Action-owned runtime preparation. Passive lookups must not call this module. */
-import { isProjectPlan, parsePlanFrontMatter } from "../plan-format.ts";
+import { isProjectPlan, parsePlanFrontMatter } from "@runwield/plans/format";
 import { ensurePlanIdentity, findPlansByParent, loadPlan } from "./index.ts";
 import { findActiveByPlanName, prepareWorktreeRegistry } from "../shared/worktree-registry.ts";
 import {

@@ -7,7 +7,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
-import type { WorkRecordFrontMatter } from "../../shared/work-records/schema.ts";
+import type { WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
 import { findWorkRecordById, listWorkRecords, writeWorkRecord } from "../../shared/work-records/index.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";

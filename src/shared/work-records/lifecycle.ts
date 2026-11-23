@@ -3,7 +3,7 @@
  * V1 final-state-only Work Record lifecycle helpers.
  */
 
-import type { WorkRecordFrontMatter } from "./schema.ts";
+import type { WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
 
 export interface ArchiveWorkRecordOptions {
     now?: Date | string;

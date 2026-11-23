@@ -14,7 +14,8 @@ const privateMembers = new Set([
     // Existing retained-copy implementation. Its operations are public only through the owner interface.
     "src/shared/workflow/execution-plan-file.ts",
 ]);
-const pureSurface = "src/plan-format.ts";
+const plansSurface = "packages/plans/index.ts";
+const pureSurface = "packages/plans/format.ts";
 const publicSurface = "src/plan-store/index.ts";
 
 export interface PlanStoreBoundaryViolation {
@@ -75,6 +76,12 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
             : specifier.startsWith(".")
               ? relativeName(resolve(dirname(absolute), specifier))
               : "";
+        if (file.startsWith("packages/plans/") && target.startsWith("src/") && !isTestCaller(file))
+            violations.push({
+                file,
+                line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
+                message: `The Plans package cannot depend on an application module (${specifier}).`,
+            });
         if ((PLAN_TEST_SUPPORT.has(target) || /\.(?:test|integration)\.[^.]+$/.test(target)) && !isTestCaller(file))
             violations.push({
                 file,
@@ -166,12 +173,13 @@ export function inspectPlanFormatGraph(sources: ReadonlyMap<string, string>): Pl
                         node,
                         `Plan format runtime graph reaches persistence or environment I/O through ${specifier}.`,
                     );
-                else if (target.startsWith("src/")) visitFile(target);
+                else if (sources.has(target)) visitFile(target);
             }
             ts.forEachChild(node, inspect);
         };
         inspect(parsed);
     };
+    visitFile(plansSurface);
     visitFile(pureSurface);
     return violations;
 }
@@ -284,7 +292,8 @@ export async function checkPlanStoreProductionBoundary(): Promise<PlanStoreBound
     const violations: PlanStoreBoundaryViolation[] = [];
     const sources = new Map<string, string>();
     for (const file of await listCiFiles(root)) {
-        if (!file.startsWith("src/") || !/\.(?:[cm]?[jt]sx?|astro)$/.test(file)) continue;
+        if ((!file.startsWith("src/") && !file.startsWith("packages/")) || !/\.(?:[cm]?[jt]sx?|astro)$/.test(file))
+            continue;
         const bytes = await readFile(resolve(root, file), "utf8");
         const source = file.endsWith(".astro")
             ? "\n" + (bytes.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/)?.[1] || "")

@@ -11,7 +11,7 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
  */
 
 import { type PlanFrontMatter } from "../../plan-store/index.ts";
-import { getDeclaredPlanStatus, planDocumentMarkdown } from "../../plan-format.ts";
+import { getDeclaredPlanStatus, planDocumentMarkdown } from "@runwield/plans/format";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { dirname, join, resolve } from "node:path";
 

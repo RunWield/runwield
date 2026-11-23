@@ -4,7 +4,7 @@
  */
 
 import type { WorkKind } from "@runwield/tools";
-import type { TicketReference } from "../ticket-references.ts";
+import type { TicketReference } from "./format/ticket-references.ts";
 
 export const WORK_RECORD_KIND = "work_record";
 
@@ -92,6 +92,12 @@ export interface WorkRecordSections {
     title: string;
     summary: string;
     optional: Record<string, string>;
+}
+
+export interface GeneratedWorkRecordSections extends Pick<WorkRecordSections, "title" | "summary"> {
+    outOfScope?: string;
+    futurePlanningNotes?: string;
+    supersessionProposals?: WorkRecordSupersessionCandidate[];
 }
 
 export interface WorkRecordResource {

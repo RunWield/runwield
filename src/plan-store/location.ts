@@ -12,11 +12,10 @@ import {
 } from "./workflows.ts";
 import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
 /** Locate the editable document independently from the shared controller files. */
-import { canonicalizeStoredPlanName, isCompletedPlanStatus } from "../plan-format.ts";
+import { canonicalizeStoredPlanName, isCompletedPlanStatus, isSequencePlan } from "@runwield/plans/format";
 import { loadPlan } from "./index.ts";
 import { findActiveByPlanName, listEntries } from "../shared/worktree-registry.ts";
 import { isGitRepository } from "../shared/git.ts";
-import { isSequencePlan } from "../shared/project-plan.ts";
 import { inspectProjectRuntimeReadAccess, withProjectRuntimeReadScope } from "../shared/project-runtime-layout.ts";
 import {
     assertControllerDocumentAvailable,

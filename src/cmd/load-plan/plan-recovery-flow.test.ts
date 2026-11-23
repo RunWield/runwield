@@ -46,7 +46,7 @@ import {
     getWorktreeRegistryPath,
 } from "../../shared/worktree-registry.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
-import { type PlanFrontMatter } from "../../plan-format.ts";
+import { type PlanFrontMatter } from "@runwield/plans/format";
 import { type UiAPI } from "../../ui/tui/api.ts";
 import { type PlanSessionSurface } from "./plan-session-types.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";

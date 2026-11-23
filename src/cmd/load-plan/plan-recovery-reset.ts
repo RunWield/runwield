@@ -1,7 +1,7 @@
 import { resetPlanExecutionMetadata, restoreRecreatedPlanExecution } from "../../plan-store/index.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { runPlanRecoveryEffects } from "../../plan-store/index.ts";
 import { buildPlanRecoveryUserMessage, planRecoveryMessage } from "../../shared/workflow/validation-user-messages.ts";
 import {

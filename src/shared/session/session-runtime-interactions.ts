@@ -220,7 +220,7 @@ async function requestHostedSessionInteractionInScope(
             planningAgentName.trim()
         ) {
             reviewContainerPlanId = planId;
-            const { parsePlanFrontMatter } = await import("../../plan-format.ts");
+            const { parsePlanFrontMatter } = await import("@runwield/plans/format");
             if (Array.isArray(meta.sequenceDocuments)) {
                 for (const doc of meta.sequenceDocuments) {
                     hostedSession.planReviewConversations.rememberReviewBase(doc.planId, {

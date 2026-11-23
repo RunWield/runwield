@@ -17,7 +17,7 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { hashPlanBody, injectFrontMatter } from "../../plan-format.ts";
+import { hashPlanBody, injectFrontMatter } from "@runwield/plans/format";
 import { loadPlan, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
 
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";

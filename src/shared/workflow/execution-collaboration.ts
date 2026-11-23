@@ -1,6 +1,6 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
 import { AGENTS } from "../../constants.ts";
-import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
+import { resolvePlanExecutionPolicy } from "@runwield/plans/format";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 
 export function resolveExecutionOwner(meta) {

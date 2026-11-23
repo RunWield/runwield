@@ -195,7 +195,7 @@ export async function searchOwnedWorkRecords(
 export async function readOwnedWorkRecord(
     cwd: string,
     fileName: string,
-): Promise<import("../shared/work-records/schema.ts").WorkRecordResource> {
+): Promise<import("@runwield/plans/work-record-schema").WorkRecordResource> {
     const { readLocalWorkRecord } = await import("../shared/work-records/store.ts");
     if (!managedPlanStoreActive()) return await readLocalWorkRecord(cwd, fileName);
     const { basename } = await import("node:path");

@@ -1,6 +1,6 @@
 import { readControllerRecord, writeControllerState } from "./controllers.ts";
 import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
-import type { WorkflowControllerState } from "../shared/workflow/controller-state.ts";
+import type { WorkflowControllerState } from "@runwield/plans/controller-state";
 import { resolveCollectionEpoch, type JournalResult } from "../shared/workflow/metrics-journal.ts";
 import { getWorkflowMetricsCapturePath } from "../shared/workflow/metrics.ts";
 import { workflowOutcomeEventId } from "../shared/workflow/outcome-observations.ts";

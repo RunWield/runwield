@@ -45,7 +45,7 @@ import {
     CONTROLLER_STATE_FIELDS,
     pickControllerState,
     type WorkflowControllerState,
-} from "../shared/workflow/controller-state.ts";
+} from "@runwield/plans/controller-state";
 import { findById } from "../shared/worktree-registry.ts";
 import type { PlanFrontMatter } from "../plan-store.ts";
 
@@ -650,7 +650,7 @@ export async function reopenedPackageReview(plan: LoadedPlanPackage) {
     const status = plan.metadata.definition.status;
     if (status !== "approved" && status !== "ready_for_work" && status !== "ready_for_decomposition") return;
     const view = await loadPackageWorkflowPlan({ planId: plan.metadata.planId });
-    const { buildPlanEventUpdates } = await import("../shared/workflow/plan-lifecycle.ts");
+    const { buildPlanEventUpdates } = await import("@runwield/plans/lifecycle");
     const updates = buildPlanEventUpdates("review_reopened", status, { triageMeta: view.attrs });
     return await preparePackageWorkflowUpdate(plan, view.attrs, updates, { review: undefined, readiness: undefined });
 }

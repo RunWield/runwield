@@ -5,8 +5,9 @@ import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { extractYaml, type FrontMatterRecord } from "../shared/front-matter.ts";
-import { EPIC_ARTIFACT_FILE_NAMES } from "../plan-format.ts";
-import { canonicalPlanStatus, getPlanDocumentRoot, normalizePlanId, parsePlanFrontMatter } from "../plan-store.ts";
+import { EPIC_ARTIFACT_FILE_NAMES } from "@runwield/plans/format";
+import { plans } from "@runwield/plans";
+import { canonicalPlanStatus, getPlanDocumentRoot } from "../plan-store.ts";
 import { PlanPackageError } from "./packages.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";
 import {
@@ -154,8 +155,8 @@ function document(markdown: string) {
         Object.hasOwn(raw, key),
     );
     if (!legacy)
-        return { legacy, raw, body: markdown, attrs: parsePlanFrontMatter("", { missingOrigin: "external" }).attrs };
-    if (raw.planId != null && (typeof raw.planId !== "string" || normalizePlanId(raw.planId) !== raw.planId))
+        return { legacy, raw, body: markdown, attrs: plans.documents.parse("", { missingOrigin: "external" }).attrs };
+    if (raw.planId != null && (typeof raw.planId !== "string" || !plans.identity.isValid(raw.planId)))
         refused("Invalid legacy Plan ID.");
     if (raw.status != null && (typeof raw.status !== "string" || !canonicalPlanStatus(raw.status)))
         refused("Unsupported legacy Plan status.");
@@ -172,7 +173,7 @@ function document(markdown: string) {
     }
     if (raw.order != null && (!Number.isSafeInteger(raw.order) || Number(raw.order) < 0))
         refused("Invalid legacy order.");
-    const attrs = parsePlanFrontMatter(markdown).attrs;
+    const attrs = plans.documents.parse(markdown).attrs;
     if (raw.tickets != null && (!Array.isArray(raw.tickets) || attrs.tickets?.length !== raw.tickets.length))
         refused("Invalid legacy Tickets; no entries were imported.");
     if (raw.supersedes != null && (!Array.isArray(raw.supersedes) || (raw.supersedes.length > 0 && !attrs.supersedes)))

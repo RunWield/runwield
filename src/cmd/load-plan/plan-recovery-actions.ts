@@ -21,7 +21,7 @@ import {
     executeReadyPlanWithRepair,
     validateCompletedExecution,
 } from "./plan-execution.ts";
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.ts";
 import {
     findById as findWorktreeRegistryEntry,

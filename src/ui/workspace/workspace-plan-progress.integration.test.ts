@@ -12,7 +12,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.ts";
 import { createPublicationAttempt, recordPublicationFailure } from "../../shared/workflow/publication-attempt.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
@@ -318,7 +318,7 @@ test("Workspace progress retains saved publication proof after cleanup and inval
     return await withRetainedPlanFixture(projectRoot, async () => {
         try {
             const { seedPlanController } = await import("../../shared/testing/plan-state-fixture.ts");
-            const { recordPlanEvent } = await import("../../shared/workflow/plan-lifecycle.ts");
+            const { recordPlanEvent } = await import("../../plan-store/index.ts");
             await seedPlan(projectRoot, "receipt", "# Saved publication", {
                 planId: "receipt-id",
                 classification: "PLANNED_CHANGE",

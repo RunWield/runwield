@@ -260,7 +260,7 @@ export interface RetainedControllerCheckpoint {
     planId: string;
     attemptId: string;
     expectedRevision: string;
-    updates: import("../shared/workflow/controller-state.ts").WorkflowControllerState;
+    updates: import("@runwield/plans/controller-state").WorkflowControllerState;
     options: import("./controllers.ts").ControllerWriteOptions;
 }
 /** A retained execution writes only its admitted laptop controller under a native owner lock. */
@@ -273,7 +273,7 @@ export async function checkpointRetainedManagedExecution(
     const { openNativeFileLock } = await import("../shared/native-file-lock.ts");
     const { recoverOperationEffect, runReceiptedOperation, operationDigest, commitOperationEffect } =
         await import("./operation-receipts.ts");
-    const { pickControllerState, CONTROLLER_STATE_FIELDS } = await import("../shared/workflow/controller-state.ts");
+    const { pickControllerState, CONTROLLER_STATE_FIELDS } = await import("@runwield/plans/controller-state");
     const { StaleControllerWriteError } = await import("./controllers.ts");
     const directory = root(owner);
     await assertManagedRuntimePath(directory, owner.executionAccountHome);

@@ -1,5 +1,5 @@
-import { PLAN_STATUSES } from "../plan-format-implementation.ts";
-import { isChildFeaturePlan, compareChildPlansByOrder } from "../plan-format.ts";
+import { isCanonicalPlanStatus } from "@runwield/plans/store-format";
+import { isChildFeaturePlan, compareChildPlansByOrder } from "@runwield/plans/format";
 import { managedPlanStoreActive, archiveManagedPlan, restoreManagedPlan, readManagedArchive } from "./managed.ts";
 import { rmdir } from "node:fs/promises";
 import { relative } from "node:path";
@@ -103,7 +103,7 @@ export async function archivePlansByStatus(
     status: import("../plan-store.ts").PlanFrontMatter["status"],
     options: ArchivePlanOptions = {},
 ): Promise<import("../plan-store.ts").BulkArchivePlansResult> {
-    if (!PLAN_STATUSES.has(status)) {
+    if (!isCanonicalPlanStatus(status)) {
         throw new Error(`Unknown Plan status for bulk archive: ${status}`);
     }
 

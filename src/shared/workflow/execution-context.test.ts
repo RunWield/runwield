@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname } from "node:path";
-import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
 
 import { addEntry, findById, getWorktreeRegistryPath } from "../worktree-registry.ts";

@@ -15,7 +15,7 @@ import { inspectControllerDocumentWorktrees, assertControllerDocumentAvailable }
 import { healSettledTransitionRecords } from "../shared/workflow/transition-recovery.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";
 import { verifyRecordedPublication } from "../shared/workflow/validation-merge-verification.ts";
-import { pickControllerState } from "../shared/workflow/controller-state.ts";
+import { pickControllerState } from "@runwield/plans/controller-state";
 import { writePackageControllerEvidence } from "./controllers.ts";
 
 /** Resume exactly the imported owner; changing storage never creates a replacement execution attempt. */

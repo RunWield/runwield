@@ -86,7 +86,7 @@ test("owner Plan review refuses approval after real status evidence changes", as
             async ({ service, reference, response, root }) => {
                 const { loadPlan } = await import("../../plan-store/index.ts");
                 const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
-                const { recordPlanEvent } = await import("../../shared/workflow/plan-lifecycle.ts");
+                const { recordPlanEvent } = await import("../../plan-store/index.ts");
 
                 const plan = await loadPlan(root, "stale");
                 if (!plan) throw new Error("missing review fixture");
@@ -289,7 +289,7 @@ test("owner requests retain admitted document identity and reject stale saves wi
         equal((await handler(new Request(url.replace(project.projectId, empty.projectId), { headers }))).status, 403);
         deepEqual(await tree(emptyRoot), beforeEmpty);
         const { withLocalPlanWorkflow, operatePlanFile, loadPlan } = await import("../../plan-store/index.ts");
-        const { recordPlanEvent } = await import("../../shared/workflow/plan-lifecycle.ts");
+        const { recordPlanEvent } = await import("../../plan-store/index.ts");
         await withLocalPlanWorkflow(f.root, "one", async () => {
             await recordPlanEvent({ cwd: f.root, planName: "one", event: "review_approved", currentStatus: "draft" });
             await recordPlanEvent({

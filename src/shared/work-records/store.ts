@@ -19,7 +19,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { WORK_RECORDS_DIR_NAME } from "../../constants.ts";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.ts";
 import { requestWorkspaceSearchRefresh } from "../workspace-search-refresh.ts";
-import type { WorkRecordFrontMatter, WorkRecordResource } from "./schema.ts";
+import type { WorkRecordFrontMatter, WorkRecordResource } from "@runwield/plans/work-record-schema";
 
 export interface ListWorkRecordsOptions {
     createDir?: boolean;

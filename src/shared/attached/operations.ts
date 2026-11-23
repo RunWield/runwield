@@ -1114,7 +1114,7 @@ export interface AttachedValidationPayload {
     sections?: string;
     actionId?: string;
     outcome?: import("../workflow/review-outcome.ts").ReviewCompletePayload;
-    answer?: import("../workflow/validation-ports.ts").ValidationInteractionResponse;
+    answer?: import("@runwield/plans/controller-state").ValidationInteractionResponse;
     command?: string;
     scope?: string;
     path?: string;

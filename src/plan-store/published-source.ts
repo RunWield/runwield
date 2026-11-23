@@ -29,7 +29,7 @@ import { captureForegroundProcess } from "../shared/captured-process.ts";
 import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
 /** Immutable recording input retained after delivery removes the execution worktree. */
 import { join } from "node:path";
-import { canonicalizeStoredPlanName, isChildFeaturePlan, isProjectPlan, parsePlanFrontMatter } from "../plan-format.ts";
+import { canonicalizeStoredPlanName, isChildFeaturePlan, isProjectPlan, parsePlanFrontMatter } from "@runwield/plans/format";
 import { loadPlan } from "./index.ts";
 import { savePlan } from "../plan-store.ts";
 import { findRecordingControllerByName, inspectControllerView, writeControllerState } from "./controllers.ts";

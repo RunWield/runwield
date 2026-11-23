@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertRejects } from "./testing/assertions.ts";
-import { injectFrontMatter, mergeFrontMatterText } from "./plan-format.ts";
+import { injectFrontMatter, mergeFrontMatterText } from "@runwield/plans/format";
 import { ensurePlanIdentity, listPlans, listPlanResources, loadPlan } from "./plan-store/index.ts";
 
 import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";

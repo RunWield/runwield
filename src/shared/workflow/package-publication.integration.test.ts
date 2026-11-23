@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { packageFixture, create, read } from "../testing/plan-package-fixture.ts";
 import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { runValidationAttempt } from "./validation-supervisor.ts";

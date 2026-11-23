@@ -1,3 +1,4 @@
+import { plans } from "@runwield/plans";
 import { fileURLToPath } from "node:url";
 import { getHomeDir } from "../constants.ts";
 import {
@@ -14,7 +15,6 @@ import { readPlanPackage } from "./packages.ts";
 import { withPackageProject, packageWorkflowRevision } from "./workflows.ts";
 import { savePlanDocument, savePlanDocumentBatch, type PreparedPlanDocumentEdit } from "./documents.ts";
 import {
-    getPlanRevisionForText,
     withPlanCatalogLock,
     withPlanLock,
     writePlanMarkdownWithRevisionLocked,
@@ -225,7 +225,7 @@ export async function operatePlanFile(cwd: string, command: PlanFileCommand): Pr
     if (mode === "read" || mode === "prepare-edit") return { message: "Read Plan document.", content: current };
     if (command.oldText === undefined || command.newText === undefined)
         throw new Error("Plan edit requires path, oldText, and newText.");
-    const expectedRevision = await getPlanRevisionForText(current);
+    const expectedRevision = await plans.documents.revision(current);
     const next = exactEdit(current, command.oldText, command.newText, path);
     await writePlanMarkdownWithRevisionLocked(cwd, planName, absolute, next, expectedRevision);
     return { message: `Successfully edited Plan ${path}.` };

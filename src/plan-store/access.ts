@@ -1,3 +1,4 @@
+import { plans } from "@runwield/plans";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import { managedPlanStoreActive, authorManagedPlan, selectManagedPlan, withManagedPlan } from "./managed.ts";
 import { hasRetainedCheckoutSource } from "./retained-source.ts";
@@ -100,8 +101,6 @@ import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { packageWorkflowRevision, packageController } from "./workflows.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import {
-    injectFrontMatter,
-    parsePlanFrontMatter,
     StalePlanWriteError,
     canonicalizeStoredPlanName,
     getStoredPlanPath,
@@ -172,7 +171,7 @@ export async function saveLocalHomePlan(
     if (store.kind !== "local") throw new Error("Local Plan authoring requires an admitted Project.");
     return await withPackageProject(cwd, store.identity, () =>
         withPlanPackageCatalogDiscovery(store.identity, async () => {
-            const parsed = parsePlanFrontMatter(injectFrontMatter(markdown, overrides));
+            const parsed = plans.documents.parse(plans.documents.create(markdown, overrides));
             const catalog = await listPlanPackages(store.identity, true);
             if (catalog.issues.length) throw new Error(catalog.issues[0].message);
             const existing = catalog.packages.find((plan) => plan.metadata.name === name);

@@ -7,7 +7,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { join } from "node:path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
-import { parsePlanFrontMatter } from "../plan-format.ts";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./work-records/markdown.ts";
 import {
     finalizeLocalPublicationLifecycle,

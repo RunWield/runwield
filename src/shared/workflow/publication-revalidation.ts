@@ -12,7 +12,7 @@ import {
 /** Recover a changed, unpublished source without reusing stale validation evidence. */
 import { join } from "node:path";
 import { withPlanPublication, restartPlanValidation, readRetainedExecutionPlan } from "../../plan-store/index.ts";
-import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { loadPlan } from "../../plan-store/index.ts";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
 import { listWorkRecords } from "../work-records/store.js";

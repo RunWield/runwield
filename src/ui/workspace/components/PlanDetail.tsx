@@ -1,9 +1,3 @@
-import {
-    type PlanFrontMatter,
-    type PlanFrontMatterInput,
-    type resolveSiblingChildPlanDependencyStates,
-} from "../../../plan-format.ts";
-import type { TicketReference } from "../../../shared/ticket-references.ts";
 import type { WorkflowPresentationInput } from "../../../shared/workflow/workflow-presentation.ts";
 import type { PlanBodyEditorPlan } from "../islands/PlanBodyEditor.tsx";
 import type { LifecycleActions, PlanLifecycleActionPlan } from "../islands/PlanLifecycleActions.tsx";
@@ -11,10 +5,14 @@ import type { BoardCardData, BoardColumnData } from "./BoardColumn.tsx";
 import type { ProjectCardProgress } from "./EpicCard.tsx";
 import type { PlanCardData } from "./PlanCard.tsx";
 import {
+    type PlanFrontMatter,
+    type PlanFrontMatterInput,
+    type resolveSiblingChildPlanDependencyStates,
+    type TicketReference,
     PLAN_FRONT_MATTER_KEY_ORDER as FRONT_MATTER_KEY_ORDER,
     PLAN_FRONT_MATTER_KEYS as FM,
-} from "../../../plan-front-matter.ts";
-import { safeHttpTicketReferenceUrl } from "../../../shared/ticket-references.ts";
+    safeHttpTicketReferenceUrl,
+} from "@runwield/plans/format";
 import { PlanBodyEditor } from "../islands/PlanBodyEditor.tsx";
 import { PlanLifecycleActions } from "../islands/PlanLifecycleActions.tsx";
 import { BoardColumn } from "./BoardColumn.tsx";

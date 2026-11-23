@@ -11,7 +11,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { resolveSiblingChildPlanDependencyStates } from "../../plan-format.ts";
+import { resolveSiblingChildPlanDependencyStates } from "@runwield/plans/format";
 import { loadPlan } from "../../plan-store/index.ts";
 import {
     buildBoardGroups,

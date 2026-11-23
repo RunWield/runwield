@@ -12,6 +12,7 @@ COPY .bun-version bunfig.toml package.json bun.lock runtime-root.ts tsconfig*.js
 COPY packages/agents ./packages/agents
 COPY packages/bundled-assets ./packages/bundled-assets
 COPY packages/parsing ./packages/parsing
+COPY packages/plans ./packages/plans
 COPY packages/projects ./packages/projects
 COPY packages/resources ./packages/resources
 COPY packages/session-files ./packages/session-files

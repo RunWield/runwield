@@ -16,7 +16,7 @@ import { extractYaml } from "../front-matter.ts";
 import { AGENTS } from "../../constants.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
 import { normalizeLedger } from "./review-ledger.ts";
 import type { ValidationPhaseName } from "./validation-ports.ts";

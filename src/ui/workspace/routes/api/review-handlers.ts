@@ -3,7 +3,7 @@ import { validateSequenceReviewDecision } from "../../../../plan-store/index.ts"
 
 import { toolRegistry } from "@runwield/tools";
 import { readPlanApprovalAction } from "../../../../shared/workflow/plan-approval.ts";
-import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../../plan-format.ts";
+import { normalizeCollaborationMode, normalizeExecutionAgent } from "@runwield/plans/format";
 
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../../plan-store/index.ts";
 import type {

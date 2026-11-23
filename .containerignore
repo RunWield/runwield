@@ -4,6 +4,8 @@
 .wld/
 plans
 plans/
+!packages/plans/
+!packages/plans/**
 sessions
 sessions/
 *_memory-backups

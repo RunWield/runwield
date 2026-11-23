@@ -2,9 +2,8 @@
 import { readFrozenPlanExecutionDocuments, planDocumentReference } from "../../plan-store/index.ts";
 import { type PlanAccess } from "../../plan-store/index.ts";
 import { withPlanAccess } from "../../plan-store/index.ts";
-import { isEpicPlan } from "../project-plan.ts";
+import { isEpicPlan, resolvePlanExecutionPolicy, isProjectPlan } from "@runwield/plans/format";
 import { AGENTS, CLI_BIN } from "../../constants.ts";
-import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
 
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { agentRegistry } from "../session/agent-registry.ts";
@@ -13,7 +12,8 @@ import {
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
 } from "../session/session-runtime-interactions.ts";
-import { isExecutablePlanStatus, isProjectPlan, recordPlanEvent } from "./plan-lifecycle.ts";
+import { isExecutablePlanStatus } from "@runwield/plans/lifecycle";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
 import {
     appendSessionCompleteGuidance,
@@ -88,7 +88,7 @@ export interface ExecuteSingleEngineerPlanOptions {
     approvalEvidence?: PlanActionEvidence;
     triageMeta: Partial<PlanFrontMatter>;
     sessionManager?: SessionManager;
-    currentStatus: import("./plan-lifecycle.ts").PlanStatus;
+    currentStatus: import("@runwield/plans/lifecycle").PlanStatus;
     hostedSession: HostedSession;
     routerMessage?: string;
     reviewFeedback?: string;

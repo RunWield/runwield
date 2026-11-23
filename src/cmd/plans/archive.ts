@@ -11,7 +11,7 @@ import { parseArgs } from "../../shared/cli-args.ts";
 import { relative } from "node:path";
 import { CLI_BIN, getCwd } from "../../constants.ts";
 import { archiveSavedPlan, restoreSavedPlan, archivedPlanProjectRoot } from "../../plan-store/index.ts";
-import { isChildFeaturePlan } from "../../plan-format.ts";
+import { isChildFeaturePlan } from "@runwield/plans/format";
 import { listArchivedPlans, listPlans, loadPlan } from "../../plan-store/index.ts";
 import { formatArchiveRetentionNudge } from "../../shared/plan-archive-retention.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";

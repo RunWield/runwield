@@ -77,7 +77,7 @@ import { openFileSessionStore } from "./file-session-store.ts";
 import { sessionDirForRoot } from "./file-session-storage.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { getPlanRevisionForText } from "../../plan-format.ts";
+import { getPlanRevisionForText } from "@runwield/plans/format";
 
 import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { McpIntegration } from "../mcp/integration.ts";
@@ -2423,7 +2423,7 @@ test("SessionRuntime keeps executePlan workflow operations busy while preparatio
             planId: "execute-busy-plan-id",
         });
         const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
-        const { recordPlanEvent } = await import("../workflow/plan-lifecycle.ts");
+        const { recordPlanEvent } = await import("../../plan-store/index.ts");
         await withLocalPlanWorkflow(cwd, planName, async () => {
             await recordPlanEvent({ cwd, planName, event: "review_approved", currentStatus: "draft" });
             await recordPlanEvent({ cwd, planName, event: "readiness_passed", currentStatus: "approved" });

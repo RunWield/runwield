@@ -1,6 +1,6 @@
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";

@@ -7,7 +7,7 @@ import { managedPlanStoreActive } from "./managed.ts";
 import { readPlanResource } from "./documents.ts";
 import { readLocalHomeStore } from "./access.ts";
 import { currentPackageProject } from "./workflows.ts";
-import { EPIC_ARTIFACT_FILE_NAMES } from "../plan-format/artifacts.ts";
+import { EPIC_ARTIFACT_FILE_NAMES } from "@runwield/plans/format";
 import { getEpicArtifactPath } from "./artifacts.ts";
 
 /** Session references are logical routes, not physical storage locations. */

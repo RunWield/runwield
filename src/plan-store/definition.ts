@@ -79,7 +79,7 @@ export async function saveEpicIntegrationReview(
 
 import { loadPlan, withPlanLock, StalePlanWriteError } from "../plan-store.ts";
 import { withLocalPlanWorkflow } from "./access.ts";
-import { appendPlanDeviation, type PlanDeviationProposal } from "../shared/plan-deviations.ts";
+import { appendPlanDeviation, type PlanDeviationProposal } from "@runwield/plans/format";
 /** Persist a confirmed requirement replacement against the exact Plan that was shown for confirmation. */
 export async function recordPlanDeviation(
     cwd: string,

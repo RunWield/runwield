@@ -1,7 +1,10 @@
 /**
- * @module shared/ticket-references
  * Provider-neutral Ticket Reference normalization and presentation helpers.
  */
+
+import type { FrontMatterRecord, FrontMatterValue } from "@runwield/parsing/front-matter";
+
+type TicketReferenceInput = FrontMatterValue | undefined;
 
 export type TicketReferenceValue = string | number | boolean | null | TicketReferenceValue[] | TicketReferenceMetadata;
 
@@ -15,22 +18,21 @@ export interface TicketReference extends TicketReferenceMetadata {
     url: string;
 }
 
-interface UnvalidatedTicketReferenceFields {
-    url?: unknown;
-    [key: string]: unknown;
+function isTicketReferenceList(value: TicketReferenceInput): value is readonly FrontMatterValue[] {
+    return Array.isArray(value);
 }
 
-function isPlainObject(value: unknown): value is UnvalidatedTicketReferenceFields {
+function isPlainRecord(value: TicketReferenceInput): value is FrontMatterRecord {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     const prototype = Object.getPrototypeOf(value);
     return prototype === Object.prototype || prototype === null;
 }
 
-export function isYamlSafeTicketReferenceValue(value: unknown): value is TicketReferenceValue {
+export function isYamlSafeTicketReferenceValue(value: TicketReferenceInput): value is TicketReferenceValue {
     if (value === null) return true;
     if (["string", "number", "boolean"].includes(typeof value)) return true;
-    if (Array.isArray(value)) return value.every(isYamlSafeTicketReferenceValue);
-    if (isPlainObject(value)) {
+    if (isTicketReferenceList(value)) return value.every(isYamlSafeTicketReferenceValue);
+    if (isPlainRecord(value)) {
         return Object.entries(value).every(
             ([key, child]) => typeof key === "string" && key.trim() && isYamlSafeTicketReferenceValue(child),
         );
@@ -38,11 +40,11 @@ export function isYamlSafeTicketReferenceValue(value: unknown): value is TicketR
     return false;
 }
 
-export function normalizeTicketReferences(value: unknown): TicketReference[] | undefined {
-    if (!Array.isArray(value)) return undefined;
+export function normalizeTicketReferences(value: TicketReferenceInput): TicketReference[] | undefined {
+    if (!isTicketReferenceList(value)) return undefined;
     const normalized: TicketReference[] = [];
     for (const item of value) {
-        if (!isPlainObject(item)) continue;
+        if (!isPlainRecord(item)) continue;
         const source = item;
         if (typeof source.url !== "string") continue;
         const url = source.url.trim();
@@ -58,11 +60,11 @@ export function normalizeTicketReferences(value: unknown): TicketReference[] | u
     return normalized.length ? normalized : undefined;
 }
 
-export function normalizeTicketReferencesList(value: unknown): TicketReference[] {
+export function normalizeTicketReferencesList(value: TicketReferenceInput): TicketReference[] {
     return normalizeTicketReferences(value) || [];
 }
 
-export function dedupeTicketReferencesByUrl(...collections: unknown[]): TicketReference[] | undefined {
+export function dedupeTicketReferencesByUrl(...collections: TicketReferenceInput[]): TicketReference[] | undefined {
     const result: TicketReference[] = [];
     const seen = new Set();
     for (const collection of collections) {
@@ -75,7 +77,7 @@ export function dedupeTicketReferencesByUrl(...collections: unknown[]): TicketRe
     return result.length ? result : undefined;
 }
 
-export function safeHttpTicketReferenceUrl(value: unknown): string {
+export function safeHttpTicketReferenceUrl(value: TicketReferenceInput): string {
     if (typeof value !== "string") return "";
     const url = value.trim();
     if (!url) return "";

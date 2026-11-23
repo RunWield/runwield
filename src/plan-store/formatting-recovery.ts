@@ -3,7 +3,7 @@ import { captureForegroundProcess } from "../shared/captured-process.ts";
 import { extractYaml } from "../shared/front-matter.ts";
 import { isDeepStrictEqual } from "node:util";
 import { withPlanLock, writePlanMarkdownWithRevision } from "../plan-store.ts";
-import { planDocumentMarkdown, splitPlanMarkdownBody } from "../plan-format.ts";
+import { planDocumentMarkdown, splitPlanMarkdownBody } from "@runwield/plans/format";
 import { loadPlanStrict } from "./index.ts";
 
 type FormattingRecovery = {

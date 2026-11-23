@@ -1,15 +1,13 @@
 import { projects } from "@runwield/projects";
 import { managedPlanStoreActive, mutateManagedPlan, readManagedPlan, readManagedExecution } from "./managed.ts";
 import { packageWorkflowLocks } from "./workflows.ts";
-/** Owner-private lifecycle persistence. Event policy remains in plan-lifecycle.js. */
+import { plans } from "@runwield/plans";
 import {
-    buildPlanEventUpdates,
     buildStalePlanStatusMessage,
-    isProjectPlan,
     type PlanEvent,
     type PlanStatus,
     type PlanEventDetails,
-} from "../shared/workflow/plan-lifecycle.ts";
+} from "@runwield/plans/lifecycle";
 import { selectPlanAccess, withPlanAccess, type PlanAccess } from "./handles.ts";
 import {
     selectedPackage,
@@ -23,11 +21,12 @@ import { loadPlan as queryPlan } from "./queries.ts";
 import { getPlanDocumentRoot, updatePlanFrontMatter, loadPlan, type PlanFrontMatter } from "../plan-store.ts";
 import { isPlannedChangeClassification } from "../constants.ts";
 import {
+    isProjectPlan,
     getDeclaredPlanStatus,
     isPlanDependencySatisfiedStatus,
     normalizeDeliveryEvidence,
     normalizeExecutionMode,
-} from "../plan-format.ts";
+} from "@runwield/plans/format";
 import { SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "../shared/collaboration/lock.ts";
 import { runPlanLifecycleEventTransition, type TransitionResource, type TransitionResult } from "./transitions.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";
@@ -305,7 +304,7 @@ export async function recordManagedExecutionCheckpoint(
                 expectedRevision,
             );
         const workflow = await packageEventWorkflow(planName, checkpoint.event);
-        const updates = buildPlanEventUpdates(checkpoint.event, before.attrs.status, {
+        const updates = plans.lifecycle.changesFor(checkpoint.event, before.attrs.status, {
             ...checkpoint.details,
             worktreeId: attemptId,
             worktreeBaseBranch: before.attrs.deliveryBranch || before.attrs.targetBranch,
@@ -451,7 +450,10 @@ export async function recordPlanEvent({
             if (!before) throw new Error("Plan is unavailable.");
             if (expectedRevision && before.revision !== expectedRevision) throw new Error("Plan revision changed.");
             if (currentStatus && before.attrs.status !== currentStatus) throw new Error("Plan status changed.");
-            const updates = buildPlanEventUpdates(event, before.attrs.status, { ...details, triageMeta: before.attrs });
+            const updates = plans.lifecycle.changesFor(event, before.attrs.status, {
+                ...details,
+                triageMeta: before.attrs,
+            });
             const workflow = await packageEventWorkflow(planName, event);
             return await updatePackageWorkflowMetadata(
                 planName,
@@ -507,7 +509,7 @@ export async function recordPlanEvent({
             // override locked Plan front matter.
             triageMeta: { ...(details.triageMeta || {}), ...beforePlan.attrs },
         };
-        const updates = buildPlanEventUpdates(event, canonicalStatus, canonicalDetails);
+        const updates = plans.lifecycle.changesFor(event, canonicalStatus, canonicalDetails);
         if (currentPackageSelection()) {
             const workflow = await packageEventWorkflow(planName, event);
             const integration = event === "epic_publication_confirmed" ? workflow.integration : undefined;
@@ -594,7 +596,7 @@ export async function recordPlanEvent({
                         ...details,
                         triageMeta: { ...(details.triageMeta || {}), ...beforePlan.attrs },
                     };
-                    const childUpdates = buildPlanEventUpdates(event, canonicalStatus, canonicalDetails);
+                    const childUpdates = plans.lifecycle.changesFor(event, canonicalStatus, canonicalDetails);
                     const childParentPlanName =
                         typeof beforePlan.attrs.parentPlan === "string" ? beforePlan.attrs.parentPlan : "";
                     if (childParentPlanName !== parentPlanName) {
@@ -661,7 +663,7 @@ export async function recordPlanEvent({
                                     epicDoneEnoughSummary: `All ${projectedChildren.length} child plans are completed after ${planName}.`,
                                     now: details.now,
                                 };
-                                parentUpdates = buildPlanEventUpdates(
+                                parentUpdates = plans.lifecycle.changesFor(
                                     "epic_done_enough",
                                     "ready_for_work",
                                     parentDetails,

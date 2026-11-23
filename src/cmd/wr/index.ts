@@ -38,7 +38,7 @@ import {
     resolveWorkRecordSupersessionProposals,
     type WorkRecordSupersessionDecision,
 } from "../../shared/workflow/validation-helpers.ts";
-import type { WorkRecordSupersessionCandidate } from "../../shared/work-records/schema.ts";
+import type { WorkRecordSupersessionCandidate } from "@runwield/plans/work-record-schema";
 
 export interface WorkRecordCommandOptions {
     uiAPI?: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage" | "promptSelect">;

@@ -31,7 +31,7 @@ import {
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { type WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 
-/** @type {import('./schema.ts').WorkRecordFrontMatter} */
+/** @type {import('@runwield/plans/work-record-schema').WorkRecordFrontMatter} */
 const INTERNAL_ATTRS: WorkRecordFrontMatter = {
     kind: "work_record",
     recordId: "11111111-1111-4111-8111-111111111111",

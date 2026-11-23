@@ -1,5 +1,8 @@
-import { canonicalizeStoredPlanName, isHiddenPlanName } from "../../plan-format.ts";
-import { assertNotReservedEpicArtifactPlanName } from "../../plan-format.ts";
+import {
+    canonicalizeStoredPlanName,
+    isHiddenPlanName,
+    assertNotReservedEpicArtifactPlanName,
+} from "@runwield/plans/format";
 import { effectiveDeliveryBranch } from "../workflow/plan-branch.ts";
 import { resolveWorkflowPlanLocation, withLocalPlanWorkflow } from "../../plan-store/index.ts";
 import { preparePlanningWorktreeForPlan } from "../workflow/planning-worktree.ts";

@@ -14,26 +14,23 @@ import { savePlanDocument } from "./index.ts";
 import type { PackageWorkflowInput } from "./packages.ts";
 import { preparePlanWorkflow } from "./index.ts";
 import { resolvePlanQuestions, type PlanQuestionAnswer } from "../shared/plan-questions.ts";
-import { projectPlanType } from "../shared/project-plan.ts";
-import { resolve } from "node:path";
-import quikdown from "quikdown";
-import { getStoredPlanPath, loadPlanFileStrict, writePlanMarkdownWithRevision } from "../plan-store.ts";
 import {
+    projectPlanType,
     injectFrontMatter,
     parsePlanFrontMatter,
     planDocumentMarkdown,
     splitPlanMarkdownBody,
-} from "../plan-format.ts";
+} from "@runwield/plans/format";
+import { resolve } from "node:path";
+import quikdown from "quikdown";
+import { getStoredPlanPath, loadPlanFileStrict, writePlanMarkdownWithRevision } from "../plan-store.ts";
 import { loadPlan, StalePlanWriteError } from "./index.ts";
-import {
-    buildPlanEventUpdates,
-    isPlanReviewableWithoutReopen,
-    recordPlanEvent,
-} from "../shared/workflow/plan-lifecycle.ts";
+import { buildPlanEventUpdates, isPlanReviewableWithoutReopen } from "@runwield/plans/lifecycle";
+import { recordPlanEvent } from "./index.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import { runPlanReviewDecisionTransition } from "./transitions.ts";
 import { PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";
-import { pickControllerState, stripRuntimeFields } from "../shared/workflow/controller-state.ts";
+import { pickControllerState, stripRuntimeFields } from "@runwield/plans/controller-state";
 import { writeControllerState } from "./controllers.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";

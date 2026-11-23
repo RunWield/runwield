@@ -7,7 +7,7 @@ import { archivePlan, loadArchivedPlan } from "../../plan-store/index.ts";
 
 import { setCustomSetting } from "../../shared/settings.ts";
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
-import type { WorkRecordFrontMatter } from "../../shared/work-records/schema.ts";
+import type { WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
 import { runPlansPruneCommand } from "./prune.ts";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 

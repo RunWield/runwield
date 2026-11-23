@@ -13,10 +13,9 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { startReviewWorkspaceServer } from "../workspace/server.ts";
 import { join } from "node:path";
 
-import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { parsePlanFrontMatter, type PlanFrontMatter } from "@runwield/plans/format";
 import { loadPlan } from "../../plan-store/index.ts";
 
-import type { PlanFrontMatter } from "../../plan-format.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { submitPlanForReview } from "./plan-review.ts";
 import { createScriptedReviewBrowser, type ReviewDecisionBody } from "./review-test-fixture.ts";

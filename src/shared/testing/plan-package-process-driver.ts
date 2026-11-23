@@ -197,7 +197,7 @@ try {
             case "execution": {
                 if (!current || current.kind !== "loaded") throw new Error("Missing package");
                 const { withPackageWorkflow, loadPackageWorkflowPlan } = await import("../../plan-store/workflows.ts");
-                const { recordPlanEvent } = await import("../workflow/plan-lifecycle.ts");
+                const { recordPlanEvent } = await import("../../plan-store/index.ts");
                 const { preparePlanWorkflow } = await import("../../plan-store/index.ts");
                 result = await withPackageWorkflow(
                     request.identity.checkoutRoot,

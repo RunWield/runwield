@@ -13,7 +13,7 @@ import { remoteProjectOwner } from "../remote/personal-resources.ts";
 import { basename, dirname } from "node:path";
 import { listWorkRecords } from "./store.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
-import type { WorkRecordResource } from "./schema.ts";
+import type { WorkRecordResource } from "@runwield/plans/work-record-schema";
 
 export interface WorkRecordIndexOptions {
     mnemotecaPort: WorkRecordMnemotecaPort;

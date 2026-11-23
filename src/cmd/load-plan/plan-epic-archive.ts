@@ -9,7 +9,7 @@ import {
     compareChildPlansByOrder,
     isRecoverableWorktreeStatus,
     isTerminalArchivableStatus,
-} from "../../plan-format.ts";
+} from "@runwield/plans/format";
 import { findPlansByParent, loadPlan } from "../../plan-store/index.ts";
 import { startBackgroundArchive } from "./archive-background.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";

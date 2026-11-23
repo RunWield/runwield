@@ -5,7 +5,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type TranscriptContext } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-format.ts";
+import { parsePlanFrontMatter, planDocumentMarkdown } from "@runwield/plans/format";
 import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
 
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";

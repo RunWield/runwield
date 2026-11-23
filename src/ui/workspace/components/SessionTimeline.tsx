@@ -1,7 +1,7 @@
 import type { ComponentProps, ToggleEvent } from "react";
 import type { ImageReference } from "../../../shared/session/named-invocation.ts";
 import type { DeliveryReport, DeliveryReportArtifact } from "../../../shared/workflow/delivery-report.ts";
-import type { PlanDeviation } from "../../../shared/plan-deviations.ts";
+import type { PlanDeviation } from "@runwield/plans/format";
 import type { CurrentPairCheckpoint, PairCheckpointReport } from "../../../shared/session/pair-checkpoint-session.ts";
 import type {
     RuntimeInteractionOption,

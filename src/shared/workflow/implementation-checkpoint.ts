@@ -2,12 +2,13 @@
 import { withPlanImplementationCompletion } from "../../plan-store/index.ts";
 import { capturePlanAccess } from "../../plan-store/index.ts";
 import { resumePlanAttempt } from "../../plan-store/index.ts";
-import { getPlanRevisionForText } from "../../plan-format.ts";
+import { getPlanRevisionForText } from "@runwield/plans/format";
 import { loadPlan } from "../../plan-store/index.ts";
 import { checkpointExecutionWorktree } from "../worktree.ts";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
 import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.ts";
-import { isInValidation, recordPlanEvent } from "./plan-lifecycle.ts";
+import { isInValidation } from "@runwield/plans/lifecycle";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { restoreExecutionPlanFromBaseline } from "../../plan-store/index.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { runImplementationCheckpointTransition } from "../../plan-store/index.ts";

@@ -5,7 +5,7 @@
 
 import { currentWorkRecordOwner } from "./owner.ts";
 import { formatPlannedWorkLabel } from "../../constants.ts";
-import type { WorkRecordResource } from "./schema.ts";
+import type { WorkRecordResource } from "@runwield/plans/work-record-schema";
 
 interface WorkRecordListOptions {
     includeAll?: boolean;

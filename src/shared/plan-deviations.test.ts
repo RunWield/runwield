@@ -5,7 +5,7 @@ import {
     normalizePlanDeviations,
     renderApprovedPlanDeviations,
     renderPlanDeviationsForWorkRecord,
-} from "./plan-deviations.ts";
+} from "@runwield/plans/format";
 
 test("Plan Deviation normalization is strict and preserves order", () => {
     const entries = normalizePlanDeviations([

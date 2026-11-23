@@ -5,7 +5,7 @@ import { strictEqual, ok } from "node:assert/strict";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { updateArchivedPlanFrontMatter } from "./plan-store.ts";
-import { getPlanRevisionForText } from "./plan-format.ts";
+import { getPlanRevisionForText } from "@runwield/plans/format";
 import { loadArchivedPlan, loadPlan, restoreArchivedPlan } from "./plan-store/index.ts";
 import { defineCommittedGitFixture } from "./shared/git-test-fixture.ts";
 

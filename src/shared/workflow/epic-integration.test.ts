@@ -12,7 +12,7 @@ import { git } from "../git-test-fixture.ts";
 import type { IsolatedAgentSessionOptions, SemanticReviewPort } from "./validation-session-adapter.ts";
 import { parseDiffFiles } from "./review-diff-tool.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { buildPlanEventUpdates } from "./plan-lifecycle.ts";
+import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { HostedSession } from "../session/hosted-session.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 import { checkpointExecutionWorktree } from "../worktree.ts";

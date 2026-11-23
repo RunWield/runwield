@@ -21,7 +21,7 @@ import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { setCustomSetting } from "../settings.ts";
-import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
 
 import { defineGitFixture, git } from "../git-test-fixture.ts";

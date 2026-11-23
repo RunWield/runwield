@@ -1,18 +1,14 @@
 /** @module shared/collaboration/lock */
 
 import { redactSecrets } from "./capabilities.ts";
-import { normalizePlanServerUrl } from "./urls.ts";
+import { COLLABORATION_STATE_REMOTE_CANONICAL, type CollaborationFrontMatter } from "@runwield/plans/format";
 
-export const COLLABORATION_STATE_REMOTE_CANONICAL = "remote_canonical";
-
-export const COLLABORATION_FRONT_MATTER_KEYS = Object.freeze({
-    collaborationState: "collaborationState",
-    collaborationServerUrl: "collaborationServerUrl",
-    collaborationSpaceId: "collaborationSpaceId",
-    collaborationRevision: "collaborationRevision",
-    collaborationBodyHash: "collaborationBodyHash",
-    collaborationSyncedAt: "collaborationSyncedAt",
-});
+export {
+    COLLABORATION_FRONT_MATTER_KEYS,
+    COLLABORATION_STATE_REMOTE_CANONICAL,
+    normalizeCollaborationFrontMatter,
+    type CollaborationFrontMatter,
+} from "@runwield/plans/format";
 
 export const COLLABORATION_LOCK_BYPASS = Object.freeze({
     share: Symbol("runwield.collaborationLockBypass.share"),
@@ -25,15 +21,6 @@ const VALID_BYPASSES = new Set(Object.values(COLLABORATION_LOCK_BYPASS));
 
 export const SHARED_PLAN_LOCK_REPAIR =
     "Run `wld plans pull`, `wld plans push`, or `wld plans unshare` before editing this shared Plan locally.";
-
-export interface CollaborationFrontMatter {
-    collaborationState?: string;
-    collaborationServerUrl?: string;
-    collaborationSpaceId?: string;
-    collaborationRevision?: number;
-    collaborationBodyHash?: string;
-    collaborationSyncedAt?: string;
-}
 
 export interface CollaborationWriteOptions {
     collaborationLockBypass?: symbol;
@@ -60,9 +47,10 @@ export class SharedPlanLockError extends Error {
 function redactCollaborationMetadata(attrs: CollaborationFrontMatter): CollaborationFrontMatter {
     return {
         collaborationState: attrs.collaborationState,
-        collaborationServerUrl: typeof attrs.collaborationServerUrl === "string"
-            ? redactSecrets(attrs.collaborationServerUrl).replace(/#.*$/, "#[redacted]")
-            : attrs.collaborationServerUrl,
+        collaborationServerUrl:
+            typeof attrs.collaborationServerUrl === "string"
+                ? redactSecrets(attrs.collaborationServerUrl).replace(/#.*$/, "#[redacted]")
+                : attrs.collaborationServerUrl,
         collaborationSpaceId: attrs.collaborationSpaceId,
         collaborationRevision: attrs.collaborationRevision,
         collaborationBodyHash: attrs.collaborationBodyHash,
@@ -70,38 +58,8 @@ function redactCollaborationMetadata(attrs: CollaborationFrontMatter): Collabora
     };
 }
 
-export function normalizeCollaborationRevision<T>(value: T): number | undefined {
-    if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
-    if (typeof value === "string" && /^[1-9]\d*$/.test(value.trim())) return Number(value.trim());
-    return undefined;
-}
-
 function normalizeOptionalString<T>(value: T): string | undefined {
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-export function normalizeCollaborationFrontMatter(attrs: CollaborationFrontMatter = {}): CollaborationFrontMatter {
-    const normalized: CollaborationFrontMatter = {};
-    if (attrs.collaborationState === COLLABORATION_STATE_REMOTE_CANONICAL) {
-        normalized.collaborationState = COLLABORATION_STATE_REMOTE_CANONICAL;
-    } else if (typeof attrs.collaborationState === "string" && attrs.collaborationState.trim()) {
-        normalized.collaborationState = attrs.collaborationState.trim();
-    }
-
-    if (attrs.collaborationServerUrl !== undefined) {
-        try {
-            normalized.collaborationServerUrl = normalizePlanServerUrl(attrs.collaborationServerUrl);
-        } catch {
-            // Invalid URLs are intentionally omitted instead of preserved so Plan
-            // front matter never stores fragments, query strings, share URLs, or
-            // other secret-bearing URL material.
-        }
-    }
-    normalized.collaborationSpaceId = normalizeOptionalString(attrs.collaborationSpaceId);
-    normalized.collaborationRevision = normalizeCollaborationRevision(attrs.collaborationRevision);
-    normalized.collaborationBodyHash = normalizeOptionalString(attrs.collaborationBodyHash);
-    normalized.collaborationSyncedAt = normalizeOptionalString(attrs.collaborationSyncedAt);
-    return normalized;
 }
 
 export function isSharedPlanLocked(attrs: CollaborationFrontMatter = {}): boolean {
@@ -120,12 +78,12 @@ function collaborationMetadataProblems(attrs: CollaborationFrontMatter): string[
 }
 
 export function buildSharedPlanLockMessage(attrs: CollaborationFrontMatter = {}, reason?: string): string {
-    const server = typeof attrs.collaborationServerUrl === "string"
-        ? redactSecrets(attrs.collaborationServerUrl).replace(/#.*$/, "#[redacted]")
-        : "unknown server";
-    const space = typeof attrs.collaborationSpaceId === "string"
-        ? redactSecrets(attrs.collaborationSpaceId)
-        : "unknown space";
+    const server =
+        typeof attrs.collaborationServerUrl === "string"
+            ? redactSecrets(attrs.collaborationServerUrl).replace(/#.*$/, "#[redacted]")
+            : "unknown server";
+    const space =
+        typeof attrs.collaborationSpaceId === "string" ? redactSecrets(attrs.collaborationSpaceId) : "unknown space";
     const details = reason ? ` ${redactSecrets(reason)}` : "";
     return `This shared Plan is remote-canonical (${server}, space ${space}) and cannot be changed by normal RunWield writes.${details} ${SHARED_PLAN_LOCK_REPAIR}`;
 }

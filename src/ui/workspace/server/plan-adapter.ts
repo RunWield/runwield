@@ -1,8 +1,7 @@
+import { plans } from "@runwield/plans";
 import type { WorkRecordMnemotecaPort } from "../../../shared/work-records/mnemoteca-port.ts";
 import type { PlanActionName } from "../../../shared/workflow/plan-actions.ts";
-import { type PlanFrontMatter } from "../../../plan-format.ts";
 import { type PlanResource } from "../../../plan-store/index.ts";
-import type { PlanEvent, PlanEventDetails, PlanStatus } from "../../../shared/workflow/plan-lifecycle.ts";
 import { loadPlanDetail as readPlanDetail } from "../../../plan-store/index.ts";
 import { capturePlanReadContext } from "../../../plan-store/index.ts";
 
@@ -11,12 +10,13 @@ import { capturePlanReadContext } from "../../../plan-store/index.ts";
  */
 
 import {
+    type PlanFrontMatter,
     countChildPlanProgress,
     groupPlanHierarchy,
     isChildFeaturePlan,
     isProjectPlan,
     resolveSiblingChildPlanDependencyStates,
-} from "../../../plan-format.ts";
+} from "@runwield/plans/format";
 import {
     findPlanById,
     listPlanResources,
@@ -25,13 +25,14 @@ import {
     StalePlanBodyError,
 } from "../../../plan-store/index.ts";
 import {
+    type PlanEvent,
+    type PlanEventDetails,
+    type PlanStatus,
     ACTIVE_PLAN_STATUSES,
-    buildPlanEventUpdates,
     CLOSED_PLAN_STATUSES,
-    getPlanLifecycleActionMetadata,
     ON_HOLD_PLAN_STATUSES,
     PLAN_STATUSES,
-} from "../../../shared/workflow/plan-lifecycle.ts";
+} from "@runwield/plans/lifecycle";
 import {
     isSharedPlanLocked,
     SHARED_PLAN_LOCK_REPAIR,
@@ -240,7 +241,7 @@ function sanitizeWorkspaceMessages(messages: string[], sensitivePaths: string[])
 
 function lifecycleActionsForAttrs(attrs: Partial<PlanFrontMatter>) {
     const status = String(attrs.status || "draft");
-    const metadata = getPlanLifecycleActionMetadata(status as PlanStatus, attrs);
+    const metadata = plans.lifecycle.actionsFor(status as PlanStatus, attrs);
     return {
         metadata: ACTION_META,
         allowedManualTargetStatuses: metadata.allowedManualTargetStatuses,
@@ -765,7 +766,7 @@ export function applyWorkspaceLifecycleActionInMemory<T extends LifecyclePlan>(p
     const attrs: WorkspacePlanFrontMatter = { ...safeObject(plan.attrs), ...safeObject(plan.frontMatter) };
     const currentStatus = String(attrs.status || plan.status || "draft") as PlanStatus;
     const action = String(request.action);
-    const metadata = getPlanLifecycleActionMetadata(currentStatus, attrs);
+    const metadata = plans.lifecycle.actionsFor(currentStatus, attrs);
     const details: PlanEventDetails = { triageMeta: attrs };
     let event: PlanEvent = "manual_status_change";
     let message = "Plan lifecycle action applied.";
@@ -812,7 +813,7 @@ export function applyWorkspaceLifecycleActionInMemory<T extends LifecyclePlan>(p
         message = "Held Plan reset to draft after worktree attempt resolution.";
     }
 
-    const nextAttrs = buildPlanEventUpdates(event, currentStatus, details);
+    const nextAttrs = plans.lifecycle.changesFor(event, currentStatus, details);
     const nextSummary = serializePlanSummary({
         planId: plan.planId,
         planName: plan.planName || plan.name,

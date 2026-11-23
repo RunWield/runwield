@@ -18,7 +18,6 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { type PlanFrontMatter } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
@@ -39,7 +38,7 @@ import { recordTutorialContext } from "../session/tutorial-context-session.ts";
 import { createInitialTutorialContext } from "../../ui/tui/onboarding-content.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../runwield-owned-paths.ts";
-import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { type PlanFrontMatter, parsePlanFrontMatter } from "@runwield/plans/format";
 import { seedPlan as savePlan } from "../testing/plan-state-fixture.ts";
 
 interface RuntimeStatusEvent {

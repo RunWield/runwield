@@ -2,25 +2,27 @@ export type HostDeliveryMode = "publication" | "in_place";
 /** Typed process-independent waits. Outcomes are claims; the engine checks them. */
 import type { ReviewCompletePayload } from "./review-outcome.ts";
 import type { ReviewDiffScope, ReviewDiffSpan } from "./review-inspection.ts";
-import type { ValidationInteractionRequest, ValidationInteractionResponse } from "./validation-ports.ts";
+import type {
+    PendingHostDecision,
+    PendingHostRecorder,
+    PendingHostRepair,
+    ValidationDecisionIdentity,
+    ValidationHostIdentity,
+    ValidationInteractionResponse,
+    ValidationRepairIdentity,
+} from "@runwield/plans/controller-state";
+export type {
+    ValidationDecisionIdentity,
+    ValidationHostIdentity,
+    ValidationRepairIdentity,
+} from "@runwield/plans/controller-state";
 import type { ValidationRecoveryResult } from "./validation-recovery.ts";
 
-export type ValidationHostIdentity = {
-    attemptId: string;
-    generation: string;
-};
 export type ValidationReviewerIdentity = ValidationHostIdentity & {
     semanticRound: number;
     reviewMode: "discovery" | "verify";
     correctionCount: number;
     diffHash: string;
-};
-export type ValidationDecisionIdentity = ValidationHostIdentity & {
-    kind: "decision";
-    key: string;
-};
-export type ValidationRepairIdentity = ValidationHostIdentity & {
-    repairGeneration: string;
 };
 export type ValidationHostRequest =
     | {
@@ -33,16 +35,9 @@ export type ValidationHostRequest =
           fullDiff: string;
           repairDiff: string;
       }
-    | {
-          kind: "repair";
-          identity: ValidationRepairIdentity;
-          repairGeneration: string;
-          prompt: string;
-          cwd: string;
-          role: string;
-      }
-    | { kind: "decision"; identity: ValidationDecisionIdentity; interaction: ValidationInteractionRequest }
-    | { kind: "recorder"; identity: ValidationHostIdentity; prompt: string; cwd: string; validationError?: string };
+    | PendingHostRepair
+    | PendingHostDecision
+    | PendingHostRecorder;
 export type ValidationHostResume =
     | {
           kind: "reviewer";

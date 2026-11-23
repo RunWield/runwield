@@ -19,7 +19,7 @@ import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.ts";
 import { agentRegistry } from "../session/agent-registry.ts";
 import { buildSlicerRequest } from "./workflow-prompts.ts";
-import { isEpicPlan } from "../project-plan.ts";
+import { isEpicPlan } from "@runwield/plans/format";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { TriageMeta } from "../../tools/plan-written.ts";
@@ -228,7 +228,7 @@ async function prepareEpicBranchSummary(cwd, planName) {
 
 /**
  * @param {{ name: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} child
- * @returns {{ name: string, order: number | undefined, status: string | undefined, summary: string | undefined, workKind: string | undefined, dependencies: string[], affectedPaths: string[], tickets?: import('../ticket-references.ts').TicketReference[] }}
+ * @returns {{ name: string, order: number | undefined, status: string | undefined, summary: string | undefined, workKind: string | undefined, dependencies: string[], affectedPaths: string[], tickets?: import('@runwield/plans/format').TicketReference[] }}
  */
 function summarizeChild(child) {
     return {

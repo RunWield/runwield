@@ -5,7 +5,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
  * takes its before-facts from.
  */
 
-import { getPlanRevisionForText } from "../../plan-format.ts";
+import { getPlanRevisionForText } from "@runwield/plans/format";
 import { findPlansByParent, loadPlan } from "../../plan-store/index.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
 

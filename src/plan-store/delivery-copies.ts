@@ -1,7 +1,7 @@
 import { opendir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
-import { mergeFrontMatterText, parsePlanFrontMatter } from "../plan-format.ts";
+import { mergeFrontMatterText, parsePlanFrontMatter } from "@runwield/plans/format";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "../shared/work-records/markdown.ts";
 async function git(cwd: string, args: string[]): Promise<string> {
     const result = await captureForegroundProcess("git", { cwd, args });

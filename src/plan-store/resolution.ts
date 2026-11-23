@@ -18,7 +18,7 @@ import { listControllerDocumentWorktrees } from "./controllers.ts";
 import { preparePlanWorkflow } from "./index.ts";
 import { realpath as fsRealpath } from "node:fs/promises";
 import { updatePlanFrontMatter } from "../plan-store.ts";
-import { canonicalizeStoredPlanName, canonicalPlanStatus, getDeclaredPlanStatus } from "../plan-format.ts";
+import { canonicalizeStoredPlanName, canonicalPlanStatus, getDeclaredPlanStatus } from "@runwield/plans/format";
 import { findPlanEvidenceById, loadPlan, resolvePlan } from "./index.ts";
 import { type MissingExecutionWorktreeRecovery } from "./location.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";

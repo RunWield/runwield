@@ -1,29 +1,22 @@
 import type {
-    PlanFrontMatter,
-    ExecutionMode,
     DeliveryEvidence,
-    PlanExecutionPolicyError,
-    PlanExecutionPolicySuccess,
-    SplitPlanBody,
-    PlanTextLoaded,
-    PlanTextMalformed,
-} from "./plan-store/index.ts";
+    ExecutionMode,
+    PlanFrontMatter,
+    PlanFrontMatterInput,
+    PlanFrontMatterWithCustomFields,
+} from "../document.ts";
 import { toolRegistry } from "@runwield/tools";
-import {
-    isPlannedChangeClassification,
-    normalizeStoredPlanClassification,
-    PLANS_DIR_NAME,
-} from "./plan-format/classification.ts";
-import { extractYaml, test as hasFrontMatter } from "./shared/front-matter.ts";
-import { normalizeTicketReferences } from "./shared/ticket-references.ts";
-import { normalizePlanDeviations } from "./shared/plan-deviations.ts";
-import { COLLABORATION_FRONT_MATTER_KEYS, normalizeCollaborationFrontMatter } from "./shared/collaboration/lock.ts";
-import { escapeYamlDoubleQuoted } from "./shared/yaml-scalar.ts";
-import { PLAN_FRONT_MATTER_KEY_ORDER, PLAN_FRONT_MATTER_KEYS } from "./plan-front-matter.ts";
-import { PLAN_RUNTIME_FIELDS } from "./shared/workflow/controller-state.ts";
-import { isProjectPlan } from "./shared/project-plan.ts";
-import type * as StoredPlanTypes from "./plan-store/index.ts";
-type PlanMetadataValue = StoredPlanTypes.PlanFrontMatterInput[string];
+import { normalizePlanId, type PlanId } from "../identity.ts";
+import { isPlannedChangeClassification, normalizeStoredPlanClassification, PLANS_DIR_NAME } from "../classification.ts";
+import { extractYaml, test as hasFrontMatter } from "@runwield/parsing/front-matter";
+import { normalizeTicketReferences } from "./ticket-references.ts";
+import { normalizePlanDeviations } from "./plan-deviations.ts";
+import { COLLABORATION_FRONT_MATTER_KEYS, normalizeCollaborationFrontMatter } from "./collaboration.ts";
+import { escapeYamlDoubleQuoted } from "./yaml-scalar.ts";
+import { PLAN_FRONT_MATTER_KEY_ORDER, PLAN_FRONT_MATTER_KEYS } from "./front-matter.ts";
+import { PLAN_RUNTIME_FIELDS } from "../controller-state.ts";
+import { isProjectPlan } from "../project-plan.ts";
+type PlanMetadataValue = PlanFrontMatterInput[string];
 
 const { normalizeWorkKind } = toolRegistry.get("triage_report");
 
@@ -58,11 +51,7 @@ export function canonicalizeStoredPlanName(planName: string): { name: string; se
 
 // ─── Front Matter ─────────────────────────────────────────────────────
 
-/**
- * Default front matter for plans.
- * @type     {PlanFrontMatter}
- */
-export const DEFAULT_FRONT_MATTER: PlanFrontMatter = {
+const DEFAULT_FRONT_MATTER = {
     classification: "PLANNED_CHANGE",
     complexity: "MEDIUM",
     summary: "",
@@ -72,10 +61,10 @@ export const DEFAULT_FRONT_MATTER: PlanFrontMatter = {
     },
     status: "draft",
     origin: "internal",
-};
+} satisfies Omit<PlanFrontMatter, "planId">;
 
 /** @type {Set<string>} */
-export const KNOWN_FRONT_MATTER_KEYS: Set<string> = new Set(PLAN_FRONT_MATTER_KEY_ORDER);
+const KNOWN_FRONT_MATTER_KEYS: Set<string> = new Set(PLAN_FRONT_MATTER_KEY_ORDER);
 
 export const OBSOLETE_OBJECTIVE_CHECK_FRONT_MATTER_KEYS = Object.freeze([
     "objectiveChecks",
@@ -84,10 +73,9 @@ export const OBSOLETE_OBJECTIVE_CHECK_FRONT_MATTER_KEYS = Object.freeze([
     "validationObjectiveCheckAttempts",
 ]);
 
-export const HIDDEN_PLAN_DIRS = new Set(["archived"]);
+const HIDDEN_PLAN_DIRS = new Set(["archived"]);
 
 /**
- * @param {unknown} value
  * @returns {boolean}
  */
 export function isSupportedYamlValue(value: PlanMetadataValue): boolean {
@@ -95,9 +83,7 @@ export function isSupportedYamlValue(value: PlanMetadataValue): boolean {
     if (["string", "number", "boolean"].includes(typeof value)) return true;
     if (Array.isArray(value)) return value.every(isSupportedYamlValue);
     if (value && typeof value === "object") {
-        return Object.values(/** @type {Record<string, unknown>} */ value as Record<string, PlanMetadataValue>).every(
-            isSupportedYamlValue,
-        );
+        return Object.values(value as Record<string, PlanMetadataValue>).every(isSupportedYamlValue);
     }
     return false;
 }
@@ -105,7 +91,6 @@ export function isSupportedYamlValue(value: PlanMetadataValue): boolean {
 /**
  * @param {string[]} lines
  * @param {string} key
- * @param {unknown} value
  */
 export function appendYamlField(lines: string[], key: string, value: PlanMetadataValue) {
     appendYamlValue(lines, key, value, 0, { emptyArrays: true });
@@ -114,7 +99,6 @@ export function appendYamlField(lines: string[], key: string, value: PlanMetadat
 /**
  * @param {string[]} lines
  * @param {string} key
- * @param {unknown} value
  * @param {number} indent
  * @param {{ emptyArrays?: boolean }} [options]
  */
@@ -140,9 +124,7 @@ export function appendYamlValue(
     }
 
     if (value && typeof value === "object") {
-        const entries = Object.entries(
-            /** @type {Record<string, unknown>} */ value as Record<string, PlanMetadataValue>,
-        ).filter(([, child]) => {
+        const entries = Object.entries(value as Record<string, PlanMetadataValue>).filter(([, child]) => {
             if (child === undefined) return false;
             if (Array.isArray(child) && child.length === 0 && options.emptyArrays === false) return false;
             if (child && typeof child === "object" && !Array.isArray(child) && Object.keys(child).length === 0) {
@@ -163,7 +145,6 @@ export function appendYamlValue(
 
 /**
  * @param {string[]} lines
- * @param {unknown} value
  * @param {number} indent
  * @param {{ emptyArrays?: boolean }} options
  */
@@ -175,9 +156,9 @@ export function appendYamlListItem(
 ) {
     const pad = " ".repeat(indent);
     if (value && typeof value === "object" && !Array.isArray(value)) {
-        const entries = Object.entries(
-            /** @type {Record<string, unknown>} */ value as Record<string, PlanMetadataValue>,
-        ).filter(([, child]) => child !== undefined);
+        const entries = Object.entries(value as Record<string, PlanMetadataValue>).filter(
+            ([, child]) => child !== undefined,
+        );
         if (!entries.length) return;
         const [firstKey, firstValue] = entries[0];
         if (typeof firstValue === "string") lines.push(`${pad}- ${firstKey}: "${escapeYamlDoubleQuoted(firstValue)}"`);
@@ -280,11 +261,7 @@ export function formatFrontMatter(fm: PlanFrontMatter): string {
     for (const key of Object.keys(fm)
         .filter((key) => !KNOWN_FRONT_MATTER_KEYS.has(key))
         .sort()) {
-        appendYamlField(
-            lines,
-            key,
-            /** @type {Record<string, unknown>} */ (fm as Record<string, PlanMetadataValue>)[key],
-        );
+        appendYamlField(lines, key, (fm as Record<string, PlanMetadataValue>)[key]);
     }
 
     lines.push("---");
@@ -302,7 +279,7 @@ export function joinFrontMatterAndBody(frontMatter: string, body: string): strin
     return `${frontMatter}\n\n${trimmedBody}`;
 }
 
-export const PLAN_STATUSES = new Set([
+const PLAN_STATUSES = new Set([
     "draft",
     "approved",
     "ready_for_decomposition",
@@ -319,7 +296,7 @@ export const PLAN_STATUSES = new Set([
     "on_hold",
 ]);
 
-export const PLAN_LIST_STATUS_ORDER = new Map([
+const PLAN_LIST_STATUS_ORDER = new Map([
     ["failed", 0],
     ["implemented", 1],
     ["validated_ci", 1],
@@ -336,13 +313,13 @@ export const PLAN_LIST_STATUS_ORDER = new Map([
     ["on_hold", 10],
 ]);
 
-export const PLAN_LIST_CLASSIFICATION_ORDER = new Map([
+const PLAN_LIST_CLASSIFICATION_ORDER = new Map([
     ["PROJECT", 0],
     ["PLANNED_CHANGE", 1],
     ["QUICK_FIX", 2],
 ]);
 
-export const LEGACY_PLAN_STATUSES = new Map([
+const LEGACY_PLAN_STATUSES = new Map([
     ["validated_reviewer", "reviewed"],
     ["completed", "verified"],
     ["feedback", "draft"],
@@ -351,6 +328,10 @@ export const LEGACY_PLAN_STATUSES = new Map([
     // and Workflow Validation had not started yet.
     ["ready_for_review", "implemented"],
 ]);
+
+export function isCanonicalPlanStatus(status: string): boolean {
+    return PLAN_STATUSES.has(status);
+}
 
 /**
  * Return the current lifecycle name for a current or retired Plan status.
@@ -362,7 +343,7 @@ export const LEGACY_PLAN_STATUSES = new Map([
 export function canonicalPlanStatus(status: string | undefined): PlanFrontMatter["status"] | undefined {
     const legacy = status ? LEGACY_PLAN_STATUSES.get(status) : undefined;
     if (legacy) return /** @type {PlanFrontMatter["status"]} */ legacy as PlanFrontMatter["status"];
-    if (status && PLAN_STATUSES.has(status)) {
+    if (status && isCanonicalPlanStatus(status)) {
         return /** @type {PlanFrontMatter["status"]} */ status as PlanFrontMatter["status"];
     }
     return undefined;
@@ -415,7 +396,6 @@ export function isCompletedPlanStatus(status: string | undefined | null) {
 }
 
 /**
- * @param {unknown} value
  * @returns {boolean | undefined}
  */
 export function normalizeOptionalBoolean(value: PlanMetadataValue): boolean | undefined {
@@ -427,22 +407,36 @@ export function normalizeOptionalBoolean(value: PlanMetadataValue): boolean | un
     return undefined;
 }
 
-/** @param {unknown} value @returns {"engineer"|"frontend-engineer"|undefined} */
 export function normalizeExecutionAgent(value: PlanMetadataValue): "engineer" | "frontend-engineer" | undefined {
     return value === "engineer" || value === "frontend-engineer" ? value : undefined;
 }
 
-/** @param {unknown} value @returns {"pair"|"autonomous"|undefined} */
 export function normalizeCollaborationMode(value: PlanMetadataValue): "pair" | "autonomous" | undefined {
     return value === "pair" || value === "autonomous" ? value : undefined;
 }
 
 /**
- * @param {unknown} value
  * @returns {boolean}
  */
 export function hasExplicitPolicyValue(value: PlanMetadataValue): boolean {
     return value !== undefined && value !== null && value !== "";
+}
+
+export interface PlanExecutionPolicy {
+    executionAgent: "engineer" | "frontend-engineer";
+    collaborationRecommendation: "autonomous" | "pair";
+    source: "canonical" | "legacy_frontend" | "legacy_frontend_false" | "absent";
+}
+
+export interface PlanExecutionPolicyError {
+    ok: false;
+    error: string;
+    reason: string;
+}
+
+export interface PlanExecutionPolicySuccess {
+    ok: true;
+    policy: PlanExecutionPolicy;
 }
 
 /**
@@ -585,7 +579,6 @@ export function optionalStringValue(
  * @param {Partial<PlanFrontMatter>} overrides
  * @param {Partial<PlanFrontMatter>} existingFm
  * @param {keyof PlanFrontMatter} key
- * @returns {unknown}
  */
 export function optionalExecutionPolicyValue(
     overrides: Partial<PlanFrontMatter>,
@@ -597,17 +590,6 @@ export function optionalExecutionPolicyValue(
 }
 
 /**
- * @param {unknown} value
- * @returns {string | undefined}
- */
-export function normalizePlanId(value: PlanMetadataValue): string | undefined {
-    if (typeof value !== "string") return undefined;
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-}
-
-/**
- * @param {unknown} value
  * @returns {string[] | undefined}
  */
 export function normalizeStringList(value: PlanMetadataValue): string[] | undefined {
@@ -618,11 +600,10 @@ export const WORK_RECORD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89a
 
 /**
  * Normalize optional Work Record supersession IDs without coercing malformed values.
- * @param {unknown} value
  * @returns {string[] | undefined}
  */
 export function normalizeSupersedes(value: PlanMetadataValue): string[] | undefined {
-    if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) return undefined;
+    if (!Array.isArray(value) || !value.every((item): item is string => typeof item === "string")) return undefined;
     const normalized = [];
     const seen = new Set();
     for (const item of value) {
@@ -638,7 +619,6 @@ export function normalizeSupersedes(value: PlanMetadataValue): string[] | undefi
 }
 
 /**
- * @param {unknown} value
  * @returns {number | undefined}
  */
 export function normalizeNonNegativeInteger(value: PlanMetadataValue): number | undefined {
@@ -653,7 +633,6 @@ export function normalizeNonNegativeInteger(value: PlanMetadataValue): number | 
 }
 
 /**
- * @param {unknown} status
  * @returns {PlanFrontMatter["status"] | null | undefined}
  */
 export function normalizePlanStatusForOptionalHold(
@@ -665,7 +644,6 @@ export function normalizePlanStatusForOptionalHold(
 }
 
 /**
- * @param {unknown} status
  * @returns {PlanFrontMatter["worktreeStatus"]}
  */
 export function normalizeWorktreeStatus(status: PlanMetadataValue): PlanFrontMatter["worktreeStatus"] {
@@ -687,7 +665,6 @@ export function normalizeWorktreeStatus(status: PlanMetadataValue): PlanFrontMat
 }
 
 /**
- * @param {unknown} value
  * @returns {ExecutionMode | undefined}
  */
 export function normalizeExecutionMode(value: PlanMetadataValue): ExecutionMode | undefined {
@@ -695,19 +672,17 @@ export function normalizeExecutionMode(value: PlanMetadataValue): ExecutionMode 
     return undefined;
 }
 
-/** @param {unknown} value */
 export function isShaLike(value: PlanMetadataValue) {
     return typeof value === "string" && /^[0-9a-f]{40}$/i.test(value);
 }
 
 /**
- * @param {unknown} value
  * @returns {DeliveryEvidence | undefined}
  */
 export function normalizeDeliveryEvidence(value: PlanMetadataValue): DeliveryEvidence | undefined {
     if (value === null) return undefined;
     if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-    const evidence = /** @type {Record<string, unknown>} */ value as Record<string, PlanMetadataValue>;
+    const evidence = value as Record<string, PlanMetadataValue>;
     if (evidence.version !== 1) return undefined;
     if (evidence.mode === "non_git_in_place") return { version: 1, mode: "non_git_in_place" };
     if (evidence.mode === "worktree_merge") {
@@ -728,7 +703,6 @@ export function normalizeDeliveryEvidence(value: PlanMetadataValue): DeliveryEvi
 }
 
 /**
- * @param {unknown} mode
  * @returns {PlanFrontMatter["humanReviewMode"]}
  */
 export function normalizeHumanReviewMode(mode: PlanMetadataValue): PlanFrontMatter["humanReviewMode"] {
@@ -738,7 +712,6 @@ export function normalizeHumanReviewMode(mode: PlanMetadataValue): PlanFrontMatt
 }
 
 /**
- * @param {unknown} decision
  * @returns {PlanFrontMatter["humanReviewDecision"]}
  */
 export function normalizeHumanReviewDecision(decision: PlanMetadataValue): PlanFrontMatter["humanReviewDecision"] {
@@ -752,12 +725,11 @@ export function normalizeHumanReviewDecision(decision: PlanMetadataValue): PlanF
 }
 
 /**
- * @param {unknown} value
  * @returns {PlanFrontMatter["workRecord"]}
  */
 export function normalizeWorkRecordBacklink(value: PlanMetadataValue): PlanFrontMatter["workRecord"] {
     if (!value || typeof value !== "object") return undefined;
-    const source = /** @type {Record<string, unknown>} */ value as Record<string, PlanMetadataValue>;
+    const source = value as Record<string, PlanMetadataValue>;
     const status = source.status === "generated" || source.status === "failed" ? source.status : undefined;
     const recordId = typeof source.recordId === "string" && source.recordId.trim() ? source.recordId.trim() : undefined;
     const path = typeof source.path === "string" && source.path.trim() ? source.path.trim() : undefined;
@@ -784,7 +756,7 @@ export function normalizeWorkRecordBacklink(value: PlanMetadataValue): PlanFront
  * @param {Partial<PlanFrontMatter>} overrides - Fields to inject/override
  * @returns {string} The markdown with front matter
  */
-export function injectFrontMatter(markdown: string, overrides: StoredPlanTypes.PlanFrontMatterInput = {}): string {
+export function injectFrontMatter(markdown: string, overrides: PlanFrontMatterInput = {}): string {
     /** @type {Partial<PlanFrontMatter>} */
     let existingFm: Partial<PlanFrontMatter> = {};
     let body = markdown;
@@ -916,9 +888,9 @@ export function injectFrontMatter(markdown: string, overrides: StoredPlanTypes.P
     if (fm.classification !== "PROJECT") delete fm.type;
     Object.assign(fm, normalizeCollaborationFrontMatter({ ...existingFm, ...overrides }));
     for (const key of OBSOLETE_OBJECTIVE_CHECK_FRONT_MATTER_KEYS) {
-        delete (/** @type {Record<string, unknown>} */ (fm as Record<string, PlanMetadataValue>)[key]);
+        delete (fm as Record<string, PlanMetadataValue>)[key];
     }
-    delete (/** @type {Record<string, unknown>} */ (fm as Record<string, PlanMetadataValue>).collaborationMode);
+    delete (fm as Record<string, PlanMetadataValue>).collaborationMode;
     assertExecutionPolicyWriteAllowed(overrides, fm);
 
     return joinFrontMatterAndBody(formatFrontMatter(fm), body);
@@ -932,6 +904,13 @@ export function normalizeCreatedAt(value: string | Date | undefined): string {
     return value instanceof Date ? value.toISOString() : value || DEFAULT_FRONT_MATTER.createdAt;
 }
 
+export type ParsedPlanFrontMatter = PlanFrontMatterWithCustomFields & { planId?: PlanId };
+
+export interface ParsePlanFrontMatterResult {
+    attrs: ParsedPlanFrontMatter;
+    body: string;
+}
+
 /**
  * Parse front matter from a plan file. Returns defaults if missing.
  *
@@ -942,7 +921,7 @@ export function normalizeCreatedAt(value: string | Date | undefined): string {
 export function parsePlanFrontMatter(
     markdown: string,
     opts: { missingOrigin?: string } = {},
-): StoredPlanTypes.ParsePlanFrontMatterResult {
+): ParsePlanFrontMatterResult {
     const missingOrigin =
         /** @type {PlanFrontMatter["origin"]} */ opts.missingOrigin ||
         (DEFAULT_FRONT_MATTER.origin as PlanFrontMatter["origin"]);
@@ -961,9 +940,10 @@ export function parsePlanFrontMatter(
             body: markdown,
         };
     }
-    const { attrs, body } = /** @type {import("./shared/front-matter.ts").FrontMatter<PlanFrontMatter>} */ extractYaml(
-        markdown,
-    ) as import("./shared/front-matter.ts").FrontMatter<PlanFrontMatter>;
+    const { attrs, body } =
+        /** @type {import("@runwield/parsing/front-matter").FrontMatter<PlanFrontMatter>} */ extractYaml(
+            markdown,
+        ) as import("@runwield/parsing/front-matter").FrontMatter<PlanFrontMatter>;
     const collaborationAttrs = normalizeCollaborationFrontMatter(attrs);
     const sourceAttrs = { ...attrs };
     for (const key of OBSOLETE_OBJECTIVE_CHECK_FRONT_MATTER_KEYS) Reflect.deleteProperty(sourceAttrs, key);
@@ -1101,6 +1081,11 @@ export function planDocumentMarkdown(markdown: string) {
     return mergeFrontMatterText(markdown, removed);
 }
 
+export interface SplitPlanBody {
+    frontMatterBlock: string;
+    body: string;
+}
+
 /**
  * Split raw markdown into the exact leading front matter block and body.
  * @param {string} markdown
@@ -1181,21 +1166,13 @@ export function formatFrontMatterOverrideLines(overrides: Partial<PlanFrontMatte
     const lines: string[] = [];
     for (const key of PLAN_FRONT_MATTER_KEY_ORDER) {
         if (Object.hasOwn(overrides, key)) {
-            appendYamlField(
-                lines,
-                key,
-                /** @type {Record<string, unknown>} */ (overrides as Record<string, PlanMetadataValue>)[key],
-            );
+            appendYamlField(lines, key, (overrides as Record<string, PlanMetadataValue>)[key]);
         }
     }
     for (const key of Object.keys(overrides)
         .filter((key) => !KNOWN_FRONT_MATTER_KEYS.has(key))
         .sort()) {
-        appendYamlField(
-            lines,
-            key,
-            /** @type {Record<string, unknown>} */ (overrides as Record<string, PlanMetadataValue>)[key],
-        );
+        appendYamlField(lines, key, (overrides as Record<string, PlanMetadataValue>)[key]);
     }
     return lines;
 }
@@ -1245,14 +1222,13 @@ export class PlanFrontMatterParseError extends Error {
     declare path: string;
     /**
      * @param {string} path
-     * @param {unknown} cause
      */
-    constructor(path: string, cause: PlanMetadataValue) {
+    constructor(path: string, options: ErrorOptions) {
+        const { cause } = options;
         const detail = cause instanceof Error ? cause.message : String(cause);
-        super(`Plan Front Matter could not be parsed in ${path}: ${detail}`);
+        super(`Plan Front Matter could not be parsed in ${path}: ${detail}`, options);
         this.name = "PlanFrontMatterParseError";
         this.path = path;
-        this.cause = cause;
     }
 }
 
@@ -1287,6 +1263,34 @@ export async function getPlanFrontMatterRevisionForText(text: string): Promise<s
     }
 }
 
+/** Compute both revision tokens from the same bytes before the store records its write. */
+export async function observePlanRevisions(markdown: string) {
+    const revision = await getPlanRevisionForText(markdown);
+    const frontMatterRevision = await getPlanFrontMatterRevisionForText(markdown);
+    rememberFrontMatterRevision(revision, frontMatterRevision);
+    return { revision, frontMatterRevision };
+}
+
+export interface PlanTextLoaded {
+    kind: "loaded";
+    path: string;
+    markdown: string;
+    attrs: PlanFrontMatterWithCustomFields;
+    body: string;
+    revision: string;
+    frontMatterRevision: string | undefined;
+    hasFrontMatter: boolean;
+    controllerRevision: number;
+}
+
+export interface PlanTextMalformed {
+    kind: "malformed";
+    path: string;
+    markdown: string;
+    revision: string;
+    error: PlanFrontMatterParseError;
+}
+
 /**
  * Strictly parse document bytes without filesystem or runtime access.
  * @param {string} markdown
@@ -1307,7 +1311,7 @@ export async function parsePlanTextStrict(
             path: filePath,
             markdown,
             revision,
-            error: new PlanFrontMatterParseError(filePath, error),
+            error: new PlanFrontMatterParseError(filePath, { cause: error }),
         };
     }
     const frontMatterRevision = await getPlanFrontMatterRevisionForText(markdown);
@@ -1340,12 +1344,12 @@ export async function parsePlanTextStrict(
  *
  * @type {Map<string, string>}
  */
-export const frontMatterRevisionsByPlanRevision: Map<string, string> = new Map();
+const frontMatterRevisionsByPlanRevision: Map<string, string> = new Map();
 
-export const KNOWN_REVISION_LIMIT = 1024;
+const KNOWN_REVISION_LIMIT = 1024;
 
 /** @param {string} revision @param {string|undefined} frontMatterRevision */
-export function rememberFrontMatterRevision(revision: string, frontMatterRevision: string | undefined) {
+function rememberFrontMatterRevision(revision: string, frontMatterRevision: string | undefined) {
     if (!frontMatterRevision) return;
     frontMatterRevisionsByPlanRevision.delete(revision);
     frontMatterRevisionsByPlanRevision.set(revision, frontMatterRevision);
@@ -1389,19 +1393,9 @@ export function comparePlansForList<T extends { name: string; attrs: PlanFrontMa
     return a.name.localeCompare(b.name);
 }
 
-export const TERMINAL_ARCHIVABLE_STATUSES = new Set([
-    "validated",
-    "verified",
-    "user_verified",
-    "closed_without_verification",
-]);
+const TERMINAL_ARCHIVABLE_STATUSES = new Set(["validated", "verified", "user_verified", "closed_without_verification"]);
 
-export const RECOVERABLE_WORKTREE_STATUSES = new Set([
-    "active",
-    "execution_failed",
-    "validation_failed",
-    "merge_conflict",
-]);
+const RECOVERABLE_WORKTREE_STATUSES = new Set(["active", "execution_failed", "validation_failed", "merge_conflict"]);
 
 /**
  * @param {string | undefined | null} status
@@ -1466,7 +1460,6 @@ export function stripSequencePrefix(value: string): string | undefined {
  * (`01-first`) exists.
  *
  * @param {string} parentPlan
- * @param {unknown} dependencies
  * @param {Array<{ name: string, planName?: string, planId?: string, path?: string, attrs?: PlanProgressAttributes, status?: string }>} siblings
  * @returns {Array<{ dependency: string, planId?: string, planName?: string, path?: string, status?: string, state: "verified" | "user_verified" | "unverified" | "missing" }>}
  */

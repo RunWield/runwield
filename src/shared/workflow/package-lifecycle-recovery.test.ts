@@ -11,7 +11,7 @@ import { currentPackageSelection } from "../../plan-store/workflows.ts";
 import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "../../plan-store/retained-source.ts";
 import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { git } from "../git-test-fixture.ts";
 import { test } from "node:test";
