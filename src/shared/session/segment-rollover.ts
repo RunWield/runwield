@@ -164,6 +164,7 @@ export async function rollSessionTranscriptSegment(
             transcriptCwd,
         });
         const successorSafeLocator = await options.ownerCoordinationStore.validateSuccessorSegmentLocator({
+            runwieldSessionId: managed.runwieldSessionId,
             projectId: managed.projectId,
             piSessionId: successorPiSessionId,
             transcriptPath: successorTranscriptPath,

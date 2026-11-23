@@ -627,13 +627,13 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         assertEquals(rescanText.includes("sessionPath"), false);
         assertEquals(rescanText.includes('"cwd"'), false);
 
-        store.setProjectEnabled(project.projectId, false);
-        let disabledCatalogCalled = false;
+        store.setProjectStatus(project.projectId, "inactive");
+        let inactiveCatalogCalled = false;
         store.catalogProjectSessions = () => {
-            disabledCatalogCalled = true;
+            inactiveCatalogCalled = true;
             return Promise.resolve({ cataloged: [], diagnostics: [] });
         };
-        const disabledRescan = await app(
+        const inactiveRescan = await app(
             new Request(`http://127.0.0.1:8787/api/owner/projects/${project.projectId}/action`, {
                 method: "POST",
                 headers: {
@@ -645,9 +645,9 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
                 body: JSON.stringify({ action: "rescan" }),
             }),
         );
-        assertEquals(disabledRescan.status, 400);
-        assertEquals(disabledCatalogCalled, false);
-        store.setProjectEnabled(project.projectId, true);
+        assertEquals(inactiveRescan.status, 400);
+        assertEquals(inactiveCatalogCalled, false);
+        store.setProjectStatus(project.projectId, "active");
         store.removeProject(project.projectId);
         let removedCatalogCalled = false;
         store.catalogProjectSessions = () => {
@@ -851,8 +851,9 @@ test("owner add and relink expose redacted confirmation before writes and keep a
                     directoryConfirmation: warning.confirmation,
                 })
             ).status,
-            200,
+            400,
         );
+        assertEquals(store.listProjectRootEvidence(projectId), evidence);
         assertEquals((await request("/api/owner/projects", { root })).status, 409);
         assertEquals(
             (await request("/api/owner/projects", { root, directoryConfirmation: warning.confirmation })).status,

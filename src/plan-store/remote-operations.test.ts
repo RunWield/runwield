@@ -1,3 +1,4 @@
+import { parseProjectId, projects, type HomeProjectOwner } from "@runwield/projects";
 import { tmpdir } from "node:os";
 import { parseHistoryList, parseMilestoneDocuments } from "../shared/remote/project-store-protocol.ts";
 import { test } from "node:test";
@@ -214,11 +215,9 @@ test("missing or corrupt receipts never turn a reserved identity into a new muta
     }
 });
 
-import { registerHomeProjectOwner } from "./index.ts";
-
 test("a registered home-only Project authors and edits Plans without a source checkout", async () => {
-    const owner = await registerHomeProjectOwner({
-        projectId: randomUUID(),
+    const owner = await projects.home.register({
+        projectId: parseProjectId(randomUUID())!,
         repositoryId: randomUUID(),
         displayName: "Remote-only",
     });
@@ -265,7 +264,7 @@ test("home-owned snapshot publication retains frozen documents without touching 
     let connection: Awaited<ReturnType<typeof connectOwner>> | undefined;
     try {
         const candidate = await git(fixture.workflow.executionCwd!, ["rev-parse", "HEAD"]);
-        const registration = await registerHomeProjectOwner({
+        const registration = await projects.home.register({
             projectId: fixture.identity.projectId,
             repositoryId: fixture.identity.repositoryId,
             displayName: "Prepared owner",
@@ -332,7 +331,7 @@ test("retained delivery permits owner-side record persistence and index reconcil
     try {
         const delivered = await fixture.drive();
         equal(delivered.code, 0, delivered.text);
-        const registration = await registerHomeProjectOwner({
+        const registration = await projects.home.register({
             projectId: fixture.identity.projectId,
             repositoryId: fixture.identity.repositoryId,
             displayName: "Record owner",
@@ -392,8 +391,8 @@ test("retained delivery permits owner-side record persistence and index reconcil
 });
 
 test("home-only admission refuses another account and a rebound repository", async () => {
-    const owner = await registerHomeProjectOwner({
-        projectId: randomUUID(),
+    const owner = await projects.home.register({
+        projectId: parseProjectId(randomUUID())!,
         repositoryId: randomUUID(),
         displayName: "Bound",
     });
@@ -428,13 +427,12 @@ test("home-only admission refuses another account and a rebound repository", asy
 });
 
 import { updatePlanCollaborationMetadata } from "./index.ts";
-import { withHomeProjectOwner, projectStoreLocation } from "../shared/project-identity.ts";
 import { getProjectSecretStoreLocation, putSecretRecord } from "../shared/collaboration/secrets.ts";
 import { COLLABORATION_LOCK_BYPASS } from "../shared/collaboration/lock.ts";
 
 test("home-only collaboration uses owner credentials without returning them", async () => {
-    const owner = await registerHomeProjectOwner({
-        projectId: randomUUID(),
+    const owner = await projects.home.register({
+        projectId: parseProjectId(randomUUID())!,
         repositoryId: randomUUID(),
         displayName: "Shared",
     });
@@ -459,8 +457,8 @@ test("home-only collaboration uses owner credentials without returning them", as
         },
     });
     try {
-        await withHomeProjectOwner(owner, async () => {
-            const location = projectStoreLocation(owner);
+        await projects.home.withOwner(owner, async () => {
+            const location = projects.home.storeLocation(owner);
             await updatePlanCollaborationMetadata(
                 location,
                 "shared",
@@ -491,7 +489,6 @@ test("home-only collaboration uses owner credentials without returning them", as
 
 import { startRemoteControlService } from "../shared/remote/control.ts";
 import { ProjectStoreClient } from "../shared/remote/project-store-client.ts";
-import type { HomeProjectOwner } from "./index.ts";
 async function connectOwner(owner: HomeProjectOwner) {
     const build = { buildId: "a".repeat(64), protocol: 1 };
     const control = startRemoteControlService(build);
@@ -636,7 +633,6 @@ test("non-Git recovery uses trusted execution inspection without a laptop checko
         const { mkdtemp, mkdir, chmod, rm } = await import("node:fs/promises");
         const { tmpdir } = await import("node:os");
         const { getHomeDir } = await import("../constants.ts");
-        const { admitProjectIdentity } = await import("../shared/project-identity.ts");
         const temporary = await mkdtemp(join(tmpdir(), "managed-non-git-recovery-"));
         const root = join(temporary, "source");
         const remoteHome = join(temporary, "remote-home");
@@ -646,9 +642,9 @@ test("non-Git recovery uses trusted execution inspection without a laptop checko
             executionAccountHome: remoteHome,
             personalOwner: { kind: "managed-remote" as const, identity: getHomeDir() },
         };
-        const admitted = await admitProjectIdentity(root, { context });
+        const admitted = await projects.checkout.admit(root, { context });
         if (admitted.kind !== "existing") throw new Error("Non-Git execution identity was not admitted.");
-        const owner = await registerHomeProjectOwner({
+        const owner = await projects.home.register({
             projectId: admitted.identity.projectId,
             repositoryId: admitted.identity.repositoryId,
             displayName: "Non-Git remote",
@@ -815,13 +811,11 @@ test("managed authorship retries a lost result and can reuse the name after rena
             equal(new Set(requests).size, 3);
             const admitted = await fetch(f.endpoint + "/project-store/admit", { method: "POST", headers: f.headers });
             const binding = await admitted.json();
-            const { inspectHomeProjectOwner, withHomeProjectOwner, projectStoreLocation } =
-                await import("../shared/project-identity.ts");
-            const owner = inspectHomeProjectOwner(binding.projectId, binding.repositoryId);
+            const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
             ok(owner);
-            await withHomeProjectOwner(owner, async () => {
+            await projects.home.withOwner(owner, async () => {
                 const { loadPlan } = await import("./index.ts");
-                const cwd = projectStoreLocation(owner);
+                const cwd = projects.home.storeLocation(owner);
                 equal((await loadPlan(cwd, "renamed"))?.attrs.planId, original);
                 equal((await loadPlan(cwd, "repeatable"))?.attrs.planId, next);
             });
@@ -894,16 +888,14 @@ test("managed pruning changes laptop records and bound execution copies while ma
             const admission = await fetch(f.endpoint + "/project-store/admit", { method: "POST", headers: f.headers });
             equal(admission.status, 200);
             const binding: import("./index.ts").ProjectStoreBinding = await admission.json();
-            const { inspectHomeProjectOwner, withHomeProjectOwner, projectStoreLocation } =
-                await import("../shared/project-identity.ts");
-            const owner = inspectHomeProjectOwner(binding.projectId, binding.repositoryId);
-            const cwd = projectStoreLocation(owner);
+            const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
+            const cwd = projects.home.storeLocation(owner);
             const { readLocalHomeStore } = await import("./index.ts");
             const { writeWorkRecord, listWorkRecords } = await import("../shared/work-records/store.ts");
             const { recordAttrs, recordBody } = await import("../shared/work-records/test-fixtures/package-records.ts");
             const { retainWorkRecordLocation, workRecordDigest } = await import("../shared/work-records/import.ts");
             const copy = join(f.root, "delivered-record.md");
-            await withHomeProjectOwner(owner, () =>
+            await projects.home.withOwner(owner, () =>
                 readLocalHomeStore(
                     cwd,
                     async () => {
@@ -965,7 +957,7 @@ test("managed pruning changes laptop records and bound execution copies while ma
 
             equal(result.includes("Pruned 1 Work Record"), true, result);
             await rejects(readFile(copy), { code: "ENOENT" });
-            await withHomeProjectOwner(owner, async () => equal((await listWorkRecords(cwd)).length, 0));
+            await projects.home.withOwner(owner, async () => equal((await listWorkRecords(cwd)).length, 0));
             deepEqual(JSON.parse(await f.run("manual-prune-list")), ["aaaa1111-1111-4111-8111-111111111111"]);
         } finally {
             await f.cleanup();

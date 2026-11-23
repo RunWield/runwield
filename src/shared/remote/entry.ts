@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import process from "node:process";
 import { isStandaloneExecutable } from "../runtime-identity.ts";
 import { readStreamInto } from "../socket-listener.ts";
@@ -148,10 +149,9 @@ export async function runRemoteView(): Promise<void> {
         const { RemoteSessionControl } = await import("./session-control-client.ts");
         const { createRemoteBrowserPort } = await import("./browser-bridge.ts");
         const { startInteractiveSession } = await import("../../ui/tui/chat-session.ts");
-        const { inspectProjectDirectory } = await import("../project-directory.ts");
         const browser = createRemoteBrowserPort(config.connection);
         // The supervisor pipes terminal input. Open the TUI before directory consent needs it.
-        if (inspectProjectDirectory(config.cwd).classified) tuiModule.initTUI(browser);
+        if (projects.directory.inspect(config.cwd).classified) tuiModule.initTUI(browser);
         const { formatRemoteConnectionDetails } = await import("../../ui/tui/remote-connection-view.ts");
         await startInteractiveSession(null, {
             remoteSessionControl: new RemoteSessionControl(config.connection),
@@ -197,10 +197,7 @@ export async function runRemoteProjectAdmission(): Promise<void> {
         input.ownerIdentity.includes("\0")
     )
         throw new Error("Invalid managed Project admission.");
-    const [{ admitProjectIdentity, inspectProjectIdentity }, { getHomeDir }] = await Promise.all([
-        import("../project-identity.ts"),
-        import("../../constants.ts"),
-    ]);
+    const { getHomeDir } = await import("../../constants.ts");
     const options = {
         context: {
             executionAccountHome: getHomeDir(),
@@ -208,18 +205,17 @@ export async function runRemoteProjectAdmission(): Promise<void> {
         },
     };
     const result = input.admit
-        ? await admitProjectIdentity(input.cwd, options)
-        : inspectProjectIdentity(input.cwd, options);
+        ? await projects.checkout.admit(input.cwd, options)
+        : projects.checkout.inspect(input.cwd, options);
     if (!input.admit && (result.kind === "fresh" || result.kind === "pending")) {
         console.log("null");
         return;
     }
     if (result.kind !== "existing") throw new Error("Managed Project identity admission is unavailable.");
-    const { resolvePrimaryCheckoutRoot } = await import("../project-checkout.ts");
     console.log(
         JSON.stringify({
             ...result.identity,
-            repositoryRoot: resolvePrimaryCheckoutRoot(result.identity.checkoutRoot),
+            repositoryRoot: projects.checkout.primaryRoot(result.identity.checkoutRoot),
         }),
     );
 }
@@ -270,7 +266,6 @@ export async function runRemotePublicationProof(): Promise<void> {
         retained?: import("../workflow/publication-attempt.ts").PublicationAttempt;
     } = JSON.parse(await readPrivateProbeRequest());
     const { getHomeDir } = await import("../../constants.ts");
-    const { inspectProjectIdentity, withProjectLaunchContext } = await import("../project-identity.ts");
     if (
         !input ||
         typeof input.cwd !== "string" ||
@@ -283,8 +278,8 @@ export async function runRemotePublicationProof(): Promise<void> {
         executionAccountHome: getHomeDir(),
         personalOwner: { kind: "managed-remote" as const, identity: input.ownerIdentity },
     };
-    await withProjectLaunchContext(context, async () => {
-        const identity = inspectProjectIdentity(input.cwd);
+    await projects.launch.withContext(context, async () => {
+        const identity = projects.checkout.inspect(input.cwd);
         if (input.retention) {
             const { createHash } = await import("node:crypto");
             if (
@@ -406,13 +401,12 @@ export async function runRemoteRuntimeTransfer(): Promise<void> {
     )
         throw new Error("Invalid managed runtime transfer request.");
     const { getHomeDir } = await import("../../constants.ts");
-    const { inspectProjectIdentity, withProjectLaunchContext } = await import("../project-identity.ts");
     const context = {
         executionAccountHome: getHomeDir(),
         personalOwner: { kind: "managed-remote" as const, identity: input.ownerIdentity },
     };
-    await withProjectLaunchContext(context, async () => {
-        const inspected = inspectProjectIdentity(input.cwd);
+    await projects.launch.withContext(context, async () => {
+        const inspected = projects.checkout.inspect(input.cwd);
         if (inspected.kind !== "existing") throw new Error("Runtime transfer requires verified Project identity.");
         const { stageManagedPersonalRuntime, retireManagedPersonalRuntime } =
             await import("../project-runtime-managed.ts");

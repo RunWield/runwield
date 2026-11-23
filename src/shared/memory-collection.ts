@@ -1,36 +1,25 @@
-import { basename, dirname, isAbsolute, join, normalize } from "node:path";
-import { denoHelperBinaryExec, type HelperBinaryExec } from "../extensions/helper-binary-exec.ts";
-
-import { remoteMemoryCollection } from "./remote/memory-bridge.ts";
-import { remotePersonalResourcesActive } from "./remote/personal-resources.ts";
+import { projects, ProjectIdentityEntryRequired } from "@runwield/projects";
 
 export interface MemoryCollectionContext {
     cwd: string;
     boundCollection?: string;
-    exec?: HelperBinaryExec;
 }
 
-function localCollectionName(name: string): string {
-    return name === "global" ? "default" : name || "default";
+/** The laptop resolves the admitted remote checkout independently before serving Memory. */
+export const USE_PROJECT_MEMORY = "@runwield/current-project";
+
+/** Background reads use committed identity without admitting the checkout. */
+export function inspectMemoryCollection(cwd: string): string | null {
+    const inspection = projects.checkout.inspect(cwd);
+    return inspection.kind === "existing" ? inspection.identity.projectId : null;
 }
 
-/** Choose one project collection for Memory tools, core injection, and maintenance. */
+/** A deliberate Memory operation may admit a fresh checkout. Explicit bindings retain their collection. */
 export async function resolveMemoryCollection(context: MemoryCollectionContext): Promise<string> {
-    const bound = context.boundCollection ?? remoteMemoryCollection();
-    if (bound) return bound;
-    if (remotePersonalResourcesActive()) throw new Error("Remote Memory collection is not bound");
-    const { cwd } = context;
-    const fallback = localCollectionName(basename(cwd));
-    try {
-        const exec = context.exec ?? denoHelperBinaryExec;
-        const result = await exec("git", ["rev-parse", "--git-common-dir"], { cwd });
-        if (result.code !== 0) return fallback;
-        const commonDir = result.stdout.trim().split(/\r?\n/).at(-1) || "";
-        if (!commonDir) return fallback;
-        const absoluteCommonDir = normalize(isAbsolute(commonDir) ? commonDir : join(cwd, commonDir));
-        if (basename(absoluteCommonDir) !== ".git") return fallback;
-        return localCollectionName(basename(dirname(absoluteCommonDir)));
-    } catch {
-        return fallback;
-    }
+    if (context.boundCollection && context.boundCollection !== USE_PROJECT_MEMORY) return context.boundCollection;
+    const existing = inspectMemoryCollection(context.cwd);
+    if (existing) return existing;
+    const admission = await projects.checkout.admit(context.cwd);
+    if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
+    return admission.identity.projectId;
 }

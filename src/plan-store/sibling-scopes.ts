@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { hasCanonicalPlanAccess } from "./handles.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
@@ -22,7 +23,6 @@ import { savePlan } from "../plan-store.ts";
 import { join } from "node:path";
 import type { PlanFrontMatter } from "./index.ts";
 import { EPIC_ARTIFACT_FILE_NAMES } from "../plan-format.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.ts";
 import { assertControllerDocumentAvailable, listControllerDocumentWorktrees } from "./controllers.ts";
 
@@ -128,7 +128,7 @@ export async function prepareEditedSiblingPlans(
     );
     if (siblingPaths.length === 0) return [];
 
-    const registered = await listControllerDocumentWorktrees(resolvePrimaryCheckoutRoot(worktreePath));
+    const registered = await listControllerDocumentWorktrees(projects.checkout.primaryRoot(worktreePath));
     for (const path of siblingPaths) {
         const siblingName = path.slice("docs/plans/".length, -".md".length);
         const committed = await runGitResult(worktreePath, ["show", `HEAD:${path}`]);

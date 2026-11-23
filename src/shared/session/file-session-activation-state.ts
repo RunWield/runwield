@@ -1,3 +1,4 @@
+import { sessionTranscriptStoragePath } from "@runwield/session-files";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
@@ -87,12 +88,12 @@ export function releaseHeldLock(locks: Map<string, HeldFileLock>, proof: FileAct
 }
 
 /** Called only while holding the native lock. Atomic replacement leaves exactly the before or after bytes. */
-export function reconcilePendingTranscriptMigration(manifest: FileSessionManifest, now: string): void {
+export function reconcilePendingTranscriptMigration(manifest: FileSessionManifest, now: string, baseDir: string): void {
     const pending = manifest.activation.pendingMigration;
     if (!pending) return;
     const segment = manifest.segments.find((item) => item.segmentId === manifest.currentSegmentId);
     if (!segment) throw new Error("Session migration transcript is unavailable");
-    const bytes = readFileSync(segment.transcriptPath);
+    const bytes = readFileSync(sessionTranscriptStoragePath(segment.transcriptPath, baseDir));
     const digest = createHash("sha256").update(bytes).digest("hex");
     if (bytes.length === pending.after.byteLength && digest === pending.after.digestHex) {
         manifest.activation.baselineByteLength = pending.after.byteLength;
@@ -117,8 +118,8 @@ export function reconcilePendingTranscriptMigration(manifest: FileSessionManifes
     delete manifest.activation.pendingMigration;
 }
 
-export function markRecoveryAfterAbandonedWriter(manifest: FileSessionManifest, now: string): void {
-    reconcilePendingTranscriptMigration(manifest, now);
+export function markRecoveryAfterAbandonedWriter(manifest: FileSessionManifest, now: string, baseDir: string): void {
+    reconcilePendingTranscriptMigration(manifest, now, baseDir);
     if (manifest.activation.state !== "active") return;
     const current = manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId);
     if (!current) {
@@ -131,7 +132,7 @@ export function markRecoveryAfterAbandonedWriter(manifest: FileSessionManifest, 
         return;
     }
     if (!manifest.generation) {
-        const bytes = readFileSync(current.transcriptPath);
+        const bytes = readFileSync(sessionTranscriptStoragePath(current.transcriptPath, baseDir));
         const baselineByteLength = manifest.activation.baselineByteLength;
         const baselineDigestHex = manifest.activation.baselineDigestHex;
         const unchanged =
@@ -149,7 +150,7 @@ export function markRecoveryAfterAbandonedWriter(manifest: FileSessionManifest, 
         manifest.updatedAt = now;
         return;
     }
-    const bytes = readFileSync(current.transcriptPath);
+    const bytes = readFileSync(sessionTranscriptStoragePath(current.transcriptPath, baseDir));
     const committedBytes = bytes.subarray(0, manifest.generation.byteLength);
     const digest = createHash("sha256").update(committedBytes).digest("hex");
     if (bytes.byteLength === manifest.generation.byteLength && digest === manifest.generation.digestHex) {
@@ -164,12 +165,12 @@ export function markRecoveryAfterAbandonedWriter(manifest: FileSessionManifest, 
     manifest.updatedAt = now;
 }
 
-export function committedTranscriptMatches(manifest: FileSessionManifest): boolean {
+export function committedTranscriptMatches(manifest: FileSessionManifest, baseDir: string): boolean {
     if (!manifest.generation) return true;
     const current = manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId);
     if (!current) return false;
     try {
-        const bytes = readFileSync(current.transcriptPath);
+        const bytes = readFileSync(sessionTranscriptStoragePath(current.transcriptPath, baseDir));
         if (bytes.byteLength !== manifest.generation.byteLength) return false;
         return createHash("sha256").update(bytes).digest("hex") === manifest.generation.digestHex;
     } catch {

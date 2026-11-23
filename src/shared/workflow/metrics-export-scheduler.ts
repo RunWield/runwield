@@ -8,10 +8,11 @@ import {
     resolveApprovedMetricsExporters,
 } from "../extensions/metrics-exporter.ts";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
-import { getWorkflowMetricsFilePath, MeasurementProjectUnavailableError } from "./metrics.ts";
+import { MeasurementProjectUnavailableError } from "./metrics.ts";
 import { resolveCollectionEpoch, withWorkflowMetricJournalLock } from "./metrics-journal.ts";
 import {
     grantMatchesExporter,
+    measurementProjectForExport,
     type MetricsExportDestinationGrant,
     type MetricsExportProjectStart,
     readMetricsExportCredentials,
@@ -124,6 +125,7 @@ function readRows(path: string, offset: number, firstOnly = false, endOffset?: n
 function scanProject(
     grant: MetricsExportDestinationGrant,
     project: MetricsExportProjectStart,
+    path: string,
     previous: ProjectCursor | undefined,
     epoch: string,
 ): ProjectCursor {
@@ -145,7 +147,7 @@ function scanProject(
               };
     cursor.startedExecutions ??= [];
     const startedExecutions = new Set(cursor.startedExecutions);
-    for (const positioned of readRows(getWorkflowMetricsFilePath(project.projectRoot), cursor.offset)) {
+    for (const positioned of readRows(path, cursor.offset)) {
         cursor.offset = positioned.end;
         const row = positioned.row;
         if (row.v !== 2 || row.historyEpoch !== epoch) continue;
@@ -287,6 +289,7 @@ export function authorizeAndDispatchMetricsExport(options: DispatchOptions, epoc
         options.signal?.aborted ||
         !metricsExporterStillApproved(prepared.exporter) ||
         !currentProject(grant, project) ||
+        measurementProjectForExport(project)?.journalPath !== path ||
         !row ||
         row.eventId !== prepared.row.eventId ||
         row.historyEpoch !== prepared.row.historyEpoch
@@ -360,6 +363,7 @@ function currentProject(
             g.projects.some(
                 (p) =>
                     p.projectRoot === project.projectRoot &&
+                    p.projectId === project.projectId &&
                     p.historyEpoch === project.historyEpoch &&
                     p.offset === project.offset,
             ),
@@ -438,12 +442,14 @@ export async function runMetricsExportCycle(options: CycleOptions = {}): Promise
             const cursors = readCursor(grant.destinationId);
             for (const project of grant.projects) {
                 if (options.signal?.aborted || !currentProject(grant, project)) break;
-                const path = getWorkflowMetricsFilePath(project.projectRoot);
+                const measurement = measurementProjectForExport(project);
+                if (!measurement) continue;
+                const path = measurement.journalPath;
                 const projectRef = await metricsExportReference(identity, "project", project.projectRoot);
                 const journalRef = await metricsExportReference(identity, "journal", path);
                 const cursor = await withWorkflowMetricJournalLock(
                     path,
-                    (epoch) => scanProject(grant, project, cursors[projectRef], epoch),
+                    (epoch) => scanProject(grant, project, path, cursors[projectRef], epoch),
                     options.signal,
                 );
                 cursors[projectRef] = cursor;
@@ -659,11 +665,15 @@ export async function readMetricsExportStatus() {
         const ledger = readMetricsExportLedger(grant.destinationId);
         const cursors = readCursor(grant.destinationId);
         const currentItems: MetricsDeliveryItem[] = [];
+        const availableRoots: string[] = [];
         for (const project of grant.projects) {
-            const path = getWorkflowMetricsFilePath(project.projectRoot);
+            const measurement = measurementProjectForExport(project);
+            if (!measurement) continue;
+            const path = measurement.journalPath;
+            availableRoots.push(measurement.root);
             const epoch = resolveCollectionEpoch(path).historyEpoch;
             const projectRef = await metricsExportReference(identity, "project", project.projectRoot);
-            const cursor = scanProject(grant, project, cursors[projectRef], epoch);
+            const cursor = scanProject(grant, project, path, cursors[projectRef], epoch);
             const credential = readMetricsExportCredentials(grant.destinationId);
             const items = [...ledger.values()].filter(
                 (item) =>
@@ -691,7 +701,7 @@ export async function readMetricsExportStatus() {
             grantId: grant.grantId,
             endpoint: grant.endpoint,
             externalProject: grant.externalProject,
-            projects: grant.projects.map((p) => p.projectRoot),
+            projects: availableRoots,
             credentials: {
                 configured: Object.keys(readMetricsExportCredentials(grant.destinationId).credentials).length > 0,
             },

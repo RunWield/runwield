@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { capturePlanAccess } from "../../plan-store/index.ts";
 import { resumePlanAttempt } from "../../plan-store/index.ts";
 /**
@@ -17,7 +18,6 @@ import { runValidationAttempt, type ValidationTrigger } from "./validation-super
 import { loadPlan } from "../../plan-store/index.ts";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { emitProgress, emitStatus } from "./validation-emit.ts";
 import { getCurrentValidationProgress } from "./validation-progress.ts";
 import { validationUserMessage } from "./validation-user-messages.ts";
@@ -150,7 +150,7 @@ export function createEngineValidationArgs(args: ValidationLoopArgs): EngineVali
 }
 
 function validationProjectRoot(args: ContinueWorkflowValidationArgs): string {
-    return resolvePrimaryCheckoutRoot(args.executionContext?.projectRoot || args.hostedSession.cwd);
+    return projects.checkout.primaryRoot(args.executionContext?.projectRoot || args.hostedSession.cwd);
 }
 
 async function validationPlanCwd(projectRoot: string, planName: string): Promise<string> {

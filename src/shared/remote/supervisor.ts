@@ -27,7 +27,7 @@ export interface RemoteSupervisorHeader {
     mount: MountHeader;
     remoteHome: string;
     memoryCollection: string;
-    personalOwner?: import("../project-identity.ts").ProjectPersonalOwner;
+    personalOwner?: import("@runwield/projects").ProjectPersonalOwner;
     modelProof?: RemoteModelProof;
 }
 

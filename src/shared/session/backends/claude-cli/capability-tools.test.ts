@@ -1,5 +1,6 @@
 import { writeRuntimeExecutableFixture } from "../../../../testing/runtime-executable-fixture.ts";
 import { delimiter } from "node:path";
+import { projects } from "@runwield/projects";
 
 import process from "node:process";
 import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
@@ -38,7 +39,6 @@ test("Claude CLI capability tools execute PATH helper binaries", () =>
         const tempDir = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         const oldPath = process.env["PATH"] || "";
         try {
-            await writeExecutable(join(tempDir, "git"), 'console.log("/repo/runwield/.git");');
             await writeExecutable(
                 join(tempDir, "mnemoteca"),
                 'console.log(process.argv[2] === "search" ? "memory-hit" : "ok");',
@@ -55,9 +55,11 @@ test("Claude CLI capability tools execute PATH helper binaries", () =>
             const codeText = await executeText(getTool(tools, "code_search"), { query: "Thing" });
             const webText = await executeText(getTool(tools, "web_search"), { query: "current docs" });
 
+            const admitted = projects.checkout.inspect(tempDir);
+            if (admitted.kind !== "existing") throw new Error(`Unexpected Project identity: ${admitted.kind}`);
             assertEquals(
                 memoryText,
-                "Project memories (runwield) — these take precedence over global memories:\nmemory-hit\n\nGlobal memories (cross-project defaults):\nmemory-hit",
+                `Project memories (${admitted.identity.projectId}) — these take precedence over global memories:\nmemory-hit\n\nGlobal memories (cross-project defaults):\nmemory-hit`,
             );
             assertEquals(codeText, "cymbal:--no-federate search Thing");
             assertEquals(webText, "Web - https://example.test");
@@ -72,7 +74,6 @@ test("Claude CLI memory capability reports missing mnemoteca binary", () =>
         const tempDir = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         const oldPath = process.env["PATH"] || "";
         try {
-            await writeExecutable(join(tempDir, "git"), "process.exit(1);");
             await writeExecutable(join(tempDir, "cymbal"), 'console.log("ok");');
             process.env["PATH"] = tempDir;
             const tools = createClaudeCliCapabilityTools({ cwd: tempDir });

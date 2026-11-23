@@ -1,10 +1,10 @@
+import { projects, type ProjectStoreIdentity, type ProjectIdentity } from "@runwield/projects";
 import { ok } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { admitProjectIdentity, type ProjectStoreIdentity, type ProjectIdentity } from "../project-identity.ts";
 import { createPlanPackage, readPlanPackage } from "../../plan-store/packages.ts";
 import type { CreatePlanPackage, PackageInspection, LoadedPlanPackage } from "../../plan-store/packages.ts";
 
@@ -12,7 +12,7 @@ const fixture = defineCommittedGitFixture({ "README.md": "package fixture\n" });
 export const documents = { "context.md": "# A Plan\n\nProse — 世界\n", "validation.md": "# Verify\n\nRun checks.\n" };
 export async function packageFixture() {
     const root = await fs.realpath(await fixture.checkout());
-    const admitted = await admitProjectIdentity(root);
+    const admitted = await projects.checkout.admit(root);
     ok(admitted.kind === "existing");
     return { root, identity: admitted.identity, cleanup: () => fs.rm(root, { recursive: true, force: true }) };
 }

@@ -1,3 +1,11 @@
+import {
+    isProjectId,
+    parseProjectId,
+    projects,
+    type ProjectIdentityAdmission,
+    type ProjectIdentity,
+    type ProjectLaunchContext,
+} from "@runwield/projects";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { test } from "node:test";
 import process from "node:process";
@@ -7,13 +15,6 @@ import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
-import {
-    admitProjectIdentity,
-    inspectProjectIdentity,
-    type ProjectIdentityAdmission,
-    type ProjectIdentity,
-    type ProjectLaunchContext,
-} from "./project-identity.ts";
 
 const fixture = defineCommittedGitFixture();
 async function assertStoredBinding(home: string, identity: ProjectIdentity, roots: string[], checkouts = [identity]) {
@@ -73,20 +74,30 @@ async function snapshot(root: string): Promise<string[]> {
     return entries;
 }
 
+test("Project ID parsing preserves stored UUID spelling and rejects malformed IDs", () => {
+    const stored = "A1234567-89AB-4DEF-A123-456789ABCDEF";
+    ok(isProjectId(stored));
+    equal(parseProjectId(stored), stored);
+    equal(parseProjectId(stored.toLowerCase()), stored.toLowerCase());
+    equal(parseProjectId(stored.replace("-4DEF", "-7DEF")), undefined);
+    equal(parseProjectId(`${stored}\n`), undefined);
+    equal(parseProjectId("legacy-session-storage"), undefined);
+});
+
 test("identity inspection leaves fresh, admitted and malformed project and home bytes untouched", async () => {
     const f = await environment();
     try {
         const fresh = [...(await snapshot(f.home)), ...(await snapshot(f.root))];
-        equal(inspectProjectIdentity(f.root, { context: f.context }).kind, "fresh");
+        equal(projects.checkout.inspect(f.root, { context: f.context }).kind, "fresh");
         deepEqual([...(await snapshot(f.home)), ...(await snapshot(f.root))], fresh);
-        admitted(await admitProjectIdentity(f.root, { context: f.context }));
+        admitted(await projects.checkout.admit(f.root, { context: f.context }));
         const existing = [...(await snapshot(f.home)), ...(await snapshot(f.root))];
-        equal(inspectProjectIdentity(f.root, { context: f.context }).kind, "existing");
+        equal(projects.checkout.inspect(f.root, { context: f.context }).kind, "existing");
         deepEqual([...(await snapshot(f.home)), ...(await snapshot(f.root))], existing);
         await writeFile(join(f.root, ".wld-project.json"), "user-owned contents");
         const malformed = [...(await snapshot(f.home)), ...(await snapshot(f.root))];
-        equal(inspectProjectIdentity(f.root, { context: f.context }).kind, "invalid");
-        equal((await admitProjectIdentity(f.root, { context: f.context })).kind, "invalid");
+        equal(projects.checkout.inspect(f.root, { context: f.context }).kind, "invalid");
+        equal((await projects.checkout.admit(f.root, { context: f.context })).kind, "invalid");
         deepEqual([...(await snapshot(f.home)), ...(await snapshot(f.root))], malformed);
     } finally {
         await f.close();
@@ -99,9 +110,9 @@ test("pending clone inspection leaves home, project and Git names, bytes and mod
         const one = join(f.home, "one");
         const two = join(f.home, "two");
         for (const root of [one, two]) await git(f.root, ["clone", f.root, root]);
-        admitted(await admitProjectIdentity(one, { context: f.context }));
+        admitted(await projects.checkout.admit(one, { context: f.context }));
         const before = [...(await snapshot(f.home)), ...(await snapshot(f.root))];
-        const pending = inspectProjectIdentity(two, { context: f.context });
+        const pending = projects.checkout.inspect(two, { context: f.context });
         equal(pending.kind, "pending");
         if (pending.kind !== "pending") throw new Error("Expected pending clone");
         equal(pending.candidates.length, 1);
@@ -115,14 +126,14 @@ test("linked worktrees and subdirectories share Project and repository IDs with 
     const f = await environment();
     const linked = `${f.root}-linked`;
     try {
-        const first = admitted(await admitProjectIdentity(f.root, { context: f.context }));
+        const first = admitted(await projects.checkout.admit(f.root, { context: f.context }));
         await git(f.root, ["worktree", "add", "-b", "linked", linked]);
         await mkdir(join(linked, "nested"));
-        const second = admitted(await admitProjectIdentity(join(linked, "nested"), { context: f.context }));
+        const second = admitted(await projects.checkout.admit(join(linked, "nested"), { context: f.context }));
         equal(second.projectId, first.projectId);
         equal(second.repositoryId, first.repositoryId);
         notEqual(second.checkoutId, first.checkoutId);
-        equal(admitted(inspectProjectIdentity(linked, { context: f.context })).checkoutId, second.checkoutId);
+        equal(admitted(projects.checkout.inspect(linked, { context: f.context })).checkoutId, second.checkoutId);
         await assertStoredBinding(f.home, first, [f.root, linked], [first, second]);
     } finally {
         await rm(linked, { recursive: true, force: true });
@@ -134,14 +145,14 @@ test("Project identity survives checkout moves and remote edits without changing
     const f = await environment();
     const moved = `${f.root}-moved`;
     try {
-        const first = admitted(await admitProjectIdentity(f.root, { context: f.context }));
+        const first = admitted(await projects.checkout.admit(f.root, { context: f.context }));
         await git(f.root, ["remote", "add", "origin", "https://example.invalid/project.git"]);
         await rename(f.root, moved);
-        const second = admitted(await admitProjectIdentity(moved, { context: f.context }));
+        const second = admitted(await projects.checkout.admit(moved, { context: f.context }));
         equal(second.projectId, first.projectId);
         equal(second.checkoutId, first.checkoutId);
         await git(moved, ["remote", "remove", "origin"]);
-        equal(admitted(await admitProjectIdentity(moved, { context: f.context })).projectId, first.projectId);
+        equal(admitted(await projects.checkout.admit(moved, { context: f.context })).projectId, first.projectId);
         match(first.projectId, /^[0-9a-f-]{36}$/);
     } finally {
         await rm(moved, { recursive: true, force: true });
@@ -160,8 +171,8 @@ test("independent same-basename repositories receive separate opaque identities"
         await mkdir(join(parent, "two"));
         await rename(f.root, firstRoot);
         await rename(other, secondRoot);
-        const first = admitted(await admitProjectIdentity(firstRoot, { context: f.context }));
-        const second = admitted(await admitProjectIdentity(secondRoot, { context: f.context }));
+        const first = admitted(await projects.checkout.admit(firstRoot, { context: f.context }));
+        const second = admitted(await projects.checkout.admit(secondRoot, { context: f.context }));
         notEqual(first.projectId, second.projectId);
         notEqual(first.repositoryId, second.repositoryId);
     } finally {
@@ -174,14 +185,14 @@ test("only the common Git config own identity is authoritative, excluding includ
     const f = await environment();
     try {
         await git(f.root, ["config", "preserve.setting", "keep-me"]);
-        const first = admitted(await admitProjectIdentity(f.root, { context: f.context }));
+        const first = admitted(await projects.checkout.admit(f.root, { context: f.context }));
         equal(await git(f.root, ["config", "preserve.setting"]), "keep-me");
         const included = join(f.home, "included");
         await writeFile(included, `[runwield]\nprojectId = ${randomUUID()}\n`);
         await git(f.root, ["config", "include.path", included]);
         await git(f.root, ["config", "extensions.worktreeConfig", "true"]);
         await git(f.root, ["config", "--worktree", "runwield.projectId", randomUUID()]);
-        equal(admitted(await admitProjectIdentity(f.root, { context: f.context })).projectId, first.projectId);
+        equal(admitted(await projects.checkout.admit(f.root, { context: f.context })).projectId, first.projectId);
         equal(await git(f.root, ["config", "preserve.setting"]), "keep-me");
     } finally {
         await f.close();
@@ -195,10 +206,10 @@ test("non-Git identity survives move and Git adoption without altering settings 
     try {
         await mkdir(join(directory, ".wld"), { recursive: true });
         await writeFile(join(directory, ".wld", "settings.json"), '{ "user": "bytes" }\n');
-        const first = admitted(await admitProjectIdentity(directory, { context: f.context }));
+        const first = admitted(await projects.checkout.admit(directory, { context: f.context }));
         await rename(directory, moved);
         await git(moved, ["init"]);
-        const second = admitted(await admitProjectIdentity(moved, { context: f.context }));
+        const second = admitted(await projects.checkout.admit(moved, { context: f.context }));
         equal(second.projectId, first.projectId);
         equal(second.repositoryId, first.repositoryId);
         equal(second.checkoutId, first.checkoutId);
@@ -215,12 +226,12 @@ test("conflicting Git identity preserves a valid non-Git marker", async () => {
     const directory = join(f.home, "plain");
     try {
         await mkdir(directory);
-        admitted(await admitProjectIdentity(directory, { context: f.context }));
+        admitted(await projects.checkout.admit(directory, { context: f.context }));
         const marker = await readFile(join(directory, ".wld-project.json"), "utf8");
         await git(directory, ["init"]);
         const different = randomUUID();
         await git(directory, ["config", "runwield.projectId", different]);
-        equal((await admitProjectIdentity(directory, { context: f.context })).kind, "invalid");
+        equal((await projects.checkout.admit(directory, { context: f.context })).kind, "invalid");
         equal(await readFile(join(directory, ".wld-project.json"), "utf8"), marker);
         equal(await git(directory, ["config", "runwield.projectId"]), different);
     } finally {
@@ -234,7 +245,7 @@ test("symlink and user-owned markers are preserved rather than adopted", async (
         const target = join(f.home, "user.json");
         await writeFile(target, "user bytes");
         await symlink(target, join(f.root, ".wld-project.json"));
-        equal((await admitProjectIdentity(f.root, { context: f.context })).kind, "invalid");
+        equal((await projects.checkout.admit(f.root, { context: f.context })).kind, "invalid");
         ok((await lstat(join(f.root, ".wld-project.json"))).isSymbolicLink());
         equal(await readFile(target, "utf8"), "user bytes");
     } finally {
@@ -245,9 +256,9 @@ test("symlink and user-owned markers are preserved rather than adopted", async (
 test("committed Git identity repairs missing home metadata without minting replacement IDs", async () => {
     const f = await environment();
     try {
-        const first = admitted(await admitProjectIdentity(f.root, { context: f.context }));
+        const first = admitted(await projects.checkout.admit(f.root, { context: f.context }));
         await rm(join(f.home, ".wld"), { recursive: true });
-        deepEqual(admitted(await admitProjectIdentity(f.root, { context: f.context })), first);
+        deepEqual(admitted(await projects.checkout.admit(f.root, { context: f.context })), first);
         await assertStoredBinding(f.home, first, [f.root]);
         deepEqual(await readdir(join(f.home, ".wld", "projects")), [first.projectId]);
     } finally {
@@ -258,10 +269,10 @@ test("committed Git identity repairs missing home metadata without minting repla
 test("corrupt home metadata cannot replace committed repository identity", async () => {
     const f = await environment();
     try {
-        const first = admitted(await admitProjectIdentity(f.root, { context: f.context }));
+        const first = admitted(await projects.checkout.admit(f.root, { context: f.context }));
         const record = join(f.home, ".wld", "projects", first.projectId, "project.wld.json");
         await writeFile(record, "broken");
-        equal((await admitProjectIdentity(f.root, { context: f.context })).kind, "invalid");
+        equal((await projects.checkout.admit(f.root, { context: f.context })).kind, "invalid");
         equal(await readFile(record, "utf8"), "broken");
         equal(await git(f.root, ["config", "runwield.projectId"]), first.projectId);
     } finally {
@@ -276,7 +287,7 @@ test("explicit managed owner keeps execution home separate and does not write a 
             executionAccountHome: f.home,
             personalOwner: { kind: "managed-remote", identity: "laptop-owner" },
         };
-        const result = admitted(await admitProjectIdentity(f.root, { context }));
+        const result = admitted(await projects.checkout.admit(f.root, { context }));
         equal(result.personalOwner.identity, "laptop-owner");
         equal(result.executionAccountHome, f.home);
         deepEqual(await readdir(f.home), []);
@@ -289,12 +300,12 @@ for (const key of ["runwield.projectId", "runwield.repositoryId"]) {
     test(`duplicate ${key} values refuse admission without changing identity evidence`, async () => {
         const f = await environment();
         try {
-            const first = admitted(await admitProjectIdentity(f.root, { context: f.context }));
+            const first = admitted(await projects.checkout.admit(f.root, { context: f.context }));
             const value = key === "runwield.projectId" ? first.projectId : first.repositoryId;
             await git(f.root, ["config", "--add", key, value]);
             const before = [...(await snapshot(f.home)), ...(await snapshot(f.root))];
-            equal(inspectProjectIdentity(f.root, { context: f.context }).kind, "invalid");
-            equal((await admitProjectIdentity(f.root, { context: f.context })).kind, "invalid");
+            equal(projects.checkout.inspect(f.root, { context: f.context }).kind, "invalid");
+            equal((await projects.checkout.admit(f.root, { context: f.context })).kind, "invalid");
             deepEqual([...(await snapshot(f.home)), ...(await snapshot(f.root))], before);
         } finally {
             await f.close();
@@ -309,9 +320,9 @@ test(
         const f = await environment();
         const moved = `${f.root}-line\nbreak`;
         try {
-            const first = admitted(await admitProjectIdentity(f.root, { context: f.context }));
+            const first = admitted(await projects.checkout.admit(f.root, { context: f.context }));
             await rename(f.root, moved);
-            const next = admitted(await admitProjectIdentity(moved, { context: f.context }));
+            const next = admitted(await projects.checkout.admit(moved, { context: f.context }));
             equal(next.projectId, first.projectId);
             equal(next.checkoutId, first.checkoutId);
             equal(next.checkoutRoot, await realpath(moved));
@@ -332,7 +343,7 @@ test("identity config parsing is reused only while its exact file contents remai
         const f = await environment();
         const previousTrace = process.env.GIT_TRACE2_EVENT;
         try {
-            admitted(await admitProjectIdentity(f.root, { context: f.context }));
+            admitted(await projects.checkout.admit(f.root, { context: f.context }));
             const trace = join(f.home, "identity-git-trace.jsonl");
             await writeFile(trace, "");
             process.env.GIT_TRACE2_EVENT = trace;
@@ -343,17 +354,17 @@ test("identity config parsing is reused only while its exact file contents remai
                     .map((line) => JSON.parse(line));
                 return events.filter((event) => event.event === "start" && event.argv?.includes("--get-regexp")).length;
             };
-            equal(inspectProjectIdentity(f.root, { context: f.context }).kind, "existing");
+            equal(projects.checkout.inspect(f.root, { context: f.context }).kind, "existing");
             const first = await configQueries();
             for (let index = 0; index < 3; index++)
-                equal(inspectProjectIdentity(f.root, { context: f.context }).kind, "existing");
+                equal(projects.checkout.inspect(f.root, { context: f.context }).kind, "existing");
             equal(await configQueries(), first, "unchanged config must not launch duplicate Git parsers");
             const movedHome = join(f.home, "another-account");
             const changedContext: ProjectLaunchContext = {
                 executionAccountHome: movedHome,
                 personalOwner: { kind: "execution-account", identity: movedHome },
             };
-            const currentOwner = inspectProjectIdentity(f.root, { context: changedContext });
+            const currentOwner = projects.checkout.inspect(f.root, { context: changedContext });
             ok(currentOwner.kind === "existing");
             equal(currentOwner.identity.executionAccountHome, movedHome);
             deepEqual(currentOwner.identity.personalOwner, changedContext.personalOwner);
@@ -361,11 +372,11 @@ test("identity config parsing is reused only while its exact file contents remai
                 executionAccountHome: f.home,
                 personalOwner: { kind: "managed-remote", identity: "another-owner" },
             };
-            const managed = inspectProjectIdentity(f.root, { context: managedOwner });
+            const managed = projects.checkout.inspect(f.root, { context: managedOwner });
             ok(managed.kind === "existing");
             deepEqual(managed.identity.personalOwner, managedOwner.personalOwner);
             await git(f.root, ["config", "--add", "runwield.projectId", randomUUID()]);
-            equal(inspectProjectIdentity(f.root, { context: f.context }).kind, "invalid");
+            equal(projects.checkout.inspect(f.root, { context: f.context }).kind, "invalid");
             ok((await configQueries()) > first, "changed identity must be re-parsed and rejected");
         } finally {
             if (previousTrace === undefined) delete process.env.GIT_TRACE2_EVENT;

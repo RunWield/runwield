@@ -42,7 +42,8 @@ test("Workspace home stays on the Attention Dashboard and reuses its sidebar", a
                     {
                         projectId: "project-a",
                         displayName: "Project A",
-                        enabled: true,
+                        status: "active",
+                        healthStatus: "available",
                         sessions: [{ runwieldSessionId: "session-a", displayName: "Recent conversation" }],
                     },
                 ],
@@ -349,7 +350,17 @@ test("Workspace shell maps owner review and artifact routes back to the owning S
 test("an older Session uses its persisted name even outside the sidebar's first page", () => {
     const { document } = installFakeBrowser("/projects/project-a/sessions/older-session");
     const current = currentRouteFromUrl(globalThis.location.href);
-    const payload = { projects: [{ projectId: "project-a", displayName: "Project A", enabled: true, sessions: [] }] };
+    const payload = {
+        projects: [
+            {
+                projectId: "project-a",
+                displayName: "Project A",
+                status: "active",
+                healthStatus: "available",
+                sessions: [],
+            },
+        ],
+    };
     renderSidebar(payload, current);
     applySessionName({ projectId: "project-a", runwieldSessionId: "older-session", name: "Saved older Session" });
     assertEquals(document.querySelector("[data-workspace-main-session-name]").textContent, "Saved older Session");
@@ -367,7 +378,12 @@ for (const navigation of ["new route", "return to same route", "route changed wi
         const originalFetch = globalThis.fetch;
         const pending = [];
         const refreshes = [];
-        const project = { projectId: "race-project", displayName: "Race project", enabled: true };
+        const project = {
+            projectId: "race-project",
+            displayName: "Race project",
+            status: "active",
+            healthStatus: "available",
+        };
         const flush = async () => {
             for (let index = 0; index < 30; index++) await Promise.resolve();
         };
@@ -436,7 +452,8 @@ test("Workspace sidebar drops active omitted Sessions after the user navigates a
             {
                 projectId: "project-a",
                 displayName: "Project A",
-                enabled: true,
+                status: "active",
+                healthStatus: "available",
                 hasMoreSessions: true,
                 sessions: [{ runwieldSessionId: "session-a", displayName: "Alpha", state: "idle" }],
             },
@@ -464,7 +481,8 @@ test("Workspace sidebar updates rows in place, inserts new Sessions, removes sta
                 {
                     projectId: "project-a",
                     displayName: "Project A",
-                    enabled: true,
+                    status: "active",
+                    healthStatus: "available",
                     sessions: [
                         { runwieldSessionId: "session-a", displayName: "Alpha", state: "idle" },
                         { runwieldSessionId: "ordinary", displayName: "Ordinary", state: "idle" },
@@ -484,7 +502,8 @@ test("Workspace sidebar updates rows in place, inserts new Sessions, removes sta
                 {
                     projectId: "project-a",
                     displayName: "Project A",
-                    enabled: true,
+                    status: "active",
+                    healthStatus: "available",
                     sessions: [
                         { runwieldSessionId: "new-session", displayName: "New", state: "idle" },
                         { runwieldSessionId: "session-a", displayName: "Alpha Renamed", state: "busy" },
@@ -511,7 +530,8 @@ test("Workspace sidebar refresh keeps focus on Show more controls", () => {
             {
                 projectId: "project-a",
                 displayName: "Project A",
-                enabled: true,
+                status: "active",
+                healthStatus: "available",
                 plans: Array.from({ length: 6 }, (_, index) => ({
                     planId: `plan-${index + 1}`,
                     title: `Plan ${index + 1}`,
@@ -540,13 +560,15 @@ test("Workspace sidebar active route uses both Project and Session keys", () => 
                 {
                     projectId: "project-a",
                     displayName: "Project A",
-                    enabled: true,
+                    status: "active",
+                    healthStatus: "available",
                     sessions: [{ runwieldSessionId: "shared", displayName: "Wrong" }],
                 },
                 {
                     projectId: "project-b",
                     displayName: "Project B",
-                    enabled: true,
+                    status: "active",
+                    healthStatus: "available",
                     sessions: [{ runwieldSessionId: "shared", displayName: "Right" }],
                 },
             ],
@@ -568,7 +590,8 @@ test("Plan Board navigation stays active across board views and clears on Sessio
         projects: ["project-a", "project-b"].map((projectId) => ({
             projectId,
             displayName: projectId,
-            enabled: true,
+            status: "active",
+            healthStatus: "available",
             sessions: [],
         })),
     };
@@ -655,7 +678,17 @@ test("artifact and review headers keep one surface title and a reachable Workspa
     title.dataset.workspaceSurfaceTitle = "";
     title.textContent = "Artifact title";
     header.append(title);
-    const payload = { projects: [{ projectId: "project-a", displayName: "Project A", enabled: true, sessions: [] }] };
+    const payload = {
+        projects: [
+            {
+                projectId: "project-a",
+                displayName: "Project A",
+                status: "active",
+                healthStatus: "available",
+                sessions: [],
+            },
+        ],
+    };
     const current = currentRouteFromUrl(globalThis.location.href);
     renderSidebar(payload, current);
     const restore = header.querySelector("[data-workspace-sidebar-restore]");
@@ -687,7 +720,12 @@ test("Workspace mobile navigation fills each Project before slow workflow detail
         document.querySelector(".workspace-shell-with-sidebar").classList.add("workspace-sidebar-overlay-open");
         assertStringIncludes(sidebar.textContent, "Loading Projects");
         assertEquals(sidebar.textContent.includes("No Projects"), false);
-        const projects = ["a", "b"].map((id) => ({ projectId: id, displayName: `Project ${id}`, enabled: true }));
+        const projects = ["a", "b"].map((id) => ({
+            projectId: id,
+            displayName: `Project ${id}`,
+            status: "active",
+            healthStatus: "available",
+        }));
         await settle("/api/owner/projects", { projects });
         assertEquals(sidebar.querySelector(".workspace-sidebar-new").href, "/projects/a/sessions/new");
         assert(sidebar.querySelector('[data-sidebar-project="a"]'));
@@ -748,7 +786,8 @@ test("Show more loads five unseen Sessions, survives refresh and failure, and ke
             {
                 projectId: "project-a",
                 displayName: "A",
-                enabled: true,
+                status: "active",
+                healthStatus: "available",
                 hasMoreSessions: true,
                 sessions,
                 plans: [{ planId: "nested", title: "Nested", status: "ready_for_work", sessions: [] }],
@@ -810,11 +849,11 @@ test("Show more loads five unseen Sessions, survives refresh and failure, and ke
     }
 });
 
-test("New Session link prefers current enabled Project, then remembered enabled Project", () => {
+test("New Session link prefers current available Project, then remembered available Project", () => {
     const { document } = installFakeBrowser("/projects/project-a/sessions/new");
     const projects = [
-        { projectId: "project-a", displayName: "A", enabled: true, sessions: [] },
-        { projectId: "project-b", displayName: "B", enabled: true, sessions: [] },
+        { projectId: "project-a", displayName: "A", status: "active", healthStatus: "available", sessions: [] },
+        { projectId: "project-b", displayName: "B", status: "active", healthStatus: "available", sessions: [] },
     ];
     let remembered = "project-b";
     globalThis.localStorage = { getItem: () => JSON.stringify({ projectId: remembered }), setItem() {} };
@@ -826,8 +865,26 @@ test("New Session link prefers current enabled Project, then remembered enabled 
     remembered = "removed";
     renderSidebar({ projects }, { kind: "home" });
     assertEquals(link(), "/projects/project-a/sessions/new");
-    renderSidebar({ projects: projects.map((project) => ({ ...project, enabled: false })) }, { kind: "home" });
+    renderSidebar(
+        {
+            projects: [
+                { ...projects[0], status: "inactive" },
+                { ...projects[1], healthStatus: "missing" },
+            ],
+        },
+        { kind: "home" },
+    );
     assertEquals(link(), "/projects");
+    assertEquals(
+        document.querySelector('[data-sidebar-project="project-a"]').querySelector(".workspace-sidebar-project-links")
+            .children[0].textContent,
+        "Project inactive · open settings",
+    );
+    assertEquals(
+        document.querySelector('[data-sidebar-project="project-b"]').querySelector(".workspace-sidebar-project-links")
+            .children[0].textContent,
+        "Project unavailable · open settings",
+    );
 });
 
 test("Plan-associated sidebar Sessions keep open links and show Archived status", () => {
@@ -838,7 +895,8 @@ test("Plan-associated sidebar Sessions keep open links and show Archived status"
                 {
                     projectId: "project-a",
                     displayName: "Project A",
-                    enabled: true,
+                    status: "active",
+                    healthStatus: "available",
                     sessions: [],
                     plans: [
                         {
@@ -871,7 +929,8 @@ test("malformed Plans stay named beside healthy navigation without a Project par
             projects: [
                 {
                     projectId: "project-a",
-                    enabled: true,
+                    status: "active",
+                    healthStatus: "available",
                     plans: [{ planId: "healthy", title: "Healthy Plan", status: "draft" }],
                     planDiagnostics: [
                         {

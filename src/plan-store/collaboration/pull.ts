@@ -1,5 +1,5 @@
+import { projects } from "@runwield/projects";
 import { managedPersonalStoreActive, pullManagedPlan } from "../managed.ts";
-import { currentHomeProjectOwner } from "../../shared/project-identity.ts";
 import { prepareCollaborationPlan as preparePlanWorkflow } from "./operations.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
@@ -209,7 +209,7 @@ function redactedError(error: Error, secrets: string[]): string {
 export async function pullPlanForRevision(pullOptions: PullPlanForRevisionOptions): Promise<PulledPlanRevision> {
     if (managedPersonalStoreActive()) return await pullManagedPlan(pullOptions);
     const cwd = pullOptions.cwd || getCwd();
-    if (!currentHomeProjectOwner()) await prepareWorktreeRegistry(cwd);
+    if (!projects.home.current()) await prepareWorktreeRegistry(cwd);
     const now = new Date().toISOString();
     const target = pullOptions.target;
     const isUrl = looksLikeUrl(target);
@@ -485,7 +485,7 @@ export async function runPlansPullCommand(argv: string[], options: RunPlansPullO
         return;
     }
     const cwd = getCwd();
-    if (!currentHomeProjectOwner()) await prepareWorktreeRegistry(cwd);
+    if (!projects.home.current()) await prepareWorktreeRegistry(cwd);
     const pulled = await pullPlanForRevision({
         target: parsed.target as string,
         cwd,

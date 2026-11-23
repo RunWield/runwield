@@ -1,17 +1,14 @@
+import { projects, type HomeProjectOwner, type ProjectIdentity } from "@runwield/projects";
 import { validateManagedRuntimeTransfer, type ManagedRuntimeTransfer } from "../project-runtime-managed.ts";
 import { basename } from "node:path";
 import { getCwd, getHomeDir } from "../../constants.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { fixedPythonCommand } from "./target.ts";
 import {
-    registerHomeProjectOwner,
     receiveManagedRuntimeTransfer,
     acknowledgeManagedRuntimeRetirement,
-    findHomeProjectOwner,
-    type HomeProjectOwner,
     type PlanExecutionHost,
 } from "../../plan-store/index.ts";
-import type { ProjectIdentity } from "../project-identity.ts";
 
 /** Trusted launcher input. HTTP requests never supply these locations or executable identities. */
 export interface ManagedProjectStoreLaunch {
@@ -80,12 +77,12 @@ export async function resolveManagedProjectStore(
     const execution = await resolveManagedProjectIdentity(launch, signal, admit);
     if (!execution) return null;
     const owner = admit
-        ? await registerHomeProjectOwner({
+        ? await projects.home.register({
               projectId: execution.projectId,
               repositoryId: execution.repositoryId,
               displayName: basename(execution.checkoutRoot),
           })
-        : findHomeProjectOwner(execution.projectId, execution.repositoryId);
+        : projects.home.find(execution.projectId, execution.repositoryId);
     if (owner && admit) await transferManagedRuntime(launch, owner, signal);
     return owner ? { owner, execution } : null;
 }

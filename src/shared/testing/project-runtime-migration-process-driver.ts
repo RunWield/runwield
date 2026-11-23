@@ -1,4 +1,4 @@
-import { admitProjectIdentity } from "../project-identity.ts";
+import { projects } from "@runwield/projects";
 import fsPromises from "node:fs/promises";
 import { type NativeFileLock, openNativeFileLock } from "../native-file-lock.ts";
 import { lstat as fsLstat, mkdir as fsMkdir, rm as fsRm } from "node:fs/promises";
@@ -48,7 +48,7 @@ if (command === "migrate") {
 } else if (command === "inspect") {
     console.log(JSON.stringify(await inspectProjectRuntimeReadAccess(checkoutRoot)));
 } else if (command === "migrate-exit-after-effect") {
-    await admitProjectIdentity(checkoutRoot);
+    await projects.checkout.admit(checkoutRoot);
     installExitAfterEffect(checkoutRoot, parseMigrationExitEffect(extra));
     const result = await migrateLegacyProjectRuntimeState(checkoutRoot);
     console.log(JSON.stringify(result));

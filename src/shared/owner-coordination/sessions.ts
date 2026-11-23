@@ -20,7 +20,7 @@ import {
     PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE,
     SEGMENT_LINEAGE_CUSTOM_TYPE,
 } from "../session/workflow-context-session.ts";
-import { getProjectById, listProjectRootEvidence } from "./projects.ts";
+import { bindProjectRegistry } from "@runwield/projects/owner-coordination";
 
 import type { SQLOutputValue } from "node:sqlite";
 import type { JsonRecord } from "../jsonc.ts";
@@ -43,7 +43,7 @@ import type {
     TranscriptEvidence,
 } from "../session/file-session-store-types.ts";
 import type { OwnerCoordinationDatabase } from "./database.ts";
-import type { ProjectRootEvidence } from "./projects.ts";
+import type { ProjectRootEvidence } from "@runwield/projects";
 
 // The SQLite catalog predates the file-backed archive and Plan association fields.
 export type CatalogedSession = Omit<FileCatalogedSession, "archivedAt" | "planAssociations">;
@@ -69,7 +69,7 @@ type SessionCatalogOptions = Pick<ListSessionOptions, "fullRescan" | "idFactory"
 type ListProjectSessionOptions = SessionCatalogOptions & Pick<ListSessionOptions, "catalog">;
 type CatalogClockOptions = Pick<ListSessionOptions, "idFactory" | "now">;
 
-interface SessionCatalogLocator extends SuccessorLocator, CatalogClockOptions {
+interface SessionCatalogLocator extends Omit<SuccessorLocator, "runwieldSessionId">, CatalogClockOptions {
     headerVersion?: number | null;
     headerTimestamp?: string | null;
     source?: "catalog" | "created" | "imported";
@@ -479,9 +479,9 @@ function catalogLineageSegmentGroup(
 
 export async function validateSuccessorSegmentLocator(
     database: OwnerCoordinationDatabase,
-    locator: SuccessorLocator,
+    locator: Omit<SuccessorLocator, "runwieldSessionId">,
 ): Promise<CatalogSafeRootSessionLocator> {
-    const rootEvidence = listProjectRootEvidence(database, locator.projectId);
+    const rootEvidence = bindProjectRegistry(database).listRootEvidence(locator.projectId);
     const matchingRoot = rootEvidence.find((root) => isLocatorForRoot(locator.transcriptCwd, root));
     if (!matchingRoot) {
         throw new Error(`Transcript cwd does not match Project root evidence: ${locator.transcriptCwd}`);
@@ -608,7 +608,7 @@ export async function ensureSessionCatalogRecord(
     const transcriptPath = resolve(locator.transcriptPath);
     const safeLocator = await validateSuccessorSegmentLocator(ownerDb, { ...locator, transcriptPath });
     return ownerDb.transaction(() => {
-        const project = getProjectById(ownerDb, locator.projectId);
+        const project = bindProjectRegistry(ownerDb).get(locator.projectId);
         if (!project) throw new Error(`Project not found: ${locator.projectId}`);
         const existingByPath = findSessionByLocator(ownerDb, { transcriptPath });
         if (existingByPath) {
@@ -1074,9 +1074,10 @@ export async function catalogProjectSessions(
     options: SessionCatalogOptions = {},
 ): Promise<CatalogProjectSessionsResult> {
     const ownerDb = requireDatabase(database);
-    const project = getProjectById(ownerDb, projectId);
+    const projects = bindProjectRegistry(ownerDb);
+    const project = projects.get(projectId);
     if (!project) throw new Error(`Project not found: ${projectId}`);
-    const rootEvidence = listProjectRootEvidence(ownerDb, projectId);
+    const rootEvidence = projects.listRootEvidence(projectId);
     const roots = new Map<string, ProjectRootEvidence>();
     for (const root of rootEvidence) {
         roots.set(root.enteredRoot, root);

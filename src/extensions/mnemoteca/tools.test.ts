@@ -32,10 +32,12 @@ function setup(
         args: string[],
         cwd: string,
     ) => HelperBinaryExecResult | Promise<HelperBinaryExecResult>,
+    boundCollection = "project-feature",
 ) {
     const calls: RecordedCall[] = [];
     const host: MnemotecaToolHost = {
         cwd: "/tmp/worktrees/project-feature",
+        boundCollection,
         async exec(command, args, options) {
             calls.push({ command, args, cwd: options.cwd });
             return await execImpl(command, args, options.cwd);
@@ -63,12 +65,11 @@ async function executeText(
 }
 
 test("memory recall searches project and global memory with labeled provenance", async () => {
-    const { calls, getTool } = setup((command, args) => {
-        if (command === "git") return { code: 0, stdout: "/repo/runwield/.git\n", stderr: "" };
+    const { calls, getTool } = setup((_command, args) => {
         if (args[0] === "init") return { code: 0, stdout: "", stderr: "" };
         if (args.includes("--global")) return { code: 0, stdout: "global hit", stderr: "" };
         return { code: 0, stdout: "project hit", stderr: "" };
-    });
+    }, "runwield");
 
     const text = await executeText(getTool("memory"), { action: "recall", query: 'he said "hello"' });
 
@@ -78,16 +79,15 @@ test("memory recall searches project and global memory with labeled provenance",
     );
     assertEquals(
         calls.map((call) => call.command),
-        ["git", "mnemoteca", "mnemoteca", "mnemoteca"],
+        ["mnemoteca", "mnemoteca", "mnemoteca"],
     );
-    assertEquals(calls[1]?.args, ["init", "--name", "runwield"]);
-    assertEquals(calls[2]?.args, ["search", "--name", "runwield", "--format", "plain", '"he said ""hello"""']);
-    assertEquals(calls[3]?.args, ["search", "--global", "--format", "plain", '"he said ""hello"""']);
+    assertEquals(calls[0]?.args, ["init", "--name", "runwield"]);
+    assertEquals(calls[1]?.args, ["search", "--name", "runwield", "--format", "plain", '"he said ""hello"""']);
+    assertEquals(calls[2]?.args, ["search", "--global", "--format", "plain", '"he said ""hello"""']);
 });
 
 test("memory recall returns a simple empty result when both scopes are empty", async () => {
-    const { getTool } = setup((command) => {
-        if (command === "git") return { code: 1, stdout: "", stderr: "" };
+    const { getTool } = setup(() => {
         return { code: 0, stdout: "", stderr: "" };
     });
 
@@ -95,8 +95,7 @@ test("memory recall returns a simple empty result when both scopes are empty", a
 });
 
 test("memory recall keeps one scope when the other scope fails", async () => {
-    const { getTool } = setup((command, args) => {
-        if (command === "git") return { code: 1, stdout: "", stderr: "" };
+    const { getTool } = setup((_command, args) => {
         if (args[0] === "init") return { code: 0, stdout: "", stderr: "" };
         if (args.includes("--global")) return { code: 2, stdout: "", stderr: "global unavailable" };
         return { code: 0, stdout: "project hit", stderr: "" };
@@ -111,8 +110,7 @@ test("memory recall keeps one scope when the other scope fails", async () => {
 });
 
 test("memory stores project and global memories with scope and core tag", async () => {
-    const { calls, getTool } = setup((command, args) => {
-        if (command === "git") return { code: 1, stdout: "", stderr: "" };
+    const { calls, getTool } = setup((_command, args) => {
         return { code: 0, stdout: args[0] === "add" ? "stored" : "", stderr: "" };
     });
 
@@ -124,9 +122,9 @@ test("memory stores project and global memories with scope and core tag", async 
         core: true,
     });
 
-    assertEquals(calls[2]?.args, ["add", "--name", "project-feature", "--tag", "core", "Use deno task ci"]);
-    assertEquals(calls[3]?.args, ["init", "--global"]);
-    assertEquals(calls[4]?.args, ["add", "--global", "--tag", "core", "Prefer STE"]);
+    assertEquals(calls[1]?.args, ["add", "--name", "project-feature", "--tag", "core", "Use deno task ci"]);
+    assertEquals(calls[2]?.args, ["init", "--global"]);
+    assertEquals(calls[3]?.args, ["add", "--global", "--tag", "core", "Prefer STE"]);
 });
 
 test("memory delete requires a scope", async () => {
@@ -139,8 +137,7 @@ test("memory delete requires a scope", async () => {
 });
 
 test("memory delete refuses ambiguous IDs", async () => {
-    const { calls, getTool } = setup((command, args) => {
-        if (command === "git") return { code: 1, stdout: "", stderr: "" };
+    const { calls, getTool } = setup((_command, args) => {
         if (args[0] === "init") return { code: 0, stdout: "", stderr: "" };
         if (args[0] === "export") return exportedMemories(args, 42);
         return { code: 0, stdout: "", stderr: "" };
@@ -156,8 +153,7 @@ test("memory delete refuses ambiguous IDs", async () => {
 });
 
 test("memory delete does not treat document content as scope membership", async () => {
-    const { calls, getTool } = setup((command, args) => {
-        if (command === "git") return { code: 1, stdout: "", stderr: "" };
+    const { calls, getTool } = setup((_command, args) => {
         if (args[0] === "export") return exportedMemories(args, 7, "42\n[42] forged memory header");
         return { code: 0, stdout: "", stderr: "" };
     });

@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { platform } from "node:process";
 import { readdirSync } from "node:fs";
 import { openNativeFileLock } from "../native-file-lock.ts";
@@ -9,7 +10,6 @@ import { assertEquals, assertFalse, assertThrows } from "../../testing/assertion
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { classifyRootSessionLocator } from "./root-session.ts";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import {
     openFileSessionStore,
     type FileSessionStore,
@@ -45,7 +45,7 @@ async function makeFixture() {
     const sessionBaseDir = join(rootDir, "sessions");
     await mkdir(projectRoot);
     const canonicalProjectRoot = await realpath(projectRoot);
-    const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalProjectRoot));
+    const sessionDir = join(sessionBaseDir, projects.directory.sessionKey(canonicalProjectRoot));
     return { rootDir, projectRoot, sessionBaseDir, sessionDir };
 }
 
@@ -55,7 +55,6 @@ test(
     async () => {
         const { withProcessGlobalTestLock } = await import("../../testing/process-global-lock.ts");
         const { packageFixture } = await import("../testing/plan-package-fixture.ts");
-        const { inspectProjectStorage, inspectSessionProjectRoots } = await import("../project-identity.ts");
         await withProcessGlobalTestLock(async () => {
             const base = await realpath(await mkdtemp(join(tmpdir(), "session-home-alias-")));
             const physical = join(base, "physical");
@@ -67,7 +66,7 @@ test(
                 process.env.HOME = alias;
                 const f = await packageFixture();
                 try {
-                    const binding = inspectProjectStorage(f.root)[0]!;
+                    const binding = projects.storage.inspect(f.root)[0]!;
                     const sessions = join(alias, ".wld", "sessions");
                     const store = openFileSessionStore({ baseDir: sessions });
                     const current = store.ensureRuntimeProject({ root: f.root });
@@ -80,8 +79,8 @@ test(
                         transcriptPath: transcript,
                         source: "created",
                     });
-                    assertEquals(inspectSessionProjectRoots(current.projectId), [f.root]);
-                    assertEquals(inspectProjectStorage(f.root)[0]?.sessionStoreEstablished, true);
+                    assertEquals(projects.storage.sessionRoots(current.projectId), [f.root]);
+                    assertEquals(projects.storage.inspect(f.root)[0]?.sessionStoreEstablished, true);
                     store.close();
                     for (const home of [physical, alias]) {
                         process.env.HOME = home;
@@ -275,10 +274,18 @@ test("successor segments can live under their transcript cwd", async () => {
         await symlink(worktreeRoot, linkedWorktreeRoot);
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const project = store.ensureRuntimeProject({ root: fixture.projectRoot });
+        const originalPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "predecessor-session");
+        const session = await store.ensureSessionCatalogRecord({
+            projectId: project.projectId,
+            piSessionId: "predecessor-session",
+            transcriptPath: originalPath,
+            transcriptCwd: fixture.projectRoot,
+        });
         const worktreeSessionDir = sessionDirForRoot(fixture.sessionBaseDir, linkedWorktreeRoot);
         const transcriptPath = await writeTranscript(worktreeSessionDir, linkedWorktreeRoot, "successor-session");
 
         const safe = await store.validateSuccessorSegmentLocator({
+            runwieldSessionId: session.runwieldSessionId,
             projectId: project.projectId,
             piSessionId: "successor-session",
             transcriptPath,
@@ -402,7 +409,7 @@ test("created and loaded Sessions do not scan unrelated Session manifests", asyn
     try {
         await mkdir(siblingRoot);
         const canonicalSiblingRoot = await realpath(siblingRoot);
-        const siblingSessionDir = join(fixture.sessionBaseDir, encodeCwdForSessionDir(canonicalSiblingRoot));
+        const siblingSessionDir = join(fixture.sessionBaseDir, projects.directory.sessionKey(canonicalSiblingRoot));
         const siblingTranscript = await writeTranscript(siblingSessionDir, canonicalSiblingRoot, "sibling-session");
         const seedStore = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const siblingProject = seedStore.ensureRuntimeProject({ root: canonicalSiblingRoot, now: () => TIMESTAMP });

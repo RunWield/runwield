@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import process from "node:process";
 import { test } from "node:test";
+import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import { getHomeDir } from "../../constants.ts";
+import { resolveMemoryCollection, USE_PROJECT_MEMORY } from "../memory-collection.ts";
 import { match as assertMatch, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { bindRemoteMemory, remoteMemoryIdentity } from "./memory-binding.ts";
@@ -37,10 +41,10 @@ test("remote Memory uses normalized host and primary root, not alias, cwd, or ho
         host: { ...original.host, hostname: "sct.example", hostKeyFingerprint: "SHA256:two" },
     };
     assertEquals(remoteMemoryIdentity(original), remoteMemoryIdentity(changed));
-    assertMatch(remoteMemoryIdentity(original).collection, /^proj@sct\.example-[a-f0-9]{16}$/);
+    assertEquals(remoteMemoryIdentity(original).folder, "proj");
 });
 
-test("remote Memory separates distinct host, user, port, and roots", () => {
+test("remote Memory saves sharing choices by distinct host, user, port, and root", () => {
     const original = target("/home/dev/proj");
     for (const host of [
         { ...original.host, hostname: "other.example" },
@@ -50,12 +54,9 @@ test("remote Memory separates distinct host, user, port, and roots", () => {
             port: 2222,
         },
     ]) {
-        assertNotEquals(
-            remoteMemoryIdentity(original).collection,
-            remoteMemoryIdentity({ ...original, host }).collection,
-        );
+        assertNotEquals(remoteMemoryIdentity(original).key, remoteMemoryIdentity({ ...original, host }).key);
     }
-    assertNotEquals(remoteMemoryIdentity(original).collection, remoteMemoryIdentity(target("/other/proj")).collection);
+    assertNotEquals(remoteMemoryIdentity(original).key, remoteMemoryIdentity(target("/other/proj")).key);
 });
 
 test("remote Memory saves an automatic collection with no local namesake", () =>
@@ -66,8 +67,8 @@ test("remote Memory saves an automatic collection with no local namesake", () =>
             throw new Error("Unexpected question");
         };
         try {
-            assertEquals(await bindRemoteMemory(remote), remoteMemoryIdentity(remote).collection);
-            assertEquals(await bindRemoteMemory(remote), remoteMemoryIdentity(remote).collection);
+            assertEquals(await bindRemoteMemory(remote), USE_PROJECT_MEMORY);
+            assertEquals(await bindRemoteMemory(remote), USE_PROJECT_MEMORY);
         } finally {
             globalThis.prompt = previous;
         }
@@ -86,8 +87,9 @@ for (const choice of ["0", "1"]) {
                 return choice;
             };
             try {
-                const expected = choice === "1" ? basename(local) : remoteMemoryIdentity(remote).collection;
-                assertEquals(await bindRemoteMemory(remote), expected);
+                const bound = await bindRemoteMemory(remote);
+                const expected = choice === "1" ? await resolveMemoryCollection({ cwd: local }) : USE_PROJECT_MEMORY;
+                assertEquals(bound, expected);
                 assertMatch(question, /Is dev@SCT.example:/);
                 assertEquals(question.includes(local), true);
                 globalThis.prompt = () => {
@@ -117,7 +119,8 @@ test("remote Memory lists each local folder with the same name", () =>
             return "2";
         };
         try {
-            assertEquals(await bindRemoteMemory(target(`/remote/${folder}`)), folder);
+            const bound = await bindRemoteMemory(target(`/remote/${folder}`));
+            assertEquals(bound, await resolveMemoryCollection({ cwd: roots[1] }));
             for (const root of roots) assertEquals(question.includes(root), true);
             assertEquals(question.includes("0. No"), true);
         } finally {
@@ -152,7 +155,7 @@ test("a matching Memory collection without a local Session project does not ask 
                 undefined,
                 {} as Parameters<typeof tool.execute>[4],
             );
-            assertEquals(await bindRemoteMemory(remote), remoteMemoryIdentity(remote).collection);
+            assertEquals(await bindRemoteMemory(remote), USE_PROJECT_MEMORY);
         } finally {
             process.env["PATH"] = oldPath;
             globalThis.prompt = oldPrompt;
@@ -161,3 +164,34 @@ test("a matching Memory collection without a local Session project does not ask 
             await rm(root, { recursive: true });
         }
     }));
+
+test("remote Memory retains an existing explicit collection binding", async () => {
+    const remote = target(`/remote/legacy-${crypto.randomUUID()}`);
+    const { key } = remoteMemoryIdentity(remote);
+    const directory = join(getHomeDir(), ".wld", "remote-memory-bindings");
+    await mkdir(directory, { recursive: true });
+    const path = join(directory, `${createHash("sha256").update(key).digest("hex")}.json`);
+    await writeFile(path, JSON.stringify({ key, collection: "previously-shared-collection" }));
+    try {
+        assertEquals(await bindRemoteMemory(remote), "previously-shared-collection");
+    } finally {
+        await rm(path);
+    }
+});
+
+test("remote Memory supersedes the legacy automatic namespace without rewriting its saved binding", async () => {
+    const remote = target(`/remote/legacy-default-${crypto.randomUUID()}`);
+    const { key, folder } = remoteMemoryIdentity(remote);
+    const hash = createHash("sha256").update(key).digest("hex");
+    const directory = join(getHomeDir(), ".wld", "remote-memory-bindings");
+    await mkdir(directory, { recursive: true });
+    const path = join(directory, `${hash}.json`);
+    const legacy = JSON.stringify({ key, collection: `${folder}@sct.example-${hash.slice(0, 16)}` });
+    await writeFile(path, legacy);
+    try {
+        assertEquals(await bindRemoteMemory(remote), USE_PROJECT_MEMORY);
+        assertEquals(await readFile(path, "utf8"), legacy);
+    } finally {
+        await rm(path);
+    }
+});

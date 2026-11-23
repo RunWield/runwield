@@ -3,9 +3,9 @@
  * Path resolution is read-only. Runtime entry calls prepareProjectCheckout only
  * after checking runtime authority; passive readers must never call preparation.
  */
-import { readFileSync as fsReadFileSync, realpathSync, statSync as fsStatSync, type Stats } from "node:fs";
+import { realpathSync } from "node:fs";
 import { lstat, readFile, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { captureForegroundProcess } from "./captured-process.ts";
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -91,45 +91,4 @@ export function resolveProjectRoot(projectRoot: string): string {
 /** Repair checkout metadata without changing branches, the index, or working files. */
 export async function prepareProjectCheckout(checkoutRoot: string): Promise<void> {
     await repairSubmoduleWorktreePaths(resolveProjectRoot(checkoutRoot));
-}
-
-function isGitEntry(path: string): boolean {
-    try {
-        const stat = fsStatSync(path);
-        return stat.isDirectory() || stat.isFile();
-    } catch {
-        return false;
-    }
-}
-
-/**
- * Resolve the primary checkout root for a linked Git worktree.
- *
- * This is synchronous and filesystem-only because settings path resolution is
- * synchronous. Non-worktree roots are returned unchanged.
- */
-export function resolvePrimaryCheckoutRoot(root: string): string {
-    const gitPath = join(root, ".git");
-    let gitStat: Stats;
-    try {
-        gitStat = fsStatSync(gitPath);
-    } catch {
-        return root;
-    }
-    if (!gitStat.isFile()) return root;
-
-    let text = "";
-    try {
-        text = fsReadFileSync(gitPath, "utf8").trim();
-    } catch {
-        return root;
-    }
-    const match = /^gitdir:\s*(.+)$/i.exec(text);
-    if (!match) return root;
-
-    const rawGitDir = match[1].trim();
-    const gitDir = resolve(root, rawGitDir);
-    const primaryRoot = dirname(dirname(dirname(gitDir)));
-    if (!isGitEntry(join(primaryRoot, ".git"))) return root;
-    return primaryRoot;
 }

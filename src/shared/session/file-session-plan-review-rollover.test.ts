@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { assertEquals } from "../../testing/assertions.ts";
 import {
     mkdir as fsMkdir,
@@ -13,7 +14,6 @@ import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { manifestPath } from "./file-session-storage.ts";
 
 async function evidence(path: string) {
@@ -30,7 +30,7 @@ test("the latest Plan review reference survives segment rollover and descriptor 
     const projectRoot = join(root, "project");
     const baseDir = join(root, "sessions");
     await fsMkdir(projectRoot);
-    const sessionDir = join(baseDir, encodeCwdForSessionDir(await fsRealpath(projectRoot)));
+    const sessionDir = join(baseDir, projects.directory.sessionKey(await fsRealpath(projectRoot)));
     await fsMkdir(sessionDir, { recursive: true });
     const firstPath = join(sessionDir, "2026-01-01T00-00-00-000Z_first.jsonl");
     const nextPath = join(sessionDir, "2026-01-01T00-01-00-000Z_second.jsonl");
@@ -80,6 +80,7 @@ test("the latest Plan review reference survives segment rollover and descriptor 
             })}\n`,
         );
         const safe = await store.validateSuccessorSegmentLocator({
+            runwieldSessionId: session.runwieldSessionId,
             projectId: project.projectId,
             piSessionId: "second",
             transcriptPath: nextPath,

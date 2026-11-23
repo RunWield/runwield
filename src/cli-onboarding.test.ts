@@ -1,4 +1,4 @@
-import { inspectProjectIdentity } from "./shared/project-identity.ts";
+import { projects } from "@runwield/projects";
 import { delimiter } from "node:path";
 import { doesNotMatch, equal, ok } from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -71,7 +71,7 @@ for (const hasRequest of [false, true])
                     ok(output.includes("\x1b[?1049l")); // Leave the alternate screen.
                     ok(output.includes("\x1b[?25h")); // Restore the cursor.
                     equal(
-                        inspectProjectIdentity(project, {
+                        projects.checkout.inspect(project, {
                             context: {
                                 executionAccountHome: home,
                                 personalOwner: { kind: "execution-account", identity: home },

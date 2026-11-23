@@ -1,9 +1,9 @@
 /** Disposable composed owner Workspace for package surface verification. */
+import { projects } from "@runwield/projects";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { packageFixture, create } from "../../shared/testing/plan-package-fixture.ts";
-import { inspectProjectIdentity } from "../../shared/project-identity.ts";
 import { readPlanPackage } from "../../plan-store/packages.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
@@ -66,7 +66,7 @@ try {
     await fs.writeFile(join(root, "docs/plans/one.md"), "# Stale delivery copy\n");
     await fs.writeFile(statePath, root);
 }
-const inspected = inspectProjectIdentity(root);
+const inspected = projects.checkout.inspect(root);
 if (inspected.kind !== "existing") throw new Error("QA Project identity is unavailable.");
 const plan = await readPlanPackage(inspected.identity, { planId: "plan-one" });
 if (plan.kind !== "loaded") throw new Error(plan.message);
@@ -78,7 +78,7 @@ if (process.argv.includes("--malformed")) {
     }
 }
 const store = openOwnerCoordinationStore({ dbPath: join(directory, "owner.sqlite3") });
-const project = store.registerProject({ root, displayName: "Home Plan verification" });
+const project = store.projects.register({ root, displayName: "Home Plan verification" });
 const emptyStatePath = join(directory, "empty-root.txt");
 let emptyRoot: string;
 try {
@@ -88,7 +88,7 @@ try {
     emptyRoot = await defineCommittedGitFixture({ "README.md": "Unimported Project\n" }).checkout();
     await fs.writeFile(emptyStatePath, emptyRoot);
 }
-const emptyProject = store.registerProject({ root: emptyRoot, displayName: "Unimported Project" });
+const emptyProject = store.projects.register({ root: emptyRoot, displayName: "Unimported Project" });
 await fs.writeFile(join(directory, "empty-project-id.txt"), emptyProject.projectId);
 const pairing = store.createPairingRequest();
 store.approvePairingRequest(pairing.code);

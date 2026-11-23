@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import {
     managedPlanStoreActive,
     readManagedDeliverySources,
@@ -7,7 +8,6 @@ import {
     settleManagedPublication,
 } from "./managed.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { inspectProjectIdentity } from "../shared/project-identity.ts";
 import {
     readPlanPackage,
     decodePackageMarkdown,
@@ -263,7 +263,7 @@ export async function readPublishedRecordMarkdown(
     if (attempt.packageInput) {
         const inspected = currentPackageProject()
             ? { kind: "existing" as const, identity: currentPackageProject()! }
-            : inspectProjectIdentity(root);
+            : projects.checkout.inspect(root);
         if (inspected.kind !== "existing") throw new Error("Recording owner is unavailable.");
         await packageDeliverySources(root, attempt.packageInput, true);
         const manifest = await readPlanPackagePublication(inspected.identity, attempt.packageInput);
@@ -285,7 +285,7 @@ async function packageRecordingReceipt(
 ): Promise<PackageDeliveryReceipt | undefined> {
     const inspected = currentPackageProject()
         ? { kind: "existing" as const, identity: currentPackageProject()! }
-        : inspectProjectIdentity(root);
+        : projects.checkout.inspect(root);
     if (inspected.kind !== "existing") throw new Error("Recording owner is unavailable.");
     const manifest = await readPlanPackagePublication(inspected.identity, reference);
     const current = await readPlanPackage(inspected.identity, { planId: reference.planId });
@@ -345,7 +345,7 @@ async function packageDeliverySources(
 ): Promise<PublishedDeliverySources> {
     const inspected = currentPackageProject()
         ? { kind: "existing" as const, identity: currentPackageProject()! }
-        : inspectProjectIdentity(root);
+        : projects.checkout.inspect(root);
     if (inspected.kind !== "existing") throw new Error("Recording owner is unavailable.");
     const manifest = await readPlanPackagePublication(inspected.identity, reference);
     const proved = await packageRecordingReceipt(root, reference);

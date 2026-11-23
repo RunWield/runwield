@@ -14,7 +14,7 @@ affectedPaths:
     - "src/shared/project-runtime-recovery.ts"
     - "src/shared/runwield-owned-paths.ts"
     - "src/shared/collaboration/"
-    - "src/shared/project-directory-key.ts"
+    - "packages/projects/directory-key.ts"
     - "src/shared/worktree-registry.js"
     - "src/shared/epic-artifacts.ts"
     - "src/cmd/plans/"

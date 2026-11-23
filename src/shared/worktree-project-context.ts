@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { mkdtemp, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { captureForegroundProcess } from "./captured-process.ts";
@@ -12,7 +13,6 @@ import { parse as parseJsonc } from "./jsonc.ts";
 import { basename, dirname, join } from "node:path";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
-import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
 
 /** Versionable setup artifacts; these are not disposable .wld/internal runtime state. */
 export const PROJECT_CONTEXT_PATHS = [".wld/settings.json", "docs/domain-language.md"] as const;
@@ -208,7 +208,7 @@ export interface ValidationSettingsWrite {
 
 /** Snapshot ownership before the host writes, so existing user edits are not adopted. */
 export async function captureValidationSettingsWrite(executionRoot: string): Promise<ValidationSettingsWrite> {
-    const primaryRoot = resolvePrimaryCheckoutRoot(executionRoot);
+    const primaryRoot = projects.checkout.primaryRoot(executionRoot);
     const path = ".wld/settings.json";
     const before = await readProjectContextFile(primaryRoot, path);
     const head = await git(primaryRoot, ["rev-parse", "HEAD"]);

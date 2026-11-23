@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { assertEquals } from "../testing/assertions.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
@@ -103,6 +104,7 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
                     fixture.sessionDir,
                 );
                 const successorSafeLocator = await workspace.validateSuccessorSegmentLocator({
+                    runwieldSessionId: fixture.session.runwieldSessionId,
                     projectId: fixture.project.projectId,
                     piSessionId: "pi-acp-successor",
                     transcriptPath: successorPath,
@@ -238,12 +240,11 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
 });
 
 test("ACP protocol load-plan reads the same admitted home Plan after a document revision", async () => {
-    const { admitProjectIdentity } = await import("../shared/project-identity.ts");
     const { create } = await import("../shared/testing/plan-package-fixture.ts");
     const { withPlanAccess, selectPlanAccess, loadPlan } = await import("../plan-store/index.ts");
     const { savePlanDocument } = await import("../plan-store/index.ts");
     await withRuntimeCommandFixture("acp-home-plan-", async ({ projectRoot }) => {
-        const identity = await admitProjectIdentity(projectRoot);
+        const identity = await projects.checkout.admit(projectRoot);
         assert(identity.kind === "existing");
         await create(identity.identity, {
             definition: { classification: "PLANNED_CHANGE", status: "draft", summary: "Canonical ACP Plan" },

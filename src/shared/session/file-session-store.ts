@@ -1,3 +1,4 @@
+import { sessionStoragePath } from "@runwield/session-files";
 import { CURRENT_SESSION_VERSION, migrateSessionEntries, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { FileEntry, SessionHeader } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
@@ -15,7 +16,7 @@ import type { RemoteArtifactOptions, RemotePlanReview } from "../remote/session-
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
 import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
-import { findProject, sessionDirForProject } from "./file-session-storage.ts";
+import { readStoredProject } from "./file-session-storage.ts";
 import type { ManagedSessionMetadata } from "./hosted-session.ts";
 import type { RemoteRolloverOptions, RemoteRolloverReceipt } from "../remote/session-protocol.ts";
 import { projectRemoteSessionRecords } from "../remote/session-records.ts";
@@ -382,11 +383,13 @@ class RemoteSessionOwner {
             workflowContext: readPersistedWorkflowContext(manager),
             tutorialContext: readPersistedTutorialContext(manager),
         };
-        const project = findProject(this.#store.path, managed.projectId);
-        if (!project?.remote) throw new Error("Remote Project identity is unavailable");
+        const directory = dirname(sessionStoragePath(this.#transcriptPath, this.#store.path));
+        const project = readStoredProject(this.#store.path, directory);
+        if (!project?.remote || project.projectId !== managed.projectId)
+            throw new Error("Remote Project identity is unavailable");
         const result = await this.rollover({
             ...options,
-            successorSessionDir: sessionDirForProject(this.#store.path, project),
+            successorSessionDir: directory,
             retainActivation: true,
             hostedSession: {
                 cwd: this.#header.cwd,

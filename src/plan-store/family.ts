@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { hasCanonicalPlanAccess } from "./index.ts";
 import { preparePlanWorkflow } from "./index.ts";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
@@ -5,12 +6,11 @@ import { readFile as fsReadFile } from "node:fs/promises";
 /** Child completion combines current definitions with already-published branch history. */
 import { join } from "node:path";
 import { findPlansByParent, loadArchivedPlan, loadPlan } from "./index.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { listControllerDocumentWorktrees } from "./controllers.ts";
 
 export async function findCompletionSiblings(cwd: string, parentPlan: string) {
     if (hasCanonicalPlanAccess()) return await findPlansByParent(cwd, parentPlan);
-    const primaryRoot = resolvePrimaryCheckoutRoot(cwd);
+    const primaryRoot = projects.checkout.primaryRoot(cwd);
     const primary = await findPlansByParent(primaryRoot, parentPlan);
     if (primaryRoot === cwd) return primary;
     const selected = await listControllerDocumentWorktrees(primaryRoot);
@@ -49,7 +49,7 @@ export async function findCompletionSiblings(cwd: string, parentPlan: string) {
 
 /** A lifecycle action confirms publication before reading completion siblings. */
 export async function prepareCompletionSiblings(cwd: string, parentPlan: string) {
-    const primaryRoot = resolvePrimaryCheckoutRoot(cwd);
+    const primaryRoot = projects.checkout.primaryRoot(cwd);
     const definitions = new Map(
         (await findPlansByParent(primaryRoot, parentPlan)).map((child) => [child.name, primaryRoot]),
     );

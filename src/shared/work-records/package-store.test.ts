@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
@@ -195,15 +196,14 @@ test("a linked checkout process waits for the shared native record lock", async 
     const clone = `${f.root}-clone`;
     try {
         const { git } = await import("../git-test-fixture.ts");
-        const { admitProjectIdentity } = await import("../project-identity.ts");
         const { captureForegroundProcess } = await import("../captured-process.ts");
         await git(f.root, ["remote", "add", "origin", "https://example.test/records/shared.git"]);
-        await admitProjectIdentity(f.root);
+        await projects.checkout.admit(f.root);
         await git(f.root, ["clone", f.root, clone]);
         await git(clone, ["remote", "set-url", "origin", "https://example.test/records/shared.git"]);
-        const pending = await admitProjectIdentity(clone);
+        const pending = await projects.checkout.admit(clone);
         ok(pending.kind === "pending");
-        const linked = await admitProjectIdentity(clone, {
+        const linked = await projects.checkout.admit(clone, {
             choice: { kind: "link", candidates: pending.candidates, projectId: f.identity.projectId },
         });
         ok(linked.kind === "existing");

@@ -1,6 +1,6 @@
+import { projects } from "@runwield/projects";
 import { mkdir as fsMkdir, realpath as fsRealpath, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
-import { encodeCwdForSessionDir } from "../shared/project-directory-key.ts";
 
 /** Write a minimal Pi transcript in the Session store's project directory. */
 export async function writeBareSessionTranscript(
@@ -9,7 +9,7 @@ export async function writeBareSessionTranscript(
     piSessionId: string,
     timestamp: string,
 ): Promise<string> {
-    const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(await fsRealpath(projectRoot)));
+    const sessionDir = join(sessionBaseDir, projects.directory.sessionKey(await fsRealpath(projectRoot)));
     await fsMkdir(sessionDir, { recursive: true });
     const transcriptPath = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
     await fsWriteFile(

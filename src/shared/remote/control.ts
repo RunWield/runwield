@@ -1,16 +1,18 @@
+import { type HomeProjectOwner } from "@runwield/projects";
 import {
     resolveManagedProjectStore,
     resolveManagedProjectIdentity,
     type ManagedProjectStoreLaunch,
 } from "./project-store-launch.ts";
 import { LaptopProjectStoreService } from "./project-store-service.ts";
-import type { ProjectStoreBinding, HomeProjectOwner } from "../../plan-store/index.ts";
+import type { ProjectStoreBinding } from "../../plan-store/index.ts";
 import { handleBrowserOpen } from "./browser-bridge.ts";
 import { serveHttp } from "../http-server.ts";
 /* Connection-scoped local control and authenticated laptop model bridge. */
 
 import { readPersonalMcpConfig } from "../mcp/config.ts";
 import { LaptopMcpBridge } from "./mcp-bridge.ts";
+import { USE_PROJECT_MEMORY } from "../memory-collection.ts";
 import { LaptopMemoryService } from "./memory-service.ts";
 import { createRunWieldModelRuntime } from "../models/model-registry.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
@@ -151,7 +153,11 @@ export function startRemoteControlService(
     let projectMutationsAdmitted = !projectStoreLaunch;
     const projectAdmissionAbort = new AbortController();
     let projectAdmission: Promise<ProjectStoreBinding> | undefined;
-    const memory = memoryCollection ? new LaptopMemoryService(memoryCollection) : undefined;
+    let memory =
+        memoryCollection && memoryCollection !== USE_PROJECT_MEMORY
+            ? new LaptopMemoryService(memoryCollection)
+            : undefined;
+    let pendingMemory: Promise<void> | undefined;
     const mcp = new LaptopMcpBridge();
     let connected = false;
     let ready = false;
@@ -257,9 +263,10 @@ export function startRemoteControlService(
                 const identity = await resolveManagedProjectIdentity(
                     projectStoreLaunch,
                     projectAdmissionAbort.signal,
-                    false,
+                    input.kind === "create",
                 );
                 if (shutdown || closed || !ready) return new Response(null, { status: 403 });
+                if (input.kind === "create" && !identity) throw new Error("Remote Project identity is unavailable");
                 sessions.bindProjectIdentity(identity);
             }
             const result = await sessions.handle(input);
@@ -442,7 +449,30 @@ export function startRemoteControlService(
                 return await mcp.handle(request, () => ready && !shutdown && !closed);
             }
             if (path === "/memory") {
-                if (shutdown || !ready) return new Response(null, { status: 403 });
+                if (shutdown || closed || !ready) return new Response(null, { status: 403 });
+                if (request.method !== "POST") return new Response(null, { status: 405 });
+                if (!memory && memoryCollection === USE_PROJECT_MEMORY && projectStoreLaunch) {
+                    pendingMemory ??= resolveManagedProjectIdentity(
+                        projectStoreLaunch,
+                        projectAdmissionAbort.signal,
+                        false,
+                    )
+                        .then((verified) => {
+                            if (verified && !shutdown && !closed && ready) {
+                                memory = new LaptopMemoryService(verified.projectId, USE_PROJECT_MEMORY);
+                            }
+                        })
+                        .finally(() => {
+                            pendingMemory = undefined;
+                        });
+                    try {
+                        await pendingMemory;
+                    } catch {
+                        return new Response(null, { status: shutdown || closed || !ready ? 403 : 503 });
+                    }
+                    if (shutdown || closed || !ready) return new Response(null, { status: 403 });
+                    if (!memory) return new Response("Project admission required", { status: 409 });
+                }
                 return memory ? await memory.handle(request) : new Response(null, { status: 404 });
             }
             if (path === "/browser/open") {

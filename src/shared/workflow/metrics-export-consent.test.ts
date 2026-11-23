@@ -1,8 +1,14 @@
 import { test } from "node:test";
-import { readFile as fsReadFile, writeFile as fsWriteFile, mkdir as fsMkdir } from "node:fs/promises";
+import { projects } from "@runwield/projects";
+import {
+    readFile as fsReadFile,
+    writeFile as fsWriteFile,
+    mkdir as fsMkdir,
+    rename as fsRename,
+} from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
 import { getCustomSetting, setCustomSetting } from "../settings.ts";
 import {
@@ -19,6 +25,8 @@ import {
     updateMetricsExportProjects,
 } from "./metrics-export-grants.ts";
 import { readMetricsExportStatus, runMetricsExportCycle } from "./metrics-export-scheduler.ts";
+import { getWorkflowMetricsFilePath, hashMetricCwd } from "./metrics.ts";
+import { readWorkflowMetricLegacyAdoption } from "./metrics-journal.ts";
 import { clearUsageHistory } from "./usage-reporting.ts";
 import { SessionContextMetricsRecorder } from "./execution-metrics.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
@@ -64,7 +72,7 @@ test("start boundaries exclude old operations and include only explicitly grante
         await f.record("execution_started", "new");
         await f.record("model_usage", "new");
         await f.record("execution_finished", "new");
-        const other = join(f.project, "other");
+        const other = join(dirname(f.project), "other");
         await fsMkdir(other);
         await setCustomSetting("workflowMetrics", true, "project", other);
         await f.record("model_usage", undefined, other);
@@ -117,6 +125,91 @@ test("endpoint and re-enable reset consent; credential rotation preserves it", a
         await f.record();
         await runMetricsExportCycle();
         assertEquals(f.requests.length, 2);
+    });
+});
+test("an export grant never transfers to a replacement Project at the approved path", async () => {
+    await withMetricsExportFixture(async (f) => {
+        const original = await f.grant();
+        const replacement = `${f.project}-replacement`;
+        await fsMkdir(replacement);
+        const admitted = projects.checkout.admitForStorage(replacement);
+        await fsRename(f.project, `${f.project}-moved`);
+        await fsRename(replacement, f.project);
+        await setCustomSetting("workflowMetrics", true, "project", f.project);
+        await f.record();
+        await runMetricsExportCycle();
+        assertEquals(f.requests, []);
+
+        const approved = await f.grant();
+        assertEquals(approved.projects[0].projectId, admitted.projectId);
+        assert(approved.projects[0].projectId !== original.projects[0].projectId);
+        await f.record();
+        await runMetricsExportCycle();
+        assertEquals(f.requests.length, 1);
+    });
+});
+for (const populated of [true, false]) {
+    test(`a v10 path-based grant keeps the boundary of its ${populated ? "populated" : "empty"} journal`, async () => {
+        await withMetricsExportFixture(async (f) => {
+            if (populated) await f.record();
+            const grant = await f.grant();
+            if (populated) await f.record();
+            const path = getWorkflowMetricsFilePath(f.project);
+            const legacy = join(dirname(dirname(path)), `${basename(f.project)}-${await hashMetricCwd(f.project)}`);
+            await fsRename(dirname(path), legacy);
+            const { projectId: _projectId, ...legacyStart } = grant.projects[0];
+            await setCustomSetting(
+                "metricsExport",
+                { destinations: [{ ...grant, projects: [legacyStart] }] },
+                "global",
+            );
+            if (!populated) await f.record();
+
+            await runMetricsExportCycle();
+            assertEquals(f.requests.length, 1);
+            assertEquals(readMetricsExportGrants()[0].projects[0], legacyStart);
+            await runMetricsExportCycle();
+            assertEquals(f.requests.length, 1);
+            assertEquals((await clearUsageHistory([f.project]))[0].persisted, true);
+            await f.record();
+            await runMetricsExportCycle();
+            assertEquals(f.requests.length, 2);
+        });
+    });
+}
+test("a legacy path-based grant cannot use a replacement Project's collision fence", async () => {
+    await withMetricsExportFixture(async (f) => {
+        const grant = await f.grant();
+        const { projectId: _projectId, ...legacyStart } = grant.projects[0];
+        await setCustomSetting("metricsExport", { destinations: [{ ...grant, projects: [legacyStart] }] }, "global");
+        const replacement = `${f.project}-replacement`;
+        await fsMkdir(replacement);
+        projects.checkout.admitForStorage(replacement);
+        const legacy = join(f.home, ".wld", "workflow-metrics", projects.directory.sessionKey(replacement));
+        await fsMkdir(legacy, { recursive: true });
+        const rows = await Promise.all(
+            [replacement, `${replacement}-other`].map(async (root, index) => ({
+                v: 2,
+                category: "model_usage",
+                event: "model_usage",
+                eventId: `legacy-${index}`,
+                ts: new Date().toISOString(),
+                historyEpoch: legacyStart.historyEpoch,
+                cwdHash: await hashMetricCwd(root),
+                inputTokens: 1,
+            })),
+        );
+        await fsWriteFile(join(legacy, "metrics.jsonl"), rows.map((row) => JSON.stringify(row)).join("\n") + "\n");
+        const fence = readWorkflowMetricLegacyAdoption(getWorkflowMetricsFilePath(replacement));
+        assertEquals(fence?.legacyHistoryEpoch, legacyStart.historyEpoch);
+        assertEquals(fence?.sourceRootHash, await hashMetricCwd(replacement));
+
+        await fsRename(f.project, `${f.project}-moved`);
+        await fsRename(replacement, f.project);
+        await setCustomSetting("workflowMetrics", true, "project", f.project);
+        await f.record();
+        await runMetricsExportCycle();
+        assertEquals(f.requests, []);
     });
 });
 test("grant refuses non-HTTPS destinations except explicit loopback and ignores Project settings", async () => {

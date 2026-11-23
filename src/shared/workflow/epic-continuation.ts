@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import { epicChildOrderProblem } from "./epic-child-order.ts";
 import { projectPlanType } from "../project-plan.ts";
@@ -32,7 +33,6 @@ import { isGitRepository } from "../git.ts";
 import { prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 
 const TERMINAL_CHILD_STATUSES = new Set(["validated", "verified", "user_verified", "closed_without_verification"]);
 
@@ -145,9 +145,9 @@ export async function resolveEpicContinuation({
     }
     if (!parentPlanName) return { kind: "none", reason: "completed_plan_has_no_parent_epic", completedPlanName };
     let parentLocation = await resolveWorkflowPlanLocation(cwd, parentPlanName, { readOnly: true });
-    if (!parentLocation.plan && resolvePrimaryCheckoutRoot(cwd) !== cwd) {
+    if (!parentLocation.plan && projects.checkout.primaryRoot(cwd) !== cwd) {
         // A child's execution checkout is based on the Epic branch, which carries the children but not the Epic.
-        parentLocation = await resolveWorkflowPlanLocation(resolvePrimaryCheckoutRoot(cwd), parentPlanName, {
+        parentLocation = await resolveWorkflowPlanLocation(projects.checkout.primaryRoot(cwd), parentPlanName, {
             readOnly: true,
         });
     }

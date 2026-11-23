@@ -1,7 +1,7 @@
+import { projects } from "@runwield/projects";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { continueMissingPlanExecution } from "../../plan-store/index.ts";
 import { readPlanPackage } from "../../plan-store/packages.ts";
-import { inspectProjectIdentity } from "../../shared/project-identity.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { withRetainedPlanFixture, importCanonicalPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { mkdirSync, realpathSync, mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync } from "node:fs";
@@ -58,7 +58,7 @@ async function registerMissingExecution(root: string, path: string, importCanoni
         mkdirSync(join(root, "docs/plans"), { recursive: true });
         const source = join(root, "docs/plans/missing.md");
         writeFileSync(source, readFileSync(join(path, "docs/plans/missing.md")));
-        const owner = inspectProjectIdentity(root);
+        const owner = projects.checkout.inspect(root);
         assert(owner.kind === "existing");
         const imported = await importCanonicalPlanFixture(root, realpathSync(source));
         assert(!("message" in imported), JSON.stringify(imported));
@@ -76,7 +76,7 @@ for (const allow of [false, true]) {
                 const path = join(container, "absent-parent/execution");
                 try {
                     await registerMissingExecution(root, path, true);
-                    const identity = inspectProjectIdentity(root);
+                    const identity = projects.checkout.inspect(root);
                     assert(identity.kind === "existing");
                     const beforePackage = await readPlanPackage(identity.identity, { name: "missing" });
                     const beforeRegistry = readText(getWorktreeRegistryPath(root));
@@ -249,7 +249,7 @@ test("missing imported recovery rejects every changed attempt owner without writ
         const path = join(container, "execution");
         try {
             await withRetainedPlanFixture(root, () => registerMissingExecution(root, path, true));
-            const owner = inspectProjectIdentity(root);
+            const owner = projects.checkout.inspect(root);
             assert(owner.kind === "existing");
             const selected = await readPlanPackage(owner.identity, { name: "missing" });
             assert(selected.kind === "loaded");

@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
 import { mkdir, readFile, writeFile, chmod, stat, lstat, realpath, rm } from "node:fs/promises";
@@ -8,7 +9,6 @@ import { captureForegroundProcess } from "../captured-process.ts";
 import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { importPlans, loadPlan, listPlans } from "../../plan-store/index.ts";
-import { admitProjectIdentity } from "../project-identity.ts";
 
 const repository = defineCommittedGitFixture({ "README.md": "Recovery composition\n" });
 const driver = new URL("./testing/composed-runtime-process.ts", import.meta.url).pathname;
@@ -22,7 +22,7 @@ for (const boundary of ["copying", "published"]) {
         const root = await realpath(await repository.checkout());
         const linked = `${root}-linked`;
         try {
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             await git(root, ["worktree", "add", "-b", "linked", linked]);
             const sourceRoot = getRunWieldRuntimeDir(root);
             const source = join(sourceRoot, "internal/debug/repair");

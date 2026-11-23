@@ -55,6 +55,8 @@ export interface RemotePlanSessionQuery {
     sessionId?: string;
 }
 export interface RemoteSessionRecords {
+    /** Present when the laptop has verified the Session's Project binding. */
+    projectId?: import("@runwield/projects").ProjectId;
     planSessions: RemotePlanSession[];
     lastPlanReview: import("../session/file-session-store-types.ts").LastPlanReviewReference | null;
     planAssociations: import("../session/file-session-store-types.ts").ManifestPlanAssociation[];

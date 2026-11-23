@@ -132,7 +132,7 @@ export async function makeManagedSessionFixture(options: ManagedSessionFixtureOp
     await fsMkdir(projectRoot, { recursive: true });
     const modelRequests: RecordedModelRequest[] = [];
     const store = openOwnerCoordinationStore({ dbPath, sessionBaseDir });
-    const project = store.registerProject({ root: projectRoot, idFactory: idFactory("project"), now: () => "t0" });
+    const project = store.registerProject({ root: projectRoot, now: () => "t0" });
     const sessionDir = sessionDirForProject(sessionBaseDir, store.ensureRuntimeProject({ root: projectRoot }));
     const piSessionId = "pi-managed-fixture";
     const transcriptPath = await writeManagedTranscript(

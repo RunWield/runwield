@@ -1,7 +1,7 @@
 /** Durable laptop receipt for independently rechecked execution-host Git evidence. */
+import { projects, type HomeProjectOwner } from "@runwield/projects";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
-import { assertProjectStoreIdentity, type HomeProjectOwner } from "../shared/project-identity.ts";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
 import { ensurePrivateDir, writeJsonAtomically } from "../shared/private-json-file.ts";
 import {
@@ -17,7 +17,7 @@ export async function confirmManagedPublication(
     reference: PackagePublicationReference,
     signal?: AbortSignal,
 ) {
-    assertProjectStoreIdentity(owner);
+    projects.home.assertStoreIdentity(owner);
     const manifest = await readPlanPackagePublication(owner, reference);
     const directory = join(
         owner.executionAccountHome,

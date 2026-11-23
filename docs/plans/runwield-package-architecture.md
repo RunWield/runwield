@@ -26,8 +26,8 @@ Moving an entry point to `apps/` is a separate mechanical change when useful.
 
 ## Packages and extraction order
 
-The [Tools extraction](https://github.com/RunWield/runwield/pull/641) has merged. Agents is the current interface
-review. Projects follows once the owner accepts this contract. Each row ships independently. Create a workspace
+The [Tools](https://github.com/RunWield/runwield/pull/641) and [Agents](https://github.com/RunWield/runwield/pull/643)
+extractions have merged. Projects is ready for interface review. Plans follows once the owner accepts Projects. Each row ships independently. Create a workspace
 when its first consumer moves. Export named types alongside the operations that own them.
 
 | Order and package | Public interface and responsibilities | Evidence that the move preserved behavior |
@@ -127,6 +127,56 @@ materialization and repair used by Agents and bundled skills. Agents chooses the
 `~/.wld/bundled-agent-definitions` when a consumer requests a readable copy. `@runwield/resources` owns the
 shared home lookup and the active personal mount's access checks.
 
+## Projects registry
+
+Workspace and a factory worker can import `projects` from `@runwield/projects`. A checkout path selects the
+directory to inspect or admit. The package locates the active account, Git metadata, Core identity record and
+Workspace database. Opening registrations takes no arguments. Close the registry when the caller finishes.
+[Public exports](../../packages/projects/index.ts) · [Registry](../../packages/projects/registry.ts)
+
+| Consumer operation | Contract |
+| --- | --- |
+| `projects.checkout.inspect(path)` | Read existing identity, report a fresh checkout, return candidates that require a clone decision, or explain invalid evidence. Inspection leaves the checkout and account home untouched. |
+| `await projects.checkout.admit(path, options?)` | Establish or recover Core identity. An existing result includes the stable project, repository and checkout IDs. A clone can require an explicit choice before admission completes. |
+| `projects.registrations.open()` | Open the current owner's existing SQLite registration database. The registry exposes `register`, `list`, `get`, `relink`, `getHealth`, `setStatus`, `requireActiveRoot`, `listRootEvidence`, `remove` and `close`. |
+| `projects.home` and `projects.launch` | Resolve an owner from project and repository IDs, open an existing project without a local checkout, and scope operations to the verified execution account or remote owner. |
+| `projects.storage` and `projects.directory` | Resolve established Session storage and checkout history, guard against reusing another project's root, and apply existing directory confirmation rules. |
+
+### Project identity and status
+
+Projects owns one opaque `ProjectId` for each logical project. Workspace URLs, Plans, Sessions, Usage and
+default Memory collections reference it. Future factory runs will use it too. Projects assigns a cryptographically
+random UUIDv4 on admission. Repository and checkout IDs distinguish clones and worktrees within a project.
+The current Workspace is personal. A hosted deployment will need tenant membership and permission checks.
+
+An explicit registration resolves an existing project or admits a new one and returns its non-null
+`projectId`, including for a project with zero Plans. Inspection and listing stay read-only. A clone with
+ambiguous ownership requires the existing link-or-create decision. Relinking verifies the destination's
+identity and retains the ID across a move. Removing a Workspace registration removes that registration;
+reopening the same admitted project recovers its original ID.
+
+New registrations start with `status: "active"`. The registry accepts `setStatus(projectId, "active" | "inactive")`.
+Deactivation pauses Workspace access to project content and leaves the underlying project, Plans and Sessions intact.
+Directory health is independent: an active project can have a missing checkout, and its settings remain available.
+
+The personal Workspace uses canonical IDs in new links. Old registration URLs can expire. Its SQLite driver
+retains historical row keys for foreign keys and reconciles existing registrations with admitted identities.
+File-backed Sessions resolve old storage locators internally and expose the canonical project ID. Memory uses
+that ID for its default collection. An explicit personal Memory binding can still select a shared collection.
+Earlier Mnemoteca collections remain accessible by their original names. To adopt one explicitly, export it
+with `mnemoteca export --name <old-name> -o memories.jsonl` and import it once with
+`mnemoteca import memories.jsonl --name <project-id>`.
+
+Workspace also uses pairing and device state in the owner database. Its coordination service binds the registry
+to the same connection through `@runwield/projects/owner-coordination`. Independent consumers use the default
+opener. The owner database migrates existing registrations in place. Git and non-Git checkouts keep their existing identity formats. A multi-host
+identity service and tenant authorization remain separate work.
+
+The private `@runwield/session-files` package contains the Session-owned reader used to discover existing
+writer locks during checkout admission. The Session store uses the same file evidence for recovery.
+This shared reader lets a worker open Projects without loading the Session runtime. The existing Session store
+continues to own manifests, restoration, writes and writer lifetime.
+
 ## MCP and app boundaries
 
 Keep built-in tools usable through direct calls. For MCP today, the Session owns authorized connections and Pi owns
@@ -165,7 +215,7 @@ memory can use the same identity. At project open, the owning app resolves the I
 configured store, and passes the binding to Plans. A signed-in desktop can select a local or hosted project.
 At factory admission, record the resolved ID and store binding so a replacement worker reopens the same project.
 Qualify new driver bindings separately from the registry extraction.
-[Core identity](../../src/shared/project-identity.ts), [owner registry](../../src/shared/owner-coordination/projects.ts), [Plan Store entry point](../../src/plan-store/index.ts), and [external Plan Store Epic](external-plan-store.md).
+[Projects contract](../../packages/projects/registry.ts), [registration operations](../../packages/projects/registration.ts), [Plan Store entry point](../../src/plan-store/index.ts), and [external Plan Store Epic](external-plan-store.md).
 
 **Settings, credentials, and memory** also need explicit owners. Apps resolve project settings and credential
 references at startup, then give each consumer the access it needs. Keep credential refresh with its designated
@@ -176,7 +226,7 @@ server, GitHub App authentication, hosted tenancy, and unattended prompt changes
 
 - Identify the domain's current entry points, consumers, saved formats, and relevant regression tests. Record the
   current behavior at the app boundary before moving implementation.
-- Add one private workspace package and its public exports. Migrate active callers in the same change. Check
+- Add the domain as a private workspace package and its public exports. Migrate active callers in the same change. Check
   imports for cycles and app internals. Include package code, tests, and assets in the existing build and CI inventory.
 - Run the affected consumers through their normal entry points. Check CLI and wire output, tool results, prompt
   resolution, event order, on-disk compatibility, and process/pod recovery wherever the move touches those contracts.

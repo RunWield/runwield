@@ -1,5 +1,7 @@
+import { isProjectAvailable } from "../project-availability.ts";
 import { loadUsageSummary } from "./owner-usage-settings.ts";
-import { queryUsageReport, usageProjectIdentityForRoot } from "../../../shared/workflow/usage-reporting.ts";
+import { queryUsageReport } from "../../../shared/workflow/usage-reporting.ts";
+import type { ProjectRegistry } from "@runwield/projects";
 import type { UsageLink } from "../../../shared/workflow/usage-reporting.ts";
 import { listOwnerProjects, requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import type { OwnerProjectStore } from "./owner-projects.ts";
@@ -7,6 +9,7 @@ import type { FileSessionStore } from "../../../shared/session/file-session-stor
 import { loadWorkspaceDetail } from "./plan-adapter.ts";
 
 interface UsageOwnerStore extends OwnerProjectStore {
+    projects: OwnerProjectStore["projects"] & Pick<ProjectRegistry, "listRootEvidence">;
     listProjectSessions: FileSessionStore["listProjectSessions"];
 }
 
@@ -45,20 +48,28 @@ export async function loadOwnerUsageReport(store: UsageOwnerStore, params: URLSe
         : { start: shiftDate(today, 1 - Number(preset)), end: shiftDate(today, 1) };
     const projects = listOwnerProjects(store);
     const selectedId = params.get("projectId");
-    if (selectedId && !projects.some((project) => project.projectId === selectedId && project.enabled)) {
-        throw new Error("Usage Project is not registered, enabled, and available.");
+    if (selectedId && !projects.some((project) => project.projectId === selectedId && isProjectAvailable(project))) {
+        throw new Error("Usage Project is not registered, active, and available.");
     }
     const authorized = projects.filter(
-        (project) => project.enabled && (!selectedId || project.projectId === selectedId),
+        (project) => isProjectAvailable(project) && (!selectedId || project.projectId === selectedId),
     );
-    const roots = authorized.map((project) => requireOwnerProjectRoot(store, project.projectId));
-    const identities = roots.map(usageProjectIdentityForRoot);
-    const report = queryUsageReport(roots, period, timeZone);
+    const registrations = new Map(
+        authorized.map((owner) => [owner.projectId, { owner, root: requireOwnerProjectRoot(store, owner.projectId) }]),
+    );
+    const report = queryUsageReport(
+        [...registrations.values()].map(({ root }) => root),
+        period,
+        timeZone,
+    );
     const enriched = await Promise.all(
         report.projects.map(async (project) => {
-            const indexes = identities.flatMap((identity, index) => (identity === project.projectId ? [index] : []));
-            const aliases = indexes.map((index) => authorized[index]);
-            const owner = aliases[0];
+            const registration = registrations.get(project.projectId);
+            if (!registration) throw new Error("Registered Project identity changed. Refresh Usage.");
+            const { owner, root } = registration;
+            const projectHref = `/projects/${encodeURIComponent(owner.projectId)}`;
+            const labels = new Set([owner.displayName || owner.rootLabel]);
+            for (const evidence of store.projects.listRootEvidence(owner.projectId)) labels.add(evidence.displayName);
             const planDestinations = new Map<string, Promise<UsageDestination | undefined>>();
             const sessionIds = new Set(
                 [...project.links, ...project.incomplete, ...project.ongoing].flatMap((link) =>
@@ -67,25 +78,18 @@ export async function loadOwnerUsageReport(store: UsageOwnerStore, params: URLSe
             );
             const sessionDestinations = new Map<string, UsageDestination>();
             if (sessionIds.size) {
-                for (const alias of aliases) {
-                    const listed = await store.listProjectSessions(alias.projectId, {
-                        all: true,
-                        archiveState: "all",
-                        catalog: false,
+                const listed = await store.listProjectSessions(owner.projectId, {
+                    all: true,
+                    archiveState: "all",
+                    catalog: false,
+                });
+                for (const session of listed.sessions) {
+                    const id = session.runwieldSessionId;
+                    if (!sessionIds.has(id) || !sessionBelongsToOwnerProject(store, session, owner.projectId)) continue;
+                    sessionDestinations.set(id, {
+                        href: `${projectHref}/sessions/${encodeURIComponent(id)}`,
+                        label: session.displayName || undefined,
                     });
-                    for (const session of listed.sessions) {
-                        const id = session.runwieldSessionId;
-                        if (
-                            !sessionIds.has(id) ||
-                            sessionDestinations.has(id) ||
-                            !sessionBelongsToOwnerProject(store, session, alias.projectId)
-                        )
-                            continue;
-                        sessionDestinations.set(id, {
-                            href: `/projects/${encodeURIComponent(alias.projectId)}/sessions/${encodeURIComponent(id)}`,
-                            label: session.displayName || undefined,
-                        });
-                    }
                 }
             }
             async function destination(link: UsageLink): Promise<OwnerUsageLink> {
@@ -95,22 +99,15 @@ export async function loadOwnerUsageReport(store: UsageOwnerStore, params: URLSe
                     planDestinations.set(
                         planId,
                         (async () => {
-                            for (const index of indexes) {
-                                try {
-                                    const detail = await loadWorkspaceDetail(roots[index], planId, {
-                                        reviewOnly: true,
-                                    });
-                                    return {
-                                        href: `/projects/${encodeURIComponent(authorized[index].projectId)}/plans/${encodeURIComponent(
-                                            planId,
-                                        )}`,
-                                        label: detail.title,
-                                    };
-                                } catch {
-                                    /* A target can exist only in another authorized checkout. */
-                                }
+                            try {
+                                const detail = await loadWorkspaceDetail(root, planId, { reviewOnly: true });
+                                return {
+                                    href: `${projectHref}/plans/${encodeURIComponent(planId)}`,
+                                    label: detail.title,
+                                };
+                            } catch {
+                                return undefined;
                             }
-                            return undefined;
                         })(),
                     );
                 }
@@ -127,10 +124,7 @@ export async function loadOwnerUsageReport(store: UsageOwnerStore, params: URLSe
             return {
                 ...project,
                 projectId: owner.projectId,
-                aliases: aliases.map((alias) => ({
-                    projectId: alias.projectId,
-                    label: alias.displayName || alias.rootLabel,
-                })),
+                aliases: [...labels].map((label) => ({ projectId: owner.projectId, label })),
                 links: await Promise.all(project.links.map(destination)),
                 incomplete: await Promise.all(project.incomplete.map(destination)),
                 ongoing: await Promise.all(project.ongoing.map(destination)),
@@ -140,16 +134,16 @@ export async function loadOwnerUsageReport(store: UsageOwnerStore, params: URLSe
     return {
         ...report,
         projects: enriched,
-        availableProjects: projects.filter((project) => project.enabled),
+        availableProjects: projects.filter(isProjectAvailable),
         excludedProjects: projects
-            .filter((project) => !project.enabled || (selectedId && project.projectId !== selectedId))
+            .filter((project) => !isProjectAvailable(project) || (selectedId && project.projectId !== selectedId))
             .map((project) => ({
                 ...project,
-                exclusionReason: project.enabled
+                exclusionReason: isProjectAvailable(project)
                     ? "not selected"
-                    : project.lifecycle === "enabled"
-                      ? project.healthStatus
-                      : project.lifecycle,
+                    : project.status === "inactive"
+                      ? project.status
+                      : project.healthStatus,
             })),
     };
 }

@@ -1,6 +1,6 @@
+import { projects } from "@runwield/projects";
 import { openNativeFileLock } from "./native-file-lock.ts";
 import { getLockHostname } from "./process-liveness.ts";
-import { admitProjectIdentity } from "./project-identity.ts";
 import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
 import { toNamespacedPath } from "node:path";
@@ -1715,7 +1715,7 @@ test("runtime adoption retries after an initializing legacy migration releases i
 test("legacy migration lock serializes concurrent stale-lock recovery", async () => {
     const project = await makeMigrationProject();
     try {
-        await admitProjectIdentity(project.selectedRoot);
+        await projects.checkout.admit(project.selectedRoot);
         const layout = resolveProjectRuntimeLayout(project.selectedRoot);
         await writeText(join(getRunWieldRuntimeDir(project.primaryRoot), "controller", "plans", "plan.json"), "x\n");
         await writeText(

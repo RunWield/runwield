@@ -1,0 +1,85 @@
+import { resolvePrimaryCheckoutRoot } from "./checkout.ts";
+import { encodeCwdForSessionDir } from "./directory-key.ts";
+import {
+    DIRECTORY_WARNING,
+    inspectMissingManagedProjectDirectory,
+    inspectProjectDirectory,
+    isExactSystemDirectory,
+    requireDirectoryConfirmation,
+    systemDirectoryLocations,
+} from "./directory.ts";
+import {
+    admitProjectIdentity,
+    admitProjectForStorage,
+    assertProjectStoreIdentity,
+    assertUnclaimedSessionRoot,
+    currentHomeProjectOwner,
+    establishProjectSessionStorage,
+    executionAccountStoragePath,
+    findHomeProjectOwner,
+    inspectHomeProjectOwner,
+    inspectProjectCheckoutRoots,
+    inspectProjectIdentity,
+    inspectProjectStorage,
+    inspectSessionProjectRoots,
+    inspectSessionStorageBindings,
+    isHomeProjectOwner,
+    isProjectStorageRootClaimed,
+    isOtherProjectCheckoutRoot,
+    projectLaunchContext,
+    projectStoreLocation,
+    registerHomeProjectOwner,
+    requireProjectCheckout,
+    verifyExecutionAccountHome,
+    withHomeProjectOwner,
+    withProjectLaunchContext,
+} from "./identity.ts";
+import { openProjectRegistry } from "./registration.ts";
+
+export const projects = {
+    checkout: {
+        inspect: inspectProjectIdentity,
+        admit: admitProjectIdentity,
+        admitForStorage: admitProjectForStorage,
+        primaryRoot: resolvePrimaryCheckoutRoot,
+        historicalRoots: inspectProjectCheckoutRoots,
+        isOtherProjectRoot: isOtherProjectCheckoutRoot,
+    },
+    home: {
+        find: findHomeProjectOwner,
+        inspect: inspectHomeProjectOwner,
+        register: registerHomeProjectOwner,
+        current: currentHomeProjectOwner,
+        withOwner: withHomeProjectOwner,
+        isOwner: isHomeProjectOwner,
+        storeLocation: projectStoreLocation,
+        assertStoreIdentity: assertProjectStoreIdentity,
+        requireCheckout: requireProjectCheckout,
+    },
+    storage: {
+        inspect: inspectProjectStorage,
+        sessionRoots: inspectSessionProjectRoots,
+        sessionBindings: inspectSessionStorageBindings,
+        establishSession: establishProjectSessionStorage,
+        isRootClaimed: isProjectStorageRootClaimed,
+        assertUnclaimedSessionRoot,
+    },
+    launch: {
+        current: projectLaunchContext,
+        withContext: withProjectLaunchContext,
+        verifyAccountHome: verifyExecutionAccountHome,
+        accountStoragePath: executionAccountStoragePath,
+    },
+    directory: {
+        warning: DIRECTORY_WARNING,
+        inspect: inspectProjectDirectory,
+        inspectMissingManaged: inspectMissingManagedProjectDirectory,
+        requireConfirmation: requireDirectoryConfirmation,
+        systemLocations: systemDirectoryLocations,
+        isExactSystem: isExactSystemDirectory,
+        sessionKey: encodeCwdForSessionDir,
+    },
+    registrations: {
+        open: openProjectRegistry,
+    },
+} as const;

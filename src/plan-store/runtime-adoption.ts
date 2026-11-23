@@ -1,3 +1,4 @@
+import { projects, type HomeProjectOwner } from "@runwield/projects";
 import {
     validateManagedRuntimeContinuations,
     activateManagedRuntimeContinuations,
@@ -7,7 +8,6 @@ import { DatabaseSync } from "../shared/sqlite.ts";
 /** Laptop-owned staging for managed personal runtime. Publication and source retirement are separate receipts. */
 import { join, dirname } from "node:path";
 import fs from "node:fs/promises";
-import { assertProjectStoreIdentity, type HomeProjectOwner } from "../shared/project-identity.ts";
 import {
     ensurePrivateDir,
     writeJsonAtomically,
@@ -26,7 +26,7 @@ interface DestinationTransfer {
     phase: "committed" | "retired";
 }
 function transferRoot(owner: HomeProjectOwner): string {
-    assertProjectStoreIdentity(owner);
+    projects.home.assertStoreIdentity(owner);
     return join(
         owner.executionAccountHome,
         ".wld",

@@ -5,7 +5,7 @@ import process from "node:process";
 import { realpath as fsRealpath, mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { join } from "node:path";
 import { setCustomSetting } from "../shared/settings.ts";
-import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
+import { drainWorkflowMetrics, inspectMeasurementProject } from "../shared/workflow/metrics.ts";
 import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 export type WorkflowMetricFixtureValue =
@@ -60,7 +60,9 @@ export async function withWorkflowMetricsFixture(
                 async readMetrics() {
                     await drainWorkflowMetrics();
                     try {
-                        const contents = await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8");
+                        const project = inspectMeasurementProject(projectRoot);
+                        if (!project) return [];
+                        const contents = await fsReadFile(project.journalPath, "utf8");
                         return contents
                             .trim()
                             .split("\n")

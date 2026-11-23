@@ -1,11 +1,12 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
 import { rename, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getHomeDir } from "../../constants.ts";
-import { admitProjectIdentity } from "../project-identity.ts";
 import { git } from "../git-test-fixture.ts";
+import { listManifests, listProjectsFromDisk } from "../session/file-session-storage.ts";
 import { composedRemoteFixture } from "./composed-store-fixture.ts";
 import { startRemoteControlService } from "./control.ts";
 import { RemoteSessionControl } from "./session-control-client.ts";
@@ -16,7 +17,7 @@ for (const retainIdentity of [true, false])
     test(
         retainIdentity
             ? "managed Guide Sessions retain verified identity and writer exclusion across a repository rename"
-            : "a remote rename cannot infer missing historical Session identity",
+            : "a remote rename cannot inherit a Session after its Project identity is replaced",
         async () => {
             await withProcessGlobalTestLock(async () => {
                 const fixture = await composedRemoteFixture();
@@ -110,15 +111,22 @@ for (const retainIdentity of [true, false])
                             },
                         }) + "\n",
                     );
-                    // A completed Guide turn materializes remote identity without a laptop Plan package.
+                    // Creating a Session admits checkout identity without creating a laptop Plan package.
                     const admit = () =>
-                        admitProjectIdentity(root, {
+                        projects.checkout.admit(root, {
                             context: {
                                 executionAccountHome: fixture.remoteHome,
                                 personalOwner: { kind: "managed-remote", identity: getHomeDir() },
                             },
                         });
-                    if (retainIdentity) equal((await admit()).kind, "existing");
+                    const admitted = await admit();
+                    ok(admitted.kind === "existing");
+                    const project = listProjectsFromDisk(baseDir)[0];
+                    equal(project.projectId, admitted.identity.projectId);
+                    equal(
+                        listManifests(project.sessionDirectory, true)[0].manifest.projectId,
+                        admitted.identity.projectId,
+                    );
                     await first.client.checkpoint(operation);
                     equal(await first.inspectPlanOwner(), null);
                     equal((await first.client.list())[0].id, sessionId);
@@ -126,7 +134,12 @@ for (const retainIdentity of [true, false])
                     const originalRoot = root;
                     root = `${root}-renamed`;
                     await rename(originalRoot, root);
-                    if (!retainIdentity) equal((await admit()).kind, "existing");
+                    if (!retainIdentity) {
+                        for (const key of ["runwield.projectId", "runwield.repositoryId"]) {
+                            await git(root, ["config", "--unset", key]);
+                        }
+                        equal((await admit()).kind, "existing");
+                    }
                     const next = await connect();
                     const sessions = await next.client.list();
                     if (!retainIdentity) {
@@ -142,6 +155,8 @@ for (const retainIdentity of [true, false])
                     const contents = (await next.save(resumed, 0, "hydrate")).contents;
                     ok(contents.includes("Managed rename sentinel"));
                     equal(JSON.parse(contents.split("\n")[0]).cwd, originalRoot);
+                    const records = await next.save(resumed, 1, "records");
+                    equal(JSON.parse(records.contents).projectId, admitted.identity.projectId);
                     const contender = await connect();
                     await rejects(contender.client.begin(sessionId), /refused begin/);
                     await next.client.checkpoint(resumed);

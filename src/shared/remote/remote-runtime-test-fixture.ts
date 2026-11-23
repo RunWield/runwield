@@ -19,7 +19,7 @@ import { serveHttp } from "../http-server.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { processLines } from "./remote-runtime-lines.ts";
-import { resolveMemoryCollection } from "../memory-collection.ts";
+import { projects } from "@runwield/projects";
 import { writeWorkflowBinaryFixtures } from "../../testing/workflow-binary-fixtures.ts";
 import type { MemoryRequest } from "./memory-bridge.ts";
 import {
@@ -240,7 +240,10 @@ export async function withRemoteRuntimeFixture(
             const browserRequests: string[] = [];
             const store = openFileSessionStore({ baseDir: join(local.homeDir, "laptop-history") });
             const identity = { buildId: "a".repeat(64), protocol: 1 };
-            const memoryCollection = await resolveMemoryCollection({ cwd: local.projectRoot });
+            const identityResult = await projects.checkout.admit(local.projectRoot);
+            if (identityResult.kind !== "existing")
+                throw new Error(`Unexpected Project identity: ${identityResult.kind}`);
+            const memoryCollection = identityResult.identity.projectId;
             const startService = () =>
                 startRemoteControlService(
                     identity,

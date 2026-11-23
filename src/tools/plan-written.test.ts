@@ -1,8 +1,8 @@
+import { projects } from "@runwield/projects";
 import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { applySharedPlanReviewDecision } from "../plan-store/index.ts";
 import { capturePlanReviewInput } from "../plan-store/index.ts";
-import { admitProjectIdentity } from "../shared/project-identity.ts";
 import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
 import { importPlans } from "../plan-store/index.ts";
 import process from "node:process";
@@ -64,7 +64,7 @@ test("plan_written reviews an explicitly imported legacy Plan after controller m
         delete process.env["WLD_TEST_SANDBOX_HOME"];
         const hostedSession = new HostedSession({ id: "plan-written-recovery", cwd: projectRoot });
         try {
-            const admitted = await admitProjectIdentity(projectRoot);
+            const admitted = await projects.checkout.admit(projectRoot);
             if (admitted.kind !== "existing") throw new Error("Project admission failed");
             await withRetainedPlanFixture(projectRoot, () =>
                 seedPlan(projectRoot, "demo", "# Demo\n\nKeep the implementation.", {

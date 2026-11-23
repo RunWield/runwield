@@ -1,6 +1,6 @@
+import { projects } from "@runwield/projects";
 import { retainUserVerifiedPlan, clearPlanRecoveryAfterCleanup } from "../../plan-store/index.ts";
 import { loadPlan } from "../../plan-store/index.ts";
-import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.ts";
 import { listEntries, pruneEntry } from "../../shared/worktree-registry.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
@@ -24,7 +24,7 @@ export async function completeUserVerification({
     uiAPI,
     session,
 }: CompleteUserVerificationOptions): Promise<boolean> {
-    const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
+    const primaryRoot = projects.checkout.primaryRoot(projectRoot);
     const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
     const accepted = location.plan;
     if (!accepted || accepted.attrs.status !== "user_verified") {

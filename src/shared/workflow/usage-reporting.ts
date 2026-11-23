@@ -1,8 +1,14 @@
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { statSync, readFileSync } from "node:fs";
+import type { ProjectId } from "@runwield/projects";
 /** Read-only reporting over collected Project measurements. No Session or Plan reads. */
 import { dirname, join } from "node:path";
-import { resolveMeasurementProject, MeasurementProjectUnavailableError, readLegacyWorkflowMetric } from "./metrics.ts";
+import {
+    inspectMeasurementProject,
+    type MeasurementProject,
+    MeasurementProjectUnavailableError,
+    readLegacyWorkflowMetric,
+} from "./metrics.ts";
 import { clearWorkflowMetricJournal } from "./metrics-journal.ts";
 
 export interface UsagePeriod {
@@ -96,7 +102,7 @@ export interface UsageTotals {
 }
 
 export interface UsageLink {
-    projectId: string;
+    projectId: ProjectId;
     eventId?: string;
     sessionId?: string;
     segmentId?: string;
@@ -128,7 +134,7 @@ export interface UsageProjectCoverage {
 }
 
 export interface UsageProjectReport {
-    projectId: string;
+    projectId: ProjectId;
     recordedThrough: string | null;
     totals: UsageTotals;
     daily: UsageDay[];
@@ -141,39 +147,34 @@ export interface UsageProjectReport {
     coverage: UsageProjectCoverage;
 }
 
-interface MeasurementJournal {
-    root: string;
-    key: string;
-    journalPath: string;
+interface MeasurementJournal extends MeasurementProject {
     unavailable?: boolean;
 }
 
-function projectIdentity(project: MeasurementJournal): string {
-    return project.key;
-}
-
 /** Resolve an authorized root to the opaque identity used by report rows and links. */
-export function usageProjectIdentityForRoot(root: string): string {
+export function usageProjectIdentityForRoot(root: string): ProjectId {
     try {
-        return resolveMeasurementProject(root).key;
+        const project = inspectMeasurementProject(root);
+        if (!project) throw new Error("Usage requires an admitted Project");
+        return project.projectId;
     } catch (error) {
         if (!(error instanceof MeasurementProjectUnavailableError)) throw error;
-        return error.project.key;
+        return error.project.projectId;
     }
 }
 
 /** Resolve caller-authorized aliases once, without preferring a legacy directory spelling. */
 function journalPaths(roots: string[]): MeasurementJournal[] {
-    const projects = new Map<string, MeasurementJournal>();
+    const projects = new Map<ProjectId, MeasurementJournal>();
     for (const root of roots) {
-        let project: MeasurementJournal;
+        let project: MeasurementJournal | undefined;
         try {
-            project = resolveMeasurementProject(root);
+            project = inspectMeasurementProject(root);
         } catch (error) {
             if (!(error instanceof MeasurementProjectUnavailableError)) throw error;
             project = { ...error.project, unavailable: true };
         }
-        projects.set(project.key, project);
+        if (project) projects.set(project.projectId, project);
     }
     return [...projects.values()];
 }
@@ -267,7 +268,7 @@ function observationTime(row: JournalRow): number {
     return Number.isFinite(endedAt) ? endedAt : Date.parse(row.ts);
 }
 
-function link(projectId: string, row: JournalRow): UsageLink {
+function link(projectId: ProjectId, row: JournalRow): UsageLink {
     return {
         projectId,
         eventId: row.eventId,
@@ -459,7 +460,7 @@ export class UsageReporter {
         for (const path of this.journals.keys()) if (!paths.includes(path)) this.journals.delete(path);
         const projects: UsageProjectReport[] = journals.map((project) => {
             const path = project.journalPath;
-            const projectId = projectIdentity(project);
+            const { projectId } = project;
             let cache: JournalCache;
             let unavailable = false;
             let historyClearPending = false;
@@ -793,7 +794,7 @@ export class UsageReporter {
                 ? { persisted: false, reason: "storage_failure" }
                 : await clearWorkflowMetricJournal(path, project.root);
             this.journals.delete(path);
-            results.push({ projectId: projectIdentity(project), ...result });
+            results.push({ projectId: project.projectId, ...result });
         }
         return results;
     }

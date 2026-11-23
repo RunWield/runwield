@@ -1,3 +1,4 @@
+import type { ProjectRegistry } from "@runwield/projects";
 import { hasApplicablePublicationReceipt } from "../../../shared/workflow/publication-receipt.ts";
 import type { PlanReadAvailability } from "../../../plan-store/index.ts";
 import { findPlanById } from "../../../plan-store/index.ts";
@@ -49,8 +50,7 @@ type OwnerSession = {
     transcriptCwd: string;
 };
 type OwnerStore = {
-    getProjectById: (projectId: string) => { currentRoot: string } | null;
-    requireEnabledProjectRoot: (projectId: string) => string;
+    projects: Pick<ProjectRegistry, "get" | "requireActiveRoot">;
     getSessionById: (runwieldSessionId: string) => OwnerSession | null;
     inspectSessionActivation: (runwieldSessionId: string) => {
         activation?: { state?: string; ownerProcessKind?: string | null; activeAgentName?: string } | null;

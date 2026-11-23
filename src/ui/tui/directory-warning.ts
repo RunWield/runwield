@@ -1,13 +1,8 @@
+import { projects, type DirectoryInspection } from "@runwield/projects";
 import process from "node:process";
 import { initRunWieldTheme } from "../theme/theme.ts";
 import { Key, matchesKey } from "@earendil-works/pi-tui";
 import { getCwd } from "../../constants.ts";
-import {
-    DIRECTORY_WARNING,
-    type DirectoryInspection,
-    inspectMissingManagedProjectDirectory,
-    inspectProjectDirectory,
-} from "../../shared/project-directory.ts";
 import { PromptSelectBlock } from "./blocks.ts";
 import { getTUI, initTUI, stopTUI } from "./tui.ts";
 
@@ -20,12 +15,12 @@ export async function confirmProjectDirectory(
     allow = false,
     startupNotice?: string,
 ): Promise<boolean> {
-    return await confirmInspectedDirectory(inspectProjectDirectory(path), allow, startupNotice);
+    return await confirmInspectedDirectory(projects.directory.inspect(path), allow, startupNotice);
 }
 
 /** Preflight only a missing registered execution target; recheck the restored directory afterwards. */
 export async function confirmMissingManagedProjectDirectory(path: string): Promise<boolean> {
-    return await confirmInspectedDirectory(inspectMissingManagedProjectDirectory(path), false);
+    return await confirmInspectedDirectory(projects.directory.inspectMissingManaged(path), false);
 }
 
 async function confirmInspectedDirectory(
@@ -49,12 +44,12 @@ async function confirmInspectedDirectory(
     }
     if (!existingTui && !process.stdin.isTTY) {
         throw new Error(
-            `${DIRECTORY_WARNING}\n${path}\nUse wld --allow-system-directory <command> to continue without terminal input.`,
+            `${projects.directory.warning}\n${path}\nUse wld --allow-system-directory <command> to continue without terminal input.`,
         );
     }
     initRunWieldTheme();
     const tui = initTUI();
-    const warning = `${DIRECTORY_WARNING}\n${path}`;
+    const warning = `${projects.directory.warning}\n${path}`;
     const block = new PromptSelectBlock(startupNotice ? `${startupNotice}\n\n${warning}` : warning, [
         { value: "quit", label: "Quit" },
         { value: "continue", label: "Continue" },

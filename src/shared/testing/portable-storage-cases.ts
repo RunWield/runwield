@@ -30,6 +30,7 @@ import {
     readJson,
     recoveryDescriptorPath,
     sessionDirForRoot,
+    sessionProjectView,
     writeManifest,
 } from "../session/file-session-storage.ts";
 import type { FileSessionManifest } from "../session/file-session-store-types.ts";
@@ -112,7 +113,7 @@ registerCase("portable project identity preserves canonical roots and directory 
     const f = fixture();
     try {
         equal(ensureProject(f.baseDir, f.projectRoot).projectId, f.project.projectId);
-        deepEqual(listProjectsFromDisk(f.baseDir), [f.project]);
+        deepEqual(listProjectsFromDisk(f.baseDir).map(sessionProjectView), [f.project]);
         equal(encodeCwdForSessionDir("/short/project"), "--short-project--");
         const long = "/" + "long/".repeat(40) + "project";
         equal(encodeCwdForSessionDir(long), "--project-65c718e1fabf34b83185841223db6f3a--");
@@ -158,7 +159,6 @@ registerCase("manifest cache observes atomic replacements even with the same len
     const f = fixture();
     try {
         const cache = new FileSessionManifestCache(f.baseDir);
-        cache.rememberProject(f.project);
         const oldTime = new Date("2026-01-02T00:00:00.000Z");
         utimesSync(f.path, oldTime, oldTime);
         cache.remember(f.path, f.manifest);
@@ -259,19 +259,19 @@ registerCase("abandoned initial writers reconcile changed bytes and release unch
             baselineDigestHex: createHash("sha256").update(bytes).digest("hex"),
         };
         f.manifest.activation = { ...active };
-        markRecoveryAfterAbandonedWriter(f.manifest, timestamp);
+        markRecoveryAfterAbandonedWriter(f.manifest, timestamp, f.baseDir);
         equal(f.manifest.activation.state, "uninitialized");
         f.manifest.activation = { ...active };
         const changed = Buffer.from(bytes);
         changed[0] ^= 1;
         writeFileSync(f.transcriptPath, changed);
-        markRecoveryAfterAbandonedWriter(f.manifest, timestamp);
+        markRecoveryAfterAbandonedWriter(f.manifest, timestamp, f.baseDir);
         equal(f.manifest.activation.state, "reconcile_required");
         equal(f.manifest.activation.blockedReason, "transcript_changed_before_initial_checkpoint");
         equal(f.manifest.activation.baselineDigestHex, active.baselineDigestHex);
         f.manifest.activation = { ...active };
         f.manifest.currentSegmentId = "missing";
-        markRecoveryAfterAbandonedWriter(f.manifest, timestamp);
+        markRecoveryAfterAbandonedWriter(f.manifest, timestamp, f.baseDir);
         equal(f.manifest.activation.state, "uncertain");
         equal(f.manifest.activation.blockedReason, "session_transcript_is_unavailable");
     } finally {
@@ -297,24 +297,24 @@ registerCase("committed transcript verification rejects changed or appended byte
             currentSegmentId: "segment",
             committedAt: timestamp,
         };
-        equal(committedTranscriptMatches(f.manifest), true);
+        equal(committedTranscriptMatches(f.manifest, f.baseDir), true);
         f.manifest.activation.state = "active";
-        markRecoveryAfterAbandonedWriter(f.manifest, timestamp);
+        markRecoveryAfterAbandonedWriter(f.manifest, timestamp, f.baseDir);
         equal(f.manifest.activation.state, "idle");
         const changed = Buffer.from(bytes);
         changed[0] ^= 1;
         for (const altered of [changed, Buffer.concat([bytes, Buffer.from("appended")])]) {
             writeFileSync(f.transcriptPath, altered);
-            equal(committedTranscriptMatches(f.manifest), false);
+            equal(committedTranscriptMatches(f.manifest, f.baseDir), false);
             f.manifest.activation.state = "active";
-            markRecoveryAfterAbandonedWriter(f.manifest, timestamp);
+            markRecoveryAfterAbandonedWriter(f.manifest, timestamp, f.baseDir);
             equal(f.manifest.activation.state, "reconcile_required");
             equal(f.manifest.activation.blockedReason, "transcript_changed_before_writer_checkpoint");
         }
         rmSync(f.transcriptPath);
-        equal(committedTranscriptMatches(f.manifest), false);
+        equal(committedTranscriptMatches(f.manifest, f.baseDir), false);
         f.manifest.currentSegmentId = "missing";
-        equal(committedTranscriptMatches(f.manifest), false);
+        equal(committedTranscriptMatches(f.manifest, f.baseDir), false);
     } finally {
         rmSync(f.root, { recursive: true, force: true });
     }

@@ -14,6 +14,7 @@
  *   bun src/cli.ts "<user request>"
  */
 
+import { projects } from "@runwield/projects";
 import { argv, env, execArgv, execPath, exit, ppid } from "node:process";
 import { parseArgs } from "./shared/cli-args.ts";
 import { isStandaloneExecutable } from "./shared/runtime-identity.ts";
@@ -224,8 +225,7 @@ async function main(): Promise<void> {
         const { confirmProjectDirectory } = await import("./ui/tui/directory-warning.ts");
         const { getCwd } = await import("./constants.ts");
         if (!(await confirmProjectDirectory(getCwd(), allowSystemDirectory))) return;
-        const { resolvePrimaryCheckoutRoot } = await import("./shared/project-checkout.ts");
-        const primaryRoot = resolvePrimaryCheckoutRoot(getCwd());
+        const primaryRoot = projects.checkout.primaryRoot(getCwd());
         if (primaryRoot !== getCwd() && !(await confirmProjectDirectory(primaryRoot, allowSystemDirectory))) return;
     }
 

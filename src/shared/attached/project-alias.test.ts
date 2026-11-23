@@ -1,8 +1,8 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { ok as assert, deepStrictEqual as assertEquals, throws } from "node:assert/strict";
 import { rename, symlink, rm, stat, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { git } from "../git-test-fixture.ts";
 import { locateAttachedWorkflows } from "./record-store.ts";
 import {
@@ -38,7 +38,11 @@ test("a retained checkout alias resumes the original workflow and lock namespace
             assertEquals(submitted.workflow.revision, 2);
             assertEquals(await run("triage_report", projectRoot, triageReportInput(triage)), submitted);
             assertEquals(await run("activate", movedRoot, activateInput()), activation);
-            const duplicateDirectory = join(original.homeBaseDir, encodeCwdForSessionDir(movedRoot), "workflows");
+            const duplicateDirectory = join(
+                original.homeBaseDir,
+                projects.directory.sessionKey(movedRoot),
+                "workflows",
+            );
             assertEquals(
                 await stat(duplicateDirectory).then(
                     () => true,
@@ -91,7 +95,7 @@ test("competing persisted alias namespaces are rejected without rewriting either
         const movedRoot = `${projectRoot}-moved`;
         await rename(projectRoot, movedRoot);
         await symlink(movedRoot, projectRoot, "dir");
-        const duplicateDirectory = join(original.homeBaseDir, encodeCwdForSessionDir(movedRoot), "workflows");
+        const duplicateDirectory = join(original.homeBaseDir, projects.directory.sessionKey(movedRoot), "workflows");
         try {
             await mkdir(duplicateDirectory, { recursive: true });
             const duplicate = { ...JSON.parse(before), projectRoot: movedRoot };

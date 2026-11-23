@@ -221,7 +221,7 @@ test("Workspace opens and approves a saved Plan review after its owner is SIGKIL
             )}, mode: "new" });
             const persistentId = runtime.getSessionSnapshot(sessionId).managed.runwieldSessionId;
             const projectId = store.getSessionById(persistentId).projectId;
-            store.registerProject({ root: ${JSON.stringify(projectRoot)}, idFactory: () => projectId });
+            if (store.registerProject({ root: ${JSON.stringify(projectRoot)} }).projectId !== projectId) throw new Error("Workspace and Session identity differ");
             const activation = store.inspectSessionActivation(persistentId);
             const proof = store.acquireSessionActivation({
                 runwieldSessionId: persistentId, projectId: store.getSessionById(persistentId).projectId,

@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import {
     managedPlanStoreActive,
     selectManagedPlan,
@@ -22,7 +23,6 @@ import { findPlanEvidenceById, loadPlan, resolvePlan } from "./index.ts";
 import { type MissingExecutionWorktreeRecovery } from "./location.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
-import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { listEntries, prepareWorktreeRegistry } from "../shared/worktree-registry.ts";
 import { cleanupStoredPublication, loadPublicationAttempt } from "../shared/workflow/publication-machine.ts";
 import { isPublicationCleanupPending } from "../shared/workflow/publication-attempt.ts";
@@ -62,7 +62,7 @@ async function normalizePlanArgument(projectRoot: string, planArg: string): Prom
     // A path into this project's Plan directory is the same resource as its name,
     // even when that primary file is absent. Only genuinely external files bypass
     // controller selection.
-    for (const root of [projectRoot, resolvePrimaryCheckoutRoot(projectRoot)]) {
+    for (const root of [projectRoot, projects.checkout.primaryRoot(projectRoot)]) {
         const storedPath = relative(await canonicalFilePath(resolve(root, "docs/plans")), pathArgument).replaceAll(
             "\\",
             "/",
@@ -107,7 +107,7 @@ export async function resumePlanPublicationCleanup(
     planArg: string,
 ): Promise<PublicationCleanupNotice[]> {
     await prepareWorktreeRegistry(projectRoot);
-    const registryRoot = resolvePrimaryCheckoutRoot(projectRoot);
+    const registryRoot = projects.checkout.primaryRoot(projectRoot);
     const planName = canonicalizeStoredPlanName(await normalizePlanArgument(projectRoot, planArg)).name;
     const entries = (await listEntries(registryRoot)).filter(
         (entry) => entry.status !== "abandoned" && entry.planName === planName,

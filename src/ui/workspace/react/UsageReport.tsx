@@ -267,7 +267,7 @@ export function UsageReport() {
                 <label>
                     Project
                     <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                        <option value="">All enabled Projects</option>
+                        <option value="">All available Projects</option>
                         {report?.availableProjects.map((project) => (
                             <option key={project.projectId} value={project.projectId}>
                                 {project.displayName || project.rootLabel}

@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
@@ -103,11 +104,10 @@ pruneTest("plans prune honors repository retention and keepLast settings", async
 
 test("canonical archived families retain records and remove only confirmed, covered milestone histories", async () => {
     await withPlanCommandFixture("prune-canonical-family-", async ({ projectRoot }) => {
-        const { admitProjectIdentity } = await import("../../shared/project-identity.ts");
         const { create } = await import("../../shared/testing/plan-package-fixture.ts");
         const { listPlanHistory, previewRecordRetention, previewPlanRetention, confirmRetention } =
             await import("../../plan-store/index.ts");
-        const admission = await admitProjectIdentity(projectRoot);
+        const admission = await projects.checkout.admit(projectRoot);
         if (admission.kind !== "existing") throw new Error("Project fixture needs a stable identity.");
         await setCustomSetting("plans", { archiveKeepLast: 0, archiveRetentionDays: 0 }, "project", projectRoot);
         await setCustomSetting("workRecords", { retentionKeepLast: 0, retentionDays: 0 }, "project", projectRoot);

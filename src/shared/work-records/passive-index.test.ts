@@ -1,10 +1,10 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
 import { mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { inspectProjectIdentity } from "../project-identity.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { runMnemotecaWorkRecordCommand } from "./index-adapter.ts";
 import { searchWorkRecords } from "./search.ts";
@@ -14,7 +14,7 @@ import type { WorkRecordMnemotecaCommandOptions } from "./mnemoteca-port.ts";
 
 const fixture = defineCommittedGitFixture();
 function canonicalDatabase(root: string): string {
-    const inspected = inspectProjectIdentity(root);
+    const inspected = projects.checkout.inspect(root);
     if (inspected.kind !== "existing") throw new Error("Fixture has no canonical Project identity.");
     return join(
         inspected.identity.executionAccountHome,
@@ -65,7 +65,7 @@ for (const canonical of [false, true]) {
             equal(result.records.length, canonical ? 1 : 0);
             await runMnemotecaWorkRecordCommand(root, ["list"], options);
             await runMnemotecaWorkRecordCommand(root, ["update", "--help"], options);
-            equal(inspectProjectIdentity(root).kind, canonical ? "existing" : "fresh");
+            equal(projects.checkout.inspect(root).kind, canonical ? "existing" : "fresh");
             deepEqual(await readdir(root), before);
             equal(await readFile(join(root, ".git", "config"), "utf8"), config);
         } finally {
@@ -84,7 +84,7 @@ test("Work Record search leaves unadmitted legacy runtime intact", async () => {
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
         });
         deepEqual(result.records, []);
-        equal(inspectProjectIdentity(root).kind, "fresh");
+        equal(projects.checkout.inspect(root).kind, "fresh");
         equal(await readFile(source, "utf8"), "legacy bytes");
     } finally {
         await rm(root, { recursive: true, force: true });

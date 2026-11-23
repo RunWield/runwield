@@ -1,6 +1,6 @@
+import { projects } from "@runwield/projects";
 import { markCollaborationNetworkEffect, retainCollaborationMutation } from "../operation-receipts.ts";
 import { managedPersonalStoreActive, unshareManagedPlan } from "../managed.ts";
-import { currentHomeProjectOwner } from "../../shared/project-identity.ts";
 import { prepareCollaborationPlan as preparePlanWorkflow } from "./operations.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
@@ -172,7 +172,7 @@ function confirmationMessage(details: RemoteDetails): string {
 
 async function inspectUnshareContext(unshareOptions: UnsharePlanOptions) {
     const cwd = unshareOptions.cwd || getCwd();
-    if (!currentHomeProjectOwner()) await prepareWorktreeRegistry(cwd);
+    if (!projects.home.current()) await prepareWorktreeRegistry(cwd);
     const now = new Date().toISOString();
     const target = unshareOptions.target;
     const selected = (await listPlans(cwd)).filter((plan) => plan.name === target || plan.attrs.planId === target);
@@ -352,7 +352,7 @@ export async function unsharePlan(unshareOptions: UnsharePlanOptions): Promise<U
     }
 
     if (deletedDuringDelete && !unshareOptions.force) {
-        if (currentHomeProjectOwner()) {
+        if (projects.home.current()) {
             markCollaborationNetworkEffect(false);
             throw new Error("Shared Space was already deleted; confirm local cleanup in the execution terminal.");
         }
@@ -421,7 +421,7 @@ export async function runPlansUnshareCommand(argv: string[]): Promise<void> {
         return;
     }
     const cwd = getCwd();
-    if (!currentHomeProjectOwner()) await prepareWorktreeRegistry(cwd);
+    if (!projects.home.current()) await prepareWorktreeRegistry(cwd);
     const result = await unsharePlan({
         target: parsed.target as string,
         cwd,

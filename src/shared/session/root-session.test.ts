@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-ai";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
@@ -30,7 +31,6 @@ import {
     readCatalogSafeRootSessionLocator,
     resolveCreatedRootSessionPath,
 } from "./root-session.ts";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 
 test("root-session resolves a project symlink before considering registered ancestor projects", async () => {
@@ -41,9 +41,9 @@ test("root-session resolves a project symlink before considering registered ance
     await fsSymlink(join(root, "web"), alias, process.platform === "win32" ? "junction" : "dir");
     const store = openFileSessionStore({ baseDir: join(root, "sessions") });
     try {
-        store.ensureRuntimeProject({ root });
-        store.ensureRuntimeProject({ root: join(root, "web") });
         const project = store.ensureRuntimeProject({ root: cwd });
+        store.ensureRuntimeProject({ root: join(root, "web") });
+        store.ensureRuntimeProject({ root });
         for (const enteredRoot of [cwd, join(alias, "project")]) {
             const classified = await classifyRootSessionLocator({
                 cwd: enteredRoot,
@@ -80,7 +80,7 @@ test("Windows root Session paths use native canonical casing", { skip: process.p
     const root = await fsMkdtemp(join(tmpdir(), "runwield-root-alias-"));
     try {
         const canonicalRoot = await fsRealpath(root);
-        const expected = join(getRunWieldSessionsBaseDir(), encodeCwdForSessionDir(canonicalRoot));
+        const expected = join(getRunWieldSessionsBaseDir(), projects.directory.sessionKey(canonicalRoot));
         assertEquals(getRunWieldSessionDir(root.toUpperCase()), expected);
         assertEquals(getRunWieldSessionDir(root.toLowerCase()), expected);
     } finally {

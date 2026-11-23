@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { platform } from "node:process";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { type Stats } from "node:fs";
@@ -7,7 +8,6 @@ import { join } from "node:path";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
 import { readRemotePersonalMcpConfig } from "../remote/settings-bridge.ts";
 import { getHomeDir } from "../../constants.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 
 export type McpSourceKind = "global" | "project" | "request";
 export type JsonScalar = string | number | boolean | null;
@@ -225,7 +225,7 @@ export function getGlobalMcpConfigPath(): string {
 }
 
 export function getProjectMcpConfigPath(cwd: string): string {
-    return join(resolvePrimaryCheckoutRoot(cwd), PROJECT_RELATIVE_MCP_PATH);
+    return join(projects.checkout.primaryRoot(cwd), PROJECT_RELATIVE_MCP_PATH);
 }
 
 export async function resolveMcpConfig(options: ResolveMcpConfigOptions): Promise<ResolveMcpConfigResult> {
@@ -238,7 +238,7 @@ export async function resolveMcpConfig(options: ResolveMcpConfigOptions): Promis
         resolved.set(server.name, { ...server, ...(remote ? { location: "laptop" as const } : {}) });
     }
 
-    const primaryRoot = resolvePrimaryCheckoutRoot(options.cwd);
+    const primaryRoot = projects.checkout.primaryRoot(options.cwd);
     const projectPath = join(primaryRoot, PROJECT_RELATIVE_MCP_PATH);
     const projectSafety = await isSafeProjectMcpFile(primaryRoot, projectPath);
     if (projectSafety.warning) warnings.push(projectSafety.warning);

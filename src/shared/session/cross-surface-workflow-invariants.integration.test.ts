@@ -47,6 +47,7 @@ test("writable restart hydrates the committed current segment instead of the pre
         });
         const successorPath = await writeSuccessorTranscript(fixture.projectRoot, "pi-successor", fixture.sessionDir);
         const successorSafeLocator = await workspace.validateSuccessorSegmentLocator({
+            runwieldSessionId: fixture.session.runwieldSessionId,
             projectId: fixture.project.projectId,
             piSessionId: "pi-successor",
             transcriptPath: successorPath,

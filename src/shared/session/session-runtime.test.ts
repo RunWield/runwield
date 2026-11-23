@@ -1151,7 +1151,7 @@ test("SessionRuntime publishes generation zero before dehydrating newly managed 
                 const managed = snapshot?.managed;
                 assertEquals(snapshot?.activeAgent, "ideator");
                 assertEquals(managed?.projectId, store.ensureRuntimeProject({ root: cwd }).projectId);
-                assertEquals(managed?.projectId === project.projectId, false);
+                assertEquals(managed?.projectId, project.projectId);
                 assertEquals(managed?.generation, 1);
                 assertEquals(managed?.acknowledgedGeneration, 1);
                 assertEquals(managed?.syncState?.status, "current");
@@ -1467,7 +1467,12 @@ test("SessionRuntime can defer managed creation cataloging until Agent readiness
             assertEquals(created.sessionManagerId, null);
             assertEquals(runtime.getSessionSnapshot(created.sessionId)?.sessionManagerId, null);
             assertEquals(runtime.getSessionSnapshot(created.sessionId)?.managed, null);
-            assertEquals((await store.listProjectSessions(project.projectId)).sessions, []);
+            assertEquals(
+                (await store.listProjectSessions(project.projectId)).sessions.some(
+                    (session) => session.transcriptCwd === cwd,
+                ),
+                false,
+            );
         } finally {
             runtime.closeSession(created.sessionId);
         }
@@ -2101,6 +2106,13 @@ test("SessionRuntime uses one segmented user-turn submission path", async () => 
 });
 
 test("SessionRuntime routes execution continuation input to the resolved Plan owner", async () => {
+    await seedPlan(runtimeProjectRoot(), "p", "# Execution continuation", {
+        classification: "PLANNED_CHANGE",
+        complexity: "LOW",
+        summary: "Execution continuation",
+        affectedPaths: ["src/example.ts"],
+        status: "ready_for_work",
+    });
     setRuntimeModelMessages([fauxAssistantMessage(fauxText("Engineer continuation received."))]);
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });

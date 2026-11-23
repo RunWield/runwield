@@ -1,9 +1,10 @@
+import { projects } from "@runwield/projects";
 import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { prepareProjectCheckout, resolveProjectRoot, resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
+import { prepareProjectCheckout, resolveProjectRoot } from "./project-checkout.ts";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 
 const repo = defineGitFixture(async (repoPath) => {
@@ -17,7 +18,7 @@ test("resolvePrimaryCheckoutRoot redirects a linked worktree to the primary chec
     const worktreePath = `${cwd}-linked`;
     try {
         await git(cwd, ["worktree", "add", "-b", "side", worktreePath, "main"]);
-        assertEquals(resolvePrimaryCheckoutRoot(worktreePath), await realpath(cwd));
+        assertEquals(projects.checkout.primaryRoot(worktreePath), await realpath(cwd));
     } finally {
         await git(cwd, ["worktree", "remove", "--force", worktreePath]).catch(() => {});
         await rm(cwd, { recursive: true }).catch(() => {});
@@ -30,9 +31,9 @@ test("resolvePrimaryCheckoutRoot leaves primary, subdirectory, and non-git roots
     const nonGit = await mkdtemp(join(tmpdir(), "rw-test-"));
     try {
         await mkdir(subdir);
-        assertEquals(resolvePrimaryCheckoutRoot(cwd), cwd);
-        assertEquals(resolvePrimaryCheckoutRoot(subdir), subdir);
-        assertEquals(resolvePrimaryCheckoutRoot(nonGit), nonGit);
+        assertEquals(projects.checkout.primaryRoot(cwd), cwd);
+        assertEquals(projects.checkout.primaryRoot(subdir), subdir);
+        assertEquals(projects.checkout.primaryRoot(nonGit), nonGit);
     } finally {
         await rm(cwd, { recursive: true }).catch(() => {});
         await rm(nonGit, { recursive: true }).catch(() => {});

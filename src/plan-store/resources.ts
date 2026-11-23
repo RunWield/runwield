@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import {
     managedPlanStoreActive,
     currentManagedPlanSelection,
@@ -6,7 +7,6 @@ import {
     readManagedReviewPresentation,
     readManagedDocument,
 } from "./managed.ts";
-import { projectStoreLocation } from "../shared/project-identity.ts";
 import { planDocumentMarkdown, injectFrontMatter } from "../plan-format.ts";
 /** Authorization of Plan resources belongs to the owner that selected their source. */
 import {
@@ -84,7 +84,7 @@ export async function assertReadablePlanResource(root: string, resource: PlanRes
     }
     const selection = currentPackageProject();
     if (selection) {
-        if ((await fsRealpath(root)) !== (await fsRealpath(projectStoreLocation(selection))))
+        if ((await fsRealpath(root)) !== (await fsRealpath(projects.home.storeLocation(selection))))
             throw new Error("Plan resource belongs to another Project.");
         if (!resource.planId) throw new Error("Plan resource identity is missing.");
         const plan = await selectedPackage({ planId: resource.planId });
@@ -151,7 +151,7 @@ export function isCurrentPlan(planId: string | undefined): boolean {
 /** Resolve where a controller write survives execution checkout cleanup. */
 export function planControllerRoot(fallback: string): string {
     const owner = currentPackageProject();
-    return owner ? projectStoreLocation(owner) : fallback;
+    return owner ? projects.home.storeLocation(owner) : fallback;
 }
 
 /** Render metadata only for retained legacy review documents; canonical prose stays metadata-free. */

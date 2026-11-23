@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import lockfile from "proper-lockfile";
 import { test } from "node:test";
 import { ok as assert, rejects } from "node:assert/strict";
@@ -18,7 +19,6 @@ import { readMetricsExportStatus, runMetricsExportCycle } from "../../shared/wor
 import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 import { ExecutionMetricsRecorder } from "../../shared/workflow/execution-metrics.ts";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
-import { encodeCwdForSessionDir } from "../../shared/session/root-session.ts";
 import type { OwnerUsageReport } from "./server/owner-usage.ts";
 import { resolveCollectionEpoch, setWorkflowMetricsRecording } from "../../shared/workflow/metrics-journal.ts";
 import { queryUsageReport } from "../../shared/workflow/usage-reporting.ts";
@@ -140,7 +140,7 @@ test("settings creates explicit Core grants, never approves new Projects, and ke
             grant.projects.map((p) => p.projectRoot),
             [f.project],
         );
-        const secondRoot = join(f.project, "second");
+        const secondRoot = join(f.home, "second");
         await mkdir(secondRoot);
         const b = f.store.registerProject({ root: secondRoot, displayName: "B" });
         assertEquals(
@@ -152,7 +152,7 @@ test("settings creates explicit Core grants, never approves new Projects, and ke
                 .status,
             200,
         );
-        f.store.setProjectEnabled(b.projectId, false);
+        f.store.setProjectStatus(b.projectId, "inactive");
         assertEquals((await f.get()).destinations[0].unavailableProjectCount, 1);
         assertEquals((await f.post("projects", { destinationId: grant.destinationId, projectIds: [] })).status, 200);
         assertEquals(
@@ -345,7 +345,7 @@ test("usage settings enforce pairing, origin, CSRF, and Project access without w
         );
         await f.grant();
         const before = readMetricsExportGrants();
-        f.store.setProjectEnabled(f.projectId, false);
+        f.store.setProjectStatus(f.projectId, "inactive");
         for (const projectId of [f.projectId, "unknown", f.project]) {
             for (const action of ["projects", "clear"]) {
                 assertEquals(
@@ -378,7 +378,7 @@ test("global recording preserves object settings and Project overrides while ena
     await withSettingsFixture(async (f) => {
         await setCustomSetting("workflowMetrics", false, "project", f.project);
         await setCustomSetting("workflowMetrics", { enabled: false, retained: "value" }, "global");
-        const otherRoot = join(f.project, "ordinary");
+        const otherRoot = join(f.home, "ordinary");
         await mkdir(otherRoot);
         const other = f.store.registerProject({ root: otherRoot, displayName: "Ordinary" });
         const response = await f.post("recording", { enabled: true });
@@ -397,7 +397,7 @@ test("global recording preserves object settings and Project overrides while ena
 
 test("owner recording control fences captures across off and on without an intervening append", async () => {
     await withSettingsFixture(async (f) => {
-        const root = join(f.project, "ordinary");
+        const root = join(f.home, "ordinary");
         await mkdir(root);
         f.store.registerProject({ root, displayName: "Ordinary" });
         assertEquals((await f.post("recording", { enabled: true })).status, 200);
@@ -436,7 +436,7 @@ for (const surface of ["report", "settings"]) {
             const exporterKey = (await f.get()).exporters[0].exporterKey;
             const consent = getCustomSetting("metricsExport", "global");
             const path = getWorkflowMetricsFilePath(f.project);
-            const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(f.project));
+            const legacy = join(f.home, ".wld", "workflow-metrics", projects.directory.sessionKey(f.project));
             await rename(dirname(path), legacy);
             const guard = openNativeFileLock(join(legacy, ".journal.guard"));
             assert(guard.tryLockSync(true));
@@ -548,7 +548,7 @@ test("empty Project recording settings inherit global generations and UI attribu
 
 test("a failed settings write after generation commit rejects old captures without disabling fresh work", async () => {
     await withSettingsFixture(async (f) => {
-        const root = join(f.project, "ordinary");
+        const root = join(f.home, "ordinary");
         await mkdir(root);
         await setWorkflowMetricsRecording(true);
         const stale = new ExecutionMetricsRecorder({ projectRoot: root });

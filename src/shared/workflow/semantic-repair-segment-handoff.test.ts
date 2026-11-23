@@ -52,6 +52,7 @@ test("two committed semantic repair rollovers retain ordered segments and no Rev
             );
             const successorId = `semantic-repair-segment-${round}`;
             const successorSafeLocator = await store.validateSuccessorSegmentLocator({
+                runwieldSessionId: fixture.session.runwieldSessionId,
                 projectId: fixture.project.projectId,
                 piSessionId: `pi-semantic-repair-${round}`,
                 transcriptPath: repairPath,

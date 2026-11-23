@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { createHash } from "node:crypto";
 import {
     managedPlanStoreActive,
@@ -11,7 +12,6 @@ import {
     readManagedExecution,
     managedExecutionRoot,
 } from "./managed.ts";
-import { isHomeProjectOwner, projectStoreLocation, currentHomeProjectOwner } from "../shared/project-identity.ts";
 import type { WorkRecordMnemotecaPort } from "../shared/work-records/mnemoteca-port.ts";
 import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../shared/settings.ts";
 import { preparedPackageRecordCopy, settlePreparedPackageRecord } from "../shared/work-records/package-recording.ts";
@@ -24,7 +24,6 @@ import {
 import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
-import { inspectProjectIdentity } from "../shared/project-identity.ts";
 import {
     capturePlanPackageInput,
     decodePackageMarkdown,
@@ -69,9 +68,9 @@ export async function packagePublicationInput(
     reference: PackagePublicationReference,
 ): Promise<PackagePublicationManifest> {
     if (managedPlanStoreActive()) return await readManagedPublication(root, reference);
-    const homeOwner = currentHomeProjectOwner();
+    const homeOwner = projects.home.current();
     if (homeOwner) return await readPlanPackagePublication(homeOwner, reference);
-    const inspected = inspectProjectIdentity(root);
+    const inspected = projects.checkout.inspect(root);
     if (inspected.kind !== "existing") throw new Error("Publication owner is unavailable.");
     return await readPlanPackagePublication(inspected.identity, reference);
 }
@@ -224,12 +223,12 @@ export async function sealPackagePublication(
                 members.push({ metadata: fresh.metadata, controller: await packageController(fresh), input });
             }
             const frozenPolicy = workflow?.publicationPolicy;
-            if (isHomeProjectOwner(selection.identity) && frozenPolicy?.attemptId !== attemptId)
+            if (projects.home.isOwner(selection.identity) && frozenPolicy?.attemptId !== attemptId)
                 throw new Error("Execution publication settings must be frozen before sealing a home-owned Plan.");
             const policy =
                 frozenPolicy?.attemptId === attemptId
                     ? frozenPolicy
-                    : getDeliveryCopyPolicy(projectStoreLocation(selection.identity));
+                    : getDeliveryCopyPolicy(projects.home.storeLocation(selection.identity));
             const planCopies = Boolean(targetBranch) && (selection.deliveryCopies?.plans ?? policy.plans);
             const copies: DeliveryCopy[] = [...(selection.deliveryCopies?.workRecords || [])];
             if (copies.some((copy) => copy.kind !== "work-record"))
@@ -261,7 +260,7 @@ export async function sealPackagePublication(
                               frozenPolicy?.attemptId === attemptId
                                   ? frozenPolicy.autoGenerateRecords
                                   : shouldAutoGenerateWorkRecordsOnPlanCompletion(
-                                        projectStoreLocation(selection.identity),
+                                        projects.home.storeLocation(selection.identity),
                                     ),
                       }
                     : {}),
@@ -613,7 +612,7 @@ export async function settlePackageInPlace(planName: string, mnemotecaPort: Work
     const verifiedAt =
         completed?.source.attemptId === source.attemptId ? completed.verifiedAt : new Date().toISOString();
     if (!attemptId)
-        await verifyPackageRecordingDelivery(projectStoreLocation(currentPackageSelection()!.identity), source);
+        await verifyPackageRecordingDelivery(projects.home.storeLocation(currentPackageSelection()!.identity), source);
     await settlePackageParent(
         await readPlanPackagePublication(currentPackageSelection()!.identity, source),
         verifiedAt,
@@ -638,12 +637,12 @@ export async function settlePackageInPlace(planName: string, mnemotecaPort: Work
             },
         );
     const warning = await settlePreparedPackageRecord(
-        projectStoreLocation(currentPackageSelection()!.identity),
+        projects.home.storeLocation(currentPackageSelection()!.identity),
         await readPlanPackagePublication(currentPackageSelection()!.identity, source),
         mnemotecaPort,
     );
     if (warning) throw new Error(warning);
-    await retainPublishedWorkRecordSource(projectStoreLocation(currentPackageSelection()!.identity), {
+    await retainPublishedWorkRecordSource(projects.home.storeLocation(currentPackageSelection()!.identity), {
         phase: "publication_verified",
         packageInput: source,
         planName,
@@ -862,8 +861,8 @@ export async function preparePlanInPlacePublication(planName: string): Promise<b
     const plan = await selectedPackage(planName);
     const attempt = plan.metadata.workflow?.attempt;
     if (!attempt) throw new Error("In-place publication requires a recorded execution attempt.");
-    if (!isHomeProjectOwner(currentPackageSelection()!.identity)) {
-        const root = projectStoreLocation(currentPackageSelection()!.identity);
+    if (!projects.home.isOwner(currentPackageSelection()!.identity)) {
+        const root = projects.home.storeLocation(currentPackageSelection()!.identity);
         await freezePlanPublicationPolicy(planName, attempt.attemptId, {
             ...getDeliveryCopyPolicy(root),
             autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(root),

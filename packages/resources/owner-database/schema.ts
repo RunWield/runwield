@@ -4,7 +4,7 @@
  * Session cataloging, and Session activation state.
  */
 
-export const OWNER_COORDINATION_SCHEMA_VERSION = 10;
+export const OWNER_COORDINATION_SCHEMA_VERSION = 12;
 
 export const OWNER_COORDINATION_SCHEMA_V1_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -570,4 +570,15 @@ WHEN OLD.sealed_at IS NOT NULL
 BEGIN
     SELECT RAISE(ABORT, 'sealed transcript segments are immutable');
 END;
+`;
+
+// Keep legacy row keys for foreign keys and existing links. Several historical
+// registrations can resolve to the same admitted Project.
+export const OWNER_COORDINATION_SCHEMA_V11_SQL = `
+ALTER TABLE projects ADD COLUMN canonical_project_id TEXT;
+CREATE INDEX idx_projects_canonical_project_id ON projects(canonical_project_id);
+`;
+
+export const OWNER_COORDINATION_SCHEMA_V12_SQL = `
+ALTER TABLE project_roots ADD COLUMN display_name TEXT;
 `;

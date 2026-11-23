@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { saveEpicIntegrationReview } from "../../plan-store/index.ts";
 import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
@@ -36,7 +37,6 @@ import {
     formatCapturedProcessOutput,
     PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
 } from "./process-output.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { EPIC_INTEGRATION_REPORT_FILE_NAME } from "../../plan-format.ts";
 import { resolveEpicArtifactPath, saveEpicArtifact } from "../../plan-store/index.ts";
 import type { HostedSession } from "../session/hosted-session.ts";
@@ -227,7 +227,7 @@ export async function readEpicDeliveryState(
     epicPlanName: string,
 ): Promise<EpicDeliveryState | null> {
     if (!(await isGitRepository(projectRoot))) return null;
-    const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
+    const primaryRoot = projects.checkout.primaryRoot(projectRoot);
     const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName, { readOnly: true });
     const epic = location.plan;
     if (!epic || epic.attrs.classification !== "PROJECT" || epic.attrs.type === "sequence") return null;
@@ -305,7 +305,7 @@ export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: s
     }
     const state = await readEpicDeliveryState(projectRoot, epicPlanName);
     if (!state) return { state: null, gateReady: false, gateRetryReady: false };
-    const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
+    const primaryRoot = projects.checkout.primaryRoot(projectRoot);
     const epic = (await resolveWorkflowPlanLocation(primaryRoot, epicPlanName)).plan;
     if (!epic) return { state, gateReady: false, gateRetryReady: false };
     let status = epic.attrs.status;
@@ -830,7 +830,7 @@ export async function runEpicIntegrationGate(
     options: RunEpicIntegrationGateOptions,
 ): Promise<EpicIntegrationGateResult> {
     const { hostedSession, epicPlanName } = options;
-    const primaryRoot = resolvePrimaryCheckoutRoot(options.projectRoot);
+    const primaryRoot = projects.checkout.primaryRoot(options.projectRoot);
     const reconciled = await reconcileEpicDelivery(primaryRoot, epicPlanName);
     const state = reconciled.state;
     if (!state || (!reconciled.gateReady && !reconciled.gateRetryReady) || !state.head) {

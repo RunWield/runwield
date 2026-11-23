@@ -1,8 +1,8 @@
+import { projects } from "@runwield/projects";
 import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { mergeFrontMatterText } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { findActiveByPlanName } from "../worktree-registry.ts";
 import { executionWorktreePathExists, recoverMissingExecutionWorktree } from "./execution-worktree-rescue.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";
@@ -16,7 +16,7 @@ import { preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 export async function prepareSessionPlanningWorktree(projectRoot: string, planName: string) {
     if (hasCanonicalPlanAccess()) return await preparePlanWorkflow(projectRoot, planName);
     await preparePlanWorkflow(projectRoot, planName);
-    const registryRoot = resolvePrimaryCheckoutRoot(projectRoot);
+    const registryRoot = projects.checkout.primaryRoot(projectRoot);
     const attempt = await findActiveByPlanName(registryRoot, planName);
     if (
         attempt &&

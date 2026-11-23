@@ -1,4 +1,4 @@
-import { admitProjectIdentity } from "./project-identity.ts";
+import { projects } from "@runwield/projects";
 import { withWorkRecordOwner } from "./work-records/owner.ts";
 import { writeWorkRecord } from "./work-records/store.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
@@ -319,7 +319,7 @@ for (const edited of [false, true]) {
 test("publication supersession reads sealed checkout copies without touching the personal owner", async () => {
     const root = await fixture.checkout();
     try {
-        const admitted = await admitProjectIdentity(root);
+        const admitted = await projects.checkout.admit(root);
         assert(admitted.kind === "existing");
         const predecessorId = "33333333-3333-4333-8333-333333333333";
         const successor = parseWorkRecordMarkdown(await fsReadFile(join(root, recordPath), "utf8"));

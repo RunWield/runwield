@@ -1,10 +1,10 @@
+import { projects } from "@runwield/projects";
 import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import { parse as parseJsonc, type JsonRecord, type JsonValue } from "./jsonc.ts";
 import lockfile from "proper-lockfile";
 import { normalizePlanServerUrl } from "./collaboration/urls.ts";
-import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
 import { getCwd, getHomeDir } from "../constants.ts";
 import { getBundledModelPresets, type ModelPresetsMap, type ModelPresetVisionFallback } from "./model-presets.ts";
 import { remoteSettingsSnapshot, updateRemoteGlobalSetting, type SettingsUpdate } from "./remote/settings-bridge.ts";
@@ -89,7 +89,7 @@ export function getSettingsDir(scope: string, projectRoot: string = getCwd()): s
     if (scope === "global") return personalGlobalRoot();
     let resolvedRoot = projectSettingsRootMemo.get(projectRoot);
     if (!resolvedRoot) {
-        resolvedRoot = resolvePrimaryCheckoutRoot(projectRoot);
+        resolvedRoot = projects.checkout.primaryRoot(projectRoot);
         projectSettingsRootMemo.set(projectRoot, resolvedRoot);
     }
     return join(resolvedRoot, ".wld");

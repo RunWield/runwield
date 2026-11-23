@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { assertEquals } from "../../testing/assertions.ts";
 import { makeTempFile } from "../../testing/temp-file.ts";
 import { test } from "node:test";
@@ -14,7 +15,6 @@ import { createOwnerWorkspaceApp } from "./server.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
 import { setCustomSetting } from "../../shared/settings.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { encodeCwdForSessionDir } from "../../shared/project-directory-key.ts";
 import { basename, join } from "node:path";
 
 test("Owner command observations require authentication, catalog names, and a registered Project", async () => {
@@ -30,7 +30,7 @@ test("Owner command observations require authentication, catalog names, and a re
                 csrfFactory: () => "csrf-secret",
             });
             const project = store.registerProject({ root: projectRoot, displayName: "Metrics fixture" });
-            const canonicalRoot = store.requireEnabledProjectRoot(project.projectId);
+            const canonicalRoot = store.requireActiveProjectRoot(project.projectId);
             await setCustomSetting("workflowMetrics", true, "project", canonicalRoot);
             const endpoint = `http://127.0.0.1:8787/api/owner/projects/${project.projectId}/command-metrics`;
             const payload = {
@@ -166,7 +166,12 @@ test("Owner rejects a real Session linked to another registered Project", async 
     const second = await makeManagedSessionFixture();
     const store = first.openStore();
     const otherProject = store.registerProject({ root: second.projectRoot, displayName: "Other Project" });
-    const otherDir = join(first.home, ".wld", "sessions", encodeCwdForSessionDir(await fsRealpath(second.projectRoot)));
+    const otherDir = join(
+        first.home,
+        ".wld",
+        "sessions",
+        projects.directory.sessionKey(await fsRealpath(second.projectRoot)),
+    );
     await fsMkdir(otherDir, { recursive: true });
     const transcriptPath = join(otherDir, basename(second.transcriptPath));
     await fsCopyFile(second.transcriptPath, transcriptPath);

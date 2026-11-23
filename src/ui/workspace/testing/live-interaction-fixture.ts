@@ -51,7 +51,7 @@ export async function withExistingRuntimeInteraction(
     prepareSession?: (service: WorkspaceSessionContinuationService) => Promise<PreparedInteractionSession>,
 ) {
     const store = openOwnerCoordinationStore();
-    const project = store.registerProject({ root: root || projectRoot });
+    const project = store.projects.register({ root: root || projectRoot });
     const origin = "http://127.0.0.1:8787";
     const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
     const service = app.sessionContinuation;

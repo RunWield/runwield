@@ -1,10 +1,10 @@
+import { projects } from "@runwield/projects";
 import { managedPlanStoreActive, importManagedPlans } from "./managed.ts";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { inspectLocalHomeStore } from "./access.ts";
 import { importPlanPackages, withPlanPackageLocks } from "./packages.ts";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { writeJsonAtomically } from "../shared/private-json-file.ts";
 import { getExactProjectCustomSetting, setExactProjectCustomSetting } from "../shared/settings.ts";
 
@@ -26,7 +26,7 @@ interface ImportCopyChoice {
 
 /** Returns whether this repository-folder import still needs the user's one-time copy choice. */
 export async function importedPlanCopyChoice(cwd: string, selection: string, answer?: boolean): Promise<boolean> {
-    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+    const projectRoot = projects.checkout.primaryRoot(cwd);
     const plansRoot = await realpath(join(projectRoot, "docs/plans")).catch((error) => {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;

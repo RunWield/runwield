@@ -24,7 +24,9 @@ async function fixture() {
         "packages/agents/definitions",
         "packages/bundled-assets",
         "packages/parsing",
+        "packages/projects",
         "packages/resources",
+        "packages/session-files",
         "packages/tools",
         "third_party/plannotator/packages",
         "brand",
@@ -75,7 +77,9 @@ test("common identity changes for dirty included source and resources, not gener
             "packages/agents/definitions/router.md",
             "packages/bundled-assets/index.ts",
             "packages/parsing/front-matter.ts",
+            "packages/projects/registry.ts",
             "packages/resources/home.ts",
+            "packages/session-files/index.ts",
         ]) {
             const before = await identity();
             await fsWriteFile(join(root, file), "changed agent input");

@@ -1,3 +1,4 @@
+import { type ProjectIdentity } from "@runwield/projects";
 import { readCommittedSessionExport } from "../session/session-export.ts";
 import { readCommittedRemoteLineage } from "./committed-session.ts";
 import { join } from "node:path";
@@ -8,7 +9,6 @@ import type {
     FileSessionStore,
     RemoteSessionProjectBinding,
 } from "../session/file-session-store-types.ts";
-import type { ProjectIdentity } from "../project-identity.ts";
 import { openFileSessionStore, type RemoteSessionOwner } from "../session/file-session-store.ts";
 import { getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import {
@@ -75,7 +75,7 @@ function savedSession(project: FileSessionProject, manifest: FileSessionManifest
 }
 
 interface SavedRemoteSessionScope {
-    projectIds: string[];
+    directories: string[];
     sessionId?: string;
 }
 
@@ -85,9 +85,9 @@ export function listSavedRemoteSessions(
 ): SavedRemoteSession[] {
     const saved: SavedRemoteSession[] = [];
     for (const project of listProjectsFromDisk(baseDir).filter(
-        (project) => project.remote && (!scope || scope.projectIds.includes(project.projectId)),
+        (project) => project.remote && (!scope || scope.directories.includes(project.sessionDirectory)),
     )) {
-        for (const { manifest } of listManifests(sessionDirForProject(baseDir, project), true)) {
+        for (const { manifest } of listManifests(project.sessionDirectory, true, project)) {
             if (scope?.sessionId && manifest.runwieldSessionId !== scope.sessionId) continue;
             try {
                 const session = savedSession(project, manifest);
@@ -148,27 +148,27 @@ export class LaptopSessionControl {
     /** Only the trusted launcher supplies evidence; Session HTTP requests cannot bind identities. */
     bindProjectIdentity(identity: ProjectIdentity | null): void {
         if (this.#closed) throw new Error("Session connection is closed");
-        this.#binding =
-            identity && this.connection.target.gitRoot
-                ? {
-                      projectId: identity.projectId,
-                      repositoryId: identity.repositoryId,
-                      checkoutId: identity.checkoutId,
-                      personalOwnerIdentity: identity.personalOwner.identity,
-                      executionAccountHome: identity.executionAccountHome,
-                  }
-                : undefined;
-        if (!this.#binding) return;
-        for (const project of listProjectsFromDisk(this.#store.path)) {
-            if (this.#projectMatches(project))
-                bindRemoteSessionProject(
-                    this.#store.path,
-                    project,
-                    this.connection.target,
-                    this.#binding,
-                    this.connection.targetLabel,
-                );
-        }
+        this.#binding = identity
+            ? {
+                  projectId: identity.projectId,
+                  repositoryId: identity.repositoryId,
+                  checkoutId: identity.checkoutId,
+                  personalOwnerIdentity: identity.personalOwner.identity,
+                  executionAccountHome: identity.executionAccountHome,
+              }
+            : undefined;
+    }
+
+    #bind(project: FileSessionProject): FileSessionProject {
+        return this.#binding
+            ? bindRemoteSessionProject(
+                  this.#store.path,
+                  project,
+                  this.connection.target,
+                  this.#binding,
+                  this.connection.targetLabel,
+              )
+            : project;
     }
 
     handleSave(input: import("./session-protocol.ts").RemoteSessionRequest) {
@@ -206,7 +206,7 @@ export class LaptopSessionControl {
         for (const project of listProjectsFromDisk(this.#store.path).filter((project) =>
             this.#projectMatches(project),
         )) {
-            const found = listManifests(sessionDirForProject(this.#store.path, project), true).find(
+            const found = listManifests(project.sessionDirectory, true, project).find(
                 ({ manifest }) => manifest.runwieldSessionId === sessionId,
             );
             if (found) return { project, ...found };
@@ -230,7 +230,7 @@ export class LaptopSessionControl {
             // remains a read of published evidence only.
             const projects = listProjectsFromDisk(store.path).filter((project) => this.#projectMatches(project));
             for (const project of projects) {
-                for (const { manifest } of listManifests(sessionDirForProject(store.path, project), true)) {
+                for (const { manifest } of listManifests(project.sessionDirectory, true, project)) {
                     if (manifest.generation || (input.sessionId && input.sessionId !== manifest.runwieldSessionId)) {
                         continue;
                     }
@@ -243,7 +243,7 @@ export class LaptopSessionControl {
             if (input.sessionId) this.#locate(input.sessionId);
             return {
                 sessions: listSavedRemoteSessions(store.path, {
-                    projectIds: projects.map((project) => project.projectId),
+                    directories: projects.map((project) => project.sessionDirectory),
                     sessionId: input.sessionId,
                 }).map((saved) => ({
                     ...saved.summary,
@@ -303,7 +303,7 @@ export class LaptopSessionControl {
                 if (this.#creating.has(input.sessionId)) throw new Error("Session creation is already running");
                 this.#creating.add(input.sessionId);
                 try {
-                    const project =
+                    let project =
                         listProjectsFromDisk(store.path).find((project) => this.#projectMatches(project)) ??
                         ensureRemoteProject(
                             store.path,
@@ -311,16 +311,10 @@ export class LaptopSessionControl {
                             this.connection.target,
                             undefined,
                             this.connection.targetLabel,
+                            this.#binding,
                         );
                     if (!this.#projectMatches(project)) throw new Error("Remote Session Project identity changed.");
-                    if (this.#binding)
-                        bindRemoteSessionProject(
-                            store.path,
-                            project,
-                            this.connection.target,
-                            this.#binding,
-                            this.connection.targetLabel,
-                        );
+                    project = this.#bind(project);
                     const directory = sessionDirForProject(store.path, project);
                     if (
                         listManifests(directory, true).some(
@@ -383,14 +377,15 @@ export class LaptopSessionControl {
                     this.#creating.delete(input.sessionId);
                 }
             } else {
-                const { manifest } = this.#locate(input.sessionId);
+                const { project } = this.#locate(input.sessionId);
+                const boundProject = this.#bind(project);
                 const state = store.inspectSessionActivation(input.sessionId);
                 if (state.activation && ["uncertain", "reconcile_required"].includes(state.activation.state)) {
                     store.recoverRemoteSession(input.sessionId, this.#ownerInstanceId);
                 }
                 proof = store.acquireSessionActivation({
                     runwieldSessionId: input.sessionId,
-                    projectId: manifest.projectId,
+                    projectId: boundProject.projectId,
                     ownerInstanceId: this.#ownerInstanceId,
                     ownerProcessKind: "tui",
                     phase: "preparing",

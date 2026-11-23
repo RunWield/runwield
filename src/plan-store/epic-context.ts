@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { managedPlanStoreActive, projectManagedEpic } from "./managed.ts";
 /**
  * @module shared/workflow/epic-review-context
@@ -17,7 +18,6 @@ import { findPlansByParent, loadPlan } from "./index.ts";
 import type { PlanFrontMatter } from "./index.ts";
 import { isPlannedChangeClassification } from "../constants.ts";
 import { isGitRepository } from "../shared/git.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
 import { prepareTargetBranchPlansByParent } from "../shared/workflow/planning-worktree.ts";
 import type { ReviewIntegrationNote } from "../tools/review-complete.ts";
@@ -95,7 +95,7 @@ export async function loadEpicReviewContext(
 ): Promise<EpicReviewContext | null> {
     const epicPlanName = typeof childAttrs?.parentPlan === "string" ? childAttrs.parentPlan.trim() : "";
     if (!epicPlanName) return null;
-    const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
+    const primaryRoot = projects.checkout.primaryRoot(projectRoot);
     const epic = (await resolveWorkflowPlanLocation(primaryRoot, epicPlanName, { readOnly: true })).plan;
     if (!epic || !hasEpicBranch(epic.attrs)) return null;
     const objective = markdownSection(epic.markdown, "Objective") || "(The Epic has no Objective section.)";

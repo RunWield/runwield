@@ -6,7 +6,7 @@
     "engines": {
         "bun": "^1.4.0"
     },
-    "workspaces": ["packages/agents", "packages/bundled-assets", "packages/parsing", "packages/resources", "packages/tools"],
+    "workspaces": ["packages/agents", "packages/bundled-assets", "packages/parsing", "packages/projects", "packages/resources", "packages/session-files", "packages/tools"],
     "trustedDependencies": [],
     "scripts": {
         "install:locked": "bun scripts/check-bun-runtime.ts && bun install --frozen-lockfile --ignore-scripts && cd docs-site && bun install --frozen-lockfile --ignore-scripts",
@@ -97,7 +97,9 @@
         "@runwield/agents": "workspace:*",
         "@runwield/bundled-assets": "workspace:*",
         "@runwield/parsing": "workspace:*",
+        "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
+        "@runwield/session-files": "workspace:*",
         "@runwield/tools": "workspace:*",
         "@pierre/diffs": "1.4.2",
         "@plannotator/atomic-editor": "0.9.0",

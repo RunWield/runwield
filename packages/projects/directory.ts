@@ -2,7 +2,8 @@ import { basename, dirname, parse, resolve, win32 as windows, posix } from "node
 import { statSync, realpathSync, lstatSync } from "node:fs";
 import process from "node:process";
 import { createHmac, randomBytes } from "node:crypto";
-import { getHomeDir } from "../constants.ts";
+import { getHomeDir } from "@runwield/resources/home";
+import { scopedProjectExecutionAccountHome } from "./identity.ts";
 
 export const DIRECTORY_WARNING = "System or home folder detected. Continue?";
 const POSIX_SYSTEM_DIRECTORIES =
@@ -56,17 +57,28 @@ export function isExactSystemDirectory(path: string, locations: string[], platfo
 
 /** Read-only inspection shared by project startup and Workspace registration. */
 export function inspectProjectDirectory(path: string): DirectoryInspection {
+    return inspectProjectDirectoryForHome(path, scopedProjectExecutionAccountHome());
+}
+
+export function inspectProjectDirectoryForHome(
+    path: string,
+    executionAccountHome: string | undefined,
+): DirectoryInspection {
     const enteredRoot = resolve(path);
     const stat = statSync(enteredRoot);
     if (!stat.isDirectory()) throw new Error("Project root must be a directory");
     const canonicalRoot = realpathSync.native(enteredRoot);
-    return classifyProjectDirectory(enteredRoot, canonicalRoot);
+    return classifyProjectDirectory(enteredRoot, canonicalRoot, executionAccountHome);
 }
 
 /** Only for a registered execution target that recovery must create. Existing roots stay strict. */
 export function inspectMissingManagedProjectDirectory(path: string): DirectoryInspection {
     const enteredRoot = resolve(path);
-    return classifyProjectDirectory(enteredRoot, canonicalMissingDirectory(enteredRoot));
+    return classifyProjectDirectory(
+        enteredRoot,
+        canonicalMissingDirectory(enteredRoot),
+        scopedProjectExecutionAccountHome(),
+    );
 }
 
 function canonicalMissingDirectory(path: string): string {
@@ -94,16 +106,22 @@ function canonicalMissingDirectory(path: string): string {
     }
 }
 
-function classifyProjectDirectory(enteredRoot: string, canonicalRoot: string): DirectoryInspection {
+function classifyProjectDirectory(
+    enteredRoot: string,
+    canonicalRoot: string,
+    executionAccountHome: string | undefined,
+): DirectoryInspection {
+    const processHome = getHomeDir();
     const locations = systemDirectoryLocations({
         platform: process.platform === "win32" ? "windows" : process.platform,
-        home: getHomeDir(),
+        home: processHome,
         systemRoot: process.env["SystemRoot"] || process.env["WINDIR"],
         systemDrive: process.env["SystemDrive"],
         programFiles: process.env["ProgramFiles"],
         programFilesX86: process.env["ProgramFiles(x86)"],
         programData: process.env["ProgramData"],
     });
+    if (executionAccountHome && executionAccountHome !== processHome) locations.push(executionAccountHome);
     const canonicalLocations: string[] = [];
     for (const location of locations) {
         try {

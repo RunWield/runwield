@@ -402,11 +402,16 @@ function makeEmpty(text) {
     return paragraph;
 }
 
+function isProjectAvailable(project) {
+    return project.status === "active" && project.healthStatus === "available";
+}
+
 function normalizeProject(project) {
     return {
         projectId: String(project?.projectId || ""),
         displayName: String(project?.displayName || "Untitled Project"),
-        enabled: project?.enabled !== false,
+        status: project?.status,
+        healthStatus: project?.healthStatus,
         plansLoading: project?.plansLoading === true,
         plansError: project?.plansError === true,
         sessionsLoading: project?.sessionsLoading === true,
@@ -502,11 +507,11 @@ function ensureSidebarScaffold(sidebar, payload, current) {
 
     const projects = Array.isArray(payload.projects) ? payload.projects : [];
     const rememberedProject = readStored(LAST_PROJECT_KEY)?.projectId || "";
-    const enabledProjects = projects.filter((project) => project.enabled);
+    const availableProjects = projects.filter(isProjectAvailable);
     const newProjectId =
-        enabledProjects.find((project) => project.projectId === current.projectId)?.projectId ||
-        enabledProjects.find((project) => project.projectId === rememberedProject)?.projectId ||
-        enabledProjects[0]?.projectId ||
+        availableProjects.find((project) => project.projectId === current.projectId)?.projectId ||
+        availableProjects.find((project) => project.projectId === rememberedProject)?.projectId ||
+        availableProjects[0]?.projectId ||
         (payload.loading ? current.projectId || rememberedProject : "") ||
         "";
     newSession.href = newProjectId ? newSessionHref(newProjectId) : "/projects";
@@ -558,10 +563,16 @@ function updateProjectElement(item, project, current) {
     gear.href = settingsHref(project.projectId);
     gear.setAttribute("aria-label", `${project.displayName} settings`);
     const links = item.querySelector(".workspace-sidebar-project-links");
-    const projectLink = project.enabled
+    const projectLink = isProjectAvailable(project)
         ? createAnchor("", plansHref(project.projectId), "All Plans")
-        : createAnchor("", settingsHref(project.projectId), "Project unavailable · open settings");
-    if (project.enabled) {
+        : createAnchor(
+              "",
+              settingsHref(project.projectId),
+              project.status === "inactive"
+                  ? "Project inactive · open settings"
+                  : "Project unavailable · open settings",
+          );
+    if (isProjectAvailable(project)) {
         projectLink.dataset.sidebarPlanBoard = project.projectId;
         updatePlanBoardActive(projectLink, current);
     }
@@ -743,7 +754,7 @@ function reconcilePlanRows(container, project, current) {
         if (!wanted.has(planId)) node.remove();
     });
     container.querySelectorAll("[data-sidebar-plan-warning]").forEach((node) => node.remove());
-    if (!project.enabled) return;
+    if (!isProjectAvailable(project)) return;
     const warnings = project.planDiagnostics || [];
     for (const diagnostic of warnings) container.append(makePlanWarningRow(project.projectId, diagnostic));
     if (!plans.length && warnings.length) {
@@ -798,7 +809,7 @@ function reconcilePlanRows(container, project, current) {
 }
 
 function reconcileSessionRows(container, existingProject, project, current) {
-    const ordered = project.enabled ? sidebarSessionOrder(existingProject, project) : [];
+    const ordered = isProjectAvailable(project) ? sidebarSessionOrder(existingProject, project) : [];
     const byId = new Map(
         Array.from(container.querySelectorAll("[data-sidebar-session]")).map((row) => [
             row.getAttribute("data-sidebar-session") || "",
@@ -807,7 +818,7 @@ function reconcileSessionRows(container, existingProject, project, current) {
     );
     const wantedIds = new Set(ordered.map((session) => session.runwieldSessionId));
     const activeOutsidePage =
-        project.enabled &&
+        isProjectAvailable(project) &&
         current.kind === "session" &&
         current.projectId === project.projectId &&
         current.runwieldSessionId !== "new" &&
@@ -856,7 +867,7 @@ function reconcileSessionRows(container, existingProject, project, current) {
     }
 
     const showMore = container.querySelector("[data-show-more-sessions]") || makeShowMoreButton(project.projectId);
-    if (project.enabled && project.hasMoreSessions) {
+    if (isProjectAvailable(project) && project.hasMoreSessions) {
         showMore.dataset.showMoreSessions = project.projectId;
         if (project.sessions?.some((session) => !byId.has(session.runwieldSessionId))) {
             delete showMore.dataset.sidebarExhausted;
@@ -874,7 +885,7 @@ function reconcileSessionRows(container, existingProject, project, current) {
     if (!nodes.length) {
         nodes.push(
             makeEmpty(
-                !project.enabled || project.sessionsError
+                !isProjectAvailable(project) || project.sessionsError
                     ? "Sessions unavailable."
                     : project.sessionsLoading
                       ? "Loading Sessions…"
@@ -1119,7 +1130,7 @@ export async function refreshSidebarForPage() {
         const sessions = projects
             .filter(
                 (project) =>
-                    project.enabled &&
+                    isProjectAvailable(project) &&
                     (!previous.has(project.projectId) || project.sessionsLoading || project.sessionsError),
             )
             .map(async (project) => {

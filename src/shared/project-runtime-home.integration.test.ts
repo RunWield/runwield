@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { inspectPlanFixtureController, seedPlanController } from "./testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
@@ -13,7 +14,6 @@ import {
 } from "./project-runtime-layout.ts";
 
 import { DatabaseSync } from "./sqlite.ts";
-import { admitProjectIdentity, inspectProjectIdentity } from "./project-identity.ts";
 
 const fixture = defineCommittedGitFixture({ "README.md": "base\n" });
 async function put(path: string, text: string) {
@@ -40,7 +40,7 @@ test("ordinary admission preserves controller decisions and all hidden legacy by
         deepEqual(await inspectPlanFixtureController(root, { planId: "one", planName: "demo" }), controller);
         await rejects(() => lstat(join(base, "internal")), { code: "ENOENT" });
         equal(await readFile(join(root, ".wld", "settings.json"), "utf8"), '{ "exact": true }\n');
-        const identity = inspectProjectIdentity(root);
+        const identity = projects.checkout.inspect(root);
         ok(identity.kind === "existing");
         equal(
             await readFile(
@@ -129,7 +129,7 @@ test("identity-free passive inspection does not admit a Project", async () => {
         const before = await readdir(root);
         equal((await inspectProjectRuntimeReadAccess(root)).kind, "fresh");
         deepEqual(await readdir(root), before);
-        equal(inspectProjectIdentity(root).kind, "fresh");
+        equal(projects.checkout.inspect(root).kind, "fresh");
     } finally {
         await rm(root, { recursive: true, force: true });
     }
@@ -232,7 +232,7 @@ test("ordinary admission finishes already-applied old journal without recreating
 test("ordinary admission preserves both byte-distinct authorities on destination conflict", async () => {
     const root = await realpath(await fixture.checkout());
     try {
-        await admitProjectIdentity(root);
+        await projects.checkout.admit(root);
         const layout = resolveProjectRuntimeLayout(root);
         const source = join(getRunWieldRuntimeDir(root), "internal", "debug", "trace");
         const destination = join(layout.primary.debugRoot, "trace");
@@ -269,7 +269,7 @@ test("explicit managed owner uses home execution storage isolated from ordinary 
         };
         const layout = await enterProjectRuntime(root, { context });
         ok(layout.primary.worktreeRegistryPath.startsWith(join(getHomeDir(), ".wld", "projects")));
-        const identity = inspectProjectIdentity(root, { context });
+        const identity = projects.checkout.inspect(root, { context });
         ok(identity.kind === "existing");
         const ordinary = await enterProjectRuntime(root);
         ok(ordinary.primary.worktreeRegistryPath !== layout.primary.worktreeRegistryPath);
@@ -310,7 +310,7 @@ test("explicitly linked clones share Project identity and isolate execution and 
         await git(remote, ["clone", remote, one]);
         await git(remote, ["clone", remote, two]);
         const first = await enterProjectRuntime(one);
-        const pending = inspectProjectIdentity(two);
+        const pending = projects.checkout.inspect(two);
         ok(pending.kind === "pending");
         const second = await enterProjectRuntime(two, {
             choice: { kind: "link", candidates: pending.candidates, projectId: pending.candidates[0].projectId },

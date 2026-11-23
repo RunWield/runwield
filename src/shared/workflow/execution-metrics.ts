@@ -14,7 +14,7 @@ import { planAssociationAtTime, type AssociationTimeScope } from "../session/pla
 import {
     classifyToolSubUsage,
     drainWorkflowMetrics,
-    getWorkflowMetricsFilePath,
+    getWorkflowMetricsCapturePath,
     normalizeObservedTime,
     recordWorkflowMetric,
 } from "./metrics.ts";
@@ -700,7 +700,7 @@ export class ExecutionMetricsRecorder {
                 getMergedCustomSetting("workflowMetrics", options.projectRoot),
             );
             const state = resolveCollectionEpoch(
-                getWorkflowMetricsFilePath(options.projectRoot),
+                getWorkflowMetricsCapturePath(options.projectRoot),
                 this.collectionEnabledAtCall,
                 hasWorkflowMetricsEnablementOverride(
                     getCustomSetting("workflowMetrics", "project", options.projectRoot),

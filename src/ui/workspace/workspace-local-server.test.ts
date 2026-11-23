@@ -51,7 +51,7 @@ test("Workspace wrapper protects page routes and serves public assets without to
         const componentsCss = await app(new Request("http://localhost/components.css"));
         assertEquals(componentsCss.status, 200);
         assertStringIncludes(await componentsCss.text(), ".primary-action");
-        const sidebarMotion = await app(new Request("http://localhost/design-system/sidebar-motion.js"));
+        const sidebarMotion = await app(new Request("http://localhost/design-system/sidebar-motion.ts"));
         assertEquals(sidebarMotion.status, 200);
         assertEquals(sidebarMotion.headers.get("content-type"), "text/javascript; charset=utf-8");
         const sidebarScript = await sidebarMotion.text();

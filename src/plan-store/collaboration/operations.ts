@@ -1,4 +1,5 @@
 /** Named personal-owner collaboration operations. Network capabilities never come from the execution checkout. */
+import { projects } from "@runwield/projects";
 import type { SharePlanForReviewOptions, SharedPlanReviewLink } from "./share.ts";
 import type { PushPlanRevisionOptions, PushedPlanRevision } from "./push.ts";
 import type { PullPlanForRevisionOptions, PulledPlanRevision } from "./pull.ts";
@@ -39,8 +40,7 @@ export async function executeCollaborationIntent(
 
 /** Collaboration edits personal documents; only local execution-account sources need workflow preparation. */
 export async function prepareCollaborationPlan(cwd: string, name: string): Promise<void> {
-    const { currentHomeProjectOwner } = await import("../../shared/project-identity.ts");
-    if (currentHomeProjectOwner()) {
+    if (projects.home.current()) {
         if (!(await (await import("../queries.ts")).loadPlan(cwd, name)))
             throw new Error("Collaboration Plan is unavailable.");
         return;
@@ -48,8 +48,7 @@ export async function prepareCollaborationPlan(cwd: string, name: string): Promi
     await (await import("../preparation.ts")).preparePlanWorkflow(cwd, name);
 }
 export async function collaborationPlanLocation(cwd: string, name: string, options: { readOnly?: boolean } = {}) {
-    const { currentHomeProjectOwner } = await import("../../shared/project-identity.ts");
-    if (currentHomeProjectOwner())
+    if (projects.home.current())
         return { documentRoot: cwd, plan: await (await import("../queries.ts")).loadPlan(cwd, name) };
     return await (await import("../location.ts")).resolveWorkflowPlanLocation(cwd, name, options);
 }

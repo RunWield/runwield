@@ -1,3 +1,4 @@
+import { projects, type ProjectIdentity } from "@runwield/projects";
 import {
     inspectWorktreeRegistryAtPath,
     withWorktreeRegistryLockAtPath,
@@ -14,8 +15,6 @@ import { ensurePrivateDir, writeJsonAtomically, syncParentDirectory } from "./pr
 import { openNativeFileLock, type NativeFileLock } from "./native-file-lock.ts";
 import { DatabaseSync } from "./sqlite.ts";
 import { captureForegroundProcess } from "./captured-process.ts";
-import { admitProjectIdentity, inspectProjectIdentity, type ProjectIdentity } from "./project-identity.ts";
-import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
 import { isRunWieldOwnedRuntimePath } from "./runwield-owned-paths.ts";
 
 const personalNames = [
@@ -190,7 +189,7 @@ async function lockSources(files: SourceFile[]): Promise<NativeFileLock[]> {
 }
 async function validateSourceLocation(identity: ProjectIdentity, file: SourceFile): Promise<void> {
     validateManagedRuntimeFile(file);
-    const admitted = inspectProjectIdentity(file.checkoutRoot, {
+    const admitted = projects.checkout.inspect(file.checkoutRoot, {
         context: { executionAccountHome: identity.executionAccountHome, personalOwner: identity.personalOwner },
     });
     if (
@@ -275,7 +274,7 @@ export async function stageManagedPersonalRuntime(identity: ProjectIdentity): Pr
             )
                 return prior.transfer;
         }
-        const primary = resolvePrimaryCheckoutRoot(identity.checkoutRoot);
+        const primary = projects.checkout.primaryRoot(identity.checkoutRoot);
         const hasGit = await fs
             .stat(join(primary, ".git"))
             .then(() => true)
@@ -289,7 +288,7 @@ export async function stageManagedPersonalRuntime(identity: ProjectIdentity): Pr
         const files: SourceFile[] = [];
         const registries: SourceRegistry[] = [];
         for (const root of roots) {
-            const admitted = await admitProjectIdentity(root, {
+            const admitted = await projects.checkout.admit(root, {
                 context: { executionAccountHome: identity.executionAccountHome, personalOwner: identity.personalOwner },
             });
             if (

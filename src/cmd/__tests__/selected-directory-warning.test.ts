@@ -1,6 +1,6 @@
+import { projects } from "@runwield/projects";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { importPlans } from "../../plan-store/index.ts";
-import { inspectProjectIdentity } from "../../shared/project-identity.ts";
 import { realpath } from "node:fs/promises";
 import {
     cpSync,
@@ -42,7 +42,7 @@ async function attachHomeWorktree(project: string, home: string, branch: string)
 }
 
 async function importSelectedPlan(project: string, path: string) {
-    const identity = inspectProjectIdentity(project);
+    const identity = projects.checkout.inspect(project);
     if (identity.kind !== "existing") throw new Error("Fixture Project must be admitted.");
     await importPlans(identity.identity.checkoutRoot, await realpath(path));
 }

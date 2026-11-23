@@ -1,7 +1,8 @@
 /** Bounded real-process fixture for project-store.integration.test.ts; not a production launcher. */
+import { type HomeProjectOwner } from "@runwield/projects";
 import { startRemoteControlService } from "./control.ts";
 import { ProjectStoreClient } from "./project-store-client.ts";
-import type { ProjectStoreBinding, ProjectStoreCommand, HomeProjectOwner } from "../../plan-store/index.ts";
+import type { ProjectStoreBinding, ProjectStoreCommand } from "../../plan-store/index.ts";
 const mode = process.argv[2];
 if (mode === "owner") {
     const service = startRemoteControlService({ buildId: "a".repeat(64), protocol: 1 });

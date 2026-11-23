@@ -1,6 +1,6 @@
+import { projects } from "@runwield/projects";
 import { markCollaborationNetworkEffect, retainCollaborationMutation } from "../operation-receipts.ts";
 import { managedPersonalStoreActive, shareManagedPlan } from "../managed.ts";
-import { currentHomeProjectOwner } from "../../shared/project-identity.ts";
 import { prepareCollaborationPlan as preparePlanWorkflow } from "./operations.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
@@ -200,7 +200,7 @@ export interface SharedPlanReviewLink {
 export async function sharePlanForReview(shareOptions: SharePlanForReviewOptions): Promise<SharedPlanReviewLink> {
     if (managedPersonalStoreActive()) return await shareManagedPlan(shareOptions);
     const cwd = shareOptions.cwd || getCwd();
-    if (!currentHomeProjectOwner()) await prepareWorktreeRegistry(cwd);
+    if (!projects.home.current()) await prepareWorktreeRegistry(cwd);
     const target = shareOptions.target;
     const selected = await resolveActivePlan(cwd, target);
     await preparePlanWorkflow(cwd, selected.planName || selected.name);
@@ -437,7 +437,7 @@ export async function runPlansShareCommand(argv: string[]): Promise<void> {
         return;
     }
     const cwd = getCwd();
-    if (!currentHomeProjectOwner()) await prepareWorktreeRegistry(cwd);
+    if (!projects.home.current()) await prepareWorktreeRegistry(cwd);
     const shared = await sharePlanForReview({
         target: args.target as string,
         cwd,

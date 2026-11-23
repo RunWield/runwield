@@ -50,7 +50,7 @@ function ProjectChecklist({
     return (
         <fieldset className="rw-usage-project-checklist" disabled={disabled}>
             <legend>{exportLabels ? "Approved Projects" : "Projects"}</legend>
-            {!projects.length && <p>No enabled Projects are registered.</p>}
+            {!projects.length && <p>No active Projects have an available root.</p>}
             {projects.length > 8 && (
                 <label className="rw-usage-project-search">
                     Find Projects
@@ -686,7 +686,7 @@ export function UsageSettings({ initialView }: UsageSettingsProps = {}) {
                                 </li>
                             ))}
                         </ul>
-                        {!view.recording.projects.length && <p>No enabled Projects are registered.</p>}
+                        {!view.recording.projects.length && <p>No active Projects have an available root.</p>}
                     </section>
                     <section className="owner-card" aria-labelledby="usage-exporters-title">
                         <h2 id="usage-exporters-title">Metrics exporters</h2>
@@ -751,7 +751,7 @@ export function UsageSettings({ initialView }: UsageSettingsProps = {}) {
                     <section className="owner-card" aria-labelledby="usage-clear-title">
                         <h2 id="usage-clear-title">Clear history</h2>
                         <p>Choose which Projects’ local measurement history to remove.</p>
-                        {!view.recording.projects.length && <p>No enabled Projects are registered.</p>}
+                        {!view.recording.projects.length && <p>No active Projects have an available root.</p>}
                         <RunWieldDialog
                             open={clearOpen}
                             onOpenChange={setClearOpen}

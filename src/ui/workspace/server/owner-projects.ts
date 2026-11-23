@@ -1,28 +1,11 @@
-import { inspectProjectStorage } from "../../../shared/project-identity.ts";
+import { projects, type ProjectHealth, type ProjectRegistry, type RegisteredProject } from "@runwield/projects";
 import { realpathSync } from "node:fs";
 /** @module ui/workspace/server/owner-projects */
 
 import { basename, resolve } from "node:path";
-import type { RegisteredProject } from "../../../shared/owner-coordination/projects.ts";
-
-export interface OwnerProjectRecord {
-    projectId: string;
-    displayName?: string;
-    registeredRoot?: string;
-    currentRoot?: string;
-    lifecycle?: string;
-}
-
-export interface OwnerProjectHealth {
-    status: string;
-    evidence?: string[];
-}
 
 export interface OwnerProjectStore {
-    listProjects(): OwnerProjectRecord[];
-    getProjectHealth(projectId: string): OwnerProjectHealth;
-    requireEnabledProjectRoot(projectId: string): string;
-    getProjectById(projectId: string): Pick<RegisteredProject, "currentRoot"> | null;
+    projects: Pick<ProjectRegistry, "list" | "getHealth" | "requireActiveRoot" | "get">;
 }
 
 export interface OwnerProjectSession {
@@ -30,7 +13,7 @@ export interface OwnerProjectSession {
     transcriptCwd: string;
 }
 
-export type OwnerProjectView = ReturnType<typeof serializeOwnerProject>;
+export type OwnerProjectView = Omit<ReturnType<typeof serializeOwnerProject>, "projectId"> & { projectId: string };
 
 export function sanitizeRootLabel(root: string | undefined) {
     const base = basename(String(root || ""));
@@ -46,43 +29,43 @@ function sanitizeHealthEvidence(evidence: string) {
     return text;
 }
 
-export function serializeOwnerProject(project: OwnerProjectRecord, health: OwnerProjectHealth) {
+export function serializeOwnerProject(project: RegisteredProject, health: ProjectHealth) {
     return {
         projectId: project.projectId,
         displayName: project.displayName,
         rootLabel: sanitizeRootLabel(project.registeredRoot || project.currentRoot),
-        lifecycle: project.lifecycle,
+        status: project.status,
         healthStatus: health.status,
-        healthEvidence: Array.isArray(health.evidence) ? health.evidence.map(sanitizeHealthEvidence) : [],
-        enabled: project.lifecycle === "enabled" && health.status === "available",
+        healthEvidence: health.evidence.map(sanitizeHealthEvidence),
     };
 }
 
-export function listOwnerProjects(store: Pick<OwnerProjectStore, "listProjects" | "getProjectHealth">) {
-    return store
-        .listProjects()
-        .map((project) => serializeOwnerProject(project, store.getProjectHealth(project.projectId)));
+export function listOwnerProjects(store: { projects: Pick<ProjectRegistry, "list" | "getHealth"> }) {
+    return store.projects
+        .list()
+        .map((project) => serializeOwnerProject(project, store.projects.getHealth(project.projectId)));
 }
 
 export function requireOwnerProjectRoot(
-    store: Pick<OwnerProjectStore, "requireEnabledProjectRoot">,
+    store: { projects: Pick<ProjectRegistry, "requireActiveRoot"> },
     projectId: string,
 ) {
-    return store.requireEnabledProjectRoot(projectId);
+    return store.projects.requireActiveRoot(projectId);
 }
 
 /**
- * Workspace Project IDs and file-authoritative Session Project IDs belong to
- * different identity domains. Membership is the canonical Project root.
+ * Saved Sessions can predate stable Project IDs. Their admitted storage
+ * binding or canonical root still establishes membership.
  */
 export function sessionBelongsToOwnerProject(
-    store: Pick<OwnerProjectStore, "getProjectById">,
+    store: { projects: Pick<ProjectRegistry, "get"> },
     session: OwnerProjectSession,
     projectId: string,
 ) {
-    const project = store.getProjectById(projectId);
+    const project = store.projects.get(projectId);
     if (!project) return false;
-    const bindings = inspectProjectStorage(project.currentRoot);
+    if (session.projectId === project.projectId) return true;
+    const bindings = projects.storage.inspect(project.currentRoot);
     if (bindings.length) return bindings.some((binding) => binding.sessionProjectId === session.projectId);
     try {
         return (

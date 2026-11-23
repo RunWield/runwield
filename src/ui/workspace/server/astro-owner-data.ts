@@ -9,7 +9,12 @@ import {
     devPlanCatalogVariant,
 } from "./dev-owner-fixtures.ts";
 import { currentWorkspaceCwd } from "./cwd.ts";
-import { listOwnerProjects, requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
+import {
+    listOwnerProjects,
+    requireOwnerProjectRoot,
+    sessionBelongsToOwnerProject,
+    type OwnerProjectView,
+} from "./owner-projects.ts";
 import { loadCanonicalBoard, loadCanonicalWorkspaceDetail, loadDevPlanCatalogBoard } from "./astro-canonical-data.ts";
 import { readSessionArtifact } from "../../../shared/session/read-session-artifact.ts";
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
@@ -63,7 +68,7 @@ export function getAstroOwnerWorkspaceSessionContinuation() {
     return (globalThis as OwnerWorkspaceRuntime)[OWNER_WORKSPACE_SESSION_CONTINUATION_KEY] || null;
 }
 
-export async function loadOwnerProjects() {
+export async function loadOwnerProjects(): Promise<OwnerProjectView[]> {
     const store = getAstroOwnerWorkspaceStore();
     if (!store && isAstroDevelopmentMode()) return devOwnerProjects();
     if (!store) throw new Error("Owner Workspace store is not available.");

@@ -1,5 +1,5 @@
+import { projects } from "@runwield/projects";
 import { seedPlanController } from "../../shared/testing/plan-state-fixture.ts";
-import { admitProjectIdentity } from "../../shared/project-identity.ts";
 import { importPlans, loadPlan } from "../../plan-store/index.ts";
 import { withRetainedPlanReadFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
@@ -452,8 +452,8 @@ test("canonical search ignores pending legacy controller hydration and keeps bot
     const root = await realpath(await fixture.checkout());
     {
         const healthy = await realpath(await fixture.checkout());
-        await admitProjectIdentity(root);
-        await admitProjectIdentity(healthy);
+        await projects.checkout.admit(root);
+        await projects.checkout.admit(healthy);
         await importPlans(root, await realpath(join(root, "docs/plans/ordinary.md")));
         await importPlans(healthy, await realpath(join(healthy, "docs/plans/ordinary.md")));
         let owner: Awaited<ReturnType<typeof workspace>> | undefined;
@@ -493,8 +493,8 @@ for (const failure of ["newer-package-version", "linked-document-directory"]) {
         const root = await realpath(await fixture.checkout());
         {
             const healthy = await realpath(await fixture.checkout());
-            await admitProjectIdentity(root);
-            await admitProjectIdentity(healthy);
+            await projects.checkout.admit(root);
+            await projects.checkout.admit(healthy);
             await importPlans(root, await realpath(join(root, "docs/plans/ordinary.md")));
             await importPlans(healthy, await realpath(join(healthy, "docs/plans/ordinary.md")));
             const outside = `${root}-outside-plans`;

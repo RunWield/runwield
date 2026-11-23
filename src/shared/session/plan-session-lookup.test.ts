@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { assertEquals } from "../../testing/assertions.ts";
 import {
     mkdir as fsMkdir,
@@ -14,7 +15,6 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { findPlanAssociatedSessions } from "./plan-session-lookup.ts";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 
 const TIMESTAMP = "2026-01-01T00:00:00.000Z";
 
@@ -24,7 +24,7 @@ async function makeFixture() {
     const sessionBaseDir = join(rootDir, "sessions");
     await fsMkdir(projectRoot);
     const canonicalProjectRoot = await fsRealpath(projectRoot);
-    const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalProjectRoot));
+    const sessionDir = join(sessionBaseDir, projects.directory.sessionKey(canonicalProjectRoot));
     await fsMkdir(sessionDir, { recursive: true });
     return { rootDir, projectRoot, sessionBaseDir, sessionDir };
 }

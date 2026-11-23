@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { updatePlanPackageMetadata } from "../../plan-store/packages.ts";
 import { getWorktreeRegistryPath } from "../worktree-registry.ts";
 import { settleDiscardedRecoveryAttempt } from "../../cmd/load-plan/plan-recovery-discard.ts";
@@ -12,7 +13,6 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { executePlan } from "./plan-executor.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { runValidationAttempt } from "./validation-supervisor.ts";
-import { admitProjectIdentity, inspectProjectIdentity } from "../project-identity.ts";
 import { test } from "node:test";
 import { equal, ok, rejects, deepEqual } from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -100,11 +100,11 @@ test("two linked clones racing execution retain one package attempt and one code
     try {
         await git(f.root, ["clone", "--bare", f.root, remote]);
         await git(f.root, ["remote", "add", "origin", remote]);
-        await admitProjectIdentity(f.root);
+        await projects.checkout.admit(f.root);
         await git(f.root, ["clone", remote, clone]);
-        const pending = inspectProjectIdentity(clone);
+        const pending = projects.checkout.inspect(clone);
         ok(pending.kind === "pending");
-        const linked = await admitProjectIdentity(clone, {
+        const linked = await projects.checkout.admit(clone, {
             choice: { kind: "link", candidates: pending.candidates, projectId: f.identity.projectId },
         });
         ok(linked.kind === "existing");
@@ -198,7 +198,7 @@ test("package dispatch supplies frozen complete context and checkpoints real imp
         await fs.writeFile(join(projectRoot, "README.md"), "base\n");
         await git(projectRoot, ["add", "README.md"]);
         await git(projectRoot, ["commit", "-m", "fixture"]);
-        const admitted = await admitProjectIdentity(projectRoot);
+        const admitted = await projects.checkout.admit(projectRoot);
         ok(admitted.kind === "existing");
         const identity = admitted.identity;
         await create(identity, {

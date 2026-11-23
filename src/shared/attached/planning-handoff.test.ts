@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { ok as assert, strictEqual as equal, deepStrictEqual } from "node:assert/strict";
 import { mkdir, writeFile, readFile, realpath, rename, rm } from "node:fs/promises";
@@ -141,8 +142,7 @@ test("a moved checkout starts its selected child on the current target", async (
     assert(planned.ok && planned.workflow.nextAction.kind === "plan", JSON.stringify(planned));
     await rename(original, moved);
     try {
-        const { admitProjectIdentity } = await import("../project-identity.ts");
-        equal((await admitProjectIdentity(moved)).kind, "existing");
+        equal((await projects.checkout.admit(moved)).kind, "existing");
         const prepared = await runOperation("start_planning", moved, {
             workflowId: triage.workflowId,
             evidence: EVIDENCE,

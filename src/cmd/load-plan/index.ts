@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { isCurrentPlan } from "../../plan-store/index.ts";
 import { continueMissingPlanExecution } from "../../plan-store/index.ts";
 import { selectPlanAccess } from "../../plan-store/index.ts";
@@ -58,7 +59,6 @@ import {
     putPlanOnHold,
 } from "./plan-hold.ts";
 import { completeUserVerification } from "./user-verification-completion.ts";
-import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import { confirmChildFeatureDependencies, formatTopLevelPlanOption } from "./plan-epic-children.ts";
 import { reopenPlanForReview, resolveRecoveryWorktree } from "./plan-recovery-worktree.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";
@@ -180,7 +180,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
     if (!uiAPI) {
         const startupProjectRoot = getCwd();
         if (!(await confirmProjectDirectory(startupProjectRoot))) return;
-        if (!(await confirmProjectDirectory(resolvePrimaryCheckoutRoot(startupProjectRoot)))) return;
+        if (!(await confirmProjectDirectory(projects.checkout.primaryRoot(startupProjectRoot)))) return;
         if (!(await admitProjectWithIdentityChoice(startupProjectRoot))) return;
         await prepareWorktreeRegistry(startupProjectRoot);
         const discovered = await discoverPlanDocumentRoot(startupProjectRoot, planArg);
@@ -731,7 +731,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 }
                 if (answer === "archive") {
                     if (plan.attrs.status === "user_verified") {
-                        const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
+                        const primaryRoot = projects.checkout.primaryRoot(projectRoot);
                         if (!(await completeUserVerification({ projectRoot, plan, uiAPI, session }))) continue;
                         projectRoot = primaryRoot;
                     }

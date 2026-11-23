@@ -1,9 +1,9 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { admitProjectIdentity } from "../project-identity.ts";
 import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { create, read } from "../testing/plan-package-fixture.ts";
 import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
@@ -23,7 +23,7 @@ test("session validation resumes the exact non-Git package attempt outside its o
     const root = await fs.realpath(await fs.mkdtemp(join(tmpdir(), "package-session-validation-")));
     const session = new HostedSession({ id: "in-place-validation", cwd: root });
     try {
-        const admitted = await admitProjectIdentity(root);
+        const admitted = await projects.checkout.admit(root);
         ok(admitted.kind === "existing");
         const identity = admitted.identity;
         await rememberNonGitExecutionConsent("featurePlan", root);

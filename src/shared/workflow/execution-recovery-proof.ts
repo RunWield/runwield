@@ -1,7 +1,7 @@
 /** Execution-host observations used by the personal owner to settle recovery. */
+import { projects } from "@runwield/projects";
 import { readFile, readdir, lstat } from "node:fs/promises";
 import { join } from "node:path";
-import { inspectProjectIdentity } from "../project-identity.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { assertManagedRuntimePath } from "../project-runtime-managed.ts";
 import { findById, type WorktreeRegistryEntry } from "../worktree-registry.ts";
@@ -54,7 +54,7 @@ export async function inspectExecutionRecoveryEvidence(
     cwd: string,
     request: ExecutionRecoveryRequest,
 ): Promise<ExecutionRecoveryEvidence> {
-    const inspected = inspectProjectIdentity(cwd);
+    const inspected = projects.checkout.inspect(cwd);
     if (
         inspected.kind !== "existing" ||
         inspected.identity.projectId !== request.projectId ||
@@ -117,8 +117,7 @@ export async function inspectExecutionRecoveryEvidence(
 
 export type ManagedExecutionIdentity = Pick<ExecutionRecoveryRequest, "projectId" | "repositoryId" | "personalOwner">;
 export async function inspectNonGitExecution(cwd: string, request: ManagedExecutionIdentity): Promise<void> {
-    const { inspectProjectIdentity } = await import("../project-identity.ts");
-    const owner = inspectProjectIdentity(cwd);
+    const owner = projects.checkout.inspect(cwd);
     if (
         owner.kind !== "existing" ||
         owner.identity.projectId !== request.projectId ||

@@ -12,7 +12,7 @@ affectedPaths:
     - "src/shared/session/session-resume-list.ts"
     - "src/shared/attached/record-store.ts"
     - "src/shared/attached/coordinator.ts"
-    - "src/shared/owner-coordination/projects.js"
+    - "packages/projects/registration.ts"
     - "src/shared/owner-coordination/index.js"
     - "src/ui/workspace/server/owner-projects.ts"
     - "src/ui/workspace/server/session-continuation.js"
@@ -132,7 +132,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   list and resume bound history while separating current execution cwd from historical transcript validation.
 - `src/shared/attached/record-store.ts` and `coordinator.ts` — bind original record/lock directories and replace
   path-equality ownership decisions with verified Project/repository evidence, including callbacks and replay.
-- `src/shared/owner-coordination/projects.js`, `index.js`, and Workspace `server/owner-projects.ts` and
+- `packages/projects/registration.ts`, `src/shared/owner-coordination/index.ts`, and Workspace `server/owner-projects.ts` and
   `session-continuation.js` — retain registration IDs/access policy and translate Session membership/current roots.
 - Existing identity, Session, Attached restore, and Workspace continuation suites, plus focused continuity test files
   named below — exercise real stores and fresh processes rather than source-text assertions.
@@ -141,7 +141,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `docs/domain-language.md` — reconcile Project Identity's legacy-locator wording and Session/Attached relationships
   with delivered lookup behavior; do not introduce a new Session kind.
 
-`project-directory-key.ts`, Project Runtime State placement, Plan document format, execution registry placement,
+`packages/projects/directory-key.ts`, Project Runtime State placement, Plan document format, execution registry placement,
 Memory, and metrics retain their current ownership and layout. Workspace changes are continuation plumbing, not UI
 redesign or automatic registration of linked clones.
 

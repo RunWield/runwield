@@ -1,3 +1,4 @@
+import { projects, type HomeProjectOwner, type ProjectId } from "@runwield/projects";
 import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "./packages.ts";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
@@ -7,12 +8,6 @@ import type { PublishedDeliverySources } from "./published-source.ts";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
 import { confirmManagedPublication } from "./retained-proof.ts";
 import { loadPlan, listPlans } from "../plan-store.ts";
-import {
-    assertProjectStoreIdentity,
-    projectStoreLocation,
-    withHomeProjectOwner,
-    type HomeProjectOwner,
-} from "../shared/project-identity.ts";
 import { authorLocalPlan, authorPackagePlan, type PlanAuthoringInput } from "./access.ts";
 import {
     getGlobalSecretStoreLocation,
@@ -80,7 +75,7 @@ import {
 } from "./operation-receipts.ts";
 
 export interface ProjectStoreBinding {
-    projectId: string;
+    projectId: ProjectId;
     repositoryId: string;
     ownerId: string;
 }
@@ -712,9 +707,9 @@ export class PreparedProjectStore {
         private readonly launch?: ManagedProjectStoreLaunch,
         private readonly signal?: AbortSignal,
     ) {
-        this.cwd = typeof registration === "string" ? registration : projectStoreLocation(registration);
+        this.cwd = typeof registration === "string" ? registration : projects.home.storeLocation(registration);
         this.homeOwner = typeof registration === "string" ? undefined : registration;
-        if (this.homeOwner) assertProjectStoreIdentity(this.homeOwner);
+        if (this.homeOwner) projects.home.assertStoreIdentity(this.homeOwner);
         const owner = this.homeOwner
             ? { kind: "local" as const, identity: this.homeOwner }
             : inspectLocalHomeStore(this.cwd);
@@ -738,7 +733,7 @@ export class PreparedProjectStore {
     }
     private owner() {
         const owner = this.homeOwner
-            ? (assertProjectStoreIdentity(this.homeOwner), { kind: "local" as const, identity: this.homeOwner })
+            ? (projects.home.assertStoreIdentity(this.homeOwner), { kind: "local" as const, identity: this.homeOwner })
             : inspectLocalHomeStore(this.cwd);
         if (
             owner.kind !== "local" ||
@@ -764,12 +759,12 @@ export class PreparedProjectStore {
                 };
             });
         };
-        return this.homeOwner ? await withHomeProjectOwner(this.homeOwner, author) : await author();
+        return this.homeOwner ? await projects.home.withOwner(this.homeOwner, author) : await author();
     }
     async execute(command: ProjectStoreCommand): Promise<ProjectStoreReply> {
         const run = () =>
             this.homeOwner
-                ? withHomeProjectOwner(this.homeOwner, () => this.executeAdmitted(command))
+                ? projects.home.withOwner(this.homeOwner, () => this.executeAdmitted(command))
                 : this.executeAdmitted(command);
         return this.execution ? await withPackageExecutionHost(this.execution, run) : await run();
     }

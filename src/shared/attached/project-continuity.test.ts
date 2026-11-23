@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
@@ -5,7 +6,6 @@ import { mkdir, mkdtemp, readFile, realpath, rename, rm, stat } from "node:fs/pr
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { admitProjectIdentity } from "../project-identity.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
     EVIDENCE,
@@ -32,11 +32,11 @@ test("a reused historical root cannot read or advance the moved Connect workflow
         process.env.HOME = home;
         try {
             const pending = pendingTriage(await runOperation("activate", root, activateInput()));
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             const file = join(locateAttachedWorkflows(root).workflowsDir, `${pending.workflowId}.json`);
             const before = await readFile(file, "utf8");
             await rename(root, moved);
-            equal((await admitProjectIdentity(moved)).kind, "existing");
+            equal((await projects.checkout.admit(moved)).kind, "existing");
             await mkdir(root);
             const status = await spawnAttachedCli("status", root, {
                 workflowId: pending.workflowId,
@@ -83,16 +83,16 @@ test("Connect workflows created between successive moves retain their original s
         const previous = process.env.HOME;
         process.env.HOME = home;
         try {
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             const original = locateAttachedWorkflows(root);
             await rename(root, middle);
-            equal((await admitProjectIdentity(middle)).kind, "existing");
+            equal((await projects.checkout.admit(middle)).kind, "existing");
             const pending = pendingTriage(await runOperation("activate", middle, activateInput()));
             equal(locateAttachedWorkflows(middle).workflowsDir, original.workflowsDir);
             const file = join(original.workflowsDir, `${pending.workflowId}.json`);
             const before = await readFile(file, "utf8");
             await rename(middle, current);
-            equal((await admitProjectIdentity(current)).kind, "existing");
+            equal((await projects.checkout.admit(current)).kind, "existing");
             const status = await spawnAttachedCli("status", current, {
                 workflowId: pending.workflowId,
                 inspectOnly: true,
@@ -131,7 +131,7 @@ test("fresh-process Connect restore and next action preserve original record, pe
         process.env.HOME = home;
         try {
             const pending = pendingTriage(await runOperation("activate", root, activateInput()));
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             const originalLocation = locateAttachedWorkflows(root);
             const file = join(originalLocation.workflowsDir, `${pending.workflowId}.json`);
             const before = await readFile(file, "utf8");
@@ -207,20 +207,20 @@ test("accepted clone discovers bound workflows while a declined clone cannot res
                 await configureFixtureIdentity(root);
             }
             const workflow = pendingTriage(await runOperation("activate", one, activateInput()));
-            const admitted = await admitProjectIdentity(one);
+            const admitted = await projects.checkout.admit(one);
             ok(admitted.kind === "existing");
-            const pending = await admitProjectIdentity(two);
+            const pending = await projects.checkout.admit(two);
             ok(pending.kind === "pending");
             equal(
-                (await admitProjectIdentity(declined, { choice: { kind: "new", candidates: pending.candidates } }))
+                (await projects.checkout.admit(declined, { choice: { kind: "new", candidates: pending.candidates } }))
                     .kind,
                 "existing",
             );
-            const refreshed = await admitProjectIdentity(two);
+            const refreshed = await projects.checkout.admit(two);
             ok(refreshed.kind === "pending");
             equal(
                 (
-                    await admitProjectIdentity(two, {
+                    await projects.checkout.admit(two, {
                         choice: {
                             kind: "link",
                             candidates: refreshed.candidates,
@@ -260,13 +260,13 @@ test("linked-clone visibility cannot transfer a live execution attempt or its pe
             }
             const active = await implementing(one);
             ok(active.ok);
-            const entered = await admitProjectIdentity(one);
+            const entered = await projects.checkout.admit(one);
             ok(entered.kind === "existing");
-            const pending = await admitProjectIdentity(two);
+            const pending = await projects.checkout.admit(two);
             ok(pending.kind === "pending");
             equal(
                 (
-                    await admitProjectIdentity(two, {
+                    await projects.checkout.admit(two, {
                         choice: { kind: "link", candidates: pending.candidates, projectId: entered.identity.projectId },
                     })
                 ).kind,
@@ -309,14 +309,14 @@ test("planning in a linked clone binds first execution there without transferrin
                 await configureFixtureIdentity(root);
             }
             const pending = pendingTriage(await runOperation("activate", one, activateInput()));
-            const admitted = await admitProjectIdentity(one);
+            const admitted = await projects.checkout.admit(one);
             ok(admitted.kind === "existing");
             for (const root of [two, three]) {
-                const candidate = await admitProjectIdentity(root);
+                const candidate = await projects.checkout.admit(root);
                 ok(candidate.kind === "pending");
                 equal(
                     (
-                        await admitProjectIdentity(root, {
+                        await projects.checkout.admit(root, {
                             choice: {
                                 kind: "link",
                                 candidates: candidate.candidates,

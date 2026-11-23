@@ -37,7 +37,12 @@ export class RemoteSessionPersistence {
     #pending = new Map<string, RemoteHydration>();
     constructor(readonly control: RemoteSessionControl) {}
 
-    metadata(sessionId: string, entries: FileEntry[], generation: number | null): ManagedSessionMetadata {
+    metadata(
+        sessionId: string,
+        entries: FileEntry[],
+        generation: number | null,
+        projectId?: RemoteSessionRecords["projectId"],
+    ): ManagedSessionMetadata {
         const identityEntry = entries.findLast(
             (entry) => entry.type === "custom" && entry.customType === REMOTE_SESSION_IDENTITY_ENTRY,
         );
@@ -51,7 +56,7 @@ export class RemoteSessionPersistence {
         const manager = SessionManager.inMemory(header.cwd, undefined, entries);
         return {
             runwieldSessionId: sessionId,
-            projectId: identity.projectId,
+            projectId: projectId ?? identity.projectId,
             piSessionId: identity.piSessionId || header.id,
             // A remote runtime owns no transcript file locator.
             transcriptPath: "",
@@ -177,7 +182,10 @@ export class RemoteSessionPersistence {
             const entries = [hydrated.manager.getHeader()!, ...hydrated.manager.getEntries()];
             session.setRootSessionManager(hydrated.manager);
             const records = this.records(session);
-            session.setManagedMetadata({ ...this.metadata(sessionId, entries, null), remoteRecords: records });
+            session.setManagedMetadata({
+                ...this.metadata(sessionId, entries, null, records.projectId),
+                remoteRecords: records,
+            });
             await withProjectRuntimeReadScope(() => restoreExecutionWorkflow(session, { persist: false }));
             await this.control.checkpoint(hydrated.operation);
             session.dehydrateManagedSession();
@@ -236,6 +244,7 @@ export class RemoteSessionPersistence {
             managed.runwieldSessionId,
             saved.entries,
             saved.summary.generation ?? managed.generation,
+            remoteRecords.projectId,
         );
         const projectRoot = session.getActiveExecutionWorkflow()?.projectRoot || session.cwd;
         const workflowContext = await reconcileRemoteWorkflow(projectRoot, metadata.workflowContext);

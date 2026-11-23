@@ -1,11 +1,11 @@
 /**
- * @module shared/owner-coordination/paths
+ * @module resources/owner-database/paths
  * Path helpers for the owner-only coordination database.
  */
 
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { getHomeDir } from "../../constants.ts";
+import { getHomeDir } from "../home.ts";
 
 export const OWNER_COORDINATION_DB_FILENAME = "owner-coordination.sqlite3";
 

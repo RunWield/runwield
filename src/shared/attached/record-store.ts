@@ -1,9 +1,4 @@
-import {
-    inspectProjectStorage,
-    inspectProjectIdentity,
-    isProjectStorageRootClaimed,
-    type ProjectStorageLocator,
-} from "../project-identity.ts";
+import { projects, type ProjectStorageLocator } from "@runwield/projects";
 import type { Dirent } from "node:fs";
 import { writeJsonAtomically } from "../private-json-file.ts";
 import { realpathSync, readdirSync, readFileSync } from "node:fs";
@@ -18,8 +13,6 @@ import { basename, dirname, join, resolve } from "node:path";
 import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
 import { getLockHostname, isLockHolderGone, isLockHolderUnattributable } from "../process-liveness.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { type TriageOutcome } from "@runwield/tools";
 import {
     type AttachedReviewChat,
@@ -120,18 +113,18 @@ function canonicalPath(path: string): string {
 export function locateAttachedWorkflows(projectRoot: string): AttachedWorkflowLocation {
     const homeDir = getHomeDir();
     if (!homeDir) throw new Error("home_unavailable: Set HOME to use Attached workflows.");
-    const primaryRoot = canonicalPath(resolvePrimaryCheckoutRoot(canonicalPath(projectRoot)));
+    const primaryRoot = canonicalPath(projects.checkout.primaryRoot(canonicalPath(projectRoot)));
     const homeBaseDir = join(homeDir, RUNWIELD_DIR_NAME, ATTACHED_DIR_NAME);
-    const bindings = inspectProjectStorage(primaryRoot);
-    const identity = inspectProjectIdentity(primaryRoot);
+    const bindings = projects.storage.inspect(primaryRoot);
+    const identity = projects.checkout.inspect(primaryRoot);
     const location: AttachedWorkflowLocation = {
         bindings,
-        foreignStorageRoot: !bindings.length && isProjectStorageRootClaimed(primaryRoot),
+        foreignStorageRoot: !bindings.length && projects.storage.isRootClaimed(primaryRoot),
         repositoryId: identity.kind === "existing" ? identity.identity.repositoryId : undefined,
         projectRoot: primaryRoot,
         workflowsDir:
             bindings[0]?.attachedDirectory ??
-            join(homeBaseDir, encodeCwdForSessionDir(primaryRoot), WORKFLOWS_DIR_NAME),
+            join(homeBaseDir, projects.directory.sessionKey(primaryRoot), WORKFLOWS_DIR_NAME),
         homeBaseDir,
     };
     if (location.bindings?.length || location.foreignStorageRoot) return location;
@@ -163,7 +156,7 @@ function findAliasedLocation(location: AttachedWorkflowLocation): AttachedWorkfl
                 !record ||
                 record.schemaVersion !== 1 ||
                 typeof record.projectRoot !== "string" ||
-                encodeCwdForSessionDir(record.projectRoot) !== directory.name
+                projects.directory.sessionKey(record.projectRoot) !== directory.name
             )
                 continue;
             let savedRoot: string;

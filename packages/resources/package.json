@@ -3,7 +3,10 @@
     "private": true,
     "type": "module",
     "exports": {
+        "./fs": "./fs.ts",
         "./home": "./home.ts",
-        "./personal": "./personal.ts"
+        "./owner-database": "./owner-database/index.ts",
+        "./personal": "./personal.ts",
+        "./sqlite": "./sqlite.ts"
     }
 }

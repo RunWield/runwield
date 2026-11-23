@@ -1,3 +1,4 @@
+import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import {
     commitOperationEffect,
     recoverOperationEffect,
@@ -6,21 +7,12 @@ import {
     type BatchOperationIntent,
 } from "./operation-receipts.ts";
 import { requestWorkspaceSearchRefresh } from "../shared/workspace-search-refresh.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { parseWorkRecordMarkdown } from "../shared/work-records/markdown.ts";
 /** Explicit personal Plan packages. Legacy discovery and lifecycle admission remain separate. */
 import fs from "node:fs/promises";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, isAbsolute, join, relative } from "node:path";
-import {
-    assertProjectStoreIdentity,
-    verifyExecutionAccountHome,
-    requireProjectCheckout,
-    isHomeProjectOwner,
-    projectStoreLocation,
-    type ProjectStoreIdentity as ProjectIdentity,
-} from "../shared/project-identity.ts";
 import { openNativeFileLock, type NativeFileLock } from "../shared/native-file-lock.ts";
 import {
     ensurePrivateDir,
@@ -427,7 +419,7 @@ function normalizeName(name: string): string {
 function layout(identity: ProjectIdentity): PackageLayout {
     if (identity.personalOwner.kind !== "execution-account")
         fail("unavailable", "Managed-remote packages require their personal-store transport.");
-    assertProjectStoreIdentity(identity);
+    projects.home.assertStoreIdentity(identity);
     const home = join(identity.executionAccountHome, ".wld", "projects", identity.projectId);
     const internal = join(home, "internal", "plan-packages");
     return {
@@ -1072,7 +1064,7 @@ export async function listPlanPackages(identity: ProjectIdentity, includeArchive
         return catalog;
     } catch (error) {
         if (!(error instanceof Error)) throw error;
-        return { packages: [], issues: [issue(error, projectStoreLocation(identity))] };
+        return { packages: [], issues: [issue(error, projects.home.storeLocation(identity))] };
     }
 }
 async function select(paths: PackageLayout, selector: PackageSelector): Promise<PackageInspection> {
@@ -1126,7 +1118,7 @@ export async function readPlanPackage(
         return await select(layout(identity), selector);
     } catch (error) {
         if (!(error instanceof Error)) throw error;
-        return issue(error, projectStoreLocation(identity));
+        return issue(error, projects.home.storeLocation(identity));
     }
 }
 async function loaded(paths: PackageLayout, planId: string): Promise<LoadedPlanPackage> {
@@ -1279,9 +1271,9 @@ async function mutate<T>(
 ): Promise<T> {
     const paths = layout(identity);
     const perform = async () => {
-        verifyExecutionAccountHome(identity);
+        projects.launch.verifyAccountHome(identity);
         const result = await action(paths);
-        verifyExecutionAccountHome(identity);
+        projects.launch.verifyAccountHome(identity);
         return result;
     };
     const planIds = selected === null ? [] : typeof selected === "string" ? [selected] : selected;
@@ -1435,8 +1427,8 @@ export async function createPlanPackage(
             metadata,
         } satisfies PackageIntent);
         await recover(paths);
-        if (!isHomeProjectOwner(identity))
-            await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
+        if (!projects.home.isOwner(identity))
+            await requestWorkspaceSearchRefresh(projects.checkout.primaryRoot(identity.checkoutRoot));
         return loaded(paths, input.planId);
     });
 }
@@ -1479,8 +1471,8 @@ export async function updatePlanPackageMetadata(
             )
         )
             writeJsonAtomically(path, next);
-        if (!isHomeProjectOwner(identity))
-            await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
+        if (!projects.home.isOwner(identity))
+            await requestWorkspaceSearchRefresh(projects.checkout.primaryRoot(identity.checkoutRoot));
         return next;
     });
 }
@@ -1515,8 +1507,8 @@ export async function savePlanPackageDocument(
             )
         )
             writeTextAtomically(path, bytes);
-        if (!isHomeProjectOwner(identity))
-            await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
+        if (!projects.home.isOwner(identity))
+            await requestWorkspaceSearchRefresh(projects.checkout.primaryRoot(identity.checkoutRoot));
         return digest(typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes);
     });
 }
@@ -2168,8 +2160,8 @@ export async function commitPlanPackageBatch(
             };
             writeJsonAtomically(paths.batch, batch);
             await recoverAuthoringBatch(paths, batch, true);
-            if (!isHomeProjectOwner(identity))
-                await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
+            if (!projects.home.isOwner(identity))
+                await requestWorkspaceSearchRefresh(projects.checkout.primaryRoot(identity.checkoutRoot));
         },
     );
 }
@@ -2188,7 +2180,7 @@ export async function importManagedPlanPackages(
     selection: string,
     transport: ManagedImportTransport,
 ): Promise<PlanImportResult> {
-    if (!isHomeProjectOwner(identity)) throw new Error("Managed import requires the personal home owner.");
+    if (!projects.home.isOwner(identity)) throw new Error("Managed import requires the personal home owner.");
     return await importObservedPlanPackages(identity, selection, transport);
 }
 async function importObservedPlanPackages(
@@ -2254,7 +2246,7 @@ async function importObservedPlanPackages(
                       await import("../shared/remote/project-store-launch.ts")
                   ).readManagedImportSource(transport.launch, request, transport.signal)
                 : await preparePlanPackageImport(
-                      requireProjectCheckout(identity),
+                      projects.home.requireCheckout(identity),
                       selection,
                       allocations,
                       catalog.packages,
@@ -2303,7 +2295,7 @@ async function importObservedPlanPackages(
                     ).readManagedImportSource(transport.launch, { ...request, prepared }, transport.signal);
                 else
                     await revalidatePlanImport(
-                        requireProjectCheckout(identity),
+                        projects.home.requireCheckout(identity),
                         prepared,
                         catalog.packages,
                         allocations,

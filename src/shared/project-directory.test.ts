@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { mkdtempSync, readdirSync, rmSync, symlinkSync, realpathSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,17 +8,11 @@ import { assertEquals, assertThrows } from "../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { getHomeDir } from "../constants.ts";
-import {
-    inspectMissingManagedProjectDirectory,
-    inspectProjectDirectory,
-    isExactSystemDirectory,
-    systemDirectoryLocations,
-} from "./project-directory.ts";
 
 for (const platform of ["linux", "darwin", "windows"]) {
     test(`${platform} policy matches exact locations, not descendants or similar names`, () => {
         const home = platform === "windows" ? "C:\\Users\\Owner" : "/users/owner";
-        const locations = systemDirectoryLocations({ platform, home });
+        const locations = projects.directory.systemLocations({ platform, home });
         const posix = [
             "/bin",
             "/sbin",
@@ -73,25 +68,28 @@ for (const platform of ["linux", "darwin", "windows"]) {
                   ];
         assertEquals(locations, expected);
         for (const location of expected) {
-            assertEquals(isExactSystemDirectory(location, locations, platform), true, location);
-            assertEquals(isExactSystemDirectory(`${location}/app`, locations, platform), false, location);
-            assertEquals(isExactSystemDirectory(`${location}/./`, locations, platform), true);
-            assertEquals(isExactSystemDirectory(`${location}/app/..`, locations, platform), true);
+            assertEquals(projects.directory.isExactSystem(location, locations, platform), true, location);
+            assertEquals(projects.directory.isExactSystem(`${location}/app`, locations, platform), false, location);
+            assertEquals(projects.directory.isExactSystem(`${location}/./`, locations, platform), true);
+            assertEquals(projects.directory.isExactSystem(`${location}/app/..`, locations, platform), true);
         }
         assertEquals(
-            isExactSystemDirectory(platform === "windows" ? "C:\\binary" : "/binary", locations, platform),
+            projects.directory.isExactSystem(platform === "windows" ? "C:\\binary" : "/binary", locations, platform),
             false,
         );
-        assertEquals(isExactSystemDirectory(platform === "windows" ? "D:\\" : "/", locations, platform), true);
+        assertEquals(
+            projects.directory.isExactSystem(platform === "windows" ? "D:\\" : "/", locations, platform),
+            true,
+        );
         if (platform === "windows") {
             assertEquals(
-                systemDirectoryLocations({ platform, home, systemRoot: "D:\\Windows" }).includes("D:\\Users"),
+                projects.directory.systemLocations({ platform, home, systemRoot: "D:\\Windows" }).includes("D:\\Users"),
                 true,
             );
-            assertEquals(isExactSystemDirectory("c:/users/OWNER/", locations, platform), true);
-            assertEquals(isExactSystemDirectory("\\\\server\\share\\", locations, platform), true);
-            assertEquals(isExactSystemDirectory("\\\\server\\share\\app", locations, platform), false);
-        } else assertEquals(isExactSystemDirectory(home.toUpperCase(), locations, platform), false);
+            assertEquals(projects.directory.isExactSystem("c:/users/OWNER/", locations, platform), true);
+            assertEquals(projects.directory.isExactSystem("\\\\server\\share\\", locations, platform), true);
+            assertEquals(projects.directory.isExactSystem("\\\\server\\share\\app", locations, platform), false);
+        } else assertEquals(projects.directory.isExactSystem(home.toUpperCase(), locations, platform), false);
     });
 }
 test("real home and symlink aliases are classified without scanning or writing", async () => {
@@ -99,10 +97,10 @@ test("real home and symlink aliases are classified without scanning or writing",
     try {
         const alias = join(dir, "home-alias");
         await symlink(getHomeDir(), alias);
-        assertEquals(inspectProjectDirectory(alias).classified, true);
-        assertEquals(inspectProjectDirectory(getHomeDir()).classified, true);
-        assertEquals(inspectProjectDirectory(dir).classified, false);
-        assertThrows(() => inspectProjectDirectory(join(dir, "missing")), Error, "ENOENT");
+        assertEquals(projects.directory.inspect(alias).classified, true);
+        assertEquals(projects.directory.inspect(getHomeDir()).classified, true);
+        assertEquals(projects.directory.inspect(dir).classified, false);
+        assertThrows(() => projects.directory.inspect(join(dir, "missing")), Error, "ENOENT");
         assertEquals(
             [...readdirSync(dir, { withFileTypes: true })].map((entry) => entry.name),
             ["home-alias"],
@@ -118,20 +116,20 @@ test("missing managed target uses its canonical ancestor without weakening selec
         const alias = join(dir, "alias");
         symlinkSync(dir, alias);
         const target = join(alias, "missing", "execution");
-        const inspection = inspectMissingManagedProjectDirectory(target);
+        const inspection = projects.directory.inspectMissingManaged(target);
         assertEquals(inspection.canonicalRoot, join(realpathSync.native(dir), "missing", "execution"));
         assertEquals(inspection.classified, false);
-        assertThrows(() => inspectProjectDirectory(target), Error, "ENOENT");
+        assertThrows(() => projects.directory.inspect(target), Error, "ENOENT");
         assertEquals(
             [...readdirSync(dir, { withFileTypes: true })].map((entry) => entry.name),
             ["alias"],
         );
         const file = join(dir, "file");
         writeText(file, "not a directory");
-        assertThrows(() => inspectMissingManagedProjectDirectory(file), Error, "must be a directory");
+        assertThrows(() => projects.directory.inspectMissingManaged(file), Error, "must be a directory");
         const dangling = join(dir, "dangling");
         symlinkSync(join(dir, "absent"), dangling);
-        assertThrows(() => inspectMissingManagedProjectDirectory(dangling), Error, "ENOENT");
+        assertThrows(() => projects.directory.inspectMissingManaged(dangling), Error, "ENOENT");
     } finally {
         rmSync(dir, { recursive: true });
     }
@@ -148,9 +146,9 @@ test("missing managed home is classified through a canonical ancestor alias", as
             const home = join(dir, "absent-home");
             setEnv("HOME", home);
             setEnv("WLD_TEST_SANDBOX_HOME", home);
-            assertEquals(inspectMissingManagedProjectDirectory(home).classified, true);
-            assertEquals(inspectMissingManagedProjectDirectory(join(alias, "absent-home")).classified, true);
-            assertThrows(() => inspectProjectDirectory(home), Error, "ENOENT");
+            assertEquals(projects.directory.inspectMissingManaged(home).classified, true);
+            assertEquals(projects.directory.inspectMissingManaged(join(alias, "absent-home")).classified, true);
+            assertThrows(() => projects.directory.inspect(home), Error, "ENOENT");
             assertEquals(
                 [...readdirSync(dir, { withFileTypes: true })].map((entry) => entry.name),
                 ["alias"],

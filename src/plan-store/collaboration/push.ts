@@ -1,6 +1,6 @@
+import { projects } from "@runwield/projects";
 import { markCollaborationNetworkEffect, retainCollaborationMutation } from "../operation-receipts.ts";
 import { managedPersonalStoreActive, pushManagedPlan } from "../managed.ts";
-import { currentHomeProjectOwner } from "../../shared/project-identity.ts";
 import { prepareCollaborationPlan as preparePlanWorkflow } from "./operations.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 /**
@@ -137,7 +137,7 @@ function redactedError(error: Error, secrets: string[]): string {
 export async function pushPlanRevision(pushOptions: PushPlanRevisionOptions): Promise<PushedPlanRevision> {
     if (managedPersonalStoreActive()) return await pushManagedPlan(pushOptions);
     const cwd = pushOptions.cwd || getCwd();
-    if (!currentHomeProjectOwner()) await prepareWorktreeRegistry(cwd);
+    if (!projects.home.current()) await prepareWorktreeRegistry(cwd);
     const now = new Date().toISOString();
     const target = pushOptions.target;
     const selected = (await listPlans(cwd)).filter((plan) => plan.name === target || plan.attrs.planId === target);
@@ -337,7 +337,7 @@ export async function runPlansPushCommand(argv: string[]): Promise<void> {
         return;
     }
     const cwd = getCwd();
-    if (!currentHomeProjectOwner()) await prepareWorktreeRegistry(cwd);
+    if (!projects.home.current()) await prepareWorktreeRegistry(cwd);
     const pushed = await pushPlanRevision({
         target: parsed.target as string,
         cwd,

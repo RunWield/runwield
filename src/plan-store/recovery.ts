@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import {
     managedPlanStoreActive,
     reopenManagedPlanReview,
@@ -17,7 +18,6 @@ import {
 import { buildPlanEventUpdates, type PlanStatus } from "../shared/workflow/plan-lifecycle.ts";
 import { writeControllerState } from "./controllers.ts";
 import { currentPackageProject, readRecoveryExecution } from "./workflows.ts";
-import { currentHomeProjectOwner } from "../shared/project-identity.ts";
 import { recoveryPlanSnapshot, runPlanFrontMatterTransition, runReviewReopenTransition } from "./transitions.ts";
 
 /** Discard execution selection only after its external cleanup has settled. */
@@ -143,7 +143,7 @@ export async function restoreRecreatedPlanExecution(cwd: string, name: string, a
         if (!snapshot) throw new Error("The recovery transaction has no retained Plan source.");
         return await recoverManagedExecution(cwd, name, "recreate", snapshot.revision, attemptId);
     }
-    const source = currentHomeProjectOwner() ? await loadPlan(cwd, name) : recoveryPlanSnapshot(name);
+    const source = projects.home.current() ? await loadPlan(cwd, name) : recoveryPlanSnapshot(name);
     if (!source) throw new Error("The recovery transaction has no retained Plan source.");
     const attempt = await readRecoveryExecution(cwd, attemptId);
     if (!attempt || attempt.planName !== name || attempt.planId !== source.attrs.planId)
@@ -156,7 +156,7 @@ export async function restoreRecreatedPlanExecution(cwd: string, name: string, a
         await mkdir(dirname(path), { recursive: true });
         await writePlanMarkdownWithRevision(path, source.markdown, current?.revision);
     }
-    const ownerCwd = currentHomeProjectOwner() ? cwd : attempt.path;
+    const ownerCwd = projects.home.current() ? cwd : attempt.path;
     const current = await loadPlan(ownerCwd, name);
     if (!current) throw new Error(`Recreated execution Plan is missing: ${name}`);
     const updates = buildPlanEventUpdates("recovery_reset", source.attrs.status, {
@@ -184,11 +184,10 @@ export async function retainUserVerifiedPlan(
     expectedRevision: string,
     attemptId?: string,
 ): Promise<void> {
-    const { resolvePrimaryCheckoutRoot } = await import("../shared/project-checkout.ts");
     const { resolveWorkflowPlanLocation } = await import("./location.ts");
     const { runRecoveryTransition } = await import("./transitions.ts");
     const { updateEntry } = await import("../shared/worktree-registry.ts");
-    const root = resolvePrimaryCheckoutRoot(cwd);
+    const root = projects.checkout.primaryRoot(cwd);
     if (managedPlanStoreActive()) {
         const accepted = await (await import("./queries.ts")).loadPlan(cwd, name);
         if (!accepted || accepted.attrs.status !== "user_verified" || accepted.revision !== expectedRevision)
@@ -202,7 +201,7 @@ export async function retainUserVerifiedPlan(
         await recoverManagedExecution(cwd, name, "user-verified", expectedRevision, attemptId);
         return;
     }
-    const location = currentHomeProjectOwner()
+    const location = projects.home.current()
         ? { documentRoot: cwd, plan: await loadPlan(cwd, name) }
         : await resolveWorkflowPlanLocation(cwd, name);
     const accepted = location.plan;
@@ -236,7 +235,7 @@ export async function retainUserVerifiedPlan(
             if (attempt) {
                 if (attempt.planName !== name || attempt.planId !== accepted.attrs.planId)
                     throw new Error("Accepted Plan execution identity changed.");
-                if (!currentHomeProjectOwner()) await updateEntry(root, attempt.id, { status: "abandoned" });
+                if (!projects.home.current()) await updateEntry(root, attempt.id, { status: "abandoned" });
             }
             await writeControllerState(
                 root,

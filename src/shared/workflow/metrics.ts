@@ -3,13 +3,12 @@
  * Local-only workflow metrics recording helpers.
  */
 
+import { ProjectIdentityEntryRequired, projects, type ProjectId, type ProjectIdentity } from "@runwield/projects";
 import { createHash } from "node:crypto";
-import { realpathSync } from "node:fs";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
 import type { JsonRecord, JsonValue } from "../jsonc.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import {
     adoptLegacyWorkflowMetricJournal,
     appendWorkflowMetric,
@@ -108,7 +107,7 @@ const activeToolCalls = new Map<string, ActiveToolCall>();
 
 export type MeasurementProject = {
     root: string;
-    key: string;
+    projectId: ProjectId;
     journalPath: string;
 };
 
@@ -125,37 +124,34 @@ export class MeasurementProjectUnavailableError extends Error {
 /**
  * One identity for the primary checkout, including symlink and worktree aliases.
  */
-export function resolveMeasurementProject(root: string): MeasurementProject {
-    if (!root) throw new Error("resolveMeasurementProject: root is required");
-    const spellings = new Set([resolvePrimaryCheckoutRoot(root)]);
-    let canonical = resolve(root);
+function measurementProject(root: string, identity: ProjectIdentity): MeasurementProject {
+    const canonical = realpathSync(projects.checkout.primaryRoot(identity.checkoutRoot));
+    const projectId = identity.projectId;
+    const directory = metricsDirectory();
+    const project = { root: canonical, projectId, journalPath: join(directory, projectId, "metrics.jsonl") };
+    if (existsSync(project.journalPath) || !existsSync(directory)) return project;
     try {
-        canonical = realpathSync(canonical);
-    } catch {
-        // Missing Projects still have a stable absolute identity.
-    }
-    canonical = resolvePrimaryCheckoutRoot(canonical);
-    spellings.add(canonical);
-    try {
-        canonical = realpathSync(canonical);
-    } catch {
-        canonical = resolve(canonical);
-    }
-    spellings.add(canonical);
-    const key = createHash("sha256").update(canonical).digest("hex");
-    const label =
-        basename(canonical)
-            .replace(/[^a-zA-Z0-9_-]/g, "_")
-            .slice(0, 40) || "project";
-    const directory = join(getHomeDir() || "~", RUNWIELD_DIR_NAME, METRICS_DIR_NAME);
-    const project = { root: canonical, key, journalPath: join(directory, `${label}-${key}`, "metrics.jsonl") };
-    try {
+        const spellings = new Set([
+            canonical,
+            resolve(projects.checkout.primaryRoot(root)),
+            ...projects.checkout.historicalRoots(identity),
+        ]);
+        const hashes = [...spellings].map((value) => createHash("sha256").update(value).digest("hex"));
         for (const spelling of spellings) {
-            adoptLegacyWorkflowMetricJournal(
-                project.journalPath,
-                join(directory, encodeCwdForSessionDir(spelling), "metrics.jsonl"),
-                [...spellings].map((value) => createHash("sha256").update(value).digest("hex")),
-            );
+            const label =
+                basename(spelling)
+                    .replace(/[^a-zA-Z0-9_-]/g, "_")
+                    .slice(0, 40) || "project";
+            const hash = createHash("sha256").update(spelling).digest("hex");
+            const hashed = join(directory, `${label}-${hash}`, "metrics.jsonl");
+            const shared = join(directory, projects.directory.sessionKey(spelling), "metrics.jsonl");
+            if (
+                (existsSync(hashed) || existsSync(join(dirname(hashed), "state.json")) || existsSync(shared)) &&
+                !projects.checkout.isOtherProjectRoot(identity, spelling)
+            ) {
+                adoptLegacyWorkflowMetricJournal(project.journalPath, hashed, hashes, hash, true);
+                adoptLegacyWorkflowMetricJournal(project.journalPath, shared, hashes, hash);
+            }
         }
     } catch {
         throw new MeasurementProjectUnavailableError(project);
@@ -163,8 +159,34 @@ export function resolveMeasurementProject(root: string): MeasurementProject {
     return project;
 }
 
+function metricsDirectory(): string {
+    return join(getHomeDir() || "~", RUNWIELD_DIR_NAME, METRICS_DIR_NAME);
+}
+
+/** Passive lookup may adopt existing history for an admitted Project. */
+export function inspectMeasurementProject(root: string, expectedId?: ProjectId): MeasurementProject | undefined {
+    const inspected = projects.checkout.inspect(root);
+    if (inspected.kind !== "existing" || (expectedId && inspected.identity.projectId !== expectedId)) return undefined;
+    return measurementProject(root, inspected.identity);
+}
+
+/** Explicit measurement entry can wait for a concurrent first writer's admission. */
+export async function admitMeasurementProject(root: string): Promise<MeasurementProject> {
+    const inspected = inspectMeasurementProject(root);
+    if (inspected) return inspected;
+    const admitted = await projects.checkout.admit(root);
+    if (admitted.kind !== "existing") throw new ProjectIdentityEntryRequired(admitted);
+    return measurementProject(root, admitted.identity);
+}
+
+/** A recorder can capture the initial epoch before any writer admits the checkout. */
+export function getWorkflowMetricsCapturePath(root: string): string | undefined {
+    return inspectMeasurementProject(root)?.journalPath;
+}
+
 export function getWorkflowMetricsFilePath(cwd: string): string {
-    return resolveMeasurementProject(cwd).journalPath;
+    return (inspectMeasurementProject(cwd) ?? measurementProject(cwd, projects.checkout.admitForStorage(cwd)))
+        .journalPath;
 }
 
 export async function hashMetricCwd(value: string): Promise<string> {
@@ -911,11 +933,19 @@ export type WorkflowMetricResult = JournalResult & Pick<WorkflowMetricRecord, "d
 export async function recordWorkflowMetric(metric: MetricFields, cwd: string): Promise<WorkflowMetricResult> {
     try {
         if (!cwd) throw new Error("recordWorkflowMetric: cwd is required");
-        const project = resolveMeasurementProject(cwd);
-        const projectRoot = project.root;
         // Git and Plan storage can load without booting the agent package.
         // Actual metric writes still read the real settings and honor opt-out.
         const { getCustomSetting, getMergedCustomSetting } = await import("../settings.ts");
+        const inspected = inspectMeasurementProject(cwd);
+        const candidateRoot = inspected?.root ?? projects.checkout.primaryRoot(cwd);
+        if (
+            !inspected &&
+            metric.collectionEnabledAtCall !== true &&
+            !isWorkflowMetricsEnabled(getMergedCustomSetting("workflowMetrics", candidateRoot))
+        )
+            return { persisted: false, reason: "disabled" };
+        const project = inspected ?? (await admitMeasurementProject(cwd));
+        const projectRoot = project.root;
         const resolvedSetting = getMergedCustomSetting("workflowMetrics", projectRoot);
         const filePath = project.journalPath;
         const epochState = resolveCollectionEpoch(
@@ -935,7 +965,7 @@ export async function recordWorkflowMetric(metric: MetricFields, cwd: string): P
                     ? Math.min(Date.now() + 1000, metric.persistenceDeadline)
                     : Date.now() + 1000,
         };
-        const cwdHash = project.key;
+        const cwdHash = await hashMetricCwd(projectRoot);
 
         let record: WorkflowMetricRecord | WorkflowMetricV2Record | null;
         if (metric.v === 2) {

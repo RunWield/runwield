@@ -1,10 +1,10 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, packageFixture, startDriver } from "./shared/testing/plan-package-fixture.ts";
 import { listPlanPackages } from "./plan-store/packages.ts";
-import { admitProjectIdentity, inspectProjectIdentity } from "./shared/project-identity.ts";
 import { git } from "./shared/git-test-fixture.ts";
 
 for (const command of ["metadata", "document"] as const)
@@ -84,18 +84,18 @@ test("two worktrees and an explicitly linked clone share the Project package loc
     try {
         await git(f.root, ["remote", "add", "origin", "https://example.com/packages.git"]);
         // Re-admission refreshes stored repository evidence used by explicit clone linking.
-        await admitProjectIdentity(f.root);
+        await projects.checkout.admit(f.root);
         await git(f.root, ["worktree", "add", "-b", "second", secondary]);
         await git(f.root, ["worktree", "add", "-b", "third", third]);
-        const secondIdentity = await admitProjectIdentity(secondary);
+        const secondIdentity = await projects.checkout.admit(secondary);
         ok(secondIdentity.kind === "existing");
-        const thirdIdentity = await admitProjectIdentity(third);
+        const thirdIdentity = await projects.checkout.admit(third);
         ok(thirdIdentity.kind === "existing");
         await git(f.root, ["clone", f.root, clone]);
         await git(clone, ["remote", "set-url", "origin", "https://example.com/packages.git"]);
-        const pending = inspectProjectIdentity(clone);
+        const pending = projects.checkout.inspect(clone);
         ok(pending.kind === "pending", JSON.stringify(pending));
-        const linked = await admitProjectIdentity(clone, {
+        const linked = await projects.checkout.admit(clone, {
             choice: { kind: "link", candidates: pending.candidates, projectId: f.identity.projectId },
         });
         ok(linked.kind === "existing");
@@ -131,7 +131,7 @@ test("separate personal Project stores do not contend on equal Plan IDs", async 
     const first = await packageFixture();
     const personalHome = join(first.root, "other-personal-home");
     await fs.mkdir(personalHome);
-    const admitted = await admitProjectIdentity(first.root, {
+    const admitted = await projects.checkout.admit(first.root, {
         context: {
             executionAccountHome: personalHome,
             personalOwner: { kind: "execution-account", identity: personalHome },

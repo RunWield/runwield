@@ -1,3 +1,10 @@
+import {
+    projects,
+    type ProjectIdentityAdmission,
+    type ProjectIdentity,
+    type ProjectLaunchContext,
+    type ProjectCloneChoice,
+} from "@runwield/projects";
 import { test } from "node:test";
 import { deepEqual, equal, notEqual, ok } from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
@@ -7,18 +14,9 @@ import process from "node:process";
 import { createHash, randomUUID } from "node:crypto";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import { captureForegroundProcess } from "./captured-process.ts";
-import {
-    admitProjectIdentity,
-    inspectProjectIdentity,
-    type ProjectIdentityAdmission,
-    type ProjectIdentity,
-    type ProjectLaunchContext,
-    type ProjectCloneChoice,
-} from "./project-identity.ts";
 import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import { getRunWieldSessionDir } from "./session/root-session.ts";
 import { locateAttachedWorkflows } from "./attached/record-store.ts";
-import { encodeCwdForSessionDir } from "./project-directory-key.ts";
 import { getHomeDir } from "../constants.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 const fixture = defineCommittedGitFixture();
@@ -57,8 +55,8 @@ async function child(
     choice?: ProjectCloneChoice,
     extraEnv: Record<string, string> = {},
 ): Promise<ProjectIdentityAdmission> {
-    const module = new URL("./project-identity.ts", import.meta.url).href;
-    const code = `import { admitProjectIdentity } from ${JSON.stringify(module)}; console.log(JSON.stringify(await admitProjectIdentity(${JSON.stringify(root)}, ${JSON.stringify({ context, choice })})));`;
+    const module = import.meta.resolve("@runwield/projects");
+    const code = `import { projects } from ${JSON.stringify(module)}; console.log(JSON.stringify(await projects.checkout.admit(${JSON.stringify(root)}, ${JSON.stringify({ context, choice })})));`;
     const result = await captureForegroundProcess(process.execPath, { cwd: root, args: ["-e", code], env: extraEnv });
     equal(result.code, 0, new TextDecoder().decode(result.stderr));
     return JSON.parse(new TextDecoder().decode(result.stdout));
@@ -136,7 +134,7 @@ test("clone choices stay pending without input, preserve cancellation, and remem
         equal(pending.candidates.length, 1);
         equal((await child(two, context, { kind: "cancel", candidates: pending.candidates })).kind, "canceled");
         equal(await readFile(join(two, ".git", "config"), "utf8"), before);
-        equal(inspectProjectIdentity(two, { context }).kind, "pending");
+        equal(projects.checkout.inspect(two, { context }).kind, "pending");
         const linked = admitted(
             await child(two, context, { kind: "link", candidates: pending.candidates, projectId: first.projectId }),
         );
@@ -203,15 +201,15 @@ test("real runtime entry preserves independently pinned runtime and legacy Sessi
             const context = localContext(home);
             const canonicalRoot = await realpath(root);
             // These legacy values are fixed independently of the encoder under test.
-            equal(encodeCwdForSessionDir("/legacy/runwield project"), "--legacy-runwield project--");
-            equal(encodeCwdForSessionDir("C:\\legacy\\runwield project"), "--C--legacy-runwield project--");
+            equal(projects.directory.sessionKey("/legacy/runwield project"), "--legacy-runwield project--");
+            equal(projects.directory.sessionKey("C:\\legacy\\runwield project"), "--C--legacy-runwield project--");
             const readableKey = `--${canonicalRoot.split(/[\\/]/).filter(Boolean).join("-").replace(/:/g, "-")}--`;
             const legacyKey =
                 readableKey.length <= 120
                     ? readableKey
                     : `--${basename(canonicalRoot).slice(0, 40)}-${createHash("sha256").update(canonicalRoot).digest("hex").slice(0, 32)}--`;
             const layout = await enterProjectRuntime(root, { context });
-            const binding = inspectProjectIdentity(root, { context });
+            const binding = projects.checkout.inspect(root, { context });
             ok(binding.kind === "existing");
             const { projectId, repositoryId, checkoutId, personalOwner } = binding.identity;
             const owner = createHash("sha256").update(`${personalOwner.kind}\0${personalOwner.identity}`).digest("hex");
@@ -255,7 +253,7 @@ test("real runtime entry preserves independently pinned runtime and legacy Sessi
                 locateAttachedWorkflows(root).workflowsDir,
                 join(getHomeDir(), ".wld", "attached", legacyKey, "workflows"),
             );
-            equal(inspectProjectIdentity(root, { context }).kind, "existing");
+            equal(projects.checkout.inspect(root, { context }).kind, "existing");
         } finally {
             if (originalHome === undefined) delete process.env.HOME;
             else process.env.HOME = originalHome;
@@ -273,7 +271,7 @@ test("ordinary manual SSH startup retains execution-account ownership", async ()
         const old = process.env.SSH_CONNECTION;
         try {
             process.env.SSH_CONNECTION = "laptop 123 server 22";
-            const identity = admitted(await admitProjectIdentity(root));
+            const identity = admitted(await projects.checkout.admit(root));
             deepEqual(identity.personalOwner, { kind: "execution-account", identity: getHomeDir() });
             equal(identity.executionAccountHome, getHomeDir());
         } finally {
@@ -284,20 +282,20 @@ test("ordinary manual SSH startup retains execution-account ownership", async ()
     });
 });
 
-test("Workspace registration keeps its registration ID while associating admitted Core identity", async () => {
+test("Workspace registration admits a new checkout with the same durable identity used by Core", async () => {
     const { openOwnerCoordinationDatabase } = await import("./owner-coordination/database.ts");
-    const { registerProject, getProjectById } = await import("./owner-coordination/projects.ts");
+    const { bindProjectRegistry } = await import("@runwield/projects/owner-coordination");
     const home = await mkdtemp(join(tmpdir(), "identity-workspace-"));
     const root = await fixture.checkout();
     const database = openOwnerCoordinationDatabase({ dbPath: join(home, "owner.sqlite3") });
     try {
-        const registration = registerProject(database, { root });
-        equal(registration.coreProjectId, null);
-        const identity = admitted(await admitProjectIdentity(root));
-        const associated = getProjectById(database, registration.projectId);
+        const registrations = bindProjectRegistry(database);
+        const registration = registrations.register({ root });
+        ok(/^[0-9a-f-]{36}$/.test(registration.projectId));
+        const identity = admitted(await projects.checkout.admit(root));
+        const associated = registrations.get(registration.projectId);
         equal(associated?.projectId, registration.projectId);
-        equal(associated?.coreProjectId, identity.projectId);
-        notEqual(identity.projectId, registration.projectId);
+        equal(identity.projectId, registration.projectId);
     } finally {
         database.close();
         await rm(home, { recursive: true, force: true });
@@ -323,7 +321,7 @@ test("ordinary CLI presents unavailable clone choice as pending and saves no dec
         });
         equal(result.code, 1);
         ok(new TextDecoder().decode(result.stderr).includes("Project clone-link choice required"));
-        equal(inspectProjectIdentity(two, { context: localContext(home) }).kind, "pending");
+        equal(projects.checkout.inspect(two, { context: localContext(home) }).kind, "pending");
         ok(!(await readdir(join(two, ".git"))).includes(".runwield-project.lock"));
     } finally {
         await rm(home, { recursive: true, force: true });
@@ -342,12 +340,12 @@ for (const scenario of ["new then link", "link then new", "link then different l
             const clone = join(home, "clone");
             for (const root of [known, separate, clone]) await git(source, ["clone", source, root]);
             const first = admitted(await child(known, context));
-            const initial = inspectProjectIdentity(separate, { context });
+            const initial = projects.checkout.inspect(separate, { context });
             if (initial.kind !== "pending") throw new Error("Expected pending clone");
             const other = admitted(await child(separate, context, { kind: "new", candidates: initial.candidates }));
             // Both prompts observe the same uncommitted clone before either submits its answer.
-            const promptA = inspectProjectIdentity(clone, { context });
-            const promptB = inspectProjectIdentity(clone, { context });
+            const promptA = projects.checkout.inspect(clone, { context });
+            const promptB = projects.checkout.inspect(clone, { context });
             if (promptA.kind !== "pending" || promptB.kind !== "pending") throw new Error("Expected pending prompts");
             deepEqual(promptA, promptB);
             const winner: ProjectCloneChoice =
@@ -386,14 +384,14 @@ test("activated managed owner never falls back after its verified mount is detac
     const home = await mkdtemp(join(tmpdir(), "identity-activated-owner-"));
     const root = await fixture.checkout();
     try {
-        const identityModule = new URL("./project-identity.ts", import.meta.url).href;
+        const identityModule = import.meta.resolve("@runwield/projects");
         const resourcesModule = new URL("./remote/personal-resources.ts", import.meta.url).href;
         const constantsModule = new URL("../constants.ts", import.meta.url).href;
         const code = `
             import { deepEqual, equal, match } from "node:assert/strict";
             import { mkdir, rename, readdir, readFile, lstat } from "node:fs/promises";
             import { join } from "node:path";
-            import { admitProjectIdentity, inspectProjectIdentity } from ${JSON.stringify(identityModule)};
+            import { projects } from ${JSON.stringify(identityModule)};
             import { configureRemotePersonalResources } from ${JSON.stringify(resourcesModule)};
             import { getHomeDir } from ${JSON.stringify(constantsModule)};
             const root = ${JSON.stringify(root)};
@@ -402,7 +400,7 @@ test("activated managed owner never falls back after its verified mount is detac
             await mkdir(globalRoot);
             const personalOwner = { kind: "managed-remote", identity: "verified-laptop-owner" };
             configureRemotePersonalResources({ globalRoot, personalOwner });
-            const active = await admitProjectIdentity(root);
+            const active = await projects.checkout.admit(root);
             equal(active.kind, "existing", JSON.stringify(active));
             deepEqual(active.identity.personalOwner, personalOwner);
             equal(active.identity.executionAccountHome, home);
@@ -418,10 +416,10 @@ test("activated managed owner never falls back after its verified mount is detac
                 return [own, nested];
             }
             const before = [await snapshot(home), await snapshot(root)];
-            const inspected = inspectProjectIdentity(root);
+            const inspected = projects.checkout.inspect(root);
             equal(inspected.kind, "invalid", JSON.stringify(inspected));
             match(inspected.message, /changed identity/);
-            const admitted = await admitProjectIdentity(root);
+            const admitted = await projects.checkout.admit(root);
             equal(admitted.kind, "invalid", JSON.stringify(admitted));
             match(admitted.message, /changed identity/);
             deepEqual([await snapshot(home), await snapshot(root)], before);

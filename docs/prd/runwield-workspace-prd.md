@@ -459,7 +459,8 @@ abandoned delivery, with Project, model, and backend breakdowns.
 **Requirement: Report only authorized Project histories.** Each request resolves registered, enabled, available
 Projects, then uses one Core query over their roots. Disabled, removed, unavailable, and unregistered Projects cannot
 contribute totals or be queried by a crafted ID. Excluded registrations are named. Worktree aliases share one history
-and one set of totals, with both registration labels visible. Filtering either alias reads the same history.
+and one set of totals, with both registration labels visible. Filtering either alias reads the same history under its
+canonical Project ID. A verified checkout move retains that history.
 
 **Requirement: Make data completeness visible beside measurements.** Period presets cover 7, 30, and 90 local days; a
 custom range has an inclusive start and exclusive end. The server supplies the host time zone and recorded-through
@@ -470,7 +471,7 @@ stays separate from estimated cost, and neither claims to be a billing total. Pe
 spend; ongoing delivery is labeled as of the latest observation.
 
 **Requirement: Link measurements only to verified destinations.** Project rows link to existing authorized Session and
-Plan surfaces using Workspace registration IDs and durable Session/Plan IDs. Repeated event links share one readable
+Plan surfaces using canonical Project IDs and durable Session/Plan IDs. Repeated event links share one readable
 destination. Missing or deleted targets leave totals readable without fabricated links. The page does not show a raw
 event list or raw event download.
 
@@ -590,9 +591,11 @@ Registering, disabling, and removing a Project change Workspace access and index
 Records, Session history, branches, and RunWield worktrees stay as they are.
 
 **Requirement: Manage a Project from its settings.** Project settings opens from the registration alone, so the owner
-can relink, disable, or remove a Project whose root is missing or disabled. Disabling is reversible. Remove deletes the
-registration completely and returns to Projects; adding the directory again creates a new registration and rediscovers
-its Sessions and artifacts. Repository content becomes available when the Project is enabled and its root exists.
+can relink, change the status, or remove a Project whose root is missing or inactive. A new registration returns
+the canonical Project ID and starts active. Its status is either active or inactive, independently of directory
+health. Owners can reactivate an inactive Project. Removal deletes the Workspace registration and returns to
+Projects. Adding the same admitted checkout again recovers its Project ID, Sessions and artifacts. Workspace
+opens repository content when the Project is active and its root is available.
 Project settings requests preserve caller-supplied HTTP headers in every standard browser header format, together with the
 default JSON content type and owner CSRF token unless explicitly overridden by the caller.
 

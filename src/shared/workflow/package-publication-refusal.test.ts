@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -236,18 +237,17 @@ for (const copies of [false, true]) {
 
 for (const place of ["linked-clone", "foreign-owner"] as const) {
     test(`${place} cannot adopt publication; original owner resumes the same attempt`, async () => {
-        const { admitProjectIdentity, inspectProjectIdentity } = await import("../project-identity.ts");
         const f = await publicationFixture(false);
         const clone = `${f.root}-linked`;
         try {
             equal((await f.drive("candidate_receipt")).code, 86);
             const identity = f.config.packageSelection.identity;
             if (place === "linked-clone") {
-                await admitProjectIdentity(f.root);
+                await projects.checkout.admit(f.root);
                 await git(f.root, ["clone", f.remote, clone]);
-                const pending = inspectProjectIdentity(clone);
+                const pending = projects.checkout.inspect(clone);
                 ok(pending.kind === "pending");
-                const linked = await admitProjectIdentity(clone, {
+                const linked = await projects.checkout.admit(clone, {
                     choice: { kind: "link", candidates: pending.candidates, projectId: identity.projectId },
                 });
                 ok(linked.kind === "existing");

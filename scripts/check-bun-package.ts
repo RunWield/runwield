@@ -304,9 +304,9 @@ export async function checkBunPackage(
             const denied = await fetch(`${base}/api/owner/projects`);
             equal(denied.status, 401);
             await denied.text();
-            const invalid = await fetch(`${base}/projects/%/plans`);
-            equal(invalid.status, 500);
-            equal(await invalid.text(), "Internal Server Error");
+            const unpairedProject = await fetch(`${base}/projects/%/plans`, { redirect: "manual" });
+            equal(unpairedProject.status, 302);
+            equal(unpairedProject.headers.get("location"), "/pair");
             ok(running.child.kill("SIGTERM"), "Workspace process accepts termination");
             const exit = await running.finished;
             // Windows TerminateProcess has no POSIX SIGTERM handler; interactive /quit

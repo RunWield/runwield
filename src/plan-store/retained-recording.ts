@@ -1,8 +1,8 @@
 /** Recording for an admitted original execution never imports its repository Plan into the catalog. */
+import { type HomeProjectOwner } from "@runwield/projects";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { join } from "node:path";
 import fs from "node:fs/promises";
-import type { HomeProjectOwner } from "../shared/project-identity.ts";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
 import { readManagedRetainedRecordingProof } from "../shared/remote/project-store-launch.ts";
 import { readRetainedManagedExecution, type RetainedManagedExecution } from "./retained-managed-execution.ts";

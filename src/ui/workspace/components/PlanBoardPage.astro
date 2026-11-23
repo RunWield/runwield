@@ -1,5 +1,4 @@
 ---
-import type { OwnerProjectView } from "../server/owner-projects.ts";
 import { PLAN_SEARCH_QUERY_PARAM, PLAN_UI_TOKEN_QUERY } from "../constants.ts";
 import WorkspaceLayout from "../layouts/WorkspaceLayout.astro";
 import { loadCanonicalBoard, serializeCanonicalPlanError } from "../server/astro-canonical-data.ts";
@@ -23,7 +22,7 @@ interface Props {
 
 const { boardData, boardError, context, projectId = "", view } = Astro.props;
 const projects = context === "workspace" ? await loadOwnerProjects() : [];
-const project = projects.find((item: OwnerProjectView) => item.projectId === projectId);
+const project = projects.find((item) => item.projectId === projectId);
 const workspaceCwd = Astro.request.headers.get("x-runwield-workspace-cwd") || currentWorkspaceCwd();
 let board = boardData || null;
 let error = boardError || null;

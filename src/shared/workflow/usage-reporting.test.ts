@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { setSystemTime } from "bun:test";
 import { getCwd } from "../../constants.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
@@ -10,15 +11,15 @@ import {
     rm as fsRm,
     symlink as fsSymlink,
     realpath as fsRealpath,
+    rename as fsRename,
 } from "node:fs/promises";
 import { test } from "node:test";
 import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { withCollidingMetricProjects, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { getWorkflowMetricsFilePath, hashMetricCwd, recordWorkflowMetric } from "./metrics.ts";
-import { encodeCwdForSessionDir } from "../session/root-session.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 import { UsageReporter, usageProjectIdentityForRoot } from "./usage-reporting.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
@@ -947,7 +948,7 @@ test("new cache-exclusive CLI rows count known cache tokens while old unknown ro
 test("R2-1: lossy-name Projects keep separate reports and clear histories", async () => {
     await withWorkflowMetricsFixture(async () => {
         await withCollidingMetricProjects(async (roots) => {
-            assertEquals(encodeCwdForSessionDir(roots[0]), encodeCwdForSessionDir(roots[1]));
+            assertEquals(projects.directory.sessionKey(roots[0]), projects.directory.sessionKey(roots[1]));
             for (const root of roots) {
                 await fsMkdir(root, { recursive: true });
                 await setCustomSetting("workflowMetrics", true, "project", root);
@@ -985,7 +986,7 @@ test("R2-1: lossy-name Projects keep separate reports and clear histories", asyn
 
 test("R2-1: legacy adoption preserves journal and checkpoint bytes and report rows", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
-        const legacy = join(homeDir, ".wld", "workflow-metrics", encodeCwdForSessionDir(projectRoot));
+        const legacy = join(homeDir, ".wld", "workflow-metrics", projects.directory.sessionKey(projectRoot));
         await fsMkdir(legacy, { recursive: true });
         const historyEpoch = "legacy-history";
         const bytes =
@@ -1018,12 +1019,70 @@ test("R2-1: legacy adoption preserves journal and checkpoint bytes and report ro
     });
 });
 
+test("a moved Project adopts its v10 root-hashed journal under the canonical Project ID", async () => {
+    await withWorkflowMetricsFixture(async ({ homeDir }) => {
+        const root = await gitFixture.checkout();
+        const canonical = await fsRealpath(root);
+        const moved = `${canonical}-moved`;
+        try {
+            const original = projects.checkout.admitForStorage(canonical);
+            const hash = await hashMetricCwd(canonical);
+            const label = basename(canonical)
+                .replace(/[^a-zA-Z0-9_-]/g, "_")
+                .slice(0, 40);
+            const legacy = join(homeDir, ".wld", "workflow-metrics", `${label}-${hash}`);
+            await fsMkdir(legacy, { recursive: true });
+            const bytes =
+                [enabled, usage("2026-11-01T16:00:00Z", { cwdHash: hash }), watermark]
+                    .map((item) => JSON.stringify(item))
+                    .join("\n") + "\n";
+            await fsWriteFile(join(legacy, "metrics.jsonl"), bytes);
+            await fsRename(canonical, moved);
+
+            // The checkout itself proves ownership before normal entry updates the registry's last root.
+            const report = new UsageReporter().query([moved], period, zone);
+            assertEquals(
+                report.projects.map((item) => item.projectId),
+                [original.projectId],
+            );
+            assertEquals(report.totals.tokens.value, 19);
+            assertEquals(await fsReadFile(getWorkflowMetricsFilePath(moved), "utf8"), bytes);
+        } finally {
+            await fsRm(moved, { recursive: true, force: true });
+            await fsRm(canonical, { recursive: true, force: true });
+        }
+    });
+});
+
+test("passive reporting and recorder startup leave an unadmitted Project untouched", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+        assertEquals(projects.checkout.inspect(projectRoot).kind, "fresh");
+        new ExecutionMetricsRecorder({ projectRoot });
+        assertEquals(new UsageReporter().query([projectRoot], period, zone).projects, []);
+        await setCustomSetting("workflowMetrics", false, "project", projectRoot);
+        assertEquals(
+            (await recordWorkflowMetric({ category: "command", event: "help" }, projectRoot)).reason,
+            "disabled",
+        );
+        assertEquals(projects.checkout.inspect(projectRoot).kind, "fresh");
+    });
+});
+
 test("R2-1: collided legacy history reports only attributable rows and keeps the source", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir }) => {
         await withCollidingMetricProjects(async (roots) => {
-            assertEquals(encodeCwdForSessionDir(roots[0]), encodeCwdForSessionDir(roots[1]));
-            for (const root of roots) await fsMkdir(root, { recursive: true });
-            const legacy = join(homeDir, ".wld", "workflow-metrics", encodeCwdForSessionDir(roots[0]), "metrics.jsonl");
+            assertEquals(projects.directory.sessionKey(roots[0]), projects.directory.sessionKey(roots[1]));
+            for (const root of roots) {
+                await fsMkdir(root, { recursive: true });
+                projects.checkout.admitForStorage(root);
+            }
+            const legacy = join(
+                homeDir,
+                ".wld",
+                "workflow-metrics",
+                projects.directory.sessionKey(roots[0]),
+                "metrics.jsonl",
+            );
             await fsMkdir(dirname(legacy), { recursive: true });
             const data = await Promise.all(
                 roots.map(async (root, index) =>
@@ -1052,7 +1111,7 @@ test("R2-1: collided legacy history reports only attributable rows and keeps the
     });
 });
 
-test("R2-1: real-root and symlink spellings share the full root hash, not a directory hash", async () => {
+test("R2-1: real-root and symlink spellings share the canonical Project ID and journal", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const alias = `${projectRoot}-alias`;
         await fsSymlink(projectRoot, alias, process.platform === "win32" ? "junction" : "dir");
@@ -1061,8 +1120,10 @@ test("R2-1: real-root and symlink spellings share the full root hash, not a dire
             const key = await hashMetricCwd(canonical);
             const path = getWorkflowMetricsFilePath(alias);
             assertEquals(path, getWorkflowMetricsFilePath(projectRoot));
-            assert(dirname(path).endsWith(`-${key}`));
-            assertEquals(usageProjectIdentityForRoot(alias), key);
+            const id = projects.checkout.inspect(projectRoot);
+            if (id.kind !== "existing") throw new Error("Expected admitted Project");
+            assertEquals(basename(dirname(path)), id.identity.projectId);
+            assertEquals(usageProjectIdentityForRoot(alias), id.identity.projectId);
             assert((await recordWorkflowMetric({ category: "command", event: "alias" }, alias)).persisted);
             const rows = (await fsReadFile(path, "utf8"))
                 .trim()
@@ -1077,7 +1138,8 @@ test("R2-1: real-root and symlink spellings share the full root hash, not a dire
 
 test("R2-1: busy legacy adoption withholds history and retries without changing the source", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
-        const legacy = join(homeDir, ".wld", "workflow-metrics", encodeCwdForSessionDir(projectRoot));
+        projects.checkout.admitForStorage(projectRoot);
+        const legacy = join(homeDir, ".wld", "workflow-metrics", projects.directory.sessionKey(projectRoot));
         await fsMkdir(legacy, { recursive: true });
         const bytes =
             JSON.stringify(usage("2026-11-01T16:00:00Z", { cwdHash: await hashMetricCwd(projectRoot) })) + "\n";

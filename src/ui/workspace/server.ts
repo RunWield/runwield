@@ -1,3 +1,4 @@
+import { parseProjectId } from "@runwield/projects";
 import type { WorkRecordMnemotecaPort } from "../../shared/work-records/mnemoteca-port.ts";
 import type { OwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import type { RemoteWorkspaceAdapter } from "./server/remote-adapter.ts";
@@ -129,6 +130,7 @@ import { setAstroOwnerWorkspaceSessionContinuation, setAstroOwnerWorkspaceStore 
 import { workspacePwaResponse } from "./server/workspace-pwa.ts";
 import {
     isPublicWorkspaceAsset,
+    SIDEBAR_MOTION_JS_URL,
     SIDEBAR_MOTION_SOURCE,
     SIDEBAR_MOTION_URL,
     transpileSidebarMotionScript,
@@ -373,12 +375,26 @@ export function createOwnerWorkspaceApp(options: OwnerWorkspaceAppOptions) {
                 ctx.state.ownerDevice = ownerDevice;
             }
             const projectRoute = /^\/(?:api\/owner\/)?projects\/([^/]+)(?:\/|$)/.exec(path);
+            const settingsRoute = /^\/projects\/[^/]+\/settings$/.test(path);
+            const projectId = projectRoute && parseProjectId(decodeRouteSegment(projectRoute[1]));
+            if (projectRoute && !projectId && !settingsRoute) {
+                return path.startsWith("/api/")
+                    ? ownerJsonResponse({ error: "Project not found." }, 404)
+                    : withOwnerSecurityHeaders(
+                          ownerHtmlResponse(
+                              "Project not found",
+                              '<section class="error-panel"><h2>Project not found</h2><p>The requested Project is not registered.</p></section>',
+                              { status: 404 },
+                          ),
+                      );
+            }
             const responseRoot = projectRoute
-                ? store.getProjectById(decodeURIComponent(projectRoute[1]))?.currentRoot
+                ? projectId
+                    ? store.projects.get(projectId)?.currentRoot
+                    : undefined
                 : admissionRoot;
             // Handlers enforce availability; settings and recovery actions must work without a usable root.
-            const registrationRoute =
-                /^\/projects\/[^/]+\/settings$/.test(path) || /^\/api\/owner\/projects\/[^/]+\/action$/.test(path);
+            const registrationRoute = settingsRoute || /^\/api\/owner\/projects\/[^/]+\/action$/.test(path);
             let response = await packageAccess(registrationRoute ? undefined : responseRoot, () => ctx.next());
             if (
                 ctx.state.ownerDevice &&
@@ -421,7 +437,7 @@ export function createOwnerWorkspaceApp(options: OwnerWorkspaceAppOptions) {
     app.get("/projects/:projectId/plans/closed", renderRequiredOwnerAstroPage);
     app.get("/projects/:projectId/plans/on-hold", renderRequiredOwnerAstroPage);
     app.get("/projects/:projectId/plans/:planId", renderRequiredOwnerAstroPage);
-    // Settings manages the registration, including missing and disabled roots.
+    // Settings manages the registration, including missing roots and inactive Projects.
     app.get("/projects/:projectId/settings", renderRequiredOwnerAstroPage);
     app.get("/projects/:projectId/artifacts/:artifactType/:sourceId", renderOwnerProjectArtifactPage);
     app.get("/projects/:projectId/sessions", renderOwnerProjectSessionsPage);
@@ -1418,6 +1434,14 @@ function createWorkspaceRouter<State>() {
     };
 }
 
+function decodeRouteSegment(segment: string): string | undefined {
+    try {
+        return decodeURIComponent(segment);
+    } catch {
+        return undefined;
+    }
+}
+
 function matchRoute(pattern: string, pathname: string) {
     const patternParts = pattern.split("/").filter(Boolean);
     const pathParts = pathname.split("/").filter(Boolean);
@@ -1426,8 +1450,11 @@ function matchRoute(pattern: string, pathname: string) {
     for (let index = 0; index < patternParts.length; index += 1) {
         const patternPart = patternParts[index];
         const pathPart = pathParts[index];
-        if (patternPart.startsWith(":")) params[patternPart.slice(1)] = decodeURIComponent(pathPart);
-        else if (patternPart !== pathPart) return null;
+        if (patternPart.startsWith(":")) {
+            const value = decodeRouteSegment(pathPart);
+            if (value === undefined) return null;
+            params[patternPart.slice(1)] = value;
+        } else if (patternPart !== pathPart) return null;
     }
     return params;
 }
@@ -1440,6 +1467,7 @@ function registerStaticRoutes<State>(app: ReturnType<typeof createWorkspaceRoute
     app.get("/workspace.css", async () => await handleStaticRoute("/workspace.css"));
     app.get("/workspace-shell.js", async () => await handleStaticRoute("/workspace-shell.js"));
     app.get("/design-system/panel-icon.ts", async () => await handleStaticRoute("/design-system/panel-icon.ts"));
+    app.get(SIDEBAR_MOTION_JS_URL, async () => await handleStaticRoute(SIDEBAR_MOTION_URL));
     app.get(SIDEBAR_MOTION_URL, async () => await handleStaticRoute(SIDEBAR_MOTION_URL));
     app.get("/theme.css", async () => await handleStaticRoute("/theme.css"));
     app.get("/brand/logo.svg", async () => await handleStaticRoute("/brand/logo.svg"));
@@ -1450,7 +1478,7 @@ async function handleStaticRoute(pathname: string) {
     if (pathname === "/design-system/panel-icon.ts") {
         return await textFileResponse(join(DESIGN_SYSTEM_DIR, "panel-icon.ts"), "text/javascript; charset=utf-8");
     }
-    if (pathname === SIDEBAR_MOTION_URL) {
+    if (pathname === SIDEBAR_MOTION_URL || pathname === SIDEBAR_MOTION_JS_URL) {
         return await textFileResponse(SIDEBAR_MOTION_PATH, "text/javascript; charset=utf-8");
     }
     if (pathname === "/styles.css") return await textFileResponse(STYLES_PATH, "text/css; charset=utf-8");

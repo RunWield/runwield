@@ -1,3 +1,4 @@
+import { parseProjectId } from "@runwield/projects";
 import { test } from "node:test";
 import { throws, rejects } from "node:assert/strict";
 import {
@@ -5,7 +6,11 @@ import {
     readProjectStoreBody,
     PROJECT_STORE_MAX_BYTES,
 } from "./project-store-protocol.ts";
-const binding = { projectId: "project-one", repositoryId: "repository-one", ownerId: "a".repeat(64) };
+const binding = {
+    projectId: parseProjectId(crypto.randomUUID())!,
+    repositoryId: "repository-one",
+    ownerId: "a".repeat(64),
+};
 test("the protocol refuses paths, forged authority, unsupported operations and protected envelopes", () => {
     const valid = { binding, command: { kind: "read" as const, planId: "plan-one", resource: "context.md" } };
     validateProjectStoreRequest(valid);

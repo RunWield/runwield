@@ -22,17 +22,12 @@ import { type TutorialContext, readPersistedTutorialContext } from "./tutorial-c
 
 type ManagedFixture = Awaited<ReturnType<typeof createManagedFixture>>;
 
-function idFactory(prefix = "id") {
-    let next = 0;
-    return () => `${prefix}-${++next}`;
-}
-
 async function createManagedFixture(tutorialContext: TutorialContext | null = null) {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-segment-rollover-"));
     const root = join(dir, "repo");
     await fsMkdir(root);
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
-    const project = store.registerProject({ root, idFactory: idFactory("project"), now: () => "t0" });
+    const project = store.registerProject({ root, now: () => "t0" });
     const manager = await createRootSessionManager("new", root);
     manager.appendMessage({ role: "user", timestamp: Date.now(), content: [{ type: "text", text: "before" }] });
     const piSessionId = manager.getSessionId();

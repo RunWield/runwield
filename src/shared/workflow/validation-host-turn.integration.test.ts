@@ -1,5 +1,5 @@
+import { projects } from "@runwield/projects";
 import { seedPlanState } from "../testing/plan-state-fixture.ts";
-import { inspectProjectIdentity } from "../project-identity.ts";
 import { planFixtureEvidenceDirectory } from "../testing/plan-state-fixture.ts";
 import type { HostValidationMetric } from "./testing/validation-host-fixture.ts";
 import {
@@ -65,7 +65,7 @@ test("fresh network-denied host turns validate real work without a Session or hi
             { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
         );
         const layout = resolveProjectRuntimeLayout(fixture.root);
-        const identity = inspectProjectIdentity(fixture.root);
+        const identity = projects.checkout.inspect(fixture.root);
         assert(identity.kind === "existing");
         const controllerEvidenceRoot = await canonicalPath(planFixtureEvidenceDirectory(identity.identity));
         const metadataPath = await canonicalPath(join(dirname(plan.path), "plan.wld.json"));

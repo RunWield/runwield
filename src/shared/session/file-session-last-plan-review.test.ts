@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "../foreground-process.ts";
@@ -17,14 +18,13 @@ import process from "node:process";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 
 test("the latest Plan review is readable from another store before the writer settles", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     const projectRoot = join(root, "project");
     const baseDir = join(root, "sessions");
     await fsMkdir(projectRoot);
-    const transcriptDir = join(baseDir, encodeCwdForSessionDir(await fsRealpath(projectRoot)));
+    const transcriptDir = join(baseDir, projects.directory.sessionKey(await fsRealpath(projectRoot)));
     await fsMkdir(transcriptDir, { recursive: true });
     const transcriptPath = join(transcriptDir, "2026-01-01T00-00-00-000Z_pi-session.jsonl");
     await fsWriteFile(
@@ -108,7 +108,7 @@ test("a Plan review reference survives a writer process crash before settlement"
     const baseDir = join(root, "sessions");
     const readyPath = join(root, "writer-ready.json");
     await fsMkdir(projectRoot);
-    const transcriptDir = join(baseDir, encodeCwdForSessionDir(await fsRealpath(projectRoot)));
+    const transcriptDir = join(baseDir, projects.directory.sessionKey(await fsRealpath(projectRoot)));
     await fsMkdir(transcriptDir, { recursive: true });
     const transcriptPath = join(transcriptDir, "2026-01-01T00-00-00-000Z_pi-session.jsonl");
     await fsWriteFile(

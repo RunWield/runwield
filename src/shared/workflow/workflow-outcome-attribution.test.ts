@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import {
     realpath as fsRealpath,
@@ -12,7 +13,7 @@ import { createHash } from "node:crypto";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { PLAN_ASSOCIATION_CUSTOM_TYPE } from "../session/plan-association.ts";
-import { encodeCwdForSessionDir, getRunWieldSessionsBaseDir } from "../session/root-session.ts";
+import { getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 
 test("outcomes use only the committed Plan association in their observation time scope", async () => {
@@ -22,7 +23,7 @@ test("outcomes use only the committed Plan association in their observation time
             const project = store.ensureRuntimeProject({ root: metrics.projectRoot });
             const directory = join(
                 getRunWieldSessionsBaseDir(),
-                encodeCwdForSessionDir(await fsRealpath(metrics.projectRoot)),
+                projects.directory.sessionKey(await fsRealpath(metrics.projectRoot)),
             );
             await fsMkdir(directory, { recursive: true });
             const transcriptPath = join(directory, "2026-01-01T00-00-00-000Z_two-plan-session.jsonl");
