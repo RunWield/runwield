@@ -1,7 +1,7 @@
 {
     "skills": [
         {
-            "source": "src/agent-definitions/ideator.md",
+            "source": "packages/agents/definitions/ideator.md",
             "sourceHash": "aecc83ec6f15f7c4cf112b62660d48ab2e457a7b524024f28fd68b254c966408",
             "skill": "skills/ideator/SKILL.md",
             "skillHash": "05794619634231949af42dcf111ec48bcd5961969dea4348545ec8e926b49722",
@@ -13,7 +13,7 @@
             ]
         },
         {
-            "source": "src/agent-definitions/guide.md",
+            "source": "packages/agents/definitions/guide.md",
             "sourceHash": "bb230d88c83072396719bf671d39e16069fd683f822064d586ec10fc9a1236db",
             "skill": "skills/guide/SKILL.md",
             "skillHash": "6bb8b126e7dd0370e9c58cdb615c4fe84a72e572cae2216ca9c3cd44ce551716",

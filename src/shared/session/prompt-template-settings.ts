@@ -1,5 +1,5 @@
 import { AGENTS } from "../../constants.ts";
-import { loadAgentDef } from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.ts";
 import {
     assertThinkingLevelBackendSupportedForInvocation,
@@ -44,7 +44,7 @@ export async function resolvePromptTemplateSettings(
             : null;
     const modelOverride =
         invocation.model || (inheritedModel?.model ? formatProviderModelReference(inheritedModel) : undefined);
-    const agentDef = await loadAgentDef(agentName, session.cwd);
+    const agentDef = await agentRegistry.get(agentName, session.cwd);
     const model = await resolveModel(modelOverride, agentDef, agentName, getModelRegistry(), session, session.cwd, {
         ignoreManualModelOverride: true,
     });

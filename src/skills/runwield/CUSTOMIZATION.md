@@ -8,7 +8,7 @@ RunWield resolves project `.wld/` overrides before home `~/.wld/` overrides befo
 
 Resolution lists:
 
-- Agents: `.wld/agents/`, `~/.wld/agents/`, bundled `src/agent-definitions/`.
+- Agents: `.wld/agents/`, `~/.wld/agents/`, bundled `packages/agents/definitions/`.
 - Prompt templates: `.wld/prompts/`, `~/.wld/prompts/`, bundled `src/prompt-templates/`, installed Pi package
   `pi.prompts`.
 - Skills: `.wld/skills/`, `.agents/skills/`, `~/.wld/skills/`, `~/.agents/skills/`, bundled `src/skills/`.

@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { AGENTS } from "../../../constants.ts";
 import { recordManualModelSelection } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
-import { getAgentBusyLines, getAgentDisplayName } from ".././agents.ts";
+import { agentRegistry } from "../agent-registry.ts";
 import { switchActiveAgent } from ".././agent-switching.ts";
 import {
     drainSessionCompactionMetrics,
@@ -102,7 +102,7 @@ export class RuntimeAgentSettings {
             return { ok: false, error: "not_unpersisted_new_session" };
         }
         const agentName = options.agentName || AGENTS.ROUTER;
-        const displayName = getAgentDisplayName(agentName, hostedSession.cwd);
+        const displayName = agentRegistry.displayName(agentName, hostedSession.cwd);
         const currentModel = hostedSession.getActiveModelState?.() || { model: "", provider: "" };
         const configuredModelRef = options.model ?? getConfiguredAgentModel(agentName, hostedSession.cwd) ?? "";
         const settingsManager = getSettingsManager(hostedSession.cwd);
@@ -119,7 +119,7 @@ export class RuntimeAgentSettings {
             }
         }
         hostedSession.resetAgentInfoStack(displayName, model, provider, agentName);
-        const busyLines = getAgentBusyLines(agentName, hostedSession.cwd);
+        const busyLines = agentRegistry.busyLines(agentName, hostedSession.cwd);
         this.events.emitSessionEvent(sessionId, {
             type: RuntimeEventTypes.AGENT_CHANGED,
             agentName,
@@ -280,8 +280,8 @@ export class RuntimeAgentSettings {
             agentName: string;
             userRequest: string;
             subAgentDefinition?: {
-                id: import(".././subagent-definitions.ts").SubAgentDefinitionId;
-                options?: import(".././subagent-definitions.ts").LoadSubAgentDefinitionOptions;
+                id: import("@runwield/agents").SubAgentDefinitionId;
+                options?: import("@runwield/agents").LoadSubAgentDefinitionOptions;
             };
             images?: import(".././image-attachments.ts").ImageAttachment[];
             toolNames?: string[];
@@ -465,7 +465,7 @@ export class RuntimeAgentSettings {
             const activeAgentInfo = promptReadySession.getActiveAgentInfo?.() || null;
             const agentName = activeAgentInfo?.agentName || AGENTS.ROUTER;
             promptReadySession.resetAgentInfoStack(
-                getAgentDisplayName(agentName, promptReadySession.cwd),
+                agentRegistry.displayName(agentName, promptReadySession.cwd),
                 "",
                 "",
                 agentName,

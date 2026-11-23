@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { listAllAgentDefinitions, loadAgentDef } from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 import process from "node:process";
@@ -36,19 +36,19 @@ test("plain Markdown Agent overrides append prompts in layer order", () =>
             const previousHome = process.env["HOME"];
             process.env["HOME"] = join(root, "home");
             try {
-                const bundled = await loadAgentDef("router", root);
+                const bundled = await agentRegistry.get("router", root);
                 const homePrompt = "HOME_ROUTER_GUIDANCE";
                 const projectPrompt = "PROJECT_ROUTER_GUIDANCE";
                 await fsWriteFile(join(homeAgents, "router.md"), homePrompt);
                 await fsWriteFile(join(agentsDir, "router.md"), projectPrompt);
 
-                const direct = await loadAgentDef("router", root);
+                const direct = await agentRegistry.get("router", root);
                 assertEquals(direct.displayName, bundled.displayName);
                 assertEquals(direct.tools, bundled.tools);
                 const appendedPrompts = `\n\n${homePrompt}\n\n${projectPrompt}`;
                 assertStringIncludes(direct.rolePrompt, appendedPrompts);
                 assertEquals(direct.rolePrompt.replace(appendedPrompts, ""), bundled.rolePrompt);
-                const discovered = (await listAllAgentDefinitions(root)).find((agent) => agent.name === "router");
+                const discovered = (await agentRegistry.list(root, "all")).find((agent) => agent.name === "router");
                 assertEquals(discovered, direct);
             } finally {
                 process.env["HOME"] = previousHome;
@@ -60,7 +60,7 @@ test("a new Agent still requires front matter", async () => {
     await withDiscoveryProject(async (root, agentsDir) => {
         const name = "discovery-standalone-prompt";
         await fsWriteFile(join(agentsDir, `${name}.md`), "Standalone prompt");
-        await assertRejects(() => loadAgentDef(name, root), Error, "has no frontmatter");
+        await assertRejects(() => agentRegistry.get(name, root), Error, "has no frontmatter");
     });
 });
 
@@ -71,18 +71,18 @@ test("the next discovery and individual loads observe direct edits to practices 
         const practicePath = join(agentsDir, "shared-practice", "discovery-practice.md");
         await fsWriteFile(agentPath, definition(name, ["discovery-practice"]));
         await fsWriteFile(practicePath, fragment("FIRST_DISCOVERY_BODY"));
-        const first = (await listAllAgentDefinitions(root)).find((agent) => agent.name === name)!;
+        const first = (await agentRegistry.list(root, "all")).find((agent) => agent.name === name)!;
         assertStringIncludes(first.systemPrompt, "FIRST_DISCOVERY_BODY");
 
         await fsWriteFile(practicePath, fragment("SECOND_DISCOVERY_BODY"));
         await fsWriteFile(agentPath, definition(name, ["discovery-practice"]).replace("PERSONA_", "EDITED_"));
-        const second = (await listAllAgentDefinitions(root)).find((agent) => agent.name === name)!;
+        const second = (await agentRegistry.list(root, "all")).find((agent) => agent.name === name)!;
         assertStringIncludes(second.systemPrompt, "SECOND_DISCOVERY_BODY");
         assertStringIncludes(second.systemPrompt, `EDITED_${name}`);
         assertEquals(second.systemPrompt.includes("FIRST_DISCOVERY_BODY"), false);
 
         await fsWriteFile(practicePath, fragment("DIRECT_LOAD_BODY"));
-        const direct = await loadAgentDef(name, root);
+        const direct = await agentRegistry.get(name, root);
         assertStringIncludes(direct.systemPrompt, "DIRECT_LOAD_BODY");
         assertEquals(direct.systemPrompt.includes("SECOND_DISCOVERY_BODY"), false);
     });
@@ -98,7 +98,7 @@ test("discovery keeps distinct ordered shared-practice lists", async () => {
         }
         await fsWriteFile(join(agentsDir, "shared-practice", "discovery-first.md"), fragment("FIRST_ORDER_MARKER"));
         await fsWriteFile(join(agentsDir, "shared-practice", "discovery-second.md"), fragment("SECOND_ORDER_MARKER"));
-        const agents = await listAllAgentDefinitions(root);
+        const agents = await agentRegistry.list(root, "all");
         for (const name of ["discovery-forward", "discovery-reverse"]) {
             const prompt = agents.find((agent) => agent.name === name)!.systemPrompt;
             assertEquals(
@@ -161,13 +161,13 @@ for (const existingAgentLayer of [false, true]) {
                     if (existingAgentLayer) {
                         await fsWriteFile(join(agentsDir, `${name}.md`), definition(name, ["user-authority"]));
                     }
-                    const first = (await listAllAgentDefinitions(root)).find((agent) => agent.name === name)!;
+                    const first = (await agentRegistry.list(root, "all")).find((agent) => agent.name === name)!;
                     assertEquals(created, true);
                     assertEquals(first.systemPrompt.includes("NEW_HOME_"), false);
                     // Repair the malformed boundary so the next scan does not
                     // trigger another fixture update.
                     await fsWriteFile(join(agentsDir, `${boundaryName}.md`), definition(boundaryName, []));
-                    const next = (await listAllAgentDefinitions(root)).find((agent) => agent.name === name)!;
+                    const next = (await agentRegistry.list(root, "all")).find((agent) => agent.name === name)!;
                     assertStringIncludes(
                         next.systemPrompt,
                         existingAgentLayer ? "NEW_HOME_PRACTICE" : "NEW_HOME_DEFINITION",
@@ -210,7 +210,7 @@ test("equivalent normalized practice declarations share the already read body", 
             edited = true;
         };
         try {
-            const agents = await listAllAgentDefinitions(root);
+            const agents = await agentRegistry.list(root, "all");
             assertEquals(edited, true);
             for (const name of [firstName, secondName]) {
                 const prompt = agents.find((agent) => agent.name === name)!.systemPrompt;

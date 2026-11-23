@@ -5,7 +5,7 @@ import { fileExists } from "../helpers.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
 import { resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { assertPersonalResourcePath, PersonalResourcePathError } from "../remote/personal-resources.ts";
-import { isWorkflowOnlyAgent, loadAgentDef, normalizeAgentInternalName } from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 import { getPromptTemplatePaths } from "./session.ts";
 import { expandSkillRecord, findSkill } from "./skill-catalog.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -339,16 +339,16 @@ async function resolvePromptTemplateAgent(agentField: string | undefined, templa
     const rawAgent = agentField;
     let agentName = "";
     try {
-        agentName = normalizeAgentInternalName(rawAgent);
+        agentName = agentRegistry.normalizeName(rawAgent);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`Prompt template "${templateName}" declares invalid agent "${rawAgent}": ${message}`);
     }
-    if (await isWorkflowOnlyAgent(agentName, cwd)) {
+    if (await agentRegistry.isWorkflowOnly(agentName, cwd)) {
         throw new Error(`Prompt template "${templateName}" declares workflow-only agent "${agentName}".`);
     }
     try {
-        await loadAgentDef(agentName, cwd);
+        await agentRegistry.get(agentName, cwd);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`Prompt template "${templateName}" declares unknown agent "${agentName}": ${message}`);

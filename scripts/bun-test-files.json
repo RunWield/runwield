@@ -1,4 +1,7 @@
 [
+    "packages/agents/isolated.test.ts",
+    "packages/agents/registry.test.ts",
+    "packages/bundled-assets/index.test.ts",
     "packages/langfuse-exporter/claude-fixture.test.ts",
     "packages/langfuse-exporter/confirmation.test.ts",
     "packages/langfuse-exporter/core-integration.test.ts",

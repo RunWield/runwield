@@ -35,7 +35,7 @@ import {
 } from "../session/session.ts";
 import { resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { expandSkillRecord, listSkills } from "../session/skill-catalog.ts";
-import { getAgentDisplayName, listAgentDefNames, loadAgentDef, resolveAgentDefsDir } from "../session/agents.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { createRootSessionManager, getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 
@@ -47,8 +47,13 @@ test("remote personal resources select mounted files while project settings keep
     try {
         const globalRoot = join(root, "private", "global");
         const agentsRoot = join(root, "private", "agents");
+        const mountedRouter = join(globalRoot, "agents", "router.md");
         await fsMkdir(join(globalRoot, "skills", "personal"), { recursive: true });
         await fsMkdir(join(globalRoot, "agents"), { recursive: true });
+        await fsWriteFile(
+            mountedRouter,
+            "---\nname: Mounted Router\nbusyLines: [Mounted label]\n---\nMounted router instructions.",
+        );
         await fsMkdir(join(globalRoot, "installed", "prompts"), { recursive: true });
         await fsWriteFile(
             join(globalRoot, "installed", "package.json"),
@@ -114,6 +119,7 @@ test("remote personal resources select mounted files while project settings keep
             join(project, ".wld", "settings.json"),
             JSON.stringify({ marker: "project", agents: { project: true }, packages: ["../project-package"] }),
         );
+        const localRouter = await agentRegistry.get("router", project);
         configureRemotePersonalResources({
             globalRoot,
             agentsRoot,
@@ -123,9 +129,14 @@ test("remote personal resources select mounted files while project settings keep
                 "npm:managed-package": managedRoot,
             },
         });
+        assertEquals(localRouter.displayName === "Mounted Router", false);
+        assertEquals(agentRegistry.displayName("router", project), "Mounted Router");
+        assertEquals(agentRegistry.busyLines("router", project), ["Mounted label"]);
         assertEquals(getSettingsDir("global", project), globalRoot);
         assertEquals(getSettingsManager(project).getProjectSettings().packages, ["../project-package"]);
-        assertEquals(await resolveAgentDefsDir(project), join(globalRoot, "agents"));
+        const router = await agentRegistry.get("router", project);
+        assertEquals(router.displayName, "Mounted Router");
+        assertEquals(router.rolePrompt.includes("Mounted router instructions."), true);
         assertEquals(getMergedCustomSetting("marker", project), "project");
         assertEquals(getMergedCustomSetting("agents", project), { global: true, project: true });
         assertEquals(getExactProjectCustomSetting("marker", project), "project");
@@ -206,13 +217,12 @@ test("remote personal resources select mounted files while project settings keep
         assertEquals(getExactProjectCustomSetting("marker", linked), "linked");
         assertEquals(getMergedCustomSetting("marker", linked), "project");
         assertEquals(getCustomSetting("marker", "global", linked), "personal");
-        assertEquals(await resolveAgentDefsDir(linked), join(linked, ".wld", "agents"));
-        assertEquals((await listAgentDefNames(linked)).includes("linked-engineer"), true);
-        const linkedAgent = await loadAgentDef("linked-engineer", linked);
+        assertEquals((await agentRegistry.listNames(linked)).includes("linked-engineer"), true);
+        const linkedAgent = await agentRegistry.get("linked-engineer", linked);
         assertEquals(linkedAgent.displayName, "Linked Engineer");
         assertEquals(linkedAgent.systemPrompt.includes("Linked Agent"), true);
         assertEquals(linkedAgent.systemPrompt.includes("Mounted Agent"), false);
-        assertEquals(getAgentDisplayName("linked-engineer", linked), "Linked Engineer");
+        assertEquals(agentRegistry.displayName("linked-engineer", linked), "Linked Engineer");
         const linkedSkill = (await listSkills({ cwd: linked })).find((skill) => skill.name === "personal");
         assertEquals(linkedSkill?.path, join(linked, ".wld", "skills", "personal", "SKILL.md"));
         if (!linkedSkill) throw new Error("Linked Skill was not selected");
@@ -289,9 +299,14 @@ test("remote personal resources select mounted files while project settings keep
         await assertRejects(() => assertPersonalResourcePath(homePrompt, "personal prompt"), Error, homePrompt);
         const agentPath = join(globalRoot, "agents", "engineer.md");
         await symlink(remoteFile, agentPath);
-        await assertRejects(() => listAgentDefNames(), Error, agentPath);
-        await assertRejects(() => loadAgentDef("engineer"), Error, agentPath);
-        assertThrows(() => getAgentDisplayName("engineer"), Error, agentPath);
+        await assertRejects(() => agentRegistry.listNames(), Error, agentPath);
+        await assertRejects(() => agentRegistry.get("engineer"), Error, agentPath);
+        assertThrows(() => agentRegistry.displayName("engineer"), Error, agentPath);
+        assertThrows(() => agentRegistry.busyLines("engineer"), Error, agentPath);
+        await fsRm(mountedRouter);
+        await symlink(remoteFile, mountedRouter);
+        assertThrows(() => agentRegistry.displayName("router", project), Error, mountedRouter);
+        assertThrows(() => agentRegistry.busyLines("router", project), Error, mountedRouter);
         const packagePrompt = join(packageRoot, "prompts", "personal-package.md");
         await fsRm(packagePrompt);
         await symlink(remoteFile, packagePrompt);

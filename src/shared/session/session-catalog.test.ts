@@ -13,7 +13,7 @@ import {
     readGlobalAgentMd,
 } from "./session.ts";
 
-import { getAgentDisplayName, listAvailableAgents } from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 import { getCustomSetting } from "../settings.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
@@ -61,8 +61,8 @@ test("two project roots keep local catalogs settings and Plans isolated", async 
             listPromptTemplates({ cwd: beta }),
             listSkills({ cwd: alpha }),
             listSkills({ cwd: beta }),
-            listAvailableAgents(alpha),
-            listAvailableAgents(beta),
+            agentRegistry.list(alpha),
+            agentRegistry.list(beta),
         ]);
 
         assertEquals(alphaPrompts.find((item) => item.name === "local-prompt")?.description, "alpha prompt");
@@ -77,8 +77,8 @@ test("two project roots keep local catalogs settings and Plans isolated", async 
             betaAgents.some((item) => item.name === "local-agent"),
             true,
         );
-        assertEquals(getAgentDisplayName("local-agent", alpha), "alpha Agent");
-        assertEquals(getAgentDisplayName("local-agent", beta), "beta Agent");
+        assertEquals(agentRegistry.displayName("local-agent", alpha), "alpha Agent");
+        assertEquals(agentRegistry.displayName("local-agent", beta), "beta Agent");
         assertEquals(getCustomSetting("marker", "project", alpha), "alpha");
         assertEquals(getCustomSetting("marker", "project", beta), "beta");
         assertEquals((await loadPlan(alpha, "same-plan"))?.attrs.summary, "alpha plan");

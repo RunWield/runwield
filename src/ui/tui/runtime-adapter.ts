@@ -6,7 +6,7 @@ import { deliveryReportText } from "./delivery-report-text.ts";
  */
 
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
-import { normalizeAgentInternalName } from "../../shared/session/agents.ts";
+import { agentRegistry } from "../../shared/session/agent-registry.ts";
 import { formatImageAttachmentMarker } from "../../shared/session/image-attachments.ts";
 import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.ts";
 import { setTerminalTitleForName } from "./terminal-title.ts";
@@ -85,7 +85,7 @@ export function attachTuiRuntimeAdapter({
 
     const initialSnapshot = runtime.getSessionSnapshot(sessionId);
     let currentRootAgentName = initialSnapshot?.activeAgent
-        ? normalizeAgentInternalName(String(initialSnapshot.activeAgent))
+        ? agentRegistry.normalizeName(String(initialSnapshot.activeAgent))
         : "";
     let currentRoutingIntent = initialSnapshot?.workflowContext?.routingIntent || null;
     let validationSessionActive = false;
@@ -255,7 +255,7 @@ export function attachTuiRuntimeAdapter({
             case RuntimeEventTypes.AGENT_CHANGED: {
                 let nextRootAgentName = "";
                 try {
-                    nextRootAgentName = event.agentName ? normalizeAgentInternalName(event.agentName) : "";
+                    nextRootAgentName = event.agentName ? agentRegistry.normalizeName(event.agentName) : "";
                 } catch (_error) {
                     nextRootAgentName = "";
                 }

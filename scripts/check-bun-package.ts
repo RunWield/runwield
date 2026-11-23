@@ -1,11 +1,12 @@
 /** Qualify a relocated development executable without touching the user's home. */
 import { deepEqual, doesNotMatch, equal, match, ok } from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, realpath, rename, symlink, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { cp, mkdir, mkdtemp, readFile, rename, symlink, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { argv, env, platform } from "node:process";
+import { argv, env, execPath, platform } from "node:process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { installPackageHelperFixtures } from "./package-helper-fixtures.ts";
@@ -105,6 +106,56 @@ export async function checkBunPackage(
                 clearTimeout(timeout);
             }
         }
+        const project = join(home, "agent-project");
+        const personalDefinitions = join(home, ".wld", "agents");
+        const projectDefinitions = join(project, ".wld", "agents");
+        const personalPrompt = `Personal Router instructions ${randomUUID()}.`;
+        const projectPrompt = `Project Router instructions ${randomUUID()}.`;
+        await mkdir(personalDefinitions, { recursive: true });
+        await mkdir(projectDefinitions, { recursive: true });
+        await writeFile(join(personalDefinitions, "router.md"), personalPrompt);
+        await writeFile(join(projectDefinitions, "router.md"), projectPrompt);
+        const agentCheck = start(["package-smoke", "agents"], project);
+        const agentTimeout = setTimeout(() => agentCheck.child.kill("SIGKILL"), 30_000);
+        try {
+            equal(await agentCheck.finished, 0, agentCheck.output());
+        } finally {
+            clearTimeout(agentTimeout);
+        }
+        const source = await captureScriptProcess(execPath, {
+            args: [
+                "--no-env-file",
+                "--no-install",
+                join(ROOT, "src/cli.ts"),
+                "--allow-system-directory",
+                "package-smoke",
+                "agents",
+            ],
+            cwd: project,
+            env: childEnv,
+            clearEnv: true,
+            signal: AbortSignal.timeout(30_000),
+        });
+        const decoder = new TextDecoder();
+        const sourceOutput = decoder.decode(source.stdout);
+        equal(source.code, 0, sourceOutput + decoder.decode(source.stderr));
+        const [personalHash, projectHash] = [personalPrompt, projectPrompt].map((prompt) =>
+            createHash("sha256").update(prompt).digest("hex"),
+        );
+        for (const [runtime, output] of [
+            ["Source", sourceOutput],
+            ["Relocated package", agentCheck.output()],
+        ]) {
+            const paragraphs = output.match(/^Router prompt paragraphs ([a-f0-9,]+)$/m)?.[1]?.split(",");
+            ok(
+                paragraphs?.some((hash, index) => hash === personalHash && paragraphs[index + 1] === projectHash),
+                `${runtime} must append the personal Router instructions before the project instructions.`,
+            );
+        }
+        const digestPattern = /^Agent definitions ([a-f0-9]{64})$/m;
+        const expected = sourceOutput.match(digestPattern)?.[1];
+        ok(expected, sourceOutput);
+        equal(agentCheck.output().match(digestPattern)?.[1], expected, agentCheck.output());
         for (const file of ["SKILL.md", "LICENSE"]) {
             deepEqual(
                 await readFile(join(home, ".wld/bundled-skills/write-tests", file)),
@@ -117,33 +168,46 @@ export async function checkBunPackage(
             const original = join(home, `project-before-${keepAlias}`);
             const moved = join(home, `project-after-${keepAlias}`);
             await mkdir(original);
-            const initialized = await captureScriptProcess("git", {
-                args: ["init", "-b", "main", original],
-                cwd: home,
-                stdout: "piped",
-                stderr: "piped",
-            });
-            ok(initialized.success, new TextDecoder().decode(initialized.stderr));
+            const git = async (cwd: string, args: string[]) => {
+                const result = await captureScriptProcess("git", { args, cwd, env: childEnv, clearEnv: true });
+                ok(result.success, decoder.decode(result.stderr));
+                return decoder.decode(result.stdout).trim();
+            };
+            await git(original, ["init", "-b", "main"]);
             const run = async (args: string[], cwd: string) => {
                 const running = start(args, cwd);
                 const timeout = setTimeout(() => running.child.kill("SIGKILL"), 30_000);
                 try {
                     equal(await running.finished, 0, running.output());
+                    return running.output();
                 } finally {
                     clearTimeout(timeout);
                 }
             };
-            await run(["plans", "doctor"], original);
-            const markerPath = join(moved, ".wld/internal/layout.json");
+            const planId = randomUUID();
+            const planFile = join(original, "relocation.md");
+            const summary = `Saved Plan ${planId} survives the checkout move.`;
+            await writeFile(
+                planFile,
+                `---\nplanId: ${planId}\nstatus: draft\nsummary: ${summary}\n---\n# Relocation check\n`,
+            );
+            await run(["plans", "import", "relocation.md"], original);
+            await unlink(planFile);
+            const projectIdArgs = ["config", "--local", "--get", "runwield.projectid"];
+            const projectId = await git(original, projectIdArgs);
+            ok(projectId, "Import must bind the checkout to a project");
+            const checkSavedPlan = async (cwd: string) => {
+                ok((await run(["plans"], cwd)).includes(summary), "The packaged CLI must list the saved Plan");
+                match(await run(["plans", "history", planId], cwd), /No milestones recorded/);
+                equal(await git(cwd, projectIdArgs), projectId, "Moving the checkout must preserve its project ID");
+            };
+            await checkSavedPlan(original);
             await rename(original, moved);
             if (keepAlias) await symlink(moved, original, "junction");
-            const before = await readFile(markerPath, "utf8");
-            await run(["plans"], moved);
-            if (keepAlias) await run(["plans"], original);
-            equal(await readFile(markerPath, "utf8"), before, "Passive reads must not rewrite a relocated marker");
+            await checkSavedPlan(moved);
+            if (keepAlias) await checkSavedPlan(original);
             await run(["plans", "doctor"], moved);
-            const marker = JSON.parse(await readFile(markerPath, "utf8"));
-            equal(marker.primaryCheckoutRoot, await realpath(moved));
+            await checkSavedPlan(moved);
         }
         const bin = join(home, "bin");
         await installPackageHelperFixtures(bin, helperFixturePath);
@@ -263,7 +327,7 @@ export async function checkBunPackage(
             await running.finished;
         }
         console.log(
-            `Relocated Bun package passed: CLI onboarding/cancel, relocated Project reads and entry, worker/WASM, image conversion, bundled skills, Workspace assets/auth, shutdown (${metadata.target}).`,
+            `Relocated Bun package passed: CLI onboarding/cancel, relocated Project reads and entry, worker/WASM, image conversion, bundled Agents and skills, Workspace assets/auth, shutdown (${metadata.target}).`,
         );
     } finally {
         await removeExecutableFixtureDirectory(home);

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { SUBAGENTS } from "../../constants.ts";
-import { loadSubAgentDefinition } from "../session/subagent-definitions.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { buildSemanticReviewAttempt } from "./validation-semantic.ts";
 import { loadManualQaPrompt, loadReviewerPrompt } from "./validation.ts";
 
@@ -33,14 +33,15 @@ test("loadReviewerPrompt loads the verification prompt for later rounds", async 
  * The prompt an Agent actually receives. Reviewer prompts compose the shared
  * review practice; repair roles also use their composed definition. These checks
  * protect delivered instructions, not whether an external model follows them.
- *
  */
-async function readBundledPrompt(name: string) {
+async function readBundledPrompt(
+    name: "reviewer-prompt.md" | "reviewer-verify-prompt.md" | "reviewer-feedback-engineer.md",
+) {
     if (name === "reviewer-prompt.md" || name === "reviewer-verify-prompt.md") {
         const definition = await loadReviewerPrompt(name === "reviewer-verify-prompt.md" ? "verify" : "discovery");
         return definition.systemPrompt;
     }
-    const definition = await loadSubAgentDefinition(name.replace(/\.md$/, ""));
+    const definition = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
     return definition.systemPrompt;
 }
 
@@ -139,7 +140,7 @@ test("bundled discovery reviewer prompt requires reading the diff before decidin
 });
 
 test("bundled reviewer prompts exclude verification-completion auditing", async () => {
-    for (const name of ["reviewer-prompt.md", "reviewer-verify-prompt.md"]) {
+    for (const name of ["reviewer-prompt.md", "reviewer-verify-prompt.md"] as const) {
         // Collapse wrapping so these assert on wording, not on where the
         // formatter happened to break the line.
         const prompt = (await readBundledPrompt(name)).replace(/\s+/g, " ");
@@ -153,7 +154,7 @@ test("bundled reviewer prompts exclude verification-completion auditing", async 
 });
 
 test("bundled reviewer prompts treat work in progress as normal, not as a finding", async () => {
-    for (const name of ["reviewer-prompt.md", "reviewer-verify-prompt.md"]) {
+    for (const name of ["reviewer-prompt.md", "reviewer-verify-prompt.md"] as const) {
         const prompt = (await readBundledPrompt(name)).replace(/\s+/g, " ");
 
         // General "this is unfinished/unsafe" commentary is noise inside an Epic; real defects stay findings.
@@ -267,7 +268,7 @@ test("validation repair engineer keeps working-tree safety and engineering pract
     // User authority is deliberately absent: this prompt states "You have no user
     // turn", so a policy built on the user confirming and repeating an instruction
     // describes a dialogue that can never happen here.
-    const { systemPrompt } = await loadSubAgentDefinition(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
+    const { systemPrompt } = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
 
     assertEquals(systemPrompt.includes("After one concern, the discussion is complete. The user decides."), false);
     assertStringIncludes(systemPrompt, "You have no user turn");
@@ -291,8 +292,8 @@ test("bundled reviewer-feedback engineer stops in prose on an unreachable findin
 });
 
 test("Epic verification loads the integration prompt with shared review practice and a read-only ceiling", async () => {
-    const discovery = await loadSubAgentDefinition(SUBAGENTS.INTEGRATION_REVIEWER);
-    const verify = await loadSubAgentDefinition(SUBAGENTS.INTEGRATION_REVIEWER, { reviewerMode: "verify" });
+    const discovery = await agentRegistry.isolated.load(SUBAGENTS.INTEGRATION_REVIEWER);
+    const verify = await agentRegistry.isolated.load(SUBAGENTS.INTEGRATION_REVIEWER, { reviewerMode: "verify" });
     assertStringIncludes(discovery.systemPrompt, "one full review");
     assertStringIncludes(verify.systemPrompt, "Do not sweep the Epic again");
     assertStringIncludes(verify.systemPrompt, 'scope: "repair"');

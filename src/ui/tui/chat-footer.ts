@@ -6,7 +6,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.ts";
 import { AGENTS, getCwd, getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
 import { getSettingsManager } from "../../shared/settings.ts";
-import { getAgentDisplayName } from "../../shared/session/agents.ts";
+import { agentRegistry } from "../../shared/session/agent-registry.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { readRunWieldPackageInstallSync } from "../../shared/package-install.ts";
@@ -96,7 +96,11 @@ export function shouldShowFooterThinkingLevel(modelStr: string, thinkingLevel: s
     return Boolean(modelStr) && thinkingLevel !== "off";
 }
 
-const FOOTER_WORKFLOW_EXCLUDED_AGENT_NAMES = new Set([AGENTS.IDEATOR, AGENTS.OPERATOR, AGENTS.GUIDE]);
+const FOOTER_WORKFLOW_EXCLUDED_AGENT_NAMES: ReadonlySet<string> = new Set([
+    AGENTS.IDEATOR,
+    AGENTS.OPERATOR,
+    AGENTS.GUIDE,
+]);
 const FOOTER_WORKFLOW_EXCLUDED_DISPLAY_NAMES = new Set(["ideator", "operator", "guide"]);
 const FOOTER_ROUTING_META = new Map([
     ["QUICK_FIX", { label: "Quick Fix", token: "routingQuickFix" }],
@@ -318,7 +322,7 @@ export function createChatFooterController(options: CreateChatFooterControllerOp
                 : "";
             const rootAgentName = snapshot.activeAgent || "";
             const activeAgentInfo = snapshot.activeAgentInfo || {
-                displayName: rootAgentName ? getAgentDisplayName(rootAgentName, snapshot.cwd) : "",
+                displayName: rootAgentName ? agentRegistry.displayName(rootAgentName, snapshot.cwd) : "",
                 agentName: rootAgentName,
             };
             const line1LeftRaw = buildFooterLocationText(snapshot, { resolveBranch: getCachedFooterBranch });

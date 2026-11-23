@@ -7,7 +7,7 @@ import type { ModelPresetsMap, ModelPresetAgentOverride } from "../model-presets
 import type { DisposableLike } from "./hosted-session.ts";
 import type { RuntimeAgentSession } from "./runtime/support.ts";
 import type { EarlySteeringSession } from "./early-steering.ts";
-import type { AgentDefinition } from "./agents.ts";
+import type { AgentDefinition, LoadSubAgentDefinitionOptions, SubAgentDefinitionId } from "@runwield/agents";
 import type { ResolvedResource } from "../package-resources.ts";
 import type { SessionContextProjection, ContextProjectionItem } from "./session-context-report.ts";
 import type {
@@ -21,7 +21,6 @@ import type { HostedSession } from "./hosted-session.ts";
 import type { BashAllowedCommands } from "../bash-command-policy.ts";
 import type { McpIntegration } from "../mcp/integration.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { SubAgentDefinitionId, LoadSubAgentDefinitionOptions } from "./subagent-definitions.ts";
 import type { ManagedOperationCapability } from "./managed-operation.ts";
 import type { ExecutionSession } from "./execution-backend.ts";
 import type { AgentMessageHandler } from "./agent-handler.ts";
@@ -127,12 +126,7 @@ import { formatProviderModelReference, parseProviderModel } from "../models/mode
 import { readCurrentPairCheckpoint, recordPairCheckpointSnapshot } from "./pair-checkpoint-session.ts";
 import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { directoryExists, fileExists } from "../helpers.ts";
-import {
-    loadAgentDef,
-    normalizeAgentInternalName,
-    resolveAgentDefsDir as _resolveAgentDefsDir,
-    resolveSessionToolNames,
-} from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 import {
     getCustomSetting,
     getMergedCustomSetting,
@@ -149,7 +143,6 @@ import {
     PersonalResourcePathError,
     remotePersonalResourcesActive,
 } from "../remote/personal-resources.ts";
-import { getBundledAgentDefsPath } from "./agent-assets.ts";
 import { expandSkill, listVisibleSkillCatalog } from "./skill-catalog.ts";
 import { getPackagePromptTemplatePaths, resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { getWldExtensionPaths, resolveInstalledWldExtensionResources } from "../extensions/wld-extension-manifest.ts";
@@ -158,7 +151,6 @@ import { ExecutionMetricsRecorder, SessionContextMetricsRecorder } from "../work
 import { describeRuntimeTool } from "./tool-event-title.ts";
 import { createSessionContextProjection, estimateContextTextTokens } from "./session-context-report.ts";
 import { installEarlySteeringInterruption } from "./early-steering.ts";
-import { loadSubAgentDefinition } from "./subagent-definitions.ts";
 import { formatGitPromptState, readGitPromptState } from "../git.ts";
 import { toolRegistry } from "@runwield/tools";
 import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
@@ -568,7 +560,7 @@ export function resolveEffectiveSessionToolNames(
     toolNames: string[] | undefined,
     customToolNames: string[],
 ): string[] {
-    const resolvedTools = resolveSessionToolNames(agentTools, toolNames, customToolNames);
+    const resolvedTools = agentRegistry.selectTools(agentTools, toolNames, customToolNames);
     const normalizedTools = resolvedTools.map((toolName) =>
         toolName === "multi_replace_file_content" ? "multi_file_edit" : toolName,
     );
@@ -1348,7 +1340,7 @@ export async function resolveModel(
     const sameAgent =
         !activeAgentName ||
         !agentName ||
-        normalizeAgentInternalName(activeAgentName) === normalizeAgentInternalName(agentName);
+        agentRegistry.normalizeName(activeAgentName) === agentRegistry.normalizeName(agentName);
     if (
         !options.ignoreManualModelOverride &&
         activeModelState.model &&
@@ -1893,7 +1885,7 @@ export async function assembleFinalSystemPromptWithContextProjection(
     finalSystemPrompt = finalSystemPrompt.replace("{{IMAGE_ATTACHMENTS_SECTION}}", imageAttachmentsSection);
 
     // Resolve the bundled agent definitions path (extracted cache or fallback)
-    const bundledAgentDefsPath = hasBundledAgentDefsPlaceholder ? await getBundledAgentDefsPath() : "";
+    const bundledAgentDefsPath = hasBundledAgentDefsPlaceholder ? await agentRegistry.getBundledDefinitionsPath() : "";
     finalSystemPrompt = finalSystemPrompt.replace("{{BUNDLED_AGENT_DEFS_DIR}}", bundledAgentDefsPath);
 
     // Append timezone so LLMs can reconcile the midnight boundary between the
@@ -2115,8 +2107,8 @@ export async function buildAgentSession({
     if (!remotePersonalResourcesActive()) await ensureMnemotecaBinary();
     await ensureCymbalBinary();
     const agentDef = subAgentDefinition
-        ? await loadSubAgentDefinition(subAgentDefinition.id, subAgentDefinition.options)
-        : await loadAgentDef(agentName, sessionCwd);
+        ? await agentRegistry.isolated.load(subAgentDefinition.id, subAgentDefinition.options)
+        : await agentRegistry.get(agentName, sessionCwd);
 
     const modelRuntime = await getModelRuntime();
     const modelRegistry = getModelRegistry();
@@ -2257,7 +2249,7 @@ export async function buildAgentSession({
         );
     }
 
-    const workRecordAccessMode = [AGENTS.GUIDE, AGENTS.RECORDER].includes(agentName) ? "all" : "current";
+    const workRecordAccessMode = agentName === AGENTS.GUIDE || agentName === AGENTS.RECORDER ? "all" : "current";
     if (tools.includes("work_record_search") && !finalCustomTools.find((t) => t.name === "work_record_search")) {
         const { createWorkRecordSearchTool } = await import("../../tools/work-record-search.ts");
         const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
@@ -2692,7 +2684,7 @@ export async function composeClaudeCliBridgedTools({
         finalCustomTools.push(createUserInterviewTool({ hostedSession }) as ToolDefinition);
     }
 
-    const workRecordAccessMode = [AGENTS.GUIDE, AGENTS.RECORDER].includes(agentName) ? "all" : "current";
+    const workRecordAccessMode = agentName === AGENTS.GUIDE || agentName === AGENTS.RECORDER ? "all" : "current";
     if (declared.has("work_record_search") && !hasTool("work_record_search")) {
         const { createWorkRecordSearchTool } = await import("../../tools/work-record-search.ts");
         const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
@@ -2747,8 +2739,8 @@ export async function buildExecutionSession(
     const sessionCwd = opts.cwd || targetHostedSession?.cwd;
     if (!sessionCwd) throw new Error("buildExecutionSession: cwd or hostedSession cwd is required");
     const agentDef = opts.subAgentDefinition
-        ? await loadSubAgentDefinition(opts.subAgentDefinition.id, opts.subAgentDefinition.options)
-        : await loadAgentDef(opts.agentName, sessionCwd);
+        ? await agentRegistry.isolated.load(opts.subAgentDefinition.id, opts.subAgentDefinition.options)
+        : await agentRegistry.get(opts.agentName, sessionCwd);
     const modelRegistry = getModelRegistry();
     const resolvedModel = withModelCompatibility(
         await resolveModel(
@@ -2934,7 +2926,7 @@ const ENGINEER_COMPACTION_CONTEXT_RATIO = 0.6;
 const ENGINEER_COMPACTION_MAX_TOKENS = 120_000;
 const ENGINEER_COMPACTION_REARM_GROWTH_RATIO = 0.05;
 const ENGINEER_COMPACTION_REARM_MAX_GROWTH_TOKENS = 8_000;
-const ENGINEER_AGENT_NAMES = new Set([
+const ENGINEER_AGENT_NAMES: ReadonlySet<string> = new Set([
     AGENTS.ENGINEER,
     AGENTS.PLAN_ENGINEER,
     AGENTS.FRONTEND_ENGINEER,

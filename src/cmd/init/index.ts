@@ -15,7 +15,8 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { AGENTS, getCwd, SUBAGENTS } from "../../constants.ts";
 import { COMMAND_NAMES } from "../registry.ts";
 import { EMPTY_PROJECT_DIRECTORY_INIT_NOOP_BODY, isEmptyProjectDirectory } from "../../shared/project-state.ts";
-import { extractBundledAgentDefs, extractBundledSkills } from "../../shared/session/agent-assets.ts";
+import { agentRegistry } from "../../shared/session/agent-registry.ts";
+import { bundledSkills } from "../../shared/session/skill-assets.ts";
 import { extractBundledModelPresets } from "../../shared/model-presets.ts";
 import { createSessionRuntime, SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
@@ -115,8 +116,8 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
     // Fresh binary installs need real on-disk copies so external read tools can
     // access bundled skills and document-format references, even if init later
     // stops because no model is configured.
-    await extractBundledAgentDefs();
-    await extractBundledSkills();
+    await agentRegistry.getBundledDefinitionsPath();
+    await bundledSkills.getPath();
     extractBundledModelPresets();
 
     if (!options.uiAPI && shouldLaunchTuiForModelSetup(getModelRegistry(), getSettingsManager(projectRoot))) {

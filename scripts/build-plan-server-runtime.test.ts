@@ -28,15 +28,15 @@ async function writeFile(path: string, content = "fixture"): Promise<void> {
 }
 
 const AGENT_DEFINITION_ASSETS = [
-    "src/agent-definitions/architect.md",
-    "src/agent-definitions/engineer.md",
-    "src/agent-definitions/guide.md",
-    "src/agent-definitions/ideator.md",
-    "src/agent-definitions/operator.md",
-    "src/agent-definitions/planner.md",
-    "src/agent-definitions/recorder.md",
-    "src/agent-definitions/router.md",
-    "src/agent-definitions/tester.md",
+    "packages/agents/definitions/architect.md",
+    "packages/agents/definitions/engineer.md",
+    "packages/agents/definitions/guide.md",
+    "packages/agents/definitions/ideator.md",
+    "packages/agents/definitions/operator.md",
+    "packages/agents/definitions/planner.md",
+    "packages/agents/definitions/recorder.md",
+    "packages/agents/definitions/router.md",
+    "packages/agents/definitions/tester.md",
 ];
 
 async function writeRuntimeInputs(root: string): Promise<void> {
@@ -98,8 +98,8 @@ test("buildPlanServerRuntime creates a minimal runtime root", async () => {
             "brand/logo.svg",
             "dist/workspace-runtime/client/_astro/app.js.asset",
             "dist/workspace-runtime/server.mjs",
-            "remote-server.js",
             ...AGENT_DEFINITION_ASSETS,
+            "remote-server.js",
             "src/ui/design-system/components.css",
             "src/ui/design-system/tokens.css",
             "src/ui/theme/catppuccin-mocha.json",
@@ -117,7 +117,7 @@ test("buildPlanServerRuntime removes stale output", async () => {
         await writeRuntimeInputs(root);
         await writeFile(join(root, "dist/plan-server/src/cli.ts"), "stale");
         await writeFile(
-            join(root, "dist/plan-server/src/agent-definitions/subagent-definitions/reviewer-prompt.md"),
+            join(root, "dist/plan-server/packages/agents/definitions/subagent-definitions/reviewer-prompt.md"),
             "stale",
         );
         await buildPlanServerRuntime(
@@ -135,7 +135,7 @@ test("buildPlanServerRuntime removes stale output", async () => {
 
         const files = await listRuntimeFiles(join(root, "dist/plan-server"));
         assertEquals(files.includes("src/cli.ts"), false);
-        assertEquals(files.includes("src/agent-definitions/subagent-definitions/reviewer-prompt.md"), false);
+        assertEquals(files.includes("packages/agents/definitions/subagent-definitions/reviewer-prompt.md"), false);
     } finally {
         await fsRm(root, { recursive: true });
     }

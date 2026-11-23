@@ -1,4 +1,4 @@
-import { getAgentDisplayName } from ".././agents.ts";
+import { agentRegistry } from "../agent-registry.ts";
 import {
     expandPromptTemplate,
     expandSkillCommand,
@@ -546,7 +546,9 @@ export class RuntimeReads {
             });
             return buildSessionContextReport({
                 agentName: managed?.activeAgent || "",
-                agentDisplayName: managed?.activeAgent ? getAgentDisplayName(managed.activeAgent, session.cwd) : "",
+                agentDisplayName: managed?.activeAgent
+                    ? agentRegistry.displayName(managed.activeAgent, session.cwd)
+                    : "",
                 model: { provider: managed?.provider || "", model: managed?.model || "" },
                 projection: buildProjectedSessionContextProjection(projected.entries),
                 contextUsage: null,

@@ -1,10 +1,10 @@
 import { getCwd } from "../../constants.ts";
-import { listAvailableAgents } from "../../shared/session/agents.ts";
+import { agentRegistry } from "../../shared/session/agent-registry.ts";
 import { AGENTS } from "../../constants.ts";
 import type { CommandCompletionItem } from "../registry.ts";
 
 export async function getAgentCompletions(argumentPrefix: string): Promise<CommandCompletionItem[]> {
-    const agents = await listAvailableAgents(getCwd());
+    const agents = await agentRegistry.list(getCwd());
     return agents
         .map((agent) => ({
             value: agent.name,

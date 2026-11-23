@@ -1,7 +1,7 @@
 import { isRemovedAgyProvider, removedAgyModelError } from "../../models/removed-providers.ts";
 import { AGENTS } from "../../../constants.ts";
 import { readPersistedManualModelState, resolveResumeAgentName } from ".././active-agent-session.ts";
-import { loadAgentDef } from ".././agents.ts";
+import { agentRegistry } from "../agent-registry.ts";
 import { resolveModel } from ".././session.ts";
 import { resolvePromptTemplateSettings } from "../prompt-template-settings.ts";
 import { resolveNamedInvocation } from ".././named-invocation.ts";
@@ -196,7 +196,7 @@ export class RuntimeImages {
                 ? options.preparedModelOverride || namedInvocation.model
                 : options.preparedModelOverride || options.modelOverride;
         const ignoreManualModelOverride = namedInvocation.kind === "prompt_template";
-        const agentDef = await loadAgentDef(agentName, session.cwd);
+        const agentDef = await agentRegistry.get(agentName, session.cwd);
         const modelRegistry = getModelRegistry();
         const currentSessionManager = session.getRootSessionManager?.();
         let sessionManager: import("./support.ts").RuntimeRootSessionManager | null = isRuntimeRootSessionManager(

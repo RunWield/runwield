@@ -105,7 +105,7 @@ structured agent outcomes, calls Plan and execution services, and decides which 
 | Workflow application logic  | Interpret tool outcomes, route requests, choose post-planning and post-execution actions                             | `src/shared/session/agent-handler.ts`, `src/shared/workflow/orchestrator.ts`, `src/shared/workflow/decisions.ts`                                         |
 | Plan domain                 | Canonical Markdown persistence, identities, hierarchy, lifecycle state machine, collaboration write lock             | `src/plan-store.ts`, `src/shared/workflow/plan-lifecycle.ts`                                                                                             |
 | Execution domain            | Worktree preparation, Engineer completion gate, local validation, repair, merge-back, recovery metadata              | `src/shared/workflow/workflow.ts`, `src/shared/workflow/validation.ts`, `src/shared/worktree.ts`                                                         |
-| Configuration and policy    | Layered agent definitions, settings, model resolution, protected tools, skills/prompts/extensions                    | `src/shared/session/agents.ts`, `src/shared/settings.ts`, `src/shared/models/`, `src/tools/registry.ts`                                                  |
+| Configuration and policy    | Layered agent definitions, settings, model resolution, protected tools, skills/prompts/extensions                    | `packages/agents/registry.ts`, `src/shared/settings.ts`, `src/shared/models/`, `src/tools/registry.ts`                                                  |
 | Local platform services     | Git probing, worktree registry, metrics, collaboration crypto/protocol/secrets, binary preflight                     | `src/shared/git.ts`, `src/shared/worktree-registry.ts`, `src/shared/workflow/metrics.ts`, `src/shared/collaboration/`, `src/shared/runtime-preflight.ts` |
 
 Presentation details, terminal widgets, ACP wire types, HTTP routes, Astro/React components, and browser review
@@ -1092,7 +1092,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Runtime event contract                    | `src/shared/session/session-runtime-events.ts`                                |
 | Interaction contract                      | `src/shared/session/session-runtime-interactions.ts`                          |
 | Pi session construction and prompt bridge | `src/shared/session/session.ts`                                               |
-| Agent definition layering                 | `src/shared/session/agents.ts`                                                |
+| Agent definition layering                 | `packages/agents/registry.ts`                                                |
 | Agent switching                           | `src/shared/session/agent-switching.ts`                                       |
 | Workflow-aware turn handling              | `src/shared/session/agent-handler.ts`                                         |
 | Routing orchestration                     | `src/shared/workflow/orchestrator.ts`                                         |
@@ -1103,7 +1103,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Plan persistence                          | `src/plan-store.ts`, `src/plan-front-matter.ts`                               |
 | Worktree operations and registry          | `src/shared/worktree.ts`, `src/shared/worktree-registry.ts`                   |
 | Settings and models                       | `src/shared/settings.ts`, `src/shared/models/`                                |
-| Tool policy                               | `src/tools/registry.ts`, agent front matter in `src/agent-definitions/`       |
+| Tool policy                               | `src/tools/registry.ts`, agent front matter in `packages/agents/definitions/`       |
 | TUI adapter                               | `src/ui/tui/chat-session.ts`, `src/ui/tui/runtime-adapter.ts`                 |
 | ACP adapter                               | `src/acp/server.ts`, `src/acp/session-map.ts`, mapper modules in `src/acp/`   |
 | Workspace Plan adapter                    | `src/ui/workspace/server/plan-adapter.ts`                                     |

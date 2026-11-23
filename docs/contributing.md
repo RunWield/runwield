@@ -154,7 +154,7 @@ Use this as an orientation map, not a directory inventory:
   mechanical and semantic validation, repairs, and Epic/FEATURE flow.
 - `src/shared/` also contains cross-cutting project state, settings, model/resource handling, collaboration, worktrees,
   work records, and runtime preflight helpers.
-- `src/agent-definitions/`, `src/prompt-templates/`, and `src/skills/` are the bundled agent, slash-prompt, and skill
+- `packages/agents/definitions/`, `src/prompt-templates/`, and `src/skills/` are the bundled agent, slash-prompt, and skill
   layers. Project `.wld/` overrides home `~/.wld/`, which overrides these bundled defaults.
 - `src/extensions/` contains runtime integrations for Mnemoteca, Cymbal, and Snip. Keep integration-specific tools,
   hooks, and tests isolated there when practical.

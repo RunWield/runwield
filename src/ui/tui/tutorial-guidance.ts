@@ -3,9 +3,9 @@ import { hasPlanDeliveryEvidence } from "../../plan-store/index.ts";
 import { opendir as fsOpendir } from "node:fs/promises";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AGENTS } from "../../constants.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { listWorkRecords } from "../../shared/work-records/store.ts";
+import { isPlanExecutionRuntimeAgent } from "../../shared/workflow/execution-agent.ts";
 import { findPlanEvidenceById } from "../../plan-store/index.ts";
 
 import { getCustomSetting } from "../../shared/settings.ts";
@@ -63,7 +63,7 @@ export function getTutorialExplanation(event: SessionRuntimeEvent): TutorialExpl
     if (
         event.type === RuntimeEventTypes.AGENT_CHANGED &&
         event.rootHandoff === true &&
-        [AGENTS.PLAN_ENGINEER, AGENTS.FRONTEND_ENGINEER].includes(event.agentName)
+        isPlanExecutionRuntimeAgent(event.agentName)
     ) {
         return {
             id: "implementation",
@@ -211,7 +211,7 @@ export async function presentTutorialEvent({
 
     const activeAssociatedPlanId = associatedPlanId(snapshot);
     const followsExecution =
-        [AGENTS.PLAN_ENGINEER, AGENTS.FRONTEND_ENGINEER].includes(snapshot.activeAgent || "") &&
+        isPlanExecutionRuntimeAgent(snapshot.activeAgent) &&
         (event.type === RuntimeEventTypes.SESSION_REPLACED || event.type === RuntimeEventTypes.AGENT_CHANGED);
     const planId =
         followsExecution && activeAssociatedPlanId ? activeAssociatedPlanId : context.planId || activeAssociatedPlanId;

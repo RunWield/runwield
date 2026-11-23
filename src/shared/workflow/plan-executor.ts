@@ -7,7 +7,7 @@ import { AGENTS, CLI_BIN } from "../../constants.ts";
 import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
 
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
-import { getAgentDisplayName } from "../session/agents.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
@@ -655,7 +655,7 @@ export async function executeSingleEngineerPlan({
     const runtimeExecutionAgent = resolvePlanExecutionRuntimeAgent(executionContext.executionAgent);
     emitLaunchingExecutionAgent(
         hostedSession,
-        getAgentDisplayName(runtimeExecutionAgent, executionContext.projectRoot || hostedSession?.cwd),
+        agentRegistry.displayName(runtimeExecutionAgent, executionContext.projectRoot || hostedSession?.cwd),
     );
     const engineerResult = await runEngineerWithPlan(
         planName,
@@ -779,7 +779,7 @@ export async function executePreparedPlanSegmentHandoff({
     hostedSession.setActiveExecutionWorkflow(workflow);
     emitLaunchingExecutionAgent(
         hostedSession,
-        getAgentDisplayName(
+        agentRegistry.displayName(
             resolvePlanExecutionRuntimeAgent(continuation.executionOwner),
             workflow.projectRoot || hostedSession.cwd,
         ),

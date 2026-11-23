@@ -39,8 +39,7 @@ import { buildAgentSession, composeClaudeCliBridgedTools } from "../shared/sessi
 import { CLAUDE_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "../shared/session/backends/claude-cli/mcp-bridge.ts";
 import { resolveImageGenerationSettings } from "../shared/image-generation-settings.ts";
 import type { ImageGenerationSettings } from "../shared/image-generation-settings.ts";
-import { loadAgentDef } from "../shared/session/agents.ts";
-import { loadSubAgentDefinition } from "../shared/session/subagent-definitions.ts";
+import { agentRegistry } from "../shared/session/agent-registry.ts";
 import { resolveDelegatedToolNames } from "./delegate-agent.ts";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR4nGP4z8AARwzIHABvqgf5gNwAKAAAAABJRU5ErkJggg==";
@@ -513,7 +512,7 @@ test("Pi Sessions inject create_image for writers and respect the primary model'
 
 test("Guide and write delegates get configured image tools in Pi and MCP; read delegates never inherit them", () =>
     withFixture(async (f) => {
-        const guide = await loadAgentDef("guide", f.cwd);
+        const guide = await agentRegistry.get("guide", f.cwd);
         assert(guide.tools.includes("create_image"));
         assert(!guide.tools.some((name) => ["write", "edit", "multi_file_edit"].includes(name)));
         const targets = [
@@ -527,13 +526,13 @@ test("Guide and write delegates get configured image tools in Pi and MCP; read d
             ...(await Promise.all(
                 (["write", "read"] as const).map(async (mode) => {
                     const id = mode === "write" ? SUBAGENTS.DELEGATED : SUBAGENTS.DELEGATED_READ;
-                    const definition = await loadSubAgentDefinition(id);
+                    const definition = await agentRegistry.isolated.load(id);
                     assertEquals(definition.tools.includes("create_image"), mode === "write");
                     return {
                         agentName: definition.name,
                         definition,
                         subAgentDefinition: { id },
-                        toolNames: resolveDelegatedToolNames(["read", "write", "create_image"], mode),
+                        toolNames: resolveDelegatedToolNames(["read", "write", "create_image"], id),
                         eligible: mode === "write",
                     };
                 }),

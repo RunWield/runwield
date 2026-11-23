@@ -12,7 +12,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
-import { getAgentDisplayName } from "../session/agents.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 
 import { runIsolatedAgentSession } from "../session/session.ts";
 import { type LocalCIPort, runLocalCI } from "./validation-local-ci.ts";
@@ -667,7 +667,7 @@ export async function runMechanicalValidation(
             hostedSession,
             buildValidationUserMessage({
                 kind: "quick_fix_repair",
-                agent: getAgentDisplayName(AGENTS.ENGINEER, projectRoot),
+                agent: agentRegistry.displayName(AGENTS.ENGINEER, projectRoot),
                 attempt: repairAttempts,
                 maxAttempts: maxRepairAttempts,
             }),
@@ -700,7 +700,7 @@ export async function runMechanicalValidation(
             outcome: completed ? "succeeded" : "ongoing",
         });
         if (!completed) {
-            const reason = `${getAgentDisplayName(
+            const reason = `${agentRegistry.displayName(
                 AGENTS.ENGINEER,
                 projectRoot,
             )} stopped on a blocker during the QUICK_FIX repair. Its last message says what stopped it.`;
@@ -708,14 +708,14 @@ export async function runMechanicalValidation(
                 outcome: "paused",
                 message: buildValidationUserMessage({
                     kind: "quick_fix_waiting",
-                    agent: getAgentDisplayName(AGENTS.ENGINEER, projectRoot),
+                    agent: agentRegistry.displayName(AGENTS.ENGINEER, projectRoot),
                 }),
             });
             emitRunWieldSystemStatus(
                 hostedSession,
                 buildValidationUserMessage({
                     kind: "quick_fix_waiting",
-                    agent: getAgentDisplayName(AGENTS.ENGINEER, projectRoot),
+                    agent: agentRegistry.displayName(AGENTS.ENGINEER, projectRoot),
                 }),
                 true,
                 progress,

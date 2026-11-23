@@ -1,0 +1,9 @@
+{
+    "name": "@runwield/resources",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./home": "./home.ts",
+        "./personal": "./personal.ts"
+    }
+}

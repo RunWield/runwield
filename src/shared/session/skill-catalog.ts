@@ -10,7 +10,7 @@ import {
 } from "../remote/personal-resources.ts";
 import { directoryExists, fileExists } from "../helpers.ts";
 import { getCustomSetting } from "../settings.ts";
-import { extractBundledSkills } from "./agent-assets.ts";
+import { bundledSkills } from "./skill-assets.ts";
 
 export type SkillSource = "local" | "home" | "bundled" | "external";
 
@@ -40,8 +40,8 @@ type SkillFrontMatter = {
 };
 
 async function bundledSkillDirectories(): Promise<string[]> {
-    const extracted = await extractBundledSkills();
-    return extracted && extracted !== SKILLS_DIR ? [extracted, SKILLS_DIR] : [SKILLS_DIR];
+    const extracted = await bundledSkills.getPath();
+    return extracted !== SKILLS_DIR ? [extracted, SKILLS_DIR] : [SKILLS_DIR];
 }
 
 async function readLayer(layer: SkillLayer): Promise<SkillCandidate[]> {

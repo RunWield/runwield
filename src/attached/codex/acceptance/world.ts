@@ -298,7 +298,7 @@ child.on("error",()=>process.exit(1));child.on("close",code=>process.exit(code??
         const directory = join(this.root, "runwield-home/.wld/agents/shared-practice");
         await mkdir(directory, { recursive: true });
         const practice = await readFile(
-            join(this.checkout, "src/agent-definitions/shared-practice/review-practice.md"),
+            join(this.checkout, "packages/agents/definitions/shared-practice/review-practice.md"),
             "utf8",
         );
         await writeFile(

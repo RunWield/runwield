@@ -3,12 +3,12 @@ import process from "node:process";
 
 import type { Component } from "@earendil-works/pi-tui";
 import { formatCommandHelp, printCommandHelp } from "../help/index.ts";
+import { agentRegistry } from "../../shared/session/agent-registry.ts";
 import {
+    applyUserAgentSelection,
     buildWorkflowOnlyAgentMessage,
-    isWorkflowOnlyAgent,
-    listAvailableAgents,
-} from "../../shared/session/agents.ts";
-import { applyUserAgentSelection, listUserAgentOptions } from "../../shared/session/user-selection.ts";
+    listUserAgentOptions,
+} from "../../shared/session/user-selection.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { AGENTS, getCwd } from "../../constants.ts";
 import { COMMAND_NAMES } from "../registry.ts";
@@ -40,7 +40,7 @@ async function runAgentsCommandCli(
     rest: string[],
     sessionPort: InteractiveSessionPort,
 ): Promise<void> {
-    const agents = await listAvailableAgents(getCwd());
+    const agents = await agentRegistry.list(getCwd());
 
     if (!agentName) {
         console.log("\nAvailable agents:\n");
@@ -53,7 +53,7 @@ async function runAgentsCommandCli(
 
     const match = agents.find((agent) => agent.name === agentName);
     if (!match) {
-        if (await isWorkflowOnlyAgent(agentName, getCwd())) {
+        if (await agentRegistry.isWorkflowOnly(agentName, getCwd())) {
             console.log(`\n${buildWorkflowOnlyAgentMessage(agentName, getCwd())}\n`);
             return;
         }

@@ -1,0 +1,12 @@
+{
+    "name": "@runwield/parsing",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./front-matter": "./front-matter.ts",
+        "./shell-selectors": "./shell-selectors.ts"
+    },
+    "dependencies": {
+        "js-yaml": "4.3.2"
+    }
+}

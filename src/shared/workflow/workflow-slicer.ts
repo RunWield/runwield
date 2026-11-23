@@ -17,7 +17,7 @@ import {
 } from "../../plan-store/index.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.ts";
-import { SUBAGENT_DEFINITIONS } from "../session/subagent-definitions.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { buildSlicerRequest } from "./workflow-prompts.ts";
 import { isEpicPlan } from "../project-plan.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
@@ -274,7 +274,7 @@ export async function runSlicerAgent({
 }: RunSlicerAgentOptions): Promise<RunSlicerAgentResult> {
     if (!hostedSession) throw new Error("runSlicerAgent: hostedSession is required");
     const projectRoot = hostedSession.cwd;
-    const slicerDisplay = SUBAGENT_DEFINITIONS[SUBAGENTS.SLICER].displayNameFallback;
+    const slicerDisplay = agentRegistry.isolated.displayNameFallback(SUBAGENTS.SLICER);
     const previousAgentName = hostedSession.getRootAgentName();
     let boundary = null;
 

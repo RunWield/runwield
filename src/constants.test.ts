@@ -6,23 +6,20 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "./testing/assertions.ts";
 import {
-    AGENT_DEFS_DIR,
     CATPPUCCIN_MOCHA_THEME_PATH,
     formatPlannedWorkLabel,
     normalizeWorkKind,
     PROMPT_TEMPLATES_DIR,
     SKILLS_DIR,
     SNIP_FILTERS_DIR,
-    SYSTEM_PROMPT_TEMPLATE_PATH,
 } from "./constants.ts";
 import { getWorkflowMetricsFilePath } from "./shared/workflow/metrics.ts";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 
 test("bundled resource constants point to file-readable assets", async () => {
     assertStringIncludes(await fsReadFile(CATPPUCCIN_MOCHA_THEME_PATH, "utf8"), "catppuccin-mocha");
-    assertStringIncludes(await fsReadFile(SYSTEM_PROMPT_TEMPLATE_PATH, "utf8"), "{{AGENT_PROMPT}}");
 
-    for (const dir of [AGENT_DEFS_DIR, PROMPT_TEMPLATES_DIR, SKILLS_DIR, SNIP_FILTERS_DIR]) {
+    for (const dir of [PROMPT_TEMPLATES_DIR, SKILLS_DIR, SNIP_FILTERS_DIR]) {
         const entries = [];
         for await (const entry of await fsReaddir(dir, { withFileTypes: true })) entries.push(entry.name);
         assert(entries.length > 0);

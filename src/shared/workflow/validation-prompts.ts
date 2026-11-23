@@ -6,10 +6,7 @@
  */
 
 import { SUBAGENTS } from "../../constants.ts";
-import { loadSubAgentDefinition } from "../session/subagent-definitions.ts";
-
-// Validation prompts use the same layered role names in every runtime.
-export { getAgentDisplayName } from "../session/agents.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 
 /**
  * Load reviewer as a bare workflow prompt instead of a normal agent definition.
@@ -28,10 +25,10 @@ export { getAgentDisplayName } from "../session/agents.ts";
  *
  * @param {"discovery" | "verify"} [mode]
  * @param {string} [projectRoot]
- * @returns {Promise<import('../session/agents.ts').AgentDefinition>}
+ * @returns {Promise<import("@runwield/agents").AgentDefinition>}
  */
 export async function loadReviewerPrompt(mode: "discovery" | "verify" = "discovery", projectRoot?: string) {
-    return await loadSubAgentDefinition(SUBAGENTS.REVIEWER, {
+    return await agentRegistry.isolated.load(SUBAGENTS.REVIEWER, {
         reviewerMode: mode,
         projectRoot,
     });
@@ -45,17 +42,17 @@ export async function loadReviewerPrompt(mode: "discovery" | "verify" = "discove
  * dispatches it — a user never selects it, so it must stay out of `/agent`
  * listings and hidden subagent targets.
  *
- * @returns {Promise<import('../session/agents.ts').AgentDefinition>}
+ * @returns {Promise<import("@runwield/agents").AgentDefinition>}
  */
 export async function loadReviewerFeedbackEngineerDef() {
-    return await loadSubAgentDefinition(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
+    return await agentRegistry.isolated.load(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
 }
 
 /**
  * Load the post-verification Manual QA generator as a bare, tool-free prompt.
  *
- * @returns {Promise<import('../session/agents.ts').AgentDefinition>}
+ * @returns {Promise<import("@runwield/agents").AgentDefinition>}
  */
 export async function loadManualQaPrompt() {
-    return await loadSubAgentDefinition(SUBAGENTS.MANUAL_QA);
+    return await agentRegistry.isolated.load(SUBAGENTS.MANUAL_QA);
 }

@@ -7,9 +7,8 @@ import { runIsolatedAgentSession } from "../session/session.ts";
 import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
 import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.ts";
 import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.ts";
-import { getAgentDisplayName as getSessionAgentDisplayName } from "../session/agents.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { ClaudeCliBackendError } from "../session/backends/claude-cli/failure.ts";
-import { INTEGRATION_REVIEWER_SUBAGENT_TOOLS, REVIEWER_SUBAGENT_TOOLS } from "../session/subagent-definitions.ts";
 import { AGENTS, SUBAGENTS } from "../../constants.ts";
 import {
     emitRunWieldSystemStatus,
@@ -79,8 +78,8 @@ export type IsolatedAgentSessionOptions = {
     cwd: string;
     resumePreviousRequest?: boolean;
     subAgentDefinition?: {
-        id: import("../session/subagent-definitions.ts").SubAgentDefinitionId;
-        options?: import("../session/subagent-definitions.ts").LoadSubAgentDefinitionOptions;
+        id: import("@runwield/agents").SubAgentDefinitionId;
+        options?: import("@runwield/agents").LoadSubAgentDefinitionOptions;
     };
     toolNames?: string[];
     customTools?: ToolDefinition[];
@@ -276,6 +275,10 @@ async function runIsolatedRequest(
         if (!manager) manager = SessionManager.inMemory(request.cwd);
         reviewerManagers.set(request.review.inspection, manager);
         if (key) pendingReviewSessions.set(hostedSession, { key, manager, inspection: request.review.inspection });
+        const mode = request.reviewerMode;
+        const isIntegration = mode === "integration" || mode === "integration_verify";
+        const id = isIntegration ? SUBAGENTS.INTEGRATION_REVIEWER : SUBAGENTS.REVIEWER;
+        const reviewerMode = isIntegration ? (mode === "integration_verify" ? "verify" : "discovery") : mode;
         const result = await runValidationAgentUntilEvent(
             isolatedSessions,
             {
@@ -285,20 +288,8 @@ async function runIsolatedRequest(
                     ? `Continue the pending review. Keep prior findings and diff reads. Do not restart.\n${request.review.inspection.feedback() || "Finish the review and call review_complete."}`
                     : request.userRequest,
                 cwd: request.cwd,
-                // The Epic integration gate runs its own reviewer, with its own prompt and tool ceiling.
-                subAgentDefinition:
-                    request.reviewerMode === "integration" || request.reviewerMode === "integration_verify"
-                        ? {
-                              id: SUBAGENTS.INTEGRATION_REVIEWER,
-                              options: {
-                                  reviewerMode: request.reviewerMode === "integration_verify" ? "verify" : "discovery",
-                              },
-                          }
-                        : { id: SUBAGENTS.REVIEWER, options: { reviewerMode: request.reviewerMode } },
-                toolNames:
-                    request.reviewerMode === "integration" || request.reviewerMode === "integration_verify"
-                        ? [...INTEGRATION_REVIEWER_SUBAGENT_TOOLS]
-                        : [...REVIEWER_SUBAGENT_TOOLS],
+                subAgentDefinition: { id, options: { reviewerMode } },
+                toolNames: [...agentRegistry.isolated.toolCeiling(id)],
                 customTools: buildReviewTools(hostedSession, request.review, request.ledger),
                 includeEditFallback: false,
                 ...(request.controllerRequestId ? { controllerRequestId: request.controllerRequestId } : {}),
@@ -678,7 +669,7 @@ export function createValidationSessionPort(
                 return outcome as Extract<IsolatedAgentSessionOutcome, { kind: K }>;
             }
         },
-        getAgentDisplayName: (agentName, projectRoot) => getSessionAgentDisplayName(agentName, projectRoot),
+        getAgentDisplayName: (agentName, projectRoot) => agentRegistry.displayName(agentName, projectRoot),
         handoffVerifiedPublication: async (projectRoot) => {
             if (!hostedSession.getRootAgentSession?.()) return;
             await switchActiveAgent(hostedSession, {

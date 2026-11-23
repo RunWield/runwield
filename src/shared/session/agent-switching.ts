@@ -5,7 +5,7 @@
 
 import { createAgentHandler } from "./agent-handler.ts";
 import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.ts";
-import { getAgentBusyLines, normalizeAgentInternalName } from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 import {
     appendDebugLog,
     ensureRootAgentSession,
@@ -159,7 +159,7 @@ export async function switchActiveAgent(
     const persistedAgentName = readPersistedActiveAgentName(sessionManager);
     const selectionAgent = previousAgentName || persistedAgentName || hostedSession.getActiveAgentInfo?.()?.agentName;
     const changesAgent =
-        !!selectionAgent && normalizeAgentInternalName(selectionAgent) !== normalizeAgentInternalName(agentName);
+        !!selectionAgent && agentRegistry.normalizeName(selectionAgent) !== agentRegistry.normalizeName(agentName);
     const inheritedManualModel = (() => {
         if (!changesAgent && hostedSession.isUserModelOverride?.()) {
             return activeModelState.provider && !activeModelState.model.startsWith(`${activeModelState.provider}/`)
@@ -311,8 +311,8 @@ export async function switchActiveAgent(
         const previousRootIdentity = previousAgentName || persistedAgentName || selectionAgent || "";
         const rootHandoff =
             Boolean(previousRootIdentity) &&
-            normalizeAgentInternalName(previousRootIdentity) !== normalizeAgentInternalName(committedAgentName);
-        const committedBusyLines = getAgentBusyLines(committedAgentName, hostedSession.cwd);
+            agentRegistry.normalizeName(previousRootIdentity) !== agentRegistry.normalizeName(committedAgentName);
+        const committedBusyLines = agentRegistry.busyLines(committedAgentName, hostedSession.cwd);
         emitHostedSessionRuntimeEvent(hostedSession, {
             type: RuntimeEventTypes.AGENT_CHANGED,
             agentName: committedAgentName,

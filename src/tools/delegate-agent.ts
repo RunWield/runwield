@@ -12,17 +12,14 @@ import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { AGENTS, SUBAGENTS } from "../constants.ts";
 import { formatProviderModelReference } from "../shared/models/model-validation.ts";
-import {
-    DELEGATED_READ_TOOLS,
-    DELEGATED_ROLE_GENERAL,
-    DELEGATED_ROLE_IDS,
-    DELEGATED_WRITE_TOOLS,
-    getDelegatedRole,
-    loadSubAgentDefinition,
-} from "../shared/session/subagent-definitions.ts";
-import type { DelegatedAuthority, DelegatedRoleId } from "../shared/session/subagent-definitions.ts";
+import { agentRegistry } from "../shared/session/agent-registry.ts";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
-import type { AgentDefinition } from "../shared/session/agents.ts";
+import type {
+    AgentDefinition,
+    DelegatedAuthority,
+    DelegatedRoleId,
+    DelegatedSubAgentDefinitionId,
+} from "@runwield/agents";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
 import { extractAssistantOutput } from "../shared/workflow/workflow-results.ts";
 
@@ -34,7 +31,7 @@ export interface DelegatedAgentSessionOptions {
     userRequest: string;
     cwd: string;
     subAgentDefinition: {
-        id: typeof SUBAGENTS.DELEGATED | typeof SUBAGENTS.DELEGATED_READ;
+        id: DelegatedSubAgentDefinitionId;
         options: { delegatedRole: DelegatedRoleId };
     };
     toolNames: string[];
@@ -105,42 +102,21 @@ function errorMessage(value: null | undefined | string | number | boolean | Erro
     return value instanceof Error ? value.message : String(value);
 }
 
-/**
- * @param {string[]} parentTools
- * @param {"read" | "write"} mode
- * @returns {string[]}
- */
-export function resolveDelegatedToolNames(parentTools: string[], mode: DelegationMode): string[] {
-    const allowed = new Set(mode === "read" ? DELEGATED_READ_TOOLS : DELEGATED_WRITE_TOOLS);
+export function resolveDelegatedToolNames(parentTools: string[], id: DelegatedSubAgentDefinitionId): string[] {
+    const allowed = new Set(agentRegistry.isolated.toolCeiling(id));
     return [...new Set(parentTools)].filter((toolName) => allowed.has(toolName));
 }
 
 /**
- * @param {import('../shared/session/subagent-definitions.ts').DelegatedRoleId} [role]
- * @returns {Promise<import('../shared/session/agents.ts').AgentDefinition>}
+ * Load a particular delegated prompt for inspection.
  */
 export async function loadDelegatedAgentPrompt(
-    role: DelegatedRoleId = DELEGATED_ROLE_GENERAL,
+    role: DelegatedRoleId = "general",
     mode: DelegationMode = "write",
 ): Promise<AgentDefinition> {
-    return await loadSubAgentDefinition(mode === "read" ? SUBAGENTS.DELEGATED_READ : SUBAGENTS.DELEGATED, {
+    return await agentRegistry.isolated.load(mode === "read" ? SUBAGENTS.DELEGATED_READ : SUBAGENTS.DELEGATED, {
         delegatedRole: role,
     });
-}
-
-/**
- * A role's authority ceiling is the most authority that role may receive; the effective
- * delegation mode is the intersection of what the caller asked for and what the role allows.
- *
- * @param {"read" | "write"} requestedMode
- * @param {import('../shared/session/subagent-definitions.ts').DelegatedAuthority} authorityCeiling
- * @returns {"read" | "write"}
- */
-export function resolveEffectiveDelegationMode(
-    requestedMode: DelegationMode,
-    authorityCeiling: DelegatedAuthority,
-): DelegationMode {
-    return authorityCeiling === "read" ? "read" : requestedMode;
 }
 
 /**
@@ -311,13 +287,14 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
     if (!opts.hostedSession) throw new Error("createDelegateAgentTool: hostedSession is required");
     if (!opts.cwd) throw new Error("createDelegateAgentTool: cwd is required");
     if (!opts.runIsolatedAgentSession) throw new Error("createDelegateAgentTool: runIsolatedAgentSession is required");
-    const definition = delegateAgent.define(opts.delegationModes ?? delegateAgent.modes, DELEGATED_ROLE_IDS);
+    const roleIds = agentRegistry.delegation.listRoles();
+    const definition = delegateAgent.define(opts.delegationModes ?? delegateAgent.modes, roleIds);
     const allowedModes = definition.parameters.properties.mode.enum;
     return defineTool<typeof definition.parameters, DelegateAgentDetails>({
         ...definition,
         async execute(toolCallId, params, signal, _onUpdate, _ctx): Promise<DelegateAgentResult> {
             const requestedMode: DelegationMode = params.mode === "write" ? "write" : "read";
-            const requestedRole = typeof params.role === "string" && params.role ? params.role : DELEGATED_ROLE_GENERAL;
+            const requestedRole = typeof params.role === "string" && params.role ? params.role : "general";
             const brief = typeof params.brief === "string" ? params.brief.trim() : "";
             if (!brief) {
                 return {
@@ -334,9 +311,9 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
                     isError: true,
                 };
             }
-            const role = getDelegatedRole(requestedRole);
-            if (!role) {
-                const message = `Delegation failed: unknown role "${requestedRole}". Valid roles: ${DELEGATED_ROLE_IDS.join(
+            const delegation = agentRegistry.delegation.resolve(requestedMode, requestedRole);
+            if (!delegation) {
+                const message = `Delegation failed: unknown role "${requestedRole}". Valid roles: ${roleIds.join(
                     ", ",
                 )}.`;
                 return {
@@ -346,13 +323,13 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
                         mode: requestedMode,
                         role: requestedRole,
                         error: "unknown_role",
-                        validRoles: [...DELEGATED_ROLE_IDS],
+                        validRoles: [...roleIds],
                     },
                     isError: true,
                 };
             }
 
-            const mode = resolveEffectiveDelegationMode(requestedMode, role.authorityCeiling);
+            const { role, effectiveAuthority: mode, definitionId } = delegation;
             if (!allowedModes.includes(mode)) {
                 return {
                     content: [
@@ -367,8 +344,7 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
                     isError: true,
                 };
             }
-            const childTools = resolveDelegatedToolNames(opts.parentTools, mode);
-            const definitionId = mode === "read" ? SUBAGENTS.DELEGATED_READ : SUBAGENTS.DELEGATED;
+            const childTools = resolveDelegatedToolNames(opts.parentTools, definitionId);
             const userRequest = [`Delegation mode: ${mode}`, "", "## Brief", brief].join("\n");
             const modelOverride = resolveDelegatedModelOverride(opts.hostedSession, opts.modelOverride);
             const thinkingLevelOverride = resolveDelegatedThinkingLevelOverride(

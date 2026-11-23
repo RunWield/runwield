@@ -35,7 +35,7 @@ import {
     EMPTY_PROJECT_DIRECTORY_WELCOME_BODY,
     isEmptyProjectDirectory,
 } from "../../shared/project-state.ts";
-import { listAvailableAgents } from "../../shared/session/agents.ts";
+import { agentRegistry } from "../../shared/session/agent-registry.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import {
     getCustomSetting,
@@ -369,7 +369,7 @@ export async function startInteractiveSession(
         managedSyncController.start();
         view.requestRender();
         if (!options.skipModelWelcome) {
-            await listAvailableAgents(runtimeSnapshot().cwd);
+            await agentRegistry.list(runtimeSnapshot().cwd);
             if (!remotePersonalResourcesActive()) await ensureMnemotecaBinary();
             await ensureCymbalBinary();
             await ensureKetchBinary();

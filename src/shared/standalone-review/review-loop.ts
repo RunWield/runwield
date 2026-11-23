@@ -1,7 +1,7 @@
 import process from "node:process";
 import { AGENTS } from "../../constants.ts";
 import { createSessionRuntime } from "../session/session-runtime.ts";
-import { getAgentDisplayName } from "../session/agents.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { formatCodeReviewAnnotations, runCodeReview } from "../../ui/review/code-review.ts";
 import {
     type ReviewConversation,
@@ -29,7 +29,7 @@ export async function runStandaloneReview(
     let unsubscribe: (() => void) | undefined;
     const conversation: ReviewConversation = {
         id: crypto.randomUUID(),
-        agentLabel: getAgentDisplayName(AGENTS.ENGINEER),
+        agentLabel: agentRegistry.displayName(AGENTS.ENGINEER),
         revision: 0,
         events: [],
         onExit: interruptReview,

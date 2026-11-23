@@ -44,6 +44,10 @@
         "@radix-ui/react-slot": "1.5.0",
         "@radix-ui/react-tabs": "1.1.21",
         "@radix-ui/react-tooltip": "1.2.16",
+        "@runwield/agents": "workspace:*",
+        "@runwield/bundled-assets": "workspace:*",
+        "@runwield/parsing": "workspace:*",
+        "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*",
         "@silvia-odwyer/photon-node": "0.3.4",
         "@streamparser/json": "0.0.26",
@@ -108,6 +112,27 @@
         "typescript": "6.0.3",
         "typescript-eslint": "8.72.2",
       },
+    },
+    "packages/agents": {
+      "name": "@runwield/agents",
+      "dependencies": {
+        "@runwield/bundled-assets": "workspace:*",
+        "@runwield/parsing": "workspace:*",
+        "@runwield/resources": "workspace:*",
+        "@runwield/tools": "workspace:*",
+      },
+    },
+    "packages/bundled-assets": {
+      "name": "@runwield/bundled-assets",
+    },
+    "packages/parsing": {
+      "name": "@runwield/parsing",
+      "dependencies": {
+        "js-yaml": "4.3.2",
+      },
+    },
+    "packages/resources": {
+      "name": "@runwield/resources",
     },
     "packages/tools": {
       "name": "@runwield/tools",
@@ -699,6 +724,14 @@
     "@rolldown/binding-win32-x64-msvc": ["@rolldown/binding-win32-x64-msvc@1.3.3", "", { "os": "win32", "cpu": "x64" }, "sha512-Ggzyuq1mN7claruAZH10aiiM1N3LRCoMP5xDXPdU514ulL0D2bksCWgFqEmEM2/pDzEP7Dq+dcv7IH452jtr1w=="],
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
+
+    "@runwield/agents": ["@runwield/agents@workspace:packages/agents"],
+
+    "@runwield/bundled-assets": ["@runwield/bundled-assets@workspace:packages/bundled-assets"],
+
+    "@runwield/parsing": ["@runwield/parsing@workspace:packages/parsing"],
+
+    "@runwield/resources": ["@runwield/resources@workspace:packages/resources"],
 
     "@runwield/tools": ["@runwield/tools@workspace:packages/tools"],
 

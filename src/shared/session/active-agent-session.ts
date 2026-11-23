@@ -7,7 +7,7 @@
  */
 
 import { AGENTS } from "../../constants.ts";
-import { loadAgentDef, normalizeAgentInternalName } from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 
 export const ACTIVE_AGENT_CUSTOM_TYPE = "runwield.active_agent";
 export const MANUAL_MODEL_CUSTOM_TYPE = "runwield.manual_model";
@@ -84,7 +84,7 @@ export function readPersistedManualModelState(
     for (const entry of entries) {
         const recordedAgent = readAgentNameFromEntry(entry);
         if (recordedAgent) {
-            const nextAgent = normalizeAgentInternalName(recordedAgent);
+            const nextAgent = agentRegistry.normalizeName(recordedAgent);
             // A manual choice belongs to one activation, not to the whole
             // transcript. Switching away and back must not resurrect it.
             if (activeAgent && nextAgent !== activeAgent) selection = null;
@@ -100,7 +100,7 @@ export function readPersistedManualModelState(
             model: typed.data.model.trim(),
         };
     }
-    if (agentName && activeAgent && normalizeAgentInternalName(agentName) !== activeAgent) return null;
+    if (agentName && activeAgent && agentRegistry.normalizeName(agentName) !== activeAgent) return null;
     return selection;
 }
 
@@ -108,9 +108,9 @@ export function recordActiveAgent(sessionManager: SessionManager | undefined, ag
     if (!sessionManager?.appendCustomEntry || !agentName) return;
 
     try {
-        const canonicalName = normalizeAgentInternalName(agentName);
+        const canonicalName = agentRegistry.normalizeName(agentName);
         const latest = readPersistedActiveAgentName(sessionManager);
-        if (latest && normalizeAgentInternalName(latest) === canonicalName) return;
+        if (latest && agentRegistry.normalizeName(latest) === canonicalName) return;
         const trimmedDisplayName = typeof displayName === "string" ? displayName.trim() : "";
         sessionManager.appendCustomEntry(ACTIVE_AGENT_CUSTOM_TYPE, {
             agentName: canonicalName,
@@ -162,7 +162,7 @@ export async function resolveResumeAgentName(sessionManager: SessionManager | un
         if (agentName.trim().toLowerCase() === AGENTS.SLICER) return AGENTS.SLICER;
 
         try {
-            const agentDefinition = await loadAgentDef(agentName, projectRoot || undefined);
+            const agentDefinition = await agentRegistry.get(agentName, projectRoot || undefined);
             return agentDefinition.name;
         } catch (_e) {
             // Keep scanning so a corrupt/stale marker does not hide the last
