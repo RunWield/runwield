@@ -90,7 +90,11 @@ export async function openPlanFixturePackageLocks(cwd: string, name: string) {
         const key = createHash("sha256").update(plan.metadata.planId).digest("hex");
         return { plan: join(directory, `${key}.lock`), catalog: join(directory, "catalog.lock") };
     });
-    return { plan: openNativeFileLock(paths.plan, false), catalog: openNativeFileLock(paths.catalog, false) };
+    return {
+        plan: openNativeFileLock(paths.plan, false),
+        catalog: openNativeFileLock(paths.catalog, false),
+        planPath: paths.plan,
+    };
 }
 /** Inspect private controller reconciliation evidence after exercising a public workflow. */
 export async function inspectPlanFixtureView(...args: Parameters<typeof inspectControllerView>) {
