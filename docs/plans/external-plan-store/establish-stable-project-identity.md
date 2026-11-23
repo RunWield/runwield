@@ -138,7 +138,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Existing focused regression command:
 
 ```sh
 bun scripts/run-tests.js src/shared/project-directory.test.ts src/shared/owner-coordination/projects.test.ts src/shared/remote/personal-resources.test.ts

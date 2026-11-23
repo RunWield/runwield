@@ -241,7 +241,7 @@ the user, not to the file list.
 
 ## Verification Plan
 
-Each linked child includes focused commands and concrete behavior checks. Use Bun 1.4.3, `bun run install:locked`, and
+Each linked child includes focused commands and concrete behavior checks. Use the Bun version in the checkout’s root `.bun-version`, `bun run install:locked`, and
 the isolated test runner; no direct `bun test` and no test-only seams. The Sequence itself is not executable.
 
 Child 1 updates Core retention and Workspace local-review capabilities. Child 2 completes product planning/acceptance,

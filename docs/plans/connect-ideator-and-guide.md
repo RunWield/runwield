@@ -145,7 +145,7 @@ No Work Records are proposed for supersession.
 
 ### Automated
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Extend the existing behavioral test homes; use the isolated runner, not `bun test`:
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Extend the existing behavioral test homes; use the isolated runner, not `bun test`:
 
 ```sh
 bun scripts/run-tests.ts src/shared/attached/role-instructions.test.ts src/shared/attached/coordinator.test.ts src/shared/attached/status-restore.test.ts src/shared/attached/presentation.test.ts src/shared/attached/action-content.test.ts src/shared/attached/codex-role-settings.test.ts src/shared/attached/codex-dispatch.test.ts

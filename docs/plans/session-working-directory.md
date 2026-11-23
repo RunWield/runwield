@@ -230,7 +230,7 @@ No Work Record supersession is proposed.
 
 ### Automated
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Do not use direct `bun test`.
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Do not use direct `bun test`.
 
 Add `src/shared/session/session-directory.test.ts` for runtime journeys, `src/shared/session/checkout-context.test.ts`
 for read-only facts/identity, and `src/tools/session-directory.test.ts` for the tool contract.

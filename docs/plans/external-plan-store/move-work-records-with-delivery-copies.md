@@ -239,7 +239,7 @@ sets their independent defaults and behavior.
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Register new suites in the applicable isolated-runner
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Register new suites in the applicable isolated-runner
 inventory. These new suites are implementation deliverables, not tests claimed to exist or pass now:
 
 ```sh

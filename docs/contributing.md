@@ -27,7 +27,9 @@ Product and architecture guidance:
 
 ## Development setup
 
-Contributors use Bun `^1.4.0`. CI and release builds use the exact version in `.bun-version`.
+Use the root `.bun-version` for local work, CI, and releases. Run `./scripts/with-bun.sh` in place of `bun` to select that version.
+The launcher reuses a matching Bun on PATH or uses `bun x` to fetch and cache the selected runtime.
+Change the root file to upgrade.
 Install the pinned root and docs dependencies before running commands:
 
 ```bash

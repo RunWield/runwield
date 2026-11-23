@@ -115,7 +115,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. This prepared branch contains `scripts/run-tests.js`, not the user's newly named `scripts/run-tests.ts`; `package.json` still delegates `test:suite` to the JavaScript runner. Use the user-authorized `bun run test` entrypoint, which ends in `bun run test:suite` and forwards the paths below. Do not invoke `bun test`, invent a missing TypeScript runner, or migrate the runner in this child.
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. This prepared branch contains `scripts/run-tests.js`, not the user's newly named `scripts/run-tests.ts`; `package.json` still delegates `test:suite` to the JavaScript runner. Use the user-authorized `bun run test` entrypoint, which ends in `bun run test:suite` and forwards the paths below. Do not invoke `bun test`, invent a missing TypeScript runner, or migrate the runner in this child.
 
 Extend these existing files with the behavior assigned below, then run:
 

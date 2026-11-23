@@ -192,7 +192,7 @@ copy settings stay with their assigned children. No new public domain term is in
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Add the three proposed import test files below and run them
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Add the three proposed import test files below and run them
 through the isolated runner; these are implementation deliverables, not claims of existing passing tests:
 
 ```sh

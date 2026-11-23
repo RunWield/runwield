@@ -138,7 +138,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - [OpenSSH forwarding documentation](https://man.openbsd.org/ssh_config#ExitOnForwardFailure) says forwarding setup
   success does not guarantee later destination connectivity; retain application health/admission checks.
 - [SQLite filesystem guidance](https://www.sqlite.org/howtocorrupt.html) depends on correct native locking; keep owner
-  indexing local rather than opening databases through SSHFS. Qualify pinned Bun 1.4.3, not only current online docs.
+  indexing local rather than opening databases through SSHFS. Qualify the Bun version in the root `.bun-version`, not only current online docs.
 
 ## Implementation Steps
 
@@ -180,7 +180,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Add the proposed files below to the isolated inventory.
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Add the proposed files below to the isolated inventory.
 The checkout has `scripts/run-tests.js`; use the supported entrypoint, never direct `bun test`:
 
 ```sh

@@ -193,7 +193,7 @@ redesign or automatic registration of linked clones.
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Add the two focused continuity suites below; they are
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Add the two focused continuity suites below; they are
 planned test files, not existing passing evidence. Run them with the related regressions, then `bun run ci`:
 
 ```sh

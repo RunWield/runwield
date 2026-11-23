@@ -136,7 +136,7 @@ Plan 12. This child must not enable a new global backend switch or require a lap
 - Reuse `serveHttp` and the existing private atomic writer. [Bun server documentation](https://bun.sh/docs/runtime/http/server)
   distinguishes graceful shutdown from force-closing connections; application admission must still reject late work.
   [Node filesystem documentation](https://nodejs.org/api/fs.html#filehandlesync) documents explicit synchronization:
-  an atomic rename alone is not a transaction spanning both effect and receipt. Qualify behavior on pinned Bun 1.4.3;
+  an atomic rename alone is not a transaction spanning both effect and receipt. Qualify behavior with the Bun version in the root `.bun-version`;
   current online documentation is not proof of the pinned runtime's behavior.
 
 ## Implementation Steps
@@ -179,7 +179,7 @@ Plan 12. This child must not enable a new global backend switch or require a lap
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. The prepared checkout has `scripts/run-tests.js`;
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. The prepared checkout has `scripts/run-tests.js`;
 use the authorized `bun run test` entrypoint rather than inventing a TypeScript runner or invoking `bun test`.
 Add the proposed tests below to the isolated test inventory and run:
 

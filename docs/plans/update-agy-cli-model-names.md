@@ -135,7 +135,7 @@ No Work Record supersession is proposed. The owner confirmed the three additions
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Focused commands:
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Focused commands:
 
 - `bun scripts/run-tests.ts src/shared/models/agy-cli-models.test.ts src/shared/models/model-price-catalog.test.ts src/cmd/models/index.test.ts`
 - `bun scripts/run-tests.ts src/shared/session/agy-cli-model-selection.test.ts src/shared/session/agy-cli-execution.test.ts src/shared/session/backends/agy-cli/agy-cli-backend.test.ts src/shared/session/session-transcript-projection.test.ts`

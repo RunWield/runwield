@@ -86,7 +86,7 @@ Source inspected on 2026-11-01:
    has a Session-list capability; check the pinned SDK before choosing its implementation path.
 5. ACP authentication currently refers to provider/default-model setup and advertises terminal login when supported.
    That is distinct from the future Workspace account. A clean desktop install needs an actual provider-setup journey.
-6. `package.json` pins Bun 1.4.3, ACP SDK 1.4.0, Astro, React, Vite, CodeMirror, and Pierre diffs. Existing compiled CLI
+6. `.bun-version` selects Bun. `package.json` pins ACP SDK 1.4.0, Astro, React, Vite, CodeMirror, and Pierre diffs. Existing compiled CLI
    and Workspace release scripts can supply assets, but no Electron package/runtime boundary exists yet.
 7. [ADR-017](../adr/017-remote-ssh-local-personal-authority.md) governs a different remote SSH product with laptop-owned
    personal state. It does not establish an authenticated remote ACP endpoint or the lifetime of an attached worker.
@@ -263,7 +263,7 @@ justify shipping speculative services, mock authentication, remote transport imp
 
 ## Verification Plan
 
-Prerequisite: Bun 1.4.3 and `bun run install:locked`. Child Plans add focused cases to the isolated runner and update
+Prerequisite: the Bun version in the checkout’s root `.bun-version` and `bun run install:locked`. Child Plans add focused cases to the isolated runner and update
 `scripts/bun-test-files.json` when required. Existing relevant commands include:
 
 ```sh

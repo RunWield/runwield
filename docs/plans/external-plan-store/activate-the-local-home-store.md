@@ -196,7 +196,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Verification Plan
 
-Use Bun 1.4.3 and `bun run install:locked` before checks. The prepared branch has `scripts/run-tests.js`, while newer
+Use the Bun version in the checkout’s root `.bun-version` and `bun run install:locked` before checks. The prepared branch has `scripts/run-tests.js`, while newer
 checkout guidance names `.ts`; use the stable supported `bun run test` entrypoint rather than copying a nonexistent
 runner path. RunWield runs full CI after implementation. For this child, run:
 
