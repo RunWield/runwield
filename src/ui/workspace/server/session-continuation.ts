@@ -842,7 +842,7 @@ export class WorkspaceSessionContinuationService {
     }
 
     resolveBrowserNotificationPolicy(projectId: string) {
-        const project = typeof this.store.getProjectById === "function" ? this.store.getProjectById(projectId) : null;
+        const project = typeof this.store.projects.get === "function" ? this.store.projects.get(projectId) : null;
         const raw = project ? getMergedCustomSetting("notifications", project.currentRoot) : undefined;
         return normalizeBrowserNotificationPolicy(raw as NotificationSettingsRecord | undefined);
     }
@@ -1540,8 +1540,8 @@ export class WorkspaceSessionContinuationService {
     async createSession(options: CreateSessionOptions): Promise<CreateSessionResult> {
         if (!options.text?.trim() && !options.images?.length) throw new Error("A message or image is required.");
         await Promise.resolve();
-        const project = this.store.getProjectById(options.projectId);
-        if (!project || project.lifecycle !== "enabled") throw new Error("Project not found.");
+        const project = this.store.projects.get(options.projectId);
+        if (!project || project.status !== "active") throw new Error("Project not found.");
         const projectRoot = requireOwnerProjectRoot(this.store, options.projectId);
         const defaultAgent = await getDefaultUserAgentOption(projectRoot);
         const launch = {

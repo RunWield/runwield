@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
 /** Connection selection and durable requests stay inside the public Plan owner. */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -14,7 +15,6 @@ import {
     validateProjectStoreRequest,
 } from "../shared/remote/project-store-protocol.ts";
 import type { RemoteSessionControlConnection } from "../shared/remote/session-control-client.ts";
-import { inspectProjectIdentity, currentHomeProjectOwner } from "../shared/project-identity.ts";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { writeJsonAtomically, ensurePrivateDir } from "../shared/private-json-file.ts";
 import { operationDigest, operationHash } from "./operation-receipts.ts";
@@ -52,7 +52,7 @@ export function configureManagedPlanStore(cwd: string, connection: RemoteSession
     };
 }
 export function managedPersonalStoreActive(): boolean {
-    return active !== undefined && !currentHomeProjectOwner();
+    return active !== undefined && !projects.home.current();
 }
 export function managedPlanStoreActive(): boolean {
     return managedPersonalStoreActive() && !currentManagedRetainedExecution();
@@ -80,7 +80,7 @@ async function client(cwd: string, admit = false): Promise<ProjectStoreClient | 
         selected.client = new ProjectStoreClient(endpoint, selected.connection.credential, binding);
         if (admit) selected.admitted = true;
     }
-    const inspection = inspectProjectIdentity(cwd);
+    const inspection = projects.checkout.inspect(cwd);
     if (
         inspection.kind !== "existing" ||
         inspection.identity.projectId !== selected.client.binding.projectId ||
@@ -91,7 +91,7 @@ async function client(cwd: string, admit = false): Promise<ProjectStoreClient | 
     return selected.client;
 }
 function managedLocator(cwd: string, path: string, toOwner = false): string {
-    const inspected = inspectProjectIdentity(cwd);
+    const inspected = projects.checkout.inspect(cwd);
     if (inspected.kind !== "existing") throw new Error("Managed locator requires admitted identity.");
     const ownerRoot = join(inspected.identity.personalOwner.identity, ".wld", "projects", inspected.identity.projectId);
     const mountedRoot = join(personalGlobalRoot(), "projects", inspected.identity.projectId);
@@ -104,7 +104,7 @@ function managedLocator(cwd: string, path: string, toOwner = false): string {
     return join(destination, suffix);
 }
 export function managedDocumentRoot(cwd: string): string {
-    const inspected = inspectProjectIdentity(cwd);
+    const inspected = projects.checkout.inspect(cwd);
     if (inspected.kind !== "existing") throw new Error("Managed document requires admitted identity.");
     return join(personalGlobalRoot(), "projects", inspected.identity.projectId, "plans");
 }
@@ -182,7 +182,7 @@ export async function withManagedPlan<T>(
             live.baseCommit !== retained.attempt.baseCommit
         )
             throw new Error("Original execution owner changed; no replacement was started.");
-        const inspected = inspectProjectIdentity(cwd);
+        const inspected = projects.checkout.inspect(cwd);
         if (inspected.kind !== "existing") throw new Error("Retained execution Project is unavailable.");
         const { withRetainedCheckoutSource } = await import("./retained-source.ts");
         return await selections.run(current, () =>
@@ -376,7 +376,7 @@ export async function sealManagedPublication(
         targetBranch,
         preparation,
     });
-    const inspected = inspectProjectIdentity(active.cwd);
+    const inspected = projects.checkout.inspect(active.cwd);
     if (inspected.kind !== "existing" || !result.snapshotId || !result.snapshotDigest)
         throw new Error("Managed publication was not sealed.");
     return {

@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { SessionHost } from "../session/session-host.ts";
 import { RemoteSessionControl } from "./session-control-client.ts";
@@ -9,8 +10,8 @@ import { openNativeFileLock } from "../native-file-lock.ts";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
-import { join } from "node:path";
-import { defineCommittedGitFixture } from "../git-test-fixture.ts";
+import { dirname, join } from "node:path";
+import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import {
     listManifests,
@@ -22,7 +23,7 @@ import {
 import { startRemoteControlService } from "./control.ts";
 import { LaptopSessionControl, listSavedRemoteSessions } from "./laptop-session-control.ts";
 import type { ResolvedRemoteTarget } from "./target.ts";
-import type { RemoteSessionControlRequest } from "./session-protocol.ts";
+import type { RemoteRolloverReceipt, RemoteSessionControlRequest } from "./session-protocol.ts";
 import { customEntry } from "./session-save-test-fixture.ts";
 
 const repositories = defineCommittedGitFixture();
@@ -127,6 +128,12 @@ test("first message ownership stays on the laptop and publication releases the n
             const resumed = await f.request({ kind: "begin", sessionId, admissionId: crypto.randomUUID() });
             assertEquals(Object.keys(resumed), ["operation"]);
             assertEquals((await f.save(resumed.operation, 0, "hydrate")).contents.includes("remote sentinel"), true);
+            const records = await f.save(resumed.operation, 1, "records");
+            assertEquals(JSON.parse(records.contents), {
+                lastPlanReview: null,
+                planAssociations: [],
+                planSessions: [],
+            });
             await f.request({ kind: "checkpoint", operation: resumed.operation });
         } finally {
             file.close();
@@ -424,6 +431,95 @@ test("laptop control owns persistence and its operation registry despite extra c
             assertEquals(f.store.inspectSessionActivation(sessionId).activation?.state, "idle");
         } finally {
             control.close();
+        }
+    });
+});
+
+test("remote rollover follows the owning checkout when two stores share a Project ID", async () => {
+    await fixture(async (f) => {
+        const linkedRoot = join(f.root, "linked-checkout");
+        await git(f.root, ["worktree", "add", "-b", "linked-rollover", linkedRoot]);
+        const primary = projects.checkout.admitForStorage(f.root);
+        const linked = projects.checkout.admitForStorage(linkedRoot);
+        assertEquals(primary.projectId, linked.projectId);
+        assert.notEqual(primary.checkoutId, linked.checkoutId);
+        f.control.bindProjectIdentity(primary);
+        const linkedTarget = {
+            ...f.target,
+            host: { ...f.target.host, hostname: "linked-remote.example" },
+            cwd: linkedRoot,
+            gitRoot: linkedRoot,
+            isWorktree: true,
+        };
+        const linkedControl = new LaptopSessionControl({
+            baseDir: f.baseDir,
+            target: linkedTarget,
+            targetLabel: "linked",
+        });
+        linkedControl.bindProjectIdentity(linked);
+        try {
+            const primarySessionId = crypto.randomUUID();
+            const first = await f.control.handle({
+                kind: "create",
+                sessionId: primarySessionId,
+                name: "Primary",
+                admissionId: crypto.randomUUID(),
+            });
+            assert(first.operation);
+            f.control.handleSave({ kind: "hydrate", operation: first.operation, sequence: 0, contents: "" });
+            await f.control.handle({ kind: "checkpoint", operation: first.operation });
+            const sessionId = crypto.randomUUID();
+            const created = await linkedControl.handle({
+                kind: "create",
+                sessionId,
+                name: "Linked",
+                admissionId: crypto.randomUUID(),
+            });
+            assert(created.operation);
+            const before = f.store.getCurrentSessionSegment(sessionId)!;
+            const directory = dirname(before.transcriptPath);
+            const primarySegment = f.store.getCurrentSessionSegment(primarySessionId)!;
+            assert.notEqual(directory, dirname(primarySegment.transcriptPath));
+            await assertRejects(
+                () =>
+                    f.store.validateSuccessorSegmentLocator({
+                        runwieldSessionId: sessionId,
+                        projectId: linked.projectId,
+                        piSessionId: primarySegment.piSessionId,
+                        transcriptPath: primarySegment.transcriptPath,
+                        transcriptCwd: f.root,
+                    }),
+                Error,
+                "outside the RunWield session directory",
+            );
+            linkedControl.handleSave({ kind: "hydrate", operation: created.operation, sequence: 0, contents: "" });
+            const response = await linkedControl.handleSave({
+                kind: "rollover",
+                operation: created.operation,
+                sequence: 1,
+                contents: JSON.stringify({ kind: "execution", continuation: { next: "engineer" } }),
+            });
+            const receipt: RemoteRolloverReceipt = JSON.parse(response.contents);
+            const successor = f.store.getCurrentSessionSegment(sessionId)!;
+            assertEquals(successor.projectId, linked.projectId);
+            assertEquals(dirname(successor.transcriptPath), directory);
+            assertEquals(successor.lineageParentSegmentId, before.segmentId);
+            assertEquals(f.store.getCurrentSessionSegment(primarySessionId), primarySegment);
+            const contender = openNativeFileLock(lockPath(directory, sessionId));
+            try {
+                assertEquals(contender.tryLockSync(true), false);
+                const crossTarget = await f.control.handle({ kind: "list" });
+                assertEquals(
+                    crossTarget.sessions?.some((item) => item.id === sessionId),
+                    false,
+                );
+            } finally {
+                contender.close();
+            }
+            linkedControl.handleSave({ kind: "hydrate", operation: receipt.operation, sequence: 0, contents: "" });
+            await linkedControl.handle({ kind: "checkpoint", operation: receipt.operation });
+        } finally {
+            linkedControl.close();
         }
     });
 });

@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -12,7 +13,6 @@ import {
     readPlanImportEvidence,
 } from "./plan-store/packages.ts";
 import { git } from "./shared/git-test-fixture.ts";
-import { admitProjectIdentity } from "./shared/project-identity.ts";
 
 async function family(root: string) {
     const selection = join(root, "docs/plans");
@@ -135,7 +135,7 @@ test("worktree imports share repository-relative source allocation", async () =>
         await git(f.root, ["commit", "-m", "fixture"]);
         const worktree = join(f.root, "worktree");
         await git(f.root, ["worktree", "add", "-b", "other", worktree]);
-        const identity = await admitProjectIdentity(worktree);
+        const identity = await projects.checkout.admit(worktree);
         ok(identity.kind === "existing");
         const results = await Promise.all([
             driver({ identity: f.identity, command: "import", selection }),
@@ -186,11 +186,11 @@ test("explicitly linked clones share publication uniqueness without merging dist
             two = join(f.root, "clone-two");
         await git(f.root, ["clone", f.root, one]);
         await git(f.root, ["clone", f.root, two]);
-        const first = await admitProjectIdentity(one);
+        const first = await projects.checkout.admit(one);
         ok(first.kind === "existing");
-        const pending = await admitProjectIdentity(two);
+        const pending = await projects.checkout.admit(two);
         ok(pending.kind === "pending", JSON.stringify(pending));
-        const linked = await admitProjectIdentity(two, {
+        const linked = await projects.checkout.admit(two, {
             choice: { kind: "link", projectId: first.identity.projectId, candidates: pending.candidates },
         });
         ok(linked.kind === "existing");

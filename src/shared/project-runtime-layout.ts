@@ -1,10 +1,5 @@
+import { projects, ProjectIdentityEntryRequired, type ProjectIdentityOptions } from "@runwield/projects";
 import { recoverLegacyPlanControllers } from "../plan-store/index.ts";
-import {
-    admitProjectIdentity,
-    inspectProjectIdentity,
-    ProjectIdentityEntryRequired,
-    type ProjectIdentityOptions,
-} from "./project-identity.ts";
 import {
     homeProjectRuntimeLayout,
     inspectHomeProjectRuntime,
@@ -56,7 +51,7 @@ import {
     reusedGitRead,
 } from "./git-evidence-cache.ts";
 import { getLockHostname, isLockHolderGone } from "./process-liveness.ts";
-import { resolvePrimaryCheckoutRoot, resolveProjectRoot, prepareProjectCheckout } from "./project-checkout.ts";
+import { resolveProjectRoot, prepareProjectCheckout } from "./project-checkout.ts";
 import { inspectWorktreeRegistryAtPath, withWorktreeRegistryLockAtPath } from "./worktree-registry.ts";
 import { ensureRunWieldOwnedGitignoreBlock, LEGACY_PROJECT_RUNTIME_HAZARD_PATHS } from "./runwield-owned-paths.ts";
 import { assertPublicationAttempt, type PublicationAttempt } from "./workflow/publication-attempt.ts";
@@ -279,7 +274,7 @@ export function resolveProjectRuntimeLayout(
     selectedCheckoutRoot: string,
     options: ProjectIdentityOptions = {},
 ): ProjectRuntimeLayout {
-    const inspection = inspectProjectIdentity(selectedCheckoutRoot, options);
+    const inspection = projects.checkout.inspect(selectedCheckoutRoot, options);
     if (inspection.kind === "invalid") throw new ProjectIdentityEntryRequired(inspection);
     if (inspection.kind === "existing") return homeProjectRuntimeLayout(inspection.identity);
     return resolveCheckoutRuntimeLayout(selectedCheckoutRoot);
@@ -287,7 +282,7 @@ export function resolveProjectRuntimeLayout(
 
 function resolveCheckoutRuntimeLayout(selectedCheckoutRoot: string): ProjectRuntimeLayout {
     const selectedProjectRoot = resolveProjectRoot(selectedCheckoutRoot);
-    const primaryCheckoutRoot = resolveProjectRoot(resolvePrimaryCheckoutRoot(selectedProjectRoot));
+    const primaryCheckoutRoot = resolveProjectRoot(projects.checkout.primaryRoot(selectedProjectRoot));
     const primaryInternalRoot = internalRootFor(primaryCheckoutRoot);
     const selectedInternalRoot = internalRootFor(selectedProjectRoot);
     const selectedPlanLocksDir = join(selectedInternalRoot, PLAN_LOCKS_DIR_NAME);
@@ -358,7 +353,7 @@ export function inspectProjectRuntimeReadAccess(root: string): Promise<ProjectRu
 }
 
 async function inspectProjectRuntimeReadAccessUncached(root: string): Promise<ProjectRuntimeReadInspection> {
-    const identity = inspectProjectIdentity(root);
+    const identity = projects.checkout.inspect(root);
     if (identity.kind === "invalid") return block("malformed_migration_evidence", [root], identity.message);
     if (identity.kind === "existing") return inspectHomeProjectRuntime(identity.identity);
     const layout = resolveCheckoutRuntimeLayout(root);
@@ -377,7 +372,7 @@ async function inspectProjectRuntimeReadAccessUncached(root: string): Promise<Pr
         // but deliberately does not test whether an inode lock can be acquired.
         const checked = await preflight(layout, primary, marker.marker, { passive: true });
         // Admission can finish while the legacy reader awaits Git evidence.
-        const admitted = inspectProjectIdentity(root);
+        const admitted = projects.checkout.inspect(root);
         if (admitted.kind === "existing") return inspectHomeProjectRuntime(admitted.identity);
         if (isBlocked(checked)) {
             // A writer can commit adoption and start using its authorities after
@@ -454,7 +449,7 @@ export async function inspectProjectRuntimeLayout(root: string): Promise<Project
             layout: access.layout,
             adoptedSelectedCheckoutRoots: access.adoptedSelectedCheckoutRoots,
         };
-    if (inspectProjectIdentity(root).kind === "existing")
+    if (projects.checkout.inspect(root).kind === "existing")
         return { kind: "pending", layout: access.layout, selectedCheckoutRoots: [access.layout.selected.checkoutRoot] };
     const marker = await readLayoutMarker(access.layout);
     if (isBlocked(marker)) return marker;
@@ -533,7 +528,7 @@ async function enterProjectRuntimeUncached(
     });
     if (!rootInfo || !rootInfo.isDirectory()) throw new Error("Project root must be an existing directory");
     if (rootInfo) {
-        const admission = await admitProjectIdentity(selectedCheckoutRoot, identityOptions);
+        const admission = await projects.checkout.admit(selectedCheckoutRoot, identityOptions);
         if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
         {
             const { layout } = await enterHomeProjectRuntime(admission.identity);
@@ -562,7 +557,7 @@ async function reconcileRuntimeIgnore(projectRoot: string): Promise<void> {
 export async function migrateLegacyProjectRuntimeState(
     selectedCheckoutRoot: string,
 ): Promise<ProjectRuntimeMigrationResult> {
-    const admission = await admitProjectIdentity(selectedCheckoutRoot);
+    const admission = await projects.checkout.admit(selectedCheckoutRoot);
     if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
     try {
         return await enterHomeProjectRuntime(admission.identity);

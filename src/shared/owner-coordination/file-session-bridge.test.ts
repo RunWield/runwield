@@ -1,8 +1,8 @@
+import { projects } from "@runwield/projects";
 import assert from "node:assert/strict";
 import process from "node:process";
-import { rename } from "node:fs/promises";
+import { readdir, rename } from "node:fs/promises";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { admitProjectIdentity } from "../project-identity.ts";
 import {
     createRootSessionManager,
     resolveCreatedRootSessionPath,
@@ -21,16 +21,34 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { DatabaseSync } from "../sqlite.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { openOwnerCoordinationStore } from "./index.ts";
 
 function countRows(database: DatabaseSync, table: string) {
     const row = database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get();
     return Number(row?.count ?? -1);
 }
+
+test("browsing an empty registered Project leaves Session storage empty", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "workspace-empty-sessions-"));
+    const sessionBaseDir = join(root, "sessions");
+    const store = openOwnerCoordinationStore({ dbPath: join(root, "workspace.sqlite3"), sessionBaseDir });
+    try {
+        const checkout = join(root, "checkout");
+        await fsMkdir(checkout);
+        const { projectId } = store.registerProject({ root: checkout });
+        const before = await readdir(sessionBaseDir);
+        assert.equal((await store.listProjectSessions(projectId, { catalog: false })).total, 0);
+        assert.equal(store.getSessionById("absent", projectId), null);
+        assert.equal(store.readSessionManifest("absent", projectId), null);
+        assert.deepEqual(await readdir(sessionBaseDir), before);
+    } finally {
+        store.close();
+        await fsRm(root, { recursive: true, force: true });
+    }
+});
 
 test("Workspace stores receipts but leaves Session authority in files", async () => {
     const rootDir = await fsMkdtemp(join(tmpdir(), "runwield-workspace-file-session-"));
@@ -39,7 +57,7 @@ test("Workspace stores receipts but leaves Session authority in files", async ()
     const databasePath = join(rootDir, "workspace.sqlite3");
     await fsMkdir(projectRoot);
     const canonicalProjectRoot = await fsRealpath(projectRoot);
-    const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalProjectRoot));
+    const sessionDir = join(sessionBaseDir, projects.directory.sessionKey(canonicalProjectRoot));
     await fsMkdir(sessionDir, { recursive: true });
     const timestamp = "2026-01-01T00:00:00.000Z";
     const piSessionId = "workspace-file-session";
@@ -134,9 +152,9 @@ test("Workspace relink preserves registration and history; removing SQLite leave
                 digestHex: evidence.digestHex,
                 terminalEntryId: evidence.terminalEntryId,
             });
-            assertEquals((await admitProjectIdentity(root)).kind, "existing");
+            assertEquals((await projects.checkout.admit(root)).kind, "existing");
             await rename(root, moved);
-            assertEquals((await admitProjectIdentity(moved)).kind, "existing");
+            assertEquals((await projects.checkout.admit(moved)).kind, "existing");
             const relinked = store.relinkProject({ projectId: registered.projectId, newRoot: moved });
             assertEquals(relinked.projectId, registered.projectId);
             assertEquals(
@@ -144,12 +162,16 @@ test("Workspace relink preserves registration and history; removing SQLite leave
                 [session.runwieldSessionId],
             );
             assertEquals(sessionBelongsToOwnerProject(store, session, registered.projectId), true);
-            store.setProjectEnabled(registered.projectId, false);
-            assert.throws(() => store.requireEnabledProjectRoot(registered.projectId), /not enabled/);
-            store.setProjectEnabled(registered.projectId, true);
+            store.setProjectStatus(registered.projectId, "inactive");
+            assert.throws(() => store.requireActiveProjectRoot(registered.projectId), /inactive/);
+            store.setProjectStatus(registered.projectId, "active");
             store.removeProject(registered.projectId);
             assertEquals(sessionBelongsToOwnerProject(store, session, registered.projectId), false);
-            assertEquals(store.getSessionById(session.runwieldSessionId, registered.projectId), null);
+            assertEquals(store.projects.get(registered.projectId), null);
+            assertEquals(
+                store.getSessionById(session.runwieldSessionId, project.projectId)?.runwieldSessionId,
+                session.runwieldSessionId,
+            );
             store.close();
             await fsRm(dbPath);
             const core = openFileSessionStore();
@@ -199,6 +221,83 @@ test("Workspace relink preserves registration and history; removing SQLite leave
             if (previous === undefined) delete process.env.HOME;
             else process.env.HOME = previous;
             await fsRm(home, { recursive: true, force: true });
+        }
+    });
+});
+
+test("scoped Workspace catalogs and lists Sessions in its launch account", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const dir = await fsRealpath(await fsMkdtemp(join(tmpdir(), "workspace-scoped-sessions-")));
+        const processHome = join(dir, "process-home");
+        const scopedHome = join(dir, "scoped-home");
+        const root = join(dir, "project");
+        for (const path of [processHome, scopedHome, root]) await fsMkdir(path);
+        const previous = process.env.HOME;
+        process.env.HOME = processHome;
+        const recordSession = async (store: ReturnType<typeof openOwnerCoordinationStore>, label: string) => {
+            const registration = store.projects.register({ root });
+            const sessionProject = store.ensureRuntimeProject({ root });
+            const manager = await createRootSessionManager("new", root);
+            manager.appendMessage({
+                role: "user",
+                timestamp: Date.now(),
+                content: [{ type: "text", text: label }],
+            });
+            const transcriptPath = await resolveCreatedRootSessionPath(root, manager);
+            const session = await store.ensureSessionCatalogRecord({
+                projectId: sessionProject.projectId,
+                piSessionId: manager.getSessionId(),
+                transcriptPath,
+                transcriptCwd: root,
+                source: "created",
+            });
+            return { registration, session, transcriptPath };
+        };
+        try {
+            const outside = openOwnerCoordinationStore();
+            try {
+                const first = await recordSession(outside, "Process account Session");
+                assert.ok(first.transcriptPath.startsWith(join(processHome, ".wld", "sessions") + sep));
+                const second = await projects.launch.withContext(
+                    {
+                        executionAccountHome: scopedHome,
+                        personalOwner: { kind: "execution-account", identity: scopedHome },
+                    },
+                    async () => {
+                        const scoped = openOwnerCoordinationStore();
+                        try {
+                            assertEquals(scoped.path, join(scopedHome, ".wld", "owner-coordination.sqlite3"));
+                            assertEquals(scoped.projects.list(), []);
+                            assertEquals(scoped.listSessionProjects(), []);
+
+                            const recorded = await recordSession(scoped, "Scoped account Session");
+                            assert.ok(recorded.transcriptPath.startsWith(join(scopedHome, ".wld", "sessions") + sep));
+                            const listed = await scoped.listProjectSessions(recorded.registration.projectId);
+                            assertEquals(
+                                listed.sessions.map(({ runwieldSessionId }) => runwieldSessionId),
+                                [recorded.session.runwieldSessionId],
+                            );
+                            return recorded;
+                        } finally {
+                            scoped.close();
+                        }
+                    },
+                );
+                assertEquals(second.registration.projectId, first.registration.projectId);
+                assertEquals(outside.projects.get(second.registration.projectId), first.registration);
+                assertEquals(outside.getSessionById(second.session.runwieldSessionId), null);
+                const listed = await outside.listProjectSessions(first.registration.projectId);
+                assertEquals(
+                    listed.sessions.map(({ runwieldSessionId }) => runwieldSessionId),
+                    [first.session.runwieldSessionId],
+                );
+            } finally {
+                outside.close();
+            }
+        } finally {
+            if (previous === undefined) delete process.env.HOME;
+            else process.env.HOME = previous;
+            await fsRm(dir, { recursive: true });
         }
     });
 });

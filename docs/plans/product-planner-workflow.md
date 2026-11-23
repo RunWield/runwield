@@ -257,7 +257,7 @@ shape are reviewable implementation assumptions. They preserve those decisions w
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. All RunWield tests use its isolated runner.
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. All RunWield tests use its isolated runner.
 
 - Add `src/shared/workflow/product-review.test.ts` and `src/tools/product-plan.test.ts`; run
   `bun scripts/run-tests.ts src/shared/workflow/product-review.test.ts src/tools/product-plan.test.ts src/plan-store.test.ts`.

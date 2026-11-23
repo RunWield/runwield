@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { assertEquals } from "../../testing/assertions.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
-import { findProject, lockPath, sessionDirForProject } from "../session/file-session-storage.ts";
+import { lockPath } from "../session/file-session-storage.ts";
 import { listSavedRemoteSessions } from "./laptop-session-control.ts";
 import { parseRemoteSessionTranscript, REMOTE_SESSION_IDENTITY_ENTRY } from "./session-protocol.ts";
 import { assertRemoteStorageAbsent, latch, within, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
@@ -39,8 +39,7 @@ for (const kind of ["execution", "semantic_repair"] as const) {
                 assert(successor.segmentId !== predecessor.segmentId);
                 assertEquals(successor.lineageParentSegmentId, predecessor.segmentId);
                 assertEquals(successor.kind, kind);
-                const project = findProject(f.store.path, successor.projectId)!;
-                assertEquals(dirname(successor.transcriptPath), sessionDirForProject(f.store.path, project));
+                assertEquals(dirname(successor.transcriptPath), dirname(predecessor.transcriptPath));
                 const contender = openNativeFileLock(lockPath(dirname(successor.transcriptPath), id));
                 try {
                     assertEquals(contender.tryLockSync(true), false, "A native writer must not enter the handoff gap");

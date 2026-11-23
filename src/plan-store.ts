@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import type { PlanClassification, WorkKind } from "./constants.ts";
 
 import type { MoveEpicArtifactResult } from "./plan-store/artifacts.ts";
@@ -500,8 +501,6 @@ export interface PlanDependencyState extends Partial<Pick<SiblingPlan, "planName
     state: "verified" | "user_verified" | "unverified" | "missing";
 }
 
-import { projectStoreLocation } from "./shared/project-identity.ts";
-
 import {
     canonicalizeStoredPlanName,
     DEFAULT_FRONT_MATTER,
@@ -661,8 +660,6 @@ import { probeGitRepository } from "./shared/git.ts";
 
 import { prepareWorktreeRegistry, renameRestoredPlanEntry } from "./shared/worktree-registry.ts";
 
-import { resolvePrimaryCheckoutRoot } from "./shared/project-checkout.ts";
-
 import { writePlanDocumentAndController } from "./plan-store/transitions.ts";
 
 import { requestWorkspaceSearchRefresh } from "./shared/workspace-search-refresh.ts";
@@ -780,7 +777,7 @@ export function getPlanDocumentRoot(filePath: string) {
         const root = join(owner.executionAccountHome, ".wld", "projects", owner.projectId, "plans");
         const child = relative(root, resolve(filePath));
         if (child && !child.startsWith("../") && child !== ".." && !isAbsolute(child))
-            return projectStoreLocation(owner);
+            return projects.home.storeLocation(owner);
     }
     if (/^[^:]+:docs\/plans\//.test(filePath)) {
         throw new Error(`Published Plan snapshot is not a writable document path: ${filePath}`);
@@ -1257,7 +1254,7 @@ function workspaceSearchRootForPlanPath(filePath: string) {
     const marker = `/${PLANS_DIR_NAME}/`;
     const markerIndex = normalizedPath.lastIndexOf(marker);
     if (markerIndex < 0) return null;
-    return resolvePrimaryCheckoutRoot(normalizedPath.slice(0, markerIndex));
+    return projects.checkout.primaryRoot(normalizedPath.slice(0, markerIndex));
 }
 
 /**
@@ -1811,7 +1808,7 @@ export async function savePlan(
                 }
                 if (existing.kind === "not_found") {
                     await atomicWriteTextFileIfAbsent(filePath, planDocumentMarkdown(withFm));
-                    await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(cwd));
+                    await requestWorkspaceSearchRefresh(projects.checkout.primaryRoot(cwd));
                 } else {
                     await writePlanMarkdownWithRevision(filePath, withFm, options.expectedRevision);
                 }
@@ -3146,7 +3143,7 @@ export async function restoreArchivedPlan(
                         : undefined;
                 if (
                     destination.name !== archived.name &&
-                    (await listPlans(resolvePrimaryCheckoutRoot(cwd))).some((plan) => plan.name === destination.name)
+                    (await listPlans(projects.checkout.primaryRoot(cwd))).some((plan) => plan.name === destination.name)
                 ) {
                     throw new Error(`Active Plan already exists: ${destination.name}`);
                 }

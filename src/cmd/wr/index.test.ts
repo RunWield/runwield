@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import process from "node:process";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
@@ -421,9 +422,8 @@ test("listing, preview and decline preserve an imported record and its committed
         const { git } = await import("../../shared/git-test-fixture.ts");
         const { setCustomSetting } = await import("../../shared/settings.ts");
         const { formatWorkRecordMarkdown } = await import("../../shared/work-records/markdown.ts");
-        const { admitProjectIdentity } = await import("../../shared/project-identity.ts");
         await git(projectRoot, ["init", "-q"]);
-        await admitProjectIdentity(projectRoot);
+        await projects.checkout.admit(projectRoot);
         await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", projectRoot);
         const path = join(projectRoot, "delivered.md");
         const bytes = formatWorkRecordMarkdown(

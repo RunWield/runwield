@@ -13,23 +13,15 @@
 
 import {
     getOwnerCoordinationDatabaseEpoch,
-    openOwnerCoordinationDatabase,
+    getOwnerCoordinationDatabasePath,
+    OWNER_COORDINATION_DB_FILENAME,
+    OWNER_COORDINATION_SCHEMA_VERSION,
     type OpenOwnerDatabaseOptions,
-} from "./database.ts";
+} from "@runwield/resources/owner-database";
+import type { ProjectRegistry } from "@runwield/projects";
+import { openProjectOwnerCoordination } from "@runwield/projects/owner-coordination";
 import { openFileSessionStore, type FileSessionStore } from "../session/file-session-store.ts";
-import { getOwnerCoordinationDatabasePath, OWNER_COORDINATION_DB_FILENAME } from "./paths.ts";
-import { OWNER_COORDINATION_SCHEMA_VERSION } from "./schema.ts";
-import {
-    getProjectById,
-    getProjectHealth,
-    listProjectRootEvidence,
-    listProjects,
-    registerProject,
-    relinkProject,
-    removeProject,
-    requireEnabledProjectRoot,
-    setProjectEnabled,
-} from "./projects.ts";
+import { getRunWieldSessionsBaseDir } from "../session/root-session.ts";
 import { listDevices, revokeDevice, verifyDeviceCredential, verifyDeviceCsrf } from "./devices.ts";
 import {
     approvePairingRequest,
@@ -55,6 +47,7 @@ export interface OwnerCoordinationStore extends Pick<
     FileSessionStore,
     | "ensureRuntimeProject"
     | "listSessionProjects"
+    | "getSessionProjectById"
     | "ensureSessionCatalogRecord"
     | "ensureSessionCatalogRecordAndAcquire"
     | "findSessionByLocator"
@@ -95,20 +88,18 @@ export interface OwnerCoordinationStore extends Pick<
     | "markSessionUncertain"
 > {
     path: string;
+    sessionStorageDirectory: string;
     close: () => void;
-    registerProject: (options: Parameters<typeof registerProject>[1]) => ReturnType<typeof registerProject>;
-    listProjects: () => ReturnType<typeof listProjects>;
-    getProjectById: (projectId: string) => ReturnType<typeof getProjectById>;
-    getProjectHealth: (projectId: string) => ReturnType<typeof getProjectHealth>;
-    listProjectRootEvidence: (projectId: string) => ReturnType<typeof listProjectRootEvidence>;
-    setProjectEnabled: (
-        projectId: string,
-        enabled: boolean,
-        options?: Parameters<typeof setProjectEnabled>[3],
-    ) => ReturnType<typeof setProjectEnabled>;
-    removeProject: (projectId: string) => ReturnType<typeof removeProject>;
-    relinkProject: (options: Parameters<typeof relinkProject>[1]) => ReturnType<typeof relinkProject>;
-    requireEnabledProjectRoot: (projectId: string) => ReturnType<typeof requireEnabledProjectRoot>;
+    projects: ProjectRegistry;
+    registerProject: ProjectRegistry["register"];
+    listProjects: ProjectRegistry["list"];
+    getProjectById: ProjectRegistry["get"];
+    getProjectHealth: ProjectRegistry["getHealth"];
+    listProjectRootEvidence: FileSessionStore["listProjectRootEvidence"];
+    setProjectStatus: ProjectRegistry["setStatus"];
+    removeProject: ProjectRegistry["remove"];
+    relinkProject: ProjectRegistry["relink"];
+    requireActiveProjectRoot: ProjectRegistry["requireActiveRoot"];
     requireSessionProjectRoot: (projectId: string) => string;
     createPairingRequest: (
         options?: Parameters<typeof createPairingRequest>[1],
@@ -148,43 +139,64 @@ export interface OwnerCoordinationStore extends Pick<
 
 /**
  * Open the public owner coordination store without exposing raw SQLite handles.
- * Internal migration tests and service modules may import database.js directly;
+ * Internal migration tests and service modules may import database.ts directly;
  * adapters should consume this narrow method surface.
  */
 export function openOwnerCoordinationStore(options: OpenOwnerCoordinationStoreOptions = {}): OwnerCoordinationStore {
-    const database = openOwnerCoordinationDatabase(options);
-    const sessionStore = openFileSessionStore({ baseDir: options.sessionBaseDir });
+    const { database, projects, executionAccountHome, projectIdForRowKey, projectRowKeys } =
+        openProjectOwnerCoordination(options);
+    let sessionStore: FileSessionStore;
+    try {
+        sessionStore = openFileSessionStore({
+            baseDir: options.sessionBaseDir || getRunWieldSessionsBaseDir(executionAccountHome),
+        });
+    } catch (error) {
+        database.close();
+        throw error;
+    }
     const resolveSessionProject = (projectId: string) => {
-        const direct = sessionStore.getProjectById(projectId);
+        const direct = sessionStore.getSessionProjectById(projectId);
         if (direct) return direct;
-        const workspaceProject = getProjectById(database, projectId);
-        return workspaceProject ? sessionStore.ensureRuntimeProject({ root: workspaceProject.registeredRoot }) : null;
+        const workspaceProject = projects.get(projectId);
+        return workspaceProject ? sessionStore.ensureRuntimeProject({ root: workspaceProject.currentRoot }) : null;
     };
+    function withCanonicalReceiptProject<Receipt extends { projectId: string }>(
+        receipt: Receipt | null,
+    ): Receipt | null {
+        if (!receipt) return null;
+        const projectId = projectIdForRowKey(receipt.projectId);
+        return projectId && projectId !== receipt.projectId ? { ...receipt, projectId } : receipt;
+    }
     return {
         path: database.path,
+        sessionStorageDirectory: sessionStore.path,
         close: () => {
-            sessionStore.close();
-            database.close();
+            try {
+                sessionStore.close();
+            } finally {
+                database.close();
+            }
         },
-        registerProject: (projectOptions) => registerProject(database, projectOptions),
+        projects,
+        registerProject: projects.register,
+        listProjects: projects.list,
+        getProjectById: projects.get,
+        getProjectHealth: projects.getHealth,
+        setProjectStatus: projects.setStatus,
+        removeProject: projects.remove,
+        relinkProject: projects.relink,
+        requireActiveProjectRoot: projects.requireActiveRoot,
         ensureRuntimeProject: (projectOptions) => sessionStore.ensureRuntimeProject(projectOptions),
-        listProjects: () => listProjects(database),
         listSessionProjects: () => sessionStore.listSessionProjects(),
-        getProjectById: (projectId) => getProjectById(database, projectId),
-        getProjectHealth: (projectId) => getProjectHealth(database, projectId),
+        getSessionProjectById: (projectId) => sessionStore.getSessionProjectById(projectId),
         listProjectRootEvidence: (projectId) =>
-            sessionStore.getProjectById(projectId)
+            sessionStore.getSessionProjectById(projectId)
                 ? sessionStore.listProjectRootEvidence(projectId)
-                : listProjectRootEvidence(database, projectId),
-        setProjectEnabled: (projectId, enabled, projectOptions) =>
-            setProjectEnabled(database, projectId, enabled, projectOptions),
-        removeProject: (projectId) => removeProject(database, projectId),
-        relinkProject: (projectOptions) => relinkProject(database, projectOptions),
-        requireEnabledProjectRoot: (projectId) => requireEnabledProjectRoot(database, projectId),
+                : projects.listRootEvidence(projectId),
         requireSessionProjectRoot: (projectId) =>
-            sessionStore.getProjectById(projectId)
+            sessionStore.getSessionProjectById(projectId)
                 ? sessionStore.requireSessionProjectRoot(projectId)
-                : requireEnabledProjectRoot(database, projectId),
+                : projects.requireActiveRoot(projectId),
         ensureSessionCatalogRecord: (locator) => {
             const project = resolveSessionProject(locator.projectId);
             if (!project) throw new Error("Session project is unavailable");
@@ -199,15 +211,9 @@ export function openOwnerCoordinationStore(options: OpenOwnerCoordinationStoreOp
             });
         },
         findSessionByLocator: (locator) => sessionStore.findSessionByLocator(locator),
-        getSessionById: (runwieldSessionId, projectId) => {
-            const runtimeProject = projectId ? resolveSessionProject(projectId) : null;
-            if (projectId && !runtimeProject) return null;
-            return sessionStore.getSessionById(runwieldSessionId, runtimeProject?.projectId);
-        },
-        readSessionManifest: (runwieldSessionId, projectId) => {
-            const project = resolveSessionProject(projectId);
-            return project ? sessionStore.readSessionManifest(runwieldSessionId, project.projectId) : null;
-        },
+        getSessionById: (runwieldSessionId, projectId) => sessionStore.getSessionById(runwieldSessionId, projectId),
+        readSessionManifest: (runwieldSessionId, projectId) =>
+            sessionStore.readSessionManifest(runwieldSessionId, projectId),
         archiveSession: (runwieldSessionId, projectId) => {
             const project = projectId ? resolveSessionProject(projectId) : null;
             if (projectId && !project) throw new Error("Session project is unavailable");
@@ -219,6 +225,7 @@ export function openOwnerCoordinationStore(options: OpenOwnerCoordinationStoreOp
             return sessionStore.unarchiveSession(runwieldSessionId, project?.projectId);
         },
         listProjectSessions: async (projectId, sessionOptions) => {
+            if (sessionOptions?.catalog === false) return sessionStore.listProjectSessions(projectId, sessionOptions);
             const runtimeProject = resolveSessionProject(projectId);
             return runtimeProject
                 ? await sessionStore.listProjectSessions(runtimeProject.projectId, sessionOptions)
@@ -240,18 +247,12 @@ export function openOwnerCoordinationStore(options: OpenOwnerCoordinationStoreOp
         },
         listSessionTranscriptSegments: (runwieldSessionId) =>
             sessionStore.listSessionTranscriptSegments(runwieldSessionId),
-        listSessionArtifacts: (runwieldSessionId, projectId) => {
-            const runtimeProject = projectId ? resolveSessionProject(projectId) : null;
-            return sessionStore.listSessionArtifacts(runwieldSessionId, runtimeProject?.projectId);
-        },
-        listSessionPlanAssociations: (runwieldSessionId, projectId) => {
-            const runtimeProject = projectId ? resolveSessionProject(projectId) : null;
-            return sessionStore.listSessionPlanAssociations(runwieldSessionId, runtimeProject?.projectId);
-        },
-        getLastPlanReview: (runwieldSessionId, projectId) => {
-            const runtimeProject = projectId ? resolveSessionProject(projectId) : null;
-            return sessionStore.getLastPlanReview(runwieldSessionId, runtimeProject?.projectId);
-        },
+        listSessionArtifacts: (runwieldSessionId, projectId) =>
+            sessionStore.listSessionArtifacts(runwieldSessionId, projectId),
+        listSessionPlanAssociations: (runwieldSessionId, projectId) =>
+            sessionStore.listSessionPlanAssociations(runwieldSessionId, projectId),
+        getLastPlanReview: (runwieldSessionId, projectId) =>
+            sessionStore.getLastPlanReview(runwieldSessionId, projectId),
         getCurrentSessionSegment: (runwieldSessionId) => sessionStore.getCurrentSessionSegment(runwieldSessionId),
         appendSessionTranscriptSegment: (segment) => {
             const project = resolveSessionProject(segment.projectId);
@@ -324,10 +325,19 @@ export function openOwnerCoordinationStore(options: OpenOwnerCoordinationStoreOp
         markSessionReconcileRequiredWithProof: (proof, activationOptions) =>
             sessionStore.markSessionReconcileRequiredWithProof(proof, activationOptions),
         markSessionUncertain: (proof, activationOptions) => sessionStore.markSessionUncertain(proof, activationOptions),
-        findOperationReceiptByRequest: (operationOptions) => findOperationReceiptByRequest(database, operationOptions),
-        createOrGetOperationReceipt: (operationOptions) => createOrGetOperationReceipt(database, operationOptions),
-        updateOperationReceipt: (operationId, updates) => updateOperationReceipt(database, operationId, updates),
-        getOperationReceipt: (operationId) => getOperationReceipt(database, operationId),
+        findOperationReceiptByRequest: (operationOptions) => {
+            const keys =
+                operationOptions.projectId && !operationOptions.runwieldSessionId
+                    ? projectRowKeys(operationOptions.projectId)
+                    : undefined;
+            if (keys?.length === 0) return null;
+            return withCanonicalReceiptProject(findOperationReceiptByRequest(database, operationOptions, keys));
+        },
+        createOrGetOperationReceipt: (operationOptions) =>
+            withCanonicalReceiptProject(createOrGetOperationReceipt(database, operationOptions))!,
+        updateOperationReceipt: (operationId, updates) =>
+            withCanonicalReceiptProject(updateOperationReceipt(database, operationId, updates)),
+        getOperationReceipt: (operationId) => withCanonicalReceiptProject(getOperationReceipt(database, operationId)),
     };
 }
 
@@ -344,7 +354,7 @@ export type {
 export type { OwnerCoordinationDatabase, OpenOwnerDatabaseOptions } from "./database.ts";
 
 export type {
-    ProjectLifecycle,
+    ProjectStatus,
     ProjectHealthStatus,
     RegisteredProject,
     ProjectHealth,
@@ -352,4 +362,4 @@ export type {
     RegisterProjectOptions,
     RelinkProjectOptions,
     ProjectRootEvidence,
-} from "./projects.ts";
+} from "@runwield/projects";

@@ -1,6 +1,6 @@
+import { projects } from "@runwield/projects";
 import { readFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { inspectProjectIdentity } from "../shared/project-identity.ts";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
 import { checkedProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
@@ -18,7 +18,7 @@ interface PruneRequest {
 }
 async function requestLocation(cwd: string, kind: RetentionKind) {
     if (hasRetainedCheckoutSource(cwd)) return;
-    const inspected = inspectProjectIdentity(cwd);
+    const inspected = projects.checkout.inspect(cwd);
     if (inspected.kind !== "existing") return;
     const identity = inspected.identity;
     const runtime = await checkedProjectRuntimeLayout(cwd);
@@ -77,7 +77,7 @@ export async function confirmPruneRequest(
     if (!location) return await apply({ binding: "", approved: [...approved] });
     ensurePrivateDir(dirname(location.path));
     const lockPath = location.path + ".lock";
-    const inspected = inspectProjectIdentity(cwd);
+    const inspected = projects.checkout.inspect(cwd);
     if (inspected.kind !== "existing") throw new Error("Missing Project binding before prune confirmation.");
     await assertManagedRuntimePath(lockPath, inspected.identity.executionAccountHome);
     const lock = openNativeFileLock(lockPath);

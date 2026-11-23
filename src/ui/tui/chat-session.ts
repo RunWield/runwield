@@ -1,12 +1,11 @@
+import { projects } from "@runwield/projects";
 import { admitProjectWithIdentityChoice } from "./project-identity-entry.ts";
-import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import { resolveSessionContinuation } from "../../shared/session/session-runtime.ts";
 import {
     confirmMissingManagedProjectDirectory,
     confirmProjectDirectory,
     DirectoryStartupCanceled,
 } from "./directory-warning.ts";
-import { inspectMissingManagedProjectDirectory, inspectProjectDirectory } from "../../shared/project-directory.ts";
 /**
  * @module ui/tui/chat-session
  * High-level interactive loop for the TUI.
@@ -164,12 +163,12 @@ export async function startInteractiveSession(
     if (!(await confirmProjectDirectory(getCwd(), false, options.startupNotice))) {
         throw new DirectoryStartupCanceled("Project startup canceled");
     }
-    let suppressAutomaticProjectOffers = inspectProjectDirectory(getCwd()).classified;
+    let suppressAutomaticProjectOffers = projects.directory.inspect(getCwd()).classified;
     const chatBuiltinSlashNames = new Set<string>();
     for (const command of getSlashCommandDefinitions()) chatBuiltinSlashNames.add(command.name);
     const sessionStartMode = options.sessionStartMode || "new";
     const shouldDeferManagedActivation = sessionStartMode === "new";
-    if (!(await confirmProjectDirectory(resolvePrimaryCheckoutRoot(getCwd()), false, options.startupNotice))) {
+    if (!(await confirmProjectDirectory(projects.checkout.primaryRoot(getCwd()), false, options.startupNotice))) {
         throw new DirectoryStartupCanceled("Project startup canceled");
     }
     const continuation =
@@ -177,13 +176,13 @@ export async function startInteractiveSession(
             ? await resolveSessionContinuation(getCwd(), options.resumeSessionId)
             : null;
     if (continuation) {
-        for (const root of [continuation.cwd, resolvePrimaryCheckoutRoot(continuation.cwd)]) {
+        for (const root of [continuation.cwd, projects.checkout.primaryRoot(continuation.cwd)]) {
             const confirmed = continuation.managed
                 ? await confirmMissingManagedProjectDirectory(root)
                 : await confirmProjectDirectory(root);
             if (!confirmed) throw new DirectoryStartupCanceled("Project startup canceled");
             suppressAutomaticProjectOffers ||= (
-                continuation.managed ? inspectMissingManagedProjectDirectory(root) : inspectProjectDirectory(root)
+                continuation.managed ? projects.directory.inspectMissingManaged(root) : projects.directory.inspect(root)
             ).classified;
         }
     }

@@ -1,4 +1,4 @@
-import { requireProjectCheckout } from "../project-identity.ts";
+import { projects } from "@runwield/projects";
 /**
  * Real-store fixture setup for legacy and interrupted states that authoring cannot create.
  * Consumer journeys use these only to arrange evidence; exercise behavior through plan-store/index.ts.
@@ -64,7 +64,7 @@ export async function seedPlanAttemptReference(cwd: string, name: string, attemp
                 attempt: {
                     personalOwner: identity.personalOwner.identity,
                     repositoryId: identity.repositoryId,
-                    repositoryRoot: requireProjectCheckout(identity).checkoutRoot,
+                    repositoryRoot: projects.home.requireCheckout(identity).checkoutRoot,
                     attemptId,
                     input,
                 },

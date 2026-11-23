@@ -1,20 +1,20 @@
+import {
+    projects,
+    ProjectIdentityEntryRequired,
+    type ProjectCloneChoice,
+    type ProjectIdentityPending,
+} from "@runwield/projects";
 import process from "node:process";
 import { Key, matchesKey, TuiAltScreen } from "@earendil-works/pi-tui";
 import { initRunWieldTheme } from "../theme/theme.ts";
 import { PromptSelectBlock } from "./blocks.ts";
 import { getTUI, initTUI, stopTUI } from "./tui.ts";
-import {
-    ProjectIdentityEntryRequired,
-    admitProjectIdentity,
-    type ProjectCloneChoice,
-    type ProjectIdentityPending,
-} from "../../shared/project-identity.ts";
 
 /** Interactive action admission leaves runtime preparation to the action's existing owner. */
 export async function admitProjectWithIdentityChoice(root: string): Promise<boolean> {
     let choice: ProjectCloneChoice | undefined;
     for (;;) {
-        const result = await admitProjectIdentity(root, { choice });
+        const result = await projects.checkout.admit(root, { choice });
         if (result.kind === "existing") return true;
         if (result.kind !== "pending") throw new ProjectIdentityEntryRequired(result);
         choice = await chooseProject(result);
@@ -64,11 +64,11 @@ async function chooseProject(pending: ProjectIdentityPending): Promise<ProjectCl
             tui.setFocus(block);
             tui.requestRender();
         });
-        return {
-            kind: selected === "cancel" ? "cancel" : selected === "new" ? "new" : "link",
-            candidates: pending.candidates,
-            ...(selected !== "cancel" && selected !== "new" ? { projectId: selected } : {}),
-        };
+        const { candidates } = pending;
+        if (selected === "new" || selected === "cancel") return { kind: selected, candidates };
+        const candidate = candidates.find(({ projectId }) => projectId === selected);
+        if (!candidate) throw new ProjectIdentityEntryRequired(pending);
+        return { kind: "link", projectId: candidate.projectId, candidates };
     } finally {
         if (closed) {
             process.stdin.off("end", closed);

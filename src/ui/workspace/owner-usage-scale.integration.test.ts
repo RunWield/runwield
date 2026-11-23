@@ -40,7 +40,7 @@ test("large reports preserve available and missing Session links within a bounde
             const rows = Array.from({ length: count }, (_, index) =>
                 usageRow(index % 2 ? "missing-session" : fixture.session.runwieldSessionId, index),
             );
-            const path = getWorkflowMetricsFilePath(fixture.store.requireEnabledProjectRoot(fixture.project.projectId));
+            const path = getWorkflowMetricsFilePath(fixture.store.requireActiveProjectRoot(fixture.project.projectId));
             await mkdir(dirname(path), { recursive: true });
             await writeFile(path, rows.map((row) => JSON.stringify(row)).join("\n") + "\n");
             const before = process.cpuUsage();
@@ -98,7 +98,7 @@ test("many distinct missing Session links do not rescan the retained Session cat
             fixture.store.archiveSession(available[1], fixture.project.projectId);
             const missing = Array.from({ length: 1000 }, (_, index) => `missing-${index}`);
             const rows = [...available, ...missing].map(usageRow);
-            const path = getWorkflowMetricsFilePath(fixture.store.requireEnabledProjectRoot(fixture.project.projectId));
+            const path = getWorkflowMetricsFilePath(fixture.store.requireActiveProjectRoot(fixture.project.projectId));
             await mkdir(dirname(path), { recursive: true });
             await writeFile(path, rows.map((row) => JSON.stringify(row)).join("\n") + "\n");
             const before = process.cpuUsage();

@@ -1,6 +1,4 @@
 import type { MemoryParams } from "@runwield/tools";
-import { getCwd } from "../../constants.ts";
-import { resolveMemoryCollection } from "../memory-collection.ts";
 
 export interface MemoryResult {
     content: Array<{ type: "text"; text: string }>;
@@ -42,10 +40,6 @@ export function configureRemoteMemoryConnection(value: RemoteMemoryConnection): 
     };
 }
 
-export function remoteMemoryCollection(): string | undefined {
-    return connection?.collection;
-}
-
 /** Repeat only the same request id; a lost reply must not duplicate a write. */
 export async function requestRemoteMemory(
     operation: MemoryParams | { action: "list-core" },
@@ -57,7 +51,7 @@ export async function requestRemoteMemory(
     const request: MemoryRequest = {
         requestId: crypto.randomUUID(),
         action,
-        collection: await resolveMemoryCollection({ cwd: getCwd(), boundCollection: current.collection }),
+        collection: current.collection,
         args,
     };
     const body = JSON.stringify(request);

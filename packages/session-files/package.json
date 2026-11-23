@@ -1,0 +1,6 @@
+{
+    "name": "@runwield/session-files",
+    "private": true,
+    "type": "module",
+    "exports": "./index.ts"
+}

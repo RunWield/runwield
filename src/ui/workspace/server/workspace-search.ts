@@ -501,8 +501,8 @@ export function createWorkspaceSearchService(options) {
         if (closed) return;
         if (scanPromise) return await scanPromise;
         scanPromise = (async () => {
-            for (const project of options.store.listProjects()) {
-                if (project.lifecycle !== "enabled") {
+            for (const project of options.store.projects.list()) {
+                if (project.status !== "active") {
                     db.prepare("DELETE FROM search_documents WHERE project_id = ?").run(project.projectId);
                     db.prepare(
                         "DELETE FROM search_documents_fts WHERE identity NOT IN (SELECT identity FROM search_documents)",
@@ -512,7 +512,7 @@ export function createWorkspaceSearchService(options) {
                 }
                 projectStates.set(project.projectId, { state: "indexing" });
                 try {
-                    const root = options.store.requireEnabledProjectRoot(project.projectId);
+                    const root = options.store.projects.requireActiveRoot(project.projectId);
                     const documents = await packageAccess(root, () => scanProjectDocuments(root));
                     documents.push(
                         ...(await readSearchDocuments("Session reader", () =>
@@ -580,10 +580,10 @@ export function createWorkspaceSearchService(options) {
 
     async function checkRefreshRequests() {
         if (closed || scanPromise) return;
-        for (const project of options.store.listProjects()) {
-            if (project.lifecycle !== "enabled") continue;
+        for (const project of options.store.projects.list()) {
+            if (project.status !== "active") continue;
             try {
-                const root = options.store.requireEnabledProjectRoot(project.projectId);
+                const root = options.store.projects.requireActiveRoot(project.projectId);
                 const stat = await fsStat(await getWorkspaceSearchRefreshMarker(root));
                 const revision = stat.mtime?.getTime() || stat.size;
                 if (observedRefreshMarkers.get(project.projectId) === revision) continue;
@@ -649,7 +649,7 @@ export function createWorkspaceSearchService(options) {
         const catalogs = new Map();
         for (const row of rows) {
             try {
-                const root = options.store.requireEnabledProjectRoot(String(row.project_id));
+                const root = options.store.projects.requireActiveRoot(String(row.project_id));
                 const hydrated = await packageAccess(root, () => hydrateCandidate(root, row, options.store, catalogs));
                 const candidate = /** @type {SearchDocument} */ {
                     projectId: String(row.project_id),
@@ -724,9 +724,9 @@ export function createWorkspaceSearchService(options) {
     }
 
     function projectOptions() {
-        return options.store
-            .listProjects()
-            .filter((project) => project.lifecycle === "enabled")
+        return options.store.projects
+            .list()
+            .filter((project) => project.status === "active")
             .map((project) => ({ projectId: project.projectId, name: project.displayName }));
     }
     function stateValues() {

@@ -75,6 +75,8 @@ export function hasWorkflowMetricsEnablementOverride<T>(setting: T): boolean {
 }
 
 export interface WorkflowMetricLegacyAdoption {
+    legacyHistoryEpoch?: string;
+    sourceRootHash?: string;
     historyEpoch: string;
     offset: number;
 }
@@ -83,6 +85,22 @@ export interface WorkflowMetricLegacyAdoption {
 export function readWorkflowMetricLegacyAdoption(filePath: string): WorkflowMetricLegacyAdoption | undefined {
     try {
         return JSON.parse(readFileSync(join(dirname(filePath), "legacy-adoption.json"), "utf8"));
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+        throw error;
+    }
+}
+
+interface WorkflowMetricLegacySource {
+    rootHash: string;
+    historyEpoch: string;
+    journalBytes: number;
+}
+
+/** A renaming adoption attests the original boundary and keeps that proof across later clears. */
+export function readWorkflowMetricLegacySource(filePath: string): WorkflowMetricLegacySource | undefined {
+    try {
+        return JSON.parse(readFileSync(join(dirname(filePath), "legacy-source.json"), "utf8"));
     } catch (error) {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
         throw error;
@@ -231,25 +249,28 @@ function scanJournalLines(bytes: Uint8Array, state: JournalEpochState): number[]
 
 /** Read the latest durable epoch, not a process-local settings cache. */
 export function resolveCollectionEpoch(
-    filePath: string,
+    filePath: string | undefined,
     enabledAtCall = false,
     projectOverride = false,
 ): JournalEpochState {
     let state: JournalEpochState | undefined;
-    try {
-        const intent: JournalClearIntent = JSON.parse(readFileSync(join(dirname(filePath), "clear.json"), "utf8"));
-        state = intent.state;
-    } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    if (filePath) {
+        try {
+            const intent: JournalClearIntent = JSON.parse(readFileSync(join(dirname(filePath), "clear.json"), "utf8"));
+            state = intent.state;
+        } catch (error) {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+        }
+        if (!state) {
+            state = readJournalState(filePath);
+            const tail = readUncheckedTail(filePath, state);
+            // An incomplete rebuild cannot authorize an observation. The locked writer
+            // advances recovery; a later invocation captures the recovered epoch.
+            if (tail.more) return { ...state, collectionEpoch: { id: "recovering", enabled: false } };
+            scanJournalLines(tail.bytes.subarray(0, tail.end), state);
+        }
     }
-    if (!state) {
-        state = readJournalState(filePath);
-        const tail = readUncheckedTail(filePath, state);
-        // An incomplete rebuild cannot authorize an observation. The locked writer
-        // advances recovery; a later invocation captures the recovered epoch.
-        if (tail.more) return { ...state, collectionEpoch: { id: "recovering", enabled: false } };
-        scanJournalLines(tail.bytes.subarray(0, tail.end), state);
-    }
+    state ??= { v: 1, collectionEpoch: { id: "initial", enabled: false }, historyEpoch: "initial" };
     const generation = projectOverride ? undefined : readRecordingState()?.generation;
     if (generation && generation !== state.recordingGeneration) {
         return {
@@ -466,9 +487,17 @@ interface LegacyMeasurementRow {
  * Adopt under the old OS guard. Publish a collision split by atomic directory rename,
  * so a crash cannot expose copied rows before their durable export boundary exists.
  */
-export function adoptLegacyWorkflowMetricJournal(filePath: string, legacyPath: string, hashes: string[]): void {
+export function adoptLegacyWorkflowMetricJournal(
+    filePath: string,
+    legacyPath: string,
+    hashes: string[],
+    sourceRootHash: string,
+    dedicated = false,
+): void {
     const directory = dirname(filePath);
-    if (existsSync(directory) || !existsSync(legacyPath)) return;
+    const legacyExists = () =>
+        existsSync(legacyPath) || (dedicated && existsSync(join(dirname(legacyPath), "state.json")));
+    if (existsSync(directory) || !legacyExists()) return;
     let guard: NativeFileLock;
     try {
         guard = openNativeFileLock(join(dirname(legacyPath), ".journal.guard"));
@@ -480,8 +509,30 @@ export function adoptLegacyWorkflowMetricJournal(filePath: string, legacyPath: s
         // Synchronous readers must not block the host event loop behind another writer.
         if (!guard.tryLockSync(true)) throw new Error("lock_timeout");
         if (existsSync(directory)) return;
-        if (!existsSync(legacyPath)) throw new Error("legacy_journal_unavailable");
+        if (!legacyExists()) throw new Error("legacy_journal_unavailable");
         finishHistoryClear(legacyPath);
+        const renameJournal = () => {
+            if (!readWorkflowMetricLegacySource(legacyPath)) {
+                const source: WorkflowMetricLegacySource = {
+                    rootHash: sourceRootHash,
+                    historyEpoch: resolveCollectionEpoch(legacyPath).historyEpoch,
+                    journalBytes: existsSync(legacyPath) ? statSync(legacyPath).size : 0,
+                };
+                replaceSynced(join(dirname(legacyPath), "legacy-source.json"), JSON.stringify(source) + "\n");
+            }
+            renameSync(dirname(legacyPath), directory);
+            syncParentDirectory(directory);
+        };
+        if (dedicated) {
+            const fence = readWorkflowMetricLegacyAdoption(legacyPath);
+            if (fence && !fence.sourceRootHash)
+                replaceSynced(
+                    join(dirname(legacyPath), "legacy-adoption.json"),
+                    JSON.stringify({ ...fence, sourceRootHash }) + "\n",
+                );
+            renameJournal();
+            return;
+        }
         const state = readJournalState(legacyPath);
         const deadline = Date.now() + 1000;
         do {
@@ -503,8 +554,7 @@ export function adoptLegacyWorkflowMetricJournal(filePath: string, legacyPath: s
         const belongs = (row: LegacyMeasurementRow | undefined): row is LegacyMeasurementRow =>
             !!row && typeof row.cwdHash === "string" && hashes.includes(row.cwdHash);
         if (rows.every((row) => !!row && (controls.has(row.event) || belongs(row)))) {
-            renameSync(dirname(legacyPath), directory);
-            syncParentDirectory(directory);
+            renameJournal();
             return;
         }
         const historyEpoch = crypto.randomUUID();
@@ -539,6 +589,7 @@ export function adoptLegacyWorkflowMetricJournal(filePath: string, legacyPath: s
                 join(staging, "legacy-adoption.json"),
                 JSON.stringify({
                     legacyHistoryEpoch: state.historyEpoch,
+                    sourceRootHash,
                     historyEpoch,
                     offset,
                 }) + "\n",

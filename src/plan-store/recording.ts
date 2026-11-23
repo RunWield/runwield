@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import {
     managedPersonalStoreActive as managedPlanStoreActive,
     readManagedRecordingContext,
@@ -13,7 +14,6 @@ import {
     settlePreparedPackageRecord as settleLocalPreparedRecord,
     readPreparedPackageRecord,
 } from "../shared/work-records/package-recording.ts";
-import { projectStoreLocation } from "../shared/project-identity.ts";
 /** Plan-side recording evidence. Work Record content and publication remain with their owners. */
 import { currentPackageSelection, selectedPackage, withPackageWorkflow } from "./workflows.ts";
 import { readPlanPackage, readPlanPackagePublication, type PackagePublicationReference } from "./packages.ts";
@@ -62,7 +62,7 @@ export async function readRecordingPublication(cwd: string, planName: string, re
 export function planRecordingSourceRoot(sourcePath: string): string {
     if (managedPlanStoreActive()) return managedExecutionRoot();
     const owner = currentPackageSelection()?.identity;
-    return owner ? projectStoreLocation(owner) : getPlanDocumentRoot(sourcePath);
+    return owner ? projects.home.storeLocation(owner) : getPlanDocumentRoot(sourcePath);
 }
 
 /** A Recorder may target a parent; the owner admits that Plan using its current revision. */

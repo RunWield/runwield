@@ -115,7 +115,7 @@ test("Session HTTP registration refuses an operation not constructed by the file
 
 test("Session HTTP shutdown releases locks and closes the listener when uncertainty recording fails", async () => {
     const f = await makeControlFixture();
-    const project = f.store.getProjectById(f.session.projectId)!;
+    const project = f.store.getSessionProjectById(f.session.projectId)!;
     const directory = sessionDirForProject(f.baseDir, project);
     const lock = openNativeFileLock(lockPath(directory, f.session.runwieldSessionId));
     try {

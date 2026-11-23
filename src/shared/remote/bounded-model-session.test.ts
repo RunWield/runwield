@@ -110,6 +110,7 @@ test("bounded remote Pi session reads its project through a tool and sends the r
         join(project, ".wld", "settings.json"),
         JSON.stringify({
             visionFallback: { model: "laptop-only/vision" },
+            workflowMetrics: true,
             defaultProvider: "claude-cli",
             defaultModel: "sonnet",
             compaction: { enabled: true, reserveTokens: 100, keepRecentTokens: 1 },
@@ -412,6 +413,7 @@ test("bounded remote Pi session reads its project through a tool and sends the r
             await session.prompt("Describe shot.png using see_image");
             assertStringIncludes(contexts[3], btoa(String.fromCharCode(1, 2, 3)));
             assertStringIncludes(contexts[4], "remote vision description");
+            await assertRejects(() => fsReadFile(join(project, ".wld-project.json")), Error, "ENOENT");
 
             const globalSettingsBefore = await fsReadFile(join(root, "settings.json"), "utf8");
             const projectSettingsBefore = await fsReadFile(join(project, ".wld", "settings.json"), "utf8");

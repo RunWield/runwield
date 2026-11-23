@@ -1,5 +1,5 @@
+import { projects } from "@runwield/projects";
 import { managedPlanStoreActive, readManagedPlan, readManagedExecution } from "./managed.ts";
-import { requireProjectCheckout } from "../shared/project-identity.ts";
 import { inspectLocalHomeStore, selectLocalPlanWorkflow } from "./access.ts";
 import {
     currentPackageSelection,
@@ -14,7 +14,6 @@ import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
 /** Locate the editable document independently from the shared controller files. */
 import { canonicalizeStoredPlanName, isCompletedPlanStatus } from "../plan-format.ts";
 import { loadPlan } from "./index.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { findActiveByPlanName, listEntries } from "../shared/worktree-registry.ts";
 import { isGitRepository } from "../shared/git.ts";
 import { isSequencePlan } from "../shared/project-plan.ts";
@@ -105,7 +104,7 @@ export async function resolveWorkflowPlanLocation(
         const plan = await readManagedPlan(cwd, planName);
         const execution = plan?.attrs.planId ? await readManagedExecution(cwd, plan.attrs.planId) : null;
         return {
-            registryRoot: resolvePrimaryCheckoutRoot(cwd),
+            registryRoot: projects.checkout.primaryRoot(cwd),
             documentRoot: cwd,
             plan: plan?.attrs.archivedAt ? null : plan,
             archived: Boolean(plan?.attrs.archivedAt),
@@ -121,7 +120,7 @@ export async function resolveWorkflowPlanLocation(
             return await withPackageProject(cwd, store.identity, async () => {
                 const plan = await loadPackageWorkflowPlan({ planId: selection!.planId });
                 return {
-                    registryRoot: requireProjectCheckout(store.identity).checkoutRoot,
+                    registryRoot: projects.home.requireCheckout(store.identity).checkoutRoot,
                     ...(await packagePlanningSource(cwd, planName, plan, options.loadFromTarget)),
                     plan: plan.attrs.archivedAt ? null : plan,
                     archived: Boolean(plan.attrs.archivedAt),
@@ -149,7 +148,7 @@ async function resolveWorkflowPlanLocationInScope(
     if (currentPackageSelection()) {
         const plan = await loadPackageWorkflowPlan(planName);
         return {
-            registryRoot: requireProjectCheckout(currentPackageSelection()!.identity).checkoutRoot,
+            registryRoot: projects.home.requireCheckout(currentPackageSelection()!.identity).checkoutRoot,
             ...(await packagePlanningSource(cwd, planName, plan, options.loadFromTarget)),
             plan: plan.attrs.archivedAt ? null : plan,
             archived: Boolean(plan.attrs.archivedAt),
@@ -160,7 +159,7 @@ async function resolveWorkflowPlanLocationInScope(
         };
     }
     planName = canonicalizeStoredPlanName(planName).name;
-    const registryRoot = resolvePrimaryCheckoutRoot(cwd);
+    const registryRoot = projects.checkout.primaryRoot(cwd);
     if (options.readOnly && (await inspectProjectRuntimeReadAccess(cwd)).kind === "pending") {
         // Partly moved stores cannot select document authority. Keep safe local bytes browseable.
         return { registryRoot, documentRoot: cwd, plan: await loadPlan(cwd, planName) };

@@ -2,7 +2,7 @@ import { readControllerRecord, writeControllerState } from "./controllers.ts";
 import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
 import type { WorkflowControllerState } from "../shared/workflow/controller-state.ts";
 import { resolveCollectionEpoch, type JournalResult } from "../shared/workflow/metrics-journal.ts";
-import { getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
+import { getWorkflowMetricsCapturePath } from "../shared/workflow/metrics.ts";
 import { workflowOutcomeEventId } from "../shared/workflow/outcome-observations.ts";
 export type RetainedPublicationCompletion = {
     observation: WorkflowControllerState["publicationObservation"];
@@ -20,7 +20,7 @@ export async function retainPublicationCompletion(
     let historyEpoch = observed?.attemptId === attempt.attemptId ? observed.historyEpoch : undefined;
     if (!historyEpoch) {
         try {
-            historyEpoch = resolveCollectionEpoch(getWorkflowMetricsFilePath(projectRoot)).historyEpoch;
+            historyEpoch = resolveCollectionEpoch(getWorkflowMetricsCapturePath(projectRoot)).historyEpoch;
         } catch {
             historyEpoch = "unavailable";
         }

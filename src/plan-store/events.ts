@@ -1,5 +1,5 @@
+import { projects } from "@runwield/projects";
 import { managedPlanStoreActive, mutateManagedPlan, readManagedPlan, readManagedExecution } from "./managed.ts";
-import { currentHomeProjectOwner } from "../shared/project-identity.ts";
 import { packageWorkflowLocks } from "./workflows.ts";
 /** Owner-private lifecycle persistence. Event policy remains in plan-lifecycle.js. */
 import {
@@ -286,7 +286,7 @@ export async function recordManagedExecutionCheckpoint(
     expectedRevision: string,
     checkpoint: ManagedExecutionCheckpoint,
 ) {
-    if (!currentHomeProjectOwner()) throw new Error("Managed checkpoint requires its personal owner.");
+    if (!projects.home.current()) throw new Error("Managed checkpoint requires its personal owner.");
     return await packageWorkflowLocks([planName], async () => {
         const selected = await selectedPackage(planName);
         if (selected.metadata.workflow?.attempt?.attemptId !== attemptId)
@@ -434,7 +434,7 @@ export async function recordPlanEvent({
             () => recordPlanEvent({ cwd, planName, event, currentStatus, details, expectedRevision }),
             planName,
         );
-    if (currentHomeProjectOwner()) {
+    if (projects.home.current()) {
         if (
             !isManagedLifecycleDecision(event) &&
             ![

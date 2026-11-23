@@ -494,6 +494,8 @@ function makeRuntime(sessionHost: SessionHost): SessionRuntime {
 
 test("resuming a session whose persisted workflow owner is engineer activates Plan Engineer", async () => {
     await withRuntimeCommandFixture("plan-boundaries-resume-", async ({ projectRoot, setModelResponseFactory }) => {
+        await initializeGitProject(projectRoot);
+        await saveExecutablePlan(projectRoot, "resumed-feature", { status: "in_progress" });
         // A Session persisted before the split records `engineer`; no migration
         // runs, so the resolver is the only thing that can put the user back
         // with a Plan executor.

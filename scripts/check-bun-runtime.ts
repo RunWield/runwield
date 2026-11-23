@@ -18,8 +18,12 @@ const { engines }: RuntimeManifest = JSON.parse(readFileSync(new URL("../package
 export const supportedBunRange = engines.bun;
 
 export function requireSupportedBun(): void {
+    const selected = readPinnedBunVersion();
+    if (versions.bun === selected) return;
     if (!versions.bun || !Bun.semver.satisfies(versions.bun, supportedBunRange)) {
-        throw new Error(`RunWield requires Bun ${supportedBunRange}; found ${versions.bun || "another runtime"}.`);
+        throw new Error(
+            `RunWield uses Bun ${selected} from .bun-version and also supports ${supportedBunRange}; found ${versions.bun || "another runtime"}.`,
+        );
     }
 }
 

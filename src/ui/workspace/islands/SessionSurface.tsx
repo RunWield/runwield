@@ -1,3 +1,4 @@
+import { isProjectAvailable } from "../project-availability.ts";
 import type { ChangeEvent, ClipboardEvent, ReactNode, RefObject } from "react";
 import type { ImageAttachment } from "../../../shared/session/image-attachments.ts";
 import type { LiveSessionInfo } from "../../../shared/session/live-session-connection.ts";
@@ -1730,7 +1731,7 @@ export function SessionSurface({
             attachingImages ||
             navigationPending ||
             !sessionOptions ||
-            !projects?.some((project) => project.projectId === projectId && project.enabled) ||
+            !projects?.some((project) => project.projectId === projectId && isProjectAvailable(project)) ||
             loadedDraftKey !== draftKey
         )
             return;
@@ -2547,7 +2548,7 @@ export function SessionSurface({
                 ? [{ kind: "interruption" as const, key: "interruption:lost-workspace-operation" }]
                 : []),
         ];
-        const availableProjects = projects?.filter((project) => project.enabled && project.projectId);
+        const availableProjects = projects?.filter((project) => isProjectAvailable(project) && project.projectId);
         const currentProject = availableProjects?.find((project) => project.projectId === projectId);
         const canChangeProject = Boolean(
             availableProjects &&

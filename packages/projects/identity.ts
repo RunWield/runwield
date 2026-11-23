@@ -15,18 +15,36 @@ import {
     writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve, relative, sep } from "node:path";
-import { getHomeDir } from "../constants.ts";
-import { encodeCwdForSessionDir } from "./project-directory-key.ts";
-import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
-import { openNativeFileLock, type NativeFileLock } from "./native-file-lock.ts";
-import { ensurePrivateDir, syncParentDirectory, writeJsonAtomically } from "./private-json-file.ts";
-import { remoteProjectOwner } from "./remote/personal-resources.ts";
+import { getHomeDir } from "@runwield/resources/home";
+import {
+    remotePersonalResourcesActive,
+    remoteProjectOwner,
+    type ProjectPersonalOwner,
+} from "@runwield/resources/personal";
+import {
+    ensurePrivateDir,
+    openNativeFileLock,
+    syncParentDirectory,
+    writeJsonAtomically,
+    type NativeFileLock,
+} from "@runwield/resources/fs";
+import {
+    listSessionManifestFiles,
+    lockPath as sessionLockPath,
+    projectPath as sessionProjectPath,
+    readSessionProjectEvidence,
+    sessionStoragePath,
+} from "@runwield/session-files";
+import { encodeCwdForSessionDir } from "./directory-key.ts";
+import { resolvePrimaryCheckoutRoot } from "./checkout.ts";
+import { preferredRegisteredProjectId } from "./legacy-registration-identity.ts";
 
-export interface ProjectPersonalOwner {
-    kind: "execution-account" | "managed-remote";
-    /** Explicit laptop account identity for managed launches; account home for ordinary launches. */
-    identity: string;
-}
+export type { ProjectPersonalOwner } from "@runwield/resources/personal";
+
+declare const projectIdBrand: unique symbol;
+
+/** Stable identifier persisted by Project admission and home registration. */
+export type ProjectId = string & { readonly [projectIdBrand]: true };
 interface AccountHomeDirectory {
     device: number;
     inode: number;
@@ -39,7 +57,7 @@ export interface ProjectLaunchContext {
     accountHomeDirectory?: AccountHomeDirectory;
 }
 export interface ProjectIdentity {
-    projectId: string;
+    projectId: ProjectId;
     personalOwner: ProjectPersonalOwner;
     executionAccountHome: string;
     /** Original account HOME when it resolves through an alias. */
@@ -51,7 +69,7 @@ export interface ProjectIdentity {
     checkoutRoot: string;
 }
 export interface ProjectIdentityCandidate {
-    projectId: string;
+    projectId: ProjectId;
     displayName: string;
     remote: string;
 }
@@ -81,7 +99,7 @@ export interface ProjectCloneChoice {
     kind: "link" | "new" | "cancel";
     /** Exact candidate evidence shown to the person; admission revalidates it. */
     candidates: ProjectIdentityCandidate[];
-    projectId?: string;
+    projectId?: ProjectId;
 }
 export interface ProjectIdentityOptions {
     context?: ProjectLaunchContext;
@@ -90,7 +108,7 @@ export interface ProjectIdentityOptions {
 interface IdentityMarker {
     format: "runwield-project";
     version: 1;
-    projectId: string;
+    projectId: ProjectId;
     repositoryId: string;
     checkoutId: string;
 }
@@ -117,9 +135,12 @@ export interface ProjectStorageLocator {
     /** Verified checkout locations, projected separately from the unchanged storage paths. */
     historicalRoots?: string[];
 }
+export interface ProjectSessionStorageBinding extends ProjectStorageLocator {
+    projectId: ProjectId;
+}
 interface ProjectRecord {
     version: 1;
-    projectId: string;
+    projectId: ProjectId;
     displayName: string;
     personalOwner: ProjectPersonalOwner;
     repositories: RepositoryBinding[];
@@ -131,12 +152,25 @@ interface IdentityEvidence {
     common?: string;
     admin?: string;
     marker: IdentityMarker | null;
-    projectId: string | null;
+    projectId: ProjectId | null;
     repositoryId: string | null;
     checkoutId: string | null;
     remote: string | null;
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export function isProjectId(value: string | null | undefined): value is ProjectId {
+    return typeof value === "string" && value.length === 36 && uuid.test(value);
+}
+export function parseProjectId(value: string | null | undefined): ProjectId | undefined {
+    return isProjectId(value) ? value : undefined;
+}
+function requireProjectId(value: string, label: string): ProjectId {
+    if (!isProjectId(value)) throw new Error(`Invalid ${label}`);
+    return value;
+}
+function newProjectId(): ProjectId {
+    return requireProjectId(randomUUID(), "generated Project ID");
+}
 function requireId(value: string, label: string): string {
     if (typeof value !== "string" || !uuid.test(value)) throw new Error(`Invalid ${label}`);
     return value;
@@ -163,7 +197,7 @@ function git(cwd: string, args: string[], absent = false, input?: Uint8Array): s
     throw new Error(`Cannot read Project Git identity: ${result.stderr.trim() || result.status}`);
 }
 interface GitIdentityConfig {
-    projectId: string | null;
+    projectId: ProjectId | null;
     repositoryId: string | null;
     remote: string | null;
 }
@@ -205,8 +239,9 @@ function identityConfig(cwd: string, file: string): GitIdentityConfig {
         if (matches.length > 1 || matches[0]?.includes("\n"))
             throw new Error(`Multiple values for identity key ${key} in ${file}`);
     }
+    const projectId = values.get("runwield.projectid")?.[0];
     const parsed = {
-        projectId: values.get("runwield.projectid")?.[0] ?? null,
+        projectId: projectId === undefined ? null : requireProjectId(projectId, "Git Project ID"),
         repositoryId: values.get("runwield.repositoryid")?.[0] ?? null,
         remote: values.get("remote.origin.url")?.at(-1) ?? null,
     };
@@ -216,7 +251,7 @@ function identityConfig(cwd: string, file: string): GitIdentityConfig {
 }
 function markerAt(path: string): IdentityMarker | null {
     if (!regularFile(path)) return null;
-    const marker: IdentityMarker = JSON.parse(readFileSync(path, "utf8"));
+    const marker: Omit<IdentityMarker, "projectId"> & { projectId: string } = JSON.parse(readFileSync(path, "utf8"));
     if (
         !marker ||
         marker.format !== "runwield-project" ||
@@ -225,10 +260,10 @@ function markerAt(path: string): IdentityMarker | null {
     ) {
         throw new Error(`Unrecognized Project marker: ${path}`);
     }
-    requireId(marker.projectId, `Project ID in ${path}`);
+    const projectId = requireProjectId(marker.projectId, `Project ID in ${path}`);
     requireId(marker.repositoryId, `repository ID in ${path}`);
     requireId(marker.checkoutId, `checkout ID in ${path}`);
-    return marker;
+    return { ...marker, projectId };
 }
 function hasGitDirectory(path: string): boolean {
     if (process.env.GIT_DIR || process.env.GIT_COMMON_DIR || process.env.GIT_WORK_TREE) return true;
@@ -293,7 +328,6 @@ function evidence(path: string): IdentityEvidence {
     const checkoutId = regularFile(checkoutPath)
         ? requireId(readFileSync(checkoutPath, "utf8").trim(), "checkout ID")
         : null;
-    if (projectId !== null) requireId(projectId, "Git Project ID");
     if (repositoryId !== null) requireId(repositoryId, "Git repository ID");
     if (
         marker &&
@@ -319,6 +353,9 @@ const trustedLaunchContext = new AsyncLocalStorage<ProjectLaunchContext>();
 /** Private runtime entry supplies verified launcher ownership without changing process-global resources. */
 export async function withProjectLaunchContext<T>(context: ProjectLaunchContext, run: () => Promise<T>): Promise<T> {
     return await trustedLaunchContext.run(context, run);
+}
+export function scopedProjectExecutionAccountHome(): string | undefined {
+    return trustedLaunchContext.getStore()?.executionAccountHome;
 }
 export function projectLaunchContext(): ProjectLaunchContext {
     const trusted = trustedLaunchContext.getStore();
@@ -383,6 +420,11 @@ function contextFor(options: ProjectIdentityOptions): ProjectLaunchContext {
                 : context.personalOwner,
     };
 }
+/** Resolve and validate the account scope selected by the current launch. */
+export function resolveProjectLaunchContext(): ProjectLaunchContext {
+    return contextFor({});
+}
+
 /** Normalize the configured account-home prefix without following redirects inside its storage. */
 export function executionAccountStoragePath(path: string, context = contextFor({})): string {
     const absolute = resolve(path);
@@ -420,12 +462,15 @@ function checkIdentityDirectories(home: string, ...segments: string[]): string {
     }
     return path;
 }
-function recordPath(home: string, id: string): string {
-    return join(checkIdentityDirectories(home, ".wld", "projects", requireId(id, "Project ID")), "project.wld.json");
+function recordPath(home: string, id: ProjectId): string {
+    return join(
+        checkIdentityDirectories(home, ".wld", "projects", requireProjectId(id, "Project ID")),
+        "project.wld.json",
+    );
 }
-function readRecord(path: string, id: string): ProjectRecord | null {
+function readRecord(path: string, id: ProjectId): ProjectRecord | null {
     if (!regularFile(path)) return null;
-    const record: ProjectRecord = JSON.parse(readFileSync(path, "utf8"));
+    const record: Omit<ProjectRecord, "projectId"> & { projectId: string } = JSON.parse(readFileSync(path, "utf8"));
     if (
         !record ||
         record.version !== 1 ||
@@ -474,10 +519,13 @@ function readRecord(path: string, id: string): ProjectRecord | null {
         )
             throw new Error(`Invalid Project storage locator: ${path}`);
     }
-    return record;
+    return { ...record, projectId: id };
 }
 /** Read only committed bindings for this owner and this admitted repository/checkout. */
-export function inspectProjectStorage(path: string, options: ProjectIdentityOptions = {}): ProjectStorageLocator[] {
+export function inspectProjectStorage(
+    path: string,
+    options: ProjectIdentityOptions = {},
+): ProjectSessionStorageBinding[] {
     const context = contextFor(options);
     if (context.personalOwner.kind !== "execution-account") return [];
     let e: IdentityEvidence;
@@ -510,6 +558,7 @@ export function inspectProjectStorage(path: string, options: ProjectIdentityOpti
                 .checkouts.find((item) => item.checkoutId === locator.checkoutId)!;
             return {
                 ...locator,
+                projectId: record.projectId,
                 historicalRoots: [
                     ...new Set([
                         locator.root,
@@ -525,10 +574,60 @@ export function inspectProjectStorage(path: string, options: ProjectIdentityOpti
         });
 }
 
-/** Current, verified checkout roots for a legacy Session ID; never infer membership from a remote or basename. */
-export function inspectSessionProjectRoots(sessionProjectId: string): string[] {
+/** Roots committed for this checkout under the current personal owner. */
+export function inspectProjectCheckoutRoots(identity: ProjectIdentity): string[] {
+    if (identity.personalOwner.kind !== "execution-account") return [];
+    const record = readRecord(recordPath(identity.executionAccountHome, identity.projectId), identity.projectId);
+    if (record?.personalOwner.identity !== identity.personalOwner.identity) return [];
+    const checkout = record.repositories
+        .find((repository) => repository.repositoryId === identity.repositoryId)
+        ?.checkouts.find((entry) => entry.checkoutId === identity.checkoutId);
+    return checkout ? [...new Set([checkout.root, ...(checkout.historicalRoots ?? [])])] : [];
+}
+
+/** A historical path can carry private data for a different admitted Project. */
+export function isOtherProjectCheckoutRoot(identity: ProjectIdentity, root: string): boolean {
+    if (identity.personalOwner.kind !== "execution-account") return false;
+    const directory = checkIdentityDirectories(identity.executionAccountHome, ".wld", "projects");
+    let names: string[];
+    try {
+        names = readdirSync(directory);
+    } catch (error) {
+        if (error instanceof Error && missing(error)) return false;
+        throw error;
+    }
+    for (const id of names.filter(isProjectId)) {
+        if (id === identity.projectId) continue;
+        const record = readRecord(recordPath(identity.executionAccountHome, id), id);
+        if (
+            record?.personalOwner.identity === identity.personalOwner.identity &&
+            record.repositories.some((repository) =>
+                repository.checkouts.some(
+                    (checkout) => checkout.root === root || checkout.historicalRoots?.includes(root),
+                ),
+            )
+        )
+            return true;
+    }
+    return false;
+}
+
+/** Committed Session directories remain owned by their Project when a checkout is offline or moved. */
+export function inspectSessionStorageBindings(): ProjectSessionStorageBinding[] {
+    const bindings: ProjectSessionStorageBinding[] = [];
+    for (const record of readOwnedProjectRecords()) {
+        for (const locator of record.storageLocators ?? []) {
+            bindings.push({ ...locator, projectId: record.projectId });
+        }
+    }
+    return bindings;
+}
+
+function readOwnedProjectRecords(): ProjectRecord[] {
+    // Managed Sessions carry their own bindings and never scan the execution account's local registry.
+    const launch = trustedLaunchContext.getStore();
+    if (launch ? launch.personalOwner.kind === "managed-remote" : remotePersonalResourcesActive()) return [];
     const context = contextFor({});
-    if (context.personalOwner.kind !== "execution-account") return [];
     const directory = checkIdentityDirectories(context.executionAccountHome, ".wld", "projects");
     let names: string[];
     try {
@@ -537,18 +636,23 @@ export function inspectSessionProjectRoots(sessionProjectId: string): string[] {
         if (error instanceof Error && missing(error)) return [];
         throw error;
     }
-    const roots: string[] = [];
-    for (const id of names.filter((name) => uuid.test(name))) {
+    return names.filter(isProjectId).flatMap((id) => {
         const record = readRecord(recordPath(context.executionAccountHome, id), id);
+        return record &&
+            record.personalOwner.kind === context.personalOwner.kind &&
+            record.personalOwner.identity === context.personalOwner.identity
+            ? [record]
+            : [];
+    });
+}
+
+/** Current checkout roots require matching repository and checkout authority. */
+export function inspectSessionProjectRoots(sessionProjectId: string): string[] {
+    const roots: string[] = [];
+    for (const record of readOwnedProjectRecords()) {
         if (
-            !record ||
-            (record.projectId !== sessionProjectId &&
-                !record.storageLocators?.some((item) => item.sessionProjectId === sessionProjectId))
-        )
-            continue;
-        if (
-            record.personalOwner.kind !== context.personalOwner.kind ||
-            record.personalOwner.identity !== context.personalOwner.identity
+            record.projectId !== sessionProjectId &&
+            !record.storageLocators?.some((item) => item.sessionProjectId === sessionProjectId)
         )
             continue;
         for (const repository of record.repositories)
@@ -556,9 +660,12 @@ export function inspectSessionProjectRoots(sessionProjectId: string): string[] {
                 try {
                     const bindings = inspectProjectStorage(checkout.root);
                     if (
-                        bindings.length &&
-                        (record.projectId === sessionProjectId ||
-                            bindings.some((item) => item.sessionProjectId === sessionProjectId))
+                        bindings.some(
+                            (item) =>
+                                item.projectId === record.projectId &&
+                                item.repositoryId === repository.repositoryId &&
+                                item.checkoutId === checkout.checkoutId,
+                        )
                     )
                         roots.push(checkout.root);
                 } catch {
@@ -579,7 +686,9 @@ export function establishProjectSessionStorage(root: string, sessionProjectId: s
     const path = recordPath(context.executionAccountHome, e.projectId);
     const before = readRecord(path, e.projectId);
     const locator = before?.storageLocators?.find(
-        (item) => item.sessionProjectId === sessionProjectId && item.sessionDirectory === directory,
+        (item) =>
+            (item.sessionProjectId === sessionProjectId || e.projectId === sessionProjectId) &&
+            item.sessionDirectory === directory,
     );
     if (!locator || locator.sessionStoreEstablished) return;
     const lock = openNativeFileLock(join(dirname(path), "identity.lock"));
@@ -587,7 +696,9 @@ export function establishProjectSessionStorage(root: string, sessionProjectId: s
         lock.lockSync(true);
         const record = readRecord(path, e.projectId);
         const saved = record?.storageLocators?.find(
-            (item) => item.sessionProjectId === sessionProjectId && item.sessionDirectory === directory,
+            (item) =>
+                (item.sessionProjectId === sessionProjectId || e.projectId === sessionProjectId) &&
+                item.sessionDirectory === directory,
         );
         if (!record || !saved) throw new Error("Project storage binding changed during Session creation");
         verifyExecutionAccountHome(context);
@@ -617,7 +728,7 @@ export function isProjectStorageRootClaimed(root: string, options: ProjectIdenti
         throw error;
     }
     const current = evidence(root);
-    for (const id of names.filter((name) => uuid.test(name))) {
+    for (const id of names.filter(isProjectId)) {
         const record = readRecord(recordPath(context.executionAccountHome, id), id);
         // Git worktrees share repository authority before every checkout has been admitted.
         if (id === current.projectId && record?.repositories.some((item) => item.repositoryId === current.repositoryId))
@@ -642,14 +753,12 @@ function storageLocator(e: IdentityEvidence, home: string, root: string): Projec
         context: { executionAccountHome: home, personalOwner: { kind: "execution-account", identity: home } },
     });
     const sessionDirectory = checkIdentityDirectories(home, ".wld", "sessions", encodeCwdForSessionDir(root));
-    const file = join(sessionDirectory, ".runwield", "project.json");
+    const file = sessionProjectPath(sessionDirectory);
     const sessionStoreEstablished = regularFile(file);
-    let sessionProjectId = `local-${createHash("sha256").update(root).digest("hex").slice(0, 32)}`;
+    let sessionProjectId: string = e.projectId!;
     if (sessionStoreEstablished) {
-        const project: import("./session/file-session-store-types.ts").FileSessionProject = JSON.parse(
-            readFileSync(file, "utf8"),
-        );
-        if (project.remote || !project.projectId || project.currentRoot !== root)
+        const project = readSessionProjectEvidence(file);
+        if (!project || project.remote || !project.projectId || project.currentRoot !== root)
             throw new Error(`Legacy Session locator does not match recorded checkout: ${file}`);
         sessionProjectId = project.projectId;
     }
@@ -681,17 +790,23 @@ class SessionStorageBusy extends Error {
  * checkout admission before waiting, because an in-flight Session can itself enter Project runtime.
  * No native lock file is replaced or relocated.
  */
-async function settleStorageLocators(locators: ProjectStorageLocator[]): Promise<NativeFileLock[]> {
-    const storage = await import("./session/file-session-storage.ts");
+function settleStorageLocators(locators: ProjectStorageLocator[], projectId: ProjectId): NativeFileLock[] {
     const paths = [
         ...new Set(
             locators.flatMap((locator) =>
-                storage
-                    .listManifests(locator.sessionDirectory, true)
+                listSessionManifestFiles(locator.sessionDirectory, true)
                     // A successor transcript carries its original Project's recovery descriptor.
                     // It does not create another bundle or writer lock in this checkout's store.
-                    .filter((item) => item.manifest.projectId === locator.sessionProjectId)
-                    .map((item) => storage.lockPath(locator.sessionDirectory, item.manifest.runwieldSessionId)),
+                    .filter(
+                        (item) =>
+                            (item.projectId === locator.sessionProjectId || item.projectId === projectId) &&
+                            (item.hasPrimaryManifest ||
+                                (item.originalTranscriptPath !== undefined &&
+                                    dirname(
+                                        sessionStoragePath(item.originalTranscriptPath, locator.sessionDirectory),
+                                    ) === locator.sessionDirectory)),
+                    )
+                    .map((item) => sessionLockPath(locator.sessionDirectory, item.runwieldSessionId)),
             ),
         ),
     ].sort();
@@ -720,7 +835,7 @@ function candidatesFor(e: IdentityEvidence, context: ProjectLaunchContext): Proj
         throw error;
     }
     const candidates: ProjectIdentityCandidate[] = [];
-    for (const id of names.filter((name) => uuid.test(name)).sort()) {
+    for (const id of names.filter(isProjectId).sort()) {
         const record = readRecord(recordPath(context.executionAccountHome, id), id);
         if (
             record?.personalOwner.kind === context.personalOwner.kind &&
@@ -773,11 +888,17 @@ function writeLocalIdentity(path: string, text: string): void {
 function putConfig(e: IdentityEvidence, key: string, value: string): void {
     git(e.cwd, ["config", "--file", join(e.common!, "config"), "--no-includes", "--replace-all", key, value]);
 }
-/** Deliberate entry. Pending and canceled choices never commit identity or an answer. */
-export async function admitProjectIdentity(
+interface RegistrationIdentityBinding {
+    kind: "existing" | "legacy";
+    projectId: ProjectId;
+}
+
+/** Core owns the binding procedure. Both entry modes acquire the same locks in the same order. */
+function* projectAdmission(
     path: string,
-    options: ProjectIdentityOptions = {},
-): Promise<ProjectIdentityAdmission> {
+    options: ProjectIdentityOptions,
+    binding?: RegistrationIdentityBinding,
+): Generator<NativeFileLock, ProjectIdentityAdmission, void> {
     try {
         const context = contextFor(options);
         let e = evidence(path);
@@ -793,8 +914,8 @@ export async function admitProjectIdentity(
         }
         regularFile(lockPath);
         const lock = openNativeFileLock(lockPath);
-        await lock.lock(true);
         try {
+            yield lock;
             e = evidence(path);
             if (
                 e.projectId &&
@@ -821,8 +942,23 @@ export async function admitProjectIdentity(
                     : undefined;
             if (!e.projectId && options.choice?.kind === "link" && !selected)
                 return { kind: "invalid", message: "Selected clone-link candidate is no longer available" };
+            if (binding && (e.projectId ?? selected?.projectId ?? binding.projectId) !== binding.projectId)
+                return {
+                    kind: "invalid",
+                    message: "The destination belongs to another Project; its identity was preserved",
+                };
+            if (binding?.kind === "existing" && !e.projectId && !selected)
+                return {
+                    kind: "invalid",
+                    message: "The destination has no evidence of the registered Project identity",
+                };
             const needsBinding = !e.projectId || !e.repositoryId || !e.checkoutId || e.marker !== null;
-            e.projectId ??= selected?.projectId ?? randomUUID();
+            e.projectId ??=
+                selected?.projectId ??
+                binding?.projectId ??
+                preferredRegisteredProjectId(e.root, context) ??
+                newProjectId();
+            requireProjectId(e.projectId, "Project ID");
             e.repositoryId ??= randomUUID();
             e.checkoutId ??= randomUUID();
             // Validate home evidence before committing repository authority. Managed remote context is only a binding,
@@ -881,14 +1017,13 @@ export async function admitProjectIdentity(
                           .filter(
                               (item) =>
                                   !item.sessionStoreEstablished &&
-                                  regularFile(join(item.sessionDirectory, ".runwield", "project.json")),
+                                  regularFile(sessionProjectPath(item.sessionDirectory)),
                           )
                           .map((item) => ({ ...item, sessionStoreEstablished: true }))
                     : [storageLocator(e, context.executionAccountHome, previousCheckout?.root ?? e.root)];
                 if (previousCheckout && previousCheckout.root !== e.root && !ownLocators.length) {
                     const current = storageLocator(e, context.executionAccountHome, e.root);
-                    if (regularFile(join(current.sessionDirectory, ".runwield", "project.json")))
-                        additions.push(current);
+                    if (regularFile(sessionProjectPath(current.sessionDirectory))) additions.push(current);
                 }
                 // A new worktree does not change an existing checkout's binding. Its caller may
                 // already own that checkout's Session writer while preparing the worktree.
@@ -897,10 +1032,10 @@ export async function admitProjectIdentity(
                     ...(previousCheckout && previousCheckout.root !== e.root ? ownLocators : []),
                     ...(selected ? previousLocators : []),
                 ];
-                const settledLocks = await settleStorageLocators(affectedLocators);
+                const settledLocks = settleStorageLocators(affectedLocators, e.projectId);
                 const recordLock = openNativeFileLock(join(dirname(file), "identity.lock"));
                 try {
-                    await recordLock.lock(true);
+                    yield recordLock;
                     const verified = evidence(path);
                     if (
                         verified.projectId !== e.projectId ||
@@ -966,15 +1101,71 @@ export async function admitProjectIdentity(
             // All identity locks have been released by this point. Wait only on the original writer.
             const writer = openNativeFileLock(error.lockPath, false);
             try {
-                await writer.lock(true);
+                yield writer;
             } finally {
                 writer.close();
             }
-            return admitProjectIdentity(path, options);
+            return yield* projectAdmission(path, options, binding);
         }
         return { kind: "invalid", message: String(error), ...(error instanceof Error && { cause: error }) };
     }
 }
+/** Deliberate entry. Contended writers release locks before waiting for another Session. */
+export async function admitProjectIdentity(
+    path: string,
+    options: ProjectIdentityOptions = {},
+): Promise<ProjectIdentityAdmission> {
+    const admission = projectAdmission(path, options);
+    let step = admission.next();
+    while (!step.done) {
+        try {
+            if (!step.value.tryLockSync(true)) await step.value.lock(true);
+        } catch (error) {
+            step = admission.throw(error);
+            continue;
+        }
+        step = admission.next();
+    }
+    return step.value;
+}
+
+function admitImmediately(
+    path: string,
+    options: ProjectIdentityOptions,
+    binding?: RegistrationIdentityBinding,
+): ProjectIdentityAdmission {
+    const admission = projectAdmission(path, options, binding);
+    let step = admission.next();
+    while (!step.done) {
+        try {
+            if (!step.value.tryLockSync(true))
+                throw new Error("Project identity is busy; retry after the current writer finishes.");
+        } catch (error) {
+            step = admission.throw(error);
+            continue;
+        }
+        step = admission.next();
+    }
+    return step.value;
+}
+
+/** Registration can retain a historical ID only after its registry has verified the binding. */
+export function admitRegistrationIdentity(
+    path: string,
+    context: ProjectLaunchContext,
+    binding?: RegistrationIdentityBinding,
+    choice?: ProjectCloneChoice,
+): ProjectIdentityAdmission {
+    return admitImmediately(path, { context, choice }, binding);
+}
+
+/** Synchronous storage entry cannot wait on a writer that needs the calling event loop. */
+export function admitProjectForStorage(path: string, options: ProjectIdentityOptions = {}): ProjectIdentity {
+    const result = admitImmediately(path, options);
+    if (result.kind !== "existing") throw new ProjectIdentityEntryRequired(result);
+    return result.identity;
+}
+
 export class ProjectIdentityEntryRequired extends Error {
     constructor(readonly result: ProjectIdentityAdmission) {
         super(
@@ -992,7 +1183,7 @@ export class ProjectIdentityEntryRequired extends Error {
 /** Trusted laptop registration has repository identity but no source checkout. */
 export interface HomeProjectOwner {
     kind: "home-project";
-    projectId: string;
+    projectId: ProjectId;
     repositoryId: string;
     personalOwner: ProjectPersonalOwner;
     executionAccountHome: string;
@@ -1003,7 +1194,7 @@ export interface HomeProjectOwner {
 }
 export type ProjectStoreIdentity = ProjectIdentity | HomeProjectOwner;
 export interface HomeProjectRegistration {
-    projectId: string;
+    projectId: ProjectId;
     repositoryId: string;
     displayName: string;
 }
@@ -1019,13 +1210,13 @@ export function projectStoreLocation(identity: ProjectStoreIdentity): string {
         ? join(identity.executionAccountHome, ".wld", "projects", identity.projectId)
         : identity.checkoutRoot;
 }
-export function findHomeProjectOwner(projectId: string, repositoryId: string): HomeProjectOwner | null {
+export function findHomeProjectOwner(projectId: ProjectId, repositoryId: string): HomeProjectOwner | null {
     const context = contextFor({});
     const record = readRecord(recordPath(context.executionAccountHome, projectId), projectId);
     if (!record || !record.repositories.some((entry) => entry.repositoryId === repositoryId)) return null;
     return inspectHomeProjectOwner(projectId, repositoryId);
 }
-export function inspectHomeProjectOwner(projectId: string, repositoryId: string): HomeProjectOwner {
+export function inspectHomeProjectOwner(projectId: ProjectId, repositoryId: string): HomeProjectOwner {
     requireId(repositoryId, "repository ID");
     const context = contextFor({});
     if (context.personalOwner.kind !== "execution-account") throw new Error("Home store belongs to this account only.");
@@ -1050,7 +1241,7 @@ export function inspectHomeProjectOwner(projectId: string, repositoryId: string)
 }
 /** Local trusted registration only; a transport request cannot create or select this authority. */
 export async function registerHomeProjectOwner(input: HomeProjectRegistration): Promise<HomeProjectOwner> {
-    requireId(input.projectId, "Project ID");
+    requireProjectId(input.projectId, "Project ID");
     requireId(input.repositoryId, "repository ID");
     if (!input.displayName.trim() || input.displayName.length > 240) throw new Error("Invalid Project display name.");
     const context = contextFor({});

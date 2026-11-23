@@ -1,5 +1,5 @@
+import { projects, type ProjectIdentity } from "@runwield/projects";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { inspectProjectIdentity, type ProjectIdentity } from "../shared/project-identity.ts";
 
 /** Checkout parsing is reserved for explicit import and the retained original execution owner. */
 const sources = new AsyncLocalStorage<ProjectIdentity>();
@@ -9,7 +9,7 @@ export function currentRetainedCheckoutSource(): ProjectIdentity | undefined {
 export function hasRetainedCheckoutSource(cwd: string): boolean {
     const source = sources.getStore();
     if (!source) return false;
-    const inspected = inspectProjectIdentity(cwd);
+    const inspected = projects.checkout.inspect(cwd);
     if (
         inspected.kind !== "existing" ||
         inspected.identity.projectId !== source.projectId ||

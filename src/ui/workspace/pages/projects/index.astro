@@ -1,6 +1,5 @@
 ---
 import ProjectRootForm from "../../islands/ProjectRootForm.tsx";
-import type { OwnerProjectView } from "../../server/owner-projects.ts";
 import SettingsLayout from "../../layouts/SettingsLayout.astro";
 import { loadOwnerProjects } from "../../server/astro-owner-data.ts";
 
@@ -16,7 +15,7 @@ const projects = await loadOwnerProjects();
         <ProjectRootForm client:load />
     </section>
     <section class="project-list-panel" aria-label="Linked Projects">
-        {projects.length ? projects.map((project: OwnerProjectView) => (
+        {projects.length ? projects.map((project) => (
             <a
                 class="project-list-row"
                 href={`/projects/${encodeURIComponent(project.projectId)}/settings`}
@@ -25,7 +24,7 @@ const projects = await loadOwnerProjects();
                     <strong>{project.displayName}</strong>
                     <small>{project.rootLabel} · {project.healthStatus}</small>
                 </span>
-                <span class="project-list-state">{project.lifecycle}{project.enabled ? "" : " · unavailable"}</span>
+                <span class="project-list-state">{project.status}</span>
             </a>
         )) : (
             <p class="empty">No Projects are linked yet.</p>

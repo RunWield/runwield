@@ -1,6 +1,6 @@
+import { projects } from "@runwield/projects";
 import process from "node:process";
 import { seedPlan, seedPlanController } from "../../shared/testing/plan-state-fixture.ts";
-import { admitProjectIdentity } from "../../shared/project-identity.ts";
 import { withRetainedPlanReadFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { verifyRecordedPublication } from "../../shared/workflow/validation-merge-verification.ts";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
@@ -291,7 +291,10 @@ test("plans doctor is report-only without repair", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-plans-doctor-readonly-"));
     return await withRetainedPlanReadFixture(cwd, async () => {
         try {
-            await seedPlan(cwd, "missing-id", "# Missing", { status: "ready_for_work", classification: "PLANNED_CHANGE" });
+            await seedPlan(cwd, "missing-id", "# Missing", {
+                status: "ready_for_work",
+                classification: "PLANNED_CHANGE",
+            });
             const registryPath = getWorktreeRegistryPath(cwd);
             await fsMkdir(dirname(registryPath), { recursive: true });
             await fsWriteFile(
@@ -584,7 +587,7 @@ test("plans doctor uses a reopened retired execution document", async () => {
             const unpublishedCommit = await git(cwd, ["rev-parse", "side"]);
             await fsRm(executionRoot, { recursive: true });
             await git(cwd, ["worktree", "add", "-b", "doctor-retired-fixture", executionRoot, "main"]);
-            await admitProjectIdentity(executionRoot);
+            await projects.checkout.admit(executionRoot);
             await seedPlan(executionRoot, "reopened", "# Execution\n", {
                 planId: "plan-reopened",
                 classification: "PLANNED_CHANGE",

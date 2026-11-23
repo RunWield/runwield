@@ -1,3 +1,4 @@
+import { isProjectId } from "@runwield/projects";
 import type { ProjectStoreBinding, ProjectStoreCommand, ProjectStoreReply } from "../../plan-store/index.ts";
 // Six bytes per UTF-16 code unit covers JSON escaping in the response envelope.
 export const HISTORY_PAGE_CHARS = 128 * 1024;
@@ -18,7 +19,7 @@ function fields(value: ProjectStoreBinding | ProjectStoreRequest, allowed: strin
 }
 export function validateProjectStoreBinding(binding: ProjectStoreBinding): void {
     fields(binding, ["projectId", "repositoryId", "ownerId"]);
-    if (!identity(binding.projectId) || !identity(binding.repositoryId) || !/^[a-f0-9]{64}$/.test(binding.ownerId))
+    if (!isProjectId(binding.projectId) || !identity(binding.repositoryId) || !/^[a-f0-9]{64}$/.test(binding.ownerId))
         throw new Error("Invalid Project owner binding.");
 }
 export function validateProjectStoreRequest(request: ProjectStoreRequest): void {

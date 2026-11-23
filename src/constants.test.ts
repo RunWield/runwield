@@ -1,7 +1,13 @@
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
-import { mkdtemp as fsMkdtemp, readdir as fsReaddir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    rm as fsRm,
+} from "node:fs/promises";
 import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "./testing/assertions.ts";
@@ -36,17 +42,20 @@ test("documentation Work Kind normalizes and labels planned documentation", () =
 test("home-derived paths follow a swapped HOME rather than a stale snapshot", async () => {
     await withProcessGlobalTestLock(async () => {
         const originalHome = process.env["HOME"];
-        const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-home-derived-"));
+        const fixture = await fsMkdtemp(join(tmpdir(), "runwield-home-derived-"));
+        const tempHome = join(fixture, "home");
+        const projectRoot = join(fixture, "project");
         try {
+            await Promise.all([fsMkdir(tempHome), fsMkdir(projectRoot)]);
             process.env["HOME"] = tempHome;
             // Workflow metrics leaked into the real ~/.wld, so assert it concretely.
-            const metricsPath = getWorkflowMetricsFilePath("/some/project");
+            const metricsPath = getWorkflowMetricsFilePath(projectRoot);
             assertEquals(metricsPath.startsWith(tempHome), true, `Expected ${metricsPath} under ${tempHome}.`);
             if (originalHome) assertEquals(metricsPath.startsWith(join(originalHome, ".wld")), false);
         } finally {
             if (originalHome === undefined) delete process.env["HOME"];
             else process.env["HOME"] = originalHome;
-            await fsRm(tempHome, { recursive: true });
+            await fsRm(fixture, { recursive: true });
         }
     });
 });

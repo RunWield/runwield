@@ -1,4 +1,5 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
+import { projects } from "@runwield/projects";
 import { capturePlanExecutionContext, reservePlanExecution, savePlanDefinition } from "../../plan-store/index.ts";
 import { selectPlanAccess } from "../../plan-store/index.ts";
 import { withPlanExecutionAdmission, type PlanAccess } from "../../plan-store/index.ts";
@@ -74,7 +75,6 @@ import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 
 export function normalizeExecutionTargetBranch(value) {
     if (typeof value !== "string") return undefined;
@@ -230,7 +230,7 @@ export async function reconcileExecutionPreparationLocation(
     planName: string,
     options: ExecutionPreparationLocationOptions = {},
 ) {
-    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+    const projectRoot = projects.checkout.primaryRoot(cwd);
     await prepareWorktreeRegistry(projectRoot);
     const records = await listTransitionRecoveryRecords(projectRoot);
     const source = await loadPlan(cwd, planName).catch(() => null);
@@ -333,7 +333,7 @@ async function startActiveExecutionWorkflowInScope({
 }: ExecutionStartOptions): Promise<import("../session/hosted-session.ts").ActiveExecutionWorkflow> {
     hostedSession?.getManagedOperationCapability?.()?.assertLive();
     if (!cwd) throw new Error("startActiveExecutionWorkflow: cwd is required");
-    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+    const projectRoot = projects.checkout.primaryRoot(cwd);
     let sourceLocation = await reconcileExecutionPreparationLocation(cwd, planName, { readOnly: true });
     if (!sourceLocation.resumeInterruptedPreparation && !hasCanonicalPlanAccess()) {
         await prepareSessionPlanningWorktree(cwd, planName);

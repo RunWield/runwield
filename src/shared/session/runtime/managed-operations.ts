@@ -1,5 +1,5 @@
+import { projects } from "@runwield/projects";
 import { stat as fsStat } from "node:fs/promises";
-import { inspectProjectStorage } from "../../project-identity.ts";
 import { restoreExecutionWorkflow } from "../execution-workflow-recovery.ts";
 import {
     readPersistedActiveAgentName,
@@ -744,11 +744,13 @@ export class RuntimeManagedOperations {
                     : undefined;
             const currentPlanningBinding =
                 generationSegment?.kind === "planning" &&
-                inspectProjectStorage(hostedSession.cwd).some(
-                    (binding) =>
-                        (binding.historicalRoots ?? [binding.root]).includes(generationSegment.transcriptCwd) &&
-                        isPathInside(transcriptPath, binding.sessionDirectory),
-                );
+                projects.storage
+                    .inspect(hostedSession.cwd)
+                    .some(
+                        (binding) =>
+                            (binding.historicalRoots ?? [binding.root]).includes(generationSegment.transcriptCwd) &&
+                            isPathInside(transcriptPath, binding.sessionDirectory),
+                    );
             const { sessionManager } = await openPersistedRootSession({
                 cwd: currentPlanningBinding ? hostedSession.cwd : generationSegment?.transcriptCwd || hostedSession.cwd,
                 sessionId: generationSegment?.piSessionId || managed.piSessionId,

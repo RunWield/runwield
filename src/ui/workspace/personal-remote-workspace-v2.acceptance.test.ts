@@ -23,6 +23,8 @@ import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";
 import { createOwnerWorkspaceApp } from "./server.ts";
+import { projects } from "@runwield/projects";
+import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
 import { latestLiveWorkflowInteraction } from "./islands/SessionSurface.tsx";
 import { WorkflowSidebar } from "./react/WorkflowSidebar.tsx";
@@ -121,11 +123,11 @@ test("unified Workspace search ranks canonical sources and opens Project artifac
         assertEquals(staleDestination.status, 200);
         assertStringIncludes(await staleDestination.text(), "Replaced content");
 
-        store.setProjectEnabled(project.projectId, false);
-        const disabledResponse = await app(
+        store.setProjectStatus(project.projectId, "inactive");
+        const inactiveResponse = await app(
             new Request("http://127.0.0.1:8787/api/owner/search?q=Searchable%20Compass", { headers }),
         );
-        assertEquals((await disabledResponse.json()).results, []);
+        assertEquals((await inactiveResponse.json()).results, []);
     } finally {
         await ownerApp.close();
         store.close();
@@ -224,44 +226,78 @@ test("every Workspace search result type opens its built destination", async () 
     }
 });
 
-test("Project settings stays accessible when its root disappears or its registration is disabled", async () => {
+test("Project settings stays accessible when its root disappears or its registration is inactive", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-settings-recovery-"));
     const root = `${dir}/original`;
     const movedRoot = `${dir}/moved`;
     await fsMkdir(root);
     const { store, ownerApp, app } = pairedApp(dir);
     try {
-        const project = store.registerProject({ root, displayName: "Moved Project" });
-        await fsRename(root, movedRoot);
-        const settingsUrl = `http://127.0.0.1:8787/projects/${project.projectId}/settings`;
+        const origin = "http://127.0.0.1:8787";
         const headers = { cookie: cookiePair("credential-secret") };
+        const mutationHeaders = {
+            ...headers,
+            origin,
+            "x-runwield-csrf": "csrf-secret",
+            "content-type": "application/json",
+        };
+        const registered = await app(
+            new Request(`${origin}/api/owner/projects`, {
+                method: "POST",
+                headers: mutationHeaders,
+                body: JSON.stringify({ root, displayName: "Moved Project" }),
+            }),
+        );
+        assertEquals(registered.status, 201);
+        const { project } = await registered.json();
+        const admitted = projects.checkout.inspect(root);
+        if (admitted.kind !== "existing") throw new Error("Expected admitted Project identity.");
+        assertEquals(project.projectId, admitted.identity.projectId);
+
+        await fsRename(root, movedRoot);
+        const settingsUrl = `${origin}/projects/${project.projectId}/settings`;
         const missing = await app(new Request(settingsUrl, { headers }));
         assertEquals(missing.status, 200);
         const html = await missing.text();
         assertStringIncludes(html, "Moved Project");
         assertStringIncludes(html, "Relink Project root");
+        assertStringIncludes(html, "active · missing");
+        assertStringIncludes(html, 'data-action="set-status" data-project-status="inactive"');
         assertStringIncludes(html, 'data-action="remove"');
         assertEquals(html.includes("Workspace request blocked"), false);
-        const action = (body: { action: string; newRoot?: string }) =>
+        const action = (body: { action: string; status?: string; newRoot?: string }) =>
             app(
-                new Request(`http://127.0.0.1:8787/api/owner/projects/${project.projectId}/action`, {
+                new Request(`${origin}/api/owner/projects/${project.projectId}/action`, {
                     method: "POST",
-                    headers: {
-                        ...headers,
-                        origin: "http://127.0.0.1:8787",
-                        "x-runwield-csrf": "csrf-secret",
-                        "content-type": "application/json",
-                    },
+                    headers: mutationHeaders,
                     body: JSON.stringify(body),
                 }),
             );
-        assertEquals((await action({ action: "disable" })).status, 200);
-        const disabled = await app(new Request(settingsUrl, { headers }));
-        assertEquals(disabled.status, 200);
-        assertStringIncludes(await disabled.text(), 'data-action="enable"');
+        assertEquals((await action({ action: "set-status", status: "archived" })).status, 400);
+        assertEquals((await action({ action: "set-status" })).status, 400);
+        assertEquals((await action({ action: "remove", status: "inactive" })).status, 400);
+        assertEquals(store.projects.get(project.projectId)?.status, "active");
+        const deactivated = await action({ action: "set-status", status: "inactive" });
+        assertEquals(deactivated.status, 200);
+        const {
+            projects: [view],
+        } = await deactivated.json();
+        assertEquals(view.projectId, project.projectId);
+        assertEquals(view.status, "inactive");
+        assertEquals(view.healthStatus, "missing");
+        assertEquals("enabled" in view, false);
+        assertEquals("lifecycle" in view, false);
+        const inactive = await app(new Request(settingsUrl, { headers }));
+        assertEquals(inactive.status, 200);
+        const inactiveHtml = await inactive.text();
+        assertStringIncludes(inactiveHtml, 'data-action="set-status" data-project-status="active"');
+        assertStringIncludes(inactiveHtml, "inactive · missing");
         assertEquals((await action({ action: "relink", newRoot: movedRoot })).status, 200);
-        assertEquals((await action({ action: "enable" })).status, 200);
-        assertEquals(store.getProjectHealth(project.projectId).status, "available");
+        const inactiveHealth = store.getProjectHealth(project.projectId);
+        assertEquals(inactiveHealth.projectStatus, "inactive");
+        assertEquals(inactiveHealth.status, "available");
+        assertEquals((await action({ action: "set-status", status: "active" })).status, 200);
+        assertEquals(store.getProjectHealth(project.projectId).projectStatus, "active");
         const repaired = await app(new Request(settingsUrl, { headers }));
         assertEquals(repaired.status, 200);
         assertStringIncludes(await repaired.text(), "available");
@@ -274,10 +310,105 @@ test("Project settings stays accessible when its root disappears or its registra
         const unknown = await app(new Request("http://127.0.0.1:8787/projects/not-registered/settings", { headers }));
         assertEquals(unknown.status, 404);
         assertStringIncludes(await unknown.text(), "Project settings not found");
+        const malformed = await app(new Request(`${origin}/projects/%ZZ/sessions`, { headers }));
+        assertEquals(malformed.status, 404);
+        const malformedAction = await app(
+            new Request(`${origin}/api/owner/projects/not-registered/action`, {
+                method: "POST",
+                headers: mutationHeaders,
+                body: JSON.stringify({ action: "remove" }),
+            }),
+        );
+        assertEquals(malformedAction.status, 404);
     } finally {
         await ownerApp.close();
         store.close();
         await fsRm(dir, { recursive: true });
+    }
+});
+
+test("Workspace retries winning clone choices and rejects stale or competing choices without exposing the Git remote", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-clone-choice-"));
+    const fixture = defineCommittedGitFixture({ "README.md": "Test Project\n" });
+    const original = await fixture.checkout();
+    const clone = await fixture.checkout();
+    const competitor = await fixture.checkout();
+    const linked = await fixture.checkout();
+    const roots = [original, clone, competitor, linked];
+    const privateRemote = "https://private-token@github.example.com/team/test-project.git";
+    for (const root of roots) await git(root, ["config", "remote.origin.url", privateRemote]);
+    const { store, ownerApp, app } = pairedApp(dir);
+    const origin = "http://127.0.0.1:8787";
+    const headers = {
+        cookie: cookiePair("credential-secret"),
+        origin,
+        "x-runwield-csrf": "csrf-secret",
+        "content-type": "application/json",
+    };
+    const register = (root: string, cloneChoice?: { kind: string; token: string; projectId?: string }) =>
+        app(
+            new Request(`${origin}/api/owner/projects`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({ root, displayName: "Repository", cloneChoice }),
+            }),
+        );
+    try {
+        const first = await register(original);
+        assertEquals(first.status, 201);
+        const { project } = await first.json();
+        const pending = await register(clone);
+        assertEquals(pending.status, 409);
+        const pendingText = await pending.text();
+        assertEquals(pendingText.includes("private-token"), false);
+        assertEquals(pendingText.includes("remote"), false);
+        const choice = JSON.parse(pendingText);
+        assertEquals(choice.code, "project_clone_choice_required");
+        assertEquals(choice.candidates, [{ projectId: project.projectId, displayName: "Repository" }]);
+        assertEquals((await register(clone, { kind: "new", token: "stale" })).status, 409);
+        assertEquals(store.projects.list().length, 1);
+
+        const otherPending = await register(competitor);
+        assertEquals(otherPending.status, 409);
+        const { token: otherToken } = await otherPending.json();
+        assertEquals((await register(clone, { kind: "new", token: otherToken })).status, 409);
+        assertEquals((await register(competitor, { kind: "new", token: otherToken })).status, 201);
+        const refreshed = await register(clone, { kind: "new", token: choice.token });
+        assertEquals(refreshed.status, 409);
+        const current = await refreshed.json();
+        assertEquals(current.candidates.length, 2);
+        assertEquals(projects.checkout.inspect(clone).kind, "pending");
+
+        const newChoice = { kind: "new", token: current.token };
+        const confirmed = await register(clone, newChoice);
+        assertEquals(confirmed.status, 201);
+        const { project: separate } = await confirmed.json();
+        const recovered = await register(clone, newChoice);
+        assertEquals(recovered.status, 201);
+        assertEquals((await recovered.json()).project, separate);
+        const competingLink = { kind: "link", token: current.token, projectId: project.projectId };
+        assertEquals((await register(clone, competingLink)).status, 400);
+        const admitted = projects.checkout.inspect(clone);
+        if (admitted.kind !== "existing") throw new Error("Expected admitted clone identity.");
+        assertEquals(separate.projectId, admitted.identity.projectId);
+        assertEquals(separate.projectId === project.projectId, false);
+
+        const linkPending = await register(linked);
+        assertEquals(linkPending.status, 409);
+        const { token: linkToken } = await linkPending.json();
+        const linkChoice = { kind: "link", token: linkToken, projectId: project.projectId };
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const result = await register(linked, linkChoice);
+            assertEquals(result.status, 201);
+            assertEquals((await result.json()).project, project);
+        }
+        assertEquals((await register(linked, { kind: "new", token: linkToken })).status, 400);
+        assertEquals(store.projects.list().length, 3);
+    } finally {
+        await ownerApp.close();
+        store.close();
+        await fsRm(dir, { recursive: true });
+        for (const root of roots) await fsRm(root, { recursive: true });
     }
 });
 
@@ -290,7 +421,7 @@ test("Removing and re-adding a Project preserves file-authoritative Session hist
         assertEquals(store.getProjectById(project.projectId), null);
         assertEquals(await fsReadFile(transcriptPath, "utf8"), transcript);
         const added = store.registerProject({ root: projectRoot });
-        assertEquals(added.projectId === project.projectId, false);
+        assertEquals(added.projectId, project.projectId);
         await store.catalogProjectSessions(added.projectId, { fullRescan: true });
         const rediscovered = await store.listProjectSessions(added.projectId);
         assertEquals(
@@ -792,48 +923,42 @@ test("personal remote Workspace v2 Dashboard uses live evidence for active work 
 test("personal remote Workspace v2 Dashboard does not mark READY status ready when readiness evidence is broken", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-dashboard-readiness-"));
     const projectRoot = `${dir}/project`;
-    await fsMkdir(`${projectRoot}/.wld`, { recursive: true });
-    return await withRetainedPlanFixture(projectRoot, async () => {
-        await savePlan(projectRoot, "ready", "# Ready\n", {
-            planId: "ready-plan",
-            classification: "PLANNED_CHANGE",
-            status: "ready_for_work",
-        });
-        assertEquals((await loadPlan(projectRoot, "ready"))?.readAvailability?.kind, "ready");
-        await fsWriteFile(resolveProjectRuntimeLayout(projectRoot).primary.worktreeRegistryPath, "{ broken");
-        const store = {
-            listProjects: () => [{ projectId: "project-1", displayName: "Project", lifecycle: "enabled" }],
-            getProjectHealth: () => ({ status: "available", evidence: [] }),
-            requireEnabledProjectRoot: () => projectRoot,
-            listSessionPlanAssociations: () => [],
-            inspectSessionActivation: () => ({ activation: { state: "idle" } }),
-        };
-        const sessionContinuation = {
-            operations: new Map(),
-            listSessions: () => Promise.resolve({ sessions: [], hasNext: false, diagnostics: [] }),
-        };
-        try {
+    const store = openOwnerCoordinationStore({
+        dbPath: join(dir, "owner.sqlite3"),
+        sessionBaseDir: join(dir, "sessions"),
+    });
+    const sessionContinuation = createWorkspaceSessionContinuationService({ store });
+    try {
+        await fsMkdir(join(projectRoot, ".wld"), { recursive: true });
+        const registration = store.projects.register({ root: projectRoot, displayName: "Project" });
+        await withRetainedPlanFixture(projectRoot, async () => {
+            await savePlan(projectRoot, "ready", "# Ready\n", {
+                planId: "ready-plan",
+                classification: "PLANNED_CHANGE",
+                status: "ready_for_work",
+            });
+            assertEquals((await loadPlan(projectRoot, "ready"))?.readAvailability?.kind, "ready");
+            await fsWriteFile(resolveProjectRuntimeLayout(projectRoot).primary.worktreeRegistryPath, "{ broken");
             const payload = await loadOwnerDashboard(store, sessionContinuation);
-            const readyItems = payload.dashboard.sections.find(
-                (section: { key: string }) => section.key === "ready",
-            ).items;
+            const readyItems = payload.dashboard.sections.find((section) => section.key === "ready").items;
             assertEquals(
-                readyItems.some((item: { planId: string }) => item.planId === "ready-plan"),
+                readyItems.some((item) => item.planId === "ready-plan"),
                 false,
             );
-            const needsYou = payload.dashboard.sections.find(
-                (section: { key: string }) => section.key === "needs-you",
-            ).items;
+            const needsYou = payload.dashboard.sections.find((section) => section.key === "needs-you").items;
             assertEquals(needsYou.length, 0);
             await assertRejects(() => loadPlan(projectRoot, "ready"), Error, "JSON Parse error");
+            assertEquals(payload.projects[0].projectId, registration.projectId);
             assertEquals(
                 payload.projects[0].diagnostics.some((item) => item.source === "registry-reader"),
                 true,
             );
-        } finally {
-            await fsRm(dir, { recursive: true });
-        }
-    });
+        });
+    } finally {
+        sessionContinuation.close();
+        store.close();
+        await fsRm(dir, { recursive: true });
+    }
 });
 
 test("Plan workflow API refuses a stale committed generation without starting work", async () => {

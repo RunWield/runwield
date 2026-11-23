@@ -1,13 +1,7 @@
+import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import { managedPlanStoreActive, authorManagedPlan, selectManagedPlan, withManagedPlan } from "./managed.ts";
 import { hasRetainedCheckoutSource } from "./retained-source.ts";
 import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
-import {
-    inspectProjectIdentity,
-    currentHomeProjectOwner,
-    assertProjectStoreIdentity,
-    requireProjectCheckout,
-    type ProjectStoreIdentity as ProjectIdentity,
-} from "../shared/project-identity.ts";
 import {
     currentPackageProject,
     withPackageProject,
@@ -34,14 +28,14 @@ export type HomeStoreInspection = LocalHomeStore | EmptyHomeStore | ManagedRemot
 
 /** Inspect supported ownership without registering, migrating, repairing or importing a Project. */
 export function inspectLocalHomeStore(cwd: string): HomeStoreInspection {
-    const homeOwner = currentHomeProjectOwner();
+    const homeOwner = projects.home.current();
     if (homeOwner) {
-        assertProjectStoreIdentity(homeOwner);
+        projects.home.assertStoreIdentity(homeOwner);
         return { kind: "local", identity: homeOwner };
     }
     if (hasRetainedCheckoutSource(cwd)) return { kind: "retained-checkout" };
     if (remoteProjectOwner()?.kind === "managed-remote") return { kind: "managed-remote" };
-    const inspected = inspectProjectIdentity(cwd);
+    const inspected = projects.checkout.inspect(cwd);
     if (inspected.kind === "invalid") throw new Error(inspected.message);
     if (inspected.kind !== "existing") return { kind: "empty" };
     if (inspected.identity.personalOwner.kind !== "execution-account") return { kind: "managed-remote" };
@@ -173,7 +167,7 @@ export async function saveLocalHomePlan(
     options: LocalPlanWriteOptions,
 ): Promise<string | null> {
     if (remoteProjectOwner()?.kind === "managed-remote" || hasRetainedCheckoutSource(cwd)) return null;
-    if (!currentHomeProjectOwner()) await enterProjectRuntime(cwd);
+    if (!projects.home.current()) await enterProjectRuntime(cwd);
     const store = inspectLocalHomeStore(cwd);
     if (store.kind !== "local") throw new Error("Local Plan authoring requires an admitted Project.");
     return await withPackageProject(cwd, store.identity, () =>
@@ -316,7 +310,7 @@ export async function continueMissingPlanExecution(
     const selection = await selectLocalPlanWorkflow(cwd, reference);
     const plan = await readPlanPackage(owner.identity, { planId: selection!.planId });
     if (plan.kind !== "loaded") throw new Error(plan.message);
-    return await withMissingImportedExecutionRecovery(requireProjectCheckout(owner.identity), plan, run);
+    return await withMissingImportedExecutionRecovery(projects.home.requireCheckout(owner.identity), plan, run);
 }
 
 import { resolve } from "node:path";
@@ -371,7 +365,7 @@ export async function importLocalPlanReference(cwd: string, reference: string) {
 export async function withLocalProjectAction<T>(cwd: string, action: () => Promise<T>): Promise<T> {
     const before = inspectLocalHomeStore(cwd);
     if (before.kind === "managed-remote" || before.kind === "retained-checkout") return await action();
-    if (!currentHomeProjectOwner()) await enterProjectRuntime(cwd);
+    if (!projects.home.current()) await enterProjectRuntime(cwd);
     const admitted = inspectLocalHomeStore(cwd);
     if (admitted.kind !== "local") throw new Error("Project action requires an admitted local owner.");
     return await withPackageProject(cwd, admitted.identity, action);

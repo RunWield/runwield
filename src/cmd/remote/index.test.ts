@@ -491,7 +491,6 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/linux-process-group.ts",
             "src/shared/captured-process.ts",
             "src/shared/native-file-lock.ts",
-            "src/shared/native-file-lock-windows.ts",
             "src/shared/socket-listener.ts",
             "src/shared/stdin-stream.ts",
             "src/shared/jsonc.ts",

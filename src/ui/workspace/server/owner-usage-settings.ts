@@ -1,10 +1,13 @@
+import { isProjectAvailable } from "../project-availability.ts";
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { projects } from "@runwield/projects";
 import { listInstalledMetricsExporters } from "../../../shared/extensions/metrics-exporter.ts";
 import type {
     InstalledMetricsExporter,
     MetricsExporterCredentialField,
 } from "../../../shared/extensions/metrics-exporter.ts";
-import { MeasurementProjectUnavailableError, resolveMeasurementProject } from "../../../shared/workflow/metrics.ts";
+import { MeasurementProjectUnavailableError } from "../../../shared/workflow/metrics.ts";
 import { remotePersonalResourcesActive } from "../../../shared/remote/personal-resources.ts";
 import { getCustomSetting, getMergedCustomSetting } from "../../../shared/settings.ts";
 import {
@@ -109,16 +112,16 @@ export class UsageSettingsError extends Error {
 }
 
 function canonicalRoot(root: string) {
+    const primary = projects.checkout.primaryRoot(root);
     try {
-        return resolveMeasurementProject(root).root;
-    } catch (error) {
-        if (!(error instanceof MeasurementProjectUnavailableError)) throw error;
-        return error.project.root;
+        return realpathSync(primary);
+    } catch {
+        return primary;
     }
 }
-function enabledProjects(store: OwnerProjectStore) {
+function availableProjects(store: OwnerProjectStore) {
     return listOwnerProjects(store)
-        .filter((project) => project.enabled)
+        .filter(isProjectAvailable)
         .map((project) => ({
             projectId: project.projectId,
             label: safeLabel(project.displayName || project.rootLabel),
@@ -142,7 +145,7 @@ export function loadUsageRecording(store: OwnerProjectStore): UsageRecording {
     const globalValue = getCustomSetting("workflowMetrics", "global");
     return {
         globalEnabled: isWorkflowMetricsEnabled(globalValue),
-        projects: enabledProjects(store).map((project) => ({
+        projects: availableProjects(store).map((project) => ({
             projectId: project.projectId,
             label: project.label,
             enabled: isWorkflowMetricsEnabled(getMergedCustomSetting("workflowMetrics", project.root)),
@@ -166,7 +169,7 @@ export async function loadUsageSettings(store: OwnerProjectStore): Promise<Usage
             destinations: [],
         };
     }
-    const projects = enabledProjects(store);
+    const projects = availableProjects(store);
     const exporters = await listInstalledMetricsExporters();
     let grants: MetricsExportDestinationGrant[];
     let statuses: CoreStatus[];
@@ -202,10 +205,10 @@ export async function loadUsageSettings(store: OwnerProjectStore): Promise<Usage
             const exporter = exporters.find(
                 (entry) => entry.id === grant.exporterId && entry.source === grant.exporterSource,
             );
-            const available = projects.filter((project) =>
-                grant.projects.some((entry) => entry.projectRoot === project.root),
-            );
-            const availableRoots = new Set(projects.map((project) => project.root));
+            const available = projects.filter((project) => status.projects.includes(project.root));
+            const availableCount = grant.projects.filter((project) =>
+                available.some((item) => item.root === project.projectRoot),
+            ).length;
             return {
                 destinationId: grant.destinationId,
                 exporterId: safeLabel(grant.exporterId),
@@ -215,8 +218,7 @@ export async function loadUsageSettings(store: OwnerProjectStore): Promise<Usage
                     new URL(status.endpoint).protocol === "http:" && grant.allowInsecureLocalEndpoint,
                 externalProject: status.externalProject,
                 projects: available.map(({ projectId, label }) => ({ projectId, label })),
-                unavailableProjectCount: grant.projects.filter((project) => !availableRoots.has(project.projectRoot))
-                    .length,
+                unavailableProjectCount: grant.projects.length - availableCount,
                 credentials: status.credentials,
                 credentialFields: credentialFields(exporter),
                 counts: status.counts,
@@ -229,16 +231,17 @@ export async function loadUsageSettings(store: OwnerProjectStore): Promise<Usage
 
 function selectedRoots(store: OwnerProjectStore, projectIds: string[] | undefined) {
     if (!Array.isArray(projectIds) || projectIds.some((id) => typeof id !== "string")) {
-        throw new UsageSettingsError("Choose registered, enabled Projects.");
+        throw new UsageSettingsError("Choose registered, active Projects with an available root.");
     }
-    const available = enabledProjects(store);
+    const available = availableProjects(store);
     return [
         ...new Set(
             projectIds.map((projectId) => {
-                if (!available.some((project) => project.projectId === projectId)) {
-                    throw new UsageSettingsError("Choose registered, enabled Projects.");
+                const project = available.find((item) => item.projectId === projectId);
+                if (!project) {
+                    throw new UsageSettingsError("Choose registered, active Projects with an available root.");
                 }
-                return canonicalRoot(requireOwnerProjectRoot(store, projectId));
+                return project.root;
             }),
         ),
     ];
@@ -249,7 +252,7 @@ function destination(body: UsageSettingsRequest) {
     return grant;
 }
 function preserveUnavailableRoots(store: OwnerProjectStore, grant: MetricsExportDestinationGrant, roots: string[]) {
-    const available = new Set(enabledProjects(store).map((project) => project.root));
+    const available = new Set(availableProjects(store).map((project) => project.root));
     return [
         ...new Set([
             ...grant.projects

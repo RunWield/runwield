@@ -1,16 +1,23 @@
-import { statSync, readFileSync } from "node:fs";
+import { existsSync, statSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import type { ProjectId } from "@runwield/projects";
 /** Owner consent, transport credentials, and host-local reference identity. */
 import { join } from "node:path";
 import { type InstalledMetricsExporter, resolveApprovedMetricsExporters } from "../extensions/metrics-exporter.ts";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
 import { getCustomSetting, setCustomSetting } from "../settings.ts";
-import { resolveMeasurementProject } from "./metrics.ts";
-import { readWorkflowMetricLegacyAdoption, withWorkflowMetricJournalLock } from "./metrics-journal.ts";
+import { admitMeasurementProject, inspectMeasurementProject, type MeasurementProject } from "./metrics.ts";
+import {
+    readWorkflowMetricLegacyAdoption,
+    readWorkflowMetricLegacySource,
+    withWorkflowMetricJournalLock,
+} from "./metrics-journal.ts";
 import { metricsDeliveryInFlight } from "./metrics-export-ledger.ts";
 import { metricsExportDirectory, replaceExportFile, withExportConfigurationLock } from "./metrics-export-storage.ts";
 
 export type MetricsExportProjectStart = {
     projectRoot: string;
+    projectId?: ProjectId;
     historyEpoch: string;
     offset: number;
     legacyAdoptionEpoch?: string;
@@ -55,12 +62,40 @@ interface ExportSettings {
     destinations: MetricsExportDestinationGrant[];
 }
 
+const materializedHistoryEpoch = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Legacy path grants require a surviving journal boundary before they can deliver. */
+export function measurementProjectForExport(start: MetricsExportProjectStart): MeasurementProject | undefined {
+    const project = inspectMeasurementProject(start.projectRoot, start.projectId);
+    if (!project || start.projectId) return project;
+    const rootHash = createHash("sha256").update(start.projectRoot).digest("hex");
+    const fence = readWorkflowMetricLegacyAdoption(project.journalPath);
+    if (
+        fence &&
+        fence.sourceRootHash === rootHash &&
+        start.historyEpoch !== "initial" &&
+        (start.historyEpoch === fence.legacyHistoryEpoch ||
+            (start.historyEpoch === fence.historyEpoch && start.legacyAdoptionEpoch === fence.historyEpoch))
+    )
+        return project;
+    if (!materializedHistoryEpoch.test(start.historyEpoch)) return undefined;
+    const source = readWorkflowMetricLegacySource(project.journalPath);
+    if (
+        source?.rootHash === rootHash &&
+        source.historyEpoch === start.historyEpoch &&
+        source.journalBytes >= start.offset
+    ) {
+        return project;
+    }
+}
+
 export function readMetricsExportGrants(): MetricsExportDestinationGrant[] {
     const settings = getCustomSetting("metricsExport", "global") as ExportSettings | undefined;
     return (Array.isArray(settings?.destinations) ? settings.destinations : []).map((grant) => ({
         ...grant,
         projects: grant.projects.map((start) => {
-            const project = resolveMeasurementProject(start.projectRoot);
+            const project = measurementProjectForExport(start);
+            if (!project) return start;
             const fence = readWorkflowMetricLegacyAdoption(project.journalPath);
             return {
                 ...start,
@@ -111,8 +146,8 @@ function validateEndpoint(input: MetricsExportGrantInput): string {
     }
     return url.href;
 }
-async function projectStart(root: string): Promise<MetricsExportProjectStart> {
-    const { root: projectRoot, journalPath: path } = resolveMeasurementProject(root);
+async function projectStart(project: MeasurementProject): Promise<MetricsExportProjectStart> {
+    const { root: projectRoot, projectId, journalPath: path } = project;
     return await withWorkflowMetricJournalLock(path, (historyEpoch) => {
         let offset = 0;
         try {
@@ -123,6 +158,7 @@ async function projectStart(root: string): Promise<MetricsExportProjectStart> {
         const adoption = readWorkflowMetricLegacyAdoption(path);
         return {
             projectRoot,
+            projectId,
             historyEpoch,
             offset,
             ...(adoption ? { legacyAdoptionEpoch: adoption.historyEpoch } : {}),
@@ -156,11 +192,22 @@ async function saveDestinationGrant(input: MetricsExportGrantInput): Promise<Met
         grantMatchesExporter(previous, exporter);
     const projects: MetricsExportProjectStart[] = [];
     for (const root of input.projectRoots) {
-        const canonical = resolveMeasurementProject(root).root;
-        if (projects.some((p) => p.projectRoot === canonical)) continue;
-        projects.push(
-            (preserve && previous.projects.find((p) => p.projectRoot === canonical)) || (await projectStart(canonical)),
-        );
+        if (preserve && !existsSync(root)) {
+            const unavailable = previous.projects.find((p) => p.projectRoot === root);
+            if (unavailable && !projects.includes(unavailable)) {
+                projects.push(unavailable);
+                continue;
+            }
+        }
+        const project = await admitMeasurementProject(root);
+        if (projects.some((p) => p.projectId === project.projectId)) continue;
+        const prior =
+            preserve &&
+            previous.projects.find(
+                (p) =>
+                    p.projectRoot === project.root && measurementProjectForExport(p)?.projectId === project.projectId,
+            );
+        projects.push(prior ? { ...prior, projectId: project.projectId } : await projectStart(project));
     }
     const grant: MetricsExportDestinationGrant = {
         destinationId,

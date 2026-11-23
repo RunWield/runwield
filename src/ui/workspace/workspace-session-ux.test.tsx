@@ -1695,9 +1695,15 @@ test("New Session selects a registered Project by route and creates only with de
                 return Promise.resolve(
                     Response.json({
                         projects: [
-                            { projectId: "project-a", displayName: "A", enabled: true },
-                            { projectId: "project-b", displayName: "B", enabled: true },
-                            { projectId: "disabled", displayName: "Disabled", enabled: false },
+                            { projectId: "project-a", displayName: "A", status: "active", healthStatus: "available" },
+                            { projectId: "project-b", displayName: "B", status: "active", healthStatus: "available" },
+                            {
+                                projectId: "inactive",
+                                displayName: "Inactive",
+                                status: "inactive",
+                                healthStatus: "available",
+                            },
+                            { projectId: "missing", displayName: "Missing", status: "active", healthStatus: "missing" },
                         ],
                     }),
                 );
@@ -1726,7 +1732,7 @@ test("New Session selects a registered Project by route and creates only with de
         assertEquals(
             choice()
                 .props.children.flat(Infinity)
-                .some((option) => option?.props?.value === "disabled"),
+                .some((option) => ["inactive", "missing"].includes(option?.props?.value)),
             false,
         );
         assertEquals(composer().props.disabled, false);
@@ -1886,8 +1892,8 @@ function defaultNewSessionResponse(url) {
     if (url === "/api/owner/projects") {
         return Response.json({
             projects: [
-                { projectId: "project-a", displayName: "A", enabled: true },
-                { projectId: "project-b", displayName: "B", enabled: true },
+                { projectId: "project-a", displayName: "A", status: "active", healthStatus: "available" },
+                { projectId: "project-b", displayName: "B", status: "active", healthStatus: "available" },
             ],
         });
     }
@@ -2073,7 +2079,9 @@ test("New Session ignores late Project choices from an unmounted surface", async
             await act(() =>
                 oldProjects.resolve(
                     Response.json({
-                        projects: [{ projectId: "project-a", displayName: "A", enabled: true }],
+                        projects: [
+                            { projectId: "project-a", displayName: "A", status: "active", healthStatus: "available" },
+                        ],
                     }),
                 ),
             );

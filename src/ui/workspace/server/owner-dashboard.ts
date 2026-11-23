@@ -1,3 +1,4 @@
+import type { ProjectRegistry, RegisteredProject } from "@runwield/projects";
 import type { PlanReadAvailability } from "../../../plan-store/index.ts";
 /** @module ui/workspace/server/owner-dashboard */
 
@@ -5,7 +6,7 @@ import { compareChildPlansByOrder, isSequencePlan } from "../../../plan-format.t
 import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 import { loadPlanSummaries, loadPlanSummaryCatalog } from "./plan-adapter.ts";
-import type { OwnerProjectHealth, OwnerProjectRecord, OwnerProjectView } from "./owner-projects.ts";
+import type { OwnerProjectView } from "./owner-projects.ts";
 import { requireOwnerProjectRoot, serializeOwnerProject } from "./owner-projects.ts";
 import { readLiveSessionConnection } from "../../../shared/session/live-session-connection.ts";
 import {
@@ -48,12 +49,6 @@ type OwnerPlan = {
     statusLabel?: string;
     summary?: string;
     attrs?: PlanAttrs;
-};
-
-type OwnerProject = OwnerProjectRecord & {
-    healthStatus?: string;
-    healthEvidence?: string[];
-    enabled?: boolean;
 };
 
 type Diagnostic = { source: string; message: string; repairHref: string; repairLabel: string };
@@ -103,7 +98,8 @@ type SidebarPlanDiagnostic = {
     planId?: string;
 };
 
-type SidebarProject = OwnerProjectView & {
+type SidebarProject = Omit<OwnerProjectView, "healthStatus"> & {
+    healthStatus: OwnerProjectView["healthStatus"] | "unavailable";
     planDiagnostics?: SidebarPlanDiagnostic[];
     plans: SidebarPlan[];
     sessions: SessionSummary[];
@@ -118,9 +114,7 @@ type SidebarProject = OwnerProjectView & {
 };
 
 type OwnerStore = {
-    listProjects(): OwnerProject[];
-    getProjectHealth(projectId: string): OwnerProjectHealth;
-    requireEnabledProjectRoot(projectId: string): string;
+    projects: Pick<ProjectRegistry, "list" | "getHealth" | "requireActiveRoot">;
     listSessionPlanAssociations?: (
         runwieldSessionId: string,
         projectId?: string,
@@ -325,7 +319,7 @@ function classifyPlan(
 }
 
 function dashboardItem(
-    project: SidebarProject,
+    project: Pick<RegisteredProject, "projectId" | "displayName">,
     plan: OwnerPlan,
     category: DashboardCategory,
     registry: WorktreeRegistryEntry | null = null,
@@ -401,7 +395,7 @@ function interactionPlan(operation: WorkspaceOperation): InteractionPlanReferenc
 }
 
 function operationItem(
-    project: SidebarProject,
+    project: Pick<RegisteredProject, "projectId" | "displayName">,
     operationId: string,
     operation: WorkspaceOperation,
     plan?: OwnerPlan,
@@ -436,7 +430,11 @@ function operationItem(
     };
 }
 
-function sidebarPlan(project: SidebarProject, plan: OwnerPlan, sessions: SessionSummary[]): SidebarPlan {
+function sidebarPlan(
+    project: Pick<RegisteredProject, "projectId">,
+    plan: OwnerPlan,
+    sessions: SessionSummary[],
+): SidebarPlan {
     const status = planStatus(plan);
     return {
         planId: plan.planId,
@@ -532,19 +530,19 @@ async function registryFor(
 async function projectPayload(
     store: OwnerStore,
     sessionContinuation: SessionContinuation,
-    projectRecord: OwnerProject,
+    projectRecord: RegisteredProject,
     publish: (item: DashboardItem) => void,
     setPending: (categories: DashboardCategory[]) => void,
     reportFailure: (categories: DashboardCategory[]) => void,
 ): Promise<SidebarProject> {
-    const health = store.getProjectHealth(projectRecord.projectId);
-    const project = serializeOwnerProject(projectRecord, health) as SidebarProject;
+    const health = store.projects.getHealth(projectRecord.projectId);
+    const project = serializeOwnerProject(projectRecord, health);
     const diagnostics: Diagnostic[] = [];
     let root = "";
     try {
         root = requireOwnerProjectRoot(store, project.projectId);
     } catch (error) {
-        if (projectRecord.lifecycle === "enabled") {
+        if (projectRecord.status === "active") {
             diagnostics.push({
                 source: "project-reader",
                 message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
@@ -917,7 +915,7 @@ export async function loadOwnerSidebar(
     continuation: SessionContinuation,
 ): Promise<SidebarProject[]> {
     return await withProjectRuntimeReadScope(async () => {
-        const records = store.listProjects();
+        const records = store.projects.list();
         const projects: SidebarProject[] = new Array(records.length);
         let next = 0;
         await Promise.all(
@@ -925,17 +923,14 @@ export async function loadOwnerSidebar(
                 while (next < records.length) {
                     const index = next++;
                     const record = records[index];
-                    const project = serializeOwnerProject(
-                        record,
-                        store.getProjectHealth(record.projectId),
-                    ) as SidebarProject;
+                    const project = serializeOwnerProject(record, store.projects.getHealth(record.projectId));
                     const diagnostics: Diagnostic[] = [];
                     let planDiagnostics: SidebarPlanDiagnostic[] = [];
                     let root = "";
                     try {
                         root = requireOwnerProjectRoot(store, record.projectId);
                     } catch (error) {
-                        if (record.lifecycle === "enabled") {
+                        if (record.status === "active") {
                             diagnostics.push({
                                 source: "project-reader",
                                 message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
@@ -1174,7 +1169,7 @@ async function readOwnerDashboard(
     continuation: SessionContinuation,
     emit: (frame: DashboardFrame) => void,
 ): Promise<DashboardPayload> {
-    const records = store.listProjects();
+    const records = store.projects.list();
     const projects: SidebarProject[] = new Array(records.length);
     const items = new Map<string, DashboardItem>();
     let completedProjects = 0;
@@ -1267,10 +1262,9 @@ async function readOwnerDashboard(
                         projectId: record.projectId,
                         displayName: record.displayName || "Project",
                         rootLabel: "registered Project",
-                        lifecycle: record.lifecycle || "enabled",
+                        status: record.status,
                         healthStatus: "unavailable",
                         healthEvidence: [],
-                        enabled: false,
                         plans: [],
                         sessions: [],
                         hasMorePlans: false,
@@ -1283,7 +1277,7 @@ async function readOwnerDashboard(
                                 repairLabel: "Open Project settings",
                             },
                         ],
-                    } as SidebarProject;
+                    };
                 }
                 projectProgress[index].pending.clear();
                 completedProjects++;

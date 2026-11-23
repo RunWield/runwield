@@ -186,7 +186,7 @@ belongs here. The activation child still owns the public meaning of Plan and Pla
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Proposed new test files, implemented by this child and
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Proposed new test files, implemented by this child and
 added to `scripts/bun-test-files.json`:
 
 ```sh

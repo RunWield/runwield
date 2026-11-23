@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import process from "node:process";
 import * as fs from "node:fs";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
@@ -13,7 +14,6 @@ import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { admitProjectIdentity } from "../../shared/project-identity.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { loadPlan } from "../../plan-store/index.ts";
@@ -223,7 +223,7 @@ async function seedActiveElsewhereManagedSession(
 ): Promise<ReturnType<typeof openOwnerCoordinationStore>> {
     const store = openOwnerCoordinationStore();
     try {
-        assertEquals((await admitProjectIdentity(projectRoot)).kind, "existing");
+        assertEquals((await projects.checkout.admit(projectRoot)).kind, "existing");
         store.registerProject({ root: projectRoot, now: () => "2026-01-01T00:00:01.000Z" });
         const runtime = createSessionRuntime({
             sessionStore: store,

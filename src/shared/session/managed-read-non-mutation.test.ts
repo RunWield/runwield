@@ -5,6 +5,7 @@ import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
+    realpath as fsRealpath,
     rm as fsRm,
     stat as fsStat,
     writeFile as fsWriteFile,
@@ -128,14 +129,14 @@ async function writeManagedTranscript(cwd: string, piSessionId: string): Promise
 test("managed read sweep drives read paths without writable Pi calls or transcript mutation", async () => {
     await withProcessGlobalTestLock(async () => {
         const previousHome = process.env["HOME"];
-        const home = await fsMkdtemp(join(tmpdir(), "managed-read-non-mutation-"));
+        const home = await fsRealpath(await fsMkdtemp(join(tmpdir(), "managed-read-non-mutation-")));
         process.env["HOME"] = home;
         const cwd = join(home, "project");
         await fsMkdir(cwd, { recursive: true });
         const store = openOwnerCoordinationStore({ dbPath: join(home, "owner.sqlite3") });
         const instrumented = await instrumentRealPiWritableApis();
         try {
-            const project = store.registerProject({ root: cwd, idFactory: idFactory("project") });
+            const project = store.registerProject({ root: cwd });
             const piSessionId = "pi-dormant";
             const transcriptPath = await writeManagedTranscript(cwd, piSessionId);
             const session = await store.ensureSessionCatalogRecord({

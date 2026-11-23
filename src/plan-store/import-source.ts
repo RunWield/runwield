@@ -1,3 +1,4 @@
+import { projects, type ProjectIdentity } from "@runwield/projects";
 import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "./retained-source.ts";
 /** Legacy document inventory and evidence capture. Persistence belongs to plan-package-store. */
 import fs from "node:fs/promises";
@@ -19,9 +20,7 @@ import {
     getWorktreeRegistryPath,
     type WorktreeRegistryEntry,
 } from "../shared/worktree-registry.ts";
-import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { checkedProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
-import type { ProjectIdentity } from "../shared/project-identity.ts";
 import type { PackageDocuments, PlanPackageMetadata, PackageDefinition } from "./packages.ts";
 
 export interface ImportAllocation {
@@ -300,8 +299,8 @@ export async function preparePlanPackageImport(
         if (path.replaceAll("\\", "/").includes("/docs/plans/")) {
             const candidate = getPlanDocumentRoot(path);
             if (
-                (await fs.realpath(resolvePrimaryCheckoutRoot(candidate))) ===
-                (await fs.realpath(resolvePrimaryCheckoutRoot(identity.checkoutRoot)))
+                (await fs.realpath(projects.checkout.primaryRoot(candidate))) ===
+                (await fs.realpath(projects.checkout.primaryRoot(identity.checkoutRoot)))
             ) {
                 sourceRoot = candidate;
                 sourcePlansRoot = join(candidate, "docs", "plans");
@@ -386,8 +385,8 @@ export async function preparePlanPackageImport(
                     pending(`The authoritative Plan identity differs: ${name}`);
                 if (
                     !located.publishedSnapshot &&
-                    (await fs.realpath(resolvePrimaryCheckoutRoot(located.documentRoot))) !==
-                        (await fs.realpath(resolvePrimaryCheckoutRoot(identity.checkoutRoot)))
+                    (await fs.realpath(projects.checkout.primaryRoot(located.documentRoot))) !==
+                        (await fs.realpath(projects.checkout.primaryRoot(identity.checkoutRoot)))
                 )
                     pending(`The authoritative document is not bound to this repository: ${name}`);
                 if (located.publishedSnapshot) {

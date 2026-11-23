@@ -1,7 +1,7 @@
+import { projects } from "@runwield/projects";
 import { ok, equal } from "node:assert/strict";
 import { createServer } from "node:http";
 import { openFileSessionStore } from "../../session/file-session-store.ts";
-import { admitProjectIdentity } from "../../project-identity.ts";
 import { createSessionRuntime } from "../../session/session-runtime.ts";
 import { loadPlan } from "../../../plan-store/index.ts";
 
@@ -50,7 +50,7 @@ try {
         const session = store.findSessionByLocator({ transcriptPath: locator, projectId: project.projectId });
         ok(session, "Saved Session locator must resolve after Project rename");
         if (command === "resume") {
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             const loaded = await runtime.loadSession({
                 cwd: root,
                 sessionId: session.piSessionId,

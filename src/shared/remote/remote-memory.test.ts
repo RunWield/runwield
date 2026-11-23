@@ -1,4 +1,10 @@
-import { stat } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { projects, ProjectIdentityEntryRequired } from "@runwield/projects";
+import { getHomeDir } from "../../constants.ts";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+import { USE_PROJECT_MEMORY } from "../memory-collection.ts";
+import { startRemoteControlService } from "./control.ts";
 import process from "node:process";
 import { test } from "node:test";
 import { join } from "node:path";
@@ -209,6 +215,116 @@ test("remote Memory reuses the request id after a lost write acknowledgement", a
         } finally {
             clear();
             process.env["PATH"] = previous;
+        }
+    });
+});
+
+test("default remote Memory stays unavailable until the laptop independently verifies the checkout ID", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const temporary = await realpath(await mkdtemp(join(tmpdir(), "remote-project-memory-")));
+        const remoteHome = join(temporary, "remote-home");
+        const root = join(temporary, "checkout");
+        await Promise.all([mkdir(remoteHome), mkdir(root)]);
+        const bin = await installMemoryProcessFixture(temporary);
+        const ssh = join(bin, "ssh");
+        const trace = join(temporary, "ssh-trace.jsonl");
+        const cli = new URL("../../cli.ts", import.meta.url).pathname;
+        await writeFile(
+            ssh,
+            `#!/usr/bin/env python3
+import json, os, subprocess, sys
+request = json.loads(sys.stdin.readline())
+with open(${JSON.stringify(trace)}, 'a') as log:
+    log.write(json.dumps({'ssh': sys.argv[1:4], **request}) + '\\n')
+remote_home = ${JSON.stringify(remoteHome)}
+env = dict(os.environ, HOME=remote_home, WLD_TEST_SANDBOX_HOME=remote_home, MNEMOTECA_DB_PATH=os.path.join(remote_home, 'mnemoteca.db'))
+result = subprocess.run([${JSON.stringify(process.execPath)}, ${JSON.stringify(cli)}, '--remote-project-admission'], input=json.dumps(request['admission']) + '\\n', text=True, env=env)
+sys.exit(result.returncode)
+`,
+        );
+        await chmod(ssh, 0o700);
+        const previousPath = process.env.PATH;
+        process.env.PATH = `${bin}:${previousPath ?? ""}`;
+        const build = { buildId: "a".repeat(64), protocol: 1 };
+        const service = startRemoteControlService(build, undefined, USE_PROJECT_MEMORY, "", {
+            host: "fixture-host",
+            cwd: root,
+            remoteHome,
+            executable: "/verified/runtime/wld",
+        });
+        const clearMemory = configureRemoteMemoryConnection({
+            port: service.port,
+            credential: service.credential,
+            collection: USE_PROJECT_MEMORY,
+        });
+        const send = (action: string, body?: string) =>
+            fetch(`http://127.0.0.1:${service.port}/${action}`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${service.credential}` },
+                body,
+            });
+        try {
+            assertEquals((await send("handshake", JSON.stringify(build))).status, 200);
+            assertEquals((await send("readiness")).status, 200);
+            await assertRejects(
+                () => requestRemoteMemory({ action: "store", content: "Before admission" }),
+                Error,
+                "409",
+            );
+            assertEquals(projects.checkout.inspect(root).kind, "fresh");
+            const verificationRequests = async () => (await readFile(trace, "utf8")).trim().split("\n");
+            const beforeAdmission = (await verificationRequests()).length;
+            const projectId = await projects.launch.withContext(
+                {
+                    executionAccountHome: remoteHome,
+                    personalOwner: { kind: "managed-remote", identity: getHomeDir() },
+                },
+                async () => {
+                    const result = await projects.checkout.admit(root);
+                    if (result.kind !== "existing") throw new ProjectIdentityEntryRequired(result);
+                    return result.identity.projectId;
+                },
+            );
+            await requestRemoteMemory({ action: "store", content: "Verified remote Project memory" });
+            const requests = await verificationRequests();
+            assertEquals(requests.length > beforeAdmission, true);
+            for (const request of requests) {
+                assertEquals(JSON.parse(request), {
+                    ssh: ["-T", "--", "fixture-host"],
+                    executable: "/verified/runtime/wld",
+                    admission: { cwd: root, ownerIdentity: getHomeDir(), admit: false },
+                });
+            }
+            const [local] = createMnemotecaTools({
+                cwd: temporary,
+                exec: denoHelperBinaryExec,
+                boundCollection: projectId,
+            });
+            const recalled = await local.execute(
+                "local-recall",
+                { action: "recall", query: "memory" },
+                undefined,
+                undefined,
+                {} as Parameters<typeof local.execute>[4],
+            );
+            assertStringIncludes(JSON.stringify(recalled), "Verified remote Project memory");
+            const forged = await send(
+                "memory",
+                JSON.stringify({
+                    requestId: crypto.randomUUID(),
+                    action: "recall",
+                    collection: crypto.randomUUID(),
+                    args: { query: "memory" },
+                }),
+            );
+            assertEquals(forged.status, 403);
+            await assertRejects(() => stat(join(remoteHome, "mnemoteca.db")), Error, "ENOENT");
+        } finally {
+            clearMemory();
+            await service.close();
+            if (previousPath === undefined) delete process.env.PATH;
+            else process.env.PATH = previousPath;
+            await rm(temporary, { recursive: true, force: true });
         }
     });
 });

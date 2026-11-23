@@ -14,7 +14,7 @@ affectedPaths:
     - "src/shared/project-runtime-recovery.ts"
     - "src/shared/runwield-owned-paths.ts"
     - "src/shared/collaboration/"
-    - "src/shared/project-directory-key.ts"
+    - "packages/projects/directory-key.ts"
     - "src/shared/worktree-registry.js"
     - "src/shared/epic-artifacts.ts"
     - "src/cmd/plans/"
@@ -493,7 +493,7 @@ do not implement new real-time collaboration or hosted storage here.
 ## Verification Plan
 
 An Epic is not directly executable. Later child Plans select exact focused test commands using
-`bun scripts/run-tests.js <paths>` after `bun run install:locked` on Bun 1.4.3; the integrated gate is `bun run ci`.
+`bun scripts/run-tests.js <paths>` after `bun run install:locked` using the root `.bun-version`; the integrated gate is `bun run ci`.
 Use disposable homes, real Git fixtures, and process-global locks where required. Validate new file behavior on Linux,
 macOS, and Windows; remote testing follows the existing supported Linux host scope.
 

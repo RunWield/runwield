@@ -1,4 +1,4 @@
-import { requireProjectCheckout } from "../project-identity.ts";
+import { projects } from "@runwield/projects";
 /** Durable Recorder acceptance and canonical settlement for one admitted delivery attempt. */
 import fs from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -170,7 +170,7 @@ export async function settlePreparedRecord(
                 await retainWorkRecordLocation(frozen.attrs.recordId, {
                     kind: "copy",
                     sourcePath: join(
-                        executionRepositoryRoot ?? requireProjectCheckout(owner.identity).checkoutRoot,
+                        executionRepositoryRoot ?? projects.home.requireCheckout(owner.identity).checkoutRoot,
                         copy.path,
                     ),
                     repositoryId: manifest.repositoryId,

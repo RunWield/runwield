@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
@@ -6,7 +7,6 @@ import process from "node:process";
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import {
     captureTranscriptEvidence,
     createReplayEvents,
@@ -50,7 +50,7 @@ test("committed projection verifies exact prefix and ignores later tail", async 
     await withHome(async (home) => {
         const cwd = `${home}/project`;
         await fsMkdir(cwd, { recursive: true });
-        const sessionDir = join(home, ".wld", "sessions", encodeCwdForSessionDir(cwd));
+        const sessionDir = join(home, ".wld", "sessions", projects.directory.sessionKey(cwd));
         await fsMkdir(sessionDir, { recursive: true });
         const sessionPath = join(sessionDir, "2026-01-01T00-00-00-000Z_pi-1.jsonl");
         const committed =
@@ -201,7 +201,7 @@ test("committed projection replays CLI backend final messages as ordinary transc
     await withHome(async (home) => {
         const cwd = `${home}/project`;
         await fsMkdir(cwd, { recursive: true });
-        const sessionDir = join(home, ".wld", "sessions", encodeCwdForSessionDir(cwd));
+        const sessionDir = join(home, ".wld", "sessions", projects.directory.sessionKey(cwd));
         await fsMkdir(sessionDir, { recursive: true });
         const sessionPath = join(sessionDir, "2026-01-01T00-00-00-000Z_claude.jsonl");
         const committed =
@@ -280,7 +280,7 @@ test("committed projection rejects mismatched evidence", async () => {
     await withHome(async (home) => {
         const cwd = `${home}/project`;
         await fsMkdir(cwd, { recursive: true });
-        const sessionDir = join(home, ".wld", "sessions", encodeCwdForSessionDir(cwd));
+        const sessionDir = join(home, ".wld", "sessions", projects.directory.sessionKey(cwd));
         await fsMkdir(sessionDir, { recursive: true });
         const sessionPath = join(sessionDir, "2026-01-01T00-00-00-000Z_pi-1.jsonl");
         const content =

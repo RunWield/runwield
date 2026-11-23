@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { openNativeFileLock } from "./native-file-lock.ts";
 import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import { open as fsOpen } from "node:fs/promises";
@@ -23,7 +24,6 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches, type LockFileSnapshot } from "./lock-file-snapshot.ts";
 import { getLockHostname, isPidAlive } from "./process-liveness.ts";
 import { CLI_BIN } from "../constants.ts";
-import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
 import {
     enterProjectRuntime,
     checkedProjectRuntimeLayout,
@@ -699,7 +699,7 @@ export async function prepareWorktreeRegistry(projectRoot: string) {
         const inspection = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
         const entries = await readRegistry(projectRoot);
         const resources = entries.some((entry) => !entry.planId)
-            ? await inspectPlanIdentityDocuments(resolvePrimaryCheckoutRoot(projectRoot), entries)
+            ? await inspectPlanIdentityDocuments(projects.checkout.primaryRoot(projectRoot), entries)
             : [];
         const migrated = await migrateLegacyRegistryEntries(projectRoot, entries, resources);
         if (!hasUnresolvedLegacyNonterminalEntries(entries) && (migrated || inspection.version < 2)) {

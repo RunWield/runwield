@@ -1,4 +1,4 @@
-import { verifyExecutionAccountHome } from "./project-identity.ts";
+import { projects, type ProjectIdentity } from "@runwield/projects";
 import { recoverLegacyPlanControllers } from "../plan-store/index.ts";
 /** Home-owned ordinary runtime. A durable inventory separates copying, publication, and retirement. */
 import {
@@ -17,8 +17,6 @@ import fs from "node:fs/promises";
 import { basename, dirname, join, relative, isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { realpathSync, type Stats } from "node:fs";
-import { admitProjectIdentity, inspectProjectIdentity, type ProjectIdentity } from "./project-identity.ts";
-import { resolvePrimaryCheckoutRoot } from "./project-checkout.ts";
 import { openNativeFileLock, type NativeFileLock } from "./native-file-lock.ts";
 import { ensurePrivateDir, syncParentDirectory } from "./private-json-file.ts";
 import { isRunWieldOwnedRuntimePath, LEGACY_PROJECT_RUNTIME_HAZARD_PATHS } from "./runwield-owned-paths.ts";
@@ -135,7 +133,7 @@ function git(root: string, args: string[]): string {
     return result.stdout.trim();
 }
 export function homeProjectRuntimeLayout(identity: ProjectIdentity): ProjectRuntimeLayout {
-    const primaryRoot = canonicalRuntimeReference(resolvePrimaryCheckoutRoot(identity.checkoutRoot));
+    const primaryRoot = canonicalRuntimeReference(projects.checkout.primaryRoot(identity.checkoutRoot));
     const home = projectHome(identity);
     const owner = ownerKey(identity);
     const internal = join(home, "internal", "legacy", identity.repositoryId, owner);
@@ -174,7 +172,7 @@ export function homeProjectRuntimeLayout(identity: ProjectIdentity): ProjectRunt
     };
 }
 async function checkoutRoots(identity: ProjectIdentity): Promise<string[]> {
-    const primary = resolvePrimaryCheckoutRoot(identity.checkoutRoot);
+    const primary = projects.checkout.primaryRoot(identity.checkoutRoot);
     if (!(await info(join(primary, ".git")))) return [identity.checkoutRoot];
     const evidence = await observeGitEvidence(`home-worktree-list\0${primary}`, await gitWorktreeListEvidence(primary));
     let records = reusedGitRead<string>(evidence);
@@ -662,7 +660,7 @@ export async function inspectHomeProjectRuntime(identity: ProjectIdentity): Prom
             const known =
                 root === identity.checkoutRoot
                     ? { kind: "existing" as const, identity }
-                    : inspectProjectIdentity(root, {
+                    : projects.checkout.inspect(root, {
                           context: {
                               personalOwner: identity.personalOwner,
                               executionAccountHome: identity.executionAccountHome,
@@ -885,10 +883,10 @@ async function removeEmptyTree(path: string): Promise<void> {
 }
 export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promise<ProjectRuntimeMigrationReadyResult> {
     for (let attempt = 0; ; attempt++) {
-        verifyExecutionAccountHome(identity);
+        projects.launch.verifyAccountHome(identity);
         try {
             const result = await enterPinnedProjectRuntime(identity);
-            verifyExecutionAccountHome(identity);
+            projects.launch.verifyAccountHome(identity);
             return result;
         } catch (error) {
             // A legacy migration can release its registry lock while admission inventories the checkout.
@@ -923,7 +921,7 @@ async function enterPinnedProjectRuntime(identity: ProjectIdentity): Promise<Pro
         const roots = await checkoutRoots(identity);
         const identities: ProjectIdentity[] = [];
         for (const root of roots) {
-            const admission = await admitProjectIdentity(root, {
+            const admission = await projects.checkout.admit(root, {
                 context: { personalOwner: identity.personalOwner, executionAccountHome: identity.executionAccountHome },
             });
             if (admission.kind !== "existing")

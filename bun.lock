@@ -47,7 +47,9 @@
         "@runwield/agents": "workspace:*",
         "@runwield/bundled-assets": "workspace:*",
         "@runwield/parsing": "workspace:*",
+        "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
+        "@runwield/session-files": "workspace:*",
         "@runwield/tools": "workspace:*",
         "@silvia-odwyer/photon-node": "0.3.4",
         "@streamparser/json": "0.0.26",
@@ -131,8 +133,18 @@
         "js-yaml": "4.3.2",
       },
     },
+    "packages/projects": {
+      "name": "@runwield/projects",
+      "dependencies": {
+        "@runwield/resources": "workspace:*",
+        "@runwield/session-files": "workspace:*",
+      },
+    },
     "packages/resources": {
       "name": "@runwield/resources",
+    },
+    "packages/session-files": {
+      "name": "@runwield/session-files",
     },
     "packages/tools": {
       "name": "@runwield/tools",
@@ -731,7 +743,11 @@
 
     "@runwield/parsing": ["@runwield/parsing@workspace:packages/parsing"],
 
+    "@runwield/projects": ["@runwield/projects@workspace:packages/projects"],
+
     "@runwield/resources": ["@runwield/resources@workspace:packages/resources"],
+
+    "@runwield/session-files": ["@runwield/session-files@workspace:packages/session-files"],
 
     "@runwield/tools": ["@runwield/tools@workspace:packages/tools"],
 

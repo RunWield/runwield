@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { readSecretStore } from "../collaboration/secrets.ts";
 import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
@@ -7,13 +8,8 @@ import { tmpdir } from "node:os";
 import { getHomeDir, getRunWieldRuntimeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { admitProjectIdentity } from "../project-identity.ts";
 import { stageManagedPersonalRuntime, retireManagedPersonalRuntime } from "../project-runtime-managed.ts";
-import {
-    receiveManagedRuntimeTransfer,
-    acknowledgeManagedRuntimeRetirement,
-    registerHomeProjectOwner,
-} from "../../plan-store/index.ts";
+import { receiveManagedRuntimeTransfer, acknowledgeManagedRuntimeRetirement } from "../../plan-store/index.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { DatabaseSync } from "../sqlite.ts";
 
@@ -40,9 +36,9 @@ async function fixture() {
         executionAccountHome: remoteHome,
         personalOwner: { kind: "managed-remote" as const, identity: getHomeDir() },
     };
-    const result = await admitProjectIdentity(root, { context });
+    const result = await projects.checkout.admit(root, { context });
     if (result.kind !== "existing") throw new Error("Fixture identity was not admitted.");
-    const owner = await registerHomeProjectOwner({
+    const owner = await projects.home.register({
         projectId: result.identity.projectId,
         repositoryId: result.identity.repositoryId,
         displayName: "Legacy remote",
@@ -179,7 +175,6 @@ test("managed adoption activates the original registered controller and refuses 
         const f = await fixture();
         try {
             const { rm, rename } = await import("node:fs/promises");
-            const { withProjectLaunchContext } = await import("../project-identity.ts");
             const { withRetainedPlanFixture } = await import("../testing/retained-plan-fixture.ts");
             const { createTestWorktreeAttempt } = await import("../worktree-test-helpers.ts");
             const { seedPlanController, planFixtureControllerPath } = await import("../testing/plan-state-fixture.ts");
@@ -188,7 +183,7 @@ test("managed adoption activates the original registered controller and refuses 
             await rm(join(f.runtime, "controller"), { recursive: true });
             await rm(join(f.runtime, "collaboration-secrets.json"));
             const planId = crypto.randomUUID();
-            const attempt = await withProjectLaunchContext(
+            const attempt = await projects.launch.withContext(
                 { executionAccountHome: f.remoteHome, personalOwner: f.identity.personalOwner },
                 () =>
                     withRetainedPlanFixture(f.root, async () => {

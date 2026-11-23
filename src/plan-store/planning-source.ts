@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { isEpicArtifactPlanName } from "../plan-format.ts";
 import type { PlanDocumentDiagnostic } from "./index.ts";
 
@@ -16,7 +17,6 @@ import {
 import { loadPlan } from "./index.ts";
 import { listEntries as listWorktreeRegistryEntries } from "../shared/worktree-registry.ts";
 
-import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { ensureExecutionPlanFile } from "./index.ts";
 import {
     assertControllerDocumentAvailable,
@@ -60,7 +60,7 @@ export function loadedCanonicalSource(planName: string, plan: LoadedPlan): Loade
 }
 
 export async function prepareTargetBranchPlansByParent(cwd: string, targetBranch: string, parentPlanName: string) {
-    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+    const projectRoot = projects.checkout.primaryRoot(cwd);
     await enterProjectRuntime(projectRoot);
     const target = (await isPrimaryTargetCheckout(projectRoot, targetBranch))
         ? undefined
@@ -144,7 +144,7 @@ export async function loadPlanningTargetPlan(
 }
 
 export async function findTargetBranchPlan(cwd: string, targetBranch: string, planName: string) {
-    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+    const projectRoot = projects.checkout.primaryRoot(cwd);
     const branch = targetBranch.trim().replace(/^origin\//, "");
     if (!branch || branch === "HEAD" || branch.startsWith("refs/")) {
         throw new Error(`Invalid target branch name: ${targetBranch}`);
@@ -166,7 +166,7 @@ export async function findTargetBranchPlan(cwd: string, targetBranch: string, pl
 /** Inspect committed target children using local evidence only. */
 export async function inspectTargetBranchPlansByParent(cwd: string, targetBranch: string, parentPlanName: string) {
     return await withProjectRuntimeReadScope(async () => {
-        const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+        const projectRoot = projects.checkout.primaryRoot(cwd);
         const target = await resolveExistingTargetSnapshot(projectRoot, targetBranch);
         return await readTargetChildren(projectRoot, target.baseRef, parentPlanName);
     });
@@ -212,7 +212,7 @@ export async function readTargetBranchPlansByParent(
     preparedTarget?: Awaited<ReturnType<typeof resolveExistingTargetSnapshot>>,
     display = false,
 ) {
-    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+    const projectRoot = projects.checkout.primaryRoot(cwd);
     const localTarget = await isPrimaryTargetCheckout(projectRoot, targetBranch);
     const target = localTarget
         ? null

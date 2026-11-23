@@ -1,10 +1,10 @@
+import { projects } from "@runwield/projects";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat } from "node:fs/promises";
 /** Recover a deleted execution checkout from Git evidence left by a manual rescue. */
 import { parsePlanFrontMatter } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { listPlanExecutionDocuments } from "../../plan-store/index.ts";
 import { loadTargetPlan, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";
 
@@ -213,7 +213,7 @@ export async function recoverMissingExecutionWorktree(
 export async function recoverMissingExecutionWorktreesForPlanLoading(
     cwd: string,
 ): Promise<RecoveredExecutionWorktree[]> {
-    const registryRoot = resolvePrimaryCheckoutRoot(cwd);
+    const registryRoot = projects.checkout.primaryRoot(cwd);
     const recovered: RecoveredExecutionWorktree[] = [];
     for (const attempt of await listPlanExecutionDocuments(registryRoot)) {
         if (await executionWorktreePathExists(attempt.path)) continue;

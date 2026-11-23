@@ -1,8 +1,4 @@
-import {
-    admitProjectIdentity,
-    verifyExecutionAccountHome,
-    type ProjectLaunchContext,
-} from "./shared/project-identity.ts";
+import { projects, type ProjectLaunchContext } from "@runwield/projects";
 import { tmpdir } from "node:os";
 import { seedPlan } from "./shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "./shared/testing/retained-plan-fixture.ts";
@@ -355,10 +351,10 @@ test("physical and symbolic account homes select one owner and pin its location"
         await fs.mkdir(physical);
         await fs.mkdir(replacement);
         await fs.symlink(physical, alias);
-        const admission = await admitProjectIdentity(f.root, { context: forHome(alias) });
+        const admission = await projects.checkout.admit(f.root, { context: forHome(alias) });
         ok(admission.kind === "existing");
         const first = admission.identity;
-        const next = await admitProjectIdentity(f.root, { context: forHome(physical) });
+        const next = await projects.checkout.admit(f.root, { context: forHome(physical) });
         ok(next.kind === "existing");
         const second = next.identity;
         equal(first.executionAccountHome, physical);
@@ -373,7 +369,7 @@ test("physical and symbolic account homes select one owner and pin its location"
             }),
             /home changed/,
         );
-        throws(() => verifyExecutionAccountHome(first), /home changed/);
+        throws(() => projects.launch.verifyAccountHome(first), /home changed/);
         await rejects(recoverPlanPackages(first), /home changed/);
         deepEqual(await fs.readdir(replacement), []);
     } finally {

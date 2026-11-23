@@ -6,8 +6,8 @@ complexity: "HIGH"
 affectedPaths:
     - "src/shared/project-identity.ts"
     - "src/shared/project-runtime-layout.ts"
-    - "src/shared/project-directory-key.ts"
-    - "src/shared/owner-coordination/projects.js"
+    - "packages/projects/directory-key.ts"
+    - "packages/projects/registration.ts"
     - "src/shared/remote/personal-resources.ts"
     - "docs/domain-language.md"
     - "docs/prd/runwield-core-prd.md"
@@ -91,8 +91,8 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 - `src/shared/project-identity.ts` and focused tests — authoritative identity, binding persistence, and clone-link decisions
 - `src/shared/project-runtime-layout.ts` and deliberate entry adapters — invoke admission while preserving passive reads and runtime paths
-- `src/shared/project-directory-key.ts` — keep legacy path encoding explicit during adoption
-- `src/shared/owner-coordination/projects.js` — map existing Workspace registration rather than make it Core authority
+- `packages/projects/directory-key.ts` — keep legacy path encoding explicit during adoption
+- `packages/projects/registration.ts` — map existing Workspace registration rather than make it Core authority
 - `src/shared/remote/personal-resources.ts` — distinguish ordinary execution from activated laptop personal resources
 - `docs/domain-language.md` — Project Identity and repository-binding relationships
 - `docs/prd/runwield-core-prd.md` and the identity subsection of `docs/prd/plan-store-prd.md` — current identity requirements and explicitly remaining continuity targets
@@ -138,7 +138,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Existing focused regression command:
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Existing focused regression command:
 
 ```sh
 bun scripts/run-tests.js src/shared/project-directory.test.ts src/shared/owner-coordination/projects.test.ts src/shared/remote/personal-resources.test.ts

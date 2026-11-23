@@ -49,7 +49,7 @@ import { readdir as fsReaddir, readFile as fsReadFile, realpath as fsRealpath } 
 import { env } from "node:process";
 
 import { requestRemoteMemory } from "../remote/memory-bridge.ts";
-import { resolveMemoryCollection } from "../memory-collection.ts";
+import { inspectMemoryCollection } from "../memory-collection.ts";
 
 import {
     createAgentSession,
@@ -1824,13 +1824,16 @@ export async function assembleFinalSystemPromptWithContextProjection(
                     .join("\n")
                     .trim();
             } else {
-                const output = await captureForegroundProcess("mnemoteca", {
-                    args: ["list", "--name", await resolveMemoryCollection({ cwd }), "-t", "core", "-f", "plain"],
-                    cwd,
-                });
-                if (output.code === 0) {
-                    memories = new TextDecoder().decode(output.stdout).trim();
-                    if (memories.startsWith("No documents") || memories.startsWith("Error:")) memories = "";
+                const collection = inspectMemoryCollection(cwd);
+                if (collection) {
+                    const output = await captureForegroundProcess("mnemoteca", {
+                        args: ["list", "--name", collection, "-t", "core", "-f", "plain"],
+                        cwd,
+                    });
+                    if (output.code === 0) {
+                        memories = new TextDecoder().decode(output.stdout).trim();
+                        if (memories.startsWith("No documents") || memories.startsWith("Error:")) memories = "";
+                    }
                 }
             }
         } catch {

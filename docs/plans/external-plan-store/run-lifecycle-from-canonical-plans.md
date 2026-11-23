@@ -252,7 +252,7 @@ only a current action-evidence definition if this internal path makes its existi
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Register new test files in the appropriate isolated-runner
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Register new test files in the appropriate isolated-runner
 inventory when required by the repository. Proposed focused behavioral suites:
 
 ```sh

@@ -1,14 +1,14 @@
 import { DEV_DELIVERY_REPORT } from "./dev-delivery-fixture.ts";
 import type { OwnerPlanProgress } from "./owner-plan-progress.ts";
+import type { OwnerProjectView } from "./owner-projects.ts";
 
-export const DEV_OWNER_PROJECT = {
+export const DEV_OWNER_PROJECT: OwnerProjectView = {
     projectId: "dev-project",
     displayName: "RunWield Dev Project",
     rootLabel: "current dev checkout",
-    lifecycle: "enabled",
+    status: "active",
     healthStatus: "available",
     healthEvidence: [],
-    enabled: true,
 };
 
 export const DEV_OWNER_SECOND_PROJECT = {

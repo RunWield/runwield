@@ -1,5 +1,17 @@
 /** @module ui/workspace/routes/owner-api */
 
+import {
+    DirectoryConfirmationRequired,
+    ProjectIdentityEntryRequired,
+    projects,
+    parseProjectId,
+    type ProjectCloneChoice,
+    type ProjectId,
+    type RegisterProjectOptions,
+} from "@runwield/projects";
+import { Buffer } from "node:buffer";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { isAbsolute } from "node:path";
 import { readPlanDocuments, savePlanDocument, readPlanDocumentLink } from "../../../plan-store/index.ts";
 import { loadOwnerUsage } from "../server/owner-usage.ts";
 import {
@@ -8,7 +20,6 @@ import {
     UsageSettingsError,
     type UsageSettingsRequest,
 } from "../server/owner-usage-settings.ts";
-import { DirectoryConfirmationRequired } from "../../../shared/project-directory.ts";
 import { loadPlanActionEvidence, type PlanActionRequest } from "../../../shared/workflow/plan-actions.ts";
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import type { WorkspaceLiveInteraction, WorkspaceSessionContinuationService } from "../server/session-continuation.ts";
@@ -103,12 +114,21 @@ interface PairingBody {
     deviceLabel?: string;
 }
 
-type RegisterProjectBody = Partial<
-    Pick<Parameters<OwnerCoordinationStore["registerProject"]>[0], "root" | "displayName" | "directoryConfirmation">
->;
+export interface CloneChoiceRequest {
+    kind: "link" | "new";
+    token: string;
+    projectId?: ProjectId;
+}
+
+interface RegisterProjectBody extends Partial<
+    Pick<RegisterProjectOptions, "root" | "displayName" | "directoryConfirmation">
+> {
+    cloneChoice?: CloneChoiceRequest;
+}
 
 interface ProjectActionBody {
     action?: string;
+    status?: string;
     newRoot?: string;
     directoryConfirmation?: string;
 }
@@ -402,22 +422,95 @@ export async function ownerWorkspaceSearchRefreshApi(ctx: OwnerStateContext<Owne
     }
 }
 
+const cloneChoiceKey = randomBytes(32);
+const cloneChoiceIvSize = 12;
+const cloneChoiceTagSize = 16;
+
+// Include the original candidate evidence so a repeated choice can be checked after admission.
+function cloneChoiceToken(root: string, candidates: ProjectCloneChoice["candidates"]) {
+    const iv = randomBytes(cloneChoiceIvSize);
+    const cipher = createCipheriv("aes-256-gcm", cloneChoiceKey, iv);
+    cipher.setAAD(Buffer.from(root));
+    return Buffer.concat([iv, cipher.update(JSON.stringify(candidates)), cipher.final(), cipher.getAuthTag()]).toString(
+        "base64url",
+    );
+}
+
+function readCloneChoiceToken(root: string, token: string): ProjectCloneChoice["candidates"] | undefined {
+    const bytes = Buffer.from(token, "base64url");
+    if (bytes.length <= cloneChoiceIvSize + cloneChoiceTagSize || bytes.toString("base64url") !== token) return;
+    const decipher = createDecipheriv("aes-256-gcm", cloneChoiceKey, bytes.subarray(0, cloneChoiceIvSize));
+    decipher.setAAD(Buffer.from(root));
+    decipher.setAuthTag(bytes.subarray(-cloneChoiceTagSize));
+    try {
+        return JSON.parse(
+            Buffer.concat([
+                decipher.update(bytes.subarray(cloneChoiceIvSize, -cloneChoiceTagSize)),
+                decipher.final(),
+            ]).toString("utf8"),
+        );
+    } catch {
+        return undefined;
+    }
+}
+
+function resolveCloneChoice(root: string, choice: CloneChoiceRequest): ProjectCloneChoice {
+    if (!choice || (choice.kind !== "link" && choice.kind !== "new") || typeof choice.token !== "string") {
+        throw new Error("Choose whether to link an existing Project or create a new one.");
+    }
+    const candidates = readCloneChoiceToken(root, choice.token);
+    if (!candidates) {
+        const inspection = projects.checkout.inspect(root);
+        if (inspection.kind === "pending") throw new ProjectIdentityEntryRequired(inspection);
+        throw new Error("Project choice expired. Link the Project again.");
+    }
+    if (choice.kind === "new") return { kind: "new", candidates };
+    const selected = candidates.find((candidate) => candidate.projectId === choice.projectId);
+    if (!selected) throw new Error("Choose an existing Project from the list.");
+    return { kind: "link", projectId: selected.projectId, candidates };
+}
+
 export async function registerProjectApi(ctx: OwnerRequestContext<OwnerStoreState>) {
+    let root = "";
     try {
         const body = await readJson<RegisterProjectBody>(ctx.req);
-        if (!body.root) throw new Error("Project root is required.");
-        const project = ctx.state.store.registerProject({
-            root: String(body.root),
+        if (typeof body.root !== "string" || !body.root.trim()) throw new Error("Project root is required.");
+        root = body.root.trim();
+        if (!isAbsolute(root)) throw new Error("Project root must be an absolute path.");
+        const project = ctx.state.store.projects.register({
+            root,
             displayName: body.displayName,
             directoryConfirmation: body.directoryConfirmation,
+            choice: body.cloneChoice === undefined ? undefined : resolveCloneChoice(root, body.cloneChoice),
         });
         return ownerJson(
             {
-                project: serializeOwnerProject(project, ctx.state.store.getProjectHealth(project.projectId)),
+                project: serializeOwnerProject(project, ctx.state.store.projects.getHealth(project.projectId)),
             },
             201,
         );
     } catch (error) {
+        if (error instanceof ProjectIdentityEntryRequired && error.result.kind === "pending") {
+            const { candidates } = error.result;
+            if (!candidates.length)
+                return ownerErrorJson(new Error("Project identity changed. Link the Project again."), 409);
+            return ownerJson(
+                {
+                    code: "project_clone_choice_required",
+                    token: cloneChoiceToken(root, candidates),
+                    candidates: candidates.map((candidate) => {
+                        const { projectId } = candidate;
+                        const displayName =
+                            ctx.state.store.projects.get(projectId)?.displayName ?? candidate.displayName;
+                        return {
+                            projectId,
+                            displayName: /[/\\]|[A-Za-z]:/.test(displayName) ? "Existing Project" : displayName,
+                        };
+                    }),
+                },
+                409,
+            );
+        }
         return ownerErrorJson(error);
     }
 }
@@ -425,12 +518,18 @@ export async function registerProjectApi(ctx: OwnerRequestContext<OwnerStoreStat
 export async function projectActionApi(ctx: OwnerRouteContext<OwnerStoreState, ProjectParams>) {
     try {
         const body = await readJson<ProjectActionBody>(ctx.req);
-        const { projectId } = ctx.params;
-        if (body.action === "disable") ctx.state.store.setProjectEnabled(projectId, false);
-        else if (body.action === "enable") ctx.state.store.setProjectEnabled(projectId, true);
-        else if (body.action === "remove") ctx.state.store.removeProject(projectId);
+        const projectId = parseProjectId(ctx.params.projectId);
+        if (!projectId) return ownerJson({ error: "Project not found." }, 404);
+        if (body.action === "set-status") {
+            if (body.status !== "active" && body.status !== "inactive") {
+                throw new Error("Choose an active or inactive Project status.");
+            }
+            ctx.state.store.projects.setStatus(projectId, body.status);
+        } else if (body.status !== undefined) {
+            throw new Error("Project status requires the set-status action.");
+        } else if (body.action === "remove") ctx.state.store.projects.remove(projectId);
         else if (body.action === "relink") {
-            ctx.state.store.relinkProject({
+            ctx.state.store.projects.relink({
                 projectId,
                 newRoot: String(body.newRoot || ""),
                 directoryConfirmation: body.directoryConfirmation,

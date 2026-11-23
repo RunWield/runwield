@@ -114,7 +114,7 @@ No Work Record supersession is proposed. The embedded scope question is the only
 
 ## Verification Plan
 
-Use Bun 1.4.3. Run `bun run install:locked` before checks.
+Use the Bun version in the checkout’s root `.bun-version`. Run `bun run install:locked` before checks.
 
 Focused automated checks:
 

@@ -77,7 +77,7 @@ fixture hashes prevent resume against that run; scoring its saved records still 
 
 ## Run and score
 
-Use Bun ^1.4.0 and install the repository dependencies with `bun run install:locked`. Run the whole admitted corpus:
+Use the Bun version from the repository root’s `.bun-version` and install the repository dependencies with `bun run install:locked`. Run the whole admitted corpus:
 
 ```bash
 bun scripts/run-reviewer-benchmark.ts run --scenarios all

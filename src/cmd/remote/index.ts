@@ -154,7 +154,7 @@ async function sendPrivateHeader(
         mount: MountHeader;
         remoteHome: string;
         memoryCollection: string;
-        personalOwner: import("../../shared/project-identity.ts").ProjectPersonalOwner;
+        personalOwner: import("@runwield/projects").ProjectPersonalOwner;
         modelProof?: RemoteModelProof;
     },
 ): Promise<void> {

@@ -1,3 +1,4 @@
+import { projects, type ProjectStoreIdentity } from "@runwield/projects";
 import {
     SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
     type WorkRecordMnemotecaPort,
@@ -22,12 +23,6 @@ import { unfinishedRecordingPins } from "../shared/work-records/package-recordin
 import { assertWorkRecordPath, withWorkRecordMutation } from "../shared/work-records/owner.ts";
 import { forgetWorkRecordLocations, readWorkRecordLocations } from "../shared/work-records/import.ts";
 import { withPlanCatalogLock, deleteArchivedPlanUnit } from "../plan-store.ts";
-import {
-    isHomeProjectOwner,
-    inspectHomeProjectOwner,
-    inspectProjectIdentity,
-    type ProjectStoreIdentity,
-} from "../shared/project-identity.ts";
 import {
     listPlanPackages,
     packageWorkflowRevision,
@@ -124,7 +119,7 @@ async function state(cwd: string, context: RetentionContext, empty = false) {
     }
     for (const { metadata } of catalog) {
         const workflow = metadata.workflow;
-        if (owner && isHomeProjectOwner(owner) && metadata.references.legacyImport) {
+        if (owner && projects.home.isOwner(owner) && metadata.references.legacyImport) {
             const original = await (
                 await import("./retained-managed-execution.ts")
             ).readRetainedManagedExecution(owner, metadata.planId);
@@ -146,7 +141,7 @@ async function state(cwd: string, context: RetentionContext, empty = false) {
             const sourceOwner =
                 ref.repositoryId === owner.repositoryId
                     ? owner
-                    : inspectHomeProjectOwner(owner.projectId, ref.repositoryId);
+                    : projects.home.inspect(owner.projectId, ref.repositoryId);
             pinPublication(await readPlanPackagePublication(sourceOwner, ref));
         }
     }
@@ -393,7 +388,7 @@ export async function confirmRetention(
         : await localConfirmRetention(cwd, kind, token, undefined, mnemotecaPort);
     if (result.indexWarning) console.warn(result.indexWarning);
     if (result.deleted && result.copies.length) {
-        const binding = inspectProjectIdentity(cwd);
+        const binding = projects.checkout.inspect(cwd);
         if (binding.kind === "existing") {
             const runtime = await checkedProjectRuntimeLayout(cwd);
             const directory = join(runtime.selected.internalRoot, "prune-copies");

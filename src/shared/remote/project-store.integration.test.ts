@@ -1,3 +1,4 @@
+import { parseProjectId, projects, type HomeProjectOwner } from "@runwield/projects";
 import { createServer } from "node:http";
 import { test } from "node:test";
 import { equal, deepEqual, ok, rejects } from "node:assert/strict";
@@ -11,8 +12,6 @@ import { packageFixture } from "../testing/plan-package-fixture.ts";
 import {
     authorLocalPlan,
     PreparedProjectStore,
-    registerHomeProjectOwner,
-    type HomeProjectOwner,
     loadPlan,
     type ProjectStoreBinding,
     type ProjectStoreCommand,
@@ -169,7 +168,10 @@ test("registration, handshake, owner binding and revocation gate the real transp
         equal(result.result.body, "# Before\n");
         await rejects(new ProjectStoreClient(endpoint, "wrong", binding).execute(command), /401/);
         await rejects(
-            new ProjectStoreClient(endpoint, service.credential, { ...binding, projectId: "wrong" }).execute(command),
+            new ProjectStoreClient(endpoint, service.credential, {
+                ...binding,
+                projectId: parseProjectId(randomUUID())!,
+            }).execute(command),
             /403/,
         );
         service.unregisterProjectStore();
@@ -241,8 +243,8 @@ test("shutdown before the final streamed byte prevents mutation admission", asyn
 });
 
 test("a separate owner process serves a registered Project with no laptop source checkout", async () => {
-    const registration = await registerHomeProjectOwner({
-        projectId: randomUUID(),
+    const registration = await projects.home.register({
+        projectId: parseProjectId(randomUUID())!,
         repositoryId: randomUUID(),
         displayName: "Home-only",
     });

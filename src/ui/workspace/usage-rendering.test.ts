@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { Window } from "happy-dom";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
+import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.ts";
 import { test } from "node:test";
 
@@ -10,7 +11,7 @@ import { createRoot } from "react-dom/client";
 import { act } from "react";
 import { loadOwnerUsage } from "./server/owner-usage.ts";
 import { UsageReport } from "./react/UsageReport.tsx";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
 import { createElement } from "react";
@@ -39,7 +40,9 @@ test("usage trend breaks at a gap and draws covered zero as a baseline point", (
 });
 
 test("usage page renders daily costs and completeness from the real report and recovers from a failed fetch", async () => {
-    await withWorkflowMetricsFixture(async ({ projectRoot: cwd }) => {
+    await withWorkflowMetricsFixture(async ({ homeDir }) => {
+        const cwd = join(homeDir, "primary");
+        await rename(await defineCommittedGitFixture().checkout(), cwd);
         const journal = getWorkflowMetricsFilePath(cwd);
         await mkdir(dirname(journal), { recursive: true });
         await writeFile(
@@ -70,7 +73,10 @@ test("usage page renders daily costs and completeness from the real report and r
                 .join("\n") + "\n",
         );
         const store = openOwnerCoordinationStore();
-        store.registerProject({ root: cwd });
+        const project = store.registerProject({ root: cwd, displayName: "Primary" });
+        const worktree = join(homeDir, "linked-worktree");
+        await git(cwd, ["worktree", "add", "-b", "usage-rendering", worktree]);
+        assertEquals(store.registerProject({ root: worktree, displayName: "Worktree" }).projectId, project.projectId);
         const report = await loadOwnerUsage(store, new URLSearchParams({ start: "2026-09-01", end: "2026-09-04" }));
         const browser = new Window({ url: "http://workspace.local/usage" });
         let failed = true;
@@ -124,6 +130,11 @@ test("usage page renders daily costs and completeness from the real report and r
             );
             assertEquals(firstDay?.querySelectorAll("td")[2]?.textContent, "Complete");
             assertEquals(container.querySelector('[role="alert"]'), null);
+            const byProject = [...container.querySelectorAll("table")].find(
+                (table) => table.querySelector("caption")?.textContent === "By Project",
+            );
+            assertEquals(byProject?.querySelectorAll("tbody tr").length, 1);
+            assertStringIncludes(byProject?.textContent || "", "Primary / Worktree (shared history)");
             assertEquals(
                 [...container.querySelectorAll("button,a")].some((node) =>
                     /Download|Recorded activity/.test(node.textContent || ""),

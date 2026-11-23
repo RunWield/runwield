@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { readLocalHomeStore } from "../../plan-store/index.ts";
 import { workRecordOwnerLayout, assertWorkRecordPath } from "./owner.ts";
 import { mkdir as fsMkdir } from "node:fs/promises";
@@ -8,7 +9,6 @@ import { captureForegroundProcess } from "../captured-process.ts";
  */
 
 import { checkedProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { inspectProjectIdentity } from "../project-identity.ts";
 import { remoteProjectOwner } from "../remote/personal-resources.ts";
 import { basename, dirname } from "node:path";
 import { listWorkRecords } from "./store.ts";
@@ -155,7 +155,7 @@ async function runMnemotecaWorkRecordCommandInScope(cwd: string, args: string[],
             result = await mnemotecaPort.run(args, { cwd, env: { MNEMOTECA_DB_PATH: admitted.database } });
         } else {
             const layout = (await checkedProjectRuntimeLayout(cwd)).primary;
-            if (remoteProjectOwner()?.kind === "managed-remote" || inspectProjectIdentity(cwd).kind === "existing") {
+            if (remoteProjectOwner()?.kind === "managed-remote" || projects.checkout.inspect(cwd).kind === "existing") {
                 await fsMkdir(dirname(layout.workRecordIndexDatabasePath), { recursive: true, mode: 0o700 });
                 result = await mnemotecaPort.run(args, {
                     cwd,

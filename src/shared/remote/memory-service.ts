@@ -35,7 +35,10 @@ function validate(input: MemoryRequest): void {
 export class LaptopMemoryService {
     private readonly receipts = new Map<string, { payload: string; receipt: Promise<MemoryReceipt> }>();
     private readonly abort = new AbortController();
-    constructor(private readonly collection: string) {}
+    constructor(
+        private readonly collection: string,
+        private readonly requestCollection = collection,
+    ) {}
 
     close(): void {
         this.abort.abort();
@@ -63,7 +66,10 @@ export class LaptopMemoryService {
             return new Response(null, { status: 400 });
         }
         if (this.abort.signal.aborted) return new Response(null, { status: 403 });
-        if (input.collection !== this.collection && !(input.collection === "global" && input.args.scope === "global")) {
+        if (
+            input.collection !== this.requestCollection &&
+            !(input.collection === "global" && input.args.scope === "global")
+        ) {
             return new Response(null, { status: 403 });
         }
         const payload = JSON.stringify([input.action, input.collection, input.args]);

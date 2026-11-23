@@ -118,7 +118,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Proposed composed coverage and existing focused regressions:
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Proposed composed coverage and existing focused regressions:
 
 ```sh
 bun run test src/shared/workflow/composed-store-local.test.ts src/shared/workflow/composed-store-recovery.test.ts

@@ -1,14 +1,13 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok, rejects, deepEqual } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import {
     PreparedProjectStore,
-    registerHomeProjectOwner,
     withLocalPlanWorkflow,
     sealPackagePublication,
     packagePublicationInput,
 } from "./index.ts";
-import { withHomeProjectOwner, projectStoreLocation } from "../shared/project-identity.ts";
 import { publicationFixture } from "../shared/workflow/testing/package-publication-fixture.ts";
 import { git } from "../shared/git-test-fixture.ts";
 
@@ -16,7 +15,7 @@ for (const plans of [false, true]) {
     test(`home-owned recording retains independent execution policy with Plan copies ${plans}`, async () => {
         const fixture = await publicationFixture();
         try {
-            const owner = await registerHomeProjectOwner({
+            const owner = await projects.home.register({
                 projectId: fixture.identity.projectId,
                 repositoryId: fixture.identity.repositoryId,
                 displayName: "Execution policy",
@@ -26,8 +25,8 @@ for (const plans of [false, true]) {
             const initial = await service.execute({ kind: "read", planId: "plan-one", resource: "context.md" });
             ok("revision" in initial.result);
             const seal = () =>
-                withHomeProjectOwner(owner, () =>
-                    withLocalPlanWorkflow(projectStoreLocation(owner), "one", () =>
+                projects.home.withOwner(owner, () =>
+                    withLocalPlanWorkflow(projects.home.storeLocation(owner), "one", () =>
                         sealPackagePublication("one", fixture.workflow.worktreeId!, candidate, "main", true),
                     ),
                 );

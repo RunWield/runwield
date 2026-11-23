@@ -167,7 +167,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Add
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Add
 `src/shared/project-runtime-home.integration.test.ts` and
 `src/shared/project-runtime-home-recovery.test.ts` for the home-layout cases below; extend existing migration and
 publication suites for their owning behavior. Register new files in the explicit test inventory where required.

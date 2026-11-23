@@ -973,7 +973,11 @@ export function createOrGetOperationReceipt(database: OwnerCoordinationDatabase,
     });
 }
 
-export function findOperationReceiptByRequest(database: OwnerCoordinationDatabase, options: FindReceiptOptions) {
+export function findOperationReceiptByRequest(
+    database: OwnerCoordinationDatabase,
+    options: FindReceiptOptions,
+    projectRowKeys: string[] = [],
+) {
     const ownerDb = requireDatabase(database);
     if (!options.runwieldSessionId && !options.projectId) {
         throw new Error("Operation lookup requires a Session or Project.");
@@ -986,9 +990,17 @@ export function findOperationReceiptByRequest(database: OwnerCoordinationDatabas
               .get(options.deviceId ?? null, options.runwieldSessionId, options.requestId)
         : ownerDb.handle
               .prepare(
-                  "SELECT * FROM owner_session_operations WHERE device_id IS ? AND project_id = ? AND request_id = ?",
+                  `SELECT * FROM owner_session_operations
+                   WHERE device_id IS ? AND request_id = ?
+                     AND (project_id = ? OR project_id IN (SELECT value FROM json_each(?)))
+                   ORDER BY started_at, id LIMIT 1`,
               )
-              .get(options.deviceId ?? null, options.projectId ?? null, options.requestId);
+              .get(
+                  options.deviceId ?? null,
+                  options.requestId,
+                  options.projectId ?? null,
+                  JSON.stringify(projectRowKeys),
+              );
     if (!existing) return null;
     if (existing.request_hash !== options.requestHash) {
         throw new Error("Operation request id was reused with different input");

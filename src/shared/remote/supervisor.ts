@@ -27,7 +27,7 @@ export interface RemoteSupervisorHeader {
     mount: MountHeader;
     remoteHome: string;
     memoryCollection: string;
-    personalOwner?: import("../project-identity.ts").ProjectPersonalOwner;
+    personalOwner?: import("@runwield/projects").ProjectPersonalOwner;
     modelProof?: RemoteModelProof;
 }
 
@@ -161,6 +161,7 @@ async function runOwnedModelProof(
                     proof: header.modelProof,
                     connection: { port: header.port, credential: header.credential },
                     cwd: header.view.cwd,
+                    personalOwner: header.personalOwner,
                     mount: {
                         globalRoot: mount.globalRoot,
                         agentsRoot: mount.agentsRoot,

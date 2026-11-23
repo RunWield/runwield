@@ -1,0 +1,13 @@
+{
+    "name": "@runwield/projects",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./index.ts",
+        "./owner-coordination": "./owner-coordination.ts"
+    },
+    "dependencies": {
+        "@runwield/resources": "workspace:*",
+        "@runwield/session-files": "workspace:*"
+    }
+}

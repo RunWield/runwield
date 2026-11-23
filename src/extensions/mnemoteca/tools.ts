@@ -53,14 +53,7 @@ export const MISSING_BINARY_MSG =
     "Error: mnemoteca binary not found. Rerun the RunWield installer to install required runtime helpers: curl -fsSL https://raw.githubusercontent.com/gandazgul/runwield/main/install.sh | bash";
 
 export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] {
-    let collectionName: string | null = null;
-    let initPromise: Promise<void> | null = null;
-
-    async function projectName(): Promise<string> {
-        if (collectionName) return collectionName;
-        collectionName = await resolveMemoryCollection(host);
-        return collectionName;
-    }
+    const initializations = new Map<string, Promise<void>>();
 
     async function mnemoteca(args: string[], signal?: AbortSignal): Promise<string> {
         try {
@@ -88,11 +81,15 @@ export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] 
     }
 
     async function ensureProjectInitialized(signal?: AbortSignal): Promise<string> {
-        const name = await projectName();
-        initPromise ??= mnemoteca(["init", "--name", name], signal)
-            .then(() => undefined)
-            .catch(() => undefined);
-        await initPromise;
+        const name = await resolveMemoryCollection(host);
+        let initialized = initializations.get(name);
+        if (!initialized) {
+            initialized = mnemoteca(["init", "--name", name], signal)
+                .then(() => undefined)
+                .catch(() => undefined);
+            initializations.set(name, initialized);
+        }
+        await initialized;
         return name;
     }
 

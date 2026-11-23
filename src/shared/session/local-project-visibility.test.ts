@@ -120,22 +120,20 @@ async function withFixture(test: (fixture: Fixture) => Promise<void> | void) {
     }
 }
 
-for (const method of ["listSessionProjects", "listProjects"] as const) {
-    test(`${method} exposes only local Projects and preserves raw remote records`, async () => {
-        await withFixture(({ store, baseDir, local, remote, missingRemote }) => {
-            assertEquals(store[method](), [local]);
-            assertEquals(
-                new Set(listProjectsFromDisk(baseDir).map((project) => project.projectId)),
-                new Set([local.projectId, remote.projectId, missingRemote.projectId]),
-            );
-        });
+test("listSessionProjects exposes only local Projects and preserves raw remote records", async () => {
+    await withFixture(({ store, baseDir, local, remote, missingRemote }) => {
+        assertEquals(store.listSessionProjects(), [local]);
+        assertEquals(
+            new Set(listProjectsFromDisk(baseDir).map((project) => project.projectId)),
+            new Set([local.projectId, remote.projectId, missingRemote.projectId]),
+        );
     });
-}
+});
 
 test("local project lookup and root evidence hide a remote locator", async () => {
     await withFixture(({ store, local, remote }) => {
-        assertEquals(store.getProjectById(local.projectId), local);
-        assertEquals(store.getProjectById(remote.projectId), null);
+        assertEquals(store.getSessionProjectById(local.projectId), local);
+        assertEquals(store.getSessionProjectById(remote.projectId), null);
         assertEquals(store.listProjectRootEvidence(remote.projectId), []);
     });
 });

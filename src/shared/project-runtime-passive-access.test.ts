@@ -1,3 +1,4 @@
+import { projects, type ProjectLaunchContext } from "@runwield/projects";
 import { test } from "node:test";
 import { deepStrictEqual, strictEqual, rejects, match, doesNotMatch } from "node:assert/strict";
 import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
@@ -7,7 +8,6 @@ import process from "node:process";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { getRunWieldRuntimeDir } from "../constants.ts";
-import { admitProjectIdentity, inspectProjectIdentity, type ProjectLaunchContext } from "./project-identity.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {
     checkedProjectRuntimeLayout,
@@ -187,8 +187,8 @@ for (const state of ["fresh", "matching clone", "legacy runtime"] as const) {
                     const known = join(home, "known");
                     await git(source, ["clone", source, known]);
                     await git(source, ["clone", source, root]);
-                    strictEqual((await admitProjectIdentity(known, { context })).kind, "existing");
-                    strictEqual(inspectProjectIdentity(root, { context }).kind, "pending");
+                    strictEqual((await projects.checkout.admit(known, { context })).kind, "existing");
+                    strictEqual(projects.checkout.inspect(root, { context }).kind, "pending");
                 }
                 await mkdir(join(root, "docs", "plans"), { recursive: true });
                 await writeFile(join(root, "docs", "plans", "passive.md"), "# CLI passive document\n");
@@ -206,7 +206,7 @@ for (const state of ["fresh", "matching clone", "legacy runtime"] as const) {
                 }
                 deepStrictEqual([...(await snapshotTree(home)), ...(await snapshotTree(source))], before);
                 strictEqual(
-                    inspectProjectIdentity(root, { context }).kind,
+                    projects.checkout.inspect(root, { context }).kind,
                     state === "matching clone" ? "pending" : "fresh",
                 );
             } finally {

@@ -99,6 +99,8 @@ export interface RemoteProjectLocator {
 
 export interface FileSessionProject {
     projectId: string;
+    /** Accept this historical key when recovering a legacy store. */
+    legacyProjectId?: string;
     displayName: string;
     registeredRoot: string;
     currentRoot: string;
@@ -221,7 +223,6 @@ export interface InitialSessionActivationOptions {
 
 export interface EnsureRuntimeProjectOptions {
     root: string;
-    idFactory?: () => string;
     now?: () => string;
 }
 
@@ -364,6 +365,7 @@ export interface DiscardOrphanOptions {
 }
 
 export interface SuccessorLocator {
+    runwieldSessionId: string;
     projectId: string;
     piSessionId: string;
     transcriptPath: string;
@@ -448,8 +450,7 @@ export interface FileSessionStore {
     close(): void;
     ensureRuntimeProject(options: EnsureRuntimeProjectOptions): FileSessionProject;
     listSessionProjects(): FileSessionProject[];
-    listProjects(): FileSessionProject[];
-    getProjectById(projectId: string): FileSessionProject | null;
+    getSessionProjectById(projectId: string): FileSessionProject | null;
     listProjectRootEvidence(
         projectId: string,
     ): Array<{ enteredRoot: string; canonicalRoot: string; rootState: string }>;

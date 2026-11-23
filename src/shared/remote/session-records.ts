@@ -1,6 +1,9 @@
 /** Laptop-only, read-only project projection. No native path or activation proof crosses the bridge. */
+import { isProjectId } from "@runwield/projects";
 import { readCommittedRemoteLineage } from "./committed-session.ts";
-import { findProject, listManifests, sessionDirForProject } from "../session/file-session-storage.ts";
+import { listManifests, relatedSessionProjects } from "../session/file-session-storage.ts";
+import { sessionStoragePath } from "@runwield/session-files";
+import { dirname } from "node:path";
 import type { FileSessionStore } from "../session/file-session-store-types.ts";
 import { reasonForCandidate } from "../session/plan-session-lookup.ts";
 import { summarizeResumableTranscript, buildProjectedSessionInfo } from "../session/session-transcript-projection.ts";
@@ -12,10 +15,15 @@ export function projectRemoteSessionRecords(
     projectId: string,
     query?: RemotePlanSessionQuery,
 ): RemoteSessionRecords {
-    const project = findProject(store.path, projectId);
+    const segment = store.getCurrentSessionSegment(sessionId);
+    const directory = segment && dirname(sessionStoragePath(segment.transcriptPath, store.path));
+    const project = relatedSessionProjects(store.path, projectId).find(
+        (item) => item.remote && item.sessionDirectory === directory,
+    );
     if (!project?.remote) throw new Error("Remote Session project is unavailable");
+    const boundProjectId = project.remote.binding?.projectId;
     const planSessions: RemoteSessionRecords["planSessions"] = [];
-    for (const { manifest } of query ? listManifests(sessionDirForProject(store.path, project), true) : []) {
+    for (const { manifest } of query ? listManifests(project.sessionDirectory, true, project) : []) {
         if (query?.sessionId && manifest.runwieldSessionId !== query.sessionId) continue;
         const associations = store
             .listSessionPlanAssociations(manifest.runwieldSessionId, projectId)
@@ -64,6 +72,7 @@ export function projectRemoteSessionRecords(
         }
     }
     return {
+        ...(isProjectId(boundProjectId) ? { projectId: boundProjectId } : {}),
         lastPlanReview: store.getLastPlanReview(sessionId, projectId),
         planAssociations: store.listSessionPlanAssociations(sessionId, projectId),
         planSessions,

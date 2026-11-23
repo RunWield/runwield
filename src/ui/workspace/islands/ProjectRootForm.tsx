@@ -1,22 +1,36 @@
 import { useRef, useState } from "react";
+import type { ProjectId } from "@runwield/projects";
+import type { CloneChoiceRequest } from "../routes/owner-api.ts";
 import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { RunWieldConfirmationDialog } from "../../design-system/components/react/RunWieldConfirmationDialog.tsx";
 
 export interface ProjectRootFormProps {
     projectId?: string;
 }
+interface CloneCandidate {
+    projectId: ProjectId;
+    displayName: string;
+}
+interface ClonePrompt {
+    token: string;
+    candidates: CloneCandidate[];
+    acknowledgement?: Confirmation;
+}
 interface Confirmation {
     root: string;
     token: string;
     message: string;
+    choice?: CloneChoiceRequest;
 }
 interface RootProject {
-    projectId: string;
+    projectId: ProjectId;
 }
 interface RootResponse {
     code?: string;
     error?: string;
     confirmation?: string;
+    token?: string;
+    candidates?: CloneCandidate[];
     project?: RootProject;
 }
 function navigate(href: string, history: string) {
@@ -29,14 +43,16 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
     const [pending, setPending] = useState(false);
     const [status, setStatus] = useState("");
     const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+    const [clonePrompt, setClonePrompt] = useState<ClonePrompt | null>(null);
     const inFlight = useRef(false);
     const submitButton = useRef<HTMLButtonElement>(null);
-    async function submit(acknowledgement?: Confirmation) {
+    async function submit(acknowledgement?: Confirmation, choice = acknowledgement?.choice) {
         if (inFlight.current) return;
         inFlight.current = true;
         setPending(true);
         setStatus("");
         setConfirmation(null);
+        setClonePrompt(null);
         try {
             const csrf =
                 document.cookie
@@ -53,6 +69,7 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
                     body: JSON.stringify({
                         ...(projectId ? { action: "relink", newRoot: root } : { root, displayName }),
                         ...(acknowledgement?.root === root ? { directoryConfirmation: acknowledgement.token } : {}),
+                        cloneChoice: choice,
                     }),
                 },
             );
@@ -63,11 +80,21 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
                     root,
                     token: data.confirmation,
                     message: data.error || "System or home folder detected. Continue?",
+                    choice,
                 });
+            } else if (
+                response.status === 409 &&
+                data.code === "project_clone_choice_required" &&
+                data.token &&
+                data.candidates?.length
+            ) {
+                setStatus("This checkout matches an existing Project.");
+                setClonePrompt({ token: data.token, candidates: data.candidates, acknowledgement });
             } else if (!response.ok) setStatus(data.error || "Project operation failed.");
             else if (projectId) navigate(location.pathname + location.search, "replace");
             else if (data.project) navigate(`/projects/${encodeURIComponent(data.project.projectId)}/settings`, "push");
         } catch {
+            setClonePrompt(clonePrompt);
             setStatus(
                 projectId
                     ? "Project relink could not be confirmed. Check your connection and try again."
@@ -84,7 +111,7 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
                 className="owner-form"
                 onSubmit={(event) => {
                     event.preventDefault();
-                    void submit();
+                    if (!clonePrompt) void submit();
                 }}
             >
                 <label>
@@ -98,6 +125,8 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
                         onInput={(event) => {
                             setRoot(event.currentTarget.value);
                             setConfirmation(null);
+                            setClonePrompt(null);
+                            setStatus("");
                         }}
                     />
                 </label>
@@ -117,7 +146,7 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
                     ref={submitButton}
                     type="submit"
                     className={projectId ? "secondary-action" : "primary-action"}
-                    disabled={pending}
+                    disabled={pending || Boolean(clonePrompt)}
                 >
                     {pending ? (
                         <RunWieldThinkingDots label={projectId ? "Relinking Project" : "Linking Project"} />
@@ -131,6 +160,46 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
             <p className="muted" role="status">
                 {status}
             </p>
+            {clonePrompt && (
+                <fieldset className="workspace-settings-actions">
+                    <legend>Choose a Project for this checkout</legend>
+                    {clonePrompt.candidates.map((candidate) => (
+                        <button
+                            key={candidate.projectId}
+                            type="button"
+                            className="secondary-action"
+                            onClick={() =>
+                                void submit(clonePrompt.acknowledgement, {
+                                    kind: "link",
+                                    token: clonePrompt.token,
+                                    projectId: candidate.projectId,
+                                })
+                            }
+                        >
+                            Link to {candidate.displayName}
+                        </button>
+                    ))}
+                    <button
+                        type="button"
+                        className="secondary-action"
+                        onClick={() =>
+                            void submit(clonePrompt.acknowledgement, { kind: "new", token: clonePrompt.token })
+                        }
+                    >
+                        Create a separate Project
+                    </button>
+                    <button
+                        type="button"
+                        className="secondary-action"
+                        onClick={() => {
+                            setClonePrompt(null);
+                            setStatus("");
+                        }}
+                    >
+                        Cancel
+                    </button>
+                </fieldset>
+            )}
             {confirmation && (
                 <RunWieldConfirmationDialog
                     returnFocus={submitButton}

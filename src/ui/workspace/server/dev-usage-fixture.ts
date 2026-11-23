@@ -14,12 +14,12 @@ async function createFixture() {
     for (const [index, name] of projects.entries()) {
         const projectRoot = join(root, name);
         await fsMkdir(projectRoot);
-        const project = store.registerProject({ root: projectRoot, displayName: name });
+        const project = store.projects.register({ root: projectRoot, displayName: name });
         if (index === 2) {
-            store.setProjectEnabled(project.projectId, false);
+            store.projects.setStatus(project.projectId, "inactive");
             continue;
         }
-        const path = getWorkflowMetricsFilePath(store.requireEnabledProjectRoot(project.projectId));
+        const path = getWorkflowMetricsFilePath(store.projects.requireActiveRoot(project.projectId));
         await fsMkdir(dirname(path), { recursive: true });
         const now = Date.now();
         const rows = [

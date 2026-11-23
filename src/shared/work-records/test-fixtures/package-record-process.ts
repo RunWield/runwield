@@ -1,7 +1,7 @@
 /** Interrupt canonical import publication at the OS boundary and resume in a new process. */
+import { type ProjectIdentity } from "@runwield/projects";
 import fs from "node:fs/promises";
 import { mock } from "bun:test";
-import type { ProjectIdentity } from "../../project-identity.ts";
 const request: { identity: ProjectIdentity; path: string; interrupt?: boolean; readyPath?: string } = JSON.parse(
     process.argv[2],
 );

@@ -1,4 +1,5 @@
 /** Separate execution process exercising production bootstrap and the public Plan owner. */
+import { projects } from "@runwield/projects";
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { activateRemoteProjectOwner } from "./entry.ts";
@@ -15,7 +16,6 @@ async function executeManagedFixture() {
     const { getRunWieldRuntimeDir, getHomeDir } = await import("../../constants.ts");
     const { mkdir: seedDirectory, writeFile: seedFile, rename: moveSeed } = await import("node:fs/promises");
     const { join: seedPath } = await import("node:path");
-    const { withProjectLaunchContext } = await import("../project-identity.ts");
     const { withRetainedPlanFixture } = await import("../testing/retained-plan-fixture.ts");
     const { createTestWorktreeAttempt, git: fixtureGit } = await import("../worktree-test-helpers.ts");
     const { seedPlanController, planFixtureControllerPath } = await import("../testing/plan-state-fixture.ts");
@@ -40,7 +40,7 @@ async function executeManagedFixture() {
     await fixtureGit(input.cwd, ["add", "docs/plans"]);
     await fixtureGit(input.cwd, ["commit", "-m", "Retained execution fixture"]);
     if (!input.resources.personalOwner) throw new Error("Fixture requires its managed personal owner.");
-    const seededAttempts = await withProjectLaunchContext(
+    const seededAttempts = await projects.launch.withContext(
         { executionAccountHome: getHomeDir(), personalOwner: input.resources.personalOwner },
         () =>
             withRetainedPlanFixture(input.cwd, async () => {
@@ -133,7 +133,7 @@ async function executeManagedFixture() {
                 ),
             ),
         );
-        const inspectedIdentity = (await import("../project-identity.ts")).inspectProjectIdentity(input.cwd);
+        const inspectedIdentity = projects.checkout.inspect(input.cwd);
         if (inspectedIdentity.kind !== "existing") throw new Error("Original execution identity is unavailable.");
         const historicalAccess: import("../../plan-store/index.ts").PlanAccess = JSON.parse(
             JSON.stringify({ identity: inspectedIdentity.identity, planId: retainedPlanId, expectedRevision: 1 }),

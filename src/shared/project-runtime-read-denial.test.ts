@@ -1,4 +1,4 @@
-import { admitProjectIdentity } from "./project-identity.ts";
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { strictEqual, ok, deepStrictEqual } from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
@@ -51,7 +51,7 @@ for (const state of ["fresh", "legacy", "ready", "returning-legacy"]) {
                     await writeFile(path, JSON.stringify({ version: 1, revision: 1, planName: "example", state: {} }));
                     await writeFile(`${path}.lock`, "");
                 }
-                await admitProjectIdentity(root);
+                await projects.checkout.admit(root);
                 const before = { project: await tree(root), runtime: await tree(getRunWieldRuntimeDir(root)) };
                 const denied = await captureForegroundProcess("/usr/bin/sandbox-exec", {
                     cwd: root,
@@ -70,9 +70,9 @@ for (const state of ["fresh", "legacy", "ready", "returning-legacy"]) {
                 const store = await import(${JSON.stringify(storeUrl)});
                 const { runPlansDoctor } = await import(${JSON.stringify(doctorUrl)});
                 const root = ${JSON.stringify(root)};
-                const { inspectProjectIdentity } = await import(${JSON.stringify(new URL("./project-identity.ts", import.meta.url).href)});
+                const { projects } = await import(${JSON.stringify(import.meta.resolve("@runwield/projects"))});
                 const { withRetainedCheckoutSource } = await import(${JSON.stringify(new URL("../plan-store/retained-source.ts", import.meta.url).href)});
-                const selected = inspectProjectIdentity(root);
+                const selected = projects.checkout.inspect(root);
                 strictEqual(selected.kind, 'existing');
                 await withRetainedCheckoutSource(selected.identity, async () => {
                 for (let repeat=0; repeat<2; repeat++) {
@@ -151,7 +151,7 @@ test("passive reads do not wait for catalog and registry locks held by another p
             cwd: root,
             args: [
                 "--eval",
-                `const { listPlanResources } = await import(${JSON.stringify(storeUrl)}); const { inspectProjectIdentity } = await import(${JSON.stringify(new URL("./project-identity.ts", import.meta.url).href)}); const { withRetainedCheckoutSource } = await import(${JSON.stringify(new URL("../plan-store/retained-source.ts", import.meta.url).href)}); await withRetainedCheckoutSource(inspectProjectIdentity(${JSON.stringify(root)}).identity, async () => console.log((await listPlanResources(${JSON.stringify(root)}))[0].planId));`,
+                `const { listPlanResources } = await import(${JSON.stringify(storeUrl)}); const { projects } = await import(${JSON.stringify(import.meta.resolve("@runwield/projects"))}); const { withRetainedCheckoutSource } = await import(${JSON.stringify(new URL("../plan-store/retained-source.ts", import.meta.url).href)}); await withRetainedCheckoutSource(projects.checkout.inspect(${JSON.stringify(root)}).identity, async () => console.log((await listPlanResources(${JSON.stringify(root)}))[0].planId));`,
             ],
             // The holder releases only after the read returns. Allow for Bun startup on CI.
             timeoutMs: 15_000,

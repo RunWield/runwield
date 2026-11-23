@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import {
     managedPlanStoreActive,
     managedPersonalStoreActive,
@@ -97,8 +98,7 @@ export async function resumePlanAttempt<T>(
     }
     if (managedPersonalStoreActive()) {
         const historical = decodePlanAccess(access);
-        const { inspectProjectIdentity } = await import("../shared/project-identity.ts");
-        const inspected = inspectProjectIdentity(cwd);
+        const inspected = projects.checkout.inspect(cwd);
         const selected = await selectManagedPlan(cwd, historical.planId);
         const retained = attemptId ? await readManagedRetainedExecution(cwd, historical.planId, attemptId) : undefined;
         if (

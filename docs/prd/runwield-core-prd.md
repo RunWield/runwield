@@ -1970,12 +1970,12 @@ Noninteractive project commands refuse with nonzero status and stderr guidance u
 connections retain their existing behavior. This warning is consent, not a security sandbox or universal unsafe-path
 detector.
 
-**Requirement: Stable Core Project identity.** Deliberate Project Runtime Entry assigns one opaque Project ID.
+**Requirement: Stable Core Project identity.** Deliberate Project entry assigns one cryptographically random UUIDv4 as the stable Project ID. Workspace registration, Plans, Sessions and default Memory collections use this ID, including before the first Plan exists.
 Linked worktrees and subdirectory entry share that ID and one repository binding; each checkout has its own binding.
 Moves and remote edits retain identity. The Git common directory's own configuration is authoritative, excluding
 included, global, command-injected, and per-worktree identity values. Ordinary and manual-SSH launches keep a versioned
 identity and verified storage-locator record in their account's `~/.wld/projects/<projectId>/project.wld.json`; Core entry needs no Workspace
-database. Workspace registration IDs remain unchanged and expose an association to existing Core identity.
+database. Workspace registration returns this same ID. Previous Workspace registration URLs may expire.
 
 A non-Git Project uses `.wld-project.json`. After Git initialization, entry verifies the same identity in Git before
 removing the valid marker. Conflicting, malformed, user-owned, and symlink evidence is preserved and reported. Settings
@@ -2011,6 +2011,8 @@ remote personal store. Managed operations use the initiating laptop's registered
   its valid identity marker. Conflicting or malformed evidence is preserved.
 - Given manual SSH, ownership remains the remote execution account. Given an explicit managed launch owner, ownership
   remains that owner, never an inference from the mount path or an automatic fallback after disconnection.
+- Given a managed remote Session with a saved binding, passive Session reads use that binding and skip the remote
+  execution account's local Project registry.
 
 Plans and execution runtime use their responsible account’s home Project tree. Managed remote launches retain
 personal Plan authority on the laptop and Git execution authority on the remote account. Adopted original attempts
@@ -2085,8 +2087,8 @@ existing collection binding.
 use the authenticated laptop service. Writes are acknowledged after Mnemoteca completes; retries keep one request id.
 Only the bound collection and global scope are available. Personal Memory requires no server-side Mnemoteca binary. The
 remote key is the lower-case resolved SSH hostname, user, port, and primary project root, without the host key. A
-confirmed host uses the saved project's key and collection binding. The normal collection is
-`<folder>@<hostname>-<hash>`. With no saved binding, an exact folder-name match to a local Session project asks whether it
+confirmed host uses the saved project's collection binding. The default collection is the admitted Project ID.
+The laptop independently verifies it before serving remote Memory. With no saved binding, an exact folder-name match to a local Session project asks whether it
 is the same project. Yes shares the local resolver’s collection; No keeps the normal remote
 collection. Several matches are listed separately. Either answer is saved before opening the TUI, and reconnect does not
 ask again. A Memory collection without a local Session project never triggers a question. Shared Memory does not merge
@@ -3597,10 +3599,10 @@ code approval remains host-only through `wld install`; there is no command-line 
 
 **Requirement: Record structured workflow observations locally, with opt-in and no sensitive content.** With
 `workflowMetrics` enabled, RunWield records ordered tool usage, token usage, cost, context snapshots, compaction,
-retries, response latency, and slash commands to a local JSONL file under `~/.wld/workflow-metrics/`, one per primary
-Project. The directory is `<sanitized-basename>-<full-sha256-of-real-primary-root>`, with a basename of at most 40
-characters. Linked worktrees and symlink aliases share their Project's file; distinct roots do not. Recording is off by
-default. Core adopts an unshared legacy journal without changing its bytes or grant offsets. A collided legacy journal
+retries, response latency, and slash commands to a local JSONL file under `~/.wld/workflow-metrics/`, one per admitted
+Project ID. Linked worktrees, symlink aliases, and verified checkout moves retain the Project's history. Recording is
+off by default. Passive reporting and recorder startup leave unadmitted checkouts untouched. Core adopts an unshared
+legacy journal from verified checkout roots without changing its bytes or grant offsets. A collided legacy journal
 is left in place; each new history receives only attributable rows and an explicit gap, with existing grant starts moved
 to the new end so copied rows do not export. If another process is adopting the legacy journal, export defers discovery
 until a later cycle without changing consent or delivery positions. Owner reports keep canonical Project identities
@@ -3620,6 +3622,7 @@ review evidence is marked unavailable, not approved.
 **Acceptance scenarios:**
 
 - Given `workflowMetrics` off or unset, no metrics records are written.
+- Given a Project with a root-hashed legacy journal, its verified move retains the journal and canonical Project ID.
 - Given it is on, an Agent turn records ordered events with tool exposures, tool durations, model usage, and latency.
 - Given a Bash command with arguments or pipelines, the record holds coarse command labels only.
 - Given background delegated work, records keep the parent tool call, parent execution, and task identity.
@@ -3917,7 +3920,10 @@ in Project coverage while hiding old rows, so Workspace can offer a readable ret
 #### Export consent
 
 **Requirement: Export only under explicit destination consent.** An Export grant binds an approved installed exporter
-identity, endpoint, external project, and explicit allowlist of primary Projects. Project settings cannot grant export.
+identity, endpoint, external project, and explicit allowlist of canonical Project IDs. Project settings cannot grant
+export. A replacement checkout at a previously approved path requires its own consent. A legacy path-based grant can
+deliver only when the existing journal establishes its original boundary or a verified collision-adoption boundary.
+When Core cannot verify the legacy boundary, the owner can approve the Project again from its current journal position.
 Each Project starts at its journal byte position when added. An execution that started before that position is never
 exported, even if it finishes later. An execution-scoped row is eligible only with retained start evidence at or after
 the grant boundary in the same history; missing start evidence fails closed. Rows without an `executionId`, such as
@@ -3935,6 +3941,7 @@ required except explicit permission for loopback HTTP. Credentials rotation pres
 - Given a new endpoint, external project, or re-enablement, old pending history is not swept into the new grant.
 - Given a non-loopback HTTP endpoint, Core refuses consent. Loopback HTTP also requires explicit permission.
 - Given a changed installed identity, the old grant authorizes nothing, even if the new package has been approved.
+- Given a different Project at a granted path, that Project sends no observations until the owner adds it explicitly.
 
 <a id="export-delivery-lifecycle"></a>
 

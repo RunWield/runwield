@@ -72,7 +72,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Verification Plan
 
-- Use Bun 1.4.3 and `bun run install:locked`. Run `bun run compile` and `bun run check:package:bun`; Planner defines exact new desktop build/package/update commands and test paths with the selected tools.
+- Use the Bun version in the checkout’s root `.bun-version` and `bun run install:locked`. Run `bun run compile` and `bun run check:package:bun`; Planner defines exact new desktop build/package/update commands and test paths with the selected tools.
 - Built-artifact checks must fail if the bundled executable/assets are missing, the app launches a global CLI, or the renderer needs a development/cloud server. Exercise paths with spaces and relocated installations.
 - Prove an installed candidate launches/registers a disposable Project without a development toolchain and with Workspace cloud endpoints blocked. Collect platform-specific evidence available here without claiming the other platforms passed.
 - Exercise an update while work is active, cancellation settlement, compatible data preservation, incompatible capability refusal, and migration-aware rollback refusal. Inspect process separation and canonical data, not only updater status.

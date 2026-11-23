@@ -1,7 +1,7 @@
+import { type ProjectIdentity } from "@runwield/projects";
 import type { PlanTextLoaded } from "../plan-store.ts";
 import { isPublicationAttemptCleanupComplete } from "../shared/workflow/publication-attempt.ts";
 import { withRetainedCheckoutSource, withoutRetainedCheckoutSource } from "./retained-source.ts";
-import type { ProjectIdentity } from "../shared/project-identity.ts";
 import {
     readPlanImportEvidence,
     readPlanPackage,

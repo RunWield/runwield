@@ -330,13 +330,6 @@ export {
     type ProjectStoreDocument,
 } from "./project-service.ts";
 
-export {
-    registerHomeProjectOwner,
-    findHomeProjectOwner,
-    type HomeProjectOwner,
-    type HomeProjectRegistration,
-} from "../shared/project-identity.ts";
-
 export { configureManagedPlanStore } from "./managed.ts";
 export { loadPlan, listPlans, loadPlanStrict, inspectPlanStrict } from "./queries.ts";
 

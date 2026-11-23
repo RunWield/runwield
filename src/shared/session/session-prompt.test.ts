@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { ok as assert } from "node:assert/strict";
 import { getCwd } from "../../constants.ts";
 import process from "node:process";
@@ -22,7 +23,7 @@ import {
     type ProviderModelConfig,
     type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { AGENTS } from "../../constants.ts";
 import { agentRegistry } from "./agent-registry.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -317,6 +318,11 @@ sessionPromptTest("core memories stored from the checkout are injected into its 
     const pathSeparator = process.platform === "win32" ? ";" : ":";
     try {
         await git(projectRoot, ["worktree", "add", "-b", "memory-feature", worktree]);
+        const project = await projects.checkout.admit(projectRoot);
+        const linked = await projects.checkout.admit(worktree);
+        assert(project.kind === "existing" && linked.kind === "existing");
+        const { projectId } = project.identity;
+        assertEquals(linked.identity.projectId, projectId);
         await fsMkdir(fakeBin);
         const executable = join(fakeBin, "mnemoteca");
         await fsWriteFile(
@@ -324,11 +330,11 @@ sessionPromptTest("core memories stored from the checkout are injected into its 
             `#!/usr/bin/env bash
 set -euo pipefail
 printf 'args=%s\n' "$*" >> '${commandLog}'
-[[ "$2" == '--name' && "$3" == '${basename(projectRoot)}' ]] || exit 64
+[[ "$2" == '--name' && "$3" == '${projectId}' ]] || exit 64
 case "$1" in
   init) ;;
   add) printf '%s\n' "\${@: -1}" > '${memoryFile}' ;;
-  list) [[ "$*" == 'list --name ${basename(projectRoot)} -t core -f plain' ]] || exit 64
+  list) [[ "$*" == 'list --name ${projectId} -t core -f plain' ]] || exit 64
         cat '${memoryFile}' ;;
   *) exit 64 ;;
 esac
@@ -361,10 +367,7 @@ esac
 
         assertStringIncludes(prompt, "Core memory from Mnemoteca");
         assertStringIncludes(prompt, "Second core memory");
-        assertStringIncludes(
-            await fsReadFile(commandLog, "utf8"),
-            `args=list --name ${basename(projectRoot)} -t core -f plain\n`,
-        );
+        assertStringIncludes(await fsReadFile(commandLog, "utf8"), `args=list --name ${projectId} -t core -f plain\n`);
         const coreMemoryItem = projection.categories.find((category) => category.id === "core_memories")?.items?.[0];
         assertEquals(coreMemoryItem?.source, "mnemoteca");
         assertEquals(coreMemoryItem?.label, "Core Memories");

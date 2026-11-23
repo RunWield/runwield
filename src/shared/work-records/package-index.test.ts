@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -10,7 +11,6 @@ import { formatWorkRecordMarkdown } from "./markdown.ts";
 import { getWorkRecordIndexCollectionName, rebuildWorkRecordIndex } from "./index-adapter.ts";
 import { searchWorkRecords } from "./search.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
-import { admitProjectIdentity } from "../project-identity.ts";
 
 test("index rebuild and stale candidates hydrate canonical status and absolute paths after a Project move", async () => {
     const f = await packageFixture();
@@ -35,7 +35,7 @@ test("index rebuild and stale candidates hydrate canonical status and absolute p
             equal((await searchWorkRecords(f.root, "Canonical", options)).records.length, 0);
         });
         await fs.rename(f.root, moved);
-        const admitted = await admitProjectIdentity(moved);
+        const admitted = await projects.checkout.admit(moved);
         ok(admitted.kind === "existing");
         await withWorkRecordOwner(moved, admitted.identity, async () => {
             equal(await getWorkRecordIndexCollectionName(moved), collection);
@@ -59,12 +59,12 @@ test("accepted linked clones share record identity while unrelated Projects stay
     try {
         const { git } = await import("../git-test-fixture.ts");
         await git(f.root, ["remote", "add", "origin", "https://example.test/shared/project.git"]);
-        await admitProjectIdentity(f.root);
+        await projects.checkout.admit(f.root);
         await git(f.root, ["clone", f.root, clone]);
         await git(clone, ["remote", "set-url", "origin", "https://example.test/shared/project.git"]);
-        const pending = await admitProjectIdentity(clone);
+        const pending = await projects.checkout.admit(clone);
         ok(pending.kind === "pending");
-        const admitted = await admitProjectIdentity(clone, {
+        const admitted = await projects.checkout.admit(clone, {
             choice: { kind: "link", candidates: pending.candidates, projectId: f.identity.projectId },
         });
         ok(admitted.kind === "existing");

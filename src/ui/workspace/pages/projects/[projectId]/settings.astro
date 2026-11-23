@@ -14,7 +14,7 @@ if (!project) Astro.response.status = 404;
         <>
             <div class="workspace-settings-intro">
                 <h1>{project.displayName}</h1>
-                <p>{project.rootLabel} · {project.healthStatus}</p>
+                <p>{project.rootLabel} · {project.status} · {project.healthStatus}</p>
             </div>
             <nav class="tabs workspace-settings-tabs" aria-label="Project settings sections">
                 <a class={!archived ? "active" : undefined} href="?tab=general" aria-current={!archived ? "page" : undefined}>General</a>
@@ -28,7 +28,7 @@ if (!project) Astro.response.status = 404;
             <section class="owner-card project-settings-card">
                 <h2>Maintenance</h2>
                 <div class="workspace-settings-actions">
-                    <button type="button" class="secondary-action" data-project-action={project.projectId} data-action={project.lifecycle === "disabled" ? "enable" : "disable"}>{project.lifecycle === "disabled" ? "Enable" : "Disable"}</button>
+                    <button type="button" class="secondary-action" data-project-action={project.projectId} data-action="set-status" data-project-status={project.status === "inactive" ? "active" : "inactive"}>{project.status === "inactive" ? "Activate" : "Deactivate"}</button>
                     <button type="button" class="secondary-action" data-project-action={project.projectId} data-action="rescan">Full Session rescan</button>
                     <button type="button" class="danger-action" data-project-action={project.projectId} data-action="remove">Remove</button>
                 </div>
@@ -61,7 +61,7 @@ if (!project) Astro.response.status = 404;
                         try {
                             const response = await rwSettingsOwnerFetch('/api/owner/projects/' + encodeURIComponent(button.dataset.projectAction) + '/action', {
                                 method: 'POST',
-                                body: JSON.stringify({ action: button.dataset.action }),
+                                body: JSON.stringify({ action: button.dataset.action, status: button.dataset.projectStatus }),
                             });
                             const data = response.ok ? await response.json() : await response.json().catch(() => ({}));
                             if (!response.ok) {

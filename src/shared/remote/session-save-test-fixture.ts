@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { tmpdir } from "node:os";
 import {
     mkdtemp as fsMkdtemp,
@@ -8,7 +9,6 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { openFileSessionStore } from "../session/file-session-store.ts";
-import { encodeCwdForSessionDir } from "../session/root-session.ts";
 import { startRemoteControlService } from "./control.ts";
 import { type RemoteSessionRequest, sessionDigest } from "./session-protocol.ts";
 
@@ -31,7 +31,7 @@ export async function makeSessionFixture(options: SessionFixtureOptions = {}) {
     for (const path of [project, remoteProject, mount, home]) await fsMkdir(path);
     const cwd = await fsRealpath(project);
     const baseDir = options.homeSessions ? join(home, ".wld", "sessions") : join(root, "sessions");
-    const sessionDir = join(baseDir, encodeCwdForSessionDir(cwd));
+    const sessionDir = join(baseDir, projects.directory.sessionKey(cwd));
     await fsMkdir(sessionDir, { recursive: true });
     const piSessionId = crypto.randomUUID();
     const transcriptPath = join(sessionDir, `2026-01-01T00-00-00-000Z_${piSessionId}.jsonl`);

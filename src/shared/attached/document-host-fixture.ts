@@ -1,8 +1,8 @@
 /** Separate Core server and restricted host processes for the document MCP journey. */
+import { projects } from "@runwield/projects";
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { ok as assert, strictEqual as equal } from "node:assert/strict";
-import { inspectProjectIdentity } from "../project-identity.ts";
 import { readPlanPackage } from "../../plan-store/packages.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { runAttachedMcpServer } from "../../attached/mcp.ts";
@@ -26,7 +26,7 @@ interface RpcResponse {
 }
 const config: HostConfiguration = JSON.parse(process.argv[3]);
 if (process.argv[2] === "core") {
-    const inspected = inspectProjectIdentity(config.root);
+    const inspected = projects.checkout.inspect(config.root);
     assert(inspected.kind === "existing");
     const plan = await readPlanPackage(inspected.identity, { planId: "plan-one" });
     assert(plan.kind === "loaded");

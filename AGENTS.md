@@ -65,9 +65,12 @@ test file its own process, disposable HOME, temporary directory, and
 `MNEMOTECA_DB_PATH`. `bun run ci` includes the full source and Golden portfolio;
 `bun run test:bun` runs the explicit inventory in `scripts/bun-test-files.json`.
 
-Use Bun `^1.4.0` and run `bun run install:locked` before checks. CI and release builds use the exact version in
-`.bun-version` for repeatable artifacts. The install command installs the
-root and docs graphs with separate frozen locks and disabled lifecycle scripts.
+Read `.bun-version` at the Git root of **the worktree you are running in**. It is the single
+source for selecting Bun. Run `./scripts/with-bun.sh run install:locked` before checks and use
+the same launcher for tests, builds, and scripts. It selects the checkout's version even if
+another Bun is on PATH. To upgrade Bun, edit the root `.bun-version`. Refer to that file in
+agent instructions and plans so a saved version number cannot override the checkout.
+Installation uses separate frozen locks for the root and docs dependency graphs and disables lifecycle scripts.
 
 Two rules keep tests safe:
 

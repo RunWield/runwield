@@ -35,7 +35,7 @@ for (const clears of [1, 3]) {
     test(`refresh-time clear retries are bounded and preserve stable Project totals (${clears} clears)`, async () => {
         await withWorkflowMetricsFixture(async ({ projectRoot }) => {
             setSystemTime(new Date("2026-11-02T16:00:00Z"));
-            const other = join(projectRoot, "stable-project");
+            const other = join(dirname(projectRoot), "stable-project");
             const record = async (root: string, tokens: number, cost: number) => {
                 await new ExecutionMetricsRecorder({ projectRoot: root }).recordModelUsage({
                     inputTokens: tokens,

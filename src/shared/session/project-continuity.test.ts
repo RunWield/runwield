@@ -1,3 +1,6 @@
+import { projects } from "@runwield/projects";
+import { createHash } from "node:crypto";
+import { projectPath } from "@runwield/session-files";
 import { test } from "node:test";
 import { deepEqual, equal, ok, rejects, throws } from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
@@ -6,19 +9,18 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { admitProjectIdentity, inspectProjectStorage } from "../project-identity.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { createRootSessionManager, resolveCreatedRootSessionPath, openPersistedRootSession } from "./root-session.ts";
 import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
 import { listRecentResumableSessions } from "./session-resume-list.ts";
-import { lockPath, manifestPath, sessionDirForRoot } from "./file-session-storage.ts";
+import { lockPath, manifestPath, sessionDirForRoot, writeJsonAtomically } from "./file-session-storage.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 
 const repository = defineCommittedGitFixture();
 const storeModule = new URL("./file-session-store.ts", import.meta.url).href;
 const rootModule = new URL("./root-session.ts", import.meta.url).href;
-const identityModule = new URL("../project-identity.ts", import.meta.url).href;
+const identityModule = import.meta.resolve("@runwield/projects");
 const resumeModule = new URL("./session-resume-list.ts", import.meta.url).href;
 const projectionModule = new URL("./session-transcript-projection.ts", import.meta.url).href;
 
@@ -37,9 +39,25 @@ async function withHome(body: (home: string) => Promise<void>) {
     });
 }
 
-async function seed(root: string, text = "Original history", transcriptCwd = root) {
+async function seed(root: string, text = "Original history", transcriptCwd = root, legacy = false) {
     const store = openFileSessionStore();
-    const project = store.ensureRuntimeProject({ root });
+    const sessionDirectory = sessionDirForRoot(store.path, root);
+    const project = legacy
+        ? {
+              projectId: `local-${createHash("sha256").update(root).digest("hex").slice(0, 32)}`,
+              displayName: "Legacy Project",
+              registeredRoot: root,
+              currentRoot: root,
+              lifecycle: "enabled" as const,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              disabledAt: null,
+              removedAt: null,
+              restoredAt: null,
+              relinkedAt: null,
+          }
+        : store.ensureRuntimeProject({ root });
+    if (legacy) writeJsonAtomically(projectPath(sessionDirectory), project);
     const sessionDir = transcriptCwd === root ? undefined : sessionDirForRoot(store.path, root);
     const manager = await createRootSessionManager("new", transcriptCwd, sessionDir);
     manager.appendMessage({ role: "user", timestamp: Date.now(), content: [{ type: "text", text }] });
@@ -101,7 +119,7 @@ for (const kind of ["Git", "non-Git"] as const) {
             try {
                 const saved = await seed(canonicalRoot);
                 const prefix = await readFile(saved.path);
-                equal((await admitProjectIdentity(root)).kind, "existing");
+                equal((await projects.checkout.admit(root)).kind, "existing");
                 const manifest = manifestPath(dirname(saved.path), saved.session.runwieldSessionId);
                 const lock = lockPath(dirname(saved.path), saved.session.runwieldSessionId);
                 const lockInode = (await stat(lock)).ino;
@@ -109,13 +127,13 @@ for (const kind of ["Git", "non-Git"] as const) {
                 const output = await child(
                     moved,
                     `
-                    import { admitProjectIdentity } from ${JSON.stringify(identityModule)};
+                    import { projects } from ${JSON.stringify(identityModule)};
                     import { openFileSessionStore } from ${JSON.stringify(storeModule)};
                     import { listRecentResumableSessions } from ${JSON.stringify(resumeModule)};
                     import { openPersistedRootSession } from ${JSON.stringify(rootModule)};
                     import { captureTranscriptEvidence } from ${JSON.stringify(projectionModule)};
                     const root = ${JSON.stringify(moved)};
-                    const admission = await admitProjectIdentity(root);
+                    const admission = await projects.checkout.admit(root);
                     if (admission.kind !== 'existing') throw Error(JSON.stringify(admission));
                     const store = openFileSessionStore();
                     const listed = await listRecentResumableSessions(root, store);
@@ -177,23 +195,24 @@ test("accepted clones share both original stores while pending and declined clon
         try {
             for (const root of [one, two, three]) await git(source, ["clone", source, root]);
             const first = await seed(one, "First clone");
-            const second = await seed(two, "Second clone");
-            const identity = await admitProjectIdentity(one);
+            const second = await seed(two, "Second clone", two, true);
+            const identity = await projects.checkout.admit(one);
             ok(identity.kind === "existing");
-            const pending = await admitProjectIdentity(two);
+            const pending = await projects.checkout.admit(two);
             ok(pending.kind === "pending");
             const store = openFileSessionStore();
             equal((await listRecentResumableSessions(two, store)).length, 1);
             equal(
-                (await admitProjectIdentity(three, { choice: { kind: "new", candidates: pending.candidates } })).kind,
+                (await projects.checkout.admit(three, { choice: { kind: "new", candidates: pending.candidates } }))
+                    .kind,
                 "existing",
             );
             equal((await listRecentResumableSessions(three, store)).length, 0);
-            const refreshed = await admitProjectIdentity(two);
+            const refreshed = await projects.checkout.admit(two);
             ok(refreshed.kind === "pending");
             equal(
                 (
-                    await admitProjectIdentity(two, {
+                    await projects.checkout.admit(two, {
                         choice: {
                             kind: "link",
                             projectId: identity.identity.projectId,
@@ -243,14 +262,14 @@ test("explicit-ID interactive resume translates accepted linked Session membersh
         try {
             for (const root of [one, two, declined]) await git(source, ["clone", source, root]);
             const first = await seed(one),
-                second = await seed(two);
-            const identity = await admitProjectIdentity(one);
+                second = await seed(two, undefined, two, true);
+            const identity = await projects.checkout.admit(one);
             ok(identity.kind === "existing");
-            const pending = await admitProjectIdentity(two);
+            const pending = await projects.checkout.admit(two);
             ok(pending.kind === "pending");
             equal(
                 (
-                    await admitProjectIdentity(two, {
+                    await projects.checkout.admit(two, {
                         choice: {
                             kind: "link",
                             projectId: identity.identity.projectId,
@@ -260,10 +279,11 @@ test("explicit-ID interactive resume translates accepted linked Session membersh
                 ).kind,
                 "existing",
             );
-            const other = await admitProjectIdentity(declined);
+            const other = await projects.checkout.admit(declined);
             ok(other.kind === "pending");
             equal(
-                (await admitProjectIdentity(declined, { choice: { kind: "new", candidates: other.candidates } })).kind,
+                (await projects.checkout.admit(declined, { choice: { kind: "new", candidates: other.candidates } }))
+                    .kind,
                 "existing",
             );
             for (const resumeSessionId of [first.session.runwieldSessionId, first.session.piSessionId]) {
@@ -298,15 +318,15 @@ test("Sessions created between successive moves resume and settle in the current
         const store = openFileSessionStore();
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
         try {
-            equal((await admitProjectIdentity(root)).kind, "existing");
-            const originalDirectory = inspectProjectStorage(root)[0].sessionDirectory;
+            equal((await projects.checkout.admit(root)).kind, "existing");
+            const originalDirectory = projects.storage.inspect(root)[0].sessionDirectory;
             await rename(root, middle);
-            equal((await admitProjectIdentity(middle)).kind, "existing");
+            equal((await projects.checkout.admit(middle)).kind, "existing");
             const saved = await seed(middle);
             equal(dirname(saved.path), originalDirectory);
             const before = await readFile(saved.path);
             await rename(middle, current);
-            equal((await admitProjectIdentity(current)).kind, "existing");
+            equal((await projects.checkout.admit(current)).kind, "existing");
             const loaded = await runtime.createInteractiveSession({
                 cwd: current,
                 mode: "continue",
@@ -341,7 +361,7 @@ test("an active Session can admit a new worktree without waiting on its unchange
         const store = openFileSessionStore();
         try {
             const saved = await seed(root);
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             await git(root, ["worktree", "add", "--detach", worktree]);
             const proof = store.acquireSessionActivation({
                 runwieldSessionId: saved.session.runwieldSessionId,
@@ -350,7 +370,7 @@ test("an active Session can admit a new worktree without waiting on its unchange
                 ownerProcessKind: "test",
                 expectedGeneration: 0,
             });
-            const admission = admitProjectIdentity(worktree);
+            const admission = projects.checkout.admit(worktree);
             let timer: ReturnType<typeof setTimeout> | undefined;
             try {
                 const result = await Promise.race([
@@ -383,7 +403,7 @@ test("admitting a repair worktree retains the predecessor bundle despite its suc
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
         try {
             const saved = await seed(root);
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             await git(root, ["worktree", "add", "--detach", worktree]);
             const originalLock = lockPath(dirname(saved.path), saved.session.runwieldSessionId);
             const inode = (await stat(originalLock)).ino;
@@ -399,7 +419,7 @@ test("admitting a repair worktree retains the predecessor bundle despite its suc
             });
             const successor = store.getCurrentSessionSegment(saved.session.runwieldSessionId)!;
             ok(await stat(`${successor.transcriptPath}.runwield.json`));
-            equal((await admitProjectIdentity(worktree)).kind, "existing");
+            equal((await projects.checkout.admit(worktree)).kind, "existing");
             equal((await stat(originalLock)).ino, inode);
             await rejects(stat(lockPath(dirname(successor.transcriptPath), saved.session.runwieldSessionId)), /ENOENT/);
             equal(
@@ -424,7 +444,7 @@ test("adoption retains a planning worktree cwd when its Session is stored under 
         try {
             await git(root, ["worktree", "add", "--detach", worktree]);
             const saved = await seed(root, "Planning in a worktree", worktree);
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             const adopted = runtime.adoptManagedSession({ session: saved.session, generation: 0 });
             equal(adopted.cwd, worktree);
             await runtime.rollManagedSessionSegment(adopted.sessionId, {
@@ -448,9 +468,9 @@ test("adoption resolves a moved planning Project without an explicitly selected 
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
         try {
             const saved = await seed(root);
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             await rename(root, moved);
-            equal((await admitProjectIdentity(moved)).kind, "existing");
+            equal((await projects.checkout.admit(moved)).kind, "existing");
             const adopted = runtime.adoptManagedSession({ session: saved.session, generation: 0 });
             equal(adopted.cwd, moved);
             equal((await runtime.renameSession(adopted.sessionId, "Adopted after move")).ok, true);
@@ -473,9 +493,9 @@ test("a moved Session rolls its successor into the bound store and rejects a for
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
         try {
             const saved = await seed(root);
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             await rename(root, moved);
-            equal((await admitProjectIdentity(moved)).kind, "existing");
+            equal((await projects.checkout.admit(moved)).kind, "existing");
             const loaded = await runtime.loadSession({
                 cwd: moved,
                 sessionId: saved.session.piSessionId,
@@ -492,6 +512,7 @@ test("a moved Session rolls its successor into the bound store and rejects a for
             const other = await seed(foreign);
             await rejects(
                 store.validateSuccessorSegmentLocator({
+                    runwieldSessionId: saved.session.runwieldSessionId,
                     projectId: saved.project.projectId,
                     piSessionId: other.session.piSessionId,
                     transcriptPath: other.path,
@@ -518,7 +539,7 @@ test("move admission waits on the original process writer; restart and alias act
             release = join(home, "writer-release");
         try {
             const saved = await seed(root);
-            const admission = await admitProjectIdentity(root);
+            const admission = await projects.checkout.admit(root);
             ok(admission.kind === "existing");
             const recordFile = join(home, ".wld", "projects", admission.identity.projectId, "project.wld.json");
             const before = await readFile(recordFile, "utf8");
@@ -543,10 +564,10 @@ test("move admission waits on the original process writer; restart and alias act
             const interrupted = child(
                 moved,
                 `
-                import { admitProjectIdentity } from ${JSON.stringify(identityModule)};
+                import { projects } from ${JSON.stringify(identityModule)};
                 import { writeFileSync } from 'node:fs';
                 writeFileSync(${JSON.stringify(interruptedReady)}, 'ready');
-                await admitProjectIdentity(${JSON.stringify(moved)});
+                await projects.checkout.admit(${JSON.stringify(moved)});
             `,
                 controller.signal,
             );
@@ -557,7 +578,7 @@ test("move admission waits on the original process writer; restart and alias act
             let admitted = false;
             const entrant = child(
                 moved,
-                `import { admitProjectIdentity } from ${JSON.stringify(identityModule)}; const result = await admitProjectIdentity(${JSON.stringify(moved)}); if(result.kind !== 'existing') throw Error(JSON.stringify(result));`,
+                `import { projects } from ${JSON.stringify(identityModule)}; const result = await projects.checkout.admit(${JSON.stringify(moved)}); if(result.kind !== 'existing') throw Error(JSON.stringify(result));`,
             ).then(() => {
                 admitted = true;
             });
@@ -616,8 +637,8 @@ test("first-child identity metadata adopts old-root storage after a move and rec
         const root = await realpath(await repository.checkout()),
             moved = `${root}-moved`;
         try {
-            const saved = await seed(root);
-            const admitted = await admitProjectIdentity(root);
+            const saved = await seed(root, undefined, root, true);
+            const admitted = await projects.checkout.admit(root);
             ok(admitted.kind === "existing");
             const recordFile = join(home, ".wld", "projects", admitted.identity.projectId, "project.wld.json");
             const record = JSON.parse(await readFile(recordFile, "utf8"));
@@ -625,7 +646,7 @@ test("first-child identity metadata adopts old-root storage after a move and rec
             record.displayName = "Retained personal label";
             await writeFile(recordFile, JSON.stringify(record));
             await rename(root, moved);
-            equal((await admitProjectIdentity(moved)).kind, "existing");
+            equal((await projects.checkout.admit(moved)).kind, "existing");
             const path = manifestPath(dirname(saved.path), saved.session.runwieldSessionId);
             await writeFile(path, "damaged manifest");
             const output = await child(
@@ -648,9 +669,9 @@ test("missing established storage and a reused old root cannot create replacemen
             moved = `${root}-moved`;
         try {
             const saved = await seed(root);
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             await rename(root, moved);
-            equal((await admitProjectIdentity(moved)).kind, "existing");
+            equal((await projects.checkout.admit(moved)).kind, "existing");
             await mkdir(root);
             const store = openFileSessionStore();
             throws(() => store.ensureRuntimeProject({ root }), /another Project identity/);
@@ -674,16 +695,16 @@ test("runtime loading keeps tools in the selected checkout and settles into the 
             moved = `${root}-moved`;
         try {
             const saved = await seed(root);
-            equal((await admitProjectIdentity(root)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
             await rename(root, moved);
             const runtimeModule = new URL("./session-runtime.ts", import.meta.url).href;
             const output = await child(
                 moved,
                 `
-                import { admitProjectIdentity } from ${JSON.stringify(identityModule)};
+                import { projects } from ${JSON.stringify(identityModule)};
                 import { createSessionRuntime } from ${JSON.stringify(runtimeModule)};
                 import { openFileSessionStore } from ${JSON.stringify(storeModule)};
-                await admitProjectIdentity(${JSON.stringify(moved)});
+                await projects.checkout.admit(${JSON.stringify(moved)});
                 const store = openFileSessionStore();
                 const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: 'test' });
                 const loaded = await runtime.loadSession({ cwd: ${JSON.stringify(moved)}, sessionId: ${JSON.stringify(saved.session.piSessionId)}, sessionPath: ${JSON.stringify(saved.path)} });
@@ -757,10 +778,10 @@ test("multi-segment history, archive state, Plan association and sealed bytes su
             store.archiveSession(saved.session.runwieldSessionId, saved.project.projectId);
             const before = store.readSessionManifest(saved.session.runwieldSessionId, saved.project.projectId)!;
             const bytes = await readFile(saved.path);
-            const admitted = await admitProjectIdentity(root);
+            const admitted = await projects.checkout.admit(root);
             ok(admitted.kind === "existing");
             await rename(root, moved);
-            equal((await admitProjectIdentity(moved)).kind, "existing");
+            equal((await projects.checkout.admit(moved)).kind, "existing");
             equal((await listRecentResumableSessions(moved, store)).length, 0);
             const byCore = store.getSessionById(saved.session.runwieldSessionId, admitted.identity.projectId);
             equal(byCore?.projectId, saved.project.projectId);
@@ -787,20 +808,43 @@ test("committed binding reads are passive and corrupt locators cannot redirect h
     await withHome(async (home) => {
         const root = await realpath(await repository.checkout());
         try {
-            const saved = await seed(root);
-            const admitted = await admitProjectIdentity(root);
+            const saved = await seed(root, undefined, root, true);
+            const admitted = await projects.checkout.admit(root);
             ok(admitted.kind === "existing");
+            const canonicalId = admitted.identity.projectId;
+            ok(canonicalId !== saved.project.projectId);
             const recordFile = join(home, ".wld", "projects", admitted.identity.projectId, "project.wld.json");
             const record = await readFile(recordFile, "utf8");
             const before = await snapshot(join(home, ".wld"));
             const store = openFileSessionStore();
-            equal(inspectProjectStorage(root).length, 1);
+            equal(projects.storage.inspect(root).length, 1);
             equal(
                 store.readSessionManifest(saved.session.runwieldSessionId, saved.project.projectId)?.runwieldSessionId,
                 saved.session.runwieldSessionId,
             );
+            equal(
+                store.getSessionById(saved.session.runwieldSessionId, saved.project.projectId)?.projectId,
+                canonicalId,
+            );
+            equal(
+                store.readSessionManifest(saved.session.runwieldSessionId, canonicalId)?.segments[0].projectId,
+                canonicalId,
+            );
+            equal(
+                (await store.listProjectSessions(canonicalId, { catalog: false })).sessions[0].projectId,
+                canonicalId,
+            );
             equal((await listRecentResumableSessions(root, store)).length, 1);
             deepEqual(await snapshot(join(home, ".wld")), before);
+            equal(store.inspectSessionActivation(saved.session.runwieldSessionId).generation?.projectId, canonicalId);
+            const archived = store.archiveSession(saved.session.runwieldSessionId, saved.project.projectId);
+            equal(archived.projectId, canonicalId);
+            const storedManifest = JSON.parse(
+                await readFile(manifestPath(dirname(saved.path), archived.runwieldSessionId), "utf8"),
+            );
+            equal(storedManifest.projectId, canonicalId);
+            equal(storedManifest.generation.projectId, canonicalId);
+            equal(storedManifest.segments[0].projectId, canonicalId);
             const damaged = JSON.parse(record);
             damaged.storageLocators[0].sessionDirectory = join(home, "unrelated-similar-name");
             await writeFile(recordFile, JSON.stringify(damaged));
@@ -834,14 +878,14 @@ test("a cached Session refuses conflicting stable-ID claims in another linked st
         try {
             for (const root of [one, two]) await git(source, ["clone", source, root]);
             const first = await seed(one),
-                second = await seed(two);
-            const admitted = await admitProjectIdentity(one);
+                second = await seed(two, undefined, two, true);
+            const admitted = await projects.checkout.admit(one);
             ok(admitted.kind === "existing");
-            const pending = await admitProjectIdentity(two);
+            const pending = await projects.checkout.admit(two);
             ok(pending.kind === "pending");
             equal(
                 (
-                    await admitProjectIdentity(two, {
+                    await projects.checkout.admit(two, {
                         choice: {
                             kind: "link",
                             candidates: pending.candidates,
@@ -885,22 +929,22 @@ test("linked worktrees share history once, while a retargeted alias and another 
             await git(root, ["worktree", "add", "-b", "continuity-linked", linked]);
             const first = await seed(root),
                 second = await seed(linked);
-            equal((await admitProjectIdentity(root)).kind, "existing");
-            equal((await admitProjectIdentity(linked)).kind, "existing");
+            equal((await projects.checkout.admit(root)).kind, "existing");
+            equal((await projects.checkout.admit(linked)).kind, "existing");
             await symlink(root, alias, "dir");
             const store = openFileSessionStore();
             deepEqual(
                 (await listRecentResumableSessions(alias, store)).map((item) => item.path).sort(),
                 [first.path, second.path].sort(),
             );
-            equal((await admitProjectIdentity(alias)).kind, "existing");
+            equal((await projects.checkout.admit(alias)).kind, "existing");
             equal((await store.listProjectSessions(first.project.projectId, { catalog: false })).sessions.length, 2);
             await rm(alias);
             await symlink(foreign, alias, "dir");
             equal((await listRecentResumableSessions(alias, store)).length, 0);
             await mkdir(otherHome);
             deepEqual(
-                inspectProjectStorage(root, {
+                projects.storage.inspect(root, {
                     context: {
                         executionAccountHome: otherHome,
                         personalOwner: { kind: "execution-account", identity: otherHome },

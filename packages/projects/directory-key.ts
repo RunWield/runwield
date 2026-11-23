@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import { createHash } from "node:crypto";
 /**
- * @module shared/project-directory-key
+ * @module projects/directory-key
  * Legacy path-based storage locator under `~/.wld/`; never a stable Core Project ID.
  *
  * Sessions, execution worktrees, workflow metrics, and Attached Workflow Records all

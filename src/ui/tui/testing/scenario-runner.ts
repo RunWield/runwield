@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import type { PlanFrontMatter } from "../../../plan-store/index.ts";
 import type { ValidationPhaseName } from "../../../shared/workflow/validation-ports.ts";
@@ -540,8 +541,6 @@ import { readGoldenPublishedPlan } from "./published-plan-fixture.ts";
 
 import { withRetainedPlanFixture } from "../../../shared/testing/retained-plan-fixture.ts";
 
-import { inspectProjectIdentity } from "../../../shared/project-identity.ts";
-
 import { captureForegroundProcess } from "../../../shared/captured-process.ts";
 
 import { tmpdir } from "node:os";
@@ -787,7 +786,7 @@ function createGoldenReviewBrowser(
  */
 function findFixturePlanLifecycle(directory: string, expectedStatus: string): FindFixturePlanLifecycleResult {
     if (directory === join(getCwd(), "docs", "plans")) {
-        const owner = inspectProjectIdentity(getCwd());
+        const owner = projects.checkout.inspect(getCwd());
         if (owner.kind === "existing") {
             const canonical = findFixturePlanLifecycle(
                 join(owner.identity.executionAccountHome, ".wld", "projects", owner.identity.projectId, "plans"),

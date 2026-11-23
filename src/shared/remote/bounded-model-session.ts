@@ -33,6 +33,7 @@ import {
     configureRemotePersonalResources,
     personalGlobalRoot,
     remotePersonalResourcesActive,
+    type RemotePersonalResources,
 } from "./personal-resources.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
 import type { RemoteMount } from "./sftp-mount.ts";
@@ -86,6 +87,7 @@ export async function resolveBoundedRemoteModelSelection(
  */
 export async function createBoundedRemoteModelSession(options: {
     mount: RemoteMount;
+    personalOwner?: RemotePersonalResources["personalOwner"];
     connection: RemoteModelConnection;
     cwd: string;
     provider?: string;
@@ -122,6 +124,7 @@ export async function createBoundedRemoteModelSession(options: {
         globalRoot: options.mount.globalRoot,
         agentsRoot: options.mount.agentsRoot,
         packageRoots: options.mount.packageRoots,
+        personalOwner: options.personalOwner,
     });
     configureRemoteSettingsConnection(options.connection);
     const catalog = await fetchRemoteModelCatalog(options.connection);
@@ -147,26 +150,28 @@ export async function createBoundedRemoteModelSession(options: {
                     remoteModel: fallback.model,
                     completeSimpleFn: (model, context, streamOptions) =>
                         runtime.streamSimple(model, context, streamOptions).result(),
-                    onModelStart: async () => {
-                        // Capture consent and identity per request, not when the Session is built.
-                        const recorder = new ExecutionMetricsRecorder({
-                            projectRoot: options.cwd,
-                            sessionId: sessionManager.getSessionId(),
-                            agentName,
-                            dispatchKind: "auxiliary",
-                            userInitiated: false,
-                        });
-                        await recorder.recordExecutionStart();
-                        return {
-                            async finish(observation, outcome) {
-                                try {
-                                    await recorder.recordModelUsage(observation);
-                                } finally {
-                                    await recorder.settleExecution(outcome, "vision_completed");
-                                }
-                            },
-                        };
-                    },
+                    onModelStart: options.personalOwner
+                        ? async () => {
+                              // Capture consent and identity per request.
+                              const recorder = new ExecutionMetricsRecorder({
+                                  projectRoot: options.cwd,
+                                  sessionId: sessionManager.getSessionId(),
+                                  agentName,
+                                  dispatchKind: "auxiliary",
+                                  userInitiated: false,
+                              });
+                              await recorder.recordExecutionStart();
+                              return {
+                                  async finish(observation, outcome) {
+                                      try {
+                                          await recorder.recordModelUsage(observation);
+                                      } finally {
+                                          await recorder.settleExecution(outcome, "vision_completed");
+                                      }
+                                  },
+                              };
+                          }
+                        : undefined,
                 }),
             );
         }

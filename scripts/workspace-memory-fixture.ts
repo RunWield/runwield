@@ -67,7 +67,8 @@ export async function createRendererFixture(root: string, origin: string): Promi
         csrfFactory: () => "memory-csrf",
     });
     const ids = projects.map(
-        (project, index) => store.registerProject({ root: project, displayName: `Memory Project ${index}` }).projectId,
+        (project, index) =>
+            store.projects.register({ root: project, displayName: `Memory Project ${index}` }).projectId,
     );
     const { writeBareSessionTranscript } = await import("../src/testing/bare-session-transcript-fixture.ts");
     const runtimeProject = store.ensureRuntimeProject({ root: projects[0] });

@@ -154,6 +154,12 @@ test("committed execution continuation reloads in one successor and writes one s
     await withRuntimeCommandFixture(
         "execution-segment-resume-",
         async ({ homeDir, projectRoot, setModelResponseFactories }) => {
+            await git(projectRoot, ["init", "-b", "main"]);
+            await git(projectRoot, ["config", "user.email", "test@example.com"]);
+            await git(projectRoot, ["config", "user.name", "RunWield Test"]);
+            await fsWriteFile(`${projectRoot}/README.md`, "fixture\n");
+            await git(projectRoot, ["add", "."]);
+            await git(projectRoot, ["commit", "-m", "fixture: initial project"]);
             const fixture = await makeManagedSessionFixture({
                 home: homeDir,
                 projectRoot,
@@ -161,12 +167,6 @@ test("committed execution continuation reloads in one successor and writes one s
             });
             let handle: ReturnType<typeof fixture.openRuntime> | null = null;
             try {
-                await git(fixture.projectRoot, ["init", "-b", "main"]);
-                await git(fixture.projectRoot, ["config", "user.email", "test@example.com"]);
-                await git(fixture.projectRoot, ["config", "user.name", "RunWield Test"]);
-                await fsWriteFile(`${fixture.projectRoot}/README.md`, "fixture\n");
-                await git(fixture.projectRoot, ["add", "."]);
-                await git(fixture.projectRoot, ["commit", "-m", "fixture: initial project"]);
                 await seedPlan(fixture.projectRoot, "execution-resume", "# Execution Resume\n\nApproved", {
                     planId: "plan-execution-resume",
                     status: "draft",

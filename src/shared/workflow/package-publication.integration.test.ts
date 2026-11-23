@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -153,11 +154,10 @@ for (const remote of [false, true])
 for (const child of [false, true]) {
     test(`non-Git package validation retains in-place proof and Sequence completion ${child}`, async () => {
         const { tmpdir } = await import("node:os");
-        const { admitProjectIdentity } = await import("../project-identity.ts");
         const { rememberNonGitExecutionConsent } = await import("../non-git-execution-consent.ts");
         const root = await fs.realpath(await fs.mkdtemp(join(tmpdir(), "package-in-place-")));
         try {
-            const admitted = await admitProjectIdentity(root);
+            const admitted = await projects.checkout.admit(root);
             ok(admitted.kind === "existing");
             const identity = admitted.identity;
             await rememberNonGitExecutionConsent("featurePlan", root);

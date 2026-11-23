@@ -1,5 +1,5 @@
 import { assertEquals } from "../../testing/assertions.ts";
-import { rmdir } from "node:fs/promises";
+import { realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
@@ -10,7 +10,7 @@ import { openFileSessionStore } from "./file-session-store.ts";
 import { classifyRootSessionLocator, getRunWieldSessionDir } from "./root-session.ts";
 
 async function makeRoot(name: string): Promise<string> {
-    return await mkdtemp(join(tmpdir(), `${name}-`));
+    return await realpath(await mkdtemp(join(tmpdir(), `${name}-`)));
 }
 
 async function writeTranscript(cwd: string, piSessionId: string): Promise<string> {
@@ -57,8 +57,8 @@ test("classifyRootSessionLocator uses the file catalog and returns safe blocked 
             },
         },
         {
-            name: "nested working directory",
-            expected: "nested_project_root",
+            name: "unknown Session ID inside an admitted checkout",
+            expected: "session_path_required",
             run: async () => {
                 const root = await makeRoot("classifier-nested-root");
                 const nested = join(root, "nested");
@@ -128,13 +128,13 @@ test("classifyRootSessionLocator uses the file catalog and returns safe blocked 
         },
         {
             name: "missing Project root",
-            expected: "project_root_unavailable",
+            expected: "historical_project_root",
             run: async () => {
                 const root = await makeRoot("classifier-moved-root");
                 const store = openFileSessionStore();
                 try {
                     store.ensureRuntimeProject({ root });
-                    await rmdir(root);
+                    await rm(root, { recursive: true });
                     return {
                         result: await classifyRootSessionLocator({
                             cwd: root,

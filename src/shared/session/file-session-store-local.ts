@@ -1,10 +1,11 @@
+import { projects } from "@runwield/projects";
+import { sessionStoragePath, sessionTranscriptStoragePath } from "@runwield/session-files";
 import { createInitialSessionManifest } from "./file-session-catalog-manifest.ts";
-import { executionAccountStoragePath } from "../project-identity.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { readFileSync, statSync } from "node:fs";
 import { stat, unlink } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { createFileSessionControl } from "./file-session-control.ts";
 import {
@@ -19,24 +20,23 @@ import {
     ensurePrivateDir,
     ensureProject,
     FileSessionManifestCache,
-    findProject,
     isoNow,
     listManifests,
     listProjectsFromDisk,
     lockPath,
     manifestPath,
-    readJson,
+    readStoredProject,
     recoveryDescriptorPath,
     rootEvidence,
     relatedSessionProjects,
     sessionProjectMatches,
+    sessionProjectView,
     sessionDirForManifestPath,
-    sessionDirForProject,
-    sessionDirForCheckout,
+    sessionDirForSuccessor,
+    type StoredSessionProject,
 } from "./file-session-storage.ts";
 import type {
     CatalogedTranscriptLocator,
-    FileSessionManifest,
     FileSessionStore,
     HeldFileLock,
     LocatedSegmentLineage,
@@ -54,7 +54,8 @@ export { FILE_SESSION_STORE_VERSION } from "./file-session-storage.ts";
  */
 export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions = {}): LocalFileSessionStore {
     requireLocalSessionWriter();
-    const baseDir = executionAccountStoragePath(options.baseDir || getRunWieldSessionsBaseDir());
+    const baseDir = projects.launch.accountStoragePath(options.baseDir || getRunWieldSessionsBaseDir());
+    const storagePath = (path: string) => sessionStoragePath(path, baseDir);
     ensurePrivateDir(baseDir);
     const locks = new Map<string, HeldFileLock>();
     const manifests = new FileSessionManifestCache(baseDir);
@@ -63,15 +64,19 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
         locator: import("./file-session-store-types.ts").EnsureSessionCatalogOptions,
         activationOptions?: import("./file-session-store-types.ts").InitialSessionActivationOptions,
     ) {
-        const project = findProject(baseDir, locator.projectId);
+        const transcriptDir = dirname(storagePath(locator.transcriptPath));
+        const project = relatedSessionProjects(baseDir, locator.projectId).find(
+            (item) => item.sessionDirectory === transcriptDir,
+        );
         if (!project) throw new Error("Session project is unavailable");
-        const sessionDir = sessionDirForProject(baseDir, project);
+        const sessionDir = project.sessionDirectory;
         const safe = await readCatalogSafeRootSessionLocator({
             cwd: locator.transcriptCwd,
             sessionDir,
-            sessionPath: executionAccountStoragePath(locator.transcriptPath),
+            sessionPath: locator.transcriptPath,
         });
-        const catalogLock = openNativeFileLock(catalogLockPath(sessionDir, safe.sessionPath));
+        const transcript = sessionTranscriptStoragePath(safe.sessionPath, baseDir);
+        const catalogLock = openNativeFileLock(catalogLockPath(sessionDir, transcript));
         if (!catalogLock.tryLockSync(true)) {
             catalogLock.close();
             throw new Error("Session migration is already running in another RunWield surface");
@@ -82,7 +87,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                 session = store.findSessionByLocator({ projectId: locator.projectId, piSessionId: safe.piSessionId });
             }
             if (!session) {
-                const lineageResult = readLineage(safe.sessionPath);
+                const lineageResult = readLineage(transcript);
                 if (lineageResult.kind === "malformed") throw new Error(lineageResult.reason);
                 if (lineageResult.kind === "valid") {
                     const lineageManifest = manifests.resolve(
@@ -115,11 +120,10 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
     }
 
     async function listStoredProjectSessions(
-        projectId: string,
+        project: StoredSessionProject | null,
         sessionOptions: import("./file-session-store-types.ts").ListSessionOptions = {},
     ) {
-        const project = store.getProjectById(projectId);
-        if (!project) {
+        if (!project || project.remote) {
             return {
                 sessions: [],
                 diagnostics: [],
@@ -130,7 +134,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                 hasPrevious: false,
             };
         }
-        const sessionDir = sessionDirForProject(baseDir, project);
+        const { projectId, sessionDirectory: sessionDir } = project;
         const diagnostics: Array<{ sessionPath: string; code: string; message: string }> = [];
         if (sessionOptions.catalog !== false) {
             const { locators, diagnostics: locatorDiagnostics } = await listCatalogSafeRootSessionLocators(
@@ -241,8 +245,12 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
             typeof requestedPageSize === "number" && Number.isInteger(requestedPageSize) && requestedPageSize > 0
                 ? Math.min(requestedPageSize, 100)
                 : 30;
-        const listedManifests = listManifests(sessionDir).filter((item) => item.manifest.projectId === projectId);
-        for (const item of listedManifests) manifests.remember(item.path, item.manifest);
+        const listedManifests = listManifests(sessionDir, sessionOptions.catalog === false, project).filter(
+            (item) => item.manifest.projectId === projectId,
+        );
+        if (sessionOptions.catalog !== false) {
+            for (const item of listedManifests) manifests.remember(item.path, item.manifest);
+        }
         const sessions = listedManifests
             .map((item) => catalogedSession(item.manifest))
             .filter(
@@ -281,36 +289,25 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
             }
         },
         ensureRuntimeProject(projectOptions) {
-            const project = ensureProject(
-                baseDir,
-                projectOptions.root,
-                projectOptions.now || options.now,
-                projectOptions.idFactory,
-            );
-            manifests.rememberProject(project);
-            return project;
+            return ensureProject(baseDir, projectOptions.root, projectOptions.now || options.now);
         },
         listSessionProjects() {
-            // Remote locators are storage records, not laptop runtime Projects.
-            return listProjectsFromDisk(baseDir).filter((project) => !project.remote);
+            const local = listProjectsFromDisk(baseDir).filter((project) => !project.remote);
+            return [...new Map(local.map((project) => [project.projectId, sessionProjectView(project)])).values()];
         },
-        listProjects() {
-            return store.listSessionProjects();
-        },
-        getProjectById(projectId) {
-            const project = findProject(baseDir, projectId);
-            if (!project || project.remote) return null;
-            manifests.rememberProject(project);
-            return project;
+        getSessionProjectById(projectId) {
+            const project = relatedSessionProjects(baseDir, projectId).find((item) => !item.remote);
+            return project ? sessionProjectView(project) : null;
         },
         listProjectRootEvidence(projectId) {
-            const project = store.getProjectById(projectId);
+            const project = store.getSessionProjectById(projectId);
             return project ? rootEvidence(project) : [];
         },
         requireSessionProjectRoot(projectId) {
-            const project = store.getProjectById(projectId);
+            const project = store.getSessionProjectById(projectId);
             if (!project) throw new Error("Session project is unavailable");
-            const root = rootEvidence(project)[0]?.enteredRoot ?? project.registeredRoot;
+            const root = rootEvidence(project).find((item) => item.rootState === "current")?.enteredRoot;
+            if (!root) throw new Error("Session project root is unavailable");
             const stat = statSync(root);
             if (!stat.isDirectory()) throw new Error("Session project root is unavailable");
             return root;
@@ -318,11 +315,12 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
         findSessionByLocator(locator) {
             if (locator.transcriptPath) {
                 const found = manifests.findByTranscriptPath(locator.transcriptPath);
-                if (!found || !store.getProjectById(found.manifest.projectId)) return null;
+                if (!found) return null;
+                const project = readStoredProject(baseDir, sessionDirForManifestPath(found.path));
+                if (!project || project.remote || project.projectId !== found.manifest.projectId) return null;
                 const segment = found.manifest.segments.find(
                     (candidate) =>
-                        executionAccountStoragePath(candidate.transcriptPath) ===
-                        executionAccountStoragePath(String(locator.transcriptPath)),
+                        storagePath(candidate.transcriptPath) === storagePath(String(locator.transcriptPath)),
                 );
                 if (!segment) return null;
                 if (locator.projectId && !sessionProjectMatches(baseDir, found.manifest.projectId, locator.projectId))
@@ -330,16 +328,12 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                 if (locator.piSessionId && segment.piSessionId !== locator.piSessionId) return null;
                 return catalogedSession(found.manifest);
             }
-            const projects = store
-                .listSessionProjects()
-                .filter(
-                    (project) =>
-                        !locator.projectId || sessionProjectMatches(baseDir, project.projectId, locator.projectId),
-                );
-            for (const project of projects) {
-                for (const item of listManifests(sessionDirForProject(baseDir, project))) {
+            const sessionProjects = (
+                locator.projectId ? relatedSessionProjects(baseDir, locator.projectId) : listProjectsFromDisk(baseDir)
+            ).filter((project) => !project.remote);
+            for (const project of sessionProjects) {
+                for (const item of listManifests(project.sessionDirectory, false, project)) {
                     if (item.manifest.projectId !== project.projectId) continue;
-                    manifests.rememberProject(project);
                     manifests.remember(item.path, item.manifest);
                     const segment = item.manifest.segments.find(
                         (candidate) => candidate.piSessionId === locator.piSessionId,
@@ -351,19 +345,14 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
         },
         getSessionById(runwieldSessionId, projectId) {
             const found = manifests.resolve(runwieldSessionId, projectId);
-            return found && store.getProjectById(found.manifest.projectId) ? catalogedSession(found.manifest) : null;
+            if (!found) return null;
+            const project = readStoredProject(baseDir, sessionDirForManifestPath(found.path));
+            return project && !project.remote && project.projectId === found.manifest.projectId
+                ? catalogedSession(found.manifest)
+                : null;
         },
         readSessionManifest(runwieldSessionId, projectId) {
-            const project = findProject(baseDir, projectId);
-            if (!project) return null;
-            // Read only the atomic primary manifest. Export must not restore descriptors or recover writers.
-            const found = manifests.readPath(manifestPath(sessionDirForProject(baseDir, project), runwieldSessionId));
-            if (
-                found?.manifest.runwieldSessionId !== runwieldSessionId ||
-                found.manifest.projectId !== project.projectId
-            )
-                return null;
-            return found.manifest;
+            return manifests.resolve(runwieldSessionId, projectId, true)?.manifest ?? null;
         },
         async ensureSessionCatalogRecord(locator) {
             return (await ensureCatalogRecord(locator)).session;
@@ -375,20 +364,16 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
         },
         async listProjectSessions(projectId, sessionOptions = {}) {
             const projects = relatedSessionProjects(baseDir, projectId);
-            if (projects.length <= 1)
-                return listStoredProjectSessions(projects[0]?.projectId ?? projectId, sessionOptions);
+            if (projects.length <= 1) return listStoredProjectSessions(projects[0] ?? null, sessionOptions);
             const listed = await Promise.all(
-                projects.map((project) =>
-                    listStoredProjectSessions(project.projectId, { ...sessionOptions, all: true }),
-                ),
+                projects.map((project) => listStoredProjectSessions(project, { ...sessionOptions, all: true })),
             );
             const diagnostics = listed.flatMap((result) => result.diagnostics);
             const byId = new Map<string, import("./file-session-store-types.ts").CatalogedSession>();
             const conflicts = new Set<string>();
             for (const session of listed.flatMap((result) => result.sessions)) {
                 const prior = byId.get(session.runwieldSessionId);
-                if (prior && (prior.projectId !== session.projectId || prior.transcriptPath !== session.transcriptPath))
-                    conflicts.add(session.runwieldSessionId);
+                if (prior) conflicts.add(session.runwieldSessionId);
                 else byId.set(session.runwieldSessionId, session);
             }
             for (const id of conflicts) {
@@ -458,7 +443,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                 throw new Error("Session is open in another RunWield surface");
             }
             try {
-                const manifest = readJson<FileSessionManifest>(found.path);
+                const manifest = manifests.requirePath(found.path);
                 const current = manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId);
                 if (!current?.sealedAt) throw new Error("Current segment is still writable");
                 const now = isoNow(segmentOptions.now || options.now);
@@ -503,14 +488,14 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                 throw new Error("Session is open in another RunWield surface");
             }
             try {
-                const manifest = readJson<FileSessionManifest>(found.path);
+                const manifest = manifests.requirePath(found.path);
                 const current = manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId);
                 if (!current || current.segmentId !== sealOptions.segmentId || current.sealedAt) {
                     throw new Error("Segment is not current");
                 }
                 const evidence = sealOptions.evidence;
                 if (!evidence) throw new Error("Sealed segment evidence is required");
-                const bytes = readFileSync(current.transcriptPath);
+                const bytes = readFileSync(sessionTranscriptStoragePath(current.transcriptPath, baseDir));
                 if (
                     bytes.byteLength !== evidence.byteLength ||
                     createHash("sha256").update(bytes).digest("hex") !== evidence.digestHex
@@ -531,18 +516,19 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
             }
         },
         async findOrphanRolloverCandidates(orphanOptions) {
-            const known = new Set(
-                store
-                    .listSessionTranscriptSegments(orphanOptions.runwieldSessionId)
-                    .map((segment) => executionAccountStoragePath(segment.transcriptPath)),
-            );
             const found = manifests.resolve(orphanOptions.runwieldSessionId, orphanOptions.projectId);
             if (!found) return [];
-            const sessionDir = sessionDirForManifestPath(found.path);
+            const known = new Set(found.manifest.segments.map((segment) => storagePath(segment.transcriptPath)));
+            const sessionDir = sessionDirForSuccessor(
+                baseDir,
+                found.path,
+                found.manifest.projectId,
+                orphanOptions.transcriptCwd,
+            );
             const { locators } = await listCatalogSafeRootSessionLocators(orphanOptions.transcriptCwd, { sessionDir });
             const candidates = [];
             for (const locator of locators) {
-                if (known.has(resolve(locator.sessionPath))) continue;
+                if (known.has(storagePath(locator.sessionPath))) continue;
                 const lineageResult = readLineage(locator.sessionPath);
                 const parentSegmentId = lineageResult.kind === "valid" ? lineageResult.lineage.parentSegmentId : null;
                 if (
@@ -552,10 +538,11 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                 )
                     continue;
                 const lineage = lineageResult.lineage;
+                const predecessor = found.manifest.segments.find((segment) => segment.segmentId === parentSegmentId);
                 candidates.push({
                     runwieldSessionId: orphanOptions.runwieldSessionId,
-                    projectId: orphanOptions.projectId,
-                    transcriptPath: resolve(locator.sessionPath),
+                    projectId: found.manifest.projectId,
+                    transcriptPath: sessionStoragePath(locator.sessionPath, predecessor?.transcriptPath ?? sessionDir),
                     transcriptCwd: locator.headerCwd,
                     piSessionId: locator.piSessionId,
                     parentSegmentId,
@@ -567,23 +554,24 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
         },
         async inspectSegmentRolloverRecovery(rolloverOptions) {
             const path = rolloverOptions.successorTranscriptPath
-                ? executionAccountStoragePath(rolloverOptions.successorTranscriptPath)
+                ? resolve(rolloverOptions.successorTranscriptPath)
                 : null;
+            const transcript = path ? sessionTranscriptStoragePath(path, baseDir) : null;
             let successorExists = false;
-            if (path) {
+            if (transcript) {
                 try {
-                    await stat(path);
+                    await stat(transcript);
                     successorExists = true;
                 } catch (error) {
                     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                 }
             }
-            if (!path || !successorExists) {
+            if (!transcript || !successorExists) {
                 return { state: "no_op_retry", transcriptPath: path, segmentId: null, reason: "successor_not_created" };
             }
             const committed = store
                 .listSessionTranscriptSegments(rolloverOptions.runwieldSessionId)
-                .find((segment) => executionAccountStoragePath(segment.transcriptPath) === path);
+                .find((segment) => storagePath(segment.transcriptPath) === transcript);
             if (committed) {
                 return {
                     state: "database_ahead",
@@ -592,7 +580,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                     reason: "successor_is_in_manifest_without_matching_generation",
                 };
             }
-            const lineageResult = readLineage(path);
+            const lineageResult = readLineage(transcript);
             return lineageResult.kind === "valid"
                 ? {
                       state: "recoverable_orphan",
@@ -615,7 +603,7 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
                     };
         },
         async discardOrphanRolloverCandidate(orphanOptions) {
-            const path = executionAccountStoragePath(orphanOptions.transcriptPath);
+            const path = sessionTranscriptStoragePath(orphanOptions.transcriptPath, baseDir);
             if (store.findSessionByLocator({ transcriptPath: path })) {
                 throw new Error("Committed Session transcript cannot be discarded");
             }
@@ -634,14 +622,18 @@ export function openLocalFileSessionStore(options: OpenFileSessionStoreOptions =
             }
         },
         async validateSuccessorSegmentLocator(locator) {
-            const project = findProject(baseDir, locator.projectId);
-            if (!project) throw new Error("Session project is unavailable");
+            const found = manifests.resolve(locator.runwieldSessionId, locator.projectId);
+            if (!found) throw new Error("Session identity is unavailable");
+            const sessionDir = sessionDirForSuccessor(
+                baseDir,
+                found.path,
+                found.manifest.projectId,
+                locator.transcriptCwd,
+            );
             return await readCatalogSafeRootSessionLocator({
                 cwd: locator.transcriptCwd,
-                sessionDir: project.remote
-                    ? sessionDirForProject(baseDir, project)
-                    : sessionDirForCheckout(baseDir, locator.transcriptCwd),
-                sessionPath: executionAccountStoragePath(locator.transcriptPath),
+                sessionDir,
+                sessionPath: locator.transcriptPath,
             });
         },
         ...createFileSessionControl({ baseDir, locks, manifests, now: options.now }),

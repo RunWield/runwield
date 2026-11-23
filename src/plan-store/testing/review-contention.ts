@@ -1,7 +1,7 @@
+import { type ProjectIdentity } from "@runwield/projects";
 import { mock } from "bun:test";
 import { existsSync } from "node:fs";
 import { openNativeFileLock } from "../../shared/native-file-lock.ts";
-import type { ProjectIdentity } from "../../shared/project-identity.ts";
 interface ReviewContender {
     identity: ProjectIdentity;
     barrier: string;

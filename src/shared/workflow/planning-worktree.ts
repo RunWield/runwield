@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import {
     PlanningPlanAttributes,
     pathExists,
@@ -31,7 +32,6 @@ import {
     removeWorktreeGitArtifacts,
 } from "../worktree.ts";
 import { runExecutionPreparationTransition } from "../../plan-store/index.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 
 import { enterProjectRuntime, ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
 import { refreshPlanningWorktree } from "./planning-worktree-refresh.ts";
@@ -64,7 +64,7 @@ async function preparePlanningWorktreeForPlanEntered(
     planName: string,
     planAttrs: PlanningPlanAttributes,
 ): Promise<PlanningWorktreeResult> {
-    const projectRoot = resolvePrimaryCheckoutRoot(cwd);
+    const projectRoot = projects.checkout.primaryRoot(cwd);
     const canonicalPlan = hasCanonicalPlanAccess();
     await enterProjectRuntime(projectRoot);
     const planId = typeof planAttrs.planId === "string" ? planAttrs.planId.trim() : "";

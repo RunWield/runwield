@@ -224,7 +224,7 @@ screen/state protocol are reviewable implementation assumptions; they do not cha
 
 ## Verification Plan
 
-Use Bun 1.4.3. Run `bun run install:locked` before checks. Use `bun scripts/run-tests.ts`, never direct `bun test`.
+Use the Bun version in the checkout’s root `.bun-version`. Run `bun run install:locked` before checks. Use `bun scripts/run-tests.ts`, never direct `bun test`.
 
 - Add `src/shared/plan-prototypes.test.ts` and `src/tools/plan-prototype.test.ts`; run
   `bun scripts/run-tests.ts src/shared/plan-prototypes.test.ts src/tools/plan-prototype.test.ts src/plan-store.test.ts`.

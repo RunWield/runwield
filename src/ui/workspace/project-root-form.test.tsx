@@ -2,7 +2,7 @@
 import { importTestBundle } from "../../testing/import-test-bundle.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals } from "../../testing/assertions.ts";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fileURLToPath } from "node:url";
 import { build, stop } from "esbuild";
 import { Window } from "happy-dom";
@@ -347,3 +347,53 @@ for (const projectId of [undefined, "relink-project"]) {
         });
     });
 }
+
+test("Project link submits the selected Project for a matching checkout", async () => {
+    await withRootForm(undefined, async ({ container, inputs, button, status, navigations, send }) => {
+        const firstProjectId = "ce9c50c0-61e3-4e79-ab8a-e13fcfd993cc";
+        const projectId = "8ac4cada-378f-44b1-88d8-3db7bd7b3b8b";
+        const requests = [];
+        globalThis.fetch = (_url, options) => {
+            const request = JSON.parse(options.body);
+            requests.push(request);
+            if (requests.length === 2) return Promise.reject(new TypeError("Response lost"));
+            return Promise.resolve(
+                request.cloneChoice
+                    ? Response.json({ project: { projectId } }, { status: 201 })
+                    : Response.json(
+                          {
+                              code: "project_clone_choice_required",
+                              token: "candidate-token",
+                              candidates: [
+                                  { projectId: firstProjectId, displayName: "First Project" },
+                                  { projectId, displayName: "Second Project" },
+                              ],
+                          },
+                          { status: 409 },
+                      ),
+            );
+        };
+        await send();
+        assertEquals(status.textContent, "This checkout matches an existing Project.");
+        assertEquals(button.disabled, true);
+        const choices = () => [...container.querySelectorAll("fieldset button")];
+        assertEquals(
+            choices()
+                .slice(0, 2)
+                .map((choice) => choice.textContent),
+            ["Link to First Project", "Link to Second Project"],
+        );
+        assertEquals(inputs[0].value, "/entered/project");
+        await act(() => choices()[1].click());
+        assertStringIncludes(status.textContent, "Project link could not be confirmed.");
+        assertEquals(navigations, []);
+        await act(() => choices()[1].click());
+        assertEquals(requests[2], requests[1]);
+        assertEquals(requests[1], {
+            root: "/entered/project",
+            displayName: "Example",
+            cloneChoice: { kind: "link", token: "candidate-token", projectId },
+        });
+        assertEquals(navigations, [{ href: `/projects/${projectId}/settings`, history: "push" }]);
+    });
+});

@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertFalse, assertThrows } from "../../testing/assertions.ts";
 import { DatabaseSync } from "../sqlite.ts";
 import { getLatestOwnerCoordinationSchemaVersion, openOwnerCoordinationDatabase } from "./database.ts";
-import { OWNER_COORDINATION_SCHEMA_V1_SQL, OWNER_COORDINATION_SCHEMA_VERSION } from "./schema.ts";
+import {
+    OWNER_COORDINATION_SCHEMA_V1_SQL,
+    OWNER_COORDINATION_SCHEMA_VERSION,
+} from "@runwield/resources/owner-database";
 
 async function exists(path: string) {
     try {

@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { savePlanDefinition } from "../../plan-store/index.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
@@ -22,7 +23,6 @@ import { isPlannedChangeClassification } from "../../constants.ts";
 import { projectPlanType } from "../project-plan.ts";
 import { isGitRepository } from "../git.ts";
 import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { listPlanExecutionDocuments } from "../../plan-store/index.ts";
 import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.ts";
@@ -334,7 +334,7 @@ export async function ensureEpicBranch(
     options: EnsureEpicBranchOptions = {},
 ): Promise<EpicBranchState> {
     if (!(await isGitRepository(projectRoot))) return { kind: "none", reason: "not_git" };
-    const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
+    const primaryRoot = projects.checkout.primaryRoot(projectRoot);
     const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName);
     const epic = location.plan;
     if (!epic) return { kind: "none", reason: "missing" };

@@ -6,6 +6,7 @@
  * staleness baseline so the Resume Check can tell what moved underneath it.
  */
 
+import { projects } from "@runwield/projects";
 import { CLI_BIN } from "../../constants.ts";
 import { findPlansByParent } from "../../plan-store/index.ts";
 import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
@@ -32,7 +33,6 @@ import { detachPlanExecution } from "../../plan-store/index.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { completeUserVerification } from "./user-verification-completion.ts";
-import { resolvePrimaryCheckoutRoot } from "../../shared/project-checkout.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
@@ -221,7 +221,7 @@ export async function markPlanUserVerified({
     uiAPI,
     session,
 }: MarkPlanUserVerifiedOptions): Promise<boolean> {
-    const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
+    const primaryRoot = projects.checkout.primaryRoot(projectRoot);
     if (!isUserVerifiableStatus(plan.attrs.status)) {
         uiAPI.appendSystemMessage(
             `Plans with status ${plan.attrs.status} must be re-opened before User Verification.`,

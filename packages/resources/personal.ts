@@ -5,15 +5,22 @@ import { platform } from "node:process";
 import { dirname, isAbsolute, join, normalize, relative } from "node:path";
 import { getHomeDir } from "./home.ts";
 
+export interface ProjectPersonalOwner {
+    kind: "execution-account" | "managed-remote";
+    /** Explicit laptop account identity for managed launches; account home for ordinary launches. */
+    identity: string;
+}
+
 /** Resource roots for one explicitly activated remote connection. Never set during connection-only startup. */
-export interface RemotePersonalResourceMounts {
+export interface RemotePersonalResources {
     globalRoot: string;
     agentsRoot?: string;
     /** Only laptop-verified installed global package roots; never resolve from the remote profile. */
     packageRoots?: Record<string, string>;
+    personalOwner?: ProjectPersonalOwner;
 }
 
-let active: Readonly<RemotePersonalResourceMounts> | undefined;
+let active: Readonly<RemotePersonalResources> | undefined;
 
 interface RootIdentity {
     dev: bigint;
@@ -70,28 +77,33 @@ async function assertRootIdentities(roots: string[], resource: string, path: str
     }
 }
 
-/** Call only in the remote process after the connection supplies a verified mount. */
-export function activatePersonalResourceMounts(roots: RemotePersonalResourceMounts): void {
+/** Call only in the remote process after the connection supplies verified mounts and owner context. */
+export function configureRemotePersonalResources(resources: RemotePersonalResources): void {
+    const { personalOwner } = resources;
+    if (personalOwner && (personalOwner.kind !== "managed-remote" || !personalOwner.identity)) {
+        throw new Error("Managed remote Project owner identity is required");
+    }
     if (
-        !isAbsolute(roots.globalRoot) ||
-        (roots.agentsRoot && !isAbsolute(roots.agentsRoot)) ||
-        Object.values(roots.packageRoots ?? {}).some((path) => !isAbsolute(path))
+        !isAbsolute(resources.globalRoot) ||
+        (resources.agentsRoot && !isAbsolute(resources.agentsRoot)) ||
+        Object.values(resources.packageRoots ?? {}).some((path) => !isAbsolute(path))
     ) {
         throw new Error("Remote personal resource roots must be absolute");
     }
     if (active) throw new Error("Remote personal resources are already configured");
     const configured = Object.freeze({
-        globalRoot: normalize(roots.globalRoot),
-        ...(roots.agentsRoot ? { agentsRoot: normalize(roots.agentsRoot) } : {}),
-        ...(roots.packageRoots
+        globalRoot: normalize(resources.globalRoot),
+        ...(resources.agentsRoot ? { agentsRoot: normalize(resources.agentsRoot) } : {}),
+        ...(resources.packageRoots
             ? {
                   packageRoots: Object.freeze(
                       Object.fromEntries(
-                          Object.entries(roots.packageRoots).map(([source, path]) => [source, normalize(path)]),
+                          Object.entries(resources.packageRoots).map(([source, path]) => [source, normalize(path)]),
                       ),
                   ),
               }
             : {}),
+        ...(personalOwner ? { personalOwner: Object.freeze({ ...personalOwner }) } : {}),
     });
     const identities = new Map<string, RootIdentity>();
     for (const root of [
@@ -110,9 +122,13 @@ export function activatePersonalResourceMounts(roots: RemotePersonalResourceMoun
     active = configured;
 }
 
-/** Verify that all mounts for the activated personal resources still have their original identity. */
-export function assertPersonalResourceMountsSync(resource: string): void {
-    if (active) assertRootIdentitiesSync(mountedRoots(), resource, active.globalRoot);
+/** Owner context comes from verified remote activation. */
+export function remoteProjectOwner(): ProjectPersonalOwner | undefined {
+    if (!active) return undefined;
+    assertRootIdentitiesSync(mountedRoots(), "Project owner", active.globalRoot);
+    if (!active.personalOwner)
+        throw new Error("Managed remote Project identity requires explicit laptop owner context");
+    return active.personalOwner;
 }
 
 export function personalPackageRoots(): Readonly<Record<string, string>> {

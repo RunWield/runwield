@@ -83,7 +83,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Verification Plan
 
-Use Bun 1.4.3 and run `bun run install:locked` before checks. Add the history cases to the existing focused files below and run the isolated suite:
+Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Add the history cases to the existing focused files below and run the isolated suite:
 
 ```sh
 bun scripts/run-tests.js src/plan-store/operations.test.ts src/plan-store/remote-operations.test.ts src/cmd/plans/index.test.ts src/cmd/plans/archive.test.ts src/shared/remote/project-store-protocol.test.ts

@@ -1,5 +1,6 @@
 /** Git worktree helpers for isolated Plan execution. */
 
+import { projects } from "@runwield/projects";
 import { hasCanonicalPlanAccess } from "../plan-store/index.ts";
 import { isMissingExecutableError } from "./foreground-process.ts";
 import { captureForegroundProcess } from "./captured-process.ts";
@@ -14,7 +15,6 @@ import {
 
 import { basename, dirname, join, resolve } from "node:path";
 import { getHomeDir, RUNWIELD_DIR_NAME, WORKTREE_BRANCH_PREFIX } from "../constants.ts";
-import { encodeCwdForSessionDir } from "./project-directory-key.ts";
 import {
     captureWorktreeProjectContext,
     isTransferredProjectContext,
@@ -922,7 +922,7 @@ export async function assertPublicationCandidateContainsTarget(
 export function resolveWorktreeParent(projectRoot: string, worktreeRoot: string | undefined): string {
     if (worktreeRoot) return worktreeRoot;
     const homeDir = getHomeDir();
-    if (homeDir) return join(homeDir, RUNWIELD_DIR_NAME, "worktrees", encodeCwdForSessionDir(projectRoot));
+    if (homeDir) return join(homeDir, RUNWIELD_DIR_NAME, "worktrees", projects.directory.sessionKey(projectRoot));
     throw new Error("An accessible account home is required to create an execution worktree.");
 }
 

@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { open as fsOpen } from "node:fs/promises";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
@@ -17,7 +18,6 @@ import { type MetricsExportFixture, withMetricsExportFixture } from "../../testi
 import { withCollidingMetricProjects } from "../../testing/workflow-metrics-fixture.ts";
 import { setCustomSetting } from "../settings.ts";
 import { getWorkflowMetricsFilePath, hashMetricCwd } from "./metrics.ts";
-import { encodeCwdForSessionDir } from "../session/root-session.ts";
 import { metricsExportReference } from "./metrics-export-record.ts";
 import {
     readMetricsExportGrants,
@@ -204,7 +204,7 @@ test(
 test("R2-1: a grant for a-b never exports a/b measurements", async () => {
     await withMetricsExportFixture(async (f) => {
         await withCollidingMetricProjects(async (roots) => {
-            assertEquals(encodeCwdForSessionDir(roots[0]), encodeCwdForSessionDir(roots[1]));
+            assertEquals(projects.directory.sessionKey(roots[0]), projects.directory.sessionKey(roots[1]));
             for (const root of roots) {
                 await fsMkdir(root, { recursive: true });
                 await setCustomSetting("workflowMetrics", true, "project", root);
@@ -230,7 +230,7 @@ test("R2-1: a busy legacy adopter defers export and restart retries without losi
         const path = getWorkflowMetricsFilePath(f.project);
         const bytes = await fsReadFile(path);
         const state = await fsReadFile(join(dirname(path), "state.json"));
-        const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(f.project));
+        const legacy = join(f.home, ".wld", "workflow-metrics", projects.directory.sessionKey(f.project));
         await fsRename(dirname(path), legacy);
         const guard = openNativeFileLock(join(legacy, ".journal.guard"));
         assert(guard.tryLockSync(true));
@@ -282,7 +282,7 @@ test("R2-1: legacy rename retains the grant offset through restart without a dup
         const path = getWorkflowMetricsFilePath(f.project);
         const bytes = await fsReadFile(path);
         const state = await fsReadFile(join(dirname(path), "state.json"));
-        const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(f.project));
+        const legacy = join(f.home, ".wld", "workflow-metrics", projects.directory.sessionKey(f.project));
         assert(dirname(path) !== legacy, "canonical history must not retain its lossy directory name");
         await fsRename(dirname(path), legacy);
         for (const result of await Promise.all([startCycle(f), startCycle(f)].map(collectProcessOutput))) {
@@ -306,13 +306,13 @@ test("R2-1: legacy rename retains the grant offset through restart without a dup
 test("R2-1: collided legacy grants exclude copied rows and export only fresh observations", async () => {
     await withMetricsExportFixture(async (f) => {
         await withCollidingMetricProjects(async (roots) => {
-            assertEquals(encodeCwdForSessionDir(roots[0]), encodeCwdForSessionDir(roots[1]));
+            assertEquals(projects.directory.sessionKey(roots[0]), projects.directory.sessionKey(roots[1]));
             for (const root of roots) {
                 await fsMkdir(root, { recursive: true });
                 await setCustomSetting("workflowMetrics", true, "project", root);
             }
             const grant = await f.grant("/accept", roots);
-            const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(roots[0]));
+            const legacy = join(f.home, ".wld", "workflow-metrics", projects.directory.sessionKey(roots[0]));
             for (const root of roots) {
                 const directory = dirname(getWorkflowMetricsFilePath(root));
                 if (directory !== legacy) await fsRm(directory, { recursive: true });
@@ -392,7 +392,13 @@ test("R2-1: clear finds live delivery evidence written with a legacy journal ref
             const item = [...readMetricsExportLedger("fixture").values()][0];
             const alias = `${f.project}-alias`;
             await fsSymlink(f.project, alias, process.platform === "win32" ? "junction" : "dir");
-            const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(alias), "metrics.jsonl");
+            const legacy = join(
+                f.home,
+                ".wld",
+                "workflow-metrics",
+                projects.directory.sessionKey(alias),
+                "metrics.jsonl",
+            );
             await fsMkdir(dirname(legacy), { recursive: true });
             await fsWriteFile(legacy, await fsReadFile(getWorkflowMetricsFilePath(f.project)));
             appendMetricsExportLedger("fixture", {
@@ -467,7 +473,7 @@ test("collision adoption fences H0 grants after a legacy clear and preserves lat
             await f.record("execution_started", "copied", roots[0]);
             await f.record("model_usage", "copied", roots[0]);
             const path = getWorkflowMetricsFilePath(roots[0]);
-            const legacy = join(f.home, ".wld", "workflow-metrics", encodeCwdForSessionDir(roots[0]));
+            const legacy = join(f.home, ".wld", "workflow-metrics", projects.directory.sessionKey(roots[0]));
             await fsRename(dirname(path), legacy);
             await fsWriteFile(
                 join(legacy, "metrics.jsonl"),

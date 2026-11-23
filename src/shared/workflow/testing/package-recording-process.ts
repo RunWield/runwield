@@ -1,4 +1,4 @@
-import { requireProjectCheckout } from "../../project-identity.ts";
+import { projects } from "@runwield/projects";
 /** Fresh process exercises actual validation with external Recorder and index transports. */
 import fs from "node:fs";
 import promises from "node:fs/promises";
@@ -85,13 +85,13 @@ const { continueHostTurnValidation } = await import("../validation-host-turn.ts"
 const current = await readPlanPackage(config.selection.identity, { planId: config.selection.planId });
 if (current.kind !== "loaded") throw new Error(current.message);
 await withPackageWorkflow(
-    requireProjectCheckout(config.selection.identity).checkoutRoot,
+    projects.home.requireCheckout(config.selection.identity).checkoutRoot,
     { ...config.selection, expectedRevision: current.metadata.revision },
     async () => {
         let resume = config.resume;
         for (let step = 0; step < 5; step++) {
             const result = await continueHostTurnValidation({
-                projectRoot: requireProjectCheckout(config.selection.identity).checkoutRoot,
+                projectRoot: projects.home.requireCheckout(config.selection.identity).checkoutRoot,
                 planName: current.metadata.name,
                 resume,
             });

@@ -1,9 +1,11 @@
 import { writeFileSync } from "node:fs";
-import { getCwd } from "../../constants.ts";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { projects, ProjectIdentityEntryRequired } from "@runwield/projects";
 import { test } from "node:test";
 import { assertEquals, assertArrayIncludes } from "../../testing/assertions.ts";
 import { match as assertMatch } from "node:assert/strict";
-import { basename } from "node:path";
+import { join } from "node:path";
 import mnemotecaExtension from "./index.ts";
 import type {
     ExtensionContext,
@@ -53,6 +55,24 @@ interface FixtureExtensionAPI {
 
 type FixtureExtensionRegistration = (host: FixtureExtensionAPI) => void;
 
+let projectRoot: string;
+let projectId: string;
+
+async function admit(root: string): Promise<string> {
+    const result = await projects.checkout.admit(root);
+    if (result.kind !== "existing") throw new ProjectIdentityEntryRequired(result);
+    return result.identity.projectId;
+}
+
+test.before(async () => {
+    projectRoot = await mkdtemp(join(tmpdir(), "mnemoteca-extension-"));
+    projectId = await admit(projectRoot);
+});
+
+test.after(async () => {
+    await rm(projectRoot, { recursive: true });
+});
+
 function setup(execImpl: FixtureExec) {
     const handlers = new Map<string, RegisteredHandler>();
     const tools: RegisteredTool[] = [];
@@ -73,13 +93,20 @@ function setup(execImpl: FixtureExec) {
 
     (mnemotecaExtension as FixtureExtensionRegistration)(pi);
 
+    const startSession = (cwd: string) => {
+        const handler = handlers.get("session_start") as SessionStartHandler | undefined;
+        if (!handler) throw new Error("session_start handler was not registered");
+        handler({ type: "session_start" } as SessionStartEvent, { cwd } as ExtensionContext);
+    };
+    startSession(projectRoot);
+
     const getTool = (name: string) => {
         const tool = tools.find((registeredTool) => registeredTool.name === name);
         if (!tool) throw new Error(`Tool not found in test setup: ${name}`);
         return tool;
     };
 
-    return { handlers, tools, calls, getTool };
+    return { tools, calls, getTool, startSession };
 }
 
 async function executeTool(tool: RegisteredTool, params: MemoryParams) {
@@ -108,14 +135,12 @@ test("memory recall searches both scopes and escapes quotes", async () => {
     assertEquals(result.details, params);
     assertEquals(
         firstText(result),
-        `Project memories (${basename(
-            getCwd(),
-        )}) — these take precedence over global memories:\nfound memory\n\nGlobal memories (cross-project defaults):\nglobal hit`,
+        `Project memories (${projectId}) — these take precedence over global memories:\nfound memory\n\nGlobal memories (cross-project defaults):\nglobal hit`,
     );
     assertArrayIncludes(
         calls.map((call) => call.args.join(" ")),
         [
-            ["search", "--name", basename(getCwd()), "--format", "plain", '"he said ""hello"""'].join(" "),
+            ["search", "--name", projectId, "--format", "plain", '"he said ""hello"""'].join(" "),
             ["search", "--global", "--format", "plain", '"he said ""hello"""'].join(" "),
         ],
     );
@@ -142,7 +167,7 @@ test("memory stores project memory with optional core tag", async () => {
     assertEquals(result.details, params);
     assertEquals(firstText(result), "stored");
     assertEquals(result.callMessage, "Storing project memory:\n\nUse deno task ci");
-    assertEquals(calls.at(-1)?.args, ["add", "--name", basename(getCwd()), "--tag", "core", "Use deno task ci"]);
+    assertEquals(calls.at(-1)?.args, ["add", "--name", projectId, "--tag", "core", "Use deno task ci"]);
 });
 
 test("memory initializes global storage then adds memory", async () => {
@@ -192,4 +217,27 @@ test("memory delete checks the requested scope before deleting by id", async () 
     assertEquals(result.details, params);
     assertEquals(firstText(result), "Memory deleted.");
     assertEquals(calls.at(-1)?.args, ["delete", "42"]);
+});
+
+test("memory switches collections when session startup changes the working directory", async () => {
+    const otherRoot = await mkdtemp(join(tmpdir(), "mnemoteca-extension-other-"));
+    try {
+        const otherId = await admit(otherRoot);
+        const { calls, getTool, startSession } = setup(() => ({ code: 0, stdout: "", stderr: "" }));
+        const tool = getTool("memory");
+        await executeTool(tool, { action: "store", content: "First Project" });
+        startSession(otherRoot);
+        await executeTool(tool, { action: "store", content: "Second Project" });
+        assertEquals(
+            calls.map(({ opts, args }) => [opts.cwd, args.slice(0, 3)]),
+            [
+                [projectRoot, ["init", "--name", projectId]],
+                [projectRoot, ["add", "--name", projectId]],
+                [otherRoot, ["init", "--name", otherId]],
+                [otherRoot, ["add", "--name", otherId]],
+            ],
+        );
+    } finally {
+        await rm(otherRoot, { recursive: true });
+    }
 });

@@ -1,8 +1,7 @@
 /** Retained execution ownership is separate from canonical Plan catalog membership. */
+import { projects, type HomeProjectOwner } from "@runwield/projects";
 import { join, dirname } from "node:path";
 import fs from "node:fs/promises";
-import type { HomeProjectOwner } from "../shared/project-identity.ts";
-import { assertProjectStoreIdentity } from "../shared/project-identity.ts";
 import type { ManagedRuntimeTransfer } from "../shared/project-runtime-managed.ts";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
 import { operationHash } from "./operation-receipts.ts";
@@ -29,7 +28,7 @@ interface RetainedExecutionBinding extends Omit<RetainedManagedExecution, "contr
     transferId: string;
 }
 function root(owner: HomeProjectOwner): string {
-    assertProjectStoreIdentity(owner);
+    projects.home.assertStoreIdentity(owner);
     return join(
         owner.executionAccountHome,
         ".wld",

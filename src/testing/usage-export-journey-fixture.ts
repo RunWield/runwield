@@ -229,7 +229,7 @@ export async function journeyRows(root: string): Promise<MetricsJournalRow[]> {
 /** Pair with the real owner API on each host, including after a fresh-process restart. */
 export async function readJourneyReport(home: string, root: string): Promise<OwnerUsageReport> {
     const store = openOwnerCoordinationStore({ dbPath: join(home, "journey-owner.sqlite3") });
-    store.registerProject({ root, displayName: "Journey" });
+    store.projects.register({ root, displayName: "Journey" });
     const origin = "http://127.0.0.1:8787";
     const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
     try {

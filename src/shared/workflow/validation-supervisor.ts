@@ -1,3 +1,4 @@
+import { projects } from "@runwield/projects";
 import { planControllerRoot } from "../../plan-store/index.ts";
 import { requiresPlanWorkflow } from "../../plan-store/index.ts";
 import { savePlanValidationCheckpoint } from "../../plan-store/index.ts";
@@ -33,7 +34,6 @@ import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { claimReviewFixes, renderOpenItems } from "./review-ledger.ts";
 import { PLAN_STATUSES } from "./plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import {
     sameHostIdentity,
     ValidationHostRejected,
@@ -447,7 +447,10 @@ export async function runValidationAttempt(args: RunValidationAttemptArgs): Prom
     if (requiresPlanWorkflow(args.projectRoot))
         return await withLocalPlanWorkflow(args.projectRoot, args.planName, () => runValidationAttempt(args));
     await preparePlanValidationInput(args.projectRoot, args.planName);
-    return await continueValidationAttempt({ ...args, projectRoot: resolvePrimaryCheckoutRoot(args.projectRoot) }, 0);
+    return await continueValidationAttempt(
+        { ...args, projectRoot: projects.checkout.primaryRoot(args.projectRoot) },
+        0,
+    );
 }
 
 async function continueValidationAttempt(

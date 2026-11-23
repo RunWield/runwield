@@ -368,6 +368,30 @@ for (const tampered of [false, true]) {
     });
 }
 
+test("export refuses another Session's primary manifest in the requested bundle", async () => {
+    await withExportHome(async (home, cwd) => {
+        const fixture = await createExportFixture(home, cwd);
+        try {
+            const saved = fixture.store.readSessionManifest(
+                fixture.session.runwieldSessionId,
+                fixture.session.projectId,
+            );
+            assert(saved);
+            const primary = (await snapshotSessionFiles(home)).find((file) => file.path.endsWith("/manifest.json"));
+            assert(primary);
+            const path = join(home, ".wld", "sessions", primary.path);
+            await writeFile(path, JSON.stringify({ ...saved, runwieldSessionId: crypto.randomUUID() }));
+            equal(
+                fixture.store.readSessionManifest(fixture.session.runwieldSessionId, fixture.session.projectId),
+                null,
+            );
+            await rejects(fixture.runtime.readSessionExport(fixture.sessionId));
+        } finally {
+            await closeFixture(fixture);
+        }
+    });
+});
+
 test("export does not restore a missing primary Manifest from its recovery descriptors", async () => {
     await withExportHome(async (home, cwd) => {
         const fixture = await createExportFixture(home, cwd);

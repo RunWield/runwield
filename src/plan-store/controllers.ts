@@ -1,3 +1,4 @@
+import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import {
     managedPersonalStoreActive,
     currentManagedRetainedExecution,
@@ -15,7 +16,6 @@ import {
     updatePackageWorkflowMetadata,
 } from "./workflows.ts";
 import { checkedPlanPackageControllerDirectory, type PackageControllerReference } from "./packages.ts";
-import type { ProjectStoreIdentity as ProjectIdentity } from "../shared/project-identity.ts";
 import { recoverWindowsRename } from "../shared/native-file-replace-windows.ts";
 import { platform } from "node:process";
 import { open as fsOpen } from "node:fs/promises";
@@ -33,7 +33,6 @@ import {
 /** File-backed controller state shared by all worktrees of one project. */
 import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import {
     enterProjectRuntime,
     checkedProjectRuntimeLayout,
@@ -141,7 +140,7 @@ function selectedRoot(cwd: string): string {
 }
 
 function projectRoot(cwd: string): string {
-    return canonicalPath(resolvePrimaryCheckoutRoot(selectedRoot(cwd)));
+    return canonicalPath(projects.checkout.primaryRoot(selectedRoot(cwd)));
 }
 
 export function controllerRecordPath(cwd: string, identity: WorkflowIdentity): string {

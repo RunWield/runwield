@@ -3,19 +3,23 @@
  * Durable paths, Project identity, and atomic manifest persistence.
  */
 
+import { projects, type ProjectSessionStorageBinding } from "@runwield/projects";
+import {
+    FILE_SESSION_STORE_VERSION,
+    listSessionManifestFiles,
+    manifestPath,
+    metadataDir,
+    projectPath,
+    readRecoveryDescriptors,
+    recoveryDescriptorPath,
+    sessionStoragePath,
+    sessionTranscriptStoragePath,
+} from "@runwield/session-files";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync, realpathSync, renameSync, statSync } from "node:fs";
 import { ensurePrivateDir, writeJsonAtomically } from "../private-json-file.ts";
 export { ensurePrivateDir, writeJsonAtomically, writeTextAtomically } from "../private-json-file.ts";
-import {
-    assertUnclaimedSessionRoot,
-    establishProjectSessionStorage,
-    executionAccountStoragePath,
-    inspectProjectStorage,
-    inspectSessionProjectRoots,
-} from "../project-identity.ts";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import type {
     FileSessionManifest,
     FileSessionProject,
@@ -23,17 +27,16 @@ import type {
 } from "./file-session-store-types.ts";
 import type { RemoteHostIdentity, RemoteTarget } from "../remote/target.ts";
 
-export const FILE_SESSION_STORE_VERSION = 1;
-const FILE_SESSION_METADATA_DIR = ".runwield";
-const FILE_SESSION_BUNDLES_DIR = "session-bundles";
+export {
+    bundleDir,
+    FILE_SESSION_STORE_VERSION,
+    lockPath,
+    manifestPath,
+    recoveryDescriptorPath,
+} from "@runwield/session-files";
 
 export function isoNow(now?: () => string): string {
     return now ? now() : new Date().toISOString();
-}
-
-function deterministicProjectId(root: string): string {
-    const digest = createHash("sha256").update(root).digest("hex");
-    return `local-${digest.slice(0, 32)}`;
 }
 
 export function readJson<Value>(path: string): Value {
@@ -48,30 +51,6 @@ export function pathExists(path: string): boolean {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
-}
-
-function metadataDir(sessionDir: string): string {
-    return join(sessionDir, FILE_SESSION_METADATA_DIR);
-}
-
-function projectPath(sessionDir: string): string {
-    return join(metadataDir(sessionDir), "project.json");
-}
-
-function bundlesDir(sessionDir: string): string {
-    return join(metadataDir(sessionDir), FILE_SESSION_BUNDLES_DIR);
-}
-
-export function bundleDir(sessionDir: string, runwieldSessionId: string): string {
-    return join(bundlesDir(sessionDir), runwieldSessionId);
-}
-
-export function manifestPath(sessionDir: string, runwieldSessionId: string): string {
-    return join(bundleDir(sessionDir, runwieldSessionId), "manifest.json");
-}
-
-export function lockPath(sessionDir: string, runwieldSessionId: string): string {
-    return join(bundleDir(sessionDir, runwieldSessionId), "session.lock");
 }
 
 export function catalogLockPath(sessionDir: string, transcriptPath: string): string {
@@ -89,22 +68,22 @@ export function sessionDirForRoot(baseDir: string, root: string): string {
     } catch {
         // A not-yet-created root still gets a stable absolute locator.
     }
-    return join(baseDir, encodeCwdForSessionDir(canonicalRoot));
+    return join(baseDir, projects.directory.sessionKey(canonicalRoot));
 }
 
 /** Current checkout writes and successor validation share the admitted storage selection. */
 export function sessionDirForCheckout(baseDir: string, root: string): string {
-    const binding = inspectProjectStorage(root).find(
-        (item) => dirname(item.sessionDirectory) === executionAccountStoragePath(baseDir),
-    );
-    if (binding) return binding.sessionDirectory;
+    const binding = projects.storage
+        .inspect(root)
+        .find((item) => dirname(sessionStoragePath(item.sessionDirectory, baseDir)) === resolve(baseDir));
+    if (binding) return sessionStoragePath(binding.sessionDirectory, baseDir);
     let canonicalRoot = resolve(root);
     try {
         canonicalRoot = realpathSync.native(canonicalRoot);
     } catch {
         // A removed execution checkout retains its historical absolute locator.
     }
-    assertUnclaimedSessionRoot(canonicalRoot);
+    projects.storage.assertUnclaimedSessionRoot(canonicalRoot);
     return sessionDirForRoot(baseDir, canonicalRoot);
 }
 
@@ -112,76 +91,92 @@ export function sessionDirForManifestPath(path: string): string {
     return dirname(dirname(dirname(dirname(path))));
 }
 
-export function ensureProject(
+export interface StoredSessionProject extends FileSessionProject {
+    legacyProjectId?: string;
+    sessionDirectory: string;
+}
+
+export function readStoredProject(
     baseDir: string,
-    root: string,
-    now?: () => string,
-    idFactory?: () => string,
-): FileSessionProject {
+    sessionDir: string,
+    bindings?: ProjectSessionStorageBinding[],
+): StoredSessionProject | null {
+    const path = projectPath(sessionDir);
+    if (!pathExists(path)) return null;
+    const saved = readJson<FileSessionProject>(path);
+    const ids = saved.remote
+        ? [saved.remote.binding?.projectId ?? saved.projectId]
+        : (bindings ?? projects.storage.sessionBindings())
+              .filter(
+                  (binding) =>
+                      sessionStoragePath(binding.sessionDirectory, baseDir) === sessionDir &&
+                      (saved.projectId === binding.sessionProjectId || saved.projectId === binding.projectId),
+              )
+              .map((binding) => binding.projectId);
+    if (new Set(ids).size > 1) throw new Error("Conflicting Project identity claims for Session storage");
+    const projectId = ids[0] ?? saved.projectId;
+    const legacyProjectId = saved.legacyProjectId ?? (projectId !== saved.projectId ? saved.projectId : undefined);
+    return { ...saved, projectId, ...(legacyProjectId ? { legacyProjectId } : {}), sessionDirectory: sessionDir };
+}
+
+/** Remote transcripts stay with their Session bundle. Local successors can follow the execution checkout. */
+export function sessionDirForSuccessor(
+    baseDir: string,
+    manifestPath: string,
+    projectId: string,
+    transcriptCwd: string,
+): string {
+    const sessionDir = sessionDirForManifestPath(manifestPath);
+    const project = readStoredProject(baseDir, sessionDir);
+    if (!project || project.projectId !== projectId) throw new Error("Session project is unavailable");
+    if (project.remote) return sessionDir;
+    return sessionDirForCheckout(baseDir, transcriptCwd);
+}
+
+export function sessionProjectView({
+    sessionDirectory: _sessionDirectory,
+    legacyProjectId: _legacyProjectId,
+    ...project
+}: StoredSessionProject): FileSessionProject {
+    return project;
+}
+
+export function ensureProject(baseDir: string, root: string, now?: () => string): FileSessionProject {
     if (!root || !isAbsolute(root)) throw new Error("Project root must be absolute");
     const enteredRoot = resolve(root);
-    const stat = statSync(enteredRoot);
-    if (!stat.isDirectory()) throw new Error("Project root must be a directory");
+    if (!statSync(enteredRoot).isDirectory()) throw new Error("Project root must be a directory");
     const canonicalRoot = realpathSync.native(enteredRoot);
-    const bindings = inspectProjectStorage(canonicalRoot).filter(
-        (item) => dirname(item.sessionDirectory) === executionAccountStoragePath(baseDir),
-    );
-    const bound = bindings.find((item) => item.root === canonicalRoot) ?? bindings[0];
-    if (bound) {
-        const path = projectPath(bound.sessionDirectory);
-        if (pathExists(path)) {
-            const project = readJson<FileSessionProject>(path);
-            if (project.remote || project.projectId !== bound.sessionProjectId)
-                throw new Error("Bound Session project is unavailable");
-            establishProjectSessionStorage(canonicalRoot, project.projectId, bound.sessionDirectory);
-            return project;
-        }
-        // Only a locator with no prior history can create a new project record.
-        if (bound.sessionStoreEstablished || listManifests(bound.sessionDirectory, true).length)
-            throw new Error("Bound Session project is unavailable");
-        const timestamp = isoNow(now);
-        const project: FileSessionProject = {
-            projectId: bound.sessionProjectId,
-            displayName: basename(enteredRoot),
-            registeredRoot: bound.root,
-            currentRoot: bound.root,
-            lifecycle: "enabled",
-            accessScope: "local_runtime",
-            createdAt: timestamp,
-            updatedAt: timestamp,
-            disabledAt: null,
-            removedAt: null,
-            restoredAt: null,
-            relinkedAt: null,
-        };
-        writeJsonAtomically(path, project);
-        establishProjectSessionStorage(canonicalRoot, project.projectId, bound.sessionDirectory);
-        return project;
-    }
-    assertUnclaimedSessionRoot(canonicalRoot);
-    const existing = listProjectsFromDisk(baseDir).find(
-        (project) =>
-            !project.remote &&
-            (resolve(project.currentRoot) === resolve(canonicalRoot) ||
-                resolve(project.registeredRoot) === enteredRoot),
-    );
-    if (existing) return existing;
-    const sessionDir = sessionDirForRoot(baseDir, canonicalRoot);
-    ensurePrivateDir(sessionDir);
+    projects.storage.assertUnclaimedSessionRoot(canonicalRoot);
+    const identity = projects.checkout.admitForStorage(canonicalRoot);
+    const bindings = projects.storage
+        .inspect(identity.checkoutRoot)
+        .filter((item) => dirname(sessionStoragePath(item.sessionDirectory, baseDir)) === resolve(baseDir));
+    const bound = bindings.find((item) => item.checkoutId === identity.checkoutId);
+    const sessionDir = bound
+        ? sessionStoragePath(bound.sessionDirectory, baseDir)
+        : sessionDirForRoot(baseDir, canonicalRoot);
     const path = projectPath(sessionDir);
-    if (pathExists(path)) {
-        const project = readJson<FileSessionProject>(path);
-        if (resolve(project.currentRoot) !== resolve(canonicalRoot)) {
+    const existing = readStoredProject(baseDir, sessionDir, bindings);
+    if (existing) {
+        if (existing.remote || (bound && existing.projectId !== identity.projectId))
+            throw new Error("Bound Session project is unavailable");
+        if (!bound && resolve(existing.currentRoot) !== canonicalRoot)
             throw new Error("Session project identity does not match this directory");
+        if (existing.projectId !== identity.projectId) {
+            const { sessionDirectory: _directory, ...saved } = existing;
+            writeJsonAtomically(path, { ...saved, projectId: identity.projectId, legacyProjectId: existing.projectId });
         }
-        return project;
+        if (bound) projects.storage.establishSession(identity.checkoutRoot, identity.projectId, bound.sessionDirectory);
+        return { ...sessionProjectView(existing), projectId: identity.projectId };
     }
+    if (bound && (bound.sessionStoreEstablished || listManifests(sessionDir, true).length))
+        throw new Error("Bound Session project is unavailable");
     const timestamp = isoNow(now);
     const project: FileSessionProject = {
-        projectId: idFactory ? idFactory() : deterministicProjectId(canonicalRoot),
+        projectId: identity.projectId,
         displayName: basename(enteredRoot) || enteredRoot,
-        registeredRoot: enteredRoot,
-        currentRoot: canonicalRoot,
+        registeredRoot: bound && bound.root !== canonicalRoot ? bound.root : enteredRoot,
+        currentRoot: bound?.root ?? canonicalRoot,
         lifecycle: "enabled",
         accessScope: "local_runtime",
         createdAt: timestamp,
@@ -192,6 +187,7 @@ export function ensureProject(
         relinkedAt: null,
     };
     writeJsonAtomically(path, project);
+    if (bound) projects.storage.establishSession(identity.checkoutRoot, identity.projectId, bound.sessionDirectory);
     return project;
 }
 
@@ -208,19 +204,23 @@ export function ensureRemoteProject(
     target: RemoteTarget,
     now?: () => string,
     targetLabel?: string,
+    binding?: RemoteSessionProjectBinding,
 ): FileSessionProject {
     const root = remoteProjectRoot(target);
     const identity = JSON.stringify([host.hostname, host.user, host.port, host.hostKeyFingerprint, root]);
-    const projectId = `remote-${createHash("sha256").update(identity).digest("hex").slice(0, 32)}`;
-    const path = projectPath(join(baseDir, projectId));
-    if (pathExists(path)) return readJson<FileSessionProject>(path);
+    const storageKey = `remote-${createHash("sha256").update(identity).digest("hex").slice(0, 32)}`;
+    const directory = join(baseDir, storageKey);
+    const path = projectPath(directory);
+    const existing = readStoredProject(baseDir, directory, []);
+    if (existing) return existing;
+    const projectId = binding?.projectId ?? storageKey;
     const timestamp = isoNow(now);
     const project: FileSessionProject = {
         projectId,
         displayName: root.split("/").filter(Boolean).at(-1) || root,
         registeredRoot: root,
         currentRoot: root,
-        remote: { host: { ...host }, root, ...(targetLabel ? { targetLabel } : {}) },
+        remote: { host: { ...host }, root, ...(binding ? { binding } : {}), ...(targetLabel ? { targetLabel } : {}) },
         lifecycle: "enabled",
         accessScope: "local_runtime",
         createdAt: timestamp,
@@ -231,7 +231,7 @@ export function ensureRemoteProject(
         relinkedAt: null,
     };
     writeJsonAtomically(path, project);
-    return project;
+    return readStoredProject(baseDir, directory, [])!;
 }
 
 export function sameRemoteHost(left: RemoteHostIdentity, right: RemoteHostIdentity): boolean {
@@ -269,19 +269,25 @@ export function bindRemoteSessionProject(
     target: RemoteTarget & { host: RemoteHostIdentity },
     binding: RemoteSessionProjectBinding,
     targetLabel: string,
-): void {
-    const path = projectPath(sessionDirForProject(baseDir, project));
+): FileSessionProject {
+    const directory = sessionDirForProject(baseDir, project);
+    const path = projectPath(directory);
     const saved = readJson<FileSessionProject>(path);
     if (!saved.remote || !remoteSessionProjectMatches(saved, target, binding))
         throw new Error("Remote Session Project binding changed.");
     const root = remoteProjectRoot(target);
-    if (saved.remote.binding && saved.remote.root === root && saved.remote.targetLabel === targetLabel) return;
+    if (saved.remote.binding && saved.remote.root === root && saved.remote.targetLabel === targetLabel) return project;
+    if (saved.projectId !== binding.projectId) {
+        saved.legacyProjectId = saved.projectId;
+        saved.projectId = binding.projectId;
+    }
     saved.remote.binding = binding;
     saved.remote.root = root;
     saved.remote.targetLabel = targetLabel;
     saved.currentRoot = root;
     saved.updatedAt = isoNow();
     writeJsonAtomically(path, saved);
+    return readStoredProject(baseDir, directory, [])!;
 }
 
 /** Retain a host answer without changing the project's canonical identity. */
@@ -302,71 +308,82 @@ export function recordRemoteHostAnswer(
 }
 
 export function sessionDirForProject(baseDir: string, project: FileSessionProject): string {
+    if ("sessionDirectory" in project && typeof project.sessionDirectory === "string") return project.sessionDirectory;
     return project.remote
-        ? join(baseDir, project.projectId)
-        : join(baseDir, encodeCwdForSessionDir(resolve(project.currentRoot)));
+        ? join(baseDir, project.legacyProjectId ?? project.projectId)
+        : join(baseDir, projects.directory.sessionKey(resolve(project.currentRoot)));
 }
 
-export function listProjectsFromDisk(baseDir: string): FileSessionProject[] {
-    const projects: FileSessionProject[] = [];
+export function listProjectsFromDisk(baseDir: string): StoredSessionProject[] {
+    const stored: StoredSessionProject[] = [];
+    let entries;
     try {
-        for (const entry of readdirSync(baseDir, { withFileTypes: true })) {
-            if (!entry.isDirectory()) continue;
-            const path = projectPath(join(baseDir, entry.name));
-            if (!pathExists(path)) continue;
-            try {
-                projects.push(readJson<FileSessionProject>(path));
-            } catch {
-                // A damaged Project record is not guessed at during a global scan.
-            }
-        }
+        entries = readdirSync(baseDir, { withFileTypes: true });
     } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+        throw error;
     }
-    return projects.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-}
-
-export function findProject(baseDir: string, projectId: string): FileSessionProject | null {
-    const projects = listProjectsFromDisk(baseDir);
-    const direct = projects.find((project) => project.projectId === projectId);
-    if (direct) return direct;
-    for (const root of inspectSessionProjectRoots(projectId)) {
-        for (const binding of inspectProjectStorage(root)) {
-            if (dirname(binding.sessionDirectory) !== executionAccountStoragePath(baseDir)) continue;
-            const project = projects.find((item) => item.projectId === binding.sessionProjectId);
-            if (project) return project;
+    const bindings = projects.storage.sessionBindings();
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        try {
+            const project = readStoredProject(baseDir, join(baseDir, entry.name), bindings);
+            if (project) stored.push(project);
+        } catch {
+            // A damaged Project record is not guessed at during a global scan.
         }
     }
-    return null;
+    return stored.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
 }
 
-export function relatedSessionProjects(baseDir: string, projectId: string): FileSessionProject[] {
-    const projects = listProjectsFromDisk(baseDir);
-    const roots = inspectSessionProjectRoots(projectId);
-    const ids = new Set([projectId]);
-    for (const root of roots)
-        for (const binding of inspectProjectStorage(root)) {
-            if (dirname(binding.sessionDirectory) === executionAccountStoragePath(baseDir))
-                ids.add(binding.sessionProjectId);
-        }
-    return projects.filter((project) => ids.has(project.projectId));
+export function relatedSessionProjects(baseDir: string, projectId: string): StoredSessionProject[] {
+    const stored = listProjectsFromDisk(baseDir);
+    const canonicalId = stored.find((project) => project.legacyProjectId === projectId)?.projectId ?? projectId;
+    return stored.filter((project) => project.projectId === canonicalId);
 }
 
 export function sessionProjectMatches(baseDir: string, actualId: string, requestedId: string): boolean {
     return (
         actualId === requestedId ||
-        relatedSessionProjects(baseDir, requestedId).some((project) => project.projectId === actualId)
+        relatedSessionProjects(baseDir, requestedId).some(
+            (project) => project.projectId === actualId || project.legacyProjectId === actualId,
+        )
     );
 }
 
+function projectManifest(manifest: FileSessionManifest, project: StoredSessionProject | null): FileSessionManifest {
+    if (project && project.legacyProjectId === manifest.projectId) {
+        const previousProjectId = manifest.projectId;
+        manifest.projectId = project.projectId;
+        if (manifest.generation?.projectId === previousProjectId) manifest.generation.projectId = project.projectId;
+        for (const segment of manifest.segments) {
+            if (segment.projectId === previousProjectId) segment.projectId = project.projectId;
+        }
+    }
+    return manifest;
+}
+
 export function rootEvidence(project: FileSessionProject) {
-    const roots = inspectSessionProjectRoots(project.projectId);
-    if (roots.length) return roots.map((root) => ({ enteredRoot: root, canonicalRoot: root, rootState: "current" }));
+    const roots = projects.storage.sessionRoots(project.projectId);
+    if (roots.length) {
+        let registeredCanonical: string | undefined;
+        try {
+            registeredCanonical = realpathSync.native(project.registeredRoot);
+        } catch {
+            // Only a currently verified checkout can grant runtime access.
+        }
+        return roots.map((root) => ({
+            enteredRoot: root === registeredCanonical ? project.registeredRoot : root,
+            canonicalRoot: root,
+            rootState: "current",
+        }));
+    }
+    const owned = projects.storage.sessionBindings().some((binding) => binding.projectId === project.projectId);
     return [
         {
             enteredRoot: project.registeredRoot,
             canonicalRoot: project.currentRoot,
-            rootState: "current",
+            rootState: owned ? "historical" : "current",
         },
     ];
 }
@@ -396,14 +413,11 @@ export function catalogedSession(manifest: FileSessionManifest) {
     };
 }
 
-export function recoveryDescriptorPath(transcriptPath: string): string {
-    return `${transcriptPath}.runwield.json`;
-}
-
-function writeRecoveryDescriptors(manifest: FileSessionManifest): void {
+function writeRecoveryDescriptors(manifest: FileSessionManifest, path: string): void {
     for (const segment of manifest.segments) {
         try {
-            writeJsonAtomically(recoveryDescriptorPath(segment.transcriptPath), manifest);
+            const transcript = sessionTranscriptStoragePath(segment.transcriptPath, path);
+            writeJsonAtomically(recoveryDescriptorPath(transcript), manifest);
         } catch {
             // The primary manifest is already durable. A later successful
             // checkpoint will refresh all redundant recovery descriptors.
@@ -411,34 +425,24 @@ function writeRecoveryDescriptors(manifest: FileSessionManifest): void {
     }
 }
 
-function readRecoverableManifests(sessionDir: string) {
-    const recoverable = new Map<string, FileSessionManifest>();
-    try {
-        for (const entry of readdirSync(sessionDir, { withFileTypes: true })) {
-            if (!entry.isFile() || !entry.name.endsWith(".jsonl.runwield.json")) continue;
-            try {
-                const candidate = readJson<FileSessionManifest>(join(sessionDir, entry.name));
-                if (candidate.version !== FILE_SESSION_STORE_VERSION || !candidate.runwieldSessionId) continue;
-                const previous = recoverable.get(candidate.runwieldSessionId);
-                if (!previous || previous.updatedAt < candidate.updatedAt) {
-                    recoverable.set(candidate.runwieldSessionId, candidate);
-                }
-            } catch {
-                // Another descriptor for the same Session may still be valid.
-            }
-        }
-    } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-    }
-    return recoverable;
+function recoveryProject(baseDir: string, manifest: FileSessionManifest): StoredSessionProject | null {
+    const originalTranscript = manifest.segments[0]?.transcriptPath;
+    const projects = relatedSessionProjects(baseDir, manifest.projectId);
+    if (!originalTranscript) return projects[0] ?? null;
+    const directory = dirname(sessionStoragePath(originalTranscript, baseDir));
+    return (
+        projects.find((project) => project.sessionDirectory === directory) ??
+        (projects.length === 1 ? projects[0] : null)
+    );
 }
 
 function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
-    for (const [runwieldSessionId, candidate] of readRecoverableManifests(sessionDir)) {
+    for (const { runwieldSessionId, text } of readRecoveryDescriptors(sessionDir)) {
+        const candidate: FileSessionManifest = JSON.parse(text);
         // Repair segments can live in a worktree's transcript directory. Their
         // recovery descriptors still belong to the original Project's bundle.
         const baseDir = dirname(sessionDir);
-        const project = findProject(baseDir, candidate.projectId);
+        const project = recoveryProject(baseDir, candidate);
         const ownerSessionDir = project
             ? sessionDirForProject(baseDir, project)
             : sessionDirForRoot(baseDir, candidate.transcriptCwd);
@@ -457,52 +461,39 @@ function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
                 }
             }
         }
-        writeJsonAtomically(path, candidate);
+        writeJsonAtomically(path, projectManifest(candidate, project));
     }
 }
 
 export function listManifests(
     sessionDir: string,
     readOnly = false,
+    project?: StoredSessionProject,
 ): Array<{ path: string; manifest: FileSessionManifest }> {
     if (!readOnly) restoreManifestsFromRecoveryDescriptors(sessionDir);
-    const manifests: Array<{ path: string; manifest: FileSessionManifest }> = [];
-    try {
-        for (const entry of readdirSync(bundlesDir(sessionDir), { withFileTypes: true })) {
-            if (!entry.isDirectory()) continue;
-            const path = manifestPath(sessionDir, entry.name);
-            try {
-                const manifest = readJson<FileSessionManifest>(path);
-                if (manifest.version !== FILE_SESSION_STORE_VERSION || manifest.runwieldSessionId !== entry.name) {
-                    continue;
-                }
-                manifests.push({ path, manifest });
-            } catch {
-                // Direct loads report damaged manifests. Global lists omit them
-                // rather than inventing session identity from incomplete state.
-            }
-        }
-    } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-    }
-    if (readOnly) {
-        for (const [id, manifest] of readRecoverableManifests(sessionDir)) {
-            if (!manifests.some((item) => item.manifest.runwieldSessionId === id)) {
-                manifests.push({ path: manifestPath(sessionDir, id), manifest });
-            }
-        }
-    }
-    return manifests;
+    return listSessionManifestFiles(sessionDir, readOnly).flatMap(({ path, text, hasPrimaryManifest }) => {
+        const manifest: FileSessionManifest = JSON.parse(text);
+        if (
+            project &&
+            !hasPrimaryManifest &&
+            recoveryProject(dirname(sessionDir), manifest)?.sessionDirectory !== sessionDir
+        )
+            return [];
+        return [{ path, manifest: project ? projectManifest(manifest, project) : manifest }];
+    });
 }
 
 export function findManifestById(
     baseDir: string,
     runwieldSessionId: string,
+    readOnly = false,
 ): { path: string; manifest: FileSessionManifest } | null {
     let result: { path: string; manifest: FileSessionManifest } | null = null;
     for (const project of listProjectsFromDisk(baseDir)) {
         const sessionDir = sessionDirForProject(baseDir, project);
-        const found = listManifests(sessionDir).find((item) => item.manifest.runwieldSessionId === runwieldSessionId);
+        const found = listManifests(sessionDir, readOnly, project).find(
+            (item) => item.manifest.runwieldSessionId === runwieldSessionId,
+        );
         if (found && found.manifest.projectId === project.projectId) {
             if (result && result.path !== found.path) throw new Error("Conflicting Session identity claims");
             result = found;
@@ -546,14 +537,9 @@ export class FileSessionManifestCache {
     readonly #manifests = new Map<string, CachedManifest>();
     readonly #manifestIdsByPath = new Map<string, string>();
     readonly #manifestIdsByTranscriptPath = new Map<string, string>();
-    readonly #projects = new Map<string, FileSessionProject>();
 
     constructor(baseDir: string) {
         this.#baseDir = baseDir;
-    }
-
-    rememberProject(project: FileSessionProject): void {
-        this.#projects.set(project.projectId, { ...project });
     }
 
     remember(path: string, manifest: FileSessionManifest): void {
@@ -565,14 +551,14 @@ export class FileSessionManifestCache {
         if (previous) {
             if (previous.path !== path) this.#manifestIdsByPath.delete(previous.path);
             for (const segment of previous.manifest.segments) {
-                this.#manifestIdsByTranscriptPath.delete(executionAccountStoragePath(segment.transcriptPath));
+                this.#manifestIdsByTranscriptPath.delete(sessionStoragePath(segment.transcriptPath, this.#baseDir));
             }
         }
         this.#manifests.set(manifest.runwieldSessionId, { path, manifest: structuredClone(manifest), fingerprint });
         this.#manifestIdsByPath.set(path, manifest.runwieldSessionId);
         for (const segment of manifest.segments) {
             this.#manifestIdsByTranscriptPath.set(
-                executionAccountStoragePath(segment.transcriptPath),
+                sessionStoragePath(segment.transcriptPath, this.#baseDir),
                 manifest.runwieldSessionId,
             );
         }
@@ -589,23 +575,25 @@ export class FileSessionManifestCache {
         const cachedId = this.#manifestIdsByPath.get(path);
         const cached = cachedId ? this.#manifests.get(cachedId) : undefined;
         if (cached && sameManifestFingerprint(cached.fingerprint, fingerprint)) {
-            return { path, manifest: structuredClone(cached.manifest) };
+            const manifest = structuredClone(cached.manifest);
+            return { path, manifest: this.#projectManifest(manifest, path) };
         }
         const manifest = readJson<FileSessionManifest>(path);
-        if (manifest.version !== FILE_SESSION_STORE_VERSION) return null;
+        if (manifest.version !== FILE_SESSION_STORE_VERSION || manifest.runwieldSessionId !== basename(dirname(path)))
+            return null;
         this.#cacheManifest(path, manifest, fingerprint);
-        return { path, manifest };
+        return { path, manifest: this.#projectManifest(manifest, path) };
     }
 
     findByTranscriptPath(transcriptPath: string): { path: string; manifest: FileSessionManifest } | null {
-        const resolvedTranscriptPath = executionAccountStoragePath(transcriptPath);
+        const resolvedTranscriptPath = sessionStoragePath(transcriptPath, this.#baseDir);
         const cachedId = this.#manifestIdsByTranscriptPath.get(resolvedTranscriptPath);
         const cached = cachedId ? this.#manifests.get(cachedId) : undefined;
         if (cached) {
             const found = this.readPath(cached.path);
             if (
                 found?.manifest.segments.some(
-                    (segment) => executionAccountStoragePath(segment.transcriptPath) === resolvedTranscriptPath,
+                    (segment) => sessionStoragePath(segment.transcriptPath, this.#baseDir) === resolvedTranscriptPath,
                 )
             ) {
                 return found;
@@ -613,7 +601,8 @@ export class FileSessionManifestCache {
         }
         let recovery: FileSessionManifest;
         try {
-            recovery = readJson<FileSessionManifest>(recoveryDescriptorPath(resolvedTranscriptPath));
+            const transcript = sessionTranscriptStoragePath(resolvedTranscriptPath, this.#baseDir);
+            recovery = readJson<FileSessionManifest>(recoveryDescriptorPath(transcript));
         } catch (error) {
             if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
             throw error;
@@ -621,21 +610,26 @@ export class FileSessionManifestCache {
         if (
             recovery.version !== FILE_SESSION_STORE_VERSION ||
             !recovery.segments.some(
-                (segment) => executionAccountStoragePath(segment.transcriptPath) === resolvedTranscriptPath,
+                (segment) => sessionStoragePath(segment.transcriptPath, this.#baseDir) === resolvedTranscriptPath,
             )
         )
             return null;
-        const project = this.#project(recovery.projectId);
+        const project = recoveryProject(this.#baseDir, recovery);
         if (!project) return null;
         const path = manifestPath(sessionDirForProject(this.#baseDir, project), recovery.runwieldSessionId);
         const found = this.readPath(path);
         if (found) return found;
+        projectManifest(recovery, project);
         writeManifest(recovery, path);
         this.remember(path, recovery);
         return { path, manifest: structuredClone(recovery) };
     }
 
-    resolve(runwieldSessionId: string, projectId?: string): { path: string; manifest: FileSessionManifest } | null {
+    resolve(
+        runwieldSessionId: string,
+        projectId?: string,
+        readOnly = false,
+    ): { path: string; manifest: FileSessionManifest } | null {
         const cached = this.#manifests.get(runwieldSessionId);
         if (cached) {
             for (const project of listProjectsFromDisk(this.#baseDir)) {
@@ -645,7 +639,7 @@ export class FileSessionManifestCache {
                 if (other?.manifest.projectId === project.projectId)
                     throw new Error("Conflicting Session identity claims");
             }
-            const found = this.#readRestoringPath(cached.path);
+            const found = readOnly ? this.readPath(cached.path) : this.#readRestoringPath(cached.path);
             return found && (!projectId || sessionProjectMatches(this.#baseDir, found.manifest.projectId, projectId))
                 ? found
                 : null;
@@ -654,14 +648,14 @@ export class FileSessionManifestCache {
             let result: { path: string; manifest: FileSessionManifest } | null = null;
             for (const project of relatedSessionProjects(this.#baseDir, projectId)) {
                 const path = manifestPath(sessionDirForProject(this.#baseDir, project), runwieldSessionId);
-                const found = this.#readRestoringPath(path);
+                const found = readOnly ? this.readPath(path) : this.#readRestoringPath(path);
                 if (!found || found.manifest.projectId !== project.projectId) continue;
                 if (result && result.path !== found.path) throw new Error("Conflicting Session identity claims");
                 result = found;
             }
             return result;
         }
-        const found = findManifestById(this.#baseDir, runwieldSessionId);
+        const found = findManifestById(this.#baseDir, runwieldSessionId, readOnly);
         if (!found) return null;
         this.remember(found.path, found.manifest);
         return { path: found.path, manifest: structuredClone(found.manifest) };
@@ -684,18 +678,21 @@ export class FileSessionManifestCache {
         return this.readPath(path);
     }
 
-    #project(projectId: string): FileSessionProject | null {
-        const cached = this.#projects.get(projectId);
-        if (cached) return { ...cached };
-        const project = findProject(this.#baseDir, projectId);
-        if (!project) return null;
-        this.rememberProject(project);
-        return project;
+    requirePath(path: string): FileSessionManifest {
+        const found = this.readPath(path);
+        if (!found) throw new Error("Session manifest is unavailable");
+        return found.manifest;
+    }
+
+    #projectManifest(manifest: FileSessionManifest, path: string): FileSessionManifest {
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(manifest.projectId))
+            return manifest;
+        return projectManifest(manifest, readStoredProject(this.#baseDir, sessionDirForManifestPath(path)));
     }
 }
 
 export function writeManifest(manifest: FileSessionManifest, path: string): void {
     manifest.updatedAt = new Date().toISOString();
     writeJsonAtomically(path, manifest);
-    writeRecoveryDescriptors(manifest);
+    writeRecoveryDescriptors(manifest, path);
 }

@@ -1,7 +1,7 @@
 /** Original family controllers stay with the admitted laptop owner during legacy continuation. */
+import { type HomeProjectOwner } from "@runwield/projects";
 import { readFile, lstat } from "node:fs/promises";
 import { join } from "node:path";
-import type { HomeProjectOwner } from "../shared/project-identity.ts";
 import type { WorktreeRegistryEntry } from "../shared/worktree-registry.ts";
 import type { ManagedRuntimeTransfer } from "../shared/project-runtime-managed.ts";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
