@@ -51,7 +51,14 @@ test("Workspace wrapper protects page routes and serves public assets without to
         const componentsCss = await app(new Request("http://localhost/components.css"));
         assertEquals(componentsCss.status, 200);
         assertStringIncludes(await componentsCss.text(), ".primary-action");
-        const sidebarMotion = await app(new Request("http://localhost/design-system/sidebar-motion.js"));
+        const shellUrl = "http://localhost/workspace-shell.js";
+        const shell = await app(new Request(shellUrl));
+        assertEquals(shell.status, 200);
+        const sidebarImport = new Bun.Transpiler({ loader: "js" })
+            .scanImports(await shell.text())
+            .find(({ path }) => /\/sidebar-motion\.[jt]s$/.test(path))?.path;
+        if (!sidebarImport) throw new Error("Workspace shell is missing its sidebar motion import");
+        const sidebarMotion = await app(new Request(new URL(sidebarImport, shellUrl)));
         assertEquals(sidebarMotion.status, 200);
         assertEquals(sidebarMotion.headers.get("content-type"), "text/javascript; charset=utf-8");
         const sidebarScript = await sidebarMotion.text();

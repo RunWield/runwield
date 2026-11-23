@@ -10,7 +10,7 @@ export const WORKSPACE_PWA_PATHS = [
     "/pwa/apple-touch-icon.png",
 ];
 
-export const SIDEBAR_MOTION_URL = "/design-system/sidebar-motion.js";
+export const SIDEBAR_MOTION_URL = "/design-system/sidebar-motion.ts";
 export const SIDEBAR_MOTION_SOURCE = "src/ui/design-system/sidebar-motion.ts";
 
 export function isPublicWorkspaceAsset(pathname: string): boolean {
