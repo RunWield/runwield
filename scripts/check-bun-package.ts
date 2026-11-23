@@ -2,7 +2,7 @@
 import { deepEqual, doesNotMatch, equal, match, ok } from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, realpath, rename, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rename, symlink, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
@@ -168,33 +168,46 @@ export async function checkBunPackage(
             const original = join(home, `project-before-${keepAlias}`);
             const moved = join(home, `project-after-${keepAlias}`);
             await mkdir(original);
-            const initialized = await captureScriptProcess("git", {
-                args: ["init", "-b", "main", original],
-                cwd: home,
-                stdout: "piped",
-                stderr: "piped",
-            });
-            ok(initialized.success, new TextDecoder().decode(initialized.stderr));
+            const git = async (cwd: string, args: string[]) => {
+                const result = await captureScriptProcess("git", { args, cwd, env: childEnv, clearEnv: true });
+                ok(result.success, decoder.decode(result.stderr));
+                return decoder.decode(result.stdout).trim();
+            };
+            await git(original, ["init", "-b", "main"]);
             const run = async (args: string[], cwd: string) => {
                 const running = start(args, cwd);
                 const timeout = setTimeout(() => running.child.kill("SIGKILL"), 30_000);
                 try {
                     equal(await running.finished, 0, running.output());
+                    return running.output();
                 } finally {
                     clearTimeout(timeout);
                 }
             };
-            await run(["plans", "doctor"], original);
-            const markerPath = join(moved, ".wld/internal/layout.json");
+            const planId = randomUUID();
+            const planFile = join(original, "relocation.md");
+            const summary = `Saved Plan ${planId} survives the checkout move.`;
+            await writeFile(
+                planFile,
+                `---\nplanId: ${planId}\nstatus: draft\nsummary: ${summary}\n---\n# Relocation check\n`,
+            );
+            await run(["plans", "import", "relocation.md"], original);
+            await unlink(planFile);
+            const projectIdArgs = ["config", "--local", "--get", "runwield.projectid"];
+            const projectId = await git(original, projectIdArgs);
+            ok(projectId, "Import must bind the checkout to a project");
+            const checkSavedPlan = async (cwd: string) => {
+                ok((await run(["plans"], cwd)).includes(summary), "The packaged CLI must list the saved Plan");
+                match(await run(["plans", "history", planId], cwd), /No milestones recorded/);
+                equal(await git(cwd, projectIdArgs), projectId, "Moving the checkout must preserve its project ID");
+            };
+            await checkSavedPlan(original);
             await rename(original, moved);
             if (keepAlias) await symlink(moved, original, "junction");
-            const before = await readFile(markerPath, "utf8");
-            await run(["plans"], moved);
-            if (keepAlias) await run(["plans"], original);
-            equal(await readFile(markerPath, "utf8"), before, "Passive reads must not rewrite a relocated marker");
+            await checkSavedPlan(moved);
+            if (keepAlias) await checkSavedPlan(original);
             await run(["plans", "doctor"], moved);
-            const marker = JSON.parse(await readFile(markerPath, "utf8"));
-            equal(marker.primaryCheckoutRoot, await realpath(moved));
+            await checkSavedPlan(moved);
         }
         const bin = join(home, "bin");
         await installPackageHelperFixtures(bin, helperFixturePath);
