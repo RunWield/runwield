@@ -227,7 +227,7 @@ export async function savePlanProse(cwd: string, name: string, body: string, exp
     if (managedPlanStoreActive()) return await saveManagedProse(cwd, name, body, expectedRevision);
     const { loadPlan, writePlanMarkdownWithRevisionLocked } = await import("../plan-store.ts");
     const { withLocalPlanWorkflow } = await import("./access.ts");
-    const { splitPlanMarkdownBody } = await import("../plan-format.ts");
+    const { splitPlanMarkdownBody } = await import("@runwield/plans/format");
     return await withLocalPlanWorkflow(cwd, name, async () => {
         const current = await loadPlan(cwd, name);
         if (!current || current.revision !== expectedRevision)

@@ -110,7 +110,7 @@ async function makeValidatedCiRun(
     const { seedPlan: savePlan, seedPlanState: updatePlanFrontMatter } =
         await import("../testing/plan-state-fixture.ts");
     const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
-    const { recordPlanEvent } = await import("./plan-lifecycle.ts");
+    const { recordPlanEvent } = await import("../../plan-store/index.ts");
     const { startActiveExecutionWorkflow, createExecutionStartPorts } = await import("./execution-start.ts");
     const { finalizePlanImplementation } = await import("./implementation-checkpoint.ts");
     const root = await makeRepo();

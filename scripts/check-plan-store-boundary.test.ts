@@ -26,8 +26,10 @@ test("Plan boundary permits public operations, pure formatting and explicit priv
         0,
     );
     equal(
-        inspectPlanStoreImports("src/tools/example.ts", 'import { parsePlanFrontMatter } from "../plan-format.ts";')
-            .length,
+        inspectPlanStoreImports(
+            "src/tools/example.ts",
+            'import { parsePlanFrontMatter } from "@runwield/plans/format";',
+        ).length,
         0,
     );
     equal(
@@ -42,18 +44,34 @@ test("Plan boundary permits public operations, pure formatting and explicit priv
     );
 });
 
-test("Plan formatting cannot hide persistence behind its pure public facade", () => {
-    equal(inspectPlanStoreImports("src/plan-format.ts", 'export { loadPlan } from "./plan-store.js";').length, 1);
+test("the Plans package cannot import application code, including type-only imports", () => {
+    const file = "packages/plans/lifecycle.ts";
+    const source = 'import type { Project } from "../../src/shared/project-runtime-layout.ts";';
+    equal(inspectPlanStoreImports(file, source).length, 1);
+});
+
+test("the public lifecycle and format APIs cannot hide environment I/O", () => {
     const graph = new Map([
-        ["src/plan-format.ts", 'export * from "./plan-format-implementation.ts";'],
-        ["src/plan-format-implementation.ts", 'import { loadPlan } from "./plan-store/index.ts";'],
+        ["packages/plans/index.ts", 'export * from "./lifecycle.ts";'],
+        ["packages/plans/lifecycle.ts", 'import { readFileSync } from "node:fs";'],
     ]);
     equal(inspectPlanFormatGraph(graph).length, 1);
-    graph.set("src/plan-format-implementation.ts", 'import type { PlanFrontMatter } from "./plan-store/index.ts";');
-    equal(inspectPlanFormatGraph(graph).length, 0);
-    graph.set("src/plan-format-implementation.ts", 'import { readFile } from "node:fs/promises";');
+});
+
+test("Plan formatting cannot hide persistence behind its pure public facade", () => {
+    const graph = new Map([
+        ["packages/plans/format.ts", 'export * from "./format/implementation.ts";'],
+        ["packages/plans/format/implementation.ts", 'import { loadPlan } from "../../../src/plan-store/index.ts";'],
+    ]);
     equal(inspectPlanFormatGraph(graph).length, 1);
-    graph.set("src/plan-format-implementation.ts", 'const dependency = "node:fs"; await import(dependency);');
+    graph.set(
+        "packages/plans/format/implementation.ts",
+        'import type { PlanFrontMatter } from "../../../src/plan-store/index.ts";',
+    );
+    equal(inspectPlanFormatGraph(graph).length, 0);
+    graph.set("packages/plans/format/implementation.ts", 'import { readFile } from "node:fs/promises";');
+    equal(inspectPlanFormatGraph(graph).length, 1);
+    graph.set("packages/plans/format/implementation.ts", 'const dependency = "node:fs"; await import(dependency);');
     equal(inspectPlanFormatGraph(graph).length, 1);
 });
 

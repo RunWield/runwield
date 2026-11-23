@@ -7,7 +7,7 @@ import {
     readManagedReviewPresentation,
     readManagedDocument,
 } from "./managed.ts";
-import { planDocumentMarkdown, injectFrontMatter } from "../plan-format.ts";
+import { planDocumentMarkdown, injectFrontMatter } from "@runwield/plans/format";
 /** Authorization of Plan resources belongs to the owner that selected their source. */
 import {
     selectedPackage,
@@ -169,7 +169,7 @@ export async function loadPlanDetail(cwd: string, planId: string, reviewOnly = f
     const { readLocalHomeStore } = await import("./access.ts");
     const { findPlanEvidenceById, findPlanById, loadPlanBodyById } = await import("./queries.ts");
     const { readPlanDocuments } = await import("./documents.ts");
-    const { isProjectPlan } = await import("../shared/project-plan.ts");
+    const { isProjectPlan } = await import("@runwield/plans/format");
     if (managedPlanStoreActive()) {
         const resource = reviewOnly ? await findPlanEvidenceById(cwd, planId) : await loadPlanBodyById(cwd, planId);
         const document = await readPlanDocuments(planId);

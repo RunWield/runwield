@@ -10,7 +10,7 @@ import { DirectoryStartupCanceled } from "../../ui/tui/directory-warning.ts";
 import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 import { parseArgs } from "../../shared/cli-args.ts";
 import { getCwd } from "../../constants.ts";
-import { countChildPlanProgress, groupPlanHierarchy } from "../../plan-format.ts";
+import { countChildPlanProgress, groupPlanHierarchy } from "@runwield/plans/format";
 import { listPlans } from "../../plan-store/index.ts";
 import { printCommandHelp } from "../help/index.ts";
 import { runPlansArchiveCommand } from "./archive.ts";

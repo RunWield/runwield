@@ -3,7 +3,7 @@ import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat } from "node:fs/promises";
 /** Recover a deleted execution checkout from Git evidence left by a manual rescue. */
-import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { loadPlan } from "../../plan-store/index.ts";
 import { listPlanExecutionDocuments } from "../../plan-store/index.ts";
 import { loadTargetPlan, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";

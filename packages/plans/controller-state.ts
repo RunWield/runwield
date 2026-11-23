@@ -1,6 +1,6 @@
 /** Controller-owned state. None of these fields belongs in a Plan document. */
-import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
-import type { ReviewLedger } from "./review-ledger.ts";
+import type { ReviewLedger, ValidationCheckpoint } from "./validation-checkpoint.ts";
+export * from "./validation-checkpoint.ts";
 
 export type EpicIntegrationReviewState = {
     round: number;

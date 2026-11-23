@@ -577,13 +577,13 @@ import { ok as assert } from "node:assert/strict";
 
 import { extractYaml } from "../../../shared/front-matter.ts";
 
-import { PLAN_RUNTIME_FIELDS, pickControllerState } from "../../../shared/workflow/controller-state.ts";
+import { PLAN_RUNTIME_FIELDS, pickControllerState } from "@runwield/plans/controller-state";
 
 import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
 
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
 
-import { parsePlanFrontMatter } from "../../../plan-format.ts";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
 
 import { findPlansByParent, listPlans, loadPlan } from "../../../plan-store/index.ts";
 
@@ -627,7 +627,7 @@ import { enterProjectRuntime, withProjectRuntimeReadScope } from "../../../share
 
 import { isCurrentProjectRuntimePath } from "../../../shared/runwield-owned-paths.ts";
 
-import { PLAN_STATUSES, type PlanStatus } from "../../../shared/workflow/plan-lifecycle.ts";
+import { PLAN_STATUSES, type PlanStatus } from "@runwield/plans/lifecycle";
 
 import { readScenarioRegistryForPoll } from "./scenario-registry-poll.ts";
 
@@ -1388,7 +1388,7 @@ async function runComposedTuiScenarioInScope(
             const attrs = parsePlanFrontMatter(fixture.text).attrs;
             await seedPlan(getCwd(), fixture.planName, fixture.text, { ...attrs, status: "draft" });
             if (attrs.status === "ready_for_work") {
-                const { recordPlanEvent } = await import("../../../shared/workflow/plan-lifecycle.ts");
+                const { recordPlanEvent } = await import("../../../plan-store/index.ts");
                 await recordPlanEvent({
                     cwd: getCwd(),
                     planName: fixture.planName,

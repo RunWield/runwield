@@ -1,6 +1,6 @@
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "../workflow/execution-start.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";

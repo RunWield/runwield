@@ -7,7 +7,7 @@ import { setCustomSetting } from "../settings.ts";
 import { findPlansByParent, loadPlan } from "../../plan-store/index.ts";
 import { git } from "../git-test-fixture.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { readEpicDeliveryState, reconcileEpicDelivery, runEpicIntegrationGate } from "./epic-integration.ts";

@@ -27,7 +27,7 @@ import {
     type TranscriptContext,
 } from "@earendil-works/pi-ai";
 
-import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { parsePlanFrontMatter, type PlanFrontMatterInput } from "@runwield/plans/format";
 import { loadArchivedPlan, loadPlan, resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
 
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -37,7 +37,7 @@ import { discardWorktreeGitArtifacts } from "../../shared/worktree.ts";
 import { addEntry, findById, removeEntry, updateEntry } from "../../shared/worktree-registry.ts";
 import { setCustomSetting } from "../../shared/settings.ts";
 import { executePlanAction, loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
@@ -46,7 +46,6 @@ import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts
 import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
 import { getRunWieldRuntimeDir, AGENTS } from "../../constants.ts";
-import type { PlanFrontMatterInput } from "../../plan-format.ts";
 import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/api.ts";
 
 interface LoadPlanUiFixture {

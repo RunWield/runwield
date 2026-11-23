@@ -26,9 +26,9 @@ Moving an entry point to `apps/` is a separate mechanical change when useful.
 
 ## Packages and extraction order
 
-The [Tools](https://github.com/RunWield/runwield/pull/641) and [Agents](https://github.com/RunWield/runwield/pull/643)
-extractions have merged. Projects is ready for interface review. Plans follows once the owner accepts Projects. Each row ships independently. Create a workspace
-when its first consumer moves. Export named types alongside the operations that own them.
+Tools, Agents and Projects have merged. Plans is in progress. Its first interface review covers Markdown documents,
+Plan IDs and lifecycle rules. The store still owns durable writes. Workflow extraction follows review of the complete
+Plans domain. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
 
 | Order and package | Public interface and responsibilities | Evidence that the move preserved behavior |
 | --- | --- | --- |
@@ -176,6 +176,26 @@ The private `@runwield/session-files` package contains the Session-owned reader 
 writer locks during checkout admission. The Session store uses the same file evidence for recovery.
 This shared reader lets a worker open Projects without loading the Session runtime. The existing Session store
 continues to own manifests, restoration, writes and writer lifetime.
+
+## Plans contract under review
+
+A consumer imports `plans` from `@runwield/plans`. These operations run on the supplied document in memory.
+The store uses the document codec during authoring and the lifecycle rules when it commits an event. Workspace uses them to present the actions available
+for the current status. [Package entry point](../../packages/plans/index.ts)
+
+| Operation | Result |
+| --- | --- |
+| `plans.documents.parse(markdown)` | Reads the front matter and body using the existing saved-Plan rules, including historical classifications. |
+| `plans.documents.create(body, fields)` | Builds Markdown with normalized front matter. |
+| `plans.documents.revision(markdown)` | Returns the existing content revision used by the store for optimistic concurrency. |
+| `plans.identity.parse(value)` and `isValid(value)` | Normalize a stored Plan ID or check whether a string is already canonical. IDs remain scoped to the Project. Historical non-UUID Plan IDs remain readable. |
+| `plans.lifecycle.actionsFor(status, fields)` | Returns available manual actions and reasons for blocked actions. |
+| `plans.lifecycle.changesFor(event, status, details)` | Validates a lifecycle event and returns its metadata changes. The store checks the observed revision and persists the result. |
+
+Saved edits continue through the store so it can reject a stale revision. The store selects the authoritative checkout or managed remote, owns locks, and writes Plan Markdown,
+history, Work Records, artifacts and publication copies. Its next extraction should open this existing storage
+by `ProjectId`, route reads and writes through the selected owner, and keep Session callbacks and Git publication
+with their respective hosts. PostgreSQL remains a future driver. [Current store operations](../../src/plan-store/index.ts)
 
 ## MCP and app boundaries
 

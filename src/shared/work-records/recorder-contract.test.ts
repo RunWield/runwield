@@ -10,7 +10,7 @@ import { assertEquals, assertExists, assertThrows } from "../../testing/assertio
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { findWorkRecordById, parseWorkRecordMarkdown, runWorkRecordBackfill } from "./index.ts";
-import type { WorkRecordFrontMatter } from "./schema.ts";
+import type { WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 
 for (const field of ["deviationsFromPlan", "deferredWork"]) {

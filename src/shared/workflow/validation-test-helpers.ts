@@ -195,7 +195,7 @@ export async function makeValidationProjectRoot(
     const root = existingRoot || (await fsMkdtemp(join(tmpdir(), "runwield-validation-root-")));
     const { savePlan, ensurePlanIdentity, loadPlan, updatePlanFrontMatter, injectFrontMatter, parsePlanFrontMatter } =
         await import("../../plan-store.ts");
-    const { pickControllerState } = await import("./controller-state.ts");
+    const { pickControllerState } = await import("@runwield/plans/controller-state");
     await savePlan(root, planName, markdown, {
         classification: "PLANNED_CHANGE",
         summary: "validation fixture",
@@ -208,7 +208,7 @@ export async function makeValidationProjectRoot(
     if (attrs.classification !== "PROJECT") {
         const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
         const { rememberNonGitExecutionConsent } = await import("../non-git-execution-consent.ts");
-        const { recordPlanEvent } = await import("./plan-lifecycle.ts");
+        const { recordPlanEvent } = await import("../../plan-store/index.ts");
         const { startActiveExecutionWorkflow, createExecutionStartPorts } = await import("./execution-start.ts");
         const { finalizePlanImplementation } = await import("./implementation-checkpoint.ts");
         await rememberNonGitExecutionConsent("featurePlan", root);

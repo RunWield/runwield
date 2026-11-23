@@ -20,8 +20,14 @@ import {
     writeJsonAtomically,
     writeTextAtomically,
 } from "../shared/private-json-file.ts";
-import { EPIC_ARTIFACT_FILE_NAMES } from "../plan-format.ts";
-import { canonicalPlanStatus, normalizePlanId, StalePlanWriteError, type PlanFrontMatter } from "../plan-store.ts";
+import { plans, type PlanId } from "@runwield/plans";
+import {
+    EPIC_ARTIFACT_FILE_NAMES,
+    type TicketReference,
+    normalizePlanDeviations,
+    type PlanDeviation,
+} from "@runwield/plans/format";
+import { canonicalPlanStatus, StalePlanWriteError, type PlanFrontMatter } from "../plan-store.ts";
 import {
     preparePlanPackageImport,
     revalidatePlanImport,
@@ -30,9 +36,7 @@ import {
     type PlanImportResult,
     type PreparedPlanImport,
 } from "./import-source.ts";
-import type { TicketReference } from "../shared/ticket-references.ts";
-import { normalizePlanDeviations, type PlanDeviation } from "../shared/plan-deviations.ts";
-import { CONTROLLER_STATE_FIELDS, type WorkflowControllerState } from "../shared/workflow/controller-state.ts";
+import { CONTROLLER_STATE_FIELDS, type WorkflowControllerState } from "@runwield/plans/controller-state";
 
 export type PackageResource = "context.md" | "validation.md" | "manual-qa.md" | "integration-report.md";
 export type PackageResourceRole = "context" | "validation" | "manual-qa" | "integration-report";
@@ -391,8 +395,8 @@ export class PlanPackageError extends Error {
 function fail(kind: PlanPackageError["kind"], message: string): never {
     throw new PlanPackageError(kind, message);
 }
-function requireId(id: string): string {
-    if (!normalizePlanId(id) || normalizePlanId(id) !== id) fail("malformed_metadata", "Invalid Plan ID.");
+function requireId(id: string): PlanId {
+    if (!plans.identity.isValid(id)) fail("malformed_metadata", "Invalid Plan ID.");
     return id;
 }
 function normalizeName(name: string): string {

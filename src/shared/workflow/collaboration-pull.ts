@@ -1,4 +1,4 @@
-import { isEpicPlan } from "../project-plan.ts";
+import { isEpicPlan } from "@runwield/plans/format";
 /** @module shared/workflow/collaboration-pull */
 
 import { AGENTS, CLI_BIN } from "../../constants.ts";

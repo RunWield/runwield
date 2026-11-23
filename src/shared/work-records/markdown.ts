@@ -3,9 +3,9 @@
  * Parse, validate, and format canonical Work Record markdown.
  */
 
-import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
+import { extractYaml, test as hasFrontMatter, type FrontMatterValue } from "../front-matter.ts";
 import { normalizeWorkKind } from "../../constants.ts";
-import { normalizeTicketReferences } from "../ticket-references.ts";
+import { normalizeTicketReferences, type TicketReference } from "@runwield/plans/format";
 import {
     isWorkRecordCompletionMode,
     isWorkRecordOrigin,
@@ -14,18 +14,15 @@ import {
     WORK_RECORD_FRONT_MATTER_KEYS,
     WORK_RECORD_KIND,
     WORK_RECORD_OPTIONAL_SECTION_TITLES,
-} from "./schema.ts";
+    type WorkRecordEvidence,
+    type WorkRecordFrontMatter,
+    type WorkRecordProvenance,
+    type WorkRecordResource,
+    type WorkRecordSections,
+    type WorkRecordSupersessionCandidate,
+    type WorkRecordSupersessionProposal,
+} from "@runwield/plans/work-record-schema";
 
-import type { TicketReference } from "../ticket-references.ts";
-import type {
-    WorkRecordEvidence,
-    WorkRecordFrontMatter,
-    WorkRecordProvenance,
-    WorkRecordResource,
-    WorkRecordSections,
-    WorkRecordSupersessionCandidate,
-    WorkRecordSupersessionProposal,
-} from "./schema.ts";
 
 /** Raw YAML values retain the existing normalization and validation boundaries. */
 export interface RawWorkRecordFrontMatter {
@@ -38,7 +35,7 @@ export interface RawWorkRecordFrontMatter {
     origin?: unknown;
     completionMode?: unknown;
     createdAt?: unknown;
-    tickets?: unknown;
+    tickets?: FrontMatterValue;
     archivedAt?: unknown;
     supersedes?: unknown;
     supersededBy?: unknown;

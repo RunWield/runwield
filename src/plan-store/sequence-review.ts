@@ -31,13 +31,13 @@ import {
     planDocumentMarkdown,
     resolvePlanExecutionPolicy,
     resolveSiblingChildPlanDependencyStates,
-} from "../plan-format.ts";
+    isSequencePlan,
+} from "@runwield/plans/format";
 import { ensurePlanIdentity, findPlansByParent, loadPlan } from "./index.ts";
 import type { PlanFrontMatter } from "./index.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
-import { stripRuntimeFields } from "../shared/workflow/controller-state.ts";
-import { isSequencePlan } from "../shared/project-plan.ts";
-import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.ts";
+import { stripRuntimeFields } from "@runwield/plans/controller-state";
+import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { runSequenceReviewTransition } from "./transitions.ts";
 import { reviewSourceStillMatches } from "./review.ts";

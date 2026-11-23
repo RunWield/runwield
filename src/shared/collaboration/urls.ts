@@ -2,6 +2,9 @@
 
 import { assertCapabilityScope, type CapabilityScope, redactSecrets } from "./capabilities.ts";
 import { assertNonEmptyString } from "./protocol.ts";
+import { normalizeServerUrl } from "@runwield/plans/format";
+
+export { normalizePlanServerUrl, normalizeServerUrl } from "@runwield/plans/format";
 
 export interface CollaborationUrlInput {
     serverUrl: string;
@@ -13,29 +16,6 @@ export interface CollaborationUrlInput {
 
 export interface CollaborationUrlParts extends CollaborationUrlInput {
     apiBaseUrl: string;
-}
-
-export function normalizeServerUrl(value: string): string {
-    const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Plan Server URL must be http or https");
-    if (url.search) throw new Error("Plan Server URL must not include query parameters");
-    if (url.hash) throw new Error("Plan Server URL must not include a fragment");
-    url.hash = "";
-    url.search = "";
-    url.pathname = url.pathname.replace(/\/+$/, "");
-    return url.toString().replace(/\/$/, "");
-}
-
-export function normalizePlanServerUrl<Value>(value: Value): string {
-    if (typeof value !== "string" || value.trim() === "") {
-        throw new Error("Plan Server URL must be a non-empty string.");
-    }
-    const normalized = normalizeServerUrl(value.trim());
-    const url = new URL(normalized);
-    if (/(?:^|\/)p\/[^/]+\/?$/.test(url.pathname)) {
-        throw new Error("Plan Server URL must not be a full collaboration share URL.");
-    }
-    return normalized;
 }
 
 export function buildCollaborationUrl(parts: CollaborationUrlInput): string {

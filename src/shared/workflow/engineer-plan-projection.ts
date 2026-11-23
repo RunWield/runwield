@@ -1,5 +1,4 @@
-import { parsePlanFrontMatter } from "../../plan-format.ts";
-import { renderApprovedPlanDeviations } from "../plan-deviations.ts";
+import { parsePlanFrontMatter, renderApprovedPlanDeviations } from "@runwield/plans/format";
 
 /** Return the only Plan definition content that an execution Agent can receive. */
 export function projectEngineerPlanBody(planContent: string): string {

@@ -53,9 +53,9 @@ import {
     getPlanRevisionForText,
     isHiddenPlanName,
     resolvePlanExecutionPolicy,
-} from "../../plan-format.ts";
+    assertNotReservedEpicArtifactPlanName,
+} from "@runwield/plans/format";
 import { ensurePlanIdentity, loadArchivedPlan, loadPlan } from "../../plan-store/index.ts";
-import { assertNotReservedEpicArtifactPlanName } from "../../plan-format.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { runWieldGitignoreNeedsUpdate } from "../runwield-owned-paths.ts";
 import { VERSION } from "../version.js";

@@ -9,7 +9,7 @@ import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.ts";
 import { loadPlan, recordPlanDeviation, StalePlanWriteError } from "../plan-store/index.ts";
 import { syncEpicChildPlanDeviations } from "../plan-store/index.ts";
-import { formatPlanDeviationForPrompt, type PlanDeviation } from "../shared/plan-deviations.ts";
+import { formatPlanDeviationForPrompt, type PlanDeviation } from "@runwield/plans/format";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,

@@ -19,8 +19,8 @@ import {
     runMnemotecaWorkRecordCommand,
 } from "./index-adapter.ts";
 
-import type { TicketReference } from "../ticket-references.ts";
-import type { WorkRecordResource } from "./schema.ts";
+import type { TicketReference } from "@runwield/plans/format";
+import type { WorkRecordResource } from "@runwield/plans/work-record-schema";
 import type { WorkRecordIndexOptions, WorkRecordIndexRebuildResult } from "./index-adapter.ts";
 
 export type WorkRecordAccessMode = "current" | "all";

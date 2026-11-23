@@ -2,7 +2,7 @@ import { seedPlanState, seedPlan } from "../../testing/plan-state-fixture.ts";
 import { rememberNonGitExecutionConsent } from "../../non-git-execution-consent.ts";
 import { withLocalPlanWorkflow } from "../../../plan-store/index.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "../execution-start.ts";
-import { recordPlanEvent } from "../plan-lifecycle.ts";
+import { recordPlanEvent } from "../../../plan-store/index.ts";
 import { finalizePlanImplementation } from "../implementation-checkpoint.ts";
 import { runtimeSourceArgs } from "../../../testing/runtime-source-args.ts";
 import { tmpdir } from "node:os";
@@ -50,7 +50,7 @@ const base = defineGitFixture(async (root) => {
 export type HostFixtureOptions = {
     nonGit?: boolean;
     command?: string | null;
-    attrs?: Partial<import("../../../plan-format.ts").PlanFrontMatter>;
+    attrs?: Partial<import("@runwield/plans/format").PlanFrontMatter>;
     planOnly?: boolean;
     planMarkdown?: string;
 };

@@ -19,7 +19,7 @@ import {
     loadCanonicalExecutionPlanSource,
     prepareExecutionPlanFile,
 } from "../../plan-store/index.ts";
-import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-format.ts";
+import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "@runwield/plans/format";
 
 async function makeTempProject() {
     const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));

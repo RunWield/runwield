@@ -25,7 +25,7 @@ import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
 import { join } from "node:path";
 import { CLI_BIN, isPlannedChangeClassification, WORKTREE_BRANCH_PREFIX } from "../constants.ts";
 import { getPlanDocumentRoot, getPlansDir, inspectPlanFileStrict } from "../plan-store.ts";
-import { isProjectPlan, parsePlanFrontMatter } from "../plan-format.ts";
+import { isProjectPlan, parsePlanFrontMatter, isEpicArtifactPlanName } from "@runwield/plans/format";
 import { ensurePlanIdentity } from "./index.ts";
 import {
     enterProjectRuntime,
@@ -50,7 +50,6 @@ import {
     pruneEntry,
     reconcileEntryIdentity,
 } from "../shared/worktree-registry.ts";
-import { isEpicArtifactPlanName } from "../plan-format.ts";
 import {
     inspectTargetBranchPlansByParent,
     prepareTargetBranchPlansByParent,

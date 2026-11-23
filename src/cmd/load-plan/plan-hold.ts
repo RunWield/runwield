@@ -9,7 +9,8 @@
 import { projects } from "@runwield/projects";
 import { CLI_BIN } from "../../constants.ts";
 import { findPlansByParent } from "../../plan-store/index.ts";
-import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import { isProjectPlan } from "@runwield/plans/format";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";
 import { runPlanRecoveryEffects } from "../../plan-store/index.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";

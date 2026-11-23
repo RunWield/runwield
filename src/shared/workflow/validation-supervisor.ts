@@ -8,7 +8,7 @@ import { preparePlanValidationInput } from "../../plan-store/index.ts";
 
 import { preparePlanController } from "../../plan-store/index.ts";
 import { type OutcomeSession, recordWorkflowOutcome } from "./outcome-observations.ts";
-import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
+import { resolvePlanExecutionPolicy } from "@runwield/plans/format";
 import { ensurePlanIdentity, loadPlan, StalePlanWriteError } from "../../plan-store/index.ts";
 import { StaleControllerWriteError } from "../../plan-store/index.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
@@ -32,7 +32,7 @@ import { validationUserMessage } from "./validation-user-messages.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { claimReviewFixes, renderOpenItems } from "./review-ledger.ts";
-import { PLAN_STATUSES } from "./plan-lifecycle.ts";
+import { PLAN_STATUSES } from "@runwield/plans/lifecycle";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import {
     sameHostIdentity,

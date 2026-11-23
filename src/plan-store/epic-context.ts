@@ -13,7 +13,12 @@ import { managedPlanStoreActive, projectManagedEpic } from "./managed.ts";
  */
 
 import { writePlanMarkdownWithRevisionLocked } from "../plan-store.ts";
-import { compareChildPlansByOrder } from "../plan-format.ts";
+import {
+    compareChildPlansByOrder,
+    isEpicPlan,
+    readPlanDeviations,
+    formatPlanDeviationForPrompt,
+} from "@runwield/plans/format";
 import { findPlansByParent, loadPlan } from "./index.ts";
 import type { PlanFrontMatter } from "./index.ts";
 import { isPlannedChangeClassification } from "../constants.ts";
@@ -21,8 +26,6 @@ import { isGitRepository } from "../shared/git.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
 import { prepareTargetBranchPlansByParent } from "../shared/workflow/planning-worktree.ts";
 import type { ReviewIntegrationNote } from "../tools/review-complete.ts";
-import { isEpicPlan } from "../shared/project-plan.ts";
-import { readPlanDeviations, formatPlanDeviationForPrompt } from "../shared/plan-deviations.ts";
 import { SharedPlanLockError } from "../shared/collaboration/lock.ts";
 
 /** The Epic a child belongs to, and the request section that describes it. */

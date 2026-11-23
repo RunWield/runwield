@@ -13,7 +13,7 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { addEntry } from "../worktree-registry.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { continueWorkflowValidation } from "./validation.ts";
 import { attachRecorder, makeUi } from "./validation-test-helpers.ts";
 

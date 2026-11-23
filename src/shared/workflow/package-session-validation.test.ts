@@ -8,7 +8,7 @@ import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts"
 import { create, read } from "../testing/plan-package-fixture.ts";
 import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { continueWorkflowValidation } from "./validation.ts";

@@ -22,7 +22,7 @@ import { create, read, packageFixture } from "../testing/plan-package-fixture.ts
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { loadPackageWorkflowPlan, capturePackageWorkflowInput } from "../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
 import { git } from "../git-test-fixture.ts";
 

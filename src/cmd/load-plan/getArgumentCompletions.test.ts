@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.ts";
 
-import { PlanFrontMatterParseError } from "../../plan-format.ts";
+import { PlanFrontMatterParseError } from "@runwield/plans/format";
 import { loadPlan } from "../../plan-store/index.ts";
 
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";

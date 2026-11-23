@@ -1,5 +1,11 @@
 import { epicChildOrderProblem } from "../../shared/workflow/epic-child-order.ts";
-import { isSequencePlan, projectPlanType } from "../../shared/project-plan.ts";
+import {
+    isSequencePlan,
+    projectPlanType,
+    compareChildPlansByOrder,
+    isTerminalArchivableStatus,
+    isProjectPlan,
+} from "@runwield/plans/format";
 /**
  * @module cmd/load-plan/plan-epic-flow
  * The Epic action menu: decomposition, child selection, and done-enough.
@@ -10,9 +16,9 @@ import { isSequencePlan, projectPlanType } from "../../shared/project-plan.ts";
  */
 
 import { isPlannedChangeClassification } from "../../constants.ts";
-import { compareChildPlansByOrder, isTerminalArchivableStatus } from "../../plan-format.ts";
 import { findPlansByParent } from "../../plan-store/index.ts";
-import { isInValidation, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import { isInValidation } from "@runwield/plans/lifecycle";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
 import {
     autoGenerateWorkRecordForCompletedPlan,

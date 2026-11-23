@@ -19,7 +19,7 @@ import { captureForegroundProcess } from "../captured-process.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { prepareEditedSiblingPlans } from "../../plan-store/index.ts";
 import { CLI_BIN } from "../../constants.ts";
-import { getPlanFrontMatterRevisionForText } from "../../plan-format.ts";
+import { getPlanFrontMatterRevisionForText } from "@runwield/plans/format";
 import { ensurePlanIdentity, findPlansByParent, loadPlan } from "../../plan-store/index.ts";
 import {
     defaultPlanBranchName,
@@ -66,7 +66,8 @@ import {
     emitReusingExecutionWorktree,
     emitUpdatingPlanStatusToInProgress,
 } from "./execution-preparation-progress.ts";
-import { recordPlanEvent, buildPlanEventUpdates } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
+import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { recordWorkflowMetric } from "./metrics.ts";
 import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "../../plan-store/index.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
@@ -289,7 +290,7 @@ interface ExecutionStartOptions {
     packageSelection?: PlanAccess;
     planName: string;
     triageMeta: Partial<import("../../plan-store/index.ts").PlanFrontMatter>;
-    currentStatus: import("./plan-lifecycle.ts").PlanStatus;
+    currentStatus: import("@runwield/plans/lifecycle").PlanStatus;
     cwd?: string;
     existingExecution?: import("../session/hosted-session.ts").ActiveExecutionWorkflow | null;
     hostedSession?: import("../session/hosted-session.ts").HostedSession;

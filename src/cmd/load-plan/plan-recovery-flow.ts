@@ -6,7 +6,7 @@ import { realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
  * The Plan Recovery menu coordinator for in-progress, failed, and implemented Plans.
  */
 
-import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
+import { resolvePlanExecutionPolicy } from "@runwield/plans/format";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import {
     executionWorktreePathExists,
@@ -20,7 +20,7 @@ import {
     buildValidationUserMessage,
     validationUserMessage,
 } from "../../shared/workflow/validation-user-messages.ts";
-import { isInValidation } from "../../shared/workflow/plan-lifecycle.ts";
+import { isInValidation } from "@runwield/plans/lifecycle";
 import { recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";
 import { verifyRecordedPublication } from "../../shared/workflow/validation-merge-verification.ts";

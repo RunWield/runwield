@@ -4,7 +4,7 @@
 locking, revision comparisons, durable writes, recovery journals, import continuation, and retained inputs. UI, CLI,
 Session, Attached, workflow and tool code express an operation; they do not choose a persistence implementation.
 
-`../shared/workflow/plan-lifecycle.js` remains the authority for event rules. The store's event commands apply that policy and persist
+The lifecycle rules in `@runwield/plans` determine the changes for each event. The store's event commands apply that policy and persist
 its result. Git execution, the worktree registry, Session transport, UI presentation, and publication phase policy retain
 their existing owners. They are not moved here merely because they interact with a Plan.
 
@@ -52,10 +52,8 @@ delivery copies are distinct sources inside the module. A missing canonical stor
 Managed remote entry selects the initiating laptop service before workflow consumers load. Ordinary local and
 manual-SSH entry selects the execution account. Losing the service never enables another personal store.
 
-`../plan-format.ts` exposes storage-free parsing, normalization and presentation helpers. Actual implementations live in
-`../plan-format-implementation.ts` and `../plan-format/`; they do not import persistence at runtime. The parser retains
-its existing missing-date defaults and bounded text revision cache. Storage-free does not mean every parser default is
-time-independent.
+`@runwield/plans/format` exposes storage-free parsing, normalization and presentation helpers.
+The parser keeps its existing missing-date defaults and bounded text revision cache.
 
 ## Enforcement and qualification
 

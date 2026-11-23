@@ -3,7 +3,7 @@ import { seedPlanState, seedPlan } from "./plan-state-fixture.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 
 import { inspectLocalHomeStore } from "../../plan-store/access.ts";
-import { pickControllerState } from "../workflow/controller-state.ts";
+import { pickControllerState } from "@runwield/plans/controller-state";
 
 /** Arrange authored bytes and historical controller facts in the real store. */
 export async function savePlanWithController(...args: Parameters<typeof seedPlan>) {

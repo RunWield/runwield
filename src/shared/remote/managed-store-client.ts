@@ -246,7 +246,7 @@ async function executeManagedFixture() {
                     throw new Error("A retained client verdict was accepted without independent Git publication.");
                 await seedFile(seedPath(retainedAttempt.path, "resumed-sentinel.txt"), "Original execution resumed.\n");
                 const { checkpointExecutionWorktree } = await import("../worktree.ts");
-                const { stageValidationPassedInExecutionWorktree } = await import("../workflow/plan-lifecycle.ts");
+                const { stageValidationPassedInExecutionWorktree } = await import("../../plan-store/index.ts");
                 const { startPublicationAttempt, advanceStoredPublication, cleanupStoredPublication } =
                     await import("../workflow/publication-machine.ts");
                 const { publishExecutionWorktreeIsolated } = await import("../isolated-publication.ts");

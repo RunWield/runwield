@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { mergeFrontMatterText } from "../../../plan-format.ts";
+import { mergeFrontMatterText } from "@runwield/plans/format";
 
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";

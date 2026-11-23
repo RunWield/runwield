@@ -1,6 +1,6 @@
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { buildPlanConversationRequest } from "../../shared/workflow/plan-review-conversation.ts";
-import { isSequencePlan } from "../../shared/project-plan.ts";
+import { isSequencePlan, resolvePlanExecutionPolicy, isProjectPlan } from "@runwield/plans/format";
 import { applySequenceReviewDecision, prepareSequenceReview } from "../../plan-store/index.ts";
 /**
  * @module cmd/load-plan/plan-review-flow
@@ -13,10 +13,10 @@ import { applySequenceReviewDecision, prepareSequenceReview } from "../../plan-s
 
 import { AGENTS, CLI_BIN } from "../../constants.ts";
 import { type PlanFrontMatter } from "../../plan-store/index.ts";
-import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { decidePostExecution, decidePostPlanning } from "../../shared/workflow/decisions.ts";
-import { isPlanReviewableWithoutReopen, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import { isPlanReviewableWithoutReopen } from "@runwield/plans/lifecycle";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../../shared/workflow/plan-approval.ts";

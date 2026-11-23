@@ -1,5 +1,13 @@
 import { projects } from "@runwield/projects";
-import { isEpicArtifactPlanName } from "../plan-format.ts";
+import {
+    isEpicArtifactPlanName,
+    canonicalizeStoredPlanName,
+    isHiddenPlanName,
+    PlanFrontMatterParseError,
+    mergeFrontMatterText,
+    parsePlanFrontMatter,
+} from "@runwield/plans/format";
+import type { PlanFrontMatterWithCustomFields } from "@runwield/plans";
 import type { PlanDocumentDiagnostic } from "./index.ts";
 
 import { captureForegroundProcess } from "../shared/captured-process.ts";
@@ -7,13 +15,6 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { inspectPlanTextStrict, getStoredPlanPath, withPlanCatalogLock } from "../plan-store.ts";
-import {
-    canonicalizeStoredPlanName,
-    isHiddenPlanName,
-    PlanFrontMatterParseError,
-    mergeFrontMatterText,
-    parsePlanFrontMatter,
-} from "../plan-format.ts";
 import { loadPlan } from "./index.ts";
 import { listEntries as listWorktreeRegistryEntries } from "../shared/worktree-registry.ts";
 
@@ -181,7 +182,7 @@ export function isActivePlanPath(path: string): boolean {
 export async function readTargetChildren(projectRoot: string, ref: string, parentPlanName: string) {
     const listed = await runGit(projectRoot, ["ls-tree", "-r", "--name-only", ref, "docs/plans"]);
     const parentName = canonicalizeStoredPlanName(parentPlanName).name;
-    const children: Array<{ name: string; path: string; attrs: ReturnType<typeof parsePlanFrontMatter>["attrs"] }> = [];
+    const children: Array<{ name: string; path: string; attrs: PlanFrontMatterWithCustomFields }> = [];
     const relativePaths = listed.split(/\r?\n/).filter(isActivePlanPath);
     const sources = await readTargetPlanMarkdowns(projectRoot, relativePaths, ref);
     for (const [relativePath, markdown] of sources) {
@@ -218,10 +219,7 @@ export async function readTargetBranchPlansByParent(
         ? null
         : preparedTarget || (await resolveExistingTargetSnapshot(projectRoot, targetBranch));
     const parentName = canonicalizeStoredPlanName(parentPlanName).name;
-    const children = new Map<
-        string,
-        { name: string; path: string; attrs: ReturnType<typeof parsePlanFrontMatter>["attrs"] }
-    >();
+    const children = new Map<string, { name: string; path: string; attrs: PlanFrontMatterWithCustomFields }>();
     const diagnostics = new Map<string, PlanDocumentDiagnostic>();
     const sources = new Map<string, string>();
     if (localTarget) {

@@ -41,7 +41,7 @@ test("corrupt retained input refuses publication, then exact restoration resumes
 for (const interrupted of [false, true]) {
     test(`changed code retires unpublished copies with interrupted receipt ${interrupted}`, async () => {
         const { preparePublicationRevalidation } = await import("./publication-revalidation.ts");
-        const { recordPlanEvent } = await import("./plan-lifecycle.ts");
+        const { recordPlanEvent } = await import("../../plan-store/index.ts");
         const f = await publicationFixture(true);
         try {
             equal((await f.drive(interrupted ? "artifact_effect" : "artifact_receipt")).code, 86);
@@ -130,7 +130,7 @@ for (const issue of ["missing-manifest", "foreign-reference", "missing-registry"
 
 for (const boundary of ["revalidation_intent", "revalidation_reset"]) {
     test(`rewritten source resumes interrupted ${boundary} without duplicating copies`, async () => {
-        const { recordPlanEvent } = await import("./plan-lifecycle.ts");
+        const { recordPlanEvent } = await import("../../plan-store/index.ts");
         const f = await publicationFixture(true);
         try {
             equal((await f.drive("artifact_receipt")).code, 86);
@@ -278,7 +278,7 @@ for (const place of ["linked-clone", "foreign-owner"] as const) {
 test("stale receipt cannot complete or promote an active attempt; fresh proof settles and reopening invalidates completion", async () => {
     const { rejects } = await import("node:assert/strict");
     const { updatePlanPackageMetadata } = await import("../../plan-store/packages.ts");
-    const { recordPlanEvent } = await import("./plan-lifecycle.ts");
+    const { recordPlanEvent } = await import("../../plan-store/index.ts");
     const f = await publicationFixture(false);
     try {
         equal((await f.drive("candidate_receipt")).code, 86);
@@ -399,7 +399,7 @@ test("edited publication copies refuse before push and exact restoration complet
 });
 
 test("rewritten copyless code requires new validation and seals the new commit", async () => {
-    const { recordPlanEvent } = await import("./plan-lifecycle.ts");
+    const { recordPlanEvent } = await import("../../plan-store/index.ts");
     const f = await publicationFixture(false);
     try {
         equal((await f.drive("artifact_receipt")).code, 86);

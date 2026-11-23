@@ -9,7 +9,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 
 import { archivePlan, loadPlan } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.ts";
 import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import { listTransitionRecoveryRecords } from "../../plan-store/index.ts";

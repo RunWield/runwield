@@ -1,20 +1,20 @@
 import { projects } from "@runwield/projects";
 import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import { epicChildOrderProblem } from "./epic-child-order.ts";
-import { projectPlanType } from "../project-plan.ts";
+import {
+    projectPlanType,
+    compareChildPlansByOrder,
+    getDeclaredPlanStatus,
+    resolveSiblingChildPlanDependencyStates,
+} from "@runwield/plans/format";
 /**
  * @module shared/workflow/epic-continuation
  * Strict ordered continuation for child FEATURE plans inside PROJECT Epics.
  */
 
-import {
-    compareChildPlansByOrder,
-    getDeclaredPlanStatus,
-    resolveSiblingChildPlanDependencyStates,
-} from "../../plan-format.ts";
 import { findPlansByParent, listPlans, loadPlan } from "../../plan-store/index.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { executePlan, runPlanningAgent } from "./workflow.ts";
 import { decidePostExecution, decidePostPlanning } from "./decisions.ts";
 import { buildTriageReport } from "./workflow-prompts.ts";

@@ -36,7 +36,7 @@ import { HostedSession } from "../session/hosted-session.ts";
 import { findById, getWorktreeRegistryPath, pruneEntry } from "../worktree-registry.ts";
 import { addEntry } from "../worktree-registry.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";

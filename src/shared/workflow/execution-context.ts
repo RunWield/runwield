@@ -11,7 +11,7 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
 
 import { isPlannedChangeClassification } from "../../constants.ts";
 
-import { normalizeExecutionMode } from "../../plan-format.ts";
+import { normalizeExecutionMode } from "@runwield/plans/format";
 import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
 import {
     describeRegistryAmbiguity,
@@ -28,7 +28,7 @@ import { resolveTargetBranchName } from "../worktree.ts";
 import { getWorkflowDiff } from "./git-snapshot.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.ts";
-import { isInValidation } from "./plan-lifecycle.ts";
+import { isInValidation } from "@runwield/plans/lifecycle";
 import { hasImplementationDiff, requiresImplementationDiff } from "./validation-scope.ts";
 import type { ValidationRecoveryNotice } from "./validation-user-messages.ts";
 

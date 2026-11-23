@@ -5,7 +5,13 @@ import { withLocalPlanWorkflow } from "../plan-store/index.ts";
 import { authorLocalPlan } from "../plan-store/index.ts";
 import { buildPlanConversationRequest } from "../shared/workflow/plan-review-conversation.ts";
 import { reviewSourceStillMatches } from "../plan-store/index.ts";
-import { isSequencePlan, projectPlanType } from "../shared/project-plan.ts";
+import {
+    isSequencePlan,
+    projectPlanType,
+    planDocumentMarkdown,
+    resolvePlanExecutionPolicy,
+    assertNotReservedEpicArtifactPlanName,
+} from "@runwield/plans/format";
 import { applySequenceReviewDecision, prepareSequenceReview } from "../plan-store/index.ts";
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../plan-store/index.ts";
 /**
@@ -28,10 +34,8 @@ import { pathToFileURL as toFileUrl } from "node:url";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { toolRegistry, type WorkKind } from "@runwield/tools";
 import { CLI_BIN, type PlanClassification } from "../constants.ts";
-import { planDocumentMarkdown, resolvePlanExecutionPolicy } from "../plan-format.ts";
 import { ensurePlanIdentity, loadPlan } from "../plan-store/index.ts";
-import { assertNotReservedEpicArtifactPlanName } from "../plan-format.ts";
-import { recordPlanEvent } from "../shared/workflow/plan-lifecycle.ts";
+import { recordPlanEvent } from "../plan-store/index.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../plan-store/index.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";

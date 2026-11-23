@@ -1,5 +1,5 @@
 import { seedPlanState, seedPlan as savePlanDocument } from "../testing/plan-state-fixture.ts";
-import { pickControllerState } from "./controller-state.ts";
+import { pickControllerState } from "@runwield/plans/controller-state";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
@@ -12,18 +12,15 @@ import {
     buildPlanEventUpdates,
     getAllowedManualPlanStatuses,
     getPlanLifecycleActionMetadata,
-    isEpicPlan,
     isExecutablePlanStatus,
     isManualBoardStatusChangeAllowed,
-    recordPlanEvent,
-    stageValidationPassedInExecutionWorktree,
     type PlanEventDetails,
-} from "./plan-lifecycle.ts";
-import { injectFrontMatter } from "../../plan-format.ts";
+} from "@runwield/plans/lifecycle";
+import { isEpicPlan, injectFrontMatter, type PlanFrontMatterInput } from "@runwield/plans/format";
+import { recordPlanEvent, stageValidationPassedInExecutionWorktree } from "../../plan-store/index.ts";
 import { loadPlan } from "../../plan-store/index.ts";
 import { COLLABORATION_STATE_REMOTE_CANONICAL, SharedPlanLockError } from "../collaboration/lock.ts";
 
-import type { PlanFrontMatterInput } from "../../plan-format.ts";
 import { type ValidationCheckpoint } from "./validation-checkpoint.ts";
 
 /**
@@ -36,7 +33,7 @@ async function updatePlanFrontMatterForTest(cwd: string, planName: string, updat
     return await seedPlanState(cwd, planName, updates, undefined, { expectedRevision: plan?.revision });
 }
 
-/** @type {import('./plan-lifecycle.ts').PlanEventDetails} */
+/** @type {import('@runwield/plans/lifecycle').PlanEventDetails} */
 const TEST_DELIVERY_DETAILS = {
     executionMode: "worktree",
     deliveryEvidence: {
@@ -715,7 +712,10 @@ test("recordPlanEvent keeps parent Epic open while child features remain unverif
                 planName: "epic/02-last",
                 event: "validation_passed",
                 currentStatus: "reviewed",
-                details: { ...TEST_DELIVERY_DETAILS, triageMeta: { classification: "PLANNED_CHANGE", parentPlan: "epic" } },
+                details: {
+                    ...TEST_DELIVERY_DETAILS,
+                    triageMeta: { classification: "PLANNED_CHANGE", parentPlan: "epic" },
+                },
             });
 
             const parent = await loadPlan(cwd, "epic");

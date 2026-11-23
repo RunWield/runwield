@@ -1,7 +1,7 @@
 import process from "node:process";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { withLocalPlanWorkflow, loadPlan } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { test } from "node:test";

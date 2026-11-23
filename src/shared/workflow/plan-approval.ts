@@ -1,4 +1,4 @@
-import { projectPlanType } from "../project-plan.ts";
+import { projectPlanType } from "@runwield/plans/format";
 /**
  * @module shared/workflow/plan-approval
  * Approval-intent contract shared by Plan Review transport and workflow routing.

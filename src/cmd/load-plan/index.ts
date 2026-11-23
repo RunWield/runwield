@@ -11,7 +11,7 @@ import {
     confirmProjectDirectory,
     DirectoryStartupCanceled,
 } from "../../ui/tui/directory-warning.ts";
-import { isEpicPlan, projectPlanType } from "../../shared/project-plan.ts";
+import { isEpicPlan, projectPlanType, canonicalPlanStatus, isRecoverableWorktreeStatus } from "@runwield/plans/format";
 /**
  * @module cmd/load-plan
  * Load-plan command implementation. Loads a saved Plan from disk and continues
@@ -21,7 +21,6 @@ import { isEpicPlan, projectPlanType } from "../../shared/project-plan.ts";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { AGENTS, CLI_BIN, getCwd } from "../../constants.ts";
-import { canonicalPlanStatus, isRecoverableWorktreeStatus } from "../../plan-format.ts";
 import {
     archivePlan,
     ensurePlanIdentity,
@@ -62,7 +61,7 @@ import { completeUserVerification } from "./user-verification-completion.ts";
 import { confirmChildFeatureDependencies, formatTopLevelPlanOption } from "./plan-epic-children.ts";
 import { reopenPlanForReview, resolveRecoveryWorktree } from "./plan-recovery-worktree.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";
-import { isExecutablePlanStatus, isInValidation } from "../../shared/workflow/plan-lifecycle.ts";
+import { isExecutablePlanStatus, isInValidation } from "@runwield/plans/lifecycle";
 import { getPlanContentStatus } from "../../shared/workflow/validation-engine.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { printCommandHelp } from "../help/index.ts";

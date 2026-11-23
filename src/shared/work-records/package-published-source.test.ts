@@ -7,7 +7,7 @@ import { publicationFixture } from "../workflow/testing/package-publication-fixt
 import { captureForegroundProcess } from "../captured-process.ts";
 import { git } from "../git-test-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
-import { recordPlanEvent } from "../workflow/plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { loadPublicationAttempt } from "../workflow/publication-machine.ts";
 import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 import type { WorkRecordSource } from "./generation.ts";

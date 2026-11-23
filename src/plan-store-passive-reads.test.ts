@@ -6,7 +6,7 @@ import process from "node:process";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 import { dirname, join } from "node:path";
 import { getPlanDocumentRoot } from "./plan-store.ts";
-import { parsePlanTextStrict } from "./plan-format.ts";
+import { parsePlanTextStrict } from "@runwield/plans/format";
 import {
     findPlanById,
     listPlanResources,

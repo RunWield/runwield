@@ -10,8 +10,7 @@ import {
     type ChildFeaturePlanDescriptor,
     type PlanWriteOptions,
 } from "../plan-store.ts";
-import { isPlannedChangeClassification } from "../plan-format/classification.ts";
-import { isEpicPlan } from "../shared/project-plan.ts";
+import { isPlannedChangeClassification, isEpicPlan } from "@runwield/plans/format";
 import { recordPlanEvent } from "./events.ts";
 import { inspectLocalHomeStore, withLocalProjectAction } from "./access.ts";
 import { authorPackageChildren } from "./children.ts";

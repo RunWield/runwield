@@ -10,6 +10,7 @@
     "packages/langfuse-exporter/mapping.test.ts",
     "packages/langfuse-exporter/protocol.test.ts",
     "packages/langfuse-exporter/transport.test.ts",
+    "packages/plans/index.test.ts",
     "packages/tools/registry.test.ts",
     "packages/tools/triage-report.test.ts",
     "packages/tools/user-interview.test.ts",

@@ -44,7 +44,7 @@ import {
     PlanFrontMatterParseError,
     resolvePlanExecutionPolicy,
     resolveSiblingChildPlanDependencyStates,
-} from "./plan-format.ts";
+} from "@runwield/plans/format";
 import {
     archivePlan,
     archivePlansByStatus,

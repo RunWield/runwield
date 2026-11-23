@@ -651,7 +651,7 @@ export async function verifyManagedRecording(
 
 export async function listManagedWorkRecords(
     cwd: string,
-): Promise<import("../shared/work-records/schema.ts").WorkRecordResource[]> {
+): Promise<import("@runwield/plans/work-record-schema").WorkRecordResource[]> {
     const owner = await client(cwd);
     if (!owner) return [];
     const result = (await owner.execute({ kind: "record-catalog" })).result;
@@ -911,7 +911,7 @@ export async function readManagedRetainedExecution(
 export async function writeManagedRetainedController(
     cwd: string,
     identity: import("./controllers.ts").WorkflowIdentity,
-    updates: import("../shared/workflow/controller-state.ts").WorkflowControllerState,
+    updates: import("@runwield/plans/controller-state").WorkflowControllerState,
     options: import("./controllers.ts").ControllerWriteOptions,
 ): Promise<import("./controllers.ts").ControllerRecord> {
     const selected = currentManagedRetainedExecution();
@@ -1199,12 +1199,12 @@ export async function projectManagedEpic(
 export async function recordManagedDeviation(
     cwd: string,
     name: string,
-    proposal: import("../shared/plan-deviations.ts").PlanDeviationProposal,
+    proposal: import("@runwield/plans/format").PlanDeviationProposal,
     expectedRevision: string,
 ) {
     const before = await readManagedPlan(cwd, name);
     if (!before?.attrs.planId) throw new Error("Deviation Plan is unavailable.");
-    const { appendPlanDeviation } = await import("../shared/plan-deviations.ts");
+    const { appendPlanDeviation } = await import("@runwield/plans/format");
     const result = appendPlanDeviation(before.attrs.planDeviations, proposal);
     await mutateManagedPlan(cwd, {
         kind: "record-deviation",
@@ -1371,7 +1371,7 @@ export async function readManagedRelatedController(cwd: string, member: import("
 export async function writeManagedRelatedController(
     cwd: string,
     member: import("./controllers.ts").WorkflowIdentity,
-    updates: import("../shared/workflow/controller-state.ts").WorkflowControllerState,
+    updates: import("@runwield/plans/controller-state").WorkflowControllerState,
     options: import("./controllers.ts").ControllerWriteOptions,
 ) {
     const selected = currentManagedRetainedExecution();

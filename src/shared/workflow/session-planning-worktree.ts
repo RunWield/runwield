@@ -1,7 +1,7 @@
 import { projects } from "@runwield/projects";
 import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
-import { mergeFrontMatterText } from "../../plan-format.ts";
+import { mergeFrontMatterText } from "@runwield/plans/format";
 import { loadPlan } from "../../plan-store/index.ts";
 import { findActiveByPlanName } from "../worktree-registry.ts";
 import { executionWorktreePathExists, recoverMissingExecutionWorktree } from "./execution-worktree-rescue.ts";

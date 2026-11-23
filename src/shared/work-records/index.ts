@@ -1,4 +1,4 @@
-export * from "./schema.ts";
+export * from "@runwield/plans/work-record-schema";
 export * from "./markdown.ts";
 export * from "./store.ts";
 export * from "./lifecycle.ts";

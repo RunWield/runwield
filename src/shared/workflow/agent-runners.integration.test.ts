@@ -11,7 +11,7 @@ import { HostedSession } from "../session/hosted-session.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { buildEngineerPausedMessage, runEngineerWithPlan } from "./engineer-runner.ts";
 import { runPlanningAgent } from "./planning-agent.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 
 interface AgentSessionFixture {
     hostedSession: HostedSession;

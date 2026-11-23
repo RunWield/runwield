@@ -4,7 +4,7 @@ import { detailHref } from "./PlanCard.tsx";
 import { RunWieldCard } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import type { PlanFrontMatter } from "../../../plan-store/index.ts";
-import type { countChildPlanProgress } from "../../../plan-format.ts";
+import type { countChildPlanProgress } from "@runwield/plans/format";
 
 export interface ProjectCardChild {
     planId: string;

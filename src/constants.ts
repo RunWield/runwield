@@ -1,7 +1,7 @@
 import { readOptionalEnv } from "@runwield/resources/home";
-import { toolRegistry, type RoutingIntent } from "@runwield/tools";
+import { toolRegistry } from "@runwield/tools";
 export type { RoutingIntent, WorkKind } from "@runwield/tools";
-export { PLANS_DIR_NAME, isPlannedChangeClassification } from "./plan-format/classification.ts";
+export { PLANS_DIR_NAME, isPlannedChangeClassification, type PlanClassification } from "@runwield/plans/format";
 
 export { CLI_BIN } from "./shared/cli-name.ts";
 /**
@@ -62,8 +62,6 @@ export const SNIP_FILTERS_DIR = resolveBundledResourcePath("snip-filters");
 export const CATPPUCCIN_MOCHA_THEME_PATH = resolveBundledResourcePath("ui", "theme", "catppuccin-mocha.json");
 
 export const { normalizeWorkKind, workKinds: WORK_KINDS } = toolRegistry.get("triage_report");
-
-export type PlanClassification = Extract<RoutingIntent, "QUICK_FIX" | "PLANNED_CHANGE" | "PROJECT">;
 
 export function formatPlannedWorkLabel(workKind: string | null | undefined) {
     switch (normalizeWorkKind(workKind)) {

@@ -1,13 +1,29 @@
 import { projects } from "@runwield/projects";
-import type { PlanClassification, WorkKind } from "./constants.ts";
+import type { PlanFrontMatter, PlanFrontMatterInput, PlanFrontMatterWithCustomFields } from "@runwield/plans";
+
+export type {
+    DeliveryEvidence,
+    ExecutionMode,
+    HumanReviewDecision,
+    HumanReviewMode,
+    NonGitDeliveryEvidence,
+    ParsePlanFrontMatterResult,
+    PlanDocumentMetadata,
+    PlanFrontMatter,
+    PlanFrontMatterInput,
+    PlanPresentationFields,
+    WorktreeDeliveryEvidence,
+} from "@runwield/plans";
+export type {
+    PlanExecutionPolicy,
+    PlanExecutionPolicyError,
+    PlanExecutionPolicySuccess,
+    PlanTextMalformed,
+    SplitPlanBody,
+} from "@runwield/plans/format";
 
 import type { MoveEpicArtifactResult } from "./plan-store/artifacts.ts";
 
-import type { PlanDeviation } from "./shared/plan-deviations.ts";
-
-import type { TicketReference } from "./shared/ticket-references.ts";
-
-import type { WorkflowControllerState, WorkflowWorktreeContext } from "./shared/workflow/controller-state.ts";
 
 import type { ControllerDocumentWorktree, PendingControllerRepair } from "./plan-store/controllers.ts";
 
@@ -15,11 +31,9 @@ import type { FrontMatterValue } from "./shared/front-matter.ts";
 
 export type { MoveEpicArtifactResult } from "./plan-store/artifacts.ts";
 
-export type { PlanDeviation } from "./shared/plan-deviations.ts";
+export type { PlanDeviation } from "@runwield/plans/format";
 
 export type { WorktreeRegistryEntry } from "./shared/worktree-registry.ts";
-
-export type ParsePlanFrontMatterResult = { attrs: PlanFrontMatterWithCustomFields; body: string };
 
 type CreatePulledCollaborationPlanOptions = {
     preferredName?: string;
@@ -100,156 +114,6 @@ interface StoredPlanLocation extends StoredPlanName {
     filePath: string;
 }
 
-export type HumanReviewMode = "none" | "ask" | "always" | null;
-
-export type HumanReviewDecision = "not_required" | "skipped" | "approved" | "changes_requested" | null;
-
-export type ExecutionMode = "worktree" | "non_git_in_place" | null;
-
-export interface WorktreeDeliveryEvidence {
-    version: 1;
-    mode: "worktree_merge";
-    executionCommit: string;
-    targetBranch: string;
-    targetHeadBeforeMerge: string;
-}
-
-export interface NonGitDeliveryEvidence {
-    version: 1;
-    mode: "non_git_in_place";
-}
-
-export type DeliveryEvidence = WorktreeDeliveryEvidence | NonGitDeliveryEvidence | null;
-
-type PlanWorkRecordBacklink = {
-    status?: "generated" | "failed";
-    recordId?: string;
-    path?: string;
-    lastAttemptAt?: string;
-    error?: string;
-};
-
-export type PlanDocumentMetadata = {
-    title?: string;
-    /** Durable project-scoped resource identity for URL/addressable Plan lookup */
-    planId?: string;
-    classification: PlanClassification;
-    /** Optional nature of planned executable work. */
-    workKind?: WorkKind;
-    /** PROJECT capability: epic (default) or sequence. Invalid values remain visible for correction. */
-    type?: string;
-    complexity: "LOW" | "MEDIUM" | "HIGH";
-    /** Files that will be created/modified */
-    affectedPaths: string[];
-    /** Optional provider-neutral Ticket References identified by the user. */
-    tickets?: TicketReference[];
-    /** Optional ordered Work Record IDs that this Plan is confirmed to replace. */
-    supersedes?: string[];
-    /** Ordered user-confirmed replacements to effective Plan requirements. */
-    planDeviations?: PlanDeviation[];
-    /** Canonical FEATURE execution owner, preserved raw when invalid for diagnostics */
-    executionAgent?: FrontMatterValue;
-    /** Planner's suggested execution style, preserved raw when invalid for diagnostics */
-    collaborationRecommendation?: FrontMatterValue;
-    /** Legacy browser UI/UX marker retained for source compatibility */
-    frontend?: boolean;
-    /** Project dev/preview command for browser verification, if known */
-    devServerCommand?: string | null;
-    /** Local URL expected for browser verification, if known */
-    devServerUrl?: string | null;
-    /** Whether the dev server is expected to support hot module reload */
-    devServerHmr?: boolean | null;
-    /** ISO timestamp */
-    createdAt: string;
-    status:
-        | "draft"
-        | "approved"
-        | "ready_for_decomposition"
-        | "ready_for_work"
-        | "in_progress"
-        | "failed"
-        | "implemented"
-        | "validated_ci"
-        | "reviewed"
-        | "validated"
-        | "verified"
-        | "user_verified"
-        | "closed_without_verification"
-        | "on_hold";
-    /** "internal" = created by a RunWield agent; "external" = a pre-existing markdown file loaded from an arbitrary path and resumed with RunWield */
-    origin?: "internal" | "external";
-    /** Canonical parent plan name for child FEATURE plans */
-    parentPlan?: string;
-    /** Epic child FEATURE execution order. */
-    order?: number;
-    /** Sibling FEATURE plan identifiers that should be completed first */
-    dependencies?: string[];
-    /** ISO timestamp when the user attested verification outside Workflow Validation */
-    userVerifiedAt?: string | null;
-    /** Required note for user_verified terminal plans */
-    userVerificationNote?: string | null;
-    /** Required reason for new manual closed_without_verification transitions */
-    closedWithoutVerificationReason?: string | null;
-    /** ISO timestamp when the Plan was manually closed without verification */
-    closedWithoutVerificationAt?: string | null;
-    /** Neutral backlink to canonical Work Record generation state */
-    workRecord?: PlanWorkRecordBacklink;
-    /** Explicit Epic completion mode when an Epic is marked done enough for now */
-    epicCompletionMode?: "done_enough" | null;
-    /** ISO timestamp when an Epic was marked done enough for now */
-    epicDoneEnoughAt?: string | null;
-    /** Human-readable summary captured when an Epic was marked done enough for now */
-    epicDoneEnoughSummary?: string | null;
-    /** Final target of the reviewed Epic branch */
-    epicDeliveryTargetBranch?: string | null;
-    /** Primary-branch commit the Epic branch was created from; the integration gate diffs from it */
-    epicBaseCommit?: string | null;
-    /** Project-relative path of the latest failing Epic integration gate report */
-    epicIntegrationReport?: string | null;
-    /** Recorded landing branch, independent of setting changes */
-    deliveryBranch?: string;
-    /** User-selected target branch, independent of the current execution attempt */
-    targetBranch?: string;
-    /** Validated implementation commit; durable after runtime cleanup */
-    validatedCommit?: string | null;
-    /** Current Workflow Validation phase while status stays "implemented" */
-    validationPhase?: "mechanical" | "semantic" | "delivery";
-    /** Status captured before the Plan moved to on_hold */
-    heldFromStatus?: PlanFrontMatter["status"] | null;
-    /** ISO timestamp when the Plan was put on hold */
-    heldAt?: string | null;
-    /** Optional human reason for the hold */
-    holdReason?: string | null;
-    /** ISO timestamp when the Plan was physically moved to docs/plans/archived/ */
-    archivedAt?: string | null;
-    /** Optional human reason captured when the Plan was archived */
-    archiveReason?: string | null;
-    /** Durable lifecycle status captured before archival */
-    archivedFromStatus?: PlanFrontMatter["status"] | null;
-    /** Project-relative path the Plan occupied before archival */
-    archivedFromPath?: string | null;
-    /** ISO timestamp when the Plan was physically restored to active docs/plans/ */
-    restoredAt?: string | null;
-    /** Project-relative archived path restored from */
-    restoredFromPath?: string | null;
-};
-
-export type PlanPresentationFields = {
-    /** First paragraph of Context; not duplicated in Front Matter */
-    summary: string;
-};
-
-export type PlanFrontMatter = PlanDocumentMetadata &
-    PlanPresentationFields &
-    WorkflowControllerState &
-    WorkflowWorktreeContext;
-
-type RawPlanFields = Record<string, unknown>;
-
-type PlanFrontMatterWithCustomFields = PlanFrontMatter & RawPlanFields;
-
-export type PlanFrontMatterInput = Partial<PlanFrontMatter> & RawPlanFields;
-
 export interface ChildFeaturePlanDescriptor {
     /** Human-readable child plan title. */
     title: string;
@@ -278,11 +142,11 @@ export interface ChildFeaturePlanDescriptor {
     /** Sibling child plan names or identifiers required first. */
     dependencies: string[];
     /** Direct child Ticket References; omitted preserves existing child references, [] clears. */
-    tickets?: TicketReference[];
+    tickets?: PlanFrontMatter["tickets"];
     /** Planner-format markdown body for the child planned change. */
     content: string;
     /** Optional child Work Kind. */
-    workKind?: WorkKind;
+    workKind?: PlanFrontMatter["workKind"];
     /** Optional execution order stored in front matter, independent of the file name. */
     order?: number;
     /** Deprecated alias for order. */
@@ -312,53 +176,14 @@ export interface SavedChildFeaturePlan {
     metadata: SavedChildPlanMetadata;
 }
 
-export interface PlanExecutionPolicy {
-    executionAgent: "engineer" | "frontend-engineer";
-    collaborationRecommendation: "autonomous" | "pair";
-    source: "canonical" | "legacy_frontend" | "legacy_frontend_false" | "absent";
-}
-
-export interface PlanExecutionPolicyError {
-    ok: false;
-    error: string;
-    reason: string;
-}
-
-export interface PlanExecutionPolicySuccess {
-    ok: true;
-    policy: PlanExecutionPolicy;
-}
-
 export interface PlanReadAvailability {
     kind: "ready" | "pending";
     message?: string;
 }
 
-export interface SplitPlanBody {
-    frontMatterBlock: string;
-    body: string;
-}
-
-export interface PlanTextLoaded {
-    kind: "loaded";
-    path: string;
-    markdown: string;
-    attrs: PlanFrontMatterWithCustomFields;
-    body: string;
-    revision: string;
-    frontMatterRevision: string | undefined;
-    hasFrontMatter: boolean;
-    controllerRevision: number;
+export interface PlanTextLoaded extends ParsedPlanText {
     readAvailability?: PlanReadAvailability;
     pendingControllerRepairs?: PendingControllerRepair[];
-}
-
-export interface PlanTextMalformed {
-    kind: "malformed";
-    path: string;
-    markdown: string;
-    revision: string;
-    error: PlanFrontMatterParseError;
 }
 
 interface PlanFileIssue {
@@ -502,16 +327,13 @@ export interface PlanDependencyState extends Partial<Pick<SiblingPlan, "planName
 }
 
 import {
+    type PlanTextLoaded as ParsedPlanText,
+    type PlanTextMalformed,
     canonicalizeStoredPlanName,
-    DEFAULT_FRONT_MATTER,
-    KNOWN_FRONT_MATTER_KEYS,
-    HIDDEN_PLAN_DIRS,
+    PLAN_FRONT_MATTER_KEY_ORDER,
     getDeclaredPlanStatus,
-    normalizeOptionalBoolean,
     resolvePlanExecutionPolicy,
     normalizePlanId,
-    normalizeStringList,
-    normalizeNonNegativeInteger,
     injectFrontMatter,
     parsePlanFrontMatter,
     planDocumentMarkdown,
@@ -520,17 +342,18 @@ import {
     hashPlanBody,
     PlanFrontMatterParseError,
     getPlanRevisionForText,
-    getPlanFrontMatterRevisionForText,
     parsePlanTextStrict,
-    rememberFrontMatterRevision,
     comparePlansForList,
     isTerminalArchivableStatus,
     isRecoverableWorktreeStatus,
     compareChildPlansByOrder,
     isHiddenPlanName,
-    stripSequencePrefix,
     resolveSiblingChildPlanDependencyStates,
-} from "./plan-format-implementation.ts";
+    isProjectPlan,
+    normalizeTicketReferences,
+    assertNotReservedEpicArtifactPlanName,
+    isEpicArtifactPlanName,
+} from "@runwield/plans/format";
 
 export {
     canonicalizeStoredPlanName,
@@ -558,7 +381,6 @@ export {
     getPlanRevisionForText,
     getPlanFrontMatterRevisionForText,
     parsePlanTextStrict,
-    getKnownFrontMatterRevision,
     comparePlansForList,
     isTerminalArchivableStatus,
     isRecoverableWorktreeStatus,
@@ -569,7 +391,17 @@ export {
     isChildPlannedChangePlan,
     groupPlanHierarchy,
     countChildPlanProgress,
-} from "./plan-format-implementation.ts";
+} from "@runwield/plans/format";
+
+import {
+    normalizeNonNegativeInteger,
+    normalizeOptionalBoolean,
+    normalizeStringList,
+    observePlanRevisions,
+    stripSequencePrefix,
+} from "@runwield/plans/store-format";
+
+export { getKnownFrontMatterRevision } from "@runwield/plans/store-format";
 
 import { requiresPlanWorkflow } from "./plan-store/index.ts";
 
@@ -618,9 +450,8 @@ import {
 
 import { pid, platform } from "node:process";
 
-import { isProjectPlan } from "./shared/project-plan.ts";
 
-export { isEpicPlan, isProjectPlan, isSequencePlan } from "./shared/project-plan.ts";
+export { isEpicPlan, isProjectPlan, isSequencePlan } from "@runwield/plans/format";
 
 /**
  * @module plan-store
@@ -645,7 +476,6 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import { CLI_BIN, normalizeWorkKind, PLANS_DIR_NAME } from "./constants.ts";
 
-import { normalizeTicketReferences } from "./shared/ticket-references.ts";
 
 import { resolveWorkflowPlanLocation } from "./plan-store/location.ts";
 
@@ -664,7 +494,12 @@ import { writePlanDocumentAndController } from "./plan-store/transitions.ts";
 
 import { requestWorkspaceSearchRefresh } from "./shared/workspace-search-refresh.ts";
 
-import { pickControllerState, stripRuntimeFields } from "./shared/workflow/controller-state.ts";
+import {
+    type WorkflowControllerState,
+    type WorkflowWorktreeContext,
+    pickControllerState,
+    stripRuntimeFields,
+} from "@runwield/plans/controller-state";
 
 import {
     enterProjectRuntime,
@@ -695,9 +530,8 @@ import {
 
 import { moveEpicArtifactsFromArchive, moveEpicArtifactsToArchive } from "./plan-store/artifacts.ts";
 
-import { assertNotReservedEpicArtifactPlanName, isEpicArtifactPlanName } from "./plan-format.ts";
 
-export { PLAN_FRONT_MATTER_KEY_ORDER, PLAN_FRONT_MATTER_KEYS } from "./plan-front-matter.ts";
+export { PLAN_FRONT_MATTER_KEY_ORDER, PLAN_FRONT_MATTER_KEYS } from "@runwield/plans/format";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -746,16 +580,11 @@ export function getStoredPlanPath(cwd: string, planName: string): string {
     return getStoredPlanLocation(cwd, planName).filePath;
 }
 
-/**
- * @param {Record<string, unknown>} attrs
- * @returns {Partial<PlanFrontMatter>}
- */
-function pickKnownPlanFrontMatter(attrs: RawPlanFields): PlanFrontMatterInput {
-    const picked: PlanFrontMatterInput = {};
-    const pickedRecord: RawPlanFields = picked;
-    for (const key of KNOWN_FRONT_MATTER_KEYS) {
+function pickKnownPlanFrontMatter(attrs: PlanFrontMatterInput): PlanFrontMatterInput {
+    const picked: Record<string, PlanFrontMatterInput[string]> = {};
+    for (const key of PLAN_FRONT_MATTER_KEY_ORDER) {
         if (Object.hasOwn(attrs, key)) {
-            pickedRecord[key] = attrs[key];
+            picked[key] = attrs[key];
         }
     }
     return picked;
@@ -862,7 +691,7 @@ async function prepareStoredPlan(cwd: string, planName: string) {
  * Project only durable local controller evidence. Publication verification and
  * receipt invalidation belong to the lifecycle owner, not readers.
  * @param {PlanFrontMatter} attrs
- * @param {import('./shared/workflow/controller-state.ts').WorkflowControllerState & import('./shared/workflow/controller-state.ts').WorkflowWorktreeContext} state
+ * @param {import('@runwield/plans/controller-state').WorkflowWorktreeContext} state
  * @param {boolean} [publicationConfirmed]
  * @returns {PlanFrontMatter}
  */
@@ -1285,10 +1114,8 @@ export async function writePlanMarkdownWithRevision(
     }
     nextMarkdown = planDocumentMarkdown(nextMarkdown);
     await atomicWriteTextFile(filePath, nextMarkdown);
-    const revision = await getPlanRevisionForText(nextMarkdown);
-    const frontMatterRevision = await getPlanFrontMatterRevisionForText(nextMarkdown);
+    const { revision, frontMatterRevision } = await observePlanRevisions(nextMarkdown);
     recordPlanWriteRevision(filePath, revision, frontMatterRevision);
-    rememberFrontMatterRevision(revision, frontMatterRevision);
     const searchRoot = workspaceSearchRootForPlanPath(filePath);
     if (searchRoot) await requestWorkspaceSearchRefresh(searchRoot);
     return revision;
@@ -2221,7 +2048,7 @@ async function collectPlans(
                 });
                 continue;
             }
-            if (prefix.length === 0 && HIDDEN_PLAN_DIRS.has(entry.name)) continue;
+            if (prefix.length === 0 && isHiddenPlanName(entry.name)) continue;
             await collectPlans(entryPath, [...prefix, entry.name], results, parseIssues, documentOnly);
             continue;
         }
@@ -2248,7 +2075,7 @@ async function collectPlans(
                 results.push({ name, path: entryPath, ...current });
             } catch (error) {
                 if (error instanceof ProjectRuntimeEntryRefusedError) throw error;
-                const wrapped = new PlanFrontMatterParseError(entryPath, error);
+                const wrapped = new PlanFrontMatterParseError(entryPath, { cause: error });
                 parseIssues?.push({ name, path: entryPath, message: formatErrorMessage(error), error: wrapped });
             }
         } catch (error) {
@@ -3422,9 +3249,6 @@ export async function onboardExternalPlan(
             // adopting twice would overwrite the identity the first one established.
             if (plan.hasFrontMatter) return null;
             const markdown = injectFrontMatter(plan.markdown, {
-                classification: DEFAULT_FRONT_MATTER.classification,
-                complexity: DEFAULT_FRONT_MATTER.complexity,
-                summary: DEFAULT_FRONT_MATTER.summary,
                 affectedPaths: [],
                 createdAt: (fileCreatedAt || now).toISOString(),
                 updatedAt: now.toISOString(),

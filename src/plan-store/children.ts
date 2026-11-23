@@ -22,10 +22,10 @@ import {
     type PlanPackageBatchWrite,
 } from "./packages.ts";
 import { currentPackageProject, packageController, packageWorkflowRevision } from "./workflows.ts";
-import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.ts";
-import { pickControllerState } from "../shared/workflow/controller-state.ts";
+import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
+import { pickControllerState } from "@runwield/plans/controller-state";
 import { writePackageControllerEvidence } from "./controllers.ts";
-import { isEpicPlan, isProjectPlan } from "../shared/project-plan.ts";
+import { isEpicPlan, isProjectPlan } from "@runwield/plans/format";
 
 /** Allocate the whole family before resolving relations, then publish one recoverable generation. */
 export async function authorPackageChildren(

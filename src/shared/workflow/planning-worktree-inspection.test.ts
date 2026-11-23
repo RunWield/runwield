@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { parsePlanFrontMatter } from "../../plan-format.ts";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { inspectTargetBranchPlansByParent, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";
 

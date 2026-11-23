@@ -20,7 +20,7 @@ import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
 import { isPlannedChangeClassification } from "../../constants.ts";
 
-import { isChildFeaturePlan, isProjectPlan } from "../../plan-format.ts";
+import { isChildFeaturePlan, isProjectPlan } from "@runwield/plans/format";
 import { findPlansByParent, listArchivedPlans, loadArchivedPlan } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.ts";
@@ -33,7 +33,7 @@ import {
 } from "./generation.ts";
 
 type WorkRecordSource = import("./generation.ts").WorkRecordSource;
-type WorkRecordSupersessionCandidate = import("./schema.ts").WorkRecordSupersessionCandidate;
+type WorkRecordSupersessionCandidate = import("@runwield/plans/work-record-schema").WorkRecordSupersessionCandidate;
 
 export interface WorkRecordAutoGenerationResult {
     status: "disabled" | "skipped" | "generated" | "linked" | "failed";

@@ -103,7 +103,7 @@ structured agent outcomes, calls Plan and execution services, and decides which 
 | Multi-session registry      | Adopt, find, list, and dispose hosted sessions                                                                       | `src/shared/session/session-host.ts`                                                                                                                     |
 | Pi integration              | Build configured `AgentSession` objects, assemble prompts, wire tools, translate Pi events, run prompts, reuse roots | `src/shared/session/session.ts`                                                                                                                          |
 | Workflow application logic  | Interpret tool outcomes, route requests, choose post-planning and post-execution actions                             | `src/shared/session/agent-handler.ts`, `src/shared/workflow/orchestrator.ts`, `src/shared/workflow/decisions.ts`                                         |
-| Plan domain                 | Canonical Markdown persistence, identities, hierarchy, lifecycle state machine, collaboration write lock             | `src/plan-store.ts`, `src/shared/workflow/plan-lifecycle.ts`                                                                                             |
+| Plan domain                 | Canonical Markdown persistence, identities, hierarchy, lifecycle state machine, collaboration write lock             | `src/plan-store.ts`, `packages/plans/lifecycle.ts`                                                                                             |
 | Execution domain            | Worktree preparation, Engineer completion gate, local validation, repair, merge-back, recovery metadata              | `src/shared/workflow/workflow.ts`, `src/shared/workflow/validation.ts`, `src/shared/worktree.ts`                                                         |
 | Configuration and policy    | Layered agent definitions, settings, model resolution, protected tools, skills/prompts/extensions                    | `packages/agents/registry.ts`, `src/shared/settings.ts`, `src/shared/models/`, `src/tools/registry.ts`                                                  |
 | Local platform services     | Git probing, worktree registry, metrics, collaboration crypto/protocol/secrets, binary preflight                     | `src/shared/git.ts`, `src/shared/worktree-registry.ts`, `src/shared/workflow/metrics.ts`, `src/shared/collaboration/`, `src/shared/runtime-preflight.ts` |
@@ -744,7 +744,7 @@ stateDiagram-v2
 ```
 
 This diagram shows primary and recovery paths. The complete allowed-from matrix lives in
-`src/shared/workflow/plan-lifecycle.ts`, including constrained manual board movement and manual closure without
+`packages/plans/lifecycle.ts`, including constrained manual board movement and manual closure without
 verification.
 
 The lifecycle module is the authority for status transitions. Callers emit a named Plan Event; the state machine checks
@@ -1099,7 +1099,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Workflow decisions and outcome parsing    | `src/shared/workflow/decisions.ts`, `src/shared/workflow/workflow-results.ts` |
 | Plan execution facade                     | `src/shared/workflow/workflow.ts`                                             |
 | Validation and repair                     | `src/shared/workflow/validation.ts`                                           |
-| Plan lifecycle                            | `src/shared/workflow/plan-lifecycle.ts`                                       |
+| Plan lifecycle                            | `packages/plans/lifecycle.ts`                                       |
 | Plan persistence                          | `src/plan-store.ts`, `src/plan-front-matter.ts`                               |
 | Worktree operations and registry          | `src/shared/worktree.ts`, `src/shared/worktree-registry.ts`                   |
 | Settings and models                       | `src/shared/settings.ts`, `src/shared/models/`                                |

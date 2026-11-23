@@ -1,73 +1,24 @@
-/**
- * @module shared/workflow/validation-checkpoint
- * Durable continuation facts that Plan status alone cannot express.
- *
- * This record is the attempt-scoped authority for validation continuation. Session
- * workflow objects may project it for prompts and display, but a fresh process can
- * reconstruct the same phase, owner, open Review Issues, and repair receipt from
- * this record alone.
- */
+import {
+    VALIDATION_CHECKPOINT_VERSION,
+    type ValidationCheckpoint,
+    type ValidationCheckpointPhase,
+    type ValidationCheckpointState,
+    type ValidationReviewState,
+} from "@runwield/plans/controller-state";
+import { normalizeLedger } from "./review-ledger.ts";
 
-import type { ProcessIdentity } from "../process-identity.ts";
-import { normalizeLedger, type ReviewLedger } from "./review-ledger.ts";
-
-export const VALIDATION_CHECKPOINT_VERSION = 1;
-
-export type ValidationCheckpointPhase = "mechanical" | "semantic" | "delivery";
-export type ValidationCheckpointState = "ready" | "running" | "awaiting_repair" | "paused";
-
-export type ValidationReviewState = {
-    semanticRound: number;
-    reviewLedger: ReviewLedger;
-    repairBaselineTree: string;
-    lastRepairReport?: string;
-};
-
-export type CiRunEvidence = {
-    runId: string;
-    candidateIdentity?: string;
-};
-export type PendingCiDecision = { ciAttempts: number; failureReason: string; evidence?: CiRunEvidence };
-export type HostReviewerContinuation = { semanticRound: number; correctionCount: number; correction?: string };
-type PendingHostDecision = Extract<import("./validation-host-contract.ts").ValidationHostRequest, { kind: "decision" }>;
-type PendingHostRepair = Extract<import("./validation-host-contract.ts").ValidationHostRequest, { kind: "repair" }>;
-type HostDecisionChoices = Record<string, import("./validation-ports.ts").ValidationInteractionResponse>;
-
-export type HostRecorderState = {
-    recordId: string;
-    request: Extract<import("./validation-host-contract.ts").ValidationHostRequest, { kind: "recorder" }>;
-    invalidSubmissions: number;
-    sections?: import("../work-records/generation.ts").GeneratedWorkRecordSections;
-    failure?: string;
-};
-
-export type ValidationCheckpoint = {
-    version: 1;
-    attemptId: string;
-    generation: string;
-    expectedStatus: string;
-    nextPhase: ValidationCheckpointPhase;
-    state: ValidationCheckpointState;
-    ownerPid?: number;
-    ownerHostname?: string;
-    ownerIdentity?: ProcessIdentity;
-    repairKind?: string;
-    repairGeneration?: string;
-    repairCompletedOperationId?: string;
-    lastSettledOperationId?: string;
-    reviewState?: ValidationReviewState;
-    pendingHostDecision?: PendingHostDecision;
-    hostDecisionChoices?: HostDecisionChoices;
-    hostDecisionSequence?: number;
-    pendingRepair?: PendingHostRepair;
-    pendingCiDecision?: PendingCiDecision;
-    hostReview?: HostReviewerContinuation;
-    operationalAttempts?: number;
-    publicationRepairs?: number;
-    hostRecorder?: HostRecorderState;
-    candidateIdentity?: string;
-    updatedAt: string;
-};
+export {
+    isValidationCheckpoint,
+    VALIDATION_CHECKPOINT_VERSION,
+    type CiRunEvidence,
+    type HostRecorderState,
+    type HostReviewerContinuation,
+    type PendingCiDecision,
+    type ValidationCheckpoint,
+    type ValidationCheckpointPhase,
+    type ValidationCheckpointState,
+    type ValidationReviewState,
+} from "@runwield/plans/controller-state";
 
 export function validationPhaseForStatus(
     status: string | undefined,
@@ -107,20 +58,6 @@ export function validationCheckpointCanResume(
     return rememberedIndex <= currentIndex;
 }
 
-export function isValidationCheckpoint(value: Partial<ValidationCheckpoint>): value is ValidationCheckpoint {
-    return (
-        value.version === VALIDATION_CHECKPOINT_VERSION &&
-        typeof value.attemptId === "string" &&
-        value.attemptId.length > 0 &&
-        typeof value.generation === "string" &&
-        value.generation.length > 0 &&
-        typeof value.expectedStatus === "string" &&
-        ["mechanical", "semantic", "delivery"].includes(String(value.nextPhase)) &&
-        ["ready", "running", "awaiting_repair", "paused"].includes(String(value.state)) &&
-        typeof value.updatedAt === "string"
-    );
-}
-
 /** Normalize durable review state before it is projected into a Session. */
 export function readValidationReviewState(
     checkpoint: ValidationCheckpoint | null | undefined,
@@ -143,21 +80,21 @@ export function makeValidationCheckpoint(args: {
     state: ValidationCheckpointState;
     ownerPid?: number;
     ownerHostname?: string;
-    ownerIdentity?: ProcessIdentity;
+    ownerIdentity?: ValidationCheckpoint["ownerIdentity"];
     repairKind?: string;
     repairGeneration?: string;
     repairCompletedOperationId?: string;
     lastSettledOperationId?: string;
     reviewState?: ValidationReviewState;
-    pendingHostDecision?: PendingHostDecision;
-    hostDecisionChoices?: HostDecisionChoices;
+    pendingHostDecision?: ValidationCheckpoint["pendingHostDecision"];
+    hostDecisionChoices?: ValidationCheckpoint["hostDecisionChoices"];
     hostDecisionSequence?: number;
-    pendingRepair?: PendingHostRepair;
-    pendingCiDecision?: PendingCiDecision;
-    hostReview?: HostReviewerContinuation;
+    pendingRepair?: ValidationCheckpoint["pendingRepair"];
+    pendingCiDecision?: ValidationCheckpoint["pendingCiDecision"];
+    hostReview?: ValidationCheckpoint["hostReview"];
     operationalAttempts?: number;
     publicationRepairs?: number;
-    hostRecorder?: HostRecorderState;
+    hostRecorder?: ValidationCheckpoint["hostRecorder"];
     candidateIdentity?: string;
 }): ValidationCheckpoint {
     return {

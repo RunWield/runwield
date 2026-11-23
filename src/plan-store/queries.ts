@@ -48,7 +48,7 @@ export async function loadPlanBodyById(
 ): ReturnType<typeof import("../plan-store.ts").loadPlanBodyById> {
     if (!managedPlanStoreActive()) return await (await import("../plan-store.ts")).loadPlanBodyById(cwd, planId);
     const resource = await findPlanById(cwd, planId);
-    const { hashPlanBody } = await import("../plan-format.ts");
+    const { hashPlanBody } = await import("@runwield/plans/format");
     return { ...resource, body: resource.markdown, bodyHash: await hashPlanBody(resource.markdown) };
 }
 

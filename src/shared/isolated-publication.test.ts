@@ -17,7 +17,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mergeFrontMatterText } from "../plan-format.ts";
+import { mergeFrontMatterText } from "@runwield/plans/format";
 import { normalizePublicationFailure } from "./workflow/validation-merge-repair.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";

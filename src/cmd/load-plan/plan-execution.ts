@@ -8,10 +8,10 @@
  */
 
 import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
-import { resolvePlanExecutionPolicy } from "../../plan-format.ts";
+import { resolvePlanExecutionPolicy, isProjectPlan } from "@runwield/plans/format";
 import { loadPlan } from "../../plan-store/index.ts";
 import { isGitRepositoryRequiredError } from "../../shared/git.ts";
-import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { decidePostExecution } from "../../shared/workflow/decisions.ts";
 import { finalizePlanImplementation } from "../../shared/workflow/workflow.ts";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";

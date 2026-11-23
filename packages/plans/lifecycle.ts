@@ -1,11 +1,14 @@
-import {
-    type PlanFrontMatter,
-    type PlanFrontMatterInput,
-    type DeliveryEvidence,
-    type ExecutionMode,
-} from "../../plan-format.ts";
+import type { DeliveryEvidence, ExecutionMode, PlanFrontMatter, PlanFrontMatterInput } from "./document.ts";
 
-import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
+import { isPlannedChangeClassification } from "./classification.ts";
+import {
+    isPlanDependencySatisfiedStatus,
+    isRunWieldVerifiedStatus,
+    isUserVerifiedStatus,
+    normalizeDeliveryEvidence,
+    normalizeExecutionMode,
+} from "./format.ts";
+import { isEpicPlan, isProjectPlan } from "./project-plan.ts";
 
 export type PlanStatus = PlanFrontMatter["status"];
 
@@ -61,7 +64,7 @@ export interface PlanEventDetails {
     validationCiAttempts?: number;
     validationSemanticRounds?: number;
     mechanicalFailureKind?: "ci";
-    validationCheckpoint?: ValidationCheckpoint | null;
+    validationCheckpoint?: PlanFrontMatter["validationCheckpoint"];
     epicDoneEnoughSummary?: string;
     integrationCommit?: string;
     integrationReport?: string | null;
@@ -92,47 +95,6 @@ export interface PlanLifecycleActionMetadata {
     allowedManualTargetStatuses: PlanStatus[];
     blockedReasons: PlanLifecycleBlockedReasons;
 }
-
-export interface RecordPlanEventOptions {
-    cwd: string;
-    planName: string;
-    event: PlanEvent;
-    currentStatus: PlanStatus;
-    details?: PlanEventDetails;
-    expectedRevision?: string;
-}
-
-export interface ValidationPassedStagingResult {
-    attrs: PlanFrontMatter;
-    planPaths: string[];
-}
-
-export interface ValidationPassedStagingOptions {
-    projectRoot: string;
-    executionCwd: string;
-    planName: string;
-    details?: PlanEventDetails;
-}
-import { isEpicPlan, isProjectPlan } from "../project-plan.ts";
-
-export { isEpicPlan, isProjectPlan, isSequencePlan } from "../project-plan.ts";
-
-/**
- * @module shared/workflow/plan-lifecycle
- *
- * Central Plan Lifecycle state machine. Workflow callers should record Plan
- * Events here instead of mutating Plan Status directly.
- *
- * See docs/plan-lifecycle.md for the human-readable workflow.
- */
-
-import { isPlannedChangeClassification } from "../../constants.ts";
-
-import {
-    isPlanDependencySatisfiedStatus,
-    normalizeDeliveryEvidence,
-    normalizeExecutionMode,
-} from "../../plan-format.ts";
 
 /** @type {Record<PlanStatus, string>} */
 const PLAN_STATUS_HELP_TEXT: Record<PlanStatus, string> = {
@@ -226,16 +188,6 @@ export const CLOSED_PLAN_STATUSES: PlanStatusList = ["verified", "user_verified"
 export const ON_HOLD_PLAN_STATUSES: PlanStatusList = ["on_hold"];
 
 /** @param {string | undefined | null} status */
-export function isRunWieldVerifiedPlanStatus(status: string | null | undefined) {
-    return status === "validated" || status === "verified";
-}
-
-/** @param {string | undefined | null} status */
-export function isUserVerifiedPlanStatus(status: string | null | undefined) {
-    return status === "user_verified";
-}
-
-/** @param {string | undefined | null} status */
 export function isTerminalPlanStatus(status: string | null | undefined) {
     return CLOSED_PLAN_STATUSES.includes(status);
 }
@@ -245,7 +197,11 @@ export function isArchiveEligiblePlanStatus(status: string | null | undefined) {
     return isTerminalPlanStatus(status);
 }
 
-export { isPlanDependencySatisfiedStatus as isDependencySatisfiedPlanStatus };
+export {
+    isPlanDependencySatisfiedStatus as isDependencySatisfiedPlanStatus,
+    isRunWieldVerifiedStatus as isRunWieldVerifiedPlanStatus,
+    isUserVerifiedStatus as isUserVerifiedPlanStatus,
+};
 
 const ALL_KNOWN_STATUSES: PlanStatusList = [...PLAN_STATUSES, "validated_ci", "validated"];
 
@@ -356,7 +312,7 @@ function isKnownPlanStatus(status: string): status is PlanStatus {
 
 /**
  * @param {PlanStatus} status
- * @param {import('../../plan-store/index.ts').PlanFrontMatterInput | undefined} attrs
+ * @param {import('./document.ts').PlanFrontMatterInput | undefined} attrs
  * @returns {boolean}
  */
 function isManualBoardStatus(status: PlanStatus, attrs: PlanFrontMatterInput | undefined) {
@@ -370,7 +326,7 @@ function isManualBoardStatus(status: PlanStatus, attrs: PlanFrontMatterInput | u
  * Evidence or `verifiedAt`.
  *
  * @param {PlanStatus} status
- * @param {import('../../plan-store/index.ts').PlanFrontMatterInput | undefined} attrs
+ * @param {import('./document.ts').PlanFrontMatterInput | undefined} attrs
  * @returns {boolean}
  */
 function isManualUserVerificationStatus(status: PlanStatus, attrs: PlanFrontMatterInput | undefined) {
@@ -379,7 +335,7 @@ function isManualUserVerificationStatus(status: PlanStatus, attrs: PlanFrontMatt
 
 /**
  * @param {PlanStatus} status
- * @param {import('../../plan-store/index.ts').PlanFrontMatterInput | undefined} attrs
+ * @param {import('./document.ts').PlanFrontMatterInput | undefined} attrs
  * @returns {boolean}
  */
 function isManualBoardTargetStatus(status: PlanStatus, attrs: PlanFrontMatterInput | undefined) {
@@ -418,7 +374,7 @@ function assertAllowedTransition(event: PlanEvent, currentStatus: PlanStatus) {
 
 /**
  * @param {PlanStatus} currentStatus
- * @param {Partial<import('../../plan-store/index.ts').PlanFrontMatter> | undefined} attrs
+ * @param {Partial<import('./document.ts').PlanFrontMatter> | undefined} attrs
  * @returns {PlanStatus[]}
  */
 export function getAllowedManualPlanStatuses(
@@ -432,7 +388,7 @@ export function getAllowedManualPlanStatuses(
 /**
  * @param {PlanStatus} currentStatus
  * @param {PlanStatus} targetStatus
- * @param {Partial<import('../../plan-store/index.ts').PlanFrontMatter> | undefined} attrs
+ * @param {Partial<import('./document.ts').PlanFrontMatter> | undefined} attrs
  * @returns {boolean}
  */
 export function isManualBoardStatusChangeAllowed(
@@ -445,7 +401,7 @@ export function isManualBoardStatusChangeAllowed(
 
 /**
  * @param {PlanStatus} currentStatus
- * @param {Partial<import('../../plan-store/index.ts').PlanFrontMatter> | undefined} attrs
+ * @param {Partial<import('./document.ts').PlanFrontMatter> | undefined} attrs
  * @returns {{ canCloseWithoutVerification: boolean, canUserVerify: boolean, canPutOnHold: boolean, canResumeFromHold: boolean, canResetToDraft: boolean, allowedManualTargetStatuses: PlanStatus[], blockedReasons: Record<string, string> }}
  */
 export function getPlanLifecycleActionMetadata(
@@ -525,7 +481,7 @@ function getManualTargetStatus(currentStatus: PlanStatus, details: PlanEventDeta
  * @param {PlanEvent} event
  * @param {PlanStatus} currentStatus
  * @param {PlanEventDetails} details
- * @returns {Partial<import('../../plan-store/index.ts').PlanFrontMatter>}
+ * @returns {Partial<import('./document.ts').PlanFrontMatter>}
  */
 export function buildPlanEventUpdates(
     event: PlanEvent,
@@ -543,7 +499,7 @@ export function buildPlanEventUpdates(
     const now = iso(details.now ? details.now() : new Date());
     const targetStatus =
         event === "manual_status_change" ? getManualTargetStatus(currentStatus, details) : EVENT_STATUS[event];
-    /** @type {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} */
+    /** @type {Partial<import('./document.ts').PlanFrontMatter>} */
     const updates: Partial<PlanFrontMatter> = {
         ...(details.triageMeta || {}),
         status: targetStatus,
@@ -1045,10 +1001,3 @@ export function isExecutablePlanStatus(status: string) {
 export function isPlanReviewableWithoutReopen(status: string) {
     return ALLOWED_FROM.review_approved.includes(status);
 }
-
-// Compatibility surface: persistence is implemented only by the Plan owner.
-export {
-    recordPlanEvent,
-    stageValidationPassedInExecutionWorktree,
-    PlanLifecycleTransitionError,
-} from "../../plan-store/index.ts";

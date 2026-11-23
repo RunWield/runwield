@@ -17,13 +17,17 @@ import { realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile } from "no
  */
 
 import { updatePlanFrontMatter, withPlanCatalogLock, withPlanLock } from "../plan-store.ts";
-import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../plan-format.ts";
+import {
+    injectFrontMatter,
+    parsePlanFrontMatter,
+    planDocumentMarkdown,
+    EPIC_ARTIFACT_FILE_NAMES,
+} from "@runwield/plans/format";
 import { loadPlan } from "./index.ts";
 import { savePlan } from "../plan-store.ts";
 import { join } from "node:path";
 import type { PlanFrontMatter } from "./index.ts";
-import { EPIC_ARTIFACT_FILE_NAMES } from "../plan-format.ts";
-import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.ts";
+import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { assertControllerDocumentAvailable, listControllerDocumentWorktrees } from "./controllers.ts";
 
 /** Sibling statuses Planner may still reshape. */

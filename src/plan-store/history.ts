@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { buildPlanEventUpdates } from "../shared/workflow/plan-lifecycle.ts";
+import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { sameReviewedMarkdown } from "./review.ts";
 import { settleSequenceHistory } from "./transitions.ts";
 import { readLocalHomeStore } from "./access.ts";

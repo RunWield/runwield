@@ -3,7 +3,7 @@ import { opendir as fsOpendir, stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
 import { listArchivedPlans } from "../plan-store.ts";
 import { getArchivedEpicArtifactPath } from "./artifacts.ts";
-import { EPIC_ARTIFACT_FILE_NAMES } from "../plan-format/artifacts.ts";
+import { EPIC_ARTIFACT_FILE_NAMES } from "@runwield/plans/format";
 import { readLocalHomeStore } from "./access.ts";
 import { currentPackageProject } from "./workflows.ts";
 export type ArchivedPlanUnit = {

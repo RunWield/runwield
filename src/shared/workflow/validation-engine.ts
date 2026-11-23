@@ -15,9 +15,9 @@ import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
  * imports — they are RunWield's own machinery, never ports.
  */
 
-import { canonicalPlanStatus, getDeclaredPlanStatus, PlanFrontMatterParseError } from "../../plan-format.ts";
+import { canonicalPlanStatus, getDeclaredPlanStatus, PlanFrontMatterParseError } from "@runwield/plans/format";
 import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
-import { VALIDATION_PLAN_STATUSES } from "./plan-lifecycle.ts";
+import { VALIDATION_PLAN_STATUSES } from "@runwield/plans/lifecycle";
 import { getProjectRoot, resolvePhaseContext } from "./validation-context.ts";
 import { emitStatus } from "./validation-emit.ts";
 import { validationPhaseForStatus } from "./validation-checkpoint.ts";

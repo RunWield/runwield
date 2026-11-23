@@ -6,7 +6,7 @@ import { publicationFixture } from "./testing/package-publication-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { loadPublicationAttempt } from "./publication-machine.ts";
 import { readPlanPackage, readPlanPackagePublication } from "../../plan-store/packages.ts";
 import { listPlanHistory, showPlanMilestone, readPublishedDeliverySources } from "../../plan-store/index.ts";

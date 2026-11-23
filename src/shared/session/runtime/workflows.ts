@@ -461,7 +461,7 @@ ${outcome.feedback || ""}`,
                 session.getManagedOperationCapability?.()?.assertLive();
                 const { executePlan } = await import("../../workflow/workflow.ts");
                 const { resolveWorkflowPlanLocation } = await import("../../../plan-store/index.ts");
-                const { recordPlanEvent } = await import("../../workflow/plan-lifecycle.ts");
+                const { recordPlanEvent } = await import("../../../plan-store/index.ts");
                 const location = await resolveWorkflowPlanLocation(session.cwd, options.planName || "", {
                     readOnly: true,
                 });
@@ -672,7 +672,7 @@ ${outcome.feedback || ""}`,
             ...validationResult.semanticRepairHandoff.activeWorkflow,
         };
         const { loadPlanActionEvidence } = await import("../../workflow/plan-actions.ts");
-        const { getPlanRevisionForText } = await import("../../../plan-format.ts");
+        const { getPlanRevisionForText } = await import("@runwield/plans/format");
         const { buildSemanticRepairSegmentContinuation } = await import("../../workflow/execution-segment-handoff.ts");
         const planId = workflow.triageMeta?.planId || options.triageMeta?.planId;
         if (!planId) throw new Error("Semantic repair handoff requires Plan identity.");

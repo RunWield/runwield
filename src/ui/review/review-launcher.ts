@@ -9,7 +9,7 @@ import process from "node:process";
 
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 import { startReviewWorkspaceServer } from "../../review-workspace-server.ts";
-import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-format.ts";
+import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "@runwield/plans/format";
 import type { PlanExecutionPolicy, PlanFrontMatter } from "../../plan-store/index.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.ts";

@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { getCwd, getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { injectFrontMatter } from "../../plan-format.ts";
+import { injectFrontMatter } from "@runwield/plans/format";
 import {
     listPlans,
     loadPlan,
@@ -46,7 +46,7 @@ import { seedPlan as savePlan } from "../../shared/testing/plan-state-fixture.ts
 
 type WorktreeRegistryEntry = import("../../shared/worktree-registry.ts").WorktreeRegistryEntry;
 
-type WorktreeDeliveryEvidence = import("../../plan-format.ts").WorktreeDeliveryEvidence;
+type WorktreeDeliveryEvidence = import("@runwield/plans/format").WorktreeDeliveryEvidence;
 
 interface DoctorCommandFixture {
     projectRoot: string;

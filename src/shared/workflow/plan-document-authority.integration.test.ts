@@ -14,7 +14,7 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { dirname, join } from "node:path";
 
-import { hashPlanBody } from "../../plan-format.ts";
+import { hashPlanBody } from "@runwield/plans/format";
 import {
     archivePlan,
     archiveSavedPlan,

@@ -1,4 +1,4 @@
-import type { PlanExecutionPolicy } from "../../plan-format.ts";
+import type { PlanExecutionPolicy } from "@runwield/plans/format";
 import { ok as assert } from "node:assert/strict";
 import { applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import { EVIDENCE, runOperation, submitReview } from "./attached-test-fixture.ts";

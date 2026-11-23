@@ -25,7 +25,7 @@ import {
 } from "./workflow-tool-events.ts";
 import type { PlanWrittenEventPayload } from "./workflow-tool-events.ts";
 import { normalizePlanApprovalAction, primaryPlanApprovalActionForClassification } from "./plan-approval.ts";
-import { isEpicPlan, isProjectPlan, isSequencePlan, projectPlanType } from "../project-plan.ts";
+import { isEpicPlan, isProjectPlan, isSequencePlan, projectPlanType } from "@runwield/plans/format";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 
@@ -335,7 +335,7 @@ test("An interrupted Sequence write blocks child actions until the complete grou
         try {
             const documents = await prepareSequenceReview(cwd, "sequence");
             const { planFixtureJournalPath } = await import("../testing/plan-state-fixture.ts");
-            const { getPlanRevisionForText } = await import("../../plan-format.ts");
+            const { getPlanRevisionForText } = await import("@runwield/plans/format");
             const { healSettledTransitionRecords } = await import("./transition-recovery.ts");
             const { executePlanAction } = await import("./plan-actions.ts");
             const plans = await Promise.all(

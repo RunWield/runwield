@@ -53,7 +53,7 @@ import {
     pickControllerState,
     type WorkflowControllerState,
     type WorkflowWorktreeContext,
-} from "../shared/workflow/controller-state.ts";
+} from "@runwield/plans/controller-state";
 
 type WriteScope = {
     revisions: Map<string, number>;

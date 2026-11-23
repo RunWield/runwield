@@ -3,8 +3,7 @@ import { test } from "node:test";
 import { equal, deepEqual, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { type ChildFeaturePlanDescriptor } from "../../plan-format.ts";
-import { loadPlan, listPlans, saveChildFeaturePlans } from "../../plan-store/index.ts";
+import { loadPlan, listPlans, saveChildFeaturePlans, type ChildFeaturePlanDescriptor } from "../../plan-store/index.ts";
 
 import { packageFixture } from "../testing/plan-package-fixture.ts";
 import { authorPackageChildren } from "../../plan-store/index.ts";

@@ -24,7 +24,11 @@ import { rm as fsRm } from "node:fs/promises";
 
 import { join } from "node:path";
 import { savePlanProse, preparePlanRepairDraft } from "../../plan-store/index.ts";
-import { compareChildPlansByOrder, parsePlanFrontMatter } from "../../plan-format.ts";
+import {
+    compareChildPlansByOrder,
+    parsePlanFrontMatter,
+    EPIC_INTEGRATION_REPORT_FILE_NAME,
+} from "@runwield/plans/format";
 import { findPlansByParent, loadPlan, saveChildFeaturePlans } from "../../plan-store/index.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
@@ -37,10 +41,9 @@ import {
     formatCapturedProcessOutput,
     PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
 } from "./process-output.ts";
-import { EPIC_INTEGRATION_REPORT_FILE_NAME } from "../../plan-format.ts";
 import { resolveEpicArtifactPath, saveEpicArtifact } from "../../plan-store/index.ts";
 import type { HostedSession } from "../session/hosted-session.ts";
-import { recordPlanEvent } from "./plan-lifecycle.ts";
+import { recordPlanEvent } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 
 import { findTargetBranchPlansByParent, prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
@@ -61,7 +64,7 @@ import {
 } from "./review-ledger.ts";
 import { readEpicIntegrationReview } from "../../plan-store/index.ts";
 import { StaleControllerWriteError } from "../../plan-store/index.ts";
-import type { EpicIntegrationReviewState } from "./controller-state.ts";
+import type { EpicIntegrationReviewState } from "@runwield/plans/controller-state";
 import { SEMANTIC_REVIEW_CYCLES } from "./validation-types.ts";
 import { formatCodeReviewAnnotations, normalizeHumanReview } from "./validation-human-review.ts";
 import {

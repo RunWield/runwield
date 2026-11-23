@@ -12,7 +12,7 @@ import { loadPlan } from "../../plan-store/index.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import { __resetSettingsForTests } from "../settings.ts";
-import type { PlanStatus } from "./plan-lifecycle.ts";
+import type { PlanStatus } from "@runwield/plans/lifecycle";
 import {
     beginSlicerContextPhase,
     createSlicerFinalizeTool,

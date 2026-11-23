@@ -5,7 +5,7 @@
 
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { TicketReference } from "../ticket-references.ts";
+import type { TicketReference } from "@runwield/plans/format";
 
 import { AGENTS } from "../../constants.ts";
 import { projectEngineerPlanBody } from "./engineer-plan-projection.ts";

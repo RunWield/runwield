@@ -5,13 +5,13 @@ import { join } from "node:path";
 import type { WorktreeRegistryEntry } from "../shared/worktree-registry.ts";
 import type { ManagedRuntimeTransfer } from "../shared/project-runtime-managed.ts";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
-import { parsePlanFrontMatter, canonicalizeStoredPlanName } from "../plan-format.ts";
+import { parsePlanFrontMatter, canonicalizeStoredPlanName } from "@runwield/plans/format";
 import { getStoredPlanPath } from "../plan-store.ts";
 import {
     pickControllerState,
     CONTROLLER_STATE_FIELDS,
     type WorkflowControllerState,
-} from "../shared/workflow/controller-state.ts";
+} from "@runwield/plans/controller-state";
 import type { ControllerRecord, ControllerWriteOptions } from "./controllers.ts";
 import { readControllerRecordAtPath } from "./controllers.ts";
 import {
