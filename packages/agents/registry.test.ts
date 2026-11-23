@@ -50,6 +50,15 @@ test("the zero-argument registry loads bundled roles and their system template",
         await readFile(join(cache, "router.md"), "utf8"),
         await readFile(new URL("./definitions/router.md", import.meta.url), "utf8"),
     );
+
+    const reference = join(cache, "document-formats", "PRD-FORMAT.md");
+    const expected = await readFile(new URL("./definitions/document-formats/PRD-FORMAT.md", import.meta.url), "utf8");
+    await rm(reference);
+    assert.equal(await registry.getBundledDefinitionsPath(), cache);
+    assert.equal(await readFile(reference, "utf8"), expected);
+    await rm(cache, { recursive: true });
+    assert.equal(await registry.getBundledDefinitionsPath(), cache);
+    assert.equal(await readFile(reference, "utf8"), expected);
 });
 
 test("the registry applies project and personal overrides and refreshes its presentation metadata on load", async () => {

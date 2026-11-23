@@ -1,6 +1,7 @@
 /** Qualify a relocated development executable without touching the user's home. */
 import { deepEqual, doesNotMatch, equal, match, ok } from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, realpath, rename, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -108,10 +109,12 @@ export async function checkBunPackage(
         const project = join(home, "agent-project");
         const personalDefinitions = join(home, ".wld", "agents");
         const projectDefinitions = join(project, ".wld", "agents");
+        const personalPrompt = `Personal Router instructions ${randomUUID()}.`;
+        const projectPrompt = `Project Router instructions ${randomUUID()}.`;
         await mkdir(personalDefinitions, { recursive: true });
         await mkdir(projectDefinitions, { recursive: true });
-        await writeFile(join(personalDefinitions, "router.md"), "Personal router instructions.");
-        await writeFile(join(projectDefinitions, "router.md"), "Project router instructions.");
+        await writeFile(join(personalDefinitions, "router.md"), personalPrompt);
+        await writeFile(join(projectDefinitions, "router.md"), projectPrompt);
         const agentCheck = start(["package-smoke", "agents"], project);
         const agentTimeout = setTimeout(() => agentCheck.child.kill("SIGKILL"), 30_000);
         try {
@@ -136,7 +139,20 @@ export async function checkBunPackage(
         const decoder = new TextDecoder();
         const sourceOutput = decoder.decode(source.stdout);
         equal(source.code, 0, sourceOutput + decoder.decode(source.stderr));
-        const digestPattern = /Agent definitions ([a-f0-9]{64})/;
+        const [personalHash, projectHash] = [personalPrompt, projectPrompt].map((prompt) =>
+            createHash("sha256").update(prompt).digest("hex"),
+        );
+        for (const [runtime, output] of [
+            ["Source", sourceOutput],
+            ["Relocated package", agentCheck.output()],
+        ]) {
+            const paragraphs = output.match(/^Router prompt paragraphs ([a-f0-9,]+)$/m)?.[1]?.split(",");
+            ok(
+                paragraphs?.some((hash, index) => hash === personalHash && paragraphs[index + 1] === projectHash),
+                `${runtime} must append the personal Router instructions before the project instructions.`,
+            );
+        }
+        const digestPattern = /^Agent definitions ([a-f0-9]{64})$/m;
         const expected = sourceOutput.match(digestPattern)?.[1];
         ok(expected, sourceOutput);
         equal(agentCheck.output().match(digestPattern)?.[1], expected, agentCheck.output());
@@ -298,7 +314,7 @@ export async function checkBunPackage(
             await running.finished;
         }
         console.log(
-            `Relocated Bun package passed: CLI onboarding/cancel, relocated Project reads and entry, worker/WASM, image conversion, bundled skills, Workspace assets/auth, shutdown (${metadata.target}).`,
+            `Relocated Bun package passed: CLI onboarding/cancel, relocated Project reads and entry, worker/WASM, image conversion, bundled Agents and skills, Workspace assets/auth, shutdown (${metadata.target}).`,
         );
     } finally {
         await removeExecutableFixtureDirectory(home);

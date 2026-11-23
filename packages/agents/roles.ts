@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import type { DelegationMode } from "@runwield/tools";
 import { normalizeBashAllowedCommands, type BashAllowedCommands } from "@runwield/parsing/shell-selectors";
 import {
@@ -23,6 +23,11 @@ import {
 } from "./locations.ts";
 import { addUniversalTools, expandToolSets, normalizeToolNames, resolveRoleTools, selectTools } from "./tool-policy.ts";
 import { AGENTS } from "./role-ids.ts";
+import {
+    createBundledAgentDefinitions,
+    type LoadSubAgentDefinitionOptions,
+    type SubAgentDefinitionId,
+} from "./isolated.ts";
 
 export type AgentContextContract = "quick-fix" | "plan-execution" | "frontend-plan-execution" | "validation-repair";
 
@@ -81,11 +86,6 @@ interface SharedPracticeDiscovery {
     layerDirs: string[];
     /** Composed bodies for ordered normalized names. */
     prompts: Map<string, string>;
-}
-
-interface LoadAgentDefFromPathOptions {
-    /** Override the internal name, which defaults to the filename without `.md`. */
-    agentName?: string;
 }
 
 type RawAgentField = FrontMatterValue | undefined;
@@ -190,6 +190,8 @@ async function isFile(path: string): Promise<boolean> {
 }
 
 export function createRoleRegistry() {
+    const bundledDefinitions = createBundledAgentDefinitions();
+
     function definitionScope(projectRoot: string | undefined): DefinitionScope {
         return { projectRoot, personalDir: personalDefinitionsDir() };
     }
@@ -670,25 +672,39 @@ export function createRoleRegistry() {
         return { ...role, tools: addUniversalTools(role.tools) };
     }
 
-    /**
-     * Load a full isolated role such as Init from its bundled file.
-     *
-     * @param filePath - Absolute path to the agent .md file
-     */
-    function loadFromPath(filePath: string, options?: LoadAgentDefFromPathOptions): Promise<LoadedAgentDefinition> {
-        const agentName = normalizeName(options?.agentName || basename(filePath, ".md"));
-        return loadPaths(agentName, [filePath], definitionScope(dirname(filePath)));
+    async function loadIsolatedRole(
+        id: SubAgentDefinitionId,
+        options: LoadSubAgentDefinitionOptions = {},
+    ): Promise<AgentDefinition> {
+        const role = await bundledDefinitions.readIsolatedRole(id, options.reviewerMode);
+        if (role.loadMode === "fullAgent") {
+            const { filePath, agentName } = role;
+            return await loadPaths(normalizeName(agentName), [filePath], definitionScope(dirname(filePath)));
+        }
+
+        const { agentDef, sharedPractice } = role;
+        const sharedPracticePrompt = await composeSharedPractice(sharedPractice, agentDef.name, options.projectRoot);
+        agentDef.systemPrompt = [agentDef.systemPrompt, sharedPracticePrompt].filter(Boolean).join("\n\n");
+        return await bundledDefinitions.applyDelegatedRoleOverlay(id, agentDef, options.delegatedRole);
     }
 
     return {
+        getBundledDefinitionsPath: bundledDefinitions.getPath,
+        isolated: {
+            load: loadIsolatedRole,
+            toolCeiling: bundledDefinitions.getSubAgentToolCeiling,
+            displayNameFallback: bundledDefinitions.getSubAgentDisplayNameFallback,
+        },
+        delegation: {
+            resolve: bundledDefinitions.resolveDelegation,
+            listRoles: bundledDefinitions.listDelegatedRoleIds,
+        },
         busyLines,
-        composeSharedPractice,
         displayName,
         get,
         isWorkflowOnly,
         list,
         listNames,
-        loadFromPath,
         normalizeName,
         selectTools,
     };

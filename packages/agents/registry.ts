@@ -1,12 +1,9 @@
-import { createBundledAssetDirectory } from "@runwield/bundled-assets";
-import { BUNDLED_DEFINITIONS_DIR, bundledDefinitionsCacheDir } from "./locations.ts";
-import {
-    createIsolatedRoles,
-    type DelegatedAuthority,
-    type DelegatedRoleId,
-    type LoadSubAgentDefinitionOptions,
-    type ResolvedDelegation,
-    type SubAgentDefinitionId,
+import type {
+    DelegatedAuthority,
+    DelegatedRoleId,
+    LoadSubAgentDefinitionOptions,
+    ResolvedDelegation,
+    SubAgentDefinitionId,
 } from "./isolated.ts";
 import { AGENTS, SUBAGENTS } from "./role-ids.ts";
 import { createRoleRegistry, type AgentDefinition, type AgentVisibility, type LoadedAgentDefinition } from "./roles.ts";
@@ -58,25 +55,8 @@ export interface AgentRegistry {
 }
 
 export function createAgentRegistry(): AgentRegistry {
-    const assets = createBundledAssetDirectory(
-        BUNDLED_DEFINITIONS_DIR,
-        bundledDefinitionsCacheDir,
-        "Bundled agent asset",
-    );
-    const { composeSharedPractice, loadFromPath, ...roles } = createRoleRegistry();
-    const isolated = createIsolatedRoles(assets, { composeSharedPractice, loadFromPath });
     return {
-        ...roles,
-        getBundledDefinitionsPath: assets.getPath,
+        ...createRoleRegistry(),
         ids: { primary: AGENTS, isolated: SUBAGENTS },
-        isolated: {
-            load: isolated.loadSubAgentDefinition,
-            toolCeiling: isolated.getSubAgentToolCeiling,
-            displayNameFallback: isolated.getSubAgentDisplayNameFallback,
-        },
-        delegation: {
-            resolve: isolated.resolveDelegation,
-            listRoles: isolated.listDelegatedRoleIds,
-        },
     };
 }

@@ -1,21 +1,29 @@
 import { createHash } from "node:crypto";
-import type { AgentRegistry } from "@runwield/agents";
+import { agentRegistry } from "../../shared/session/agent-registry.ts";
 
-/** Compare entire definitions without writing bundled instructions into package qualification logs. */
-export async function agentDefinitionDigest(registry: AgentRegistry, projectRoot: string): Promise<string> {
-    const primary = await registry.list(projectRoot, "all");
+function digest(text: string): string {
+    return createHash("sha256").update(text).digest("hex");
+}
+
+/** Report definition and paragraph digests to keep Agent instructions out of the qualification logs. */
+export async function checkPackagedAgents(projectRoot: string): Promise<void> {
+    const primary = await agentRegistry.list(projectRoot, "all");
+    const router = primary.find((agent) => agent.name === agentRegistry.ids.primary.ROUTER);
+    if (!router) throw new Error("Package smoke could not load the Router definition.");
+
     const isolated = [];
-    for (const id of Object.values(registry.ids.isolated)) {
-        isolated.push(await registry.isolated.load(id, { projectRoot }));
+    for (const id of Object.values(agentRegistry.ids.isolated)) {
+        isolated.push(await agentRegistry.isolated.load(id, { projectRoot }));
     }
-    for (const id of [registry.ids.isolated.REVIEWER, registry.ids.isolated.INTEGRATION_REVIEWER]) {
-        isolated.push(await registry.isolated.load(id, { projectRoot, reviewerMode: "verify" }));
+    for (const id of [agentRegistry.ids.isolated.REVIEWER, agentRegistry.ids.isolated.INTEGRATION_REVIEWER]) {
+        isolated.push(await agentRegistry.isolated.load(id, { projectRoot, reviewerMode: "verify" }));
     }
     isolated.push(
-        await registry.isolated.load(registry.ids.isolated.DELEGATED_READ, {
+        await agentRegistry.isolated.load(agentRegistry.ids.isolated.DELEGATED_READ, {
             projectRoot,
             delegatedRole: "verification-adversary",
         }),
     );
-    return createHash("sha256").update(JSON.stringify({ primary, isolated })).digest("hex");
+    console.log(`Agent definitions ${digest(JSON.stringify({ primary, isolated }))}`);
+    console.log(`Router prompt paragraphs ${router.systemPrompt.split("\n\n").map(digest).join(",")}`);
 }
