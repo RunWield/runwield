@@ -1,3 +1,4 @@
+export { assertContainedPath, ContainedPathError } from "./contained-path.ts";
 export { openNativeFileLock, type NativeFileLock, type NativeLockSnapshot } from "./native-file-lock.ts";
 export { recoverWindowsRename, tryReplaceWindowsFileSync } from "./native-file-replace-windows.ts";
 export {

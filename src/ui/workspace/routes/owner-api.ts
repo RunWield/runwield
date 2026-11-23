@@ -34,7 +34,7 @@ import {
     deviceCookieHeaders,
     getCookie,
 } from "../server/owner-auth.ts";
-import { loadBoard, loadWorkspaceDetail } from "../server/plan-adapter.ts";
+import { loadRegisteredProjectBoard, loadWorkspaceDetail } from "../server/plan-adapter.ts";
 import { runOwnerPlanAction } from "../server/owner-plan-actions.ts";
 import { loadOwnerPlanProgress } from "../server/owner-plan-progress.ts";
 import { loadOwnerDashboard, loadOwnerSidebar, subscribeOwnerDashboard } from "../server/owner-dashboard.ts";
@@ -550,8 +550,7 @@ export async function projectActionApi(ctx: OwnerRouteContext<OwnerStoreState, P
 
 export async function ownerProjectBoardApi(ctx: OwnerRouteContext<OwnerStoreState, ProjectBoardParams>) {
     try {
-        const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
-        const board = await loadBoard(root);
+        const board = await loadRegisteredProjectBoard(ctx.params.projectId, ctx.state.store.projects);
         const requestedView = ctx.params.view || "active";
         const view =
             requestedView === "closed"

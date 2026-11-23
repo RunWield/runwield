@@ -1,4 +1,5 @@
 import { plans } from "@runwield/plans";
+import { parseProjectId, type ProjectRegistry } from "@runwield/projects";
 import type { WorkRecordMnemotecaPort } from "../../../shared/work-records/mnemoteca-port.ts";
 import type { PlanActionName } from "../../../shared/workflow/plan-actions.ts";
 import { type PlanResource } from "../../../plan-store/index.ts";
@@ -20,6 +21,7 @@ import {
 import {
     findPlanById,
     listPlanResources,
+    openProjectPlanStore,
     readPlanResourceCatalog,
     savePlanBodyById,
     StalePlanBodyError,
@@ -555,7 +557,7 @@ export function serializePlanError<ErrorValue>(error: ErrorValue): SerializePlan
 
 export async function loadPlanSummaries(cwd: string) {
     const resources = await capturePlanReadContext()(cwd, () => listPlanResources(cwd));
-    return enrichPlanSetDependencies(annotatePlanHierarchy(resources.map(serializePlanSummary)));
+    return summarizePlanResources(resources);
 }
 
 /**
@@ -563,9 +565,8 @@ export async function loadPlanSummaries(cwd: string) {
  */
 export async function loadPlanSummaryCatalog(cwd: string) {
     const { resources, diagnostics } = await capturePlanReadContext()(cwd, () => readPlanResourceCatalog(cwd));
-    const plans = enrichPlanSetDependencies(annotatePlanHierarchy(resources.map(serializePlanSummary)));
     return {
-        plans,
+        plans: summarizePlanResources(resources),
         diagnostics: diagnostics.map((diagnostic) => ({
             name: diagnostic.name,
             kind: diagnostic.kind,
@@ -573,6 +574,10 @@ export async function loadPlanSummaryCatalog(cwd: string) {
             ...(diagnostic.planId ? { planId: diagnostic.planId } : {}),
         })),
     };
+}
+
+function summarizePlanResources(resources: PlanSummaryResource[]) {
+    return enrichPlanSetDependencies(annotatePlanHierarchy(resources.map(serializePlanSummary)));
 }
 
 export async function loadPlanDetail(cwd: string, planId: string) {
@@ -970,7 +975,17 @@ export function buildBoardGroups<T extends BoardPlan>(plans: T[]) {
 }
 
 export async function loadBoard(cwd: string) {
-    const { plans, diagnostics } = await loadPlanSummaryCatalog(cwd);
+    return buildBoardFromCatalog(await loadPlanSummaryCatalog(cwd));
+}
+
+export async function loadRegisteredProjectBoard(projectId: string, registry: ProjectRegistry) {
+    const id = parseProjectId(projectId);
+    if (!id) throw new Error("Project not found.");
+    const { resources, diagnostics } = await openProjectPlanStore(id, { registry }).list();
+    return buildBoardFromCatalog({ plans: summarizePlanResources(resources), diagnostics });
+}
+
+function buildBoardFromCatalog({ plans, diagnostics }: Awaited<ReturnType<typeof loadPlanSummaryCatalog>>) {
     return { plans, groups: buildBoardGroups(plans), screens: buildWorkspaceBoard(plans), diagnostics };
 }
 

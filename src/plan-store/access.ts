@@ -1,6 +1,13 @@
 import { plans } from "@runwield/plans";
+import type { CreateProjectPlan, PlanAuthoringDefinition } from "@runwield/plans/store";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
-import { managedPlanStoreActive, authorManagedPlan, selectManagedPlan, withManagedPlan } from "./managed.ts";
+import {
+    managedPlanStoreActive,
+    authorManagedPlan,
+    authorManagedPlanWithIdentity,
+    selectManagedPlan,
+    withManagedPlan,
+} from "./managed.ts";
 import { hasRetainedCheckoutSource } from "./retained-source.ts";
 import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
 import {
@@ -275,6 +282,7 @@ import { currentPackageSelection, withPackageWorkflow, type PackageWorkflowSelec
 export async function selectLocalPlanWorkflow(
     cwd: string,
     reference: string,
+    byId = false,
 ): Promise<PackageWorkflowSelection | undefined> {
     const store = inspectLocalHomeStore(cwd);
     if (store.kind === "managed-remote" || store.kind === "retained-checkout") return undefined;
@@ -283,19 +291,26 @@ export async function selectLocalPlanWorkflow(
     if (catalog.issues.length) throw new Error(catalog.issues[0].message);
     const plan = catalog.packages.find(
         (entry) =>
-            entry.metadata.name === reference ||
             entry.metadata.planId === reference ||
-            join(entry.path, "context.md") === reference,
+            (!byId && (entry.metadata.name === reference || join(entry.path, "context.md") === reference)),
     );
     if (!plan) throw new Error(`No canonical Plan named ${reference}. Import external Markdown explicitly.`);
     return { identity: store.identity, planId: plan.metadata.planId, expectedRevision: plan.metadata.revision };
 }
 
-export async function withLocalPlanWorkflow<T>(cwd: string, name: string, run: () => Promise<T>): Promise<T> {
+export async function withLocalPlanWorkflow<T>(
+    cwd: string,
+    name: string,
+    run: () => Promise<T>,
+    planId?: string,
+): Promise<T> {
     if (managedPlanStoreActive()) return await withManagedPlan(cwd, await selectManagedPlan(cwd, name), run);
-    const selection = await selectLocalPlanWorkflow(cwd, name);
+    const selection = await selectLocalPlanWorkflow(cwd, planId ?? name, planId !== undefined);
+    if (planId !== undefined && !selection) throw new Error("Plan workflow requires its canonical owner.");
     if (selection?.planId === currentPackageSelection()?.planId) return await run();
-    return selection ? await withPackageWorkflow(cwd, selection, run) : await run();
+    return selection
+        ? await withPackageWorkflow(cwd, selection, run, planId === undefined ? undefined : name)
+        : await run();
 }
 
 /** Resume a missing retained checkout only through the imported attempt's recorded owner. */
@@ -370,39 +385,24 @@ export async function withLocalProjectAction<T>(cwd: string, action: () => Promi
     return await withPackageProject(cwd, admitted.identity, action);
 }
 
-export interface PlanAuthoringDefinition {
-    title?: string;
-    classification?: "PLANNED_CHANGE" | "PROJECT";
-    type?: "epic" | "sequence";
-    summary?: string;
-    tickets?: PlanFrontMatter["tickets"];
-    supersedes?: string[];
-    workKind?: PlanFrontMatter["workKind"];
-    complexity?: PlanFrontMatter["complexity"];
-    affectedPaths?: string[];
-    executionAgent?: PlanFrontMatter["executionAgent"];
-    collaborationRecommendation?: PlanFrontMatter["collaborationRecommendation"];
-    targetBranch?: string;
-    order?: number;
-    frontend?: boolean;
-    devServerCommand?: string;
-    devServerUrl?: string;
-    devServerHmr?: boolean;
-}
-export interface PlanAuthoringInput {
-    planName: string;
-    contextMarkdown: string;
-    validationMarkdown?: string;
+export type { PlanAuthoringDefinition } from "@runwield/plans/store";
+export interface PlanAuthoringInput extends CreateProjectPlan {
     expectedRevision?: string;
-    definition?: PlanAuthoringDefinition;
-    parentPlan?: string;
-    dependencies?: string[];
 }
 
 /** Agent-facing authoring accepts prose and typed definition facts, never protected JSON or YAML. */
 export async function authorLocalPlan(cwd: string, input: PlanAuthoringInput): Promise<void> {
     if (managedPlanStoreActive()) return await authorManagedPlan(cwd, input);
     await authorPackagePlan(cwd, input);
+}
+
+/** Keep absence and durable identity inside the driver's atomic create operation. */
+export async function createSavedPlan(cwd: string, input: CreateProjectPlan): Promise<string> {
+    const creation = { ...input, expectedRevision: undefined };
+    if (managedPlanStoreActive()) return await authorManagedPlanWithIdentity(cwd, creation);
+    const planId = randomUUID();
+    await authorPackagePlan(cwd, creation, planId);
+    return planId;
 }
 export async function authorPackagePlan(
     cwd: string,

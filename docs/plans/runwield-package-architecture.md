@@ -26,9 +26,7 @@ Moving an entry point to `apps/` is a separate mechanical change when useful.
 
 ## Packages and extraction order
 
-Tools, Agents and Projects have merged. Plans is in progress. Its first interface review covers Markdown documents,
-Plan IDs and lifecycle rules. The store still owns durable writes. Workflow extraction follows review of the complete
-Plans domain. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
+Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The next interface review covers the project-bound store. Workflow extraction follows review of the complete Plans domain. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
 
 | Order and package | Public interface and responsibilities | Evidence that the move preserved behavior |
 | --- | --- | --- |
@@ -177,7 +175,7 @@ writer locks during checkout admission. The Session store uses the same file evi
 This shared reader lets a worker open Projects without loading the Session runtime. The existing Session store
 continues to own manifests, restoration, writes and writer lifetime.
 
-## Plans contract under review
+## Plans document and lifecycle contract
 
 A consumer imports `plans` from `@runwield/plans`. These operations run on the supplied document in memory.
 The store uses the document codec during authoring and the lifecycle rules when it commits an event. Workspace uses them to present the actions available
@@ -192,10 +190,26 @@ for the current status. [Package entry point](../../packages/plans/index.ts)
 | `plans.lifecycle.actionsFor(status, fields)` | Returns available manual actions and reasons for blocked actions. |
 | `plans.lifecycle.changesFor(event, status, details)` | Validates a lifecycle event and returns its metadata changes. The store checks the observed revision and persists the result. |
 
-Saved edits continue through the store so it can reject a stale revision. The store selects the authoritative checkout or managed remote, owns locks, and writes Plan Markdown,
-history, Work Records, artifacts and publication copies. Its next extraction should open this existing storage
-by `ProjectId`, route reads and writes through the selected owner, and keep Session callbacks and Git publication
-with their respective hosts. PostgreSQL remains a future driver. [Current store operations](../../src/plan-store/index.ts)
+## Project-bound Plan Store under review
+
+Open the store with the canonical `ProjectId` from Projects. Each handle addresses one project.
+The personal Workspace uses its active registration. A CLI or worker with an admitted checkout can use the identity returned by Projects.
+The managed runtime uses its configured owner connection. The store checks the binding before each operation.
+[Store contract](../../packages/plans/store.ts) · [Runtime opener](../../src/plan-store/project-plans.ts)
+
+| Operation | Caller supplies | Result |
+| --- | --- | --- |
+| `list` | No arguments | Catalog entries and document diagnostics, including the existing passive display of legacy Plans. |
+| `create` | A Plan name, Markdown prose, and optional typed definition and validation instructions | A saved draft with an assigned Plan ID and revision. |
+| `read`, `readArchived` | The Plan ID | The saved Plan in the requested collection. |
+| `edit` | Plan ID, new body, observed revision | Updated prose and revision. |
+| `applyEvent` | Plan ID, named lifecycle event, observed revision, and any required event evidence | The persisted lifecycle result. |
+| `archive`, `restore` | Plan ID and observed revision | An archived or restored Plan with its original ID. |
+
+The runtime adapter calls the existing store for locking, conflict checks, recovery, and local or managed writes.
+The filesystem driver in Plans captures and verifies the immutable input documents used by workflow attempts.
+Existing history, Work Record persistence, and publication copies still run through the current store.
+PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)
 
 ## MCP and app boundaries
 

@@ -633,6 +633,15 @@ export interface OpenedProjectRegistry extends ProjectRegistry {
     close(): void;
 }
 
+const registryRoots = new WeakMap<ProjectRegistry, ProjectRegistry["requireActiveRoot"]>();
+
+/** Resolve through an opened Projects registry's own account and database. */
+export function requireRegisteredProjectRoot(registry: ProjectRegistry, projectId: ProjectId): string {
+    const requireActiveRoot = registryRoots.get(registry);
+    if (!requireActiveRoot) throw new Error("Project access requires a registry opened by Projects.");
+    return requireActiveRoot(projectId);
+}
+
 type AccountHomeProof = Parameters<typeof verifyExecutionAccountHome>[0];
 
 /** Pin registry storage without changing the Core owner identity's spelling. */
@@ -657,7 +666,7 @@ function bindRegistry(
         return operation();
     };
     const db = database.handle;
-    return {
+    const registry: ProjectRegistry = {
         register: (options) => usingRegistry(() => registerProject(database, context, options)),
         list: () => usingRegistry(() => listProjects(db, context)),
         get: (projectId) =>
@@ -674,6 +683,8 @@ function bindRegistry(
             usingRegistry(() => inspectProjectHealth(requireProjectedProject(db, context, projectId), context)),
         requireActiveRoot: (projectId) => usingRegistry(() => requireActiveProjectRoot(database, context, projectId)),
     };
+    registryRoots.set(registry, registry.requireActiveRoot);
+    return registry;
 }
 
 /** Bind Workspace registrations to the connection already used by other owner coordination services. */
@@ -718,5 +729,5 @@ export function openProjectOwnerCoordination(options: OpenOwnerDatabaseOptions =
 /** Open Workspace registrations in the current launch account's owner coordination database. */
 export function openProjectRegistry(): OpenedProjectRegistry {
     const { database, projects } = openProjectOwnerCoordination();
-    return { ...projects, close: () => database.close() };
+    return Object.assign(projects, { close: () => database.close() });
 }

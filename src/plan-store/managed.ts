@@ -1,4 +1,4 @@
-import { projects } from "@runwield/projects";
+import { projects, type ProjectId, type ProjectStoreIdentity } from "@runwield/projects";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
 /** Connection selection and durable requests stay inside the public Plan owner. */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -38,6 +38,7 @@ export interface ManagedPlanSelection {
     revision: string;
 }
 const selections = new AsyncLocalStorage<ManagedPlanSelection>();
+const projectConnections = new AsyncLocalStorage<ManagedConnection>();
 const retainedExecutions = new AsyncLocalStorage<import("./retained-managed-execution.ts").RetainedManagedExecution>();
 export function currentManagedRetainedExecution() {
     return retainedExecutions.getStore();
@@ -52,7 +53,7 @@ export function configureManagedPlanStore(cwd: string, connection: RemoteSession
     };
 }
 export function managedPersonalStoreActive(): boolean {
-    return active !== undefined && !projects.home.current();
+    return (projectConnections.getStore() ?? active) !== undefined && !projects.home.current();
 }
 export function managedPlanStoreActive(): boolean {
     return managedPersonalStoreActive() && !currentManagedRetainedExecution();
@@ -63,8 +64,8 @@ export function currentManagedPlanSelection(): ManagedPlanSelection | undefined 
 function client(cwd: string, admit: true): Promise<ProjectStoreClient>;
 function client(cwd: string, admit?: false): Promise<ProjectStoreClient | undefined>;
 async function client(cwd: string, admit = false): Promise<ProjectStoreClient | undefined> {
-    const selected = active;
-    if (!selected || selected.closed) throw new Error("Managed Plan owner is unavailable.");
+    const selected = projectConnections.getStore() ?? active;
+    if (!selected || selected !== active || selected.closed) throw new Error("Managed Plan owner is unavailable.");
     if (!selected.client || (admit && !selected.admitted)) {
         const endpoint = `http://127.0.0.1:${selected.connection.port}`;
         const response = await fetch(`${endpoint}/project-store/${admit ? "admit" : "inspect"}`, {
@@ -89,6 +90,46 @@ async function client(cwd: string, admit = false): Promise<ProjectStoreClient | 
     )
         throw new Error("Managed Plan request belongs to another execution repository.");
     return selected.client;
+}
+
+/** Bind a project request to its configured managed connection for its lifetime. */
+export function captureManagedProjectPlanAccess(projectId: ProjectId, admitted?: ProjectStoreIdentity) {
+    if (!managedPersonalStoreActive()) return undefined;
+    const configured = projectConnections.getStore() ?? active;
+    if (!configured || configured.closed) throw new Error("Managed Plan owner is unavailable.");
+    const inspect = () => {
+        if (configured !== active || configured.closed || !managedPlanStoreActive())
+            throw new Error("Managed Plan owner is unavailable.");
+        const root = projects.checkout.inspect(configured.cwd);
+        if (root.kind !== "existing" || root.identity.projectId !== projectId)
+            throw new Error("Managed Plan access belongs to a different Project.");
+        return root.identity;
+    };
+    const initial = inspect();
+    if (admitted) {
+        projects.home.assertStoreIdentity(admitted);
+        if (
+            projects.home.isOwner(admitted) ||
+            initial.checkoutId !== admitted.checkoutId ||
+            initial.repositoryId !== admitted.repositoryId ||
+            initial.personalOwner.kind !== admitted.personalOwner.kind ||
+            initial.personalOwner.identity !== admitted.personalOwner.identity ||
+            initial.executionAccountHome !== admitted.executionAccountHome
+        )
+            throw new Error("Managed Plan access requires its configured Project checkout and account.");
+    }
+    return async <Result>(operation: (cwd: string) => Promise<Result>) => {
+        const current = inspect();
+        if (
+            current.repositoryId !== initial.repositoryId ||
+            current.checkoutId !== initial.checkoutId ||
+            current.personalOwner.kind !== initial.personalOwner.kind ||
+            current.personalOwner.identity !== initial.personalOwner.identity ||
+            current.executionAccountHome !== initial.executionAccountHome
+        )
+            throw new Error("Managed Plan Project authority changed.");
+        return await projectConnections.run(configured, () => operation(current.cwd));
+    };
 }
 function managedLocator(cwd: string, path: string, toOwner = false): string {
     const inspected = projects.checkout.inspect(cwd);
@@ -259,14 +300,19 @@ export async function mutateManagedPlan(cwd: string, command: ProjectStoreComman
     }
 }
 export async function authorManagedPlan(cwd: string, input: PlanAuthoringInput): Promise<void> {
+    await authorManagedPlanWithIdentity(cwd, input);
+}
+export async function authorManagedPlanWithIdentity(cwd: string, input: PlanAuthoringInput): Promise<string> {
     await client(cwd, true);
     const prior = input.expectedRevision === undefined ? null : await readManagedPlan(cwd, input.planName);
-    await mutateManagedPlan(cwd, {
+    const result = await mutateManagedPlan(cwd, {
         kind: "author-plan",
         operationId: randomUUID(),
         planId: prior?.attrs.planId || randomUUID(),
         input,
     });
+    if (!result.planId) throw new Error("Managed authoring did not return a Plan ID.");
+    return result.planId;
 }
 export async function reserveManagedExecution(
     planName: string,
@@ -737,6 +783,11 @@ export async function readManagedPlanResource(cwd: string, planId: string) {
     if (!("planResource" in result)) throw new Error("Managed owner returned another resource result.");
     return { ...result.planResource, path: managedLocator(cwd, result.planResource.path) };
 }
+
+export async function readManagedActivePlanById(cwd: string, planId: string) {
+    const resource = await readManagedPlanResource(cwd, planId);
+    return resource.attrs.archivedAt ? null : resource;
+}
 export async function readManagedReviewPresentation(planId: string) {
     const owner = await client(managedExecutionRoot());
     if (!owner) throw new Error("Plan owner is unavailable.");
@@ -809,7 +860,12 @@ export async function listManagedArchives(
 export async function readManagedArchive(
     cwd: string,
     reference: string,
+    byId = false,
 ): ReturnType<typeof import("../plan-store.ts").loadArchivedPlan> {
+    if (byId) {
+        const resource = await readManagedPlanResource(cwd, reference);
+        return resource.attrs.archivedAt ? resource : null;
+    }
     const owner = await client(cwd);
     if (!owner) return null;
     const result = (await owner.execute({ kind: "read-archive", reference })).result;
@@ -821,23 +877,25 @@ export async function archiveManagedPlan(
     name: string,
     options: import("./archiving.ts").ArchivePlanOptions,
 ): ReturnType<typeof import("../plan-store.ts").archivePlan> {
-    const selected = await selectManagedPlan(cwd, name);
-    const before = await readManagedPlan(cwd, selected.planId);
+    const selected = options.expectedPlanId === undefined ? await selectManagedPlan(cwd, name) : undefined;
+    const planId = options.expectedPlanId ?? selected?.planId;
+    if (!planId) throw new Error("Archive source is unavailable.");
+    const before = await readManagedActivePlanById(cwd, planId);
     if (!before) throw new Error("Archive source is unavailable.");
     await mutateManagedPlan(cwd, {
         kind: "archive-plan",
         operationId: randomUUID(),
-        planId: selected.planId,
-        expectedRevision: options.expectedRevision || selected.revision,
+        planId,
+        expectedRevision: options.expectedRevision || selected?.revision || before.revision,
         reason: options.reason || "",
         force: options.force === true,
         now: options.now || "",
     });
     return {
-        name: selected.planName,
+        name: selected?.planName ?? name,
         fromPath: before.path,
         toPath: before.path,
-        relativePath: `plans/${selected.planId}/context.md`,
+        relativePath: `plans/${planId}/context.md`,
         attrs: before.attrs,
         artifacts: [],
     };
@@ -861,8 +919,9 @@ export async function restoreManagedPlan(
     cwd: string,
     reference: string,
     destination?: string,
+    expectedRevision?: string,
 ): ReturnType<typeof import("../plan-store.ts").restoreArchivedPlan> {
-    let source = await readManagedArchive(cwd, reference);
+    let source = await readManagedArchive(cwd, reference, expectedRevision !== undefined);
     if (!source?.attrs.planId) throw new Error("Archived Plan is unavailable.");
     const planId = source.attrs.planId;
     const beforePath = source.path;
@@ -871,19 +930,20 @@ export async function restoreManagedPlan(
             kind: "rename-plan",
             operationId: randomUUID(),
             planId,
-            expectedRevision: (await readManagedPlanResource(cwd, planId)).revision,
+            expectedRevision: expectedRevision ?? (await readManagedPlanResource(cwd, planId)).revision,
             name: destination,
         });
-        source = await readManagedArchive(cwd, planId);
+        source = await readManagedArchive(cwd, planId, true);
         if (!source) throw new Error("Renamed archive is unavailable.");
+        expectedRevision = undefined;
     }
     await mutateManagedPlan(cwd, {
         kind: "restore-plan",
         operationId: randomUUID(),
         planId,
-        expectedRevision: (await readManagedPlanResource(cwd, planId)).revision,
+        expectedRevision: expectedRevision ?? (await readManagedPlanResource(cwd, planId)).revision,
     });
-    const restored = await readManagedPlan(cwd, planId);
+    const restored = await readManagedActivePlanById(cwd, planId);
     if (!restored) throw new Error("Restored Plan is unavailable.");
     return {
         name: destination || source.name,

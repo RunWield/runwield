@@ -102,8 +102,8 @@ export async function savePlanBodyById(
     if (current.bodyHash !== expectedBodyHash) throw new StalePlanBodyError(expectedBodyHash, current.bodyHash);
     if (options.expectedRevision !== current.revision)
         throw new StalePlanWriteError(options.expectedRevision || "required", current.revision);
-    const { savePlanProse } = await import("./documents.ts");
-    await savePlanProse(cwd, current.planName, body, current.revision);
+    const { saveManagedDocument } = await import("./managed.ts");
+    await saveManagedDocument(planId, "context.md", current.revision, body);
     return await loadPlanBodyById(cwd, planId);
 }
 
@@ -115,10 +115,11 @@ export async function listArchivedPlans(cwd: string): ReturnType<typeof import("
 export async function loadArchivedPlan(
     cwd: string,
     reference: string,
+    byId = false,
 ): ReturnType<typeof import("../plan-store.ts").loadArchivedPlan> {
     return managedPlanStoreActive()
-        ? await (await import("./managed.ts")).readManagedArchive(cwd, reference)
-        : await (await import("../plan-store.ts")).loadArchivedPlan(cwd, reference);
+        ? await (await import("./managed.ts")).readManagedArchive(cwd, reference, byId)
+        : await (await import("../plan-store.ts")).loadArchivedPlan(cwd, reference, byId);
 }
 export async function archivePlan(
     ...args: Parameters<typeof import("../plan-store.ts").archivePlan>

@@ -138,6 +138,8 @@
       "name": "@runwield/plans",
       "dependencies": {
         "@runwield/parsing": "workspace:*",
+        "@runwield/projects": "workspace:*",
+        "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*",
       },
     },

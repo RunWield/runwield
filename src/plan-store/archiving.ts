@@ -3,10 +3,16 @@ import { isChildFeaturePlan, compareChildPlansByOrder } from "@runwield/plans/fo
 import { managedPlanStoreActive, archiveManagedPlan, restoreManagedPlan, readManagedArchive } from "./managed.ts";
 import { rmdir } from "node:fs/promises";
 import { relative } from "node:path";
-import { archivePlan, restoreArchivedPlan, loadArchivedPlan, getPlanDocumentRoot } from "../plan-store.ts";
+import {
+    archivePlan,
+    restoreArchivedPlan,
+    loadArchivedPlan,
+    getPlanDocumentRoot,
+    StalePlanWriteError,
+} from "../plan-store.ts";
 import { loadPlan, listPlans } from "./queries.ts";
 import { runArchiveTransition, type TransitionResult } from "./transitions.ts";
-import { currentPackageProject } from "./workflows.ts";
+import { currentPackageProject, loadPackageWorkflowPlan, packageWorkflowLocks } from "./workflows.ts";
 import { withLocalProjectAction } from "./access.ts";
 
 export interface ArchivePlanOptions {
@@ -14,6 +20,7 @@ export interface ArchivePlanOptions {
     force?: boolean;
     now?: string;
     expectedRevision?: string;
+    expectedPlanId?: string;
 }
 interface ArchiveTransitionValue<T> {
     value: T;
@@ -44,17 +51,31 @@ export async function archiveSavedPlan(cwd: string, name: string, options: Archi
     });
 }
 
-export async function restoreSavedPlan(cwd: string, reference: string, destination?: string) {
-    if (managedPlanStoreActive()) return await restoreManagedPlan(cwd, reference, destination);
+export async function restoreSavedPlan(
+    cwd: string,
+    reference: string,
+    destination?: string,
+    expectedRevision?: string,
+) {
+    if (managedPlanStoreActive()) return await restoreManagedPlan(cwd, reference, destination, expectedRevision);
     return await withLocalProjectAction(cwd, async () => {
-        const source = await loadArchivedPlan(cwd, reference);
+        const source = await loadArchivedPlan(cwd, reference, expectedRevision !== undefined);
         if (!source) throw new Error(`Archived Plan not found: ${reference}`);
         return committedArchive<Awaited<ReturnType<typeof restoreArchivedPlan>>>(
             await runArchiveTransition({
                 projectRoot: cwd,
                 planName: source.name,
                 action: "restore",
-                move: () => restoreArchivedPlan(cwd, reference, { to: destination }),
+                move: async () => {
+                    if (expectedRevision === undefined)
+                        return await restoreArchivedPlan(cwd, reference, { to: destination });
+                    return await packageWorkflowLocks([{ planId: reference }], async () => {
+                        const plan = await loadPackageWorkflowPlan({ planId: reference });
+                        if (plan.revision !== expectedRevision)
+                            throw new StalePlanWriteError(expectedRevision, plan.revision);
+                        return await restoreArchivedPlan(cwd, reference, { to: destination, byId: true });
+                    });
+                },
             }),
         );
     });

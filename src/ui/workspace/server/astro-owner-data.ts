@@ -15,7 +15,12 @@ import {
     sessionBelongsToOwnerProject,
     type OwnerProjectView,
 } from "./owner-projects.ts";
-import { loadCanonicalBoard, loadCanonicalWorkspaceDetail, loadDevPlanCatalogBoard } from "./astro-canonical-data.ts";
+import {
+    loadCanonicalBoard,
+    loadCanonicalRegisteredProjectBoard,
+    loadCanonicalWorkspaceDetail,
+    loadDevPlanCatalogBoard,
+} from "./astro-canonical-data.ts";
 import { readSessionArtifact } from "../../../shared/session/read-session-artifact.ts";
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
 
@@ -83,8 +88,7 @@ export async function loadOwnerProjectBoard(projectId: string, cookie: string | 
         return await loadCanonicalBoard(currentWorkspaceCwd());
     }
     if (!store) throw new Error("Owner Workspace store is not available.");
-    const root = requireOwnerProjectRoot(store, projectId);
-    return await loadCanonicalBoard(root);
+    return await loadCanonicalRegisteredProjectBoard(projectId, store.projects);
 }
 
 export async function loadOwnerProjectPlanDetail(

@@ -8,6 +8,11 @@ The lifecycle rules in `@runwield/plans` determine the changes for each event. T
 its result. Git execution, the worktree registry, Session transport, UI presentation, and publication phase policy retain
 their existing owners. They are not moved here merely because they interact with a Plan.
 
+For project-scoped commands, call `openProjectPlanStore(projectId)` from `index.ts`. The returned
+[`ProjectPlanStore`](../../packages/plans/store.ts) reads Plans by ID and requires the observed revision for changes.
+The Workspace Board uses its active registration. CLI and worker callers can supply an identity admitted by Projects.
+The runtime selects the owner and the `@runwield/plans/file-snapshots` driver stores retained workflow inputs.
+
 ## Supported operations
 
 | Intent                      | Interface examples                                                                            | Invariants owned here                                                                       |

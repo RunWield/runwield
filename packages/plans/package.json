@@ -5,13 +5,17 @@
     "exports": {
         ".": "./index.ts",
         "./format": "./format.ts",
+        "./store": "./store.ts",
         "./store-format": "./store-format.ts",
+        "./file-snapshots": "./file-snapshots.ts",
         "./lifecycle": "./lifecycle.ts",
         "./controller-state": "./controller-state.ts",
         "./work-record-schema": "./work-record-schema.ts"
     },
     "dependencies": {
         "@runwield/parsing": "workspace:*",
+        "@runwield/projects": "workspace:*",
+        "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*"
     }
 }
