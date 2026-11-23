@@ -127,7 +127,6 @@ jobs:
                   include-hidden-files: true
                   path: |
                       /tmp/*-failure-*.log
-                      /tmp/runwield-test-sandboxes-*-evidence/**
 
     golden:
         if: always()

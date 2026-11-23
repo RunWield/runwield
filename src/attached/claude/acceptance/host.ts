@@ -19,6 +19,12 @@ interface CoreWait {
     reject: (error: Error) => void;
     timer: ReturnType<typeof setTimeout>;
 }
+interface FixtureWait {
+    marker: string;
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+}
 export class HostTurnEnded extends Error {}
 
 /** A real external host process. Pausing freezes transient checkpoints before the next model turn. */
@@ -36,6 +42,9 @@ export class ClaudeHost {
     private exited = false;
     private exitPhase: string;
     private closed: Promise<void>;
+    private fixtureReady = false;
+    private fixtureWait: FixtureWait | null = null;
+    private fixtureTransportError: Error | null = null;
 
     constructor(readonly options: HostOptions) {
         if (!/^[a-z0-9-]+$/.test(options.runId)) throw new Error("Invalid host run ID");
@@ -74,16 +83,24 @@ export class ClaudeHost {
                     const row = jsonMap(JSON.parse(line));
                     if (!row) throw new Error("Not a host event");
                     this.observe(row);
+                    this.observeFixtureMarker(row);
                 } catch {
                     this.fail(new Error("Malformed Claude stream event"));
+                    this.failFixtureTransport("malformed stream event");
                 }
             }
         });
         this.child.stderr.on("data", (bytes: Buffer) =>
             appendFileSync(join(options.root, "logs", `${options.runId}.stderr.log`), bytes),
         );
-        this.child.stdin.on("error", () => this.fail(new Error("Claude input closed")));
-        this.child.on("error", () => this.fail(new Error("Claude process could not start")));
+        this.child.stdin.on("error", () => {
+            this.fail(new Error("Claude input closed"));
+            this.failFixtureTransport("stdin closed");
+        });
+        this.child.on("error", (error) => {
+            this.fail(new Error("Claude process could not start"));
+            this.failFixtureTransport(error.message);
+        });
         this.closed = new Promise((resolve) =>
             this.child.on("close", (code, signal) => {
                 this.exited = true;
@@ -98,9 +115,53 @@ export class ClaudeHost {
                     signal,
                 });
                 this.fail(new Error("Claude process exited before the expected checkpoint"));
+                this.failFixtureTransport(`child exited (code=${code ?? "none"}, signal=${signal ?? "none"})`);
                 resolve();
             }),
         );
+    }
+
+    private failFixtureTransport(reason: string): void {
+        const wait = this.fixtureWait;
+        if (wait) clearTimeout(wait.timer);
+        this.fixtureWait = null;
+        this.fixtureTransportError ??= new Error(
+            `Claude fixture transport: ${reason}; run=${this.options.runId}; phase=${this.exitPhase}; ` +
+                `pid=${this.child.pid ?? "none"}; ready=${this.fixtureReady}; paused=${this.paused}`,
+        );
+        wait?.reject(this.fixtureTransportError);
+    }
+
+    private observeFixtureMarker(row: JsonMap): void {
+        if (row.type !== "system" || row.subtype !== "test_marker" || typeof row.uuid !== "string") return;
+        if (row.uuid === "ready") this.fixtureReady = true;
+        const wait = this.fixtureWait;
+        if (wait?.marker !== row.uuid) return;
+        clearTimeout(wait.timer);
+        this.fixtureWait = null;
+        wait.resolve();
+    }
+
+    /** Only fake acceptance executables implement this test transport. No user turn is opened or reset. */
+    fixtureExchange(marker: string, timeoutMs: number, rows?: JsonMap[]): Promise<void> {
+        if (this.fixtureTransportError) return Promise.reject(this.fixtureTransportError);
+        if (!rows && marker === "ready" && this.fixtureReady) return Promise.resolve();
+        if (this.fixtureWait) return Promise.reject(new Error("Claude fixture already has an active marker wait"));
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                this.failFixtureTransport(
+                    `timed out waiting for ${marker === "ready" ? "readiness" : "batch receipt"}`,
+                );
+            }, timeoutMs);
+            this.fixtureWait = { marker, resolve, reject, timer };
+            if (rows) {
+                try {
+                    this.child.stdin.write(JSON.stringify({ fixtureEvents: rows, marker }) + "\n");
+                } catch {
+                    this.failFixtureTransport("stdin write failed");
+                }
+            }
+        });
     }
 
     private audit(row: JsonMap): void {

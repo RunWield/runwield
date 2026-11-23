@@ -1523,6 +1523,9 @@ async function runComposedTuiScenarioInScope(
         /** @type {string | null} */
         let artifactDir: string | null = null;
         let restartedTuiHistory = "";
+        let currentAction = "startup";
+        let actionIndex = 0;
+        let lastPlanObservation: JsonRecord | undefined;
         /** @type {Array<{ event: string, status?: unknown, updatedAt?: unknown }>} */
         const persistedLifecycleEvents: PersistedLifecycleEvent[] = [];
         /** @type {string | undefined} */
@@ -1538,6 +1541,9 @@ async function runComposedTuiScenarioInScope(
                 JSON.stringify(
                     {
                         scenario: scenario.name,
+                        currentAction,
+                        actionIndex,
+                        lastPlanObservation,
                         screenText: terminal.getScreenText(),
                         scrollback: terminal.getScrollbackText?.(),
                         events,
@@ -1936,6 +1942,9 @@ async function runComposedTuiScenarioInScope(
                 if (event.type === "tool_end") {
                     const name = /** @type {{ toolName?: string }} */ event.toolName || "";
                     events.push(`runtime:tool:end:${name}`);
+                    if (name === "task_completed" || name === "review_complete" || name === "work_record_completed") {
+                        events.push(`runtime:tool:result:${name}:${event.isError ? "error" : "ok"}`);
+                    }
                     if (event.toolCallId.startsWith("validation-ci-")) {
                         events.push(`runtime:validation-ci:${event.isError ? "failed" : "passed"}`);
                         (state.validationCiRuns ||= []).push({ output: event.output, isError: event.isError });
@@ -1999,6 +2008,10 @@ async function runComposedTuiScenarioInScope(
             for (const action of scenario.actions || []) {
                 if (!isObject(action)) continue;
                 const typed = /** @type {any} */ action;
+                currentAction = String(typed.type || "unknown");
+                actionIndex++;
+                lastPlanObservation = undefined;
+                if (currentAction.startsWith("waitFor")) await writeHeartbeat();
                 // Real terminals retain input while a command temporarily stops the TUI.
                 // Wait for its real restart before injecting the next scripted key.
                 if (["type", "clearEditor", "enter", "escape", "ctrlC"].includes(typed.type)) {
@@ -3125,6 +3138,7 @@ async function runComposedTuiScenarioInScope(
                     const startedAt = performance.now();
                     let latestStatus = "";
                     let matchedStatus = false;
+                    let nextHeartbeatAt = startedAt;
                     while (!matchedStatus) {
                         if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
@@ -3152,11 +3166,20 @@ async function runComposedTuiScenarioInScope(
                                       getCwd(),
                                   ).catch(() => "")
                                 : "";
-                        const candidateAttrs = [
-                            executionPlan?.attrs,
-                            remotePlanText ? parsePlanFrontMatter(remotePlanText).attrs : null,
-                            localPlan?.attrs,
-                        ].filter((attrs) => attrs != null);
+                        const remotePlan = remotePlanText ? parsePlanFrontMatter(remotePlanText) : null;
+                        const candidateAttrs = [executionPlan?.attrs, remotePlan?.attrs, localPlan?.attrs].filter(
+                            (attrs) => attrs != null,
+                        );
+                        lastPlanObservation = {
+                            executionStatus: String(executionPlan?.attrs.status || "unreadable"),
+                            remoteStatus: String(remotePlan?.attrs.status || "unreadable"),
+                            localStatus: String(localPlan?.attrs.status || "unreadable"),
+                            registryStatus: String(entry?.status || "absent"),
+                        };
+                        if (performance.now() >= nextHeartbeatAt) {
+                            nextHeartbeatAt = performance.now() + 2000;
+                            await writeHeartbeat();
+                        }
                         const matching = candidateAttrs.find(
                             (attrs) =>
                                 expectedStatuses.has(String(attrs.status || "")) &&
@@ -3318,6 +3341,7 @@ async function runComposedTuiScenarioInScope(
                     const startedAt = performance.now();
                     let latestStatus = "";
                     let lastLookupError = "";
+                    let nextHeartbeatAt = startedAt;
                     while (!expectedStatuses.has(latestStatus)) {
                         if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
@@ -3338,6 +3362,14 @@ async function runComposedTuiScenarioInScope(
                             return null;
                         });
                         latestStatus = published ? String(published.attrs.status || "") : "";
+                        lastPlanObservation = {
+                            remoteStatus: latestStatus || "unreadable",
+                            lookupError: lastLookupError,
+                        };
+                        if (performance.now() >= nextHeartbeatAt) {
+                            nextHeartbeatAt = performance.now() + 2000;
+                            await writeHeartbeat();
+                        }
                         await terminal.flush();
                         await new Promise((resolve) => setTimeout(resolve, 20));
                     }
@@ -3629,6 +3661,9 @@ async function runComposedTuiScenarioInScope(
                     JSON.stringify(
                         {
                             scenario: scenario.name,
+                            currentAction,
+                            actionIndex,
+                            lastPlanObservation,
                             error: error instanceof Error ? error.message : String(error),
                             nativeFailureEvidence: await captureNativeFailureEvidence(
                                 env?.projectRoot || previousCwd,

@@ -13,6 +13,8 @@ export interface GoldenChildResult {
     stdout: string;
     stderr: string;
     timedOut: boolean;
+    pid: number;
+    ready: boolean;
 }
 
 export interface GoldenChildOptions {
@@ -127,6 +129,8 @@ export async function runGoldenChild(args: string[], options: GoldenChildOptions
             stdout: await stdout,
             stderr: await stderr,
             timedOut,
+            pid: child.pid,
+            ready,
         };
     } finally {
         clearTimeout(timeout);

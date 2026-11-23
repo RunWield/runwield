@@ -85,6 +85,8 @@ async function writeChildFailureArtifact(
                 scenarioModule: request.scenarioModule,
                 exportName: request.exportName,
                 timedOut: result.timedOut,
+                pid: result.pid,
+                ready: result.ready,
                 code: result.code,
                 stdout: result.stdout,
                 stderr: result.stderr,

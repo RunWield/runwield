@@ -246,7 +246,6 @@ jobs:
                   include-hidden-files: true
                   path: |
                       /tmp/*-failure-*.log
-                      /tmp/runwield-test-sandboxes-*-evidence/**
 
     golden-shards:
         if: needs.metadata.outputs.qualification_only != 'true'
@@ -362,7 +361,6 @@ jobs:
                   include-hidden-files: true
                   path: |
                       /tmp/*-failure-*.log
-                      /tmp/runwield-test-sandboxes-*-evidence/**
 
     release-check:
         if: needs.metadata.outputs.qualification_only != 'true'
