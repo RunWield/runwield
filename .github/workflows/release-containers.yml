@@ -114,7 +114,6 @@ jobs:
                   path: |
                       .ci-cache/
                       /tmp/*-failure-*.log
-                      /tmp/runwield-test-sandboxes-*-evidence/**
 
     ux-image:
         if: ${{ !inputs.legacy_recovery }}

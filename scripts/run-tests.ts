@@ -367,6 +367,9 @@ async function runIsolatedSuite(
                 if (process.env[key]) env[key] = process.env[key];
             }
 
+            // Nested runners must obey the same hosted artifact privacy boundary.
+            if (process.env.GITHUB_ACTIONS === "true") env.GITHUB_ACTIONS = "true";
+
             // Nested runner tests must exercise their entire fixture suite.
             env.WLD_TEST_SHARD = "";
             if (goldenFixtureRoot) env.WLD_GOLDEN_FIXTURE_ROOT = goldenFixtureRoot;
@@ -541,9 +544,11 @@ export async function main(args = process.argv.slice(2)) {
         }
     } finally {
         if (exitCode !== 0) {
-            const destination = `${sandboxRoot}-evidence`;
-            await retainTestEvidence(sandboxRoot, destination);
-            console.error(`Retained test evidence: ${destination}`);
+            const hosted = process.env.GITHUB_ACTIONS === "true";
+            const localEvidence = hosted ? undefined : `${sandboxRoot}-evidence`;
+            const shareableEvidence = join(reportDir, "failure-evidence");
+            await retainTestEvidence(sandboxRoot, localEvidence, shareableEvidence);
+            console.error("Retained test evidence:", localEvidence ?? shareableEvidence);
         }
         await fsRm(sandboxRoot, { recursive: true }).catch(() => {});
     }
