@@ -6,7 +6,7 @@ import { createMnemotecaTools } from "../../extensions/mnemoteca/tools.ts";
 import type { MemoryParams } from "@runwield/tools";
 import { denoHelperBinaryExec } from "../../extensions/helper-binary-exec.ts";
 import { assembleFinalSystemPrompt } from "../session/session.ts";
-import { loadAgentDef } from "../session/agents.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { runSleepCommand, SYSTEM_SLEEP_MNEMOTECA_PORT } from "../../cmd/sleep/index.ts";
 import { startInteractiveSession } from "../../ui/tui/chat-session.ts";
 import { stdinStream } from "../../testing/stdin-stream.ts";
@@ -535,7 +535,7 @@ try {
                 );
                 console.log(JSON.stringify({ kind: "memory", text: result.content, ok: true }));
             } else if (command.kind === "core-prompt") {
-                const definition = await loadAgentDef("guide", input.cwd);
+                const definition = await agentRegistry.get("guide", input.cwd);
                 const text = await assembleFinalSystemPrompt(
                     { ...definition, systemPrompt: "{{MEMORIES}}" },
                     [],

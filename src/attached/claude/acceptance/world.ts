@@ -158,7 +158,7 @@ export class AcceptanceWorld {
             JSON.stringify({ verification_command: VERIFICATION_COMMAND, codereview: "always", workflowMetrics: true }),
         );
         const reviewer = await readFile(
-            join(this.checkout, "src/agent-definitions/shared-practice/review-practice.md"),
+            join(this.checkout, "packages/agents/definitions/shared-practice/review-practice.md"),
             "utf8",
         );
         await writeFile(

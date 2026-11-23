@@ -15,6 +15,10 @@ export const BUILD_METADATA_SCHEMA = 1;
 const INPUTS = [
     "src",
     "scripts",
+    "packages/agents",
+    "packages/bundled-assets",
+    "packages/parsing",
+    "packages/resources",
     "packages/tools",
     "third_party/plannotator/packages",
     "brand",

@@ -1,17 +1,10 @@
 import { readFile as fsReadFile } from "node:fs/promises";
-/**
- * @module shared/session/subagent-definitions
- *
- * Typed loader for hidden workflow-dispatched subagent definitions.
- */
-
-import { extractYaml } from "../front-matter.ts";
 import { join } from "node:path";
-import { AGENT_DEFS_DIR, AGENTS, SUBAGENTS } from "../../constants.ts";
-import { ensureBundledAgentDefFile } from "./agent-assets.ts";
-import { composeSharedPracticePrompt, loadAgentDefFromPath } from "./agents.ts";
-import type { AgentDefinition } from "./agents.ts";
-import { normalizeBashAllowedCommands } from "../bash-command-policy.ts";
+import type { BundledAssetDirectory } from "@runwield/bundled-assets";
+import { extractYaml } from "@runwield/parsing/front-matter";
+import { normalizeBashAllowedCommands } from "@runwield/parsing/shell-selectors";
+import { AGENTS, SUBAGENTS } from "./role-ids.ts";
+import type { AgentDefinition, createRoleRegistry } from "./roles.ts";
 
 const SUBAGENT_DEFINITIONS_DIR = "subagent-definitions";
 const DELEGATED_ROLES_DIR = "roles";
@@ -28,7 +21,7 @@ const SLICER_PROMPT_FILE = "slicer-prompt.md";
 const VERIFICATION_ADVERSARY_ROLE_FILE = "verification-adversary.md";
 
 export type ReviewerSubAgentMode = "discovery" | "verify";
-export type SubAgentDefinitionLoadMode = "barePrompt" | "fullAgent";
+type SubAgentDefinitionLoadMode = "barePrompt" | "fullAgent";
 export type SubAgentDefinitionId = (typeof SUBAGENTS)[keyof typeof SUBAGENTS];
 
 /** The most authority a delegated role may ever receive, regardless of the requested mode. */
@@ -38,12 +31,12 @@ export type DelegatedRoleId = "general" | "verification-adversary";
 type PromptFrontMatterValue = string | number | boolean | string[] | null;
 type PromptFrontMatterAttrs = Partial<Record<string, PromptFrontMatterValue>>;
 
-export interface ParsedPromptFrontMatter {
+interface ParsedPromptFrontMatter {
     attrs: PromptFrontMatterAttrs;
     body: string;
 }
 
-export interface SubAgentDefinition {
+interface SubAgentDefinition {
     id: SubAgentDefinitionId;
     agentName: string;
     displayNameFallback: string;
@@ -60,11 +53,21 @@ export interface SubAgentDefinition {
     toolFree?: boolean;
 }
 
-export interface DelegatedRoleDefinition {
+interface DelegatedRoleDefinition {
     id: DelegatedRoleId;
     /** Overlay appended to the base delegated prompt, or null for the unspecialized default. */
     overlayFile: string | null;
     authorityCeiling: DelegatedAuthority;
+}
+
+export type DelegatedRole = Readonly<Pick<DelegatedRoleDefinition, "id" | "authorityCeiling">>;
+
+export type DelegatedSubAgentDefinitionId = typeof SUBAGENTS.DELEGATED | typeof SUBAGENTS.DELEGATED_READ;
+
+export interface ResolvedDelegation {
+    role: DelegatedRole;
+    effectiveAuthority: DelegatedAuthority;
+    definitionId: DelegatedSubAgentDefinitionId;
 }
 
 export interface LoadSubAgentDefinitionOptions {
@@ -73,7 +76,7 @@ export interface LoadSubAgentDefinitionOptions {
     delegatedRole?: DelegatedRoleId;
 }
 
-export const DELEGATED_READ_TOOLS = Object.freeze([
+const DELEGATED_READ_TOOLS = Object.freeze([
     "read",
     "grep",
     "find",
@@ -96,7 +99,7 @@ export const DELEGATED_READ_TOOLS = Object.freeze([
     "web_docs_search",
 ]);
 
-export const DELEGATED_WRITE_TOOLS = Object.freeze([
+const DELEGATED_WRITE_TOOLS = Object.freeze([
     ...DELEGATED_READ_TOOLS,
     "edit",
     "write",
@@ -104,7 +107,7 @@ export const DELEGATED_WRITE_TOOLS = Object.freeze([
     "create_image",
 ]);
 
-export const REVIEWER_SUBAGENT_TOOLS = Object.freeze([
+const REVIEWER_SUBAGENT_TOOLS = Object.freeze([
     "read",
     "grep",
     "find",
@@ -118,7 +121,7 @@ export const REVIEWER_SUBAGENT_TOOLS = Object.freeze([
  * The Integration Reviewer reads selectively across a whole Epic, so its diff tool has no full-read gate and it is
  * expected to hand large areas to read-only delegates.
  */
-export const INTEGRATION_REVIEWER_SUBAGENT_TOOLS = Object.freeze([
+const INTEGRATION_REVIEWER_SUBAGENT_TOOLS = Object.freeze([
     "read",
     "grep",
     "find",
@@ -128,7 +131,7 @@ export const INTEGRATION_REVIEWER_SUBAGENT_TOOLS = Object.freeze([
     "delegate_agent",
 ]);
 
-export const SUBAGENT_DEFINITIONS: Readonly<Record<SubAgentDefinitionId, SubAgentDefinition>> = Object.freeze({
+const SUBAGENT_DEFINITIONS: Readonly<Record<SubAgentDefinitionId, SubAgentDefinition>> = Object.freeze({
     [SUBAGENTS.DELEGATED]: Object.freeze({
         id: SUBAGENTS.DELEGATED,
         agentName: AGENTS.DELEGATED,
@@ -194,9 +197,9 @@ export const SUBAGENT_DEFINITIONS: Readonly<Record<SubAgentDefinitionId, SubAgen
     }),
 });
 
-export const DELEGATED_ROLE_GENERAL: DelegatedRoleId = "general";
+const DELEGATED_ROLE_GENERAL: DelegatedRoleId = "general";
 
-export const DELEGATED_ROLES: Readonly<Record<DelegatedRoleId, DelegatedRoleDefinition>> = Object.freeze({
+const DELEGATED_ROLES: Readonly<Record<DelegatedRoleId, DelegatedRoleDefinition>> = Object.freeze({
     general: Object.freeze({
         id: "general",
         overlayFile: null,
@@ -209,12 +212,10 @@ export const DELEGATED_ROLES: Readonly<Record<DelegatedRoleId, DelegatedRoleDefi
     }),
 });
 
-export const DELEGATED_ROLE_IDS: readonly DelegatedRoleId[] = Object.freeze(
-    Object.keys(DELEGATED_ROLES) as DelegatedRoleId[],
-);
+const DELEGATED_ROLE_IDS: readonly DelegatedRoleId[] = Object.freeze(Object.keys(DELEGATED_ROLES) as DelegatedRoleId[]);
 
 /** Resolves a caller-supplied role name, returning null when the role is not registered. */
-export function getDelegatedRole(role: string | undefined | null): DelegatedRoleDefinition | null {
+function resolveDelegatedRole(role: string | undefined | null): DelegatedRoleDefinition | null {
     if (role === undefined || role === null || role === "") return DELEGATED_ROLES[DELEGATED_ROLE_GENERAL];
     return Object.hasOwn(DELEGATED_ROLES, role) ? DELEGATED_ROLES[role as DelegatedRoleId] : null;
 }
@@ -225,14 +226,14 @@ function delay(ms: number) {
 
 function isRecoverableBundledPromptReadError(error: Error) {
     return (
-        (error instanceof Error && "code" in error && error.code === "ENOENT") ||
+        ("code" in error && error.code === "ENOENT") ||
         (error instanceof TypeError && /Unexpected end of input|Prompt file was empty/i.test(error.message)) ||
         error.message.startsWith("Bundled agent asset is missing:")
     );
 }
 
 function normalizeBundledPromptFrontMatter(parsed: ParsedPromptFrontMatter): ParsedPromptFrontMatter {
-    const sourceAttrs = parsed.attrs && typeof parsed.attrs === "object" ? parsed.attrs : {};
+    const sourceAttrs = parsed.attrs ?? {};
     const attrs: PromptFrontMatterAttrs = {};
     for (const [key, value] of Object.entries(sourceAttrs)) {
         if (
@@ -253,11 +254,10 @@ function subagentRelativePath(definition: SubAgentDefinition, reviewerMode: Revi
     return join(SUBAGENT_DEFINITIONS_DIR, file);
 }
 
-async function readBundledPromptFrontMatter(relativePath: string) {
-    let lastError: Error = new Error("Bundled prompt read failed.");
+async function readBundledPromptFrontMatter(assets: BundledAssetDirectory, relativePath: string) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-            const promptPath = await ensureBundledAgentDefFile(relativePath);
+            const promptPath = await assets.ensureFile(relativePath);
             const raw = await fsReadFile(promptPath, "utf8");
             if (!raw.trim()) throw new TypeError("Prompt file was empty during bundled prompt load");
             const parsed = extractYaml<PromptFrontMatterAttrs>(raw);
@@ -266,14 +266,11 @@ async function readBundledPromptFrontMatter(relativePath: string) {
             }
             return normalizeBundledPromptFrontMatter(parsed);
         } catch (error) {
-            if (!(error instanceof Error)) throw error;
-            lastError = error;
-            if (!isRecoverableBundledPromptReadError(error)) throw error;
+            if (!(error instanceof Error) || !isRecoverableBundledPromptReadError(error)) throw error;
             if (attempt < 2) await delay(10 * (attempt + 1));
         }
     }
-    if (!isRecoverableBundledPromptReadError(lastError)) throw lastError;
-    const fallbackPath = join(AGENT_DEFS_DIR, relativePath);
+    const fallbackPath = join(assets.sourceDir, relativePath);
     const parsed = extractYaml<PromptFrontMatterAttrs>(await fsReadFile(fallbackPath, "utf8"));
     if (Object.hasOwn(parsed.attrs, "bashAllowedCommands")) {
         normalizeBashAllowedCommands(parsed.attrs.bashAllowedCommands as string[] | null, fallbackPath);
@@ -281,32 +278,28 @@ async function readBundledPromptFrontMatter(relativePath: string) {
     return normalizeBundledPromptFrontMatter(parsed);
 }
 
-/**
- * Load a bare workflow prompt (no shared system prompt) into an AgentDefinition.
- *
- * The tool ceiling comes from the definition registry, not the prompt front
- * matter: a barePrompt subagent must declare `allowedTools` (its canonical
- * tool set) or explicitly opt out with `toolFree: true`. Missing both fails
- * closed — a silent `tools: []` would let the subagent's session start with
- * none of its required tools (the failure mode that once stripped the
- * Semantic Reviewer of `review_complete`), and the first sign of that would
- * be the workflow stalling mid-validation instead of a load error.
- *
- * Exported for tests that exercise the fail-closed guard with a crafted
- * definition.
- */
-export async function loadBarePromptDefinition(
-    definition: SubAgentDefinition,
-    relativePath: string,
-    projectRoot?: string,
-): Promise<AgentDefinition> {
+type FullRoleLoader = Pick<ReturnType<typeof createRoleRegistry>, "composeSharedPractice" | "loadFromPath">;
+
+function requireBarePromptToolCeiling(definition: SubAgentDefinition): readonly string[] {
     if (!definition.allowedTools && !definition.toolFree) {
         throw new Error(
             `Subagent definition "${definition.id}" (barePrompt) declares neither allowedTools nor toolFree: ` +
                 "its session would silently run with no tools. Declare an explicit tool ceiling.",
         );
     }
-    const { attrs, body } = await readBundledPromptFrontMatter(relativePath);
+    return definition.allowedTools ?? [];
+}
+
+/** Load a workflow prompt and its shared practices without the shared system prompt. */
+export async function loadBarePromptDefinition(
+    assets: BundledAssetDirectory,
+    roles: FullRoleLoader,
+    definition: SubAgentDefinition,
+    relativePath: string,
+    projectRoot?: string,
+): Promise<AgentDefinition> {
+    const tools = requireBarePromptToolCeiling(definition);
+    const { attrs, body } = await readBundledPromptFrontMatter(assets, relativePath);
     if (attrs.tools !== undefined) {
         throw new Error(
             `Subagent prompt "${relativePath}" (barePrompt) declares a \`tools:\` field, which is ignored: ` +
@@ -317,7 +310,7 @@ export async function loadBarePromptDefinition(
     const displayName =
         typeof attrs.name === "string" && attrs.name.trim() ? attrs.name.trim() : definition.displayNameFallback;
     const description = typeof attrs.description === "string" ? attrs.description.trim() : "";
-    const sharedPracticePrompt = await composeSharedPracticePrompt(
+    const sharedPracticePrompt = await roles.composeSharedPractice(
         attrs.sharedPractice,
         definition.agentName,
         projectRoot,
@@ -328,7 +321,7 @@ export async function loadBarePromptDefinition(
         displayName,
         model: "",
         description,
-        tools: [...(definition.allowedTools || [])],
+        tools: [...tools],
         bashAllowedCommands: normalizeBashAllowedCommands(
             attrs.bashAllowedCommands as string[] | null | undefined,
             relativePath,
@@ -337,22 +330,18 @@ export async function loadBarePromptDefinition(
     };
 }
 
-async function loadFullAgentDefinition(definition: SubAgentDefinition, relativePath: string): Promise<AgentDefinition> {
-    const promptPath = await ensureBundledAgentDefFile(relativePath);
-    return await loadAgentDefFromPath(promptPath, { agentName: definition.agentName });
-}
-
 /**
  * Appends a delegated role overlay to the base delegated prompt. The base prompt stays the
  * source of universal delegated-session rules; the overlay only adds the role-specific task.
  */
 async function applyDelegatedRoleOverlay(
+    assets: BundledAssetDirectory,
     agentDef: AgentDefinition,
     role: DelegatedRoleDefinition,
 ): Promise<AgentDefinition> {
     if (!role.overlayFile) return agentDef;
     const relativePath = join(SUBAGENT_DEFINITIONS_DIR, DELEGATED_ROLES_DIR, role.overlayFile);
-    const { attrs, body } = await readBundledPromptFrontMatter(relativePath);
+    const { attrs, body } = await readBundledPromptFrontMatter(assets, relativePath);
     const overlay = body.trim();
     if (!overlay) throw new Error(`Delegated role overlay is empty: ${relativePath}`);
 
@@ -363,27 +352,65 @@ async function applyDelegatedRoleOverlay(
     };
 }
 
-export async function loadSubAgentDefinition(
-    id: SubAgentDefinitionId,
-    options: LoadSubAgentDefinitionOptions = {},
-): Promise<AgentDefinition> {
-    const definition = SUBAGENT_DEFINITIONS[id];
-    if (!definition) throw new Error(`Unknown subagent definition: ${id}`);
-    const reviewerMode = options.reviewerMode || "discovery";
-    const relativePath = subagentRelativePath(definition, reviewerMode);
+function getSubAgentDefinition(id: SubAgentDefinitionId): SubAgentDefinition {
+    if (!Object.hasOwn(SUBAGENT_DEFINITIONS, id)) throw new Error(`Unknown subagent definition: ${id}`);
+    return SUBAGENT_DEFINITIONS[id];
+}
 
-    if (definition.loadMode !== "barePrompt") {
-        return await loadFullAgentDefinition(definition, relativePath);
-    }
+export function createIsolatedRoles(assets: BundledAssetDirectory, roles: FullRoleLoader) {
+    return {
+        async loadSubAgentDefinition(
+            id: SubAgentDefinitionId,
+            options: LoadSubAgentDefinitionOptions = {},
+        ): Promise<AgentDefinition> {
+            const definition = getSubAgentDefinition(id);
+            const relativePath = subagentRelativePath(definition, options.reviewerMode || "discovery");
 
-    const agentDef = await loadBarePromptDefinition(definition, relativePath, options.projectRoot);
-    if (id !== SUBAGENTS.DELEGATED && id !== SUBAGENTS.DELEGATED_READ) return agentDef;
+            if (definition.loadMode === "fullAgent") {
+                const promptPath = await assets.ensureFile(relativePath);
+                return await roles.loadFromPath(promptPath, { agentName: definition.agentName });
+            }
 
-    const role = getDelegatedRole(options.delegatedRole);
-    if (!role) {
-        throw new Error(
-            `Unknown delegated role: ${options.delegatedRole}. Valid roles: ${DELEGATED_ROLE_IDS.join(", ")}.`,
-        );
-    }
-    return await applyDelegatedRoleOverlay(agentDef, role);
+            const agentDef = await loadBarePromptDefinition(
+                assets,
+                roles,
+                definition,
+                relativePath,
+                options.projectRoot,
+            );
+            if (id !== SUBAGENTS.DELEGATED && id !== SUBAGENTS.DELEGATED_READ) return agentDef;
+
+            const role = resolveDelegatedRole(options.delegatedRole);
+            if (!role) {
+                throw new Error(
+                    `Unknown delegated role: ${options.delegatedRole}. Valid roles: ${DELEGATED_ROLE_IDS.join(", ")}.`,
+                );
+            }
+            return await applyDelegatedRoleOverlay(assets, agentDef, role);
+        },
+        getSubAgentToolCeiling(id: SubAgentDefinitionId): readonly string[] {
+            const definition = getSubAgentDefinition(id);
+            if (definition.loadMode !== "barePrompt") {
+                throw new Error(`Subagent definition "${id}" gets its tools from its full Agent definition.`);
+            }
+            return requireBarePromptToolCeiling(definition);
+        },
+        getSubAgentDisplayNameFallback(id: SubAgentDefinitionId): string {
+            return getSubAgentDefinition(id).displayNameFallback;
+        },
+        listDelegatedRoleIds(): readonly DelegatedRoleId[] {
+            return DELEGATED_ROLE_IDS;
+        },
+        resolveDelegation(requestedAuthority: DelegatedAuthority, name?: string | null): ResolvedDelegation | null {
+            const role = resolveDelegatedRole(name);
+            if (!role) return null;
+            const { id, authorityCeiling } = role;
+            const effectiveAuthority = authorityCeiling === "read" ? "read" : requestedAuthority;
+            return {
+                role: { id, authorityCeiling },
+                effectiveAuthority,
+                definitionId: effectiveAuthority === "read" ? SUBAGENTS.DELEGATED_READ : SUBAGENTS.DELEGATED,
+            };
+        },
+    };
 }

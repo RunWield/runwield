@@ -9,6 +9,10 @@ ARG BUN_VERSION
 WORKDIR /app
 
 COPY .bun-version bunfig.toml package.json bun.lock runtime-root.ts tsconfig*.json ./
+COPY packages/agents ./packages/agents
+COPY packages/bundled-assets ./packages/bundled-assets
+COPY packages/parsing ./packages/parsing
+COPY packages/resources ./packages/resources
 COPY packages/tools ./packages/tools
 COPY scripts ./scripts
 COPY src ./src

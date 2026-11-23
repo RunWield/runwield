@@ -92,7 +92,7 @@ and lasting product requirements. Other PRDs are transient: after
 implementation, fold lasting requirements into the appropriate central PRD,
 update references, and remove the completed PRD. Git history preserves earlier
 proposals; Work Records preserve delivery evidence. See
-`src/agent-definitions/document-formats/PRD-FORMAT.md`.
+`packages/agents/definitions/document-formats/PRD-FORMAT.md`.
 
 Organize requirements inside these five PRDs by capability, with stable links,
 named observable requirements, and acceptance scenarios. Each capability has one
@@ -114,4 +114,4 @@ operate its machinery. Keep the owning requirements and scenarios in
 `docs/prd/runwield-core-prd.md#execution-validation-and-recovery` authoritative.
 
 Follow the shared ADR authoring and maintenance policy in
-`src/agent-definitions/document-formats/ADR-FORMAT.md`.
+`packages/agents/definitions/document-formats/ADR-FORMAT.md`.

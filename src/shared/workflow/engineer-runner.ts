@@ -1,6 +1,6 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
 import { AGENTS } from "../../constants.ts";
-import { getAgentDisplayName } from "../session/agents.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { runActiveAgentTurn } from "../session/agent-switching.ts";
 import { createPairCheckpointTool } from "../../tools/pair-checkpoint.ts";
@@ -20,7 +20,7 @@ export async function runEngineerWithPlan(
     routerMessage,
     reviewFeedback,
     reviewImages,
-    executionAgent = AGENTS.ENGINEER,
+    executionAgent: string = AGENTS.ENGINEER,
     resumePreviousRequest = false,
 ) {
     if (!hostedSession) throw new Error("runEngineerWithPlan: hostedSession is required");
@@ -97,7 +97,7 @@ export async function runEngineerWithPlan(
  * @param {string} [projectRoot]
  */
 export function buildEngineerPausedMessage(reason, projectRoot, executionAgent = AGENTS.ENGINEER) {
-    const base = `${getAgentDisplayName(
+    const base = `${agentRegistry.displayName(
         executionAgent,
         projectRoot,
     )} stopped before reporting the task complete, so the work is unfinished and the Plan stays In Progress. Say "continue" to resume with the execution owner.`;
@@ -108,8 +108,8 @@ export function buildEngineerPausedMessage(reason, projectRoot, executionAgent =
  * @param {"stop"|"canceled"} pauseReason
  * @param {string} [projectRoot]
  */
-export function buildPairPausedMessage(pauseReason, projectRoot, executionAgent = AGENTS.ENGINEER) {
-    const owner = getAgentDisplayName(resolvePlanExecutionRuntimeAgent(executionAgent), projectRoot);
+export function buildPairPausedMessage(pauseReason, projectRoot, executionAgent: string = AGENTS.ENGINEER) {
+    const owner = agentRegistry.displayName(resolvePlanExecutionRuntimeAgent(executionAgent), projectRoot);
     return pauseReason === PairPauseReasons.STOP
         ? `${owner} stopped Pair Execution at your checkpoint direction. The Plan remains In Progress; say "continue" to resume Pair Execution.`
         : `${owner} paused Pair Execution because the checkpoint interaction was canceled. No approval or Task Completion was recorded; say "continue" to resume.`;

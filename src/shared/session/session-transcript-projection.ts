@@ -21,7 +21,7 @@ import {
     namedInvocationDisplayText,
     namedInvocationImageReferences,
 } from "./named-invocation.ts";
-import { getAgentDisplayName, normalizeAgentInternalName } from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 import { RuntimeUsageTotals } from "./runtime-usage-totals.ts";
 import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "../workflow/workflow-tool-events.ts";
 
@@ -269,7 +269,7 @@ function normalizeReplayTimestamp(timestamp: unknown) {
 function replayAgentDisplayName(agentName: string, projectRoot: string | undefined) {
     if (!projectRoot) return agentName;
     try {
-        return getAgentDisplayName(agentName, projectRoot);
+        return agentRegistry.displayName(agentName, projectRoot);
     } catch (_error) {
         return agentName;
     }
@@ -677,7 +677,7 @@ export function createReplayEvents(
             if (!activeAgent) continue;
             let canonicalName;
             try {
-                canonicalName = normalizeAgentInternalName(activeAgent.agentName);
+                canonicalName = agentRegistry.normalizeName(activeAgent.agentName);
             } catch (_error) {
                 continue;
             }

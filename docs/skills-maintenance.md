@@ -40,8 +40,8 @@ Start with a clean skills checkout. Review the resulting changes before acceptin
 
 | Portable skill                | Source in Core                     |
 | ----------------------------- | ---------------------------------- |
-| `skills/ideator/SKILL.md`     | `src/agent-definitions/ideator.md` |
-| `skills/guide/SKILL.md`       | `src/agent-definitions/guide.md`   |
+| `skills/ideator/SKILL.md`     | `packages/agents/definitions/ideator.md` |
+| `skills/guide/SKILL.md`       | `packages/agents/definitions/guide.md`   |
 | `skills/review/SKILL.md`      | Independently maintained           |
 | `skills/write-tests/SKILL.md` | Independently maintained           |
 

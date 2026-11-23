@@ -8,9 +8,8 @@
  * Nothing here is saved in a workflow record.
  */
 
-import { getBundledAgentDefsPath } from "../session/agent-assets.ts";
 import { listVisibleSkillCatalog } from "../session/skill-catalog.ts";
-import { loadAgentDef } from "../session/agents.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { buildBridgedToolPromptAppendix } from "../session/bridged-tools/prompt.ts";
 import type { AttachedHostRole } from "./operations.ts";
 import { ATTACHED_HOSTS, type AttachedHostId } from "./hosts.ts";
@@ -136,8 +135,8 @@ export async function resolveAttachedRoleInstructions(
 ): Promise<string> {
     // The coordinator adds the mode-specific bare reviewer policy before these host transport overrides.
     if (role === "reviewer") return adaptHostText(`${ROLE_ADDENDUM.reviewer}\n\n${DOCUMENT_ACCESS}`, hostId);
-    const agent = await loadAgentDef(role, projectRoot);
-    const bundledAgentDefsPath = await getBundledAgentDefsPath();
+    const agent = await agentRegistry.get(role, projectRoot);
+    const bundledAgentDefsPath = await agentRegistry.getBundledDefinitionsPath();
     const skills = agent.systemPrompt.includes("{{SKILLS}}") ? await listVisibleSkillCatalog(projectRoot) : [];
     const skillsSection = skills.length
         ? [

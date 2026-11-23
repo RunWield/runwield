@@ -3,9 +3,14 @@ import { AGENTS } from "../../constants.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
 import { getSettingsManager } from "../settings.ts";
-import { buildWorkflowOnlyAgentMessage, isWorkflowOnlyAgent, listAvailableAgents } from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session-runtime.ts";
 import { setActiveSessionModel } from "./model-selection.ts";
+
+export function buildWorkflowOnlyAgentMessage(agentName: string, projectRoot?: string) {
+    const displayName = agentRegistry.displayName(agentName, projectRoot);
+    return `${displayName} is activated by RunWield as part of a workflow, not by hand. Staying with the current agent.`;
+}
 
 /**
  * @typedef {Object} UserAgentOption
@@ -35,7 +40,7 @@ export async function listUserAgentOptions(projectRoot) {
     const root = projectRoot || "";
     const fallbackModel =
         getConfiguredAgentModel(AGENTS.ENGINEER, root) || (defaultModel ? `${defaultProvider}/${defaultModel}` : "");
-    const agents = await listAvailableAgents(projectRoot);
+    const agents = await agentRegistry.list(projectRoot);
     return agents.map((agent) => {
         const reference = getConfiguredAgentModel(agent.name, root) || fallbackModel || agent.model || "";
         const parsed = parseProviderModel(reference);
@@ -71,7 +76,7 @@ export async function requireUserAgentOption(agentName, projectRoot) {
     const options = await listUserAgentOptions(projectRoot);
     const match = options.find((agent) => agent.name === agentName);
     if (match) return match;
-    if (await isWorkflowOnlyAgent(agentName, projectRoot)) {
+    if (await agentRegistry.isWorkflowOnly(agentName, projectRoot)) {
         throw new Error(buildWorkflowOnlyAgentMessage(agentName, projectRoot));
     }
     throw new Error(`Agent "${agentName}" not found`);

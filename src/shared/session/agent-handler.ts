@@ -25,7 +25,7 @@ import {
 } from "../workflow/validation.ts";
 import { runWorkflowValidationToStableBoundary } from "../workflow/validation.ts";
 import { switchActiveAgent } from "./agent-switching.ts";
-import { getAgentDisplayName } from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 import { emitHostedSessionRuntimeEvent, emitSystemStatus, RuntimeEventTypes } from "./session-runtime-events.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import {
@@ -462,7 +462,7 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                 );
                 emitSystemStatus(
                     hostedSession,
-                    `Plan execution failed: ${reason}. ${getAgentDisplayName(
+                    `Plan execution failed: ${reason}. ${agentRegistry.displayName(
                         executionOwner,
                         projectRoot,
                     )} may need manual intervention.`,

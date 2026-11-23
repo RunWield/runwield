@@ -6,7 +6,7 @@
     "engines": {
         "bun": "^1.4.0"
     },
-    "workspaces": ["packages/tools"],
+    "workspaces": ["packages/agents", "packages/bundled-assets", "packages/parsing", "packages/resources", "packages/tools"],
     "trustedDependencies": [],
     "scripts": {
         "install:locked": "bun scripts/check-bun-runtime.ts && bun install --frozen-lockfile --ignore-scripts && cd docs-site && bun install --frozen-lockfile --ignore-scripts",
@@ -94,6 +94,10 @@
         "@lezer/common": "1.5.3",
         "@lezer/highlight": "1.2.5",
         "@modelcontextprotocol/sdk": "1.32.0",
+        "@runwield/agents": "workspace:*",
+        "@runwield/bundled-assets": "workspace:*",
+        "@runwield/parsing": "workspace:*",
+        "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*",
         "@pierre/diffs": "1.4.2",
         "@plannotator/atomic-editor": "0.9.0",

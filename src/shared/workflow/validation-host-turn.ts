@@ -19,7 +19,7 @@ import {
     type ValidationHostResume,
 } from "./validation-host-contract.ts";
 import { createGitPort } from "../git-port.ts";
-import { getAgentDisplayName } from "./validation-prompts.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 
 export type ContinueHostTurnValidationArgs = {
@@ -64,7 +64,7 @@ function createHostTurnPort(cwd: string, signal?: AbortSignal): ValidationSessio
         runIndependentRepairTurn: unexpected,
         continueLastRepairTurn: unexpected,
         runIsolatedAgentSession: unexpected,
-        getAgentDisplayName,
+        getAgentDisplayName: (agentName, projectRoot) => agentRegistry.displayName(agentName, projectRoot),
         async handoffVerifiedPublication() {},
         runPostVerificationHandoffs: unexpected,
     };

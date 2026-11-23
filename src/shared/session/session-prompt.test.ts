@@ -24,7 +24,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { basename, join } from "node:path";
 import { AGENTS } from "../../constants.ts";
-import { loadAgentDef } from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import {
     __getRootSessionMetadataForTests,
@@ -97,7 +97,7 @@ sessionPromptTest("assembleFinalSystemPrompt includes the Session naming reminde
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-prompt-session-name-"));
     try {
         const reminder = "If this Session is unnamed, call `set_session_name` early with a short descriptive name.";
-        const agentDef = await loadAgentDef(AGENTS.GUIDE, projectRoot);
+        const agentDef = await agentRegistry.get(AGENTS.GUIDE, projectRoot);
         const sessionManager = SessionManager.inMemory(projectRoot);
 
         const unnamed = await assembleFinalSystemPrompt(agentDef, agentDef.tools, [], projectRoot, "", {
@@ -122,7 +122,7 @@ sessionPromptTest("assembleFinalSystemPrompt suppresses the Session naming remin
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-prompt-sanitized-session-name-"));
     try {
         const reminder = "If this Session is unnamed, call `set_session_name` early with a short descriptive name.";
-        const agentDef = await loadAgentDef(AGENTS.GUIDE, projectRoot);
+        const agentDef = await agentRegistry.get(AGENTS.GUIDE, projectRoot);
         const sessionManager = SessionManager.inMemory(projectRoot);
         sessionManager.appendSessionInfo("  router\n\tsupplied name  ");
 

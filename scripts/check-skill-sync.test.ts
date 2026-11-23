@@ -27,7 +27,7 @@ const REPO_ROOT = fromFileUrl(new URL("../", import.meta.url)).replace(/\/$/, ""
 /** A skill derived from an Agent Definition, so both sides are held together. */
 function derived(sourceHash: string, skillHash: string): PublishedSkill {
     return {
-        source: "src/agent-definitions/ideator.md",
+        source: "packages/agents/definitions/ideator.md",
         skill: "skills/ideator/SKILL.md",
         sourceHash,
         skillHash,
@@ -49,7 +49,7 @@ test("an Agent Definition edited without its skill names the skill that must cat
 
     assertEquals(drift, [
         {
-            source: "src/agent-definitions/ideator.md",
+            source: "packages/agents/definitions/ideator.md",
             skill: "skills/ideator/SKILL.md",
             sourceChanged: true,
             skillChanged: false,
@@ -59,7 +59,7 @@ test("an Agent Definition edited without its skill names the skill that must cat
         },
     ]);
     assertEquals(
-        formatDrift(drift).includes("src/agent-definitions/ideator.md changed but skills/ideator/SKILL.md did not"),
+        formatDrift(drift).includes("packages/agents/definitions/ideator.md changed but skills/ideator/SKILL.md did not"),
         true,
     );
 });
@@ -70,7 +70,7 @@ test("a skill edited without its Agent Definition names the definition that must
     assertEquals(drift[0].skillChanged, true);
     assertEquals(drift[0].sourceChanged, false);
     assertEquals(
-        formatDrift(drift).includes("skills/ideator/SKILL.md changed but src/agent-definitions/ideator.md did not"),
+        formatDrift(drift).includes("skills/ideator/SKILL.md changed but packages/agents/definitions/ideator.md did not"),
         true,
     );
 });
@@ -139,8 +139,8 @@ test("the committed skills are in sync with what they were last reviewed against
 });
 
 test("an Agent Definition is full of the vocabulary a skill must shed", async () => {
-    const definition = await fsReadFile(new URL("../src/agent-definitions/ideator.md", import.meta.url), "utf8");
-    const leaks = findProjectSpecificLeaks("src/agent-definitions/ideator.md", definition);
+    const definition = await fsReadFile(new URL("../packages/agents/definitions/ideator.md", import.meta.url), "utf8");
+    const leaks = findProjectSpecificLeaks("packages/agents/definitions/ideator.md", definition);
     const terms = new Set(leaks.map((leak) => leak.term));
 
     assertEquals(terms.has("RunWield"), true);
@@ -224,11 +224,11 @@ async function withSkillSyncFixture(action: (root: string) => Promise<void>): Pr
             recursive: true,
             filter: (source) => !source.split(/[\\/]/).includes(".git"),
         });
-        await mkdir(join(root, "src/agent-definitions"), { recursive: true });
+        await mkdir(join(root, "packages/agents/definitions"), { recursive: true });
         for (const agent of ["guide", "ideator"]) {
             await cp(
-                join(REPO_ROOT, `src/agent-definitions/${agent}.md`),
-                join(root, `src/agent-definitions/${agent}.md`),
+                join(REPO_ROOT, `packages/agents/definitions/${agent}.md`),
+                join(root, `packages/agents/definitions/${agent}.md`),
             );
         }
         await action(root);
@@ -248,7 +248,7 @@ async function runSkillSync(root: string, update = false) {
 test("the sync CLI fails on source drift and accepts a reviewed baseline without fetching or publishing", async () => {
     await withSkillSyncFixture(async (root) => {
         assertEquals((await runSkillSync(root)).code, 0);
-        const path = join(root, "src/agent-definitions/guide.md");
+        const path = join(root, "packages/agents/definitions/guide.md");
         await writeFile(path, `${await fsReadFile(path, "utf8")}\nA newly reviewed instruction.\n`);
         const result = await runSkillSync(root);
         assertEquals(result.code, 1);

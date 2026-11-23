@@ -3,7 +3,7 @@ classification: "PROJECT"
 complexity: "HIGH"
 affectedPaths:
     - "packages/"
-    - "src/agent-definitions/"
+    - "packages/agents/definitions/"
     - "src/tools/"
     - "src/shared/owner-coordination/"
     - "src/plan-store.ts"
@@ -26,8 +26,9 @@ Moving an entry point to `apps/` is a separate mechanical change when useful.
 
 ## Packages and extraction order
 
-The first review is the public Tools interface on top of the merged external Plan Store. Pause for interface review before extracting Agents. The remaining order is proposed. Each row is an independently shippable extraction. Create its directory and workspace
-entry when its first real consumer moves. Export named types alongside the operations that own them.
+The [Tools extraction](https://github.com/RunWield/runwield/pull/641) has merged. Agents is the current interface
+review. Projects follows once the owner accepts this contract. Each row ships independently. Create a workspace
+when its first consumer moves. Export named types alongside the operations that own them.
 
 | Order and package | Public interface and responsibilities | Evidence that the move preserved behavior |
 | --- | --- | --- |
@@ -81,6 +82,50 @@ For the same report, check all three boundaries:
    feeds the saved result to the existing publisher and returns its receipt. A retry reuses that receipt. Agent
    switching and comment publication are consumer decisions. Current Connect callers also retain the same
    normalization for reports supplied by external hosts.
+
+## Agents registry
+
+`createAgentRegistry()` takes no arguments in local, packaged, and managed sessions. Agents locates its bundled
+definitions and prompt template, resolves the personal override directory against the active RunWield profile,
+and derives project overrides from the checkout selected for the lookup. The registry also owns the Markdown,
+override rules, role identifiers and declared tool policy. [Registry contract](../../packages/agents/registry.ts)
+
+| Consumer operation | Result |
+| --- | --- |
+| `list(projectRoot?)` and `list(projectRoot, "all")` | Effective, sorted roles for manual selection or for workflow discovery, respectively. `listNames` discovers filenames without assembling prompts. |
+| `get(name, projectRoot?)` | A loaded definition with role instructions, composed system prompt, display metadata, model preferences, tool names, delegation modes and Bash selectors. Connect can return the role instructions alone. |
+| `normalizeName`, `displayName`, `busyLines`, `isWorkflowOnly` | Validate an external role ID, render existing session state, or explain why a role is unavailable for manual selection. |
+| `selectTools(...)` | Apply the role's existing tool-selection policy. The session binds the resulting names to implementations. |
+| `getBundledDefinitionsPath()` | Give Session, Connect and project initialization a filesystem path for bundled reference documents. The registry owns cache materialization and recovery. |
+| `ids.primary` and `ids.isolated` | Stable runtime and isolated definition identifiers. Some isolated definitions share a runtime name. |
+| `delegation.listRoles()` and `delegation.resolve(authority, role?)` | Discover supported roles or resolve a requested delegation into an effective authority and matching isolated definition ID. |
+| `isolated.load(id, options?)`, `isolated.toolCeiling(id)` and `isolated.displayNameFallback(id)` | Load the chosen worker's instructions and obtain the applicable tool ceiling or display fallback. The caller owns execution, parent permissions and background-work policy. |
+
+```ts
+import { createAgentRegistry } from "@runwield/agents";
+
+const agents = createAgentRegistry();
+const router = await agents.get(agents.ids.primary.ROUTER, projectRoot);
+// An interactive session uses router.systemPrompt. Connect can present router.rolePrompt.
+```
+
+Primary definitions load in bundled, personal, then project order. Prompt text appends unless a layer declares
+`promptOverride: true`. Shared practices resolve through the same layers. A role's protected tools and the universal
+session naming tool keep their existing behavior. A local override can supply a custom role. The optional
+`projectRoot` identifies the checkout for a particular session or run. Omitting it uses the bundled and personal
+layers. In a managed session, the connection activates its verified personal mount once. The registry observes
+that same scope for subsequent lookups.
+
+Isolated workers keep their existing definitions. Most use a bare workflow prompt with a fixed tool ceiling.
+The feedback engineer uses a full agent definition. Reviewer discovery and verification use distinct prompts.
+Filtering what a child can actually execute still belongs to the host. Changing which worker prompts users may
+override or tuning them for unattended work would change the product and needs a separate decision.
+
+The private `@runwield/parsing` workspace holds the Markdown front-matter and shell-selector parsers that the
+registry shares with existing Plan and Bash code. The private `@runwield/bundled-assets` workspace holds file
+materialization and repair used by Agents and bundled skills. Agents chooses the local cache
+`~/.wld/bundled-agent-definitions` when a consumer requests a readable copy. `@runwield/resources` owns the
+shared home lookup and the active personal mount's access checks.
 
 ## MCP and app boundaries
 

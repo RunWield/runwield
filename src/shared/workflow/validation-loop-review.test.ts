@@ -1,4 +1,4 @@
-import type { ReviewerSubAgentMode } from "../session/subagent-definitions.ts";
+import type { ReviewerSubAgentMode } from "@runwield/agents";
 import type { HostValidationMetric } from "./testing/validation-host-fixture.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";

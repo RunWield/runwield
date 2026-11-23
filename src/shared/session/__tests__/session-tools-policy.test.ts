@@ -3,6 +3,7 @@ import type { createSetSessionNameTool } from "../../../tools/set-session-name.t
 import type { createBackgroundTaskTool } from "../../../tools/background-task.ts";
 import type { McpIntegration } from "../../mcp/integration.ts";
 import type { AgentSession, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { DelegatedSubAgentDefinitionId } from "@runwield/agents";
 import type { SessionRuntimeEvent } from "../session-runtime-events.ts";
 import { withRuntimeCommandFixture } from "../../../cmd/testing/runtime-command-fixture.ts";
 import { bashFixtureExecutable } from "../../../../scripts/bash-fixture.ts";
@@ -33,9 +34,8 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { AGENTS, SUBAGENTS } from "../../../constants.ts";
 import { __resetSettingsForTests, getSettingsManager } from "../../settings.ts";
-import { loadAgentDef } from "../agents.ts";
+import { agentRegistry } from "../agent-registry.ts";
 import { HostedSession, type HostedRuntimeEventObservation } from "../hosted-session.ts";
-import { loadSubAgentDefinition, REVIEWER_SUBAGENT_TOOLS } from "../subagent-definitions.ts";
 import {
     buildAgentSession,
     buildExecutionSession,
@@ -160,7 +160,7 @@ test("loadAgentDef preserves per-agent protected tools when override narrows rou
     await fsWriteFile(routerOverridePath, override);
 
     try {
-        const def = await loadAgentDef("router", projectRoot);
+        const def = await agentRegistry.get("router", projectRoot);
 
         const expectedProtected = [
             "memory",
@@ -195,7 +195,7 @@ test("loadAgentDef keeps filename identity separate from frontmatter display nam
     );
 
     try {
-        const definition = await loadAgentDef("CASE-CONTRACT", projectRoot);
+        const definition = await agentRegistry.get("CASE-CONTRACT", projectRoot);
 
         assertEquals(definition.name, "case-contract");
         assertEquals(definition.displayName, "Arbitrary Frontmatter Display Name");
@@ -206,7 +206,7 @@ test("loadAgentDef keeps filename identity separate from frontmatter display nam
 });
 
 test("loadAgentDef loads Operator with structured interview capability", async () => {
-    const def = await loadAgentDef("operator");
+    const def = await agentRegistry.get("operator");
 
     assert(def.tools.includes("task_completed"));
     assert(def.tools.includes("user_interview"));
@@ -214,7 +214,7 @@ test("loadAgentDef loads Operator with structured interview capability", async (
 });
 
 test("loadAgentDef loads Guide with discovery, docs and image tools but no general file editing", async () => {
-    const def = await loadAgentDef("guide");
+    const def = await agentRegistry.get("guide");
 
     assert(def.tools.includes("read"));
     assert(def.tools.includes("grep"));
@@ -269,7 +269,7 @@ test("layered Agent Definition overrides can remove delegate_agent", async () =>
             ].join("\n"),
         );
 
-        const def = await loadAgentDef(AGENTS.GUIDE, projectRoot);
+        const def = await agentRegistry.get(AGENTS.GUIDE, projectRoot);
         assertEquals(def.tools.includes("read"), true);
         assertEquals(def.tools.includes("delegate_agent"), false);
         assertEquals(def.tools.includes("background_task"), false);
@@ -290,22 +290,22 @@ test("bundled shell Agents offer background work without extending workflow-only
         "tester",
     ];
     for (const name of allowed) {
-        const definition = await loadAgentDef(name, REPO_ROOT);
+        const definition = await agentRegistry.get(name, REPO_ROOT);
         assert(definition.tools.includes("bash"), `${name} must retain shell authority`);
         assert(definition.tools.includes("background_task"), `${name} cannot run background shell work`);
     }
     for (const name of [AGENTS.PLAN_ENGINEER, AGENTS.FRONTEND_ENGINEER, AGENTS.RECORDER]) {
-        const definition = await loadAgentDef(name, REPO_ROOT);
+        const definition = await agentRegistry.get(name, REPO_ROOT);
         assertEquals(definition.tools.includes("background_task"), false, `${name} is workflow-only`);
     }
     for (const name of [SUBAGENTS.DELEGATED, SUBAGENTS.REVIEWER]) {
-        const definition = await loadSubAgentDefinition(name);
+        const definition = await agentRegistry.isolated.load(name);
         assertEquals(definition.tools.includes("background_task"), false, `${name} must not gain shell authority`);
     }
 });
 
 test("Frontend Engineer autonomous base tools include task completion without pair checkpoint", async () => {
-    const def = await loadAgentDef(AGENTS.FRONTEND_ENGINEER, REPO_ROOT);
+    const def = await agentRegistry.get(AGENTS.FRONTEND_ENGINEER, REPO_ROOT);
 
     assertEquals(def.tools.includes("task_completed"), true);
     assertEquals(def.tools.includes("pair_checkpoint"), false);
@@ -313,8 +313,8 @@ test("Frontend Engineer autonomous base tools include task completion without pa
 
 test("Router and Recorder do not expose delegate_agent by default", async () => {
     const [router, recorder] = await Promise.all([
-        loadAgentDef(AGENTS.ROUTER, REPO_ROOT),
-        loadAgentDef("recorder", REPO_ROOT),
+        agentRegistry.get(AGENTS.ROUTER, REPO_ROOT),
+        agentRegistry.get("recorder", REPO_ROOT),
     ]);
 
     assertEquals(router.tools.includes("delegate_agent"), false);
@@ -323,11 +323,11 @@ test("Router and Recorder do not expose delegate_agent by default", async () => 
 
 test("RunWield PM, Init, Reviewer, and Slicer can delegate", async () => {
     const definitions = await Promise.all([
-        loadAgentDef("pm", REPO_ROOT),
-        loadSubAgentDefinition(SUBAGENTS.INIT),
-        loadSubAgentDefinition(SUBAGENTS.REVIEWER),
-        loadSubAgentDefinition(SUBAGENTS.REVIEWER, { reviewerMode: "verify" }),
-        loadSubAgentDefinition(SUBAGENTS.SLICER),
+        agentRegistry.get("pm", REPO_ROOT),
+        agentRegistry.isolated.load(SUBAGENTS.INIT),
+        agentRegistry.isolated.load(SUBAGENTS.REVIEWER),
+        agentRegistry.isolated.load(SUBAGENTS.REVIEWER, { reviewerMode: "verify" }),
+        agentRegistry.isolated.load(SUBAGENTS.SLICER),
     ]);
 
     for (const definition of definitions) {
@@ -349,7 +349,7 @@ test("all user-facing bundled Agents receive set_session_name", async () => {
     ];
 
     for (const agentName of agentNames) {
-        const def = await loadAgentDef(agentName, REPO_ROOT);
+        const def = await agentRegistry.get(agentName, REPO_ROOT);
         assert(def.tools.includes("set_session_name"), `${agentName} should include set_session_name`);
     }
 });
@@ -362,7 +362,7 @@ test("Claude CLI bridges the session name tool", async () => {
         cwd: tempHome,
         sessionManager: sessionManager,
     });
-    const agentDef = await loadAgentDef(AGENTS.ENGINEER, REPO_ROOT);
+    const agentDef = await agentRegistry.get(AGENTS.ENGINEER, REPO_ROOT);
 
     try {
         const claudeTools = await composeClaudeCliBridgedTools({
@@ -400,7 +400,7 @@ test("isolated Subagent definitions do not receive set_session_name", async () =
     ];
 
     for (const subagent of subagents) {
-        const def = await loadSubAgentDefinition(subagent);
+        const def = await agentRegistry.isolated.load(subagent);
         assertEquals(def.tools.includes("set_session_name"), false, `${subagent} must not include set_session_name`);
     }
 });
@@ -476,7 +476,7 @@ test("bounded Pi and Claude subagent builds do not inherit root MCP tools", asyn
                 false,
             );
 
-            const agentDef = await loadAgentDef(AGENTS.GUIDE, tempHome);
+            const agentDef = await agentRegistry.get(AGENTS.GUIDE, tempHome);
             const rootClaudeTools = await composeClaudeCliBridgedTools({
                 agentDef,
                 agentName: AGENTS.GUIDE,
@@ -666,7 +666,7 @@ test("buildAgentSession wires review_complete and file tools into the Semantic R
                     id: SUBAGENTS.REVIEWER,
                     options: { reviewerMode: "discovery" },
                 },
-                toolNames: [...REVIEWER_SUBAGENT_TOOLS],
+                toolNames: [...agentRegistry.isolated.toolCeiling(SUBAGENTS.REVIEWER)],
                 customTools: [createReviewDiffTool({ full: "diff" })],
                 includeEditFallback: false,
             });
@@ -1201,18 +1201,18 @@ test("bundled Work Record tools are protected for planning roles and excluded fr
         ["---", "name: Planner", "tools:", "  - read", "---", "Local planner override."].join("\n"),
     );
     try {
-        const planner = await loadAgentDef(AGENTS.PLANNER, projectRoot);
+        const planner = await agentRegistry.get(AGENTS.PLANNER, projectRoot);
         assert(planner.tools.includes("work_record_search"));
         assert(planner.tools.includes("work_record_read"));
-        const guide = await loadAgentDef(AGENTS.GUIDE, REPO_ROOT);
-        const recorder = await loadAgentDef(AGENTS.RECORDER, REPO_ROOT);
-        const ideator = await loadAgentDef(AGENTS.IDEATOR, REPO_ROOT);
-        const architect = await loadAgentDef(AGENTS.ARCHITECT, REPO_ROOT);
+        const guide = await agentRegistry.get(AGENTS.GUIDE, REPO_ROOT);
+        const recorder = await agentRegistry.get(AGENTS.RECORDER, REPO_ROOT);
+        const ideator = await agentRegistry.get(AGENTS.IDEATOR, REPO_ROOT);
+        const architect = await agentRegistry.get(AGENTS.ARCHITECT, REPO_ROOT);
         for (const def of [guide, recorder, ideator, architect]) {
             assert(def.tools.includes("work_record_search"));
             assert(def.tools.includes("work_record_read"));
         }
-        const engineer = await loadAgentDef(AGENTS.ENGINEER, REPO_ROOT);
+        const engineer = await agentRegistry.get(AGENTS.ENGINEER, REPO_ROOT);
         assertEquals(engineer.tools.includes("work_record_search"), false);
         assertEquals(engineer.tools.includes("work_record_read"), false);
     } finally {
@@ -1425,7 +1425,7 @@ test("read and write delegated Pi sessions inherit only the parent's available b
             await writeVisionModelConfig(cwd);
             const hostedSession = new HostedSession({ id: "read-delegate-bash-policy", cwd });
             const build = async (
-                id: string,
+                id: DelegatedSubAgentDefinitionId,
                 toolNames: string[],
                 inheritedBashAllowedCommands: readonly string[] | undefined,
             ) => {
@@ -1534,23 +1534,23 @@ test("Agent command front matter merges, clears, and validates layered defaults"
     const overridePath = join(directory, "guide.md");
     try {
         await fsMkdir(directory, { recursive: true });
-        const initial = await loadAgentDef(AGENTS.GUIDE, cwd);
+        const initial = await agentRegistry.get(AGENTS.GUIDE, cwd);
         assert(initial.bashAllowedCommands);
         assert(initial.bashAllowedCommands.includes("git status"));
         await fsWriteFile(overridePath, "---\nname: Guide\n---\n");
-        assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, initial.bashAllowedCommands);
+        assertEquals((await agentRegistry.get(AGENTS.GUIDE, cwd)).bashAllowedCommands, initial.bashAllowedCommands);
         await fsWriteFile(overridePath, "---\nbashAllowedCommands: [td, git status, td]\n---\n");
-        assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, [
+        assertEquals((await agentRegistry.get(AGENTS.GUIDE, cwd)).bashAllowedCommands, [
             ...initial.bashAllowedCommands,
             "td",
         ]);
         await fsWriteFile(overridePath, "---\nbashAllowedCommands: []\n---\n");
-        assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, []);
+        assertEquals((await agentRegistry.get(AGENTS.GUIDE, cwd)).bashAllowedCommands, []);
         await fsWriteFile(overridePath, "---\nbashAllowedCommands: null\n---\n");
-        assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, undefined);
+        assertEquals((await agentRegistry.get(AGENTS.GUIDE, cwd)).bashAllowedCommands, undefined);
         for (const invalid of ["false", "[pwd, 3]", "['']", "['git status && touch x']"]) {
             await fsWriteFile(overridePath, `---\nbashAllowedCommands: ${invalid}\n---\n`);
-            await assertRejects(() => loadAgentDef(AGENTS.GUIDE, cwd), Error, "bashAllowedCommands");
+            await assertRejects(() => agentRegistry.get(AGENTS.GUIDE, cwd), Error, "bashAllowedCommands");
         }
     } finally {
         await removeTempDir(cwd);
@@ -1566,7 +1566,7 @@ test("Agent toolSets expand into the layer's tool list and validate set names", 
             join(directory, "docs-writer.md"),
             "---\nname: Docs Writer\ntoolSets: [docs, shell]\ntools: [user_interview, bash]\n---\nWrite docs.\n",
         );
-        assertEquals((await loadAgentDef("docs-writer", cwd)).tools, [
+        assertEquals((await agentRegistry.get("docs-writer", cwd)).tools, [
             "write_docs",
             "edit_docs",
             "bash",
@@ -1576,7 +1576,7 @@ test("Agent toolSets expand into the layer's tool list and validate set names", 
         ]);
 
         await fsWriteFile(join(directory, "reader.md"), "---\nname: Reader\ntoolSets: [read]\n---\n");
-        const reader = await loadAgentDef("reader", cwd);
+        const reader = await agentRegistry.get("reader", cwd);
         for (const toolName of [
             "memory",
             "user_interview",
@@ -1590,7 +1590,7 @@ test("Agent toolSets expand into the layer's tool list and validate set names", 
         assertEquals(reader.delegationModes, ["read"]);
 
         await fsWriteFile(join(directory, "builder.md"), "---\nname: Builder\ntoolSets: [read, write]\n---\n");
-        const builder = await loadAgentDef("builder", cwd);
+        const builder = await agentRegistry.get("builder", cwd);
         assertEquals(builder.delegationModes, ["read", "write"]);
         assertEquals(
             builder.tools.filter((toolName) => toolName.startsWith("delegate_agent")),
@@ -1601,25 +1601,25 @@ test("Agent toolSets expand into the layer's tool list and validate set names", 
             join(directory, "lead.md"),
             "---\nname: Lead\ntoolSets: [read]\ntools: [delegate_agent]\n---\n",
         );
-        assertEquals((await loadAgentDef("lead", cwd)).delegationModes, undefined);
-        assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).delegationModes, undefined);
+        assertEquals((await agentRegistry.get("lead", cwd)).delegationModes, undefined);
+        assertEquals((await agentRegistry.get(AGENTS.GUIDE, cwd)).delegationModes, undefined);
 
         await fsWriteFile(join(directory, "talker.md"), "---\nname: Talker\n---\nJust talk.\n");
-        assertEquals((await loadAgentDef("talker", cwd)).tools, ["set_session_name"]);
+        assertEquals((await agentRegistry.get("talker", cwd)).tools, ["set_session_name"]);
 
-        const bundled = await loadAgentDef(AGENTS.OPERATOR, cwd);
+        const bundled = await agentRegistry.get(AGENTS.OPERATOR, cwd);
         const operatorPath = join(directory, "operator.md");
         await fsWriteFile(operatorPath, "---\ndescription: Read-only\n---\n");
-        assertEquals((await loadAgentDef(AGENTS.OPERATOR, cwd)).tools, bundled.tools);
+        assertEquals((await agentRegistry.get(AGENTS.OPERATOR, cwd)).tools, bundled.tools);
         await fsWriteFile(operatorPath, "---\ntoolSets: [read]\n---\n");
-        const narrowed = (await loadAgentDef(AGENTS.OPERATOR, cwd)).tools;
+        const narrowed = (await agentRegistry.get(AGENTS.OPERATOR, cwd)).tools;
         assert(narrowed.includes("code_outline"));
         assert(!narrowed.includes("edit") && !narrowed.includes("bash"));
         assert(narrowed.includes("task_completed") && narrowed.includes("memory"));
 
         for (const invalid of ["[reed]", "read", "[read, 3]"]) {
             await fsWriteFile(operatorPath, `---\ntoolSets: ${invalid}\n---\n`);
-            await assertRejects(() => loadAgentDef(AGENTS.OPERATOR, cwd), Error, "toolSets");
+            await assertRejects(() => agentRegistry.get(AGENTS.OPERATOR, cwd), Error, "toolSets");
         }
     } finally {
         await removeTempDir(cwd);
@@ -1638,16 +1638,16 @@ test("Guide command lists merge across bundled, home, and project definitions", 
             const projectAgents = join(cwd, ".wld", "agents");
             await fsMkdir(homeAgents, { recursive: true });
             await fsMkdir(projectAgents, { recursive: true });
-            const bundled = await loadAgentDef(AGENTS.GUIDE, cwd);
+            const bundled = await agentRegistry.get(AGENTS.GUIDE, cwd);
             assert(bundled.bashAllowedCommands);
             assert(bundled.bashAllowedCommands.includes("git status"));
             await fsWriteFile(join(homeAgents, "guide.md"), "---\nbashAllowedCommands: [td]\n---\n");
-            assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, [
+            assertEquals((await agentRegistry.get(AGENTS.GUIDE, cwd)).bashAllowedCommands, [
                 ...bundled.bashAllowedCommands,
                 "td",
             ]);
             await fsWriteFile(join(projectAgents, "guide.md"), "---\nbashAllowedCommands: [td, git version]\n---\n");
-            assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, [
+            assertEquals((await agentRegistry.get(AGENTS.GUIDE, cwd)).bashAllowedCommands, [
                 ...bundled.bashAllowedCommands,
                 "td",
                 "git version",
@@ -1664,7 +1664,7 @@ test("external CLI bridge filters RunWield background starts but not native host
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-bridge-bash-policy-"));
     const hostedSession = new HostedSession({ id: "bridge-bash-policy", cwd });
     try {
-        const agentDef = await loadAgentDef(AGENTS.GUIDE, cwd);
+        const agentDef = await agentRegistry.get(AGENTS.GUIDE, cwd);
         const bridged = await composeClaudeCliBridgedTools({
             agentDef,
             agentName: AGENTS.GUIDE,
@@ -1700,7 +1700,7 @@ test("Claude CLI bridges declared Plan Deviations for execution Agents", async (
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd });
     try {
         for (const agentName of ["plan-engineer", "frontend-engineer"]) {
-            const agentDef = await loadAgentDef(agentName, REPO_ROOT);
+            const agentDef = await agentRegistry.get(agentName, REPO_ROOT);
             const tools = await composeClaudeCliBridgedTools({
                 agentDef,
                 agentName,

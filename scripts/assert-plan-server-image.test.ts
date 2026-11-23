@@ -11,7 +11,7 @@ test("assertPlanServerImageFileList accepts minimal generated runtime image file
         [
             ...REQUIRED_IMAGE_FILES,
             "/app/dist/workspace-runtime/client/styles.css",
-            "/app/src/agent-definitions/engineer.md",
+            "/app/packages/agents/definitions/engineer.md",
         ],
         [...REQUIRED_IMAGE_DIRECTORIES],
     );
@@ -53,8 +53,8 @@ test("image admission permits passive assets but rejects executable or unlisted 
     const result = assertPlanServerImageFileList(
         [
             ...REQUIRED_IMAGE_FILES,
-            "/app/src/agent-definitions/router.md",
-            "/app/src/agent-definitions/subagent-definitions/reviewer-prompt.md",
+            "/app/packages/agents/definitions/router.md",
+            "/app/packages/agents/definitions/subagent-definitions/reviewer-prompt.md",
             "/app/src/ui/design-system/tokens.css",
             "/app/src/ui/theme/catppuccin-mocha.json",
             "/app/src/shared/collaboration/secrets.ts",
@@ -66,7 +66,7 @@ test("image admission permits passive assets but rejects executable or unlisted 
         missingRequired: [],
         missingRequiredDirectories: [],
         prohibited: [
-            "/app/src/agent-definitions/subagent-definitions/reviewer-prompt.md",
+            "/app/packages/agents/definitions/subagent-definitions/reviewer-prompt.md",
             "/app/src/shared/collaboration/secrets.ts",
             "/app/src/ui/theme/unlisted-theme.json",
         ],

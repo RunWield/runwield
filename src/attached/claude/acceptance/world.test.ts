@@ -141,7 +141,7 @@ for (const assets of ["missing-server", "missing-client"])
             for (const path of [
                 ".claude-plugin/marketplace.json",
                 "src/attached/claude/plugin",
-                "src/agent-definitions/shared-practice/review-practice.md",
+                "packages/agents/definitions/shared-practice/review-practice.md",
             ]) {
                 await mkdir(join(checkout, path, ".."), { recursive: true });
                 await cp(join(CHECKOUT, path), join(checkout, path), { recursive: true });

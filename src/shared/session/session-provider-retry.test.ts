@@ -24,7 +24,7 @@ import { createReplayEvents } from "./session-transcript-projection.ts";
 import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
 import type { GuardCustomEntry } from "./runaway-loop-guard.ts";
-import type { AgentDefinition } from "./agents.ts";
+import type { AgentDefinition } from "@runwield/agents";
 
 interface SessionEventKind<Kind extends AgentSessionEvent["type"]> {
     type: Kind;

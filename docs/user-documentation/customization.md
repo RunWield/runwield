@@ -156,7 +156,7 @@ investigation and `[read, write]` gets both. The Agent only sees the kinds it's 
 A helper never gets more tools than the Agent that started it.
 
 For the full list of tools, open any bundled Agent in
-[`src/agent-definitions/`](https://github.com/gandazgul/runwield/tree/main/src/agent-definitions) and look at its
+[`packages/agents/definitions/`](https://github.com/gandazgul/runwield/tree/main/packages/agents/definitions) and look at its
 `tools` list.
 
 ### Examples
@@ -273,7 +273,7 @@ it. A teammate's `~/.wld/agents/reviewer.md` still merges underneath it: their b
 
 A shared practice is a prompt fragment several Agents reuse. `sharedPractice` names fragments to add after the Agent's
 prompt, so the prompt reads Agent, then practices. The bundled ones are in
-[`src/agent-definitions/shared-practice/`](https://github.com/gandazgul/runwield/tree/main/src/agent-definitions/shared-practice),
+[`packages/agents/definitions/shared-practice/`](https://github.com/gandazgul/runwield/tree/main/packages/agents/definitions/shared-practice),
 for example `user-authority`, `working-tree-safety`, and `plain-language-dialogue`.
 
 To add your own, create `.wld/agents/shared-practice/<name>.md` or `~/.wld/agents/shared-practice/<name>.md` with front

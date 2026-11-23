@@ -1,0 +1,12 @@
+{
+    "name": "@runwield/agents",
+    "private": true,
+    "type": "module",
+    "exports": "./index.ts",
+    "dependencies": {
+        "@runwield/bundled-assets": "workspace:*",
+        "@runwield/parsing": "workspace:*",
+        "@runwield/resources": "workspace:*",
+        "@runwield/tools": "workspace:*"
+    }
+}

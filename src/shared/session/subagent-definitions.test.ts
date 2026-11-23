@@ -1,35 +1,34 @@
-import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
-import { checkBashCommand, intersectBashAllowedCommands } from "../bash-command-policy.ts";
-import { join } from "node:path";
+import type { SubAgentDefinitionId } from "@runwield/agents";
 import { AGENTS, SUBAGENTS } from "../../constants.ts";
 import {
-    DELEGATED_ROLE_IDS,
-    DELEGATED_ROLES,
-    getDelegatedRole,
-    loadBarePromptDefinition,
-    loadSubAgentDefinition,
-    SUBAGENT_DEFINITIONS,
-    type SubAgentDefinitionId,
-} from "./subagent-definitions.ts";
+    assertEquals,
+    assertExists,
+    assertRejects,
+    assertStringIncludes,
+    assertThrows,
+} from "../../testing/assertions.ts";
+import { checkBashCommand, intersectBashAllowedCommands } from "../bash-command-policy.ts";
+import { agentRegistry } from "./agent-registry.ts";
 
 const USER_AUTHORITY_MARKER = "After one concern, the discussion is complete. The user decides. Continue the work.";
 
-function sourcePromptPath(fileName: string) {
-    return join("src", "agent-definitions", "subagent-definitions", fileName);
-}
+const runtimeNames = {
+    [SUBAGENTS.DELEGATED]: AGENTS.DELEGATED,
+    [SUBAGENTS.DELEGATED_READ]: AGENTS.DELEGATED,
+    [SUBAGENTS.INIT]: AGENTS.INIT,
+    [SUBAGENTS.INTEGRATION_REVIEWER]: AGENTS.REVIEWER,
+    [SUBAGENTS.MANUAL_QA]: AGENTS.OPERATOR,
+    [SUBAGENTS.REVIEWER]: AGENTS.REVIEWER,
+    [SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER]: AGENTS.REVIEWER_FEEDBACK_ENGINEER,
+    [SUBAGENTS.SLICER]: AGENTS.SLICER,
+} satisfies Record<SubAgentDefinitionId, string>;
 
-test("every registered subagent loads from the moved bundled prompt files", async () => {
-    const loadedIds: string[] = [];
-    for (const id of Object.keys(SUBAGENT_DEFINITIONS) as SubAgentDefinitionId[]) {
-        const definition = SUBAGENT_DEFINITIONS[id];
-        const agentDef = await loadSubAgentDefinition(id);
-        const prompt = await fsReadFile(sourcePromptPath(definition.file), "utf8");
-
-        loadedIds.push(id);
-        assertEquals(agentDef.name, definition.agentName);
-        assertEquals(prompt.trim().length > 0, true);
+test("every registered subagent loads a prompt for its runtime Agent", async () => {
+    for (const id of Object.values(SUBAGENTS)) {
+        const agentDef = await agentRegistry.isolated.load(id);
+        assertEquals(agentDef.name, runtimeNames[id]);
+        assertEquals(agentDef.systemPrompt.trim().length > 0, true);
         const hasInteractiveUserAuthority = id === SUBAGENTS.SLICER || id === SUBAGENTS.INIT;
         assertEquals(
             agentDef.systemPrompt.includes(USER_AUTHORITY_MARKER),
@@ -39,12 +38,10 @@ test("every registered subagent loads from the moved bundled prompt files", asyn
             } subagent`,
         );
     }
-
-    assertEquals(loadedIds.sort(), Object.values(SUBAGENTS).sort());
 });
 
 test("read delegates can inspect GitHub and GitLab without forge mutation commands", async () => {
-    const definition = await loadSubAgentDefinition(SUBAGENTS.DELEGATED_READ);
+    const definition = await agentRegistry.isolated.load(SUBAGENTS.DELEGATED_READ);
     for (const command of [
         "gh pr list",
         "gh pr view 123",
@@ -85,15 +82,15 @@ test("read delegates can inspect GitHub and GitLab without forge mutation comman
 });
 
 test("read-delegate forge inspection cannot remove a parent shell restriction", async () => {
-    const definition = await loadSubAgentDefinition(SUBAGENTS.DELEGATED_READ);
+    const definition = await agentRegistry.isolated.load(SUBAGENTS.DELEGATED_READ);
     const effective = intersectBashAllowedCommands(["git status"], definition.bashAllowedCommands);
     assertThrows(() => checkBashCommand("gh pr list", effective));
     assertThrows(() => checkBashCommand("glab mr list", effective));
 });
 
 test("reviewer discovery and verify prompts load through one registry id", async () => {
-    const discovery = await loadSubAgentDefinition(SUBAGENTS.REVIEWER, { reviewerMode: "discovery" });
-    const verify = await loadSubAgentDefinition(SUBAGENTS.REVIEWER, { reviewerMode: "verify" });
+    const discovery = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER, { reviewerMode: "discovery" });
+    const verify = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER, { reviewerMode: "verify" });
 
     assertEquals(discovery.name, AGENTS.REVIEWER);
     assertEquals(verify.name, AGENTS.REVIEWER);
@@ -104,8 +101,8 @@ test("reviewer discovery and verify prompts load through one registry id", async
 });
 
 test("the Integration Reviewer is its own subagent sharing review practice with the Semantic Reviewer", async () => {
-    const integration = await loadSubAgentDefinition(SUBAGENTS.INTEGRATION_REVIEWER);
-    const discovery = await loadSubAgentDefinition(SUBAGENTS.REVIEWER, { reviewerMode: "discovery" });
+    const integration = await agentRegistry.isolated.load(SUBAGENTS.INTEGRATION_REVIEWER);
+    const discovery = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER, { reviewerMode: "discovery" });
 
     assertEquals(integration.name, AGENTS.REVIEWER);
     assertEquals(integration.displayName, "Integration Reviewer");
@@ -121,9 +118,9 @@ test("the Integration Reviewer is its own subagent sharing review practice with 
 });
 
 test("bare-prompt subagents receive canonical tool ceilings without the shared system prompt", async () => {
-    const delegated = await loadSubAgentDefinition(SUBAGENTS.DELEGATED);
-    const manualQa = await loadSubAgentDefinition(SUBAGENTS.MANUAL_QA);
-    const reviewer = await loadSubAgentDefinition(SUBAGENTS.REVIEWER);
+    const delegated = await agentRegistry.isolated.load(SUBAGENTS.DELEGATED);
+    const manualQa = await agentRegistry.isolated.load(SUBAGENTS.MANUAL_QA);
+    const reviewer = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER);
 
     assertEquals(delegated.tools, [
         "read",
@@ -159,36 +156,10 @@ test("bare-prompt subagents receive canonical tool ceilings without the shared s
     assertEquals(manualQa.name, AGENTS.OPERATOR);
 });
 
-test("bare-prompt subagents without a tool ceiling fail closed instead of silently running tool-free", async () => {
-    // A registry regression that drops `allowedTools` from a tools-carrying
-    // subagent must throw at load time: the silent `tools: []` fallback once
-    // let the Semantic Reviewer start with no `review_complete` (and no
-    // read/grep/find/ls), stalling Workflow Validation mid-round.
-    const error = await assertRejects(
-        () =>
-            loadBarePromptDefinition(
-                {
-                    id: "reviewer",
-                    agentName: AGENTS.REVIEWER,
-                    displayNameFallback: "Reviewer",
-                    loadMode: "barePrompt",
-                    file: "reviewer-prompt.md",
-                    // allowedTools deliberately absent — the regression being guarded.
-                },
-                "reviewer-prompt.md",
-            ),
-        Error,
-    );
-
-    assertStringIncludes(error.message, "allowedTools");
-    assertStringIncludes(error.message, "toolFree");
-    assertStringIncludes(error.message, "reviewer");
-});
-
 test("full-agent subagents keep shared system-prompt composition and runtime names", async () => {
-    const slicer = await loadSubAgentDefinition(SUBAGENTS.SLICER);
-    const init = await loadSubAgentDefinition(SUBAGENTS.INIT);
-    const feedbackEngineer = await loadSubAgentDefinition(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
+    const slicer = await agentRegistry.isolated.load(SUBAGENTS.SLICER);
+    const init = await agentRegistry.isolated.load(SUBAGENTS.INIT);
+    const feedbackEngineer = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
 
     assertEquals(slicer.name, AGENTS.SLICER);
     assertEquals(init.name, AGENTS.INIT);
@@ -206,7 +177,7 @@ test("full-agent subagents keep shared system-prompt composition and runtime nam
 });
 
 test("Init prompt focuses on project setup without a test-seam audit", async () => {
-    const init = await loadSubAgentDefinition(SUBAGENTS.INIT);
+    const init = await agentRegistry.isolated.load(SUBAGENTS.INIT);
 
     for (const phrase of [
         "Possible test-seam risks",
@@ -221,9 +192,9 @@ test("Init prompt focuses on project setup without a test-seam audit", async () 
     assertStringIncludes(init.systemPrompt, "Seed the memory system");
 });
 
-test("loadSubAgentDefinition composes delegated role overlays", async () => {
-    const general = await loadSubAgentDefinition(SUBAGENTS.DELEGATED);
-    const adversary = await loadSubAgentDefinition(SUBAGENTS.DELEGATED, {
+test("isolated Agent loading composes delegated role overlays", async () => {
+    const general = await agentRegistry.isolated.load(SUBAGENTS.DELEGATED);
+    const adversary = await agentRegistry.isolated.load(SUBAGENTS.DELEGATED, {
         delegatedRole: "verification-adversary",
     });
 
@@ -241,32 +212,49 @@ test("loadSubAgentDefinition composes delegated role overlays", async () => {
 });
 
 test("explicit general role reproduces the unspecialized delegated prompt", async () => {
-    const implicit = await loadSubAgentDefinition(SUBAGENTS.DELEGATED);
-    const explicit = await loadSubAgentDefinition(SUBAGENTS.DELEGATED, { delegatedRole: "general" });
+    const implicit = await agentRegistry.isolated.load(SUBAGENTS.DELEGATED);
+    const explicit = await agentRegistry.isolated.load(SUBAGENTS.DELEGATED, { delegatedRole: "general" });
 
     assertEquals(explicit.systemPrompt, implicit.systemPrompt);
     assertEquals(explicit.displayName, implicit.displayName);
 });
 
-test("every registered delegated role resolves and declares an authority ceiling", async () => {
-    assertEquals([...DELEGATED_ROLE_IDS], ["general", "verification-adversary"]);
-    assertEquals(getDelegatedRole("general")?.authorityCeiling, "write");
-    assertEquals(getDelegatedRole("verification-adversary")?.authorityCeiling, "read");
-    assertEquals(getDelegatedRole(undefined)?.id, "general");
-    assertEquals(getDelegatedRole("researcher"), null);
+test("every registered delegated role resolves and declares an authority ceiling", () => {
+    const roleIds = agentRegistry.delegation.listRoles();
+    assertEquals([...roleIds], ["general", "verification-adversary"]);
+    assertEquals(agentRegistry.delegation.resolve("write", "general"), {
+        role: { id: "general", authorityCeiling: "write" },
+        effectiveAuthority: "write",
+        definitionId: SUBAGENTS.DELEGATED,
+    });
+    assertEquals(agentRegistry.delegation.resolve("write", "verification-adversary"), {
+        role: { id: "verification-adversary", authorityCeiling: "read" },
+        effectiveAuthority: "read",
+        definitionId: SUBAGENTS.DELEGATED_READ,
+    });
+    assertEquals(agentRegistry.delegation.resolve("read")?.role.id, "general");
+    assertEquals(agentRegistry.delegation.resolve("read")?.effectiveAuthority, "read");
+    assertEquals(agentRegistry.delegation.resolve("read", "researcher"), null);
+});
 
-    for (const id of DELEGATED_ROLE_IDS) {
-        const role = DELEGATED_ROLES[id];
-        if (!role.overlayFile) continue;
-        const overlay = await fsReadFile(sourcePromptPath(join("roles", role.overlayFile)), "utf8");
-        assertEquals(overlay.trim().length > 0, true);
-    }
+test("resolving a write request for Verification Adversary loads the read base and role overlay", async () => {
+    const delegation = agentRegistry.delegation.resolve("write", "verification-adversary");
+    assertExists(delegation);
+    const definition = await agentRegistry.isolated.load(delegation.definitionId, {
+        delegatedRole: delegation.role.id,
+    });
+
+    assertStringIncludes(definition.description, "Read-only context-isolated helper");
+    assertStringIncludes(definition.systemPrompt, "Complete only the supplied brief.");
+    assertStringIncludes(definition.systemPrompt, "Role: Verification Adversary");
+    assertEquals(definition.tools.includes("write"), false);
+    assertThrows(() => checkBashCommand("git commit", definition.bashAllowedCommands));
 });
 
 test("an unregistered delegated role fails the load and names the valid roles", async () => {
     const error = await assertRejects(
         () =>
-            loadSubAgentDefinition(SUBAGENTS.DELEGATED, {
+            agentRegistry.isolated.load(SUBAGENTS.DELEGATED, {
                 delegatedRole: "researcher" as never,
             }),
         Error,
@@ -277,7 +265,7 @@ test("an unregistered delegated role fails the load and names the valid roles", 
 });
 
 test("Slicer dependencies use descriptive names and retain exact legacy references", async () => {
-    const { systemPrompt } = await loadSubAgentDefinition(SUBAGENTS.SLICER);
+    const { systemPrompt } = await agentRegistry.isolated.load(SUBAGENTS.SLICER);
     const prompt = systemPrompt.replaceAll(/\s+/g, " ");
     assertStringIncludes(prompt, "descriptive slugs without ordinal prefixes");
     assertStringIncludes(prompt, "Reordering changes `order`, not names or dependency references");

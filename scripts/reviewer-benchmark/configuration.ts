@@ -10,9 +10,9 @@ import type { FixtureReviewOptions } from "./reviewer.ts";
 export const checkoutRoot = fileURLToPath(new URL("../../", import.meta.url));
 export const corpusRoot = join(checkoutRoot, "evals/reviewer");
 const promptPaths = [
-    "src/agent-definitions/subagent-definitions/reviewer-prompt.md",
-    "src/agent-definitions/subagent-definitions/reviewer-verify-prompt.md",
-    "src/agent-definitions/shared-practice/review-practice.md",
+    "packages/agents/definitions/subagent-definitions/reviewer-prompt.md",
+    "packages/agents/definitions/subagent-definitions/reviewer-verify-prompt.md",
+    "packages/agents/definitions/shared-practice/review-practice.md",
 ];
 
 /** Report files are outputs, not changes to the configuration under evaluation. */

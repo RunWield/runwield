@@ -5,7 +5,7 @@ import { cp, mkdir, mkdtemp, readFile, realpath, rename, symlink, writeFile } fr
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { argv, env, platform } from "node:process";
+import { argv, env, execPath, platform } from "node:process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { installPackageHelperFixtures } from "./package-helper-fixtures.ts";
@@ -105,6 +105,41 @@ export async function checkBunPackage(
                 clearTimeout(timeout);
             }
         }
+        const project = join(home, "agent-project");
+        const personalDefinitions = join(home, ".wld", "agents");
+        const projectDefinitions = join(project, ".wld", "agents");
+        await mkdir(personalDefinitions, { recursive: true });
+        await mkdir(projectDefinitions, { recursive: true });
+        await writeFile(join(personalDefinitions, "router.md"), "Personal router instructions.");
+        await writeFile(join(projectDefinitions, "router.md"), "Project router instructions.");
+        const agentCheck = start(["package-smoke", "agents"], project);
+        const agentTimeout = setTimeout(() => agentCheck.child.kill("SIGKILL"), 30_000);
+        try {
+            equal(await agentCheck.finished, 0, agentCheck.output());
+        } finally {
+            clearTimeout(agentTimeout);
+        }
+        const source = await captureScriptProcess(execPath, {
+            args: [
+                "--no-env-file",
+                "--no-install",
+                join(ROOT, "src/cli.ts"),
+                "--allow-system-directory",
+                "package-smoke",
+                "agents",
+            ],
+            cwd: project,
+            env: childEnv,
+            clearEnv: true,
+            signal: AbortSignal.timeout(30_000),
+        });
+        const decoder = new TextDecoder();
+        const sourceOutput = decoder.decode(source.stdout);
+        equal(source.code, 0, sourceOutput + decoder.decode(source.stderr));
+        const digestPattern = /Agent definitions ([a-f0-9]{64})/;
+        const expected = sourceOutput.match(digestPattern)?.[1];
+        ok(expected, sourceOutput);
+        equal(agentCheck.output().match(digestPattern)?.[1], expected, agentCheck.output());
         for (const file of ["SKILL.md", "LICENSE"]) {
             deepEqual(
                 await readFile(join(home, ".wld/bundled-skills/write-tests", file)),

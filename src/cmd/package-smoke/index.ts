@@ -16,6 +16,8 @@ import { checkPackagedImageResize } from "./image-resize.ts";
 import { checkPackagedRemoteSessionSave } from "./remote-session-save.ts";
 import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
 import { checkPackagedMetricsExport } from "./metrics-export.ts";
+import { agentRegistry } from "../../shared/session/agent-registry.ts";
+import { agentDefinitionDigest } from "./agents.ts";
 import { checkPackagedSkills } from "./skills.ts";
 
 /** @param {string} name */
@@ -182,6 +184,10 @@ export async function runPackageSmokeCommand(argv: string[]): Promise<void> {
         Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
     const [subcommand] = argv;
+    if (subcommand === "agents") {
+        console.log(`Agent definitions ${await agentDefinitionDigest(agentRegistry, getCwd())}`);
+        return;
+    }
     if (subcommand === "skills") {
         await checkPackagedSkills();
         console.log("[RunWield] Packaged skills passed.");
@@ -218,6 +224,6 @@ export async function runPackageSmokeCommand(argv: string[]): Promise<void> {
         return;
     }
     throw new Error(
-        "Usage: wld package-smoke <core-flows|publication|codemode|image-resize|remote-session-save|metrics-export|skills>",
+        "Usage: wld package-smoke <core-flows|publication|codemode|image-resize|remote-session-save|metrics-export|skills|agents>",
     );
 }

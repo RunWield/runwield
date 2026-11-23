@@ -34,7 +34,7 @@ import {
 import { runSnipFiltersCommand } from "./snip-filters/index.ts";
 import { runMcpCommand } from "./mcp/index.ts";
 import { runWorkspaceCommand } from "./workspace/index.ts";
-import { getAgentDisplayName } from "../shared/session/agents.ts";
+import { agentRegistry } from "../shared/session/agent-registry.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 
 /** Known CLI / slash command names. Defined alongside the registry so adding a new command only touches one file. */
@@ -181,7 +181,7 @@ export const commandRegistry: Record<string, CommandDefinition> = {
     },
     [COMMAND_NAMES.ROUTER]: {
         name: COMMAND_NAMES.ROUTER,
-        displayName: getAgentDisplayName(COMMAND_NAMES.ROUTER),
+        displayName: agentRegistry.displayName(COMMAND_NAMES.ROUTER),
         description: "Triage the current request (default)",
         summary: "Route a request through triage and execution/planning flow (default command).",
         usage: [`${bin('"<user request>"')}`, `${bin('router "<user request>"')}`, `${bin("router --help")}`],

@@ -15,8 +15,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { SUBAGENTS } from "../../constants.ts";
-import { isWorkflowOnlyAgent, listAllAgentDefinitions, listAvailableAgents, loadAgentDef } from "./agents.ts";
-import { loadSubAgentDefinition } from "./subagent-definitions.ts";
+import { agentRegistry } from "./agent-registry.ts";
 
 const EXECUTION_CONTRACTS: ReadonlyArray<{
     agentName: string;
@@ -102,8 +101,8 @@ const EXECUTION_CONTRACTS: ReadonlyArray<{
 ];
 
 async function loadContractDef(agentName: string, loader: "agent" | "subagent") {
-    if (loader === "subagent") return await loadSubAgentDefinition(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
-    return await loadAgentDef(agentName);
+    if (loader === "subagent") return await agentRegistry.isolated.load(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
+    return await agentRegistry.get(agentName);
 }
 
 /**
@@ -114,8 +113,8 @@ async function loadContractDef(agentName: string, loader: "agent" | "subagent") 
 async function readBundledFrontMatter(agentName: string, loader: "agent" | "subagent"): Promise<Map<string, string[]>> {
     const filePath =
         loader === "subagent"
-            ? join("src", "agent-definitions", "subagent-definitions", `${agentName}.md`)
-            : join("src", "agent-definitions", `${agentName}.md`);
+            ? join("packages", "agents", "definitions", "subagent-definitions", `${agentName}.md`)
+            : join("packages", "agents", "definitions", `${agentName}.md`);
     const contents = await fsReadFile(filePath, "utf8");
     const result = new Map<string, string[]>();
     const scalarMatches = contents.match(/^---\n([\s\S]*?)\n---/m)?.[1] || "";
@@ -138,8 +137,8 @@ async function readBundledFrontMatter(agentName: string, loader: "agent" | "suba
 }
 
 test("declared context contracts and prompt boundaries", async () => {
-    const selectable = (await listAvailableAgents()).map((agent) => agent.name);
-    const allTopLevel = (await listAllAgentDefinitions()).map((agent) => agent.name);
+    const selectable = (await agentRegistry.list()).map((agent) => agent.name);
+    const allTopLevel = (await agentRegistry.list(undefined, "all")).map((agent) => agent.name);
 
     for (const contract of EXECUTION_CONTRACTS) {
         const def = await loadContractDef(contract.agentName, contract.loader);
@@ -172,7 +171,7 @@ test("declared context contracts and prompt boundaries", async () => {
         if (contract.workflowOnly !== null) {
             assertEquals(def.workflowOnly, contract.workflowOnly, `${contract.agentName} workflowOnly drifted`);
             assertEquals(
-                await isWorkflowOnlyAgent(contract.agentName),
+                await agentRegistry.isWorkflowOnly(contract.agentName),
                 contract.workflowOnly,
                 `${contract.agentName} workflow-only query drifted`,
             );
@@ -192,7 +191,7 @@ test("declared context contracts and prompt boundaries", async () => {
 
 test("Plan execution agents declare the Plan Deviation tool", async () => {
     for (const name of ["plan-engineer", "frontend-engineer"]) {
-        const definition = await loadAgentDef(name);
+        const definition = await agentRegistry.get(name);
         assertEquals(definition.tools.includes("record_plan_deviation"), true, `${name} needs Plan Deviation access`);
     }
 });
@@ -204,7 +203,7 @@ test("project overrides may not silently invent a context contract", async () =>
         await fsMkdir(agentsDir, { recursive: true });
 
         await fsWriteFile(join(agentsDir, "engineer.md"), "---\nworkflowOnly: true\n---\n\nOverride body.\n");
-        const inherited = await loadAgentDef("engineer", projectRoot);
+        const inherited = await agentRegistry.get("engineer", projectRoot);
         assertEquals(inherited.contextContract, "quick-fix");
         assertEquals(inherited.workflowOnly, true);
 
@@ -212,7 +211,7 @@ test("project overrides may not silently invent a context contract", async () =>
             join(agentsDir, "engineer.md"),
             "---\ncontextContract: plan-execution\n---\n\nOverride body.\n",
         );
-        const relabeled = await loadAgentDef("engineer", projectRoot);
+        const relabeled = await agentRegistry.get("engineer", projectRoot);
         assertEquals(relabeled.contextContract, "plan-execution");
         assertEquals(relabeled.name, "engineer", "contextContract must not become runtime identity");
 
@@ -220,7 +219,7 @@ test("project overrides may not silently invent a context contract", async () =>
             join(agentsDir, "engineer.md"),
             "---\ncontextContract: launch-authority\n---\n\nOverride body.\n",
         );
-        await assertRejects(() => loadAgentDef("engineer", projectRoot), Error, "invalid contextContract");
+        await assertRejects(() => agentRegistry.get("engineer", projectRoot), Error, "invalid contextContract");
     } finally {
         await fsRm(projectRoot, { recursive: true });
     }

@@ -15,7 +15,7 @@ import {
     getPromptTemplatePaths,
     resolveModel,
 } from "../session/session.ts";
-import { loadAgentDef } from "../session/agents.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
 import { modelSupportsImageInput, resolveVisionFallbackModel } from "../session/image-attachments.ts";
@@ -130,7 +130,7 @@ export async function createBoundedRemoteModelSession(options: {
     const runtime = await createRemoteModelRuntime({ ...options.connection, callbackPolicy: "no-extensions" }, catalog);
     const registry = new RunWieldModelRegistry({ remote: true, runtime, configDir: personalGlobalRoot() });
     const agentName = options.agentName ?? "engineer";
-    const agentDef = options.agentDef ?? (await loadAgentDef(agentName, options.cwd));
+    const agentDef = options.agentDef ?? (await agentRegistry.get(agentName, options.cwd));
     const model = await resolveBoundedRemoteModelSelection(registry, { ...options, agentDef });
     const customTools = [...(options.customTools ?? [])];
     const sessionManager = SessionManager.inMemory(options.cwd);

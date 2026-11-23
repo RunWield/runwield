@@ -12,7 +12,7 @@ export const REQUIRED_IMAGE_FILES = Object.freeze([
     "/app/remote-server.js",
     "/app/dist/workspace-runtime/server.mjs",
     "/app/brand/logo.svg",
-    "/app/src/agent-definitions/router.md",
+    "/app/packages/agents/definitions/router.md",
     "/app/src/ui/workspace/static/styles.css",
     "/app/src/ui/workspace/static/workspace.css",
     "/app/src/ui/design-system/tokens.css",
@@ -22,16 +22,16 @@ export const REQUIRED_IMAGE_FILES = Object.freeze([
 
 export const REQUIRED_IMAGE_DIRECTORIES = Object.freeze(["/data"]);
 
-const ALLOWED_APP_SRC_FILES = new Set([
-    "/app/src/agent-definitions/architect.md",
-    "/app/src/agent-definitions/engineer.md",
-    "/app/src/agent-definitions/guide.md",
-    "/app/src/agent-definitions/ideator.md",
-    "/app/src/agent-definitions/operator.md",
-    "/app/src/agent-definitions/planner.md",
-    "/app/src/agent-definitions/recorder.md",
-    "/app/src/agent-definitions/router.md",
-    "/app/src/agent-definitions/tester.md",
+const ALLOWED_APP_SOURCE_FILES = new Set([
+    "/app/packages/agents/definitions/architect.md",
+    "/app/packages/agents/definitions/engineer.md",
+    "/app/packages/agents/definitions/guide.md",
+    "/app/packages/agents/definitions/ideator.md",
+    "/app/packages/agents/definitions/operator.md",
+    "/app/packages/agents/definitions/planner.md",
+    "/app/packages/agents/definitions/recorder.md",
+    "/app/packages/agents/definitions/router.md",
+    "/app/packages/agents/definitions/tester.md",
     "/app/src/ui/workspace/static/styles.css",
     "/app/src/ui/workspace/static/workspace.css",
     "/app/src/ui/design-system/tokens.css",
@@ -58,7 +58,7 @@ export function isProhibitedImageFile(file: string): boolean {
     if (!file.startsWith("/app/")) return false;
     if (file === "/app/remote-server.js") return false;
     if (file.startsWith("/app/dist/workspace-runtime/")) return false;
-    if (ALLOWED_APP_SRC_FILES.has(file)) return false;
+    if (ALLOWED_APP_SOURCE_FILES.has(file)) return false;
 
     return (
         file.startsWith("/app/docs/plans/") ||
@@ -73,6 +73,7 @@ export function isProhibitedImageFile(file: string): boolean {
         file.includes(".db-") ||
         file.includes(".test.") ||
         file.startsWith("/app/src/") ||
+        file.startsWith("/app/packages/") ||
         file === "/app/deno.json" ||
         file === "/app/deno.lock"
     );

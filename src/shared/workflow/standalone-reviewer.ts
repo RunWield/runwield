@@ -1,6 +1,6 @@
 import { AGENTS, SUBAGENTS, getCwd } from "../../constants.ts";
 import { createGitPort } from "../git-port.ts";
-import { loadSubAgentDefinition } from "../session/subagent-definitions.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import {
     abortActiveSession,
@@ -44,7 +44,7 @@ export async function getReviewerConfiguration(options: ReviewerConfigurationOpt
     const configurationRoot = options.configurationRoot ?? getCwd();
     // Production selection performs model and authentication checks without dispatching a model turn.
     // Resolve against the source project, not the intentionally neutral fixture project.
-    const definition = await loadSubAgentDefinition(SUBAGENTS.REVIEWER, { reviewerMode: "discovery" });
+    const definition = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER, { reviewerMode: "discovery" });
     const selected = await resolveModel(
         options.model,
         definition,

@@ -21,6 +21,10 @@ async function fixture() {
     for (const dir of [
         "src/shared",
         "scripts",
+        "packages/agents/definitions",
+        "packages/bundled-assets",
+        "packages/parsing",
+        "packages/resources",
         "packages/tools",
         "third_party/plannotator/packages",
         "brand",
@@ -67,6 +71,16 @@ test("common identity changes for dirty included source and resources, not gener
         const changedSource = await identity();
         await fsWriteFile(join(root, "packages/tools/routing.ts"), "changed package source");
         assertNotEquals(await identity(), changedSource);
+        for (const file of [
+            "packages/agents/definitions/router.md",
+            "packages/bundled-assets/index.ts",
+            "packages/parsing/front-matter.ts",
+            "packages/resources/home.ts",
+        ]) {
+            const before = await identity();
+            await fsWriteFile(join(root, file), "changed agent input");
+            assertNotEquals(await identity(), before);
+        }
         const changed = await identity();
         await fsWriteFile(join(root, "dist/workspace-runtime/server.mjs"), "changed resource");
         assertNotEquals(await identity(), changed);

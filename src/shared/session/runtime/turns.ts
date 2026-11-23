@@ -7,7 +7,7 @@ import { getRuntimeErrorMessage, RuntimeEventTypes } from ".././session-runtime-
 import { rollSessionTranscriptSegment } from ".././segment-rollover.ts";
 import { promptTemplateWorkflowConflict, resolvePromptTemplateSettings } from "../prompt-template-settings.ts";
 import { recordManualModelSelection } from "../active-agent-session.ts";
-import { getAgentDisplayName } from "../agents.ts";
+import { agentRegistry } from "../agent-registry.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from ".././session-runtime-interactions.ts";
 
 import {
@@ -508,7 +508,7 @@ export class RuntimeTurns {
                             hostedSession,
                             {
                                 type: RuntimeInteractionTypes.SELECT,
-                                prompt: `/${template.name} requires ${getAgentDisplayName(
+                                prompt: `/${template.name} requires ${agentRegistry.displayName(
                                     profile.agentName,
                                     hostedSession.cwd,
                                 )}. This session has ${conflict}.`,

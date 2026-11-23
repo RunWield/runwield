@@ -59,10 +59,10 @@ export const PASSIVE_PATHS = [
     SIDEBAR_MOTION_SOURCE,
     "src/ui/design-system/panel-icon.ts",
     "brand/logo.svg",
-    "src/agent-definitions",
+    "packages/agents/definitions",
     "src/model-presets",
     "src/prompt-templates",
-    "src/shared/session/SYSTEM_PROMPT_TEMPLATE.md",
+    "packages/agents/SYSTEM_PROMPT_TEMPLATE.md",
     "src/cmd/sleep/prompt.md",
     "src/skills",
     "src/snip-filters",
@@ -232,7 +232,7 @@ export async function compileBun(
             throw new Error(`Build identity mismatch: expected ${expectedBuildId}, got ${buildId}`);
         }
         // Bun directory assets retain their top directory name. Staging only
-        // approved passive paths preserves src/ and dist/ without embedding tests.
+        // approved resource trees preserves their runtime paths and excludes test fixtures.
         // https://bun.com/docs/bundler/executables#embed-directories
         await mkdir(dirname(outfile), { recursive: true });
         await build({
@@ -252,7 +252,12 @@ export async function compileBun(
                 outfile,
                 ...(target ? { target } : {}),
                 ...(runtime ? { executablePath: resolve(runtime) } : {}),
-                assets: [join(staging, "src"), join(staging, "brand"), join(staging, "dist")],
+                assets: [
+                    join(staging, "src"),
+                    join(staging, "packages"),
+                    join(staging, "brand"),
+                    join(staging, "dist"),
+                ],
                 autoloadDotenv: false,
                 autoloadBunfig: false,
                 autoloadTsconfig: false,

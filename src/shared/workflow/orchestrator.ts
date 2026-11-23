@@ -32,7 +32,7 @@ import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../no
 import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { switchActiveAgent } from "../session/agent-switching.ts";
 import { runRootTurn } from "../session/session.ts";
-import { getAgentDisplayName } from "../session/agents.ts";
+import { agentRegistry } from "../session/agent-registry.ts";
 import { toolRegistry, type TriageOutcome, type TriageOutcomeInput } from "@runwield/tools";
 import {
     emitHostedSessionRuntimeEvent,
@@ -363,7 +363,7 @@ export async function dispatchPostTriage({
     }
 
     if (normalizedTriage.routingIntent === "OPERATION") {
-        const operatorDisplay = getAgentDisplayName(AGENTS.OPERATOR, projectRoot);
+        const operatorDisplay = agentRegistry.displayName(AGENTS.OPERATOR, projectRoot);
         await activateAgent(AGENTS.OPERATOR);
 
         await runRootTurnUntilTaskCompletion({
@@ -396,7 +396,7 @@ export async function dispatchPostTriage({
     }
 
     if (normalizedTriage.routingIntent === "QUICK_FIX") {
-        const engineerDisplay = getAgentDisplayName(AGENTS.ENGINEER, projectRoot);
+        const engineerDisplay = agentRegistry.displayName(AGENTS.ENGINEER, projectRoot);
         const manualQaName = normalizedTriage.sessionName || "quick-fix";
         const initialManualQaContext = buildQuickFixManualQaContext(decoratedRequest);
         const gitProbe = await probeGitRepository(projectRoot);
@@ -615,7 +615,7 @@ export async function dispatchPostTriage({
             });
             emitSystemStatus(
                 hostedSession,
-                `Plan execution failed: ${reason}. ${getAgentDisplayName(
+                `Plan execution failed: ${reason}. ${agentRegistry.displayName(
                     executionOwner,
                     projectRoot,
                 )} may need manual intervention.`,

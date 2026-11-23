@@ -10,14 +10,14 @@ import { test } from "node:test";
 import { match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { listAgentDefNames, loadAgentDef } from "./agents.ts";
+import { agentRegistry } from "./agent-registry.ts";
 
-const BUNDLED_AGENT_DEFS = join("src", "agent-definitions");
+const BUNDLED_AGENT_DEFS = join("packages", "agents", "definitions");
 const SHARED_PRACTICE_DIR = join(BUNDLED_AGENT_DEFS, "shared-practice");
 
 test("managed engineering assigns full validation to RunWield and keeps standalone verification", async () => {
     for (const name of ["engineer", "plan-engineer", "frontend-engineer"]) {
-        const { systemPrompt } = await loadAgentDef(name);
+        const { systemPrompt } = await agentRegistry.get(name);
         const normalizedPrompt = systemPrompt.replaceAll(/\s+/g, " ");
         assertStringIncludes(normalizedPrompt, "Who Runs Full Validation");
         assertStringIncludes(normalizedPrompt, "mandatory Mechanical Validation");
@@ -32,7 +32,7 @@ test("managed engineering assigns full validation to RunWield and keeps standalo
 
 test("engineering prompts require three results for a check", async () => {
     for (const name of ["engineer", "plan-engineer", "frontend-engineer"]) {
-        const { systemPrompt } = await loadAgentDef(name);
+        const { systemPrompt } = await agentRegistry.get(name);
         const normalizedPrompt = systemPrompt.replaceAll(/\s+/g, " ");
         assertStringIncludes(normalizedPrompt, "An Empty Answer Is Not a Negative Answer");
         assertStringIncludes(normalizedPrompt, "could not tell");
@@ -153,7 +153,7 @@ test("shared practice fragments are appended after the agent's own prompt body",
             agentFile("temp-agent", "sharedPractice:\n    - house-rules\n", "## Process\n\nDo the process."),
             fragmentFile("house-rules", "## House Rules\n\nNever skip the rules."),
         ],
-        (projectRoot) => loadAgentDef("temp-agent", projectRoot),
+        (projectRoot) => agentRegistry.get("temp-agent", projectRoot),
     );
 
     const processIndex = def.systemPrompt.indexOf("Do the process.");
@@ -173,7 +173,7 @@ test("fragments compose in declaration order and dedupe repeats", async () => {
             fragmentFile("first-fragment", "FIRST_MARKER"),
             fragmentFile("second-fragment", "SECOND_MARKER"),
         ],
-        (projectRoot) => loadAgentDef("temp-agent", projectRoot),
+        (projectRoot) => agentRegistry.get("temp-agent", projectRoot),
     );
 
     assertEquals(def.systemPrompt.match(/FIRST_MARKER/g)?.length, 1);
@@ -186,7 +186,7 @@ test("a project fragment overrides the bundled fragment of the same name", async
             agentFile("temp-agent", "sharedPractice:\n    - engineering-practice\n", "## Process\n\nBody."),
             fragmentFile("engineering-practice", "PROJECT_OVERRIDE_MARKER"),
         ],
-        (projectRoot) => loadAgentDef("temp-agent", projectRoot),
+        (projectRoot) => agentRegistry.get("temp-agent", projectRoot),
     );
 
     assertStringIncludes(def.systemPrompt, "PROJECT_OVERRIDE_MARKER");
@@ -196,7 +196,7 @@ test("a project fragment overrides the bundled fragment of the same name", async
 test("an agent that declares no shared practice composes nothing extra", async () => {
     const def = await withProjectAgents(
         [agentFile("temp-agent", "", "## Process\n\nBody."), fragmentFile("engineering-practice", "SHOULD_NOT_APPEAR")],
-        (projectRoot) => loadAgentDef("temp-agent", projectRoot),
+        (projectRoot) => agentRegistry.get("temp-agent", projectRoot),
     );
 
     assertEquals(def.systemPrompt.includes("SHOULD_NOT_APPEAR"), false);
@@ -207,7 +207,7 @@ test("a missing fragment fails loudly and names the paths it checked", async () 
         [agentFile("temp-agent", "sharedPractice:\n    - no-such-fragment\n", "## Process\n\nBody.")],
         (projectRoot) =>
             assertRejects(
-                () => loadAgentDef("temp-agent", projectRoot),
+                () => agentRegistry.get("temp-agent", projectRoot),
                 Error,
                 'Could not find shared practice fragment "no-such-fragment"',
             ),
@@ -220,12 +220,12 @@ test("a non-list sharedPractice field is rejected rather than silently ignored",
     await withProjectAgents(
         [agentFile("temp-agent", "sharedPractice: engineering-practice\n", "## Process\n\nBody.")],
         (projectRoot) =>
-            assertRejects(() => loadAgentDef("temp-agent", projectRoot), Error, "non-list sharedPractice field"),
+            assertRejects(() => agentRegistry.get("temp-agent", projectRoot), Error, "non-list sharedPractice field"),
     );
 });
 
 test("shared practice fragments are never offered as agents", async () => {
-    const names = await listAgentDefNames();
+    const names = await agentRegistry.listNames();
     assertEquals(names.includes("engineering-practice"), false);
     assertEquals(names.includes("plan-execution"), false);
     assertEquals(names.includes("user-authority"), false);
@@ -234,7 +234,7 @@ test("shared practice fragments are never offered as agents", async () => {
 
 test("every coding persona composes the engineering practice it declares", async () => {
     for (const [agentName] of SHARED_PRACTICE_CONSUMERS) {
-        const def = await loadAgentDef(agentName);
+        const def = await agentRegistry.get(agentName);
         assertStringIncludes(def.systemPrompt, "The Zero-Trust Implementation Protocol");
         assertStringIncludes(def.systemPrompt, "When Verification Fails, Act");
         assertStringIncludes(def.systemPrompt.replaceAll(/\s+/g, " "), RUNWIELD_DELIVERY_MARKER);
@@ -245,23 +245,23 @@ test("only the Plan executors are told what to do with requests outside the Plan
     // Engineer has no Plan to be outside of, so the boundary rule would be a
     // contradiction in its prompt rather than a missing rule.
     for (const agentName of PLAN_EXECUTION_PERSONAS) {
-        const def = await loadAgentDef(agentName);
+        const def = await agentRegistry.get(agentName);
         assertStringIncludes(def.systemPrompt, "Requests that are not the Plan");
     }
-    const engineer = await loadAgentDef("engineer");
+    const engineer = await agentRegistry.get("engineer");
     assertEquals(engineer.systemPrompt.includes("Requests that are not the Plan"), false);
 });
 
 test("every bundled top-level agent receives the user-authority policy", async () => {
-    for (const agentName of await listAgentDefNames()) {
-        const def = await loadAgentDef(agentName);
+    for (const agentName of await agentRegistry.listNames()) {
+        const def = await agentRegistry.get(agentName);
         assertStringIncludes(def.systemPrompt, USER_AUTHORITY_MARKER, `${agentName} is missing user authority`);
     }
 });
 
 test("Plan executors keep a strict no-self-edit boundary while explicit user authority wins", async () => {
     for (const agentName of PLAN_EXECUTION_PERSONAS) {
-        const { systemPrompt } = await loadAgentDef(agentName);
+        const { systemPrompt } = await agentRegistry.get(agentName);
         const normalizedPrompt = systemPrompt.replaceAll(/\s+/g, " ");
         const defaultIndex = normalizedPrompt.indexOf(PLAN_EDIT_DEFAULT_MARKER);
         const overrideIndex = normalizedPrompt.indexOf(PLAN_EDIT_USER_OVERRIDE_MARKER);
@@ -287,14 +287,14 @@ test("every persona that can run git is told not to destroy pending changes", as
     // Operator is not an engineering persona and does not compose engineering-practice,
     // but its prompt lists git operations — the rule has to reach it by its own claim.
     for (const agentName of WORKING_TREE_CONSUMERS) {
-        const { systemPrompt } = await loadAgentDef(agentName);
+        const { systemPrompt } = await agentRegistry.get(agentName);
         assertStringIncludes(systemPrompt, WORKING_TREE_MARKER, `${agentName} may destroy uncommitted work`);
     }
 });
 
 test("planning personas receive the show-the-work practice", async () => {
     for (const [agentName] of PLANNING_PRACTICE_CONSUMERS) {
-        const def = await loadAgentDef(agentName);
+        const def = await agentRegistry.get(agentName);
         assertStringIncludes(def.systemPrompt, SHOW_THE_WORK_MARKER, `${agentName} is missing show-the-work`);
     }
 });
@@ -303,7 +303,7 @@ test("planning personas receive the show-the-work practice", async () => {
 const MARKER_ONLY_CALLOUT = /^> \[!(WARNING|NOTE|TIP)\]$/m;
 
 test("the Planner writes point-first Plans with optional callouts and exact steps", async () => {
-    const { systemPrompt } = await loadAgentDef("planner");
+    const { systemPrompt } = await agentRegistry.get("planner");
     const normalized = systemPrompt.replaceAll(/\s+/g, " ");
     assertStringIncludes(normalized, "Open with the main point");
     assertStringIncludes(normalized, "Remove repetition, but never a requirement.");
@@ -332,7 +332,7 @@ test("the Plan format keeps its sections and shows callout syntax Plan Review re
 
 test("conversational planning personas end each turn with a question or finished work", async () => {
     for (const [agentName] of PLANNING_PRACTICE_CONSUMERS) {
-        const { systemPrompt } = await loadAgentDef(agentName);
+        const { systemPrompt } = await agentRegistry.get(agentName);
         const normalized = systemPrompt.replaceAll(/\s+/g, " ");
         assertStringIncludes(normalized, CONVERSATIONAL_TURNS_MARKER, `${agentName} is missing conversational-turns`);
     }
@@ -342,13 +342,13 @@ test("history-reading personas share one Work Record retrieval practice", async 
     // These four carried byte-identical copies of this section before it was
     // extracted; the fragment is what keeps them from drifting apart again.
     for (const agentName of WORK_RECORD_CONSUMERS) {
-        const { systemPrompt } = await loadAgentDef(agentName);
+        const { systemPrompt } = await agentRegistry.get(agentName);
         const normalized = systemPrompt.replaceAll(/\s+/g, " ");
         assertStringIncludes(normalized, WORK_RECORD_MARKER, `${agentName} is missing work-record-retrieval`);
     }
 
     // Recorder generates Work Records, so it keeps its own broader access rules.
-    const recorder = await loadAgentDef("recorder");
+    const recorder = await agentRegistry.get("recorder");
     assertEquals(recorder.systemPrompt.replaceAll(/\s+/g, " ").includes(WORK_RECORD_MARKER), false);
     assertStringIncludes(recorder.systemPrompt, "broad access for generation/maintenance context");
 });
@@ -357,7 +357,7 @@ test("planning personas reference an available PRD format without embedding it",
     const format = await fsReadFile(join(BUNDLED_AGENT_DEFS, "document-formats", "PRD-FORMAT.md"), "utf8");
     assertStringIncludes(format, "A PRD defines what users need, why it matters, and how success will be judged.");
     for (const agentName of ["ideator", "planner", "architect"]) {
-        const { systemPrompt } = await loadAgentDef(agentName);
+        const { systemPrompt } = await agentRegistry.get(agentName);
         assertStringIncludes(systemPrompt, "/document-formats/PRD-FORMAT.md");
         assertStringIncludes(
             systemPrompt.replaceAll(/\s+/g, " "),
@@ -374,7 +374,7 @@ test("Plan and Epic authors share one architecture vocabulary", async () => {
     // Planner and Architect defined these terms separately until `Port` drifted
     // apart; one fragment is what keeps the two documents speaking the same language.
     for (const agentName of PLANNING_DOC_AUTHORS) {
-        const { systemPrompt } = await loadAgentDef(agentName);
+        const { systemPrompt } = await agentRegistry.get(agentName);
         const normalized = systemPrompt.replaceAll(/\s+/g, " ");
         for (const term of [
             "Module",
@@ -403,15 +403,14 @@ test("Plan and Epic authors share one architecture vocabulary", async () => {
 test("the Slicer receives the show-the-work practice through the subagent registry", async () => {
     // Slicer is a workflow-only subagent, so it never appears in the agent listing.
     // It shapes the child Plans a person reads, so the practice must reach it too.
-    const { loadSubAgentDefinition } = await import("./subagent-definitions.ts");
     const { SUBAGENTS } = await import("../../constants.ts");
-    const slicer = await loadSubAgentDefinition(SUBAGENTS.SLICER);
+    const slicer = await agentRegistry.isolated.load(SUBAGENTS.SLICER);
 
     assertStringIncludes(slicer.systemPrompt, SHOW_THE_WORK_MARKER);
 });
 
 test("quick fix Engineer receives the bounded-request contract", async () => {
-    const { systemPrompt } = await loadAgentDef("engineer");
+    const { systemPrompt } = await agentRegistry.get("engineer");
     const normalizedPrompt = systemPrompt.replaceAll(/\s+/g, " ");
     assertStringIncludes(systemPrompt, "Quick Fix Checklist");
     assertStringIncludes(
@@ -426,7 +425,7 @@ test("quick fix Engineer receives the bounded-request contract", async () => {
 
 test("plan execution personas receive validation continuation and pair ceremony", async () => {
     for (const agentName of PLAN_EXECUTION_PERSONAS) {
-        const { systemPrompt } = await loadAgentDef(agentName);
+        const { systemPrompt } = await agentRegistry.get(agentName);
         assertStringIncludes(systemPrompt, "A Validation Continuation");
         assertStringIncludes(systemPrompt, "one bullet per feedback item");
     }
@@ -434,7 +433,7 @@ test("plan execution personas receive validation continuation and pair ceremony"
 
 test("plan execution personas can run a Pair checkpoint", async () => {
     for (const agentName of PLAN_EXECUTION_PERSONAS) {
-        const { systemPrompt } = await loadAgentDef(agentName);
+        const { systemPrompt } = await agentRegistry.get(agentName);
         assertStringIncludes(systemPrompt, "Runtime Collaboration Style");
         assertStringIncludes(systemPrompt, "`pair_checkpoint` is supplied");
         // Reporting ends the turn; authority comes only from a later user turn.
@@ -465,7 +464,7 @@ test("the shared pair ceremony stays medium-neutral", async () => {
 
 test("Planner and Architect use pending work as evidence without dirty-file warnings", async () => {
     for (const name of ["planner", "architect"]) {
-        const { systemPrompt } = await loadAgentDef(name);
+        const { systemPrompt } = await agentRegistry.get(name);
         for (const text of [
             "Inspect staged, unstaged, and relevant untracked changes",
             "Use task-relevant changes as evidence",
@@ -478,7 +477,7 @@ test("Planner and Architect use pending work as evidence without dirty-file warn
 });
 
 test("Planner keeps descriptive names stable when child order changes", async () => {
-    const { systemPrompt } = await loadAgentDef("planner");
+    const { systemPrompt } = await agentRegistry.get("planner");
     const prompt = systemPrompt.replaceAll(/\s+/g, " ");
     assertStringIncludes(prompt, "descriptive Plan filenames without ordinal prefixes");
     assertStringIncludes(prompt, "`order`, not filenames");

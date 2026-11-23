@@ -26,9 +26,9 @@ test("configuration records this checkout and the exact production prompt bytes 
         );
         const expected: Record<string, string> = {};
         for (const path of [
-            "src/agent-definitions/subagent-definitions/reviewer-prompt.md",
-            "src/agent-definitions/subagent-definitions/reviewer-verify-prompt.md",
-            "src/agent-definitions/shared-practice/review-practice.md",
+            "packages/agents/definitions/subagent-definitions/reviewer-prompt.md",
+            "packages/agents/definitions/subagent-definitions/reviewer-verify-prompt.md",
+            "packages/agents/definitions/shared-practice/review-practice.md",
         ])
             expected[path] = createHash("sha256")
                 .update(await readFile(join(root, path)))

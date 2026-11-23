@@ -5,7 +5,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { parseGuidedReviewMetadataLine, parseGuidedReviewUsageEventLine } from "../guided-review/protocol.ts";
 import { AGENTS } from "../../constants.ts";
-import { listAvailableAgents, loadAgentDef } from "../../shared/session/agents.ts";
+import { agentRegistry } from "../../shared/session/agent-registry.ts";
 import { getCliCommandDefinitions, requiresProjectDirectoryConsent } from "../registry.ts";
 import { runAiReviewCommand } from "./index.ts";
 
@@ -71,11 +71,11 @@ test("ai-review rejects an empty prompt without starting a Session", async () =>
 });
 
 test("AI Reviewer is workflow-only with read tools and read-only git commands", async () => {
-    const definition = await loadAgentDef(AGENTS.AI_REVIEWER);
+    const definition = await agentRegistry.get(AGENTS.AI_REVIEWER);
     assertEquals(definition.displayName, "AI Reviewer");
     assertEquals(definition.workflowOnly, true);
     assertEquals(
-        (await listAvailableAgents()).some((agent) => agent.name === AGENTS.AI_REVIEWER),
+        (await agentRegistry.list()).some((agent) => agent.name === AGENTS.AI_REVIEWER),
         false,
     );
     for (const tool of definition.tools) {

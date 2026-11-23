@@ -20,7 +20,7 @@ import process from "node:process";
 import { join } from "node:path";
 import { PASSIVE_PATHS } from "./compile-bun.ts";
 
-const BUNDLED_AGENT_DEFS_SOURCE_DIR = join("src", "agent-definitions");
+const BUNDLED_AGENT_DEFS_SOURCE_DIR = join("packages", "agents", "definitions");
 const BUNDLED_SKILLS_SOURCE_DIR = join("src", "skills");
 
 const BUNDLED_EXTRACTED_MARKDOWN_TARGETS = Object.freeze([
@@ -37,9 +37,9 @@ const BUNDLED_EXTRACTED_MARKDOWN_TARGETS = Object.freeze([
 ]);
 
 const REQUIRED_BUNDLED_BINARY_ASSET_INCLUDES = Object.freeze([
-    "src/agent-definitions/",
+    "packages/agents/definitions/",
     "src/prompt-templates/",
-    "src/shared/session/SYSTEM_PROMPT_TEMPLATE.md",
+    "packages/agents/SYSTEM_PROMPT_TEMPLATE.md",
     "src/skills/",
     "src/ui/theme/catppuccin-mocha.json",
 ]);
