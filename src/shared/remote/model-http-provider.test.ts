@@ -84,6 +84,9 @@ test("remote Pi tool result reaches a laptop-authenticated HTTP model provider",
             });
         });
         const providerPort = provider.addr.transport === "tcp" ? provider.addr.port : 0;
+        const providerBaseUrl = "http://127.0.0.1:" + providerPort + "/v1";
+        // Public model metadata can contain the same decimal digits as an ephemeral port.
+        const modelName = "Test model " + providerPort;
         await fsMkdir(join(root, ".wld"));
         await fsWriteFile(
             join(root, ".wld", "models.json"),
@@ -91,8 +94,8 @@ test("remote Pi tool result reaches a laptop-authenticated HTTP model provider",
                 providers: {
                     "laptop-http": {
                         api: "openai-completions",
-                        baseUrl: `http://127.0.0.1:${providerPort}/v1`,
-                        models: [{ id: "test", name: "Test", contextWindow: 128000, maxTokens: 1000 }],
+                        baseUrl: providerBaseUrl,
+                        models: [{ id: "test", name: modelName, contextWindow: 128000, maxTokens: 1000 }],
                     },
                 },
             }),
@@ -149,8 +152,18 @@ test("remote Pi tool result reaches a laptop-authenticated HTTP model provider",
                 }],
             });
             try {
-                assert(!JSON.stringify(registry.getAll()).includes(secret));
-                assert(!JSON.stringify(registry.getAll()).includes(String(providerPort)));
+                const models = registry.getAll();
+                const projected = models.find((model) => model.provider === "laptop-http" && model.id === "test");
+                assert(projected, "Expected the laptop model in the remote registry");
+                assertEquals(projected.name, modelName);
+                assertEquals(projected.baseUrl, "", "Remote model metadata must not expose a provider endpoint");
+                for (const projection of [catalog, models]) {
+                    const serialized = JSON.stringify(projection);
+                    assert(!serialized.includes(providerBaseUrl), "Provider endpoint leaked to the remote");
+                    assert(!serialized.includes(secret), "Laptop provider credential leaked to the remote");
+                    assert(!serialized.includes(remoteSecret), "Remote account credential leaked to catalog metadata");
+                    assert(!serialized.includes(control.credential), "Control credential leaked to catalog metadata");
+                }
                 await session.prompt("Read the project sentinel using the tool, then repeat it.");
                 assertEquals(requests.length, 2);
                 assert(!requests[0].includes(sentinel));
