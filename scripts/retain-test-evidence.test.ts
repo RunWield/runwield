@@ -94,6 +94,12 @@ test("artifact reports preserve failure checkpoints but omit transcripts, paths 
                     "concurrent:transcriptsecret:runtime:tool:result:task_completed:ok",
                     "runtime:tool:result:task_completed:ok",
                     "runtime:turn_end",
+                    "runtime:fixture-route:" + secret,
+                    "runtime:fixture-route:actor-rejected",
+                    "runtime:completion:tool-accepted",
+                    "runtime:completion:checkpoint-failed",
+                    "concurrent:transcriptsecret:runtime:fixture-route:reviewer-matched",
+                    ...Array.from({ length: 40 }, () => "concurrent:transcriptsecret:runtime:busy_changed"),
                 ],
                 validationErrors: JSON.stringify({
                     name: "ValidationStateError",
@@ -105,10 +111,13 @@ test("artifact reports preserve failure checkpoints but omit transcripts, paths 
                     activeTurnId: null,
                     activeAgent: "plan-engineer",
                     queuedMessages: [secret],
-                    workflowContext: { status: "ready_for_work", validationProgress: { stage: "cycle" } },
+                    workflowContext: {
+                        status: "ready_for_work",
+                        validationProgress: { stage: "cycle" },
+                    },
                 },
                 concurrentSessions: {
-                    [secret]: {
+                    transcriptsecret: {
                         screenText: secret,
                         runtime: {
                             busy: false,
@@ -180,10 +189,18 @@ test("artifact reports preserve failure checkpoints but omit transcripts, paths 
             },
         ]);
         assertEquals(exposed.includes("transcriptsecret"), false);
-        assertEquals(observed.events, [
-            "concurrent:runtime:tool:result:task_completed:ok",
-            "runtime:tool:result:task_completed:ok",
-            "runtime:turn_end",
+        assertEquals(
+            observed.events,
+            Array.from({ length: 32 }, () => "concurrent:runtime:busy_changed"),
+        );
+        assertEquals(observed.completionTraces, [
+            [
+                "tool:result:task_completed:ok",
+                "fixture-route:actor-rejected",
+                "completion:tool-accepted",
+                "completion:checkpoint-failed",
+            ],
+            ["tool:result:task_completed:ok", "fixture-route:reviewer-matched"],
         ]);
         assertEquals(observed.planObservation, {
             executionStatus: "reviewed",

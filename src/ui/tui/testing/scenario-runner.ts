@@ -593,7 +593,7 @@ import { submitPlanForReview } from "../../review/plan-review.ts";
 
 import { createScriptedReviewBrowser } from "../../review/review-test-fixture.ts";
 
-import { createFauxMessageForTurn, GoldenScenarioActor } from "./scenario-actor.ts";
+import { createFauxMessageForTurn, GoldenPlanIdentity, GoldenScenarioActor } from "./scenario-actor.ts";
 
 import {
     createGoldenIsolatedEnvironment,
@@ -918,6 +918,21 @@ function inferGoldenPhase(agentName: string) {
     if (agentName === "guide") return "inquiry";
     if (agentName === "planner") return "plan_review";
     return agentName || "unknown";
+}
+
+/** Classify lifecycle milestones without retaining the raw tool result or error text. */
+function completionMilestone(event: SessionRuntimeEvent) {
+    if (event.type === "tool_end" && event.toolName === "task_completed") {
+        const outcome = event.details?.outcome;
+        if (outcome === "task_completed") return "tool-accepted";
+        if (outcome === "rejected") return "tool-rejected";
+        return "tool-other";
+    }
+    if (event.type === "system_status") {
+        if (event.message.includes("stopped before reporting the task complete")) return "engineer-unfinished";
+        if (event.message.includes("worktree checkpoint failed:")) return "checkpoint-failed";
+    }
+    return undefined;
 }
 
 /**
@@ -1506,8 +1521,8 @@ async function runComposedTuiScenarioInScope(
         const events: string[] = [];
         /** @type {string[]} */
         const turnSequence: string[] = [];
-        /** @type {string} */
-        let lastWorkflowPlanName: string = "";
+        // The empty lane is reserved for the primary terminal across restarted compositions.
+        const planIdentity = new GoldenPlanIdentity();
         /** @type {ComposedScenarioState} */
         const state: ComposedScenarioState = {
             canceled: false,
@@ -1691,6 +1706,7 @@ async function runComposedTuiScenarioInScope(
                 { length: (scenario.script || []).length + 8 },
                 (): GoldenResponseFactory => (context, _options, _providerState, model) => {
                     let snapshot = composition?.runtime.getSessionSnapshot(composition.sessionId);
+                    let lane = "";
                     const availableTools = getContextToolNames(context);
                     const systemPrompt = getContextSystemPrompt(context);
                     // Route the external model fixture by the request's real working
@@ -1701,19 +1717,22 @@ async function runComposedTuiScenarioInScope(
                             systemPrompt.match(/^Current working directory: (.+)$/m)?.[1]?.trim() ||
                             systemPrompt.match(/<cwd>\s*([\s\S]*?)\s*<\/cwd>/)?.[1]?.trim();
                         const snapshots = [
-                            snapshot,
-                            ...[...concurrentSessions.values()].map(({ composition: sessionComposition }) =>
-                                sessionComposition.runtime.getSessionSnapshot(sessionComposition.sessionId),
-                            ),
+                            { lane: "", snapshot },
+                            ...[...concurrentSessions].map(([laneName, { composition: sessionComposition }]) => ({
+                                lane: laneName,
+                                snapshot: sessionComposition.runtime.getSessionSnapshot(sessionComposition.sessionId),
+                            })),
                         ].filter(
-                            (candidate) =>
+                            ({ snapshot: candidate }) =>
                                 candidate && requestCwd && fsRealpathSync(candidate.cwd) === fsRealpathSync(requestCwd),
                         );
-                        if (snapshots.length === 1) snapshot = snapshots[0];
-                        else if (
+                        if (snapshots.length === 1) {
+                            ({ lane, snapshot } = snapshots[0]);
+                        } else if (
                             availableTools.includes("task_completed") ||
                             availableTools.includes("review_complete")
                         ) {
+                            events.push("runtime:fixture-route:unassigned");
                             const message = `Cannot route concurrent model request for ${requestCwd || "missing cwd"}`;
                             events.push(`model:fixture-error:${message}`);
                             void writeHeartbeat().catch(() => {});
@@ -1725,6 +1744,27 @@ async function runComposedTuiScenarioInScope(
                         availableTools,
                         systemPrompt,
                     );
+                    // The Runtime's own view of which Plan is executing. An Epic drives
+                    // several child Plans through the same Agent and phase, so execution
+                    // and review turns count ordinals per Plan: one child's turn count
+                    // then cannot shift the next child's script. Planning turns are not
+                    // scoped this way — a Planner turn runs before its Plan exists, and
+                    // the Runtime still reports whichever Plan came before.
+                    const reportedPlanName = String(
+                        /** @type {{ workflowContext?: { planName?: unknown }, activeExecutionWorkflow?: { planName?: unknown } }} */ (
+                            snapshot || {}
+                        ).workflowContext?.planName ||
+                            /** @type {{ activeExecutionWorkflow?: { planName?: unknown } }} */ (snapshot || {})
+                                .activeExecutionWorkflow?.planName ||
+                            "",
+                    );
+                    // The Runtime clears workflowContext between phases while retaining
+                    // activeExecutionWorkflow. An empty reading must not open a second
+                    // ordinal series for the same Plan — that silently shifts later
+                    // turns. Carry the last Plan the Runtime named until it names another.
+                    const planName = planIdentity.resolve(lane, reportedPlanName);
+                    const scope = lane ? `concurrent:${lane}:runtime` : "runtime";
+
                     const checklistTool = availableTools.includes("manual_qa_completed")
                         ? "manual_qa_completed"
                         : availableTools.includes("qa_checklist_generated")
@@ -1744,7 +1784,7 @@ async function runComposedTuiScenarioInScope(
                                     name: checklistTool,
                                     arguments: {
                                         checklistMarkdown: `Manual verification steps for ${
-                                            lastWorkflowPlanName || "the completed Plan"
+                                            planName || "the completed Plan"
                                         }\n\n- [ ] Verify the completed behavior.`,
                                     },
                                 },
@@ -1786,26 +1826,6 @@ async function runComposedTuiScenarioInScope(
                         });
                         state.modelTurns = modelTurns;
                     }
-                    // The Runtime's own view of which Plan is executing. An Epic drives
-                    // several child Plans through the same Agent and phase, so execution
-                    // and review turns count ordinals per Plan: one child's turn count
-                    // then cannot shift the next child's script. Planning turns are not
-                    // scoped this way — a Planner turn runs before its Plan exists, and
-                    // the Runtime still reports whichever Plan came before.
-                    const reportedPlanName = String(
-                        /** @type {{ workflowContext?: { planName?: unknown }, activeExecutionWorkflow?: { planName?: unknown } }} */ (
-                            snapshot || {}
-                        ).workflowContext?.planName ||
-                            /** @type {{ activeExecutionWorkflow?: { planName?: unknown } }} */ (snapshot || {})
-                                .activeExecutionWorkflow?.planName ||
-                            "",
-                    );
-                    // The Runtime clears workflowContext between phases while retaining
-                    // activeExecutionWorkflow. An empty reading must not open a second
-                    // ordinal series for the same Plan — that silently shifts later
-                    // turns. Carry the last Plan the Runtime named until it names another.
-                    if (reportedPlanName) lastWorkflowPlanName = reportedPlanName;
-                    const planName = reportedPlanName || lastWorkflowPlanName;
                     const planScoped = agent === "engineer" || agent === "reviewer";
                     const ordinalKey = planScoped ? `${agent}:${phase}:${planName}` : `${agent}:${phase}`;
                     const ordinal = (turnOrdinals.get(ordinalKey) || 0) + 1;
@@ -1815,13 +1835,20 @@ async function runComposedTuiScenarioInScope(
                     // script agent loops that run to a text-only answer, and it is
                     // invisible from events alone.
                     turnSequence.push(`${agent}:${phase}:${planScoped ? planName || "-" : "*"}:${ordinal}`);
-                    const response = actor.next({
-                        agent,
-                        phase,
-                        ordinal,
-                        planName: planScoped ? planName : undefined,
-                        availableTools,
-                    });
+                    let response;
+                    try {
+                        response = actor.next({
+                            agent,
+                            phase,
+                            ordinal,
+                            planName: planScoped ? planName : undefined,
+                            availableTools,
+                        });
+                    } catch (error) {
+                        if (planScoped) events.push(`${scope}:fixture-route:actor-rejected`);
+                        throw error;
+                    }
+                    if (agent === "reviewer") events.push(`${scope}:fixture-route:reviewer-matched`);
                     events.push(`model:faux-provider:${agent}:${phase}`);
                     return createFauxMessageForTurn(actor.consumed.at(-1) || /** @type {any} */ { response });
                 },
@@ -1933,6 +1960,8 @@ async function runComposedTuiScenarioInScope(
                     state.canceled = true;
                     events.push("runtime:cancellation");
                 }
+                const completion = completionMilestone(event);
+                if (completion) events.push(`runtime:completion:${completion}`);
                 if (event.type === "tool_start") {
                     const name = /** @type {{ toolName?: string }} */ event.toolName || "";
                     events.push(`runtime:tool:start:${name}`);
@@ -1941,7 +1970,12 @@ async function runComposedTuiScenarioInScope(
                 if (event.type === "tool_end") {
                     const name = /** @type {{ toolName?: string }} */ event.toolName || "";
                     events.push(`runtime:tool:end:${name}`);
-                    if (name === "task_completed" || name === "review_complete" || name === "work_record_completed") {
+                    if (
+                        name === "bash" ||
+                        name === "task_completed" ||
+                        name === "review_complete" ||
+                        name === "work_record_completed"
+                    ) {
                         events.push(`runtime:tool:result:${name}:${event.isError ? "error" : "ok"}`);
                     }
                     if (event.toolCallId.startsWith("validation-ci-")) {
@@ -2023,8 +2057,7 @@ async function runComposedTuiScenarioInScope(
                 if (typed.type === "type") {
                     const text = String(typed.text || "");
                     terminal.typeText(text);
-                    const loadPlanMatch = text.trim().match(/^\/load-plan\s+(.+)$/);
-                    if (loadPlanMatch) lastWorkflowPlanName = loadPlanMatch[1].trim();
+                    planIdentity.seed("", text);
                     events.push(`terminal:type:${typed.text || ""}`);
                 } else if (typed.type === "clearEditor") {
                     terminal.input("\x15");
@@ -2051,12 +2084,22 @@ async function runComposedTuiScenarioInScope(
                         concurrentComposition.sessionId,
                         (event) => {
                             events.push(`concurrent:${name}:runtime:${event.type}`);
+                            const completion = completionMilestone(event);
+                            if (completion) events.push(`concurrent:${name}:runtime:completion:${completion}`);
+                            if (event.type === "tool_start" && event.toolCallId.startsWith("validation-ci-")) {
+                                events.push(`concurrent:${name}:runtime:validation-ci:started`);
+                            }
+
                             if (event.type === "system_status") {
                                 statuses.push({ timestamp: event.timestamp, message: event.message });
                             }
                             if (event.type === "tool_start") {
                                 const eventToolName = /** @type {{ toolName?: string }} */ event.toolName || "";
                                 events.push(`concurrent:${name}:runtime:tool:start:${eventToolName}`);
+                            } else if (event.type === "tool_end") {
+                                events.push(
+                                    `concurrent:${name}:runtime:tool:result:${event.toolName}:${event.isError ? "error" : "ok"}`,
+                                );
                             }
                         },
                     );
@@ -2075,8 +2118,10 @@ async function runComposedTuiScenarioInScope(
                 } else if (typed.type === "concurrentType") {
                     const session = concurrentSessions.get(String(typed.name || ""));
                     if (!session) throw new Error(`Unknown concurrent session: ${typed.name || ""}`);
-                    session.terminal.typeText(String(typed.text || ""));
-                    events.push(`concurrent:${typed.name}:terminal:type:${typed.text || ""}`);
+                    const text = String(typed.text || "");
+                    session.terminal.typeText(text);
+                    planIdentity.seed(String(typed.name || ""), text);
+                    events.push(`concurrent:${typed.name}:terminal:type:${text}`);
                 } else if (typed.type === "concurrentEnter") {
                     const session = concurrentSessions.get(String(typed.name || ""));
                     if (!session) throw new Error(`Unknown concurrent session: ${typed.name || ""}`);

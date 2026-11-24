@@ -23,14 +23,19 @@ jobs:
     source:
         name: ${{ matrix.runner }} source ${{ matrix.shard }}
         runs-on: ${{ matrix.runner }}
-        timeout-minutes: 75
+        timeout-minutes: ${{ matrix.job_minutes }}
         strategy:
             fail-fast: false
             matrix:
-                runner: [macos-latest]
-                shard: [1, 2, 3, 4]
+                include:
+                    - { runner: macos-latest, shard: 1, workers: "4", job_minutes: 75 }
+                    # These shards run heavy Golden journeys alongside ordinary source tests.
+                    # Limit outer workers without changing the tests' own concurrency or deadlines.
+                    - { runner: macos-latest, shard: 2, workers: "2", job_minutes: 110 }
+                    - { runner: macos-latest, shard: 3, workers: "4", job_minutes: 75 }
+                    - { runner: macos-latest, shard: 4, workers: "2", job_minutes: 110 }
         env:
-            WLD_TEST_CONCURRENCY: "4"
+            WLD_TEST_CONCURRENCY: ${{ matrix.workers }}
             WLD_TEST_FILE_TIMEOUT_MS: "900000"
         steps:
             - uses: actions/checkout@v5

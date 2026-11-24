@@ -271,6 +271,8 @@ interface WorkflowMatrixEntry {
     phase?: string;
     shard?: number;
     asset?: string;
+    workers?: string;
+    job_minutes?: number;
 }
 interface WorkflowJob {
     if?: string;
@@ -278,6 +280,8 @@ interface WorkflowJob {
     needs?: string | string[];
     with?: Record<string, string>;
     "runs-on"?: string;
+    "timeout-minutes"?: number | string;
+    env?: Record<string, string>;
     steps?: WorkflowStep[];
     strategy?: {
         "fail-fast": boolean;
@@ -362,8 +366,23 @@ test("platform checks are release-only, use the selected commit, and cannot sile
 
 test("release matrix qualifies Unix assets and keeps Windows diagnostics paused", async () => {
     const unix = await readGate("release-unix");
-    assertEquals(unix.jobs.source.strategy?.matrix.runner, ["macos-latest"]);
-    assertEquals(unix.jobs.source.strategy?.matrix.shard, [1, 2, 3, 4]);
+    const source = unix.jobs.source;
+    assertEquals(source.strategy?.matrix, {
+        include: [
+            { runner: "macos-latest", shard: 1, workers: "4", job_minutes: 75 },
+            { runner: "macos-latest", shard: 2, workers: "2", job_minutes: 110 },
+            { runner: "macos-latest", shard: 3, workers: "4", job_minutes: 75 },
+            { runner: "macos-latest", shard: 4, workers: "2", job_minutes: 110 },
+        ],
+    });
+    assertEquals(source["runs-on"], "${{ matrix.runner }}");
+    assertEquals(source["timeout-minutes"], "${{ matrix.job_minutes }}");
+    assertEquals(source.env?.WLD_TEST_CONCURRENCY, "${{ matrix.workers }}");
+    assertEquals(source.env?.WLD_TEST_FILE_TIMEOUT_MS, "900000");
+    assertEquals(
+        source.steps?.filter((step) => step.env?.WLD_TEST_SHARD).map((step) => step.env?.WLD_TEST_SHARD),
+        ["${{ matrix.shard }}/4"],
+    );
     assertEquals(unix.jobs.package.strategy?.matrix.runner, ["ubuntu-latest", "macos-latest"]);
     const windows = (await readGate("release-windows")).jobs.native;
     assertEquals(windows.if, "${{ false }}");
