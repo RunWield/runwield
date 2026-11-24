@@ -107,6 +107,30 @@ test("artifact reports preserve failure checkpoints but omit transcripts, paths 
                     queuedMessages: [secret],
                     workflowContext: { status: "ready_for_work", validationProgress: { stage: "cycle" } },
                 },
+                concurrentSessions: {
+                    [secret]: {
+                        screenText: secret,
+                        runtime: {
+                            busy: false,
+                            activeTurnId: null,
+                            queuedMessages: [secret],
+                            workflowContext: {
+                                summary: secret,
+                                planName: secret,
+                                status: "reviewed",
+                                validationProgress: {
+                                    stage: "merge",
+                                    outcome: "paused",
+                                    checks: { merge: "pending", semanticReview: "passed", humanReview: secret },
+                                },
+                                progressFacts: [
+                                    { kind: "publication", phase: "target_integrated", failure: true, message: secret },
+                                    { kind: "validation_checkpoint", phase: "delivery", state: "paused" },
+                                ],
+                            },
+                        },
+                    },
+                },
                 actor: { consumed: [secret], remaining: [] },
             }),
         );
@@ -140,6 +164,21 @@ test("artifact reports preserve failure checkpoints but omit transcripts, paths 
             planStatus: "ready_for_work",
             validationStage: "cycle",
         });
+        assertEquals(observed.concurrentSessions, [
+            {
+                busy: false,
+                activeTurn: false,
+                planStatus: "reviewed",
+                validationStage: "merge",
+                validationOutcome: "paused",
+                semanticReview: "passed",
+                merge: "pending",
+                publicationPhase: "target_integrated",
+                publicationFailed: true,
+                checkpointPhase: "delivery",
+                checkpointState: "paused",
+            },
+        ]);
         assertEquals(exposed.includes("transcriptsecret"), false);
         assertEquals(observed.events, [
             "concurrent:runtime:tool:result:task_completed:ok",

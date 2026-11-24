@@ -7,6 +7,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import type { JsonRecord, JsonValue } from "../src/shared/jsonc.ts";
+import type { PublicationPhase } from "../src/shared/workflow/publication-attempt.ts";
 
 const evidenceDirectory = /^runwield-golden-tui-(?:timeout|child-failure|failure)-[a-z0-9]+$/i;
 const safeLabel = /^[a-z0-9_-]{1,120}$/i;
@@ -97,6 +98,74 @@ function integer(value: JsonValue | undefined): number | undefined {
     return typeof value === "number" && Number.isSafeInteger(value) ? value : undefined;
 }
 
+const planStatuses = [
+    "draft",
+    "approved",
+    "ready_for_work",
+    "in_progress",
+    "implemented",
+    "validated_ci",
+    "reviewed",
+    "validated",
+    "verified",
+    "user_verified",
+    "on_hold",
+];
+const validationStages = [
+    "cycle",
+    "ci",
+    "engineer_repair",
+    "semantic_review",
+    "human_review",
+    "merge",
+    "manual_qa",
+    "terminal",
+];
+const validationOutcomes = ["running", "paused", "verified", "failed"];
+const publicationPhases = [
+    "candidate_sealed",
+    "artifacts_committed",
+    "target_integrated",
+    "target_published",
+    "publication_verified",
+    "cleanup_complete",
+] as const satisfies readonly PublicationPhase[];
+const checkStates = ["pending", "running", "passed", "failed", "skipped", "canceled"];
+
+function enumValue(value: JsonValue | undefined, accepted: readonly string[]): string | undefined {
+    return typeof value === "string" && accepted.includes(value) ? value : undefined;
+}
+
+// The named secondary Session need not share the primary's terminal status.
+// Keep its state but not its alias, Plan identity, screen, notices or messages.
+function concurrentRuntime(value: JsonRecord) {
+    const runtime = record(value.runtime);
+    const context = record(runtime.workflowContext);
+    const progress = record(context.validationProgress);
+    const checks = record(progress.checks);
+    const facts = Array.isArray(context.progressFacts) ? context.progressFacts.map(record) : [];
+    const publication = facts.findLast((fact) => fact.kind === "publication");
+    const checkpoint = facts.findLast((fact) => fact.kind === "validation_checkpoint");
+    return {
+        busy: flag(runtime.busy),
+        activeTurn: runtime.activeTurnId === null ? false : typeof runtime.activeTurnId === "string" || undefined,
+        liveQuestion: flag(context.liveQuestion),
+        livePlanReview: flag(context.livePlanReview),
+        liveCodeReview: flag(context.liveCodeReview),
+        planStatus: enumValue(context.status, planStatuses),
+        validationStage: enumValue(progress.stage, validationStages),
+        validationOutcome: enumValue(progress.outcome, validationOutcomes),
+        ci: enumValue(checks.ci, checkStates),
+        semanticReview: enumValue(checks.semanticReview, checkStates),
+        humanReview: enumValue(checks.humanReview, checkStates),
+        merge: enumValue(checks.merge, checkStates),
+        publicationPhase: enumValue(publication?.phase, publicationPhases),
+        publicationFailed: flag(publication?.failure),
+        checkpointPhase: enumValue(checkpoint?.phase, ["mechanical", "semantic", "delivery"]),
+        checkpointState: enumValue(checkpoint?.state, ["ready", "running", "awaiting_repair", "paused"]),
+    };
+}
+
 function diagnostic(value: JsonRecord, startupPhase: string) {
     const runtime = record(value.runtime);
     const context = record(runtime.workflowContext);
@@ -105,6 +174,7 @@ function diagnostic(value: JsonRecord, startupPhase: string) {
     const actor = record(value.actor);
     const child = record(value.childPayload);
     const observation = record(value.lastPlanObservation);
+    const concurrent = Object.values(record(value.concurrentSessions)).slice(0, 4).map(record);
     const lastValidation =
         typeof value.validationErrors === "string"
             ? value.validationErrors
@@ -155,6 +225,7 @@ function diagnostic(value: JsonRecord, startupPhase: string) {
             humanReview: label(checks.humanReview),
             merge: label(checks.merge),
         },
+        concurrentSessions: concurrent.length ? concurrent.map(concurrentRuntime) : undefined,
         actor: { consumed: count(actor.consumed), remaining: count(actor.remaining) },
         events,
     };
