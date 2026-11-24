@@ -84,6 +84,7 @@ Stage labels below are delivery scope, not new lifecycle states or claims of shi
 - [Workspace client access](#workspace-client-access) — target; local desktop and browser separation
 - [Chat workflow access](#telegram-workflow-access)
 - [Interrupted-work recovery](#interrupted-work-recovery)
+- [Factory Router operations](#factory-router-operations)
 - [Reference-client portability](#reference-client-portability)
 - [Advertised ACP conformance](#advertised-acp-conformance)
 
@@ -443,6 +444,51 @@ be retried. Exact continuation of an interrupted token, tool call, or command is
   remaining external uncertainty requires an informed choice without blindly repeating a command or deleting changes.
 - When the process handling a live question is gone, the client explains the need to retry while retaining saved
   conversation.
+
+### Factory Router operations
+
+**Scope and maturity:** Single-user Router operation with optional deterministic GitHub issue-comment publication.
+Other factory loops, tenant authorization, and
+durable model checkpoints remain targets, not capabilities of this slice.
+
+**Requirement: Return a durable typed result independently from ordinary conversation turns.**
+
+A worker with a configured canonical Project ID advertises the ACP capability
+`agentCapabilities._meta["dev.runwield/factory"]` with version `1` and supported loop
+`router`. `_dev.runwield/factory/execute` accepts version, operation ID, explicit Project ID, loop, absolute working
+directory, input prompt, and optional model selection. Router uses RunWield's configured model/authentication and
+role instructions. This first loop classifies supplied input only; `cwd` is a private runtime directory rather than a
+repository checkout. No model-visible file or shell tools are available. It returns a normalized Triage result with
+material uncertainty in the summary, without starting the selected workflow. An ordinary ACP
+`end_turn` does not mean a factory operation or delivery workflow completed.
+
+Core owns [Factory Router execution and receipts](runwield-core-prd.md#factory-router-execution). The response reports
+`phase: Completed` only after the result receipt and any requested comment publication receipt are persisted. This
+marks the requested routing/comment operation complete, not implementation or code delivery. The factory must supply
+the same operation ID and inputs when recovering a lost response. A repeated
+ID with different inputs is refused. The handler checks the requested Project ID against the worker’s provisioned Project ID and requires the requested working directory to match the worker’s launch directory. It rejects a mismatch before opening receipts, invoking the Router, or publishing.
+
+The optional request `publication` is `{kind: "github-issue-comment", repository: "owner/repo", repositoryId:
+"<numeric ID>", issueNumber: <positive integer>, issueId: "<numeric ID>"}`. These IDs are pinned by the authenticated
+intake. There is no caller-controlled credential path or API base URL. Deployment configures
+`WLD_FACTORY_GITHUB_TOKEN_FILE`. A completed published response adds `publication: {commentId: "<numeric ID>", url:
+"https://github.com/...#issuecomment-..."}`. Core owns destination verification, rendering, effect reconciliation,
+and rate backoff; the Go worker transports the request and typed result.
+
+**Acceptance scenarios:**
+
+- Given concurrent identical requests, both receive the same saved Triage result and only one model turn runs.
+- Given a lost response after receipt publication, a replacement worker with the same durable HOME replays the result
+  without calling the model or starting an Engineer or Planner.
+- Given interruption before a result is saved, retry reruns read-only routing with the original admitted inputs.
+- Given an existing operation ID and a changed prompt or Project ID, execution is rejected without another model call.
+- Given a published issue comment whose POST response was lost, retry finds the exact own-author comment across
+  paginated results and completes without rerouting or creating a duplicate.
+- Given an ambiguous prior POST and no matching comment, retry stays unresolved without repeating the write. A
+  definite rejected POST may retry after the external prerequisite is repaired.
+- Given a changed repository or issue identity, Core refuses publication. Copied markers from other authors cannot
+  supply a completion receipt.
+- Given a rate-limit response, replacement workers retain its backoff and do not make more requests before it expires.
 
 <a id="65-openab-contribution-policy"></a>
 

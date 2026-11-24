@@ -10,7 +10,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
 
 const REPO_ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
-const SOURCE_ROOTS = ["src", "scripts", "packages"];
+const SOURCE_ROOTS = ["src", "scripts", "packages", "factory"];
 
 /**
  * Directories that are not ours to check: vendored code, build output, and caches.

@@ -78,7 +78,7 @@ For the same report, check all three boundaries:
    operation. Its session binding updates context, records the metric, emits the status/event, and switches agents
    exactly as the current mode requires. The Pi binding preserves its tool envelope and turn termination behavior.
    Desktop may request this through ACP. One shared workflow owner implements the routing policy.
-3. The target factory worker returns the same JSON inside its ACP operation result. The factory prototype lives outside this main-based extraction. A recipe requesting a GitHub comment
+3. The [Factory worker](../../factory/README.md) returns the same JSON inside its ACP operation result. Its ACP handler consumes the shared Agent and Tool registries and verifies the deployed Project binding. A recipe requesting a GitHub comment
    feeds the saved result to the existing publisher and returns its receipt. A retry reuses that receipt. Agent
    switching and comment publication are consumer decisions. Current Connect callers also retain the same
    normalization for reports supplied by external hosts.

@@ -12,6 +12,22 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
+    factory:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: factory
+        steps:
+            - uses: actions/checkout@v5
+            - uses: actions/setup-go@v6
+              with:
+                  go-version-file: factory/go.mod
+                  cache-dependency-path: factory/go.sum
+            - name: Test Factory controller and worker
+              run: go test ./...
+            - name: Build Factory runtime
+              run: go build ./cmd/factory
+
     ci-shards:
         runs-on: ubuntu-latest
 
@@ -252,11 +268,13 @@ jobs:
 
     ci:
         if: always()
-        needs: ci-shards
+        needs: [ci-shards, factory]
         runs-on: ubuntu-latest
         steps:
             - name: Require every source shard
               run: test '${{ needs.ci-shards.result }}' = 'success'
+            - name: Require Factory checks
+              run: test '${{ needs.factory.result }}' = 'success'
 
     golden:
         if: always()

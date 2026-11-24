@@ -44,6 +44,13 @@ import {
 import { getSelectedDefaultModelAvailability } from "../shared/session/model-readiness.ts";
 import { createSessionRuntime, SessionTurnInProgressError } from "../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../shared/session/session-runtime-events.ts";
+import type { JsonValue } from "../shared/jsonc.ts";
+import {
+    configuredFactoryProjectId,
+    executeFactoryRouter,
+    FACTORY_EXECUTE_METHOD,
+    parseFactoryRouterRequest,
+} from "./factory-router.ts";
 import { AcpSessionMap, normalizeAcpSessionIdForLoad } from "./session-map.ts";
 import {
     type AcpContextUsage,
@@ -213,6 +220,9 @@ export function createInitializeResponse(request: InitializeRequest | undefined)
     return {
         protocolVersion: PROTOCOL_VERSION,
         agentCapabilities: {
+            ...(configuredFactoryProjectId()
+                ? { _meta: { "dev.runwield/factory": { version: 1, loops: ["router"] } } }
+                : {}),
             loadSession: true,
             promptCapabilities: {
                 image: true,
@@ -1292,6 +1302,14 @@ function createRunWieldAcpServer(context: AcpServerContext): AgentApp {
     const { runtime, sessionMap, releasePromptAfterResponse } = context;
     const operations = context.operations;
     let clientCapabilities: ClientCapabilities | null = null;
+
+    app.onRequest(
+        FACTORY_EXECUTE_METHOD,
+        (value) => parseFactoryRouterRequest(value as JsonValue),
+        (context) => {
+            return executeFactoryRouter(context.params);
+        },
+    );
 
     app.onRequest(methods.agent.initialize, (context) => {
         clientCapabilities = context.params?.clientCapabilities || null;

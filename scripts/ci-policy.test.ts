@@ -204,10 +204,11 @@ test("release and PR require all source and Golden shards without cancelling sib
             assertStringIncludes(body, "actions/upload-artifact@v5");
             assertStringIncludes(body, "path: .ci-cache/");
             const gate = job.replace("-shards", "");
+            const gateNeeds = workflowName === "pr" && gate === "ci" ? `[${job}, factory]` : job;
             const aggregate =
                 workflowName === "release"
                     ? `    ${gate}:\n        if: \${{ always() && needs.metadata.outputs.qualification_only != 'true' }}\n        needs: [metadata, ${job}]`
-                    : `    ${gate}:\n        if: always()\n        needs: ${job}`;
+                    : `    ${gate}:\n        if: always()\n        needs: ${gateNeeds}`;
             assertStringIncludes(workflow, aggregate);
             assertStringIncludes(workflow, "run: test '$" + `{{ needs.${job}.result }}' = 'success'`);
         }
@@ -300,10 +301,10 @@ async function readGate(name: string): Promise<GateWorkflow> {
     return load(await fsReadFile(`.github/workflows/${name}.yml`, "utf8")) as GateWorkflow;
 }
 
-test("ordinary PRs keep only the Ubuntu source and Linux Golden portfolio", async () => {
+test("ordinary PRs run Ubuntu source, Factory, and Linux Golden checks", async () => {
     const pr = await readGate("pr");
     assertEquals(pr.name, "pr-gate");
-    assertEquals(Object.keys(pr.jobs).sort(), ["ci", "ci-shards", "golden", "golden-shards"]);
+    assertEquals(Object.keys(pr.jobs).sort(), ["ci", "ci-shards", "factory", "golden", "golden-shards"]);
     for (const name of ["ci-shards", "golden-shards"]) {
         assertEquals(pr.jobs[name]["runs-on"], "ubuntu-latest");
         assertEquals(pr.jobs[name].strategy?.matrix.shard, [1, 2, 3, 4]);
@@ -311,9 +312,11 @@ test("ordinary PRs keep only the Ubuntu source and Linux Golden portfolio", asyn
     }
     for (const name of ["ci", "golden"]) {
         assertEquals(pr.jobs[name].if, "always()");
-        assertEquals(pr.jobs[name].needs, `${name}-shards`);
+        assertEquals(pr.jobs[name].needs, name === "ci" ? ["ci-shards", "factory"] : "golden-shards");
         assertEquals(pr.jobs[name].steps?.[0].run, `test '\${{ needs.${name}-shards.result }}' = 'success'`);
     }
+    assertEquals(pr.jobs.factory["runs-on"], "ubuntu-latest");
+    assertEquals(pr.jobs.ci.steps?.[1].run, "test '${{ needs.factory.result }}' = 'success'");
     const { scripts } = await readPackageConfig();
     assertEquals(scripts.ci, "bun scripts/check-bun-runtime.ts && bun scripts/run-ci.ts");
 });

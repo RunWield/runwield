@@ -1,0 +1,520 @@
+{
+    "apiVersion": "v1",
+    "kind": "List",
+    "items": [
+        {
+            "apiVersion": "apiextensions.k8s.io/v1",
+            "kind": "CustomResourceDefinition",
+            "metadata": {
+                "name": "factoryruns.factory.runwield.dev"
+            },
+            "spec": {
+                "group": "factory.runwield.dev",
+                "scope": "Namespaced",
+                "names": {
+                    "kind": "FactoryRun",
+                    "plural": "factoryruns",
+                    "singular": "factoryrun"
+                },
+                "versions": [
+                    {
+                        "name": "v1alpha1",
+                        "served": true,
+                        "storage": true,
+                        "subresources": {
+                            "status": {}
+                        },
+                        "additionalPrinterColumns": [
+                            {
+                                "name": "Phase",
+                                "type": "string",
+                                "jsonPath": ".status.phase"
+                            },
+                            {
+                                "name": "Project",
+                                "type": "string",
+                                "jsonPath": ".spec.projectId"
+                            }
+                        ],
+                        "schema": {
+                            "openAPIV3Schema": {
+                                "type": "object",
+                                "required": ["spec"],
+                                "properties": {
+                                    "spec": {
+                                        "type": "object",
+                                        "required": ["projectId", "loop", "input", "model"],
+                                        "properties": {
+                                            "projectId": {
+                                                "type": "string",
+                                                "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-4[0-9A-Fa-f]{3}-[89aAbB][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$"
+                                            },
+                                            "loop": {
+                                                "type": "string",
+                                                "enum": ["router"]
+                                            },
+                                            "input": {
+                                                "type": "object",
+                                                "required": ["prompt"],
+                                                "properties": {
+                                                    "prompt": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 70000
+                                                    }
+                                                }
+                                            },
+                                            "model": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 256
+                                            },
+                                            "publication": {
+                                                "type": "object",
+                                                "required": [
+                                                    "kind",
+                                                    "repository",
+                                                    "repositoryId",
+                                                    "issueNumber",
+                                                    "issueId"
+                                                ],
+                                                "properties": {
+                                                    "kind": {
+                                                        "type": "string",
+                                                        "enum": ["github-issue-comment"]
+                                                    },
+                                                    "repository": {
+                                                        "type": "string",
+                                                        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$",
+                                                        "maxLength": 256
+                                                    },
+                                                    "repositoryId": {
+                                                        "type": "string",
+                                                        "pattern": "^[1-9][0-9]*$",
+                                                        "maxLength": 32
+                                                    },
+                                                    "issueId": {
+                                                        "type": "string",
+                                                        "pattern": "^[1-9][0-9]*$",
+                                                        "maxLength": 32
+                                                    },
+                                                    "issueNumber": {
+                                                        "type": "integer",
+                                                        "minimum": 1
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "x-kubernetes-validations": [
+                                            {
+                                                "rule": "self == oldSelf",
+                                                "message": "Execution inputs are immutable; create a new run"
+                                            }
+                                        ]
+                                    },
+                                    "status": {
+                                        "type": "object",
+                                        "properties": {
+                                            "phase": {
+                                                "type": "string",
+                                                "enum": ["Accepted", "Running", "Completed", "Rejected"]
+                                            },
+                                            "executionName": {
+                                                "type": "string"
+                                            },
+                                            "result": {
+                                                "type": "object",
+                                                "x-kubernetes-preserve-unknown-fields": true
+                                            },
+                                            "conditions": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "x-kubernetes-preserve-unknown-fields": true,
+                                                    "required": [
+                                                        "type",
+                                                        "status",
+                                                        "reason",
+                                                        "message",
+                                                        "lastTransitionTime"
+                                                    ],
+                                                    "properties": {
+                                                        "type": {
+                                                            "type": "string"
+                                                        },
+                                                        "status": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "type": "string"
+                                                        },
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "lastTransitionTime": {
+                                                            "type": "string"
+                                                        },
+                                                        "observedGeneration": {
+                                                            "type": "integer",
+                                                            "format": "int64"
+                                                        }
+                                                    }
+                                                },
+                                                "x-kubernetes-list-type": "map",
+                                                "x-kubernetes-list-map-keys": ["type"]
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "apiextensions.k8s.io/v1",
+            "kind": "CustomResourceDefinition",
+            "metadata": {
+                "name": "stepexecutions.factory.runwield.dev"
+            },
+            "spec": {
+                "group": "factory.runwield.dev",
+                "scope": "Namespaced",
+                "names": {
+                    "kind": "StepExecution",
+                    "plural": "stepexecutions",
+                    "singular": "stepexecution"
+                },
+                "versions": [
+                    {
+                        "name": "v1alpha1",
+                        "served": true,
+                        "storage": true,
+                        "subresources": {
+                            "status": {}
+                        },
+                        "additionalPrinterColumns": [
+                            {
+                                "name": "Phase",
+                                "type": "string",
+                                "jsonPath": ".status.phase"
+                            },
+                            {
+                                "name": "Project",
+                                "type": "string",
+                                "jsonPath": ".spec.projectId"
+                            }
+                        ],
+                        "schema": {
+                            "openAPIV3Schema": {
+                                "type": "object",
+                                "required": ["spec"],
+                                "properties": {
+                                    "spec": {
+                                        "type": "object",
+                                        "required": [
+                                            "version",
+                                            "operationId",
+                                            "projectId",
+                                            "loop",
+                                            "cwd",
+                                            "input",
+                                            "model"
+                                        ],
+                                        "properties": {
+                                            "projectId": {
+                                                "type": "string",
+                                                "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-4[0-9A-Fa-f]{3}-[89aAbB][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$"
+                                            },
+                                            "loop": {
+                                                "type": "string",
+                                                "enum": ["router"]
+                                            },
+                                            "input": {
+                                                "type": "object",
+                                                "required": ["prompt"],
+                                                "properties": {
+                                                    "prompt": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 70000
+                                                    }
+                                                }
+                                            },
+                                            "model": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 256
+                                            },
+                                            "version": {
+                                                "type": "integer",
+                                                "enum": [1]
+                                            },
+                                            "operationId": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 256
+                                            },
+                                            "cwd": {
+                                                "type": "string",
+                                                "enum": ["/data/workspace"]
+                                            },
+                                            "publication": {
+                                                "type": "object",
+                                                "required": [
+                                                    "kind",
+                                                    "repository",
+                                                    "repositoryId",
+                                                    "issueNumber",
+                                                    "issueId"
+                                                ],
+                                                "properties": {
+                                                    "kind": {
+                                                        "type": "string",
+                                                        "enum": ["github-issue-comment"]
+                                                    },
+                                                    "repository": {
+                                                        "type": "string",
+                                                        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$",
+                                                        "maxLength": 256
+                                                    },
+                                                    "repositoryId": {
+                                                        "type": "string",
+                                                        "pattern": "^[1-9][0-9]*$",
+                                                        "maxLength": 32
+                                                    },
+                                                    "issueId": {
+                                                        "type": "string",
+                                                        "pattern": "^[1-9][0-9]*$",
+                                                        "maxLength": 32
+                                                    },
+                                                    "issueNumber": {
+                                                        "type": "integer",
+                                                        "minimum": 1
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "x-kubernetes-validations": [
+                                            {
+                                                "rule": "self == oldSelf",
+                                                "message": "Execution inputs are immutable; create a new run"
+                                            }
+                                        ]
+                                    },
+                                    "status": {
+                                        "type": "object",
+                                        "properties": {
+                                            "phase": {
+                                                "type": "string",
+                                                "enum": ["Accepted", "Running", "Completed"]
+                                            },
+                                            "executionName": {
+                                                "type": "string"
+                                            },
+                                            "result": {
+                                                "type": "object",
+                                                "x-kubernetes-preserve-unknown-fields": true
+                                            },
+                                            "conditions": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "x-kubernetes-preserve-unknown-fields": true,
+                                                    "required": [
+                                                        "type",
+                                                        "status",
+                                                        "reason",
+                                                        "message",
+                                                        "lastTransitionTime"
+                                                    ],
+                                                    "properties": {
+                                                        "type": {
+                                                            "type": "string"
+                                                        },
+                                                        "status": {
+                                                            "type": "string"
+                                                        },
+                                                        "reason": {
+                                                            "type": "string"
+                                                        },
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "lastTransitionTime": {
+                                                            "type": "string"
+                                                        },
+                                                        "observedGeneration": {
+                                                            "type": "integer",
+                                                            "format": "int64"
+                                                        }
+                                                    }
+                                                },
+                                                "x-kubernetes-list-type": "map",
+                                                "x-kubernetes-list-map-keys": ["type"]
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "apiextensions.k8s.io/v1",
+            "kind": "CustomResourceDefinition",
+            "metadata": {
+                "name": "githubtriages.factory.runwield.dev"
+            },
+            "spec": {
+                "group": "factory.runwield.dev",
+                "scope": "Namespaced",
+                "names": {
+                    "kind": "GitHubTriage",
+                    "plural": "githubtriages",
+                    "singular": "githubtriage"
+                },
+                "versions": [
+                    {
+                        "name": "v1alpha1",
+                        "served": true,
+                        "storage": true,
+                        "subresources": {
+                            "status": {}
+                        },
+                        "additionalPrinterColumns": [
+                            {
+                                "name": "Mode",
+                                "type": "string",
+                                "jsonPath": ".spec.mode"
+                            },
+                            {
+                                "name": "Phase",
+                                "type": "string",
+                                "jsonPath": ".status.phase"
+                            },
+                            {
+                                "name": "Published",
+                                "type": "integer",
+                                "jsonPath": ".status.completed"
+                            }
+                        ],
+                        "schema": {
+                            "openAPIV3Schema": {
+                                "type": "object",
+                                "required": ["spec"],
+                                "properties": {
+                                    "spec": {
+                                        "type": "object",
+                                        "required": [
+                                            "projectId",
+                                            "repository",
+                                            "repositoryId",
+                                            "label",
+                                            "mode",
+                                            "model"
+                                        ],
+                                        "properties": {
+                                            "projectId": {
+                                                "type": "string",
+                                                "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-4[0-9A-Fa-f]{3}-[89aAbB][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$"
+                                            },
+                                            "repository": {
+                                                "type": "string",
+                                                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$",
+                                                "maxLength": 256
+                                            },
+                                            "repositoryId": {
+                                                "type": "string",
+                                                "pattern": "^[1-9][0-9]*$",
+                                                "maxLength": 32
+                                            },
+                                            "label": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 128
+                                            },
+                                            "excludeLabels": {
+                                                "type": "array",
+                                                "maxItems": 20,
+                                                "items": {
+                                                    "type": "string",
+                                                    "maxLength": 128
+                                                }
+                                            },
+                                            "mode": {
+                                                "type": "string",
+                                                "enum": ["batch", "next"]
+                                            },
+                                            "model": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 256
+                                            }
+                                        },
+                                        "x-kubernetes-validations": [
+                                            {
+                                                "rule": "self == oldSelf",
+                                                "message": "Create a new intake to change its recipe"
+                                            }
+                                        ]
+                                    },
+                                    "status": {
+                                        "type": "object",
+                                        "properties": {
+                                            "phase": {
+                                                "type": "string",
+                                                "enum": ["Admitted", "Running", "Retrying", "Completed", "Rejected"]
+                                            },
+                                            "selectionSealed": {
+                                                "type": "boolean"
+                                            },
+                                            "completed": {
+                                                "type": "integer",
+                                                "minimum": 0
+                                            },
+                                            "message": {
+                                                "type": "string",
+                                                "maxLength": 2048
+                                            },
+                                            "selected": {
+                                                "type": "array",
+                                                "maxItems": 10,
+                                                "items": {
+                                                    "type": "object",
+                                                    "required": ["id", "number", "runName"],
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "string",
+                                                            "pattern": "^[1-9][0-9]*$",
+                                                            "maxLength": 32
+                                                        },
+                                                        "number": {
+                                                            "type": "integer",
+                                                            "minimum": 1
+                                                        },
+                                                        "runName": {
+                                                            "type": "string",
+                                                            "maxLength": 63
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "retryAt": {
+                                                "type": "string",
+                                                "format": "date-time"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ]
+}

@@ -220,6 +220,7 @@ actual delivery; unmet intent is retained explicitly. Keep the five-document own
 
 - [Reviewed intent and proportional work](#reviewed-intent-and-proportional-work)
 - [Consistent workflow outcomes across surfaces](#consistent-workflow-outcomes-across-surfaces)
+- [Factory recipes](#factory-recipes)
 - [Durable capability requirements and planning memory](#durable-capability-requirements-and-planning-memory)
 - [Public documentation](#public-documentation)
 - [Independent adoption and private working space](#independent-adoption-and-private-working-space)
@@ -278,6 +279,40 @@ recovery above.
   ongoing delivery and automatic recovery without claiming success or treating the failed attempt as a conclusion.
 - Given a supported same-owner continuation, when the user changes screens, an idle open screen does not force a
   separate conversation or reserve the work.
+
+### Factory recipes
+
+**Scope and maturity:** Initial personal Kubernetes deployment with GitHub Router recipes. Other unattended loops,
+shared memory, production tenancy, and desktop/SaaS recipe management remain targets.
+
+**Requirement: Deploy opinionated RunWield workflows as recipes.**
+
+Recipes configure a supported `wld` workflow's input and publication. RunWield's accepted completion tools trigger
+Core-owned transitions; hosting machinery admits work, schedules workers, and recovers execution. The factory does
+not offer arbitrary categories or a generic agent graph. The first recipes send a GitHub issue's title and body to
+[Core's standalone Router and comment publisher](runwield-core-prd.md#factory-router-execution), preserving its
+opinionated triage result and the [ACP contract](runwield-acp-protocol-prd.md#factory-router-operations).
+
+**Requirement: Keep finite batches distinct from one-item scheduled admission.**
+
+A batch freezes up to ten oldest eligible open issues labeled `test`. A standing recipe wakes hourly by default and
+admits at most one eligible issue when its project has no unfinished work. Both exclude pull requests, configured work
+labels (initially `status:in-progress`), and retained issue claims from either recipe. An empty selection is a visible
+successful no-op. Every issue retains its stable GitHub identity and a shared registered Project ID independent of
+folder names. Clients use namespaced Kubernetes resources; worker permissions are limited to their own execution.
+This is a trusted personal deployment, not completed tenant authorization in Core.
+
+**Acceptance scenarios:**
+
+- Given twelve eligible issues, a batch freezes the oldest ten and produces one Router run per issue; replaying the
+  admission after interruption does not expand membership or duplicate runs.
+- Given unfinished batch or project work, a scheduled wake records no admission. After that work completes, a later
+  wake selects the oldest remaining unclaimed issue. Completed issues remain claimed even if their label remains.
+- Given no eligible issues, both modes complete without launching a Router or posting comments.
+- Given an admitted issue, the Router sees its title and body, and its accepted report drives a Core-owned comment.
+  Completion requires the publication receipt; the controller does not interpret model prose or publish independently.
+- Given a failed process or replaced pod with intact storage, the same operation resumes through Core's recovery
+  contract. An uncertain remote publication remains pending until reconciled; it is not falsely marked complete.
 
 ### Durable capability requirements and planning memory
 

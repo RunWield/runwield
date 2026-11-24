@@ -63,6 +63,7 @@ behavior.
 - [Plan authoring and external adoption](#plan-authoring-and-external-adoption)
 - [Plan lifecycle](#plan-lifecycle)
 - [Epic decomposition and hold](#epic-decomposition-and-hold)
+- [Factory Router execution](#factory-router-execution)
 - [Execution, validation, and recovery](#execution-validation-and-recovery)
 - [Semantic review and repair](#semantic-review-and-repair)
 - [Standalone code review](#standalone-code-review)
@@ -914,6 +915,59 @@ siblings active. Listings show held work separately from active and finished wor
 - Given an independently held child, holding and resuming the parent leaves it held.
 - Given enough delivered children to meet the goal, the user marks the Epic done enough and the remaining children stay
   visible.
+
+### Factory Router execution
+
+**Scope and maturity:** Standalone Router operation with optional GitHub issue-comment publication for a trusted
+single-user factory worker. General factory
+workflow execution, unattended PR publication, and Pi Durable checkpoint integration remain proposed work.
+
+**Requirement: Route without starting the selected workflow.**
+
+The factory Router reuses RunWield's Router instructions, configured model and credentials, and `triage_report`
+normalization. The first operation classifies supplied input only; its sole tool is the typed report. The working
+directory is private runtime space, not a repository checkout. It does not inspect repository files, invoke shell
+commands, write project files, or transition to another Agent. It states material uncertainty in its summary instead
+of claiming repository discovery. Freeform model prose is not a successful routing result. Confined repository
+discovery will be added with checkout support.
+This bounded worker uses direct Pi model providers, disables optional extensions and Skills, and neither installs
+helper binaries nor reads desktop Mnemoteca memories. Explicit shared-memory integration and external CLI model
+backends are outside this first slice.
+
+**Requirement: Save operation identity before reasoning and the result before acknowledgement.**
+
+Operation records under `~/.wld/factory/` retain the explicit Project ID and admitted inputs. A native file lock
+serializes the same operation across processes; atomic synchronized replacement publishes its receipt. Replacement
+workers need the same persistent HOME. Saved results replay without repeating reasoning. Interrupted reasoning may
+run again before its typed result is saved; reasoning itself has no implementation/publication effects. This is not
+an interrupted model checkpoint. This guarantee covers process/pod replacement with intact storage, not host or disk
+loss.
+
+**Requirement: Publish a routing comment through a deterministic Core-owned transition.**
+
+When the admitted operation requests a GitHub issue comment, Core saves the typed routing result before making the
+publication request. The model cannot choose the destination, invoke GitHub, or access the credential. Core verifies
+the pinned repository and issue IDs through the fixed GitHub API origin, identifies the authenticated user, and saves
+the comment body and publication intent before POST. The comment contains the routing intent, complexity, escaped
+summary, and an operation marker. The worker reads a deployment-configured credential file; callers cannot select
+credential paths or API hosts. Redirects are refused rather than forwarding credentials to another destination.
+
+After a lost POST acknowledgement, Core searches all accessible comment pages for its authenticated author's exact
+marker and body. Other authors' copied markers are not publication evidence. One matching comment supplies the durable
+comment ID and URL; conflicting or multiple own comments remain unresolved. If a prior POST might have happened but
+no matching comment is visible, retry reconciles again without another POST. A definitive rejected POST response
+permits a later creation attempt after repairing the external prerequisite. Network failures, timeouts, malformed
+successful responses, and server errors do not grant that permission. Rate-limit headers persist a retry time so
+worker restarts do not repeatedly call GitHub during backoff. There is no unbounded in-process retry loop.
+
+The operation is Completed only when its requested comment has a saved publication receipt. A completed receipt
+replays without another model turn or network call. Routing completion and comment publication do not authorize or
+claim implementation, Plan approval, or code delivery. This first publisher requires a user token that supports
+GitHub's authenticated-user endpoint; GitHub App installation identity and enterprise API hosts remain outside scope.
+
+The explicit Project ID is checked against the original operation and must match the active Project registered during deployment. The controller checks the namespace binding before issue intake or dispatch. The worker independently checks it before receipt access, routing, or publication.
+[ACP Factory operations](runwield-acp-protocol-prd.md#factory-router-operations) owns the wire contract and acceptance
+journeys. Routing completion is distinct from the delivery conclusions below.
 
 ### Execution, validation, and recovery
 

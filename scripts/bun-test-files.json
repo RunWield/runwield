@@ -1,4 +1,5 @@
 [
+    "factory/project.test.ts",
     "packages/agents/isolated.test.ts",
     "packages/agents/registry.test.ts",
     "packages/bundled-assets/index.test.ts",
@@ -94,6 +95,8 @@
     "src/acp/background-task-wire.test.ts",
     "src/acp/chat-interaction-runtime.test.ts",
     "src/acp/chat-interaction.test.ts",
+    "src/acp/factory-github-publication.test.ts",
+    "src/acp/factory-router.test.ts",
     "src/acp/interaction-mapper.test.ts",
     "src/acp/managed-session.integration.test.ts",
     "src/acp/protocol-smoke.test.ts",

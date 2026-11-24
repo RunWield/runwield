@@ -1,0 +1,9 @@
+# Build context contains only cross-compiled wld and factory binaries.
+FROM docker.io/library/debian:trixie-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git ripgrep \
+    && rm -rf /var/lib/apt/lists/*
+COPY --chmod=755 wld /usr/local/bin/wld
+COPY --chmod=755 factory /usr/local/bin/factory
+ENV HOME=/data/home WLD_NONINTERACTIVE=1
+USER 1000:1000
+ENTRYPOINT ["/usr/local/bin/factory"]

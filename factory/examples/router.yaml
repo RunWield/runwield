@@ -1,0 +1,12 @@
+apiVersion: factory.runwield.dev/v1alpha1
+kind: FactoryRun
+metadata:
+    name: router-demo
+    namespace: runwield-personal
+spec:
+    # Stable opaque identity; use the registered Project ID for a real project.
+    projectId: PROJECT_ID
+    loop: router
+    model: openai/gpt-6.1-sol
+    input:
+        prompt: Explain the difference between a Kubernetes Pod and a Deployment. This is an information-only request; do not change any files.
