@@ -175,3 +175,21 @@ export class GoldenScenarioActor {
         };
     }
 }
+
+/** A Plan identity fallback belongs to the TUI that observed it, even between managed segments. */
+export class GoldenPlanIdentity {
+    private readonly plans = new Map<string, string>();
+
+    seed(lane: string, input: string) {
+        const plan = input
+            .trim()
+            .match(/^\/load-plan\s+(.+)$/)?.[1]
+            ?.trim();
+        if (plan) this.plans.set(lane, plan);
+    }
+
+    resolve(lane: string, reported: string | undefined): string {
+        if (reported) this.plans.set(lane, reported);
+        return reported || this.plans.get(lane) || "";
+    }
+}

@@ -71,6 +71,34 @@ function safeEvent(value: JsonValue): string | undefined {
     return tool && diagnosticToolNames.has(tool[2]) ? scope + kind : undefined;
 }
 
+// Keep a separate completion trace per terminal so a busy peer cannot evict it.
+function completionTraces(value: JsonValue | undefined, secondaryLanes: string[]) {
+    const lanes = ["runtime", ...secondaryLanes.map((lane) => `concurrent:${lane}:runtime`)];
+    const traces = new Map(lanes.map((lane) => [lane, [] as string[]]));
+    if (!Array.isArray(value)) return undefined;
+    for (const event of value) {
+        if (typeof event !== "string") continue;
+        const match = /^(runtime|concurrent:[a-zA-Z0-9_-]+:runtime):(.*)$/.exec(event);
+        if (!match) continue;
+        const [, lane, kind] = match;
+        const trace = traces.get(lane);
+        if (!trace) continue;
+        if (
+            /^tool:(?:start:(?:bash|task_completed|review_complete)|result:(?:bash|task_completed|review_complete):(?:ok|error))$/.test(
+                kind,
+            ) ||
+            /^fixture-route:(?:unassigned|actor-rejected|reviewer-matched)$/.test(kind) ||
+            /^completion:(?:tool-accepted|tool-rejected|tool-other|engineer-unfinished|checkpoint-failed)$/.test(kind) ||
+            kind === "validation-ci:started"
+        ) {
+            trace.push(kind);
+            if (trace.length > 16) trace.shift();
+        }
+    }
+    // Export only fixed event labels in primary/secondary order, no lane names.
+    return [...traces.values()];
+}
+
 function record(value: JsonValue | undefined): JsonRecord {
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -174,7 +202,7 @@ function diagnostic(value: JsonRecord, startupPhase: string) {
     const actor = record(value.actor);
     const child = record(value.childPayload);
     const observation = record(value.lastPlanObservation);
-    const concurrent = Object.values(record(value.concurrentSessions)).slice(0, 4).map(record);
+    const concurrent = Object.entries(record(value.concurrentSessions)).slice(0, 4);
     const lastValidation =
         typeof value.validationErrors === "string"
             ? value.validationErrors
@@ -225,7 +253,13 @@ function diagnostic(value: JsonRecord, startupPhase: string) {
             humanReview: label(checks.humanReview),
             merge: label(checks.merge),
         },
-        concurrentSessions: concurrent.length ? concurrent.map(concurrentRuntime) : undefined,
+        concurrentSessions: concurrent.length
+            ? concurrent.map(([, entry]) => concurrentRuntime(record(entry)))
+            : undefined,
+        completionTraces: completionTraces(
+            value.events,
+            concurrent.map(([lane]) => lane),
+        ),
         actor: { consumed: count(actor.consumed), remaining: count(actor.remaining) },
         events,
     };
