@@ -8,7 +8,8 @@ import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../exec
 import { finalizePlanImplementation } from "../implementation-checkpoint.ts";
 import { git } from "../../git-test-fixture.ts";
 import { captureForegroundProcess } from "../../captured-process.ts";
-import type { DeliveryCopy, PackageDocuments } from "../../../plan-store/packages.ts";
+import type { PackageDocuments } from "@runwield/plans/history";
+import type { DeliveryCopy } from "../../../plan-store/packages.ts";
 
 export async function publicationFixture(
     plans = false,

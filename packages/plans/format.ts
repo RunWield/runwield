@@ -17,6 +17,7 @@ export {
     parsePlanFrontMatter,
     summarizePlanBody,
     planDocumentMarkdown,
+    decodePackageMarkdown,
     splitPlanMarkdownBody,
     mergeFrontMatterText,
     hashPlanBody,

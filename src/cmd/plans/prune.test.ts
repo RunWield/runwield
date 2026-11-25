@@ -4,7 +4,7 @@ import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixt
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { archivePlan } from "../../plan-store/index.ts";
-import { loadArchivedPlan } from "../../shared/testing/plan-query-fixture.ts";
+import { listFixturePlanHistory, loadArchivedPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { setCustomSetting } from "../../shared/settings.ts";
 import { restoreWorkRecordDocument } from "../../shared/work-records/store.ts";
@@ -106,7 +106,7 @@ pruneTest("plans prune honors repository retention and keepLast settings", async
 test("canonical archived families retain records and remove only confirmed, covered milestone histories", async () => {
     await withPlanCommandFixture("prune-canonical-family-", async ({ projectRoot }) => {
         const { create } = await import("../../shared/testing/plan-package-fixture.ts");
-        const { listPlanHistory, previewRecordRetention, previewPlanRetention, confirmRetention } =
+        const { previewRecordRetention, previewPlanRetention, confirmRetention } =
             await import("../../plan-store/index.ts");
         const admission = await projects.checkout.admit(projectRoot);
         if (admission.kind !== "existing") throw new Error("Project fixture needs a stable identity.");
@@ -130,7 +130,7 @@ test("canonical archived families retain records and remove only confirmed, cove
         );
         assertEquals((await previewRecordRetention(projectRoot)).due, []);
         assertStringIncludes(await captureLogs(() => runPlansPruneCommand(["--dry-run"])), "Due: 1");
-        const before = await listPlanHistory(projectRoot, "uncovered");
+        const before = await listFixturePlanHistory(projectRoot, "uncovered");
         assertEquals(before.milestones.length, 1);
         const { readLocalHomeStore } = await import("../../plan-store/index.ts");
         const { workRecordOwnerLayout } = await import("../../shared/work-records/owner.ts");
@@ -163,7 +163,7 @@ test("canonical archived families retain records and remove only confirmed, cove
             }),
         );
         assertEquals(await confirmRetention(projectRoot, "plans", preview.due[0].token!), false);
-        assertEquals((await listPlanHistory(projectRoot, "member")).milestones.length, 1);
+        assertEquals((await listFixturePlanHistory(projectRoot, "member")).milestones.length, 1);
         await unlink(pinPath);
         await setCustomSetting("plans", { archiveKeepLast: 1, archiveRetentionDays: 0 }, "project", projectRoot);
         assertEquals(await confirmRetention(projectRoot, "plans", preview.due[0].token!), false);
@@ -196,7 +196,7 @@ test("canonical archived families retain records and remove only confirmed, cove
         await writeFile(journalPath, JSON.stringify({ phase: "staging", members: journal }));
         await setCustomSetting("plans", { archiveKeepLast: 1, archiveRetentionDays: 0 }, "project", projectRoot);
         assertEquals(await confirmRetention(projectRoot, "plans", preview.due[0].token!), false);
-        assertEquals((await listPlanHistory(projectRoot, "member")).milestones.length, 1);
+        assertEquals((await listFixturePlanHistory(projectRoot, "member")).milestones.length, 1);
         await setCustomSetting("plans", { archiveKeepLast: 0, archiveRetentionDays: 0 }, "project", projectRoot);
         await writeFile(join(family[1].path, "context.md"), original + "Edited before replay.");
         await writeFile(journalPath, JSON.stringify(journal));
@@ -208,7 +208,7 @@ test("canonical archived families retain records and remove only confirmed, cove
         await rejects(read(identity, "member"), /pending_recovery/);
         assertEquals(await confirmRetention(projectRoot, "plans", preview.due[0].token!), false);
         for (const id of ["family", "member"])
-            assertEquals((await listPlanHistory(projectRoot, id)).milestones.length, 1);
+            assertEquals((await listFixturePlanHistory(projectRoot, id)).milestones.length, 1);
         assertEquals(await readFile(join(family[1].path, "context.md"), "utf8"), original + "Edited before replay.");
         await writeFile(join(family[1].path, "context.md"), original);
         assertStringIncludes(await captureLogs(() => runPlansPruneCommand(["--yes"])), "Pruned 1");
@@ -226,7 +226,7 @@ test("canonical archived families retain records and remove only confirmed, cove
         await writeRecord(projectRoot, "33333333-1111-4111-8111-333333333333", "replacement");
         await confirmRetention(projectRoot, "plans", preview.due[0].token!);
         assertEquals((await loadArchivedPlan(projectRoot, "replacement"))?.attrs.planId, "replacement");
-        assertEquals(await listPlanHistory(projectRoot, "uncovered"), before);
+        assertEquals(await listFixturePlanHistory(projectRoot, "uncovered"), before);
         assertEquals((await previewRecordRetention(projectRoot)).due.length, 1);
     });
 });

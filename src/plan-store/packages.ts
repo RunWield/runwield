@@ -12,19 +12,20 @@ import { requestWorkspaceSearchRefresh } from "../shared/workspace-search-refres
 import fs from "node:fs/promises";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { openNativeFileLock, type NativeFileLock } from "../shared/native-file-lock.ts";
 import { assertContainedPath } from "@runwield/resources/fs";
-import {
-    ensurePrivateDir,
-    syncParentDirectory,
-    writeJsonAtomically,
-    writeTextAtomically,
-} from "../shared/private-json-file.ts";
+import { syncParentDirectory, writeJsonAtomically, writeTextAtomically } from "../shared/private-json-file.ts";
 import { plans, type PlanId, type PlanFrontMatter } from "@runwield/plans";
 import {
-    packageResourceRoles as roles,
+    ensurePackageDirectory,
+    localPackageLayout,
+    normalizePackageName as normalizeName,
+    packageFileDigest as digest,
     packageResources as resources,
+    readPackageDocuments,
+    readPackageFile as file,
+    statPackagePath as stat,
     PlanPackageError,
     readRetainedPlanInput,
     rethrowPackagePathError,
@@ -36,11 +37,11 @@ import {
     type PackageResource,
 } from "@runwield/plans/file-snapshots";
 import {
-    EPIC_ARTIFACT_FILE_NAMES,
     type TicketReference,
     normalizePlanDeviations,
     type PlanDeviation,
     canonicalPlanStatus,
+    decodePackageMarkdown,
 } from "@runwield/plans/format";
 import { StalePlanWriteError } from "../plan-store.ts";
 import {
@@ -52,13 +53,14 @@ import {
     type PreparedPlanImport,
 } from "./import-source.ts";
 import { CONTROLLER_STATE_FIELDS, type WorkflowControllerState } from "@runwield/plans/controller-state";
+import {
+    isPlanMilestone,
+    isPlanMilestoneVersion,
+    type PackageDocuments,
+    type PlanMilestone,
+} from "@runwield/plans/history";
+import { planHistoryFiles } from "@runwield/plans/history-files";
 
-export interface PackageDocuments {
-    "context.md": string;
-    "validation.md": string;
-    "manual-qa.md"?: string;
-    "integration-report.md"?: string;
-}
 /** Version 1 stores continuation references, not copies of execution registries/checkpoints. */
 export interface PackageReferences {
     sessionIds: string[];
@@ -249,13 +251,6 @@ export interface PackageDeliveryReceipt {
     mode: "local" | "remote" | "non_git_in_place";
     verifiedAt: string;
 }
-export interface PlanMilestone {
-    version: string;
-    milestone: "approved" | "delivered" | "closed" | "archived";
-    at: string;
-    reason: string;
-    digest: string;
-}
 export interface PlanPackageMetadata {
     history?: PlanMilestone[];
     version: 1;
@@ -352,9 +347,6 @@ type JsonValue = null | string | number | boolean | JsonValue[] | JsonFields;
 interface JsonFields {
     [key: string]: JsonValue;
 }
-const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
-const missing = (error: Error) => "code" in error && error.code === "ENOENT";
-
 function fail(kind: PlanPackageError["kind"], message: string): never {
     throw new PlanPackageError(kind, message);
 }
@@ -362,39 +354,14 @@ function requireId(id: string): PlanId {
     if (!plans.identity.isValid(id)) fail("malformed_metadata", "Invalid Plan ID.");
     return id;
 }
-function normalizeName(name: string): string {
-    if (typeof name !== "string" || !name || name !== name.trim()) fail("unsafe_path", "Invalid package name.");
-    const segments = name.split("/");
-    const reserved = ["context", "validation", "plan.wld.json", ...EPIC_ARTIFACT_FILE_NAMES.map((n) => n.slice(0, -3))];
-    if (
-        segments.some(
-            (segment) =>
-                !segment ||
-                segment === "." ||
-                segment === ".." ||
-                /[\\<>:"|?*]/.test(segment) ||
-                [...segment].some((character) => character.charCodeAt(0) < 32) ||
-                /[. ]$/.test(segment) ||
-                /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(segment) ||
-                reserved.includes(segment.toLowerCase().replace(/\.md$/, "")),
-        )
-    ) {
-        fail("unsafe_path", "Unsafe or reserved package name.");
-    }
-    return segments.join("/");
-}
 function layout(identity: ProjectIdentity): PackageLayout {
-    if (identity.personalOwner.kind !== "execution-account")
-        fail("unavailable", "Managed-remote packages require their personal-store transport.");
-    projects.home.assertStoreIdentity(identity);
-    const home = join(identity.executionAccountHome, ".wld", "projects", identity.projectId);
-    const internal = join(home, "internal", "plan-packages");
+    const { home, internal, plans, stages } = localPackageLayout(identity);
     return {
         identity,
-        home: identity.executionAccountHome,
-        plans: join(home, "plans"),
+        home,
+        plans,
         internal,
-        stages: join(internal, "staging"),
+        stages,
         intent: join(internal, "intent.json"),
         locks: join(internal, "locks"),
         imports: join(internal, "imports"),
@@ -402,23 +369,8 @@ function layout(identity: ProjectIdentity): PackageLayout {
         allocations: join(internal, "allocations.json"),
     };
 }
-async function stat(path: string) {
-    try {
-        return await fs.lstat(path);
-    } catch (error) {
-        if (error instanceof Error && missing(error)) return null;
-        throw error;
-    }
-}
 async function safe(root: string, path: string): Promise<void> {
     await assertContainedPath(root, path).catch(rethrowPackagePathError);
-}
-async function file(root: string, path: string): Promise<Uint8Array | null> {
-    await safe(root, path);
-    const info = await stat(path);
-    if (!info) return null;
-    if (!info.isFile()) fail("unsafe_path", `Package resource is not a regular file: ${path}`);
-    return fs.readFile(path);
 }
 function fields(value: JsonValue, allowed: string[]): JsonFields {
     if (
@@ -537,22 +489,7 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         !strings(data.dependencyPlanIds)
     )
         fail("malformed_metadata", "Invalid package identity, revision, or relationships.");
-    if (
-        data.history !== undefined &&
-        (!Array.isArray(data.history) ||
-            data.history.some((item) => {
-                const entry = fields(item, ["version", "milestone", "at", "reason", "digest"]);
-                return (
-                    typeof entry.version !== "string" ||
-                    !/^[0-9a-f-]{36}$/.test(entry.version) ||
-                    !["approved", "delivered", "closed", "archived"].includes(String(entry.milestone)) ||
-                    typeof entry.at !== "string" ||
-                    typeof entry.reason !== "string" ||
-                    typeof entry.digest !== "string" ||
-                    !/^[0-9a-f]{64}$/.test(entry.digest)
-                );
-            }))
-    )
+    if (data.history !== undefined && (!Array.isArray(data.history) || !data.history.every(isPlanMilestone)))
         fail("malformed_metadata", "Invalid Plan History reference.");
     requireId(data.planId);
     normalizeName(data.name);
@@ -850,17 +787,6 @@ async function readIntent(paths: PackageLayout): Promise<PackageIntent | null> {
         return fail("pending_recovery", "Package publication intent needs recovery; its evidence is invalid.");
     }
 }
-async function readDocuments(paths: PackageLayout, directory: string): Promise<PackageDocument[]> {
-    const documents: PackageDocument[] = [];
-    for (const name of resources) {
-        const bytes = await file(paths.home, join(directory, name));
-        if (!bytes) {
-            if (name === "context.md" || name === "validation.md")
-                fail("missing_document", `Missing required document: ${name}`);
-        } else documents.push({ name, role: roles[name], bytes, hash: digest(bytes) });
-    }
-    return documents;
-}
 async function inspectAt(paths: PackageLayout, name: string): Promise<PackageInspection> {
     const path = join(paths.plans, normalizeName(name));
     try {
@@ -868,7 +794,7 @@ async function inspectAt(paths: PackageLayout, name: string): Promise<PackageIns
         if (!bytes) return { kind: "missing", path, message: "Plan package is missing." };
         const metadata = parseMetadata(bytes);
         if (metadata.name !== name) fail("pending_recovery", "Package location and metadata name disagree.");
-        const documents = await readDocuments(paths, path);
+        const documents = await readPackageDocuments(paths.home, path);
         return { kind: "loaded", path, metadata, documents };
     } catch (error) {
         if (error instanceof Error) return issue(error, path);
@@ -1087,13 +1013,7 @@ async function loaded(paths: PackageLayout, planId: string): Promise<LoadedPlanP
     return result;
 }
 async function directory(paths: PackageLayout, path: string): Promise<void> {
-    await safe(paths.home, path);
-    const created: string[] = [];
-    for (let cursor = path; cursor !== paths.home; cursor = dirname(cursor)) {
-        if (!(await stat(cursor))) created.push(cursor);
-    }
-    ensurePrivateDir(path);
-    for (const entry of created) syncParentDirectory(entry);
+    await ensurePackageDirectory(paths.home, path);
 }
 async function recover(paths: PackageLayout): Promise<void> {
     await recoverImportBatch(paths);
@@ -1520,13 +1440,9 @@ export async function archivePlanPackage(
                 fromPath: join(current.path, "context.md"),
             },
         };
-        metadata.history = await stagePackageMilestone(
-            identity,
-            { ...current, metadata },
-            "archived",
-            archivedAt,
-            reason,
-        );
+        metadata.history = await planHistoryFiles
+            .forOwner(identity)
+            .capture({ metadata, documents: current.documents }, { milestone: "archived", at: archivedAt, reason });
         metadataFrom(metadata);
         const path = join(current.path, "plan.wld.json");
         if (
@@ -1573,64 +1489,6 @@ export async function restorePlanPackage(
         return metadata;
     });
 }
-function milestoneDigest(documents: PackageDocument[]): string {
-    return createHash("sha256")
-        .update(JSON.stringify(documents.map(({ name, hash }) => [name, hash])))
-        .digest("hex");
-}
-
-function historyDirectory(paths: PackageLayout, planId: string): string {
-    const portable = /^[a-z0-9_-]{1,128}$/.test(planId) && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(planId);
-    const segment = portable ? planId : "~" + createHash("sha256").update(planId).digest("hex");
-    return join(dirname(paths.plans), "history", segment);
-}
-
-/** Only a reference in committed package metadata makes a staged milestone visible. */
-export async function stagePackageMilestone(
-    identity: ProjectIdentity,
-    plan: LoadedPlanPackage,
-    milestone: PlanMilestone["milestone"],
-    at: string,
-    reason: string,
-    input?: PackageInputReference,
-): Promise<PlanMilestone[]> {
-    const paths = layout(identity);
-    const documents = input ? (await readPlanPackageInput(identity, input)).documents : plan.documents;
-    const version = randomUUID();
-    const destination = join(historyDirectory(paths, plan.metadata.planId), version);
-    const stage = join(paths.stages, version);
-    await directory(paths, stage);
-    for (const document of documents) writeTextAtomically(join(stage, document.name), document.bytes);
-    const { history: _history, ...metadata } = plan.metadata;
-    writeJsonAtomically(join(stage, "plan.wld.json"), metadata);
-    const digest = milestoneDigest(documents);
-    if (!input && milestoneDigest(await readDocuments(paths, plan.path)) !== digest)
-        fail("changed_input", "Plan documents changed during milestone capture.");
-    await directory(paths, dirname(destination));
-    await fs.rename(stage, destination);
-    syncParentDirectory(destination);
-    return [...(plan.metadata.history || []), { version, milestone, at, reason, digest }];
-}
-
-export async function readPackageMilestone(
-    identity: ProjectIdentity,
-    plan: LoadedPlanPackage,
-    version: string,
-): Promise<PackageDocuments> {
-    const entry = plan.metadata.history?.find((item) => item.version === version);
-    if (!entry) fail("missing", "Plan history version is unavailable.");
-    const paths = layout(identity);
-    const documents = await readDocuments(paths, join(historyDirectory(paths, plan.metadata.planId), entry.version));
-    if (milestoneDigest(documents) !== entry.digest) fail("changed_input", "Frozen milestone documents changed.");
-    return packageDocumentText(documents);
-}
-
-export function packageDocumentText(documents: PackageDocument[]): PackageDocuments {
-    const result: PackageDocuments = { "context.md": "", "validation.md": "" };
-    for (const document of documents) result[document.name] = decodePackageMarkdown(document.bytes);
-    return result;
-}
-
 export async function capturePlanPackageInput(
     identity: ProjectIdentity,
     planId: string,
@@ -2288,11 +2146,6 @@ export function assertPackagePublicationReference(reference: PackagePublicationR
     requireId(reference.planId);
 }
 
-/** Preserve UTF-8 Markdown byte identity, including BOM; malformed encoding cannot be copied lossily. */
-export function decodePackageMarkdown(bytes: Uint8Array): string {
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-}
-
 export function assertDeliveryCopies(copies: DeliveryCopy[]): void {
     if (!Array.isArray(copies)) fail("malformed_metadata", "Invalid delivery copies.");
     const paths = new Set<string>();
@@ -2704,15 +2557,15 @@ async function resumePackagePrune(paths: PackageLayout, freshlyApproved = false)
             staged: join(stage, String(i)),
         }));
     const members = journal.members.map((member) => {
-        const id = requireId(member.planId);
+        requireId(member.planId);
         const root = roots.find((root) => root.name === member.name || member.name.startsWith(root.name + "/"))!;
         const directory = join(root.staged, relative(root.path, join(paths.plans, member.name)));
         if (
             member.documents.some((doc) => !resources.includes(doc.name as PackageResource)) ||
-            member.versions.some((version) => !/^[a-f0-9-]{36}$/.test(version))
+            !member.versions.every(isPlanMilestoneVersion)
         )
             throw new Error("Invalid approved Plan resources.");
-        return { ...member, directory, history: historyDirectory(paths, id) };
+        return { ...member, directory };
     });
     if (journal.phase === "staging") {
         let matches = true;
@@ -2756,23 +2609,18 @@ async function resumePackagePrune(paths: PackageLayout, freshlyApproved = false)
         writeJsonAtomically(intentPath, journal);
     }
     if (journal.phase === "committed") {
+        const history = planHistoryFiles.forOwner(paths.identity);
         for (const member of members) {
             for (const name of ["plan.wld.json", ...member.documents.map((doc) => doc.name)]) {
                 const path = join(member.directory, name);
                 await safe(paths.home, path);
                 await fs.rm(path, { force: true });
             }
-            for (const version of member.versions) {
-                const path = join(member.history, version);
-                await safe(paths.home, path);
-                await fs.rm(path, { recursive: true, force: true });
-            }
-            for (const path of [member.directory, member.history]) {
-                await safe(paths.home, path);
-                await fs.rmdir(path).catch((error: NodeJS.ErrnoException) => {
-                    if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(error.code || "")) throw error;
-                });
-            }
+            await history.prune(member.planId, member.versions);
+            await safe(paths.home, member.directory);
+            await fs.rmdir(member.directory).catch((error: NodeJS.ErrnoException) => {
+                if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(error.code || "")) throw error;
+            });
         }
     }
     // Restore the family on a mismatch, or return unrelated files after committing the exact approved set.

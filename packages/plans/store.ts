@@ -1,5 +1,6 @@
 import type { ProjectId } from "@runwield/projects";
 import type { PlanFrontMatter } from "./document.ts";
+import type { PackageDocuments, PlanHistory } from "./history.ts";
 import type { PlanId } from "./identity.ts";
 import type { PlanEvent, PlanEventDetails } from "./lifecycle.ts";
 import type { WorkRecordFrontMatter, WorkRecordResource } from "./work-records.ts";
@@ -110,9 +111,16 @@ export interface ApplyProjectPlanEvent {
     details?: Omit<PlanEventDetails, "triageMeta" | "now">;
 }
 
+export interface ProjectPlanHistory {
+    list(planId: PlanId): Promise<PlanHistory>;
+    read(planId: PlanId, version: string): Promise<PackageDocuments>;
+    restore(planId: PlanId, version: string, expectedRevision: string): Promise<string>;
+}
+
 /** Operations against a single admitted Project and its canonical Plan owner. */
 export interface ProjectPlanStore {
     readonly projectId: ProjectId;
+    readonly history: ProjectPlanHistory;
     readonly workRecords: ProjectWorkRecords;
     list(): Promise<ProjectPlanCatalog>;
     read(planId: PlanId): Promise<ProjectPlanDocument>;

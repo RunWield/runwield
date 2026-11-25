@@ -1,3 +1,6 @@
+import { ContainedPathError } from "@runwield/resources/fs";
+import { decodePackageMarkdown } from "./format/implementation.ts";
+
 export type PackageResource = "context.md" | "validation.md" | "manual-qa.md" | "integration-report.md";
 export type PackageResourceRole = "context" | "validation" | "manual-qa" | "integration-report";
 
@@ -6,6 +9,19 @@ export interface PackageDocument {
     role: PackageResourceRole;
     bytes: Uint8Array;
     hash: string;
+}
+
+export interface PackageDocuments {
+    "context.md": string;
+    "validation.md": string;
+    "manual-qa.md"?: string;
+    "integration-report.md"?: string;
+}
+
+export function packageDocumentText(documents: readonly PackageDocument[]): PackageDocuments {
+    const result: PackageDocuments = { "context.md": "", "validation.md": "" };
+    for (const document of documents) result[document.name] = decodePackageMarkdown(document.bytes);
+    return result;
 }
 
 export const packageResources: readonly PackageResource[] = [
@@ -39,8 +55,6 @@ export class PlanPackageError extends Error {
         this.name = "PlanPackageError";
     }
 }
-import { ContainedPathError } from "@runwield/resources/fs";
-
 export function rethrowPackagePathError<T>(error: T): never {
     if (error instanceof ContainedPathError) {
         throw new PlanPackageError(

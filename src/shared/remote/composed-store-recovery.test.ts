@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import type { PlanHistory, ProjectStoreBinding, ProjectStoreReply } from "../../plan-store/index.ts";
+import type { ProjectStoreBinding, ProjectStoreReply } from "../../plan-store/index.ts";
+import type { PlanHistory } from "@runwield/plans/history";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { composedRemoteFixture } from "./composed-store-fixture.ts";

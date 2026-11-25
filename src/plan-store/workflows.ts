@@ -1,3 +1,4 @@
+import { planHistoryFiles } from "@runwield/plans/history-files";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import {
     managedPlanStoreActive,
@@ -16,11 +17,10 @@ import { journalPackageMetadataWrite } from "./transitions.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { type PackageInputReference } from "@runwield/plans/file-snapshots";
+import { packageDocumentText, type PackageInputReference } from "@runwield/plans/file-snapshots";
 import {
     capturePlanPackageInput,
     commitPlanPackageBatch,
-    packageDocumentText,
     savePlanPackageDocument,
     listPlanPackages,
     resolvePlanPackageReference,
@@ -28,7 +28,6 @@ import {
     readPlanPackageInput,
     readPlanPackagePublication,
     updatePlanPackageMetadata,
-    stagePackageMilestone,
     withPlanPackageLocks,
     packageDefinitionStrings,
     packageControllerStrings,
@@ -689,61 +688,57 @@ export async function updatePackageWorkflowMetadata(
         }
         const { definition, controller, workflow } = metadataUpdate;
         const eventPackage = {
-            ...current,
+            documents: current.documents,
             metadata: { ...current.metadata, ...metadataUpdate, revision: current.metadata.revision + 1 },
         };
         let history = current.metadata.history;
+        const historyFiles = planHistoryFiles.forOwner(identity);
         const ownReview = workflow.review?.inputs.find((input) => input.planId === current.metadata.planId);
         const delivery = workflow.delivery;
         if (milestone === "approved") {
             if (!ownReview) throw new Error("Approval requires retained Plan documents.");
-            history = await stagePackageMilestone(
-                identity,
+            history = await historyFiles.capture(
                 eventPackage,
-                "approved",
-                controller.updatedAt || new Date().toISOString(),
-                "",
+                { milestone: "approved", at: controller.updatedAt || new Date().toISOString(), reason: "" },
                 ownReview,
             );
         } else if (milestone) {
-            history = await stagePackageMilestone(
-                identity,
+            history = await historyFiles.capture(
                 eventPackage,
-                "delivered",
-                controller.verifiedAt || new Date().toISOString(),
-                "Confirmed publication",
+                {
+                    milestone: "delivered",
+                    at: controller.verifiedAt || new Date().toISOString(),
+                    reason: "Confirmed publication",
+                },
                 milestone.delivered,
             );
         } else if (delivery && delivery.source.inputId !== current.metadata.workflow?.delivery?.source.inputId) {
             const manifest = await readPlanPackagePublication(identity, delivery.source);
             const member = manifest.members.find((member) => member.metadata.planId === current.metadata.planId);
             if (!member) throw new Error("Delivery omits its Plan input.");
-            history = await stagePackageMilestone(
-                identity,
+            history = await historyFiles.capture(
                 eventPackage,
-                "delivered",
-                delivery.verifiedAt,
-                delivery.mode,
+                { milestone: "delivered", at: delivery.verifiedAt, reason: delivery.mode },
                 member.input,
             );
         } else if (
             definition.status !== current.metadata.definition.status &&
             ["user_verified", "closed_without_verification"].includes(definition.status)
         ) {
-            history = await stagePackageMilestone(
-                identity,
-                eventPackage,
-                "closed",
-                definition.userVerifiedAt ||
+            history = await historyFiles.capture(eventPackage, {
+                milestone: "closed",
+                at:
+                    definition.userVerifiedAt ||
                     definition.closedWithoutVerificationAt ||
                     definition.epicDoneEnoughAt ||
                     new Date().toISOString(),
-                definition.status === "user_verified"
-                    ? definition.userVerificationNote || definition.status
-                    : definition.closedWithoutVerificationReason ||
+                reason:
+                    definition.status === "user_verified"
+                        ? definition.userVerificationNote || definition.status
+                        : definition.closedWithoutVerificationReason ||
                           definition.epicDoneEnoughSummary ||
                           definition.status,
-            );
+            });
         }
         const update = { ...metadataUpdate, history };
         const change = reviewedContext ? await reopenedPackageReview(current) : undefined;

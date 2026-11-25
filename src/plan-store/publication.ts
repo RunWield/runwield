@@ -1,3 +1,4 @@
+import { decodePackageMarkdown } from "@runwield/plans/format";
 import { projects } from "@runwield/projects";
 import { createHash } from "node:crypto";
 import {
@@ -26,7 +27,6 @@ import { dirname, join } from "node:path";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
 import {
     capturePlanPackageInput,
-    decodePackageMarkdown,
     listPlanPackages,
     readPlanPackageInput,
     readPlanPackagePublication,

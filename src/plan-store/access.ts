@@ -1,3 +1,5 @@
+import type { PackageDocuments } from "@runwield/plans/history";
+import { packageDocumentText } from "@runwield/plans/file-snapshots";
 import { bindProjectPlanStore, PlanAccessMismatchError } from "./project-binding.ts";
 import { plans, type PlanFrontMatterInput, type PlanFrontMatter } from "@runwield/plans";
 import type { CreateProjectPlan, PlanAuthoringDefinition } from "@runwield/plans/store";
@@ -95,7 +97,6 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
     commitPlanPackageBatch,
-    packageDocumentText,
     listPlanPackages,
     readPlanPackage,
     withPlanPackageLocks,
@@ -103,7 +104,6 @@ import {
     packageDefinitionStrings,
     resolvePlanPackageReference,
     type PackageDefinition,
-    type PackageDocuments,
 } from "./packages.ts";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { packageWorkflowRevision, packageController } from "./workflows.ts";

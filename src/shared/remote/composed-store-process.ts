@@ -138,7 +138,7 @@ try {
             );
     } else if (command.startsWith("managed-history-")) {
         const { runPlansCommand } = await import("../../cmd/plans/index.ts");
-        const { authorLocalPlan, listPlanHistory } = await import("../../plan-store/index.ts");
+        const { authorLocalPlan, openPlanStoreForCheckout } = await import("../../plan-store/index.ts");
         if (command === "managed-history-missing") {
             await rejects(runPlansCommand(["history", "missing"]), /requires an admitted Plan/);
             await rejects(
@@ -148,7 +148,9 @@ try {
         } else if (command === "managed-history-seed") {
             await authorLocalPlan(input.cwd, { planName: "proposal", contextMarkdown: "# Original\n" });
             await recordPlanEvent({ cwd: input.cwd, planName: "proposal", event: "review_approved" });
-            const history = await listPlanHistory(input.cwd, "proposal");
+            const store = openPlanStoreForCheckout(input.cwd);
+            ok(store);
+            const history = await store.history.list(await store.resolveHistoryPlan("proposal"));
             console.log(JSON.stringify(history));
         } else if (command === "managed-history-restore") {
             await runPlansCommand(["history", "restore", "proposal", input.attemptId!]);

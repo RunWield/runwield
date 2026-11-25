@@ -1,5 +1,5 @@
 import { getCwd } from "../../constants.ts";
-import { listPlanHistory, restorePlanMilestone, showPlanMilestone } from "../../plan-store/index.ts";
+import { openPlanStoreForCheckout } from "../../plan-store/index.ts";
 
 export async function runPlansHistoryCommand(args: string[]): Promise<void> {
     const usage =
@@ -8,22 +8,24 @@ export async function runPlansHistoryCommand(args: string[]): Promise<void> {
         console.log(usage);
         return;
     }
-    const cwd = getCwd();
+    const [action, reference, version] = args;
+    if (args.length !== 1 && (args.length !== 3 || !["show", "restore"].includes(action))) throw new Error(usage);
+    const store = openPlanStoreForCheckout(getCwd());
+    if (!store) throw new Error("Plan history requires an admitted Plan.");
+    const planId = await store.resolveHistoryPlan(args.length === 1 ? action : reference);
     if (args.length === 1) {
-        const { milestones } = await listPlanHistory(cwd, args[0]);
+        const { milestones } = await store.history.list(planId);
         if (!milestones.length) console.log("No milestones recorded.");
         for (const entry of milestones)
             console.log([entry.version, entry.milestone, entry.at, entry.reason].filter(Boolean).join("\t"));
         return;
     }
-    const [action, reference, version] = args;
-    if (args.length !== 3 || !["show", "restore"].includes(action)) throw new Error(usage);
     if (action === "show") {
-        const documents = await showPlanMilestone(cwd, reference, version);
+        const documents = await store.history.read(planId, version);
         for (const [name, body] of Object.entries(documents)) console.log(`# ${name}\n\n${body}`);
         return;
     }
-    const { planId, revision } = await listPlanHistory(cwd, reference);
-    const result = await restorePlanMilestone(cwd, planId, version, revision);
+    const { revision } = await store.history.list(planId);
+    const result = await store.history.restore(planId, version, revision);
     console.log(`Restored ${version} to Plan ${planId} at revision ${result}.`);
 }

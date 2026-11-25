@@ -28,11 +28,22 @@ import { archiveSavedPlan, restoreSavedPlan } from "./archiving.ts";
 import { canonicalizeStoredPlanName } from "@runwield/plans/format";
 import { recordPlanEvent } from "./events.ts";
 import {
+    listLocalPlanHistory,
+    readLocalPlanMilestone,
+    resolveLocalHistoryPlan,
+    restoreLocalPlanMilestone,
+} from "./history.ts";
+import {
     admitManagedPlanCheckout,
     currentManagedRetainedExecution,
     createManagedProjectWorkRecord,
+    managedPersonalStoreActive,
     managedPlanStoreActive,
     readManagedActivePlanById,
+    readManagedPlanHistory,
+    readManagedPlanMilestone,
+    resolveManagedHistoryPlan,
+    restoreManagedPlanMilestone,
 } from "./managed.ts";
 import {
     findPlanById,
@@ -128,6 +139,7 @@ function eventDetails(details: PlanEventDetails = {}): PlanEventDetails {
 
 /** Internal review entry point for workflows that still use operational Plan evidence. */
 interface CoreProjectPlanStore extends ProjectPlanStore {
+    resolveHistoryPlan(reference: string): Promise<PlanId>;
     resolveAuthoredPlan(reference: string, expectedPlanId?: string): Promise<ProjectPlanDocument | undefined>;
     author(input: PlanAuthoringInput, expectedPlanId?: string): Promise<ProjectPlanDocument>;
     withWorkflow<Result>(planId: PlanId, name: string, run: (cwd: string) => Promise<Result>): Promise<Result>;
@@ -176,6 +188,30 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
     const listRecords = () => run(listProjectWorkRecords, "read");
     return {
         projectId,
+        history: {
+            list: (id) =>
+                run((cwd) => {
+                    const planId = requirePlanId(id);
+                    return managedPersonalStoreActive()
+                        ? readManagedPlanHistory(cwd, planId)
+                        : listLocalPlanHistory(cwd, planId);
+                }, "history"),
+            read: (id, version) =>
+                run((cwd) => {
+                    const planId = requirePlanId(id);
+                    return managedPersonalStoreActive()
+                        ? readManagedPlanMilestone(cwd, planId, version)
+                        : readLocalPlanMilestone(cwd, planId, version);
+                }, "history"),
+            restore: (id, version, expectedRevision) =>
+                run((cwd) => {
+                    const planId = requirePlanId(id);
+                    requireRevision(expectedRevision);
+                    return managedPersonalStoreActive()
+                        ? restoreManagedPlanMilestone(cwd, planId, version, expectedRevision)
+                        : restoreLocalPlanMilestone(cwd, planId, version, expectedRevision);
+                }, "history"),
+        },
         workRecords: {
             create: (input) =>
                 run((cwd) =>
@@ -265,6 +301,14 @@ export function openPlanStoreForCheckout(cwd: string): CoreProjectPlanStore | un
     const store = projectPlanStore(identity.projectId, run);
     return {
         ...store,
+        resolveHistoryPlan: (reference) =>
+            run(
+                (cwd) =>
+                    managedPersonalStoreActive()
+                        ? resolveManagedHistoryPlan(cwd, reference)
+                        : resolveLocalHistoryPlan(reference),
+                "history",
+            ),
         author: (input, id) => authorProjectPlan(store, input, id),
         resolveAuthoredPlan: (reference, id) => resolveProjectPlan(store, reference, id),
         withWorkflow: (id, name, operation) =>

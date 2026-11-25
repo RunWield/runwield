@@ -1,3 +1,4 @@
+import { packageDocumentText } from "@runwield/plans/file-snapshots";
 import { managedPlanStoreActive, authorManagedChildren } from "./managed.ts";
 import { retainChildAuthoringResult } from "./operation-receipts.ts";
 import { randomUUID } from "node:crypto";
@@ -19,12 +20,7 @@ import {
 } from "../plan-store.ts";
 import { authoredPackageDefinition, withLocalProjectAction } from "./access.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
-import {
-    commitPlanPackageBatch,
-    listPlanPackages,
-    packageDocumentText,
-    type PlanPackageBatchWrite,
-} from "./packages.ts";
+import { commitPlanPackageBatch, listPlanPackages, type PlanPackageBatchWrite } from "./packages.ts";
 import { currentPackageProject, packageController, packageWorkflowRevision } from "./workflows.ts";
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { pickControllerState } from "@runwield/plans/controller-state";

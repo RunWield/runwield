@@ -1,15 +1,22 @@
+import { plans } from "@runwield/plans";
 import { test } from "node:test";
-import { equal, rejects } from "node:assert/strict";
+import { equal, ok, rejects } from "node:assert/strict";
 import {
     authorLocalPlan,
+    openProjectPlanStore,
     readPlanDocuments,
     savePlanDefinition,
     withLocalPlanWorkflow,
     operatePlanFile,
 } from "./index.ts";
-import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
+import {
+    listFixturePlanHistory,
+    readFixtureMilestone,
+    restoreFixtureMilestone,
+    loadPlan,
+} from "../shared/testing/plan-query-fixture.ts";
 import { seedPlanState } from "../shared/testing/plan-state-fixture.ts";
-import { packageFixture, tree } from "../shared/testing/plan-package-fixture.ts";
+import { create as createPackageFixture, packageFixture, tree } from "../shared/testing/plan-package-fixture.ts";
 
 test("competing authoring commands preserve one complete context and validation generation", async () => {
     const fixture = await packageFixture();
@@ -362,8 +369,7 @@ test("rename preserves identity and refuses a stale definition without replacing
     }
 });
 
-import { listPlanHistory, restorePlanMilestone, showPlanMilestone } from "./index.ts";
-import { mkdtemp, rm, writeFile, readFile, access } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile, readFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { deepEqual, notEqual } from "node:assert/strict";
@@ -374,9 +380,12 @@ test("history list and show leave an admitted local Project with no Plans untouc
         const { executionAccountHome, projectId } = fixture.identity;
         const store = join(executionAccountHome, ".wld", "projects", projectId);
         const before = await tree(store);
-        await rejects(listPlanHistory(fixture.root, "missing"), /requires an admitted Plan/);
+        const { history } = openProjectPlanStore(projectId, { admitted: fixture.identity });
+        const missing = plans.identity.parse("missing");
+        ok(missing);
+        await rejects(history.list(missing), /requires an admitted Plan/);
         deepEqual(await tree(store), before);
-        await rejects(showPlanMilestone(fixture.root, "missing", "version"), /requires an admitted Plan/);
+        await rejects(history.read(missing, "version"), /requires an admitted Plan/);
         deepEqual(await tree(store), before);
     } finally {
         await fixture.cleanup();
@@ -394,25 +403,25 @@ test("non-Git history freezes the approved package and restores its membership a
         const plan = (await loadPlan(cwd, "proposal"))!;
         const folder = dirname(plan.path);
         const id = plan.attrs.planId!;
-        equal((await listPlanHistory(cwd, id)).milestones.length, 0);
+        equal((await listFixturePlanHistory(cwd, id)).milestones.length, 0);
         await writeFile(join(folder, "manual-qa.md"), "\ufeffOriginal QA\n");
         await recordPlanEvent({ cwd, planName: "proposal", event: "review_approved", currentStatus: "draft" });
-        const history = await listPlanHistory(cwd, "proposal");
+        const history = await listFixturePlanHistory(cwd, "proposal");
         deepEqual(
             history.milestones.map((entry) => entry.milestone),
             ["approved"],
         );
         const version = history.milestones[0].version;
         await writeFile(join(folder, "validation.md"), "Live checks");
-        await rejects(restorePlanMilestone(cwd, id, version, history.revision), /[Ss]tale|changed/);
+        await rejects(restoreFixtureMilestone(cwd, id, version, history.revision), /[Ss]tale|changed/);
         equal(await readFile(join(folder, "validation.md"), "utf8"), "Live checks");
         await writeFile(join(folder, "integration-report.md"), "Later report");
         await rm(join(folder, "manual-qa.md"));
-        const frozen = await showPlanMilestone(cwd, id, version);
+        const frozen = await readFixtureMilestone(cwd, id, version);
         equal(frozen["manual-qa.md"], "\ufeffOriginal QA\n");
         equal(frozen["validation.md"], "Original checks\n");
-        const before = await listPlanHistory(cwd, id);
-        const revision = await restorePlanMilestone(cwd, id, version, before.revision);
+        const before = await listFixturePlanHistory(cwd, id);
+        const revision = await restoreFixtureMilestone(cwd, id, version, before.revision);
         notEqual(revision, before.revision);
         equal((await loadPlan(cwd, "proposal"))!.attrs.status, "draft");
         equal(await readFile(join(folder, "manual-qa.md"), "utf8"), "\ufeffOriginal QA\n");
@@ -425,7 +434,7 @@ test("non-Git history freezes the approved package and restores its membership a
             currentStatus: "approved",
             details: { userVerificationNote: "Accepted by owner" },
         });
-        const milestones = (await listPlanHistory(cwd, id)).milestones;
+        const milestones = (await listFixturePlanHistory(cwd, id)).milestones;
         deepEqual(
             milestones.map((entry) => entry.milestone),
             ["approved", "approved", "closed"],
@@ -434,7 +443,7 @@ test("non-Git history freezes the approved package and restores its membership a
         notEqual(milestones[0].version, milestones[1].version);
         await recordPlanEvent({ cwd, planName: "proposal", event: "review_reopened", currentStatus: "user_verified" });
         const reopened = (await loadPlan(cwd, "proposal"))!;
-        await restorePlanMilestone(cwd, id, milestones[2].version, reopened.revision!);
+        await restoreFixtureMilestone(cwd, id, milestones[2].version, reopened.revision!);
         const restored = (await loadPlan(cwd, "proposal"))!;
         equal(restored.attrs.status, "draft");
         equal(restored.attrs.userVerifiedAt, reopened.attrs.userVerifiedAt);
@@ -445,9 +454,9 @@ test("non-Git history freezes the approved package and restores its membership a
             collaborationServerUrl: "https://example.test",
             collaborationSpaceId: "space",
         });
-        const shared = await listPlanHistory(cwd, id);
-        await rejects(restorePlanMilestone(cwd, id, version, shared.revision), /shared Plan is remote-canonical/);
-        equal((await listPlanHistory(cwd, id)).revision, shared.revision);
+        const shared = await listFixturePlanHistory(cwd, id);
+        await rejects(restoreFixtureMilestone(cwd, id, version, shared.revision), /shared Plan is remote-canonical/);
+        equal((await listFixturePlanHistory(cwd, id)).revision, shared.revision);
     } finally {
         await rm(cwd, { recursive: true, force: true });
     }
@@ -467,12 +476,12 @@ test("an interrupted restore preserves an intervening edit and resumes one compl
             event: "review_approved",
             currentStatus: "draft",
         });
-        const { planId, milestones } = await listPlanHistory(fixture.root, "proposal");
+        const { planId, milestones } = await listFixturePlanHistory(fixture.root, "proposal");
         const folder = dirname((await loadPlan(fixture.root, "proposal"))!.path);
         await writeFile(join(folder, "context.md"), "# Before restore\n");
         await writeFile(join(folder, "validation.md"), "Before checks\n");
-        const before = await listPlanHistory(fixture.root, planId);
-        const revision = await restorePlanMilestone(fixture.root, planId, milestones[0].version, before.revision);
+        const before = await listFixturePlanHistory(fixture.root, planId);
+        const revision = await restoreFixtureMilestone(fixture.root, planId, milestones[0].version, before.revision);
         const batchPath = join(
             fixture.identity.executionAccountHome,
             ".wld",
@@ -490,11 +499,11 @@ test("an interrupted restore preserves an intervening edit and resumes one compl
             JSON.stringify(batch.authoring[0].before.metadata, null, 2) + "\n",
         );
         await writeFile(join(folder, "validation.md"), "External work\n");
-        await rejects(listPlanHistory(fixture.root, planId), /changed during authoring/);
+        await rejects(listFixturePlanHistory(fixture.root, planId), /changed during authoring/);
         equal(await readFile(join(folder, "validation.md"), "utf8"), "External work\n");
         equal(await readFile(join(folder, "context.md"), "utf8"), "# Approved\n");
         await writeFile(join(folder, "validation.md"), "Before checks\n");
-        equal((await listPlanHistory(fixture.root, planId)).revision, revision);
+        equal((await listFixturePlanHistory(fixture.root, planId)).revision, revision);
         equal(await readFile(join(folder, "validation.md"), "utf8"), "Checks\n");
         equal((await loadPlan(fixture.root, "proposal"))?.attrs.status, "draft");
     } finally {
@@ -523,7 +532,7 @@ test("Epic publication keeps only the Markdown retained by its integration gate"
             await writeFile(join(dirname(live.path), "context.md"), "# Later edit\n");
             await recordPlanEvent({ cwd: fixture.root, planName: name, event: "epic_publication_confirmed" });
             equal((await loadPlan(fixture.root, name))?.attrs.status, "verified");
-            const history = await listPlanHistory(fixture.root, name);
+            const history = await listFixturePlanHistory(fixture.root, name);
             if (name === "legacy") deepEqual(history.milestones, []);
             else {
                 deepEqual(
@@ -531,7 +540,7 @@ test("Epic publication keeps only the Markdown retained by its integration gate"
                     ["delivered"],
                 );
                 equal(
-                    (await showPlanMilestone(fixture.root, name, history.milestones[0].version))["context.md"],
+                    (await readFixtureMilestone(fixture.root, name, history.milestones[0].version))["context.md"],
                     "# Integrated\n",
                 );
             }
@@ -588,5 +597,44 @@ test("another review can reconcile the journal only after its live owner release
         }
     } finally {
         await f.cleanup();
+    }
+});
+
+test("history reads existing milestone bytes and rejects tampering for a Windows-reserved legacy Plan ID", async () => {
+    const fixture = await packageFixture();
+    try {
+        const plan = await createPackageFixture(fixture.identity, { planId: "con", name: "proposal" });
+        const milestone = {
+            version: "ad740786-547b-4659-bada-d0192a695cc5",
+            milestone: "approved",
+            at: "2026-11-01T00:00:00.000Z",
+            reason: "Approved",
+            digest: "dabfdc17b23c0b3f5c144813f7e307bf07ef9776ad06399756a61b62a0c183ac",
+        };
+        const frozen = {
+            "context.md": "# Historical Plan\r\n",
+            "validation.md": "Checks\n",
+            "manual-qa.md": "\ufeffQA\n",
+        };
+        // Fixed names and digest from the original on-disk layout keep this fixture independent of the writer.
+        const folder = join(
+            dirname(dirname(plan.path)),
+            "history",
+            "~1143da2bc54c495c4be31d3868785d39ffdfd56df5668f0645d8f14d47647952",
+            milestone.version,
+        );
+        await mkdir(folder, { recursive: true });
+        for (const [name, text] of Object.entries(frozen)) await writeFile(join(folder, name), text);
+        await writeFile(join(folder, "plan.wld.json"), JSON.stringify(plan.metadata));
+        await writeFile(join(plan.path, "plan.wld.json"), JSON.stringify({ ...plan.metadata, history: [milestone] }));
+        const { history } = openProjectPlanStore(fixture.identity.projectId, { admitted: fixture.identity });
+        const planId = plan.metadata.planId;
+        ok(plans.identity.isValid(planId));
+        deepEqual((await history.list(planId)).milestones, [milestone]);
+        deepEqual(await history.read(planId, milestone.version), frozen);
+        await writeFile(join(folder, "manual-qa.md"), "QA\n");
+        await rejects(history.read(planId, milestone.version), /Frozen milestone documents changed/);
+    } finally {
+        await fixture.cleanup();
     }
 });

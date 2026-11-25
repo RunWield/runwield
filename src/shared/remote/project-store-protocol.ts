@@ -1,5 +1,12 @@
+import { plans } from "@runwield/plans";
 import { validateWorkRecordCreation } from "@runwield/plans/work-record-files";
 import { isProjectId } from "@runwield/projects";
+import {
+    isPlanMilestone,
+    isPlanMilestoneVersion,
+    type PackageDocuments,
+    type PlanHistory,
+} from "@runwield/plans/history";
 import type { ProjectStoreBinding, ProjectStoreCommand, ProjectStoreReply } from "../../plan-store/index.ts";
 // Six bytes per UTF-16 code unit covers JSON escaping in the response envelope.
 export const HISTORY_PAGE_CHARS = 128 * 1024;
@@ -8,7 +15,8 @@ export interface ProjectStoreRequest {
     binding: ProjectStoreBinding;
     command: ProjectStoreCommand;
 }
-const identity = (value: string) => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value);
+const identity = (value: string | undefined) =>
+    typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value);
 function fields(value: ProjectStoreBinding | ProjectStoreRequest, allowed: string[]) {
     if (
         !value ||
@@ -27,8 +35,15 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
     fields(request, ["binding", "command"]);
     validateProjectStoreBinding(request.binding);
     const command = request.command;
-    if (!command || ("planId" in command && !identity(command.planId))) throw new Error("Invalid Plan identity.");
+    if (!command) throw new Error("Invalid Plan identity.");
+    if ("planId" in command) {
+        const history =
+            command.kind === "list-history" || command.kind === "show-history" || command.kind === "restore-history";
+        const valid = history ? plans.identity.isValid(command.planId) : identity(command.planId);
+        if (!valid) throw new Error("Invalid Plan identity.");
+    }
     const common = ["kind", "planId", "operationId", "expectedRevision"];
+    const historyTarget = "planId" in command ? "planId" : "reference";
     const recordingReference = "reference" in command && command.reference !== undefined ? ["reference"] : [];
     const commandFields = {
         "preview-retention": ["kind", "offset", "snapshot"],
@@ -81,8 +96,8 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         "checkpoint-retained-execution": [...common, "attemptId", "updates", "options"],
         "read-retained-execution": ["kind", "reference", "attemptId"],
         "archive-catalog": ["kind"],
-        "list-history": ["kind", "reference", "offset", "snapshot"],
-        "show-history": ["kind", "reference", "version", "offset", "snapshot"],
+        "list-history": ["kind", historyTarget, "offset", "snapshot"],
+        "show-history": ["kind", historyTarget, "version", "offset", "snapshot"],
         "restore-history": [...common, "version"],
         "read-archive": ["kind", "reference"],
         "archive-plan": [...common, "reason", "force", "now"],
@@ -143,8 +158,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
     if (
         (command.kind === "resolve-plan" ||
             command.kind === "read-archive" ||
-            command.kind === "list-history" ||
-            command.kind === "show-history" ||
+            ((command.kind === "list-history" || command.kind === "show-history") && !("planId" in command)) ||
             command.kind === "read-retained-execution") &&
         (typeof command.reference !== "string" || !command.reference || command.reference.length > 1024)
     )
@@ -179,7 +193,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         throw new Error("Invalid import selection.");
     if (
         (command.kind === "show-history" || command.kind === "restore-history") &&
-        (typeof command.version !== "string" || !/^[a-f0-9-]{36}$/.test(command.version))
+        !isPlanMilestoneVersion(command.version)
     )
         throw new Error("Invalid history version.");
     if (
@@ -742,30 +756,22 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
         throw new Error("Invalid operation reply.");
 }
 
-export function parseHistoryList(text: string) {
-    const history: import("../../plan-store/index.ts").PlanHistory = JSON.parse(text);
+export function parseHistoryList(text: string, expectedPlanId?: string) {
+    const history: PlanHistory = JSON.parse(text);
     if (
         !history ||
-        !identity(history?.planId) ||
+        !plans.identity.isValid(history.planId) ||
+        (expectedPlanId !== undefined && history.planId !== expectedPlanId) ||
         !/^[a-f0-9]{64}$/.test(history.revision) ||
         !Array.isArray(history.milestones) ||
-        history.milestones.some(
-            (entry) =>
-                !entry ||
-                !/^[a-f0-9-]{36}$/.test(entry.version) ||
-                !["approved", "delivered", "closed", "archived"].includes(entry.milestone) ||
-                typeof entry.at !== "string" ||
-                typeof entry.reason !== "string" ||
-                !/^[a-f0-9]{64}$/.test(entry.digest),
-        )
+        !history.milestones.every(isPlanMilestone)
     )
         throw new Error("Invalid Plan history reply.");
     return history;
 }
 
 export function parseMilestoneDocuments(text: string) {
-    const documents: Awaited<ReturnType<typeof import("../../plan-store/index.ts").showPlanMilestone>> =
-        JSON.parse(text);
+    const documents: PackageDocuments = JSON.parse(text);
     if (
         !documents ||
         typeof documents?.["context.md"] !== "string" ||

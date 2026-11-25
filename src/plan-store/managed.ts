@@ -23,6 +23,7 @@ import { operationDigest, operationHash } from "./operation-receipts.ts";
 import type { ProjectStoreBinding, ProjectStoreCommand, ProjectStoreReply } from "./project-service.ts";
 import type { PlanAuthoringInput } from "./access.ts";
 import type { PlanExecutionReservation } from "./workflows.ts";
+import type { PlanId } from "@runwield/plans";
 
 interface ManagedConnection {
     closed: boolean;
@@ -105,7 +106,7 @@ export function captureManagedProjectPlanAccess(projectId: ProjectId, admitted?:
     const configured = projectConnections.getStore() ?? active;
     if (!configured || configured.closed) throw new Error("Managed Plan owner is unavailable.");
     const inspect = () => {
-        if (configured !== active || configured.closed || !managedPlanStoreActive())
+        if (configured !== active || configured.closed || !managedPersonalStoreActive())
             throw new Error("Managed Plan owner is unavailable.");
         const root = projects.checkout.inspect(configured.cwd);
         if (root.kind !== "existing" || root.identity.projectId !== projectId)
@@ -127,7 +128,8 @@ export function captureManagedProjectPlanAccess(projectId: ProjectId, admitted?:
         return admitted.checkoutRoot;
     };
     verifyAdmission();
-    return async <Result>(operation: (cwd: string) => Promise<Result>) => {
+    return async <Result>(operation: (cwd: string) => Promise<Result>, history: boolean) => {
+        if (!history && currentManagedRetainedExecution()) throw new Error("Managed Plan owner is unavailable.");
         const current = inspect();
         if (
             current.repositoryId !== initial.repositoryId ||
@@ -1592,13 +1594,13 @@ export async function settleRetainedExecutionAbandonment(cwd: string, name: stri
     });
 }
 
-async function readHistoryPages(cwd: string, reference: string, version?: string) {
+async function readHistoryPages(cwd: string, target: { planId: PlanId } | { reference: string }, version?: string) {
     const owner = await client(cwd);
     if (!owner) throw new Error("Plan history requires an admitted Plan.");
     return await readPagedStoreText(owner, (offset, snapshot) =>
         version === undefined
-            ? { kind: "list-history", reference, offset, snapshot }
-            : { kind: "show-history", reference, version, offset, snapshot },
+            ? { kind: "list-history", ...target, offset, snapshot }
+            : { kind: "show-history", ...target, version, offset, snapshot },
     );
 }
 type PagedCommand = Extract<ProjectStoreCommand, { kind: "list-history" | "show-history" | "preview-retention" }>;
@@ -1625,12 +1627,33 @@ async function readPagedStoreText(
     }
 }
 
-export async function readManagedPlanHistory(cwd: string, reference: string) {
-    return parseHistoryList(await readHistoryPages(cwd, reference));
+export async function resolveManagedHistoryPlan(cwd: string, reference: string) {
+    return parseHistoryList(await readHistoryPages(cwd, { reference })).planId;
 }
 
-export async function showManagedPlanMilestone(cwd: string, reference: string, version: string) {
-    return parseMilestoneDocuments(await readHistoryPages(cwd, reference, version));
+export async function readManagedPlanHistory(cwd: string, planId: PlanId) {
+    return parseHistoryList(await readHistoryPages(cwd, { planId }), planId);
+}
+
+export async function readManagedPlanMilestone(cwd: string, planId: PlanId, version: string) {
+    return parseMilestoneDocuments(await readHistoryPages(cwd, { planId }, version));
+}
+
+export async function restoreManagedPlanMilestone(
+    cwd: string,
+    planId: PlanId,
+    version: string,
+    expectedRevision: string,
+) {
+    const result = await mutateManagedPlan(cwd, {
+        kind: "restore-history",
+        planId,
+        version,
+        expectedRevision,
+        operationId: randomUUID(),
+    });
+    if (!result.revision) throw new Error("Managed history restore has no committed revision.");
+    return result.revision;
 }
 
 type PreviewRetentionCommand = { kind: "preview-retention" };

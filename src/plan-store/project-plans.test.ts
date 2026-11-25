@@ -47,6 +47,14 @@ test("a project-bound store preserves Plan identity and guards each write across
         equal((await second.read(id)).attrs.status, "draft");
         const approved = await first.applyEvent(id, { event: "review_approved", expectedRevision: edited.revision });
         equal(approved.attrs.status, "approved");
+        const history = await second.history.list(id);
+        equal(history.revision, approved.revision);
+        const version = history.milestones[0].version;
+        equal((await first.history.read(id, version))["context.md"], edited.body);
+        await foreign.create({ planName: id, contextMarkdown: "Names cannot grant access to this ID." });
+        await rejects(foreign.history.list(id), /requires an admitted Plan/);
+        await rejects(foreign.history.read(id, version), /requires an admitted Plan/);
+        await rejects(foreign.history.restore(id, version, history.revision), /requires an admitted Plan/);
 
         await rejects(second.archive(id, { expectedRevision: edited.revision, force: true }), StalePlanWriteError);
         const archived = await second.archive(id, { expectedRevision: approved.revision, force: true });
@@ -54,6 +62,8 @@ test("a project-bound store preserves Plan identity and guards each write across
         equal(savedArchive.revision, archived.revision);
         equal(savedArchive.planId, id);
         await rejects(first.read(id));
+        equal((await first.history.read(id, version))["context.md"], edited.body);
+        await rejects(first.history.restore(id, version, archived.revision), /Restore the archived Plan/);
         await rejects(first.restore(id, approved.revision), StalePlanWriteError);
         const restored = await open().restore(id, savedArchive.revision);
         equal(restored.planId, id);
@@ -101,8 +111,13 @@ test("local Plan ID operations stay exact when another Plan has that name", asyn
             expectedRevision: edited.revision,
         });
         equal((await store.read(alias.planId)).attrs.status, "draft");
+        const byReference = openPlanStoreForCheckout(fixture.root)!;
+        equal(await byReference.resolveHistoryPlan(alias.name), created.planId);
+        equal((await store.history.list(created.planId)).milestones.length, 1);
+        equal((await store.history.list(alias.planId)).milestones.length, 0);
 
         const archived = await store.archive(created.planId, { expectedRevision: approved.revision, force: true });
+        equal(await byReference.resolveHistoryPlan(alias.name), created.planId);
         await archiveSavedPlan(fixture.root, alias.name, { force: true });
         equal((await store.readArchived(created.planId)).body, edited.body);
         equal((await store.readArchived(alias.planId)).body, created.body);
@@ -131,11 +146,12 @@ test("a checkout reader and picker keep the Project that admitted the Plan", asy
         const owner = openPlanStoreForCheckout(first.root)!;
         const other = openProjectPlanStore(second.identity.projectId, { admitted: second.identity });
         const saved = await owner.create({ planName: "proposal", contextMarkdown: "First" });
-        await other.create({ planName: "proposal", contextMarkdown: "Second" });
+        const foreign = await other.create({ planName: "proposal", contextMarkdown: "Second" });
         const reader = planDocumentsForCheckout(second.root);
         equal((await reader.load("proposal"))?.body, "Second");
         await owner.withWorkflow(saved.planId, saved.name, async () => {
             await rejects(() => reader.load("proposal"), /different Project/);
+            await rejects(() => other.history.list(foreign.planId), /different Project/);
         });
         await rejects(
             () => selectPlanAccess(second.root, saved.name, saved.planId, owner.projectId),
