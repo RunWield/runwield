@@ -1647,3 +1647,8 @@ export function countChildPlanProgress(children: Array<{ attrs?: PlanProgressAtt
     const remaining = total - completed - active - failed - onHold;
     return { verified, userVerified, completed, active, failed, onHold, remaining, total, byStatus };
 }
+
+/** Preserve UTF-8 Markdown byte identity, including BOM; malformed encoding cannot be copied lossily. */
+export function decodePackageMarkdown(bytes: Uint8Array): string {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+}

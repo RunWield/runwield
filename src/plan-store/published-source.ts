@@ -1,3 +1,4 @@
+import { decodePackageMarkdown } from "@runwield/plans/format";
 import { workRecords } from "@runwield/plans/work-records";
 import { projects } from "@runwield/projects";
 import {
@@ -11,7 +12,6 @@ import {
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
     readPlanPackage,
-    decodePackageMarkdown,
     readPlanPackageInput,
     readPlanPackagePublication,
     samePackagePublicationReference,

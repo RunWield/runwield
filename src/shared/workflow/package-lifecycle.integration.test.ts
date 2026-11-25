@@ -1,9 +1,9 @@
 import { seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
-import { listPlanHistory, showPlanMilestone, selectPlanAccess } from "../../plan-store/index.ts";
+import { selectPlanAccess } from "../../plan-store/index.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { savePlanBodyById } from "../../plan-store/index.ts";
-import { loadPlanBodyById } from "../testing/plan-query-fixture.ts";
+import { listFixturePlanHistory, readFixtureMilestone, loadPlanBodyById } from "../testing/plan-query-fixture.ts";
 import {
     updatePlanPackageMetadata,
     readPlanPackageInput,
@@ -273,13 +273,15 @@ test("Sequence review follows package IDs and approves the complete ordered fami
                 });
                 equal(result.approved, true, result.feedback || "Sequence approval");
                 for (const document of documents) {
-                    const history = await listPlanHistory(f.root, document.planId);
+                    const history = await listFixturePlanHistory(f.root, document.planId);
                     deepEqual(
                         history.milestones.map((entry) => entry.milestone),
                         ["approved"],
                     );
                     equal(
-                        (await showPlanMilestone(f.root, document.planId, history.milestones[0].version))["context.md"],
+                        (await readFixtureMilestone(f.root, document.planId, history.milestones[0].version))[
+                            "context.md"
+                        ],
                         document.plan,
                     );
                 }

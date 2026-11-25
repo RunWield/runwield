@@ -26,6 +26,10 @@ Use `store.workRecords.create(input)` to persist content and receive its store-a
 
 Use `store.workRecords.list()` to browse a Project and `store.workRecords.read(recordId)` to open one record. Both return documents with logical relative paths. ID lookup is case-insensitive, returns `null` for a missing record, and rejects an ambiguous ID. Listing is passive and includes all statuses. The [package contract](../../packages/plans/store.ts) is shared by local and managed owners.
 
+### Plan milestone history
+
+Use `store.history.list(planId)` to obtain the current revision and version catalog, then `store.history.read(planId, version)` to inspect the captured Markdown. To restore, pass the chosen version and observed revision to `store.history.restore(planId, version, expectedRevision)`. Local and managed callers use the same operations. The existing `wld plans history` commands continue to accept a name or ID.
+
 ## Supported operations
 
 | Intent                      | Interface examples                                                                            | Invariants owned here                                                                       |

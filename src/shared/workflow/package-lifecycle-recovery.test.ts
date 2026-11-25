@@ -1,12 +1,12 @@
 import { seedPlanState, seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
 
-import { loadPlan } from "../testing/plan-query-fixture.ts";
+import { listFixturePlanHistory, readFixtureMilestone, loadPlan } from "../testing/plan-query-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { planPackageJournalDirectory } from "../../plan-store/packages.ts";
 import { importPlanPackages } from "../../plan-store/packages.ts";
 import { addEntry } from "../worktree-registry.ts";
 
-import { listPlanHistory, showPlanMilestone, preparePlanWorkflow } from "../../plan-store/index.ts";
+import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { currentPackageSelection } from "../../plan-store/workflows.ts";
 import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "../../plan-store/retained-source.ts";
 import type { ValidationCheckpoint } from "@runwield/plans/controller-state";
@@ -32,11 +32,13 @@ for (const boundary of ["lifecycle-intent", "staged-package", "metadata"]) {
             const restarted = await driver({ identity: f.identity, command: "recover-lifecycle" });
             equal(restarted.code, 0, restarted.output + restarted.errors);
             equal((await read(f.identity)).metadata.definition.status, boundary === "metadata" ? "approved" : "draft");
-            const history = await listPlanHistory(f.root, p.metadata.planId);
+            const history = await listFixturePlanHistory(f.root, p.metadata.planId);
             equal(history.milestones.length, boundary === "metadata" ? 1 : 0);
             if (history.milestones.length)
                 equal(
-                    (await showPlanMilestone(f.root, p.metadata.planId, history.milestones[0].version))["context.md"],
+                    (await readFixtureMilestone(f.root, p.metadata.planId, history.milestones[0].version))[
+                        "context.md"
+                    ],
                     "# A Plan\n\nProse — 世界\n",
                 );
             equal(await fs.readFile(join(p.path, "context.md"), "utf8"), edited);
@@ -47,10 +49,12 @@ for (const boundary of ["lifecycle-intent", "staged-package", "metadata"]) {
                     event: "review_approved",
                     currentStatus: "draft",
                 });
-                const retried = await listPlanHistory(f.root, p.metadata.planId);
+                const retried = await listFixturePlanHistory(f.root, p.metadata.planId);
                 equal(retried.milestones.length, 1);
                 equal(
-                    (await showPlanMilestone(f.root, p.metadata.planId, retried.milestones[0].version))["context.md"],
+                    (await readFixtureMilestone(f.root, p.metadata.planId, retried.milestones[0].version))[
+                        "context.md"
+                    ],
                     edited,
                 );
             }
@@ -329,7 +333,7 @@ test("interrupted Sequence metadata compensates without restoring old editor doc
         });
         equal(stopped.code, 86, stopped.output + stopped.errors);
         await fs.writeFile(join(p.path, "context.md"), "# New Sequence editor work\n");
-        equal((await listPlanHistory(f.root, "sequence")).milestones.length, 0);
+        equal((await listFixturePlanHistory(f.root, "sequence")).milestones.length, 0);
         const restarted = await driver({ identity: f.identity, command: "recover-lifecycle", planId: "sequence" });
         equal(restarted.code, 0, restarted.output + restarted.errors);
         equal((await read(f.identity, "sequence")).metadata.definition.status, "draft");

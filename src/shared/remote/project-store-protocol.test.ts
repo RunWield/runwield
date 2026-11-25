@@ -1,8 +1,9 @@
 import { parseProjectId } from "@runwield/projects";
 import { test } from "node:test";
-import { throws, rejects } from "node:assert/strict";
+import { equal, throws, rejects } from "node:assert/strict";
 import {
     validateProjectStoreRequest,
+    parseHistoryList,
     readProjectStoreBody,
     PROJECT_STORE_MAX_BYTES,
 } from "./project-store-protocol.ts";
@@ -46,4 +47,33 @@ test("history requires a version identifier and restore accepts only an observed
     validateProjectStoreRequest({ binding, command });
     throws(() => validateProjectStoreRequest({ binding, command: { ...command, version: "../../other" } }), /version/);
     throws(() => validateProjectStoreRequest({ binding, command: { ...command, expectedRevision: "" } }), /revision/);
+});
+
+test("managed history can resolve a name to a legacy Plan ID and use it for exact reads and restores", () => {
+    const revision = "b".repeat(64);
+    const version = crypto.randomUUID();
+    const planId = "plan.1";
+    const page = JSON.stringify({ planId, revision, milestones: [] });
+    validateProjectStoreRequest({
+        binding,
+        command: { kind: "list-history", reference: "proposal", offset: 0, snapshot: "" },
+    });
+    equal(parseHistoryList(page).planId, planId);
+    equal(parseHistoryList(page, planId).planId, planId);
+    throws(() => parseHistoryList(page, "proposal"), /Invalid Plan history reply/);
+    validateProjectStoreRequest({ binding, command: { kind: "list-history", planId, offset: 0, snapshot: "" } });
+    validateProjectStoreRequest({
+        binding,
+        command: { kind: "show-history", planId, version, offset: 0, snapshot: "" },
+    });
+    validateProjectStoreRequest({
+        binding,
+        command: {
+            kind: "restore-history",
+            planId,
+            version,
+            operationId: crypto.randomUUID(),
+            expectedRevision: revision,
+        },
+    });
 });

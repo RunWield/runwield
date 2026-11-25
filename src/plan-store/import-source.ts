@@ -1,3 +1,4 @@
+import type { PackageDocuments } from "@runwield/plans/history";
 import { projects, type ProjectIdentity } from "@runwield/projects";
 import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "./retained-source.ts";
 /** Legacy document inventory and evidence capture. Persistence belongs to plan-package-store. */
@@ -22,7 +23,7 @@ import {
     type WorktreeRegistryEntry,
 } from "../shared/worktree-registry.ts";
 import { checkedProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
-import type { PackageDocuments, PlanPackageMetadata, PackageDefinition } from "./packages.ts";
+import type { PlanPackageMetadata, PackageDefinition } from "./packages.ts";
 
 export interface ImportAllocation {
     locator: string;

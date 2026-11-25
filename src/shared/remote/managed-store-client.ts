@@ -1,5 +1,6 @@
 /** Separate execution process exercising production bootstrap and the public Plan owner. */
 import { projects } from "@runwield/projects";
+import { plans } from "@runwield/plans";
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { activateRemoteProjectOwner } from "./entry.ts";
@@ -105,9 +106,7 @@ async function executeManagedFixture() {
     try {
         const {
             authorLocalPlan,
-            listPlanHistory,
-            showPlanMilestone,
-            restorePlanMilestone,
+            openPlanStoreForCheckout,
             recordPlanEvent,
             withLocalPlanWorkflow,
             reservePlanExecution,
@@ -670,19 +669,17 @@ async function executeManagedFixture() {
         await restoreSavedPlan(input.cwd, plan.attrs.planId, "public-tool");
         if ((await listArchivedPlans(input.cwd)).length || !(await loadPlan(input.cwd, "public-tool")))
             throw new Error("Archive restoration did not preserve identity.");
-        const history = await listPlanHistory(input.cwd, plan.attrs.planId);
+        const historyStore = openPlanStoreForCheckout(input.cwd)!.history;
+        const historyPlanId = plan.attrs.planId;
+        if (!plans.identity.isValid(historyPlanId)) throw new Error("Managed Plan lost its durable ID.");
+        const history = await historyStore.list(historyPlanId);
         const approvedVersion = history.milestones.find((item) => item.milestone === "approved");
         if (!approvedVersion || !history.milestones.some((item) => item.milestone === "delivered"))
             throw new Error("The laptop did not retain the reviewed and delivered inputs.");
-        const frozen = await showPlanMilestone(input.cwd, plan.attrs.planId, approvedVersion.version);
+        const frozen = await historyStore.read(historyPlanId, approvedVersion.version);
         const edit = await savePlanProse(input.cwd, "public-tool", "# Later live edit\n", history.revision);
-        const restoredRevision = await restorePlanMilestone(
-            input.cwd,
-            plan.attrs.planId,
-            approvedVersion.version,
-            edit,
-        );
-        const replay = await restorePlanMilestone(input.cwd, plan.attrs.planId, approvedVersion.version, edit);
+        const restoredRevision = await historyStore.restore(historyPlanId, approvedVersion.version, edit);
+        const replay = await historyStore.restore(historyPlanId, approvedVersion.version, edit);
         const restoredDocument = await loadPlan(input.cwd, "public-tool");
         if (
             restoredRevision !== replay ||
@@ -1338,7 +1335,7 @@ async function executeManagedFixture() {
         if (!closedRejected) throw new Error("Closed owner connection fell back to local data.");
         let historyUnavailable = false;
         try {
-            await listPlanHistory(input.cwd, plan.attrs.planId);
+            await historyStore.list(historyPlanId);
         } catch {
             historyUnavailable = true;
         }

@@ -392,8 +392,6 @@ export {
 
 export { archivePlansByStatus } from "./archiving.ts";
 
-export { listPlanHistory, showPlanMilestone, restorePlanMilestone, type PlanHistory } from "./history.ts";
-
 export * from "./retention-selection.ts";
 export { previewPlanRetention, previewRecordRetention, confirmRetention } from "./retention.ts";
 

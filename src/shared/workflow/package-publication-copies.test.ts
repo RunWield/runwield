@@ -222,7 +222,8 @@ test("retained Markdown preserves BOM and CRLF bytes in copies and Recorder sour
     const { publicationFixture } = await import("./testing/package-publication-fixture.ts");
     const { captureForegroundProcess } = await import("../captured-process.ts");
     const { loadPublishedWorkRecordSource } = await import("../../plan-store/index.ts");
-    const { decodePackageMarkdown, assertDeliveryCopies } = await import("../../plan-store/packages.ts");
+    const { decodePackageMarkdown } = await import("@runwield/plans/format");
+    const { assertDeliveryCopies } = await import("../../plan-store/packages.ts");
     throws(() => decodePackageMarkdown(new Uint8Array([0xff])));
     throws(() => assertDeliveryCopies([{ kind: "work-record", path: "docs/work-records/invalid.md", text: "\ud800" }]));
     const documents = {

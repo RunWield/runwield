@@ -1,3 +1,4 @@
+import { listFixturePlanHistory, readFixtureMilestone } from "../testing/plan-query-fixture.ts";
 import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
@@ -16,7 +17,7 @@ import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { coverage } from "./testing/validation-host-fixture.ts";
 import type { ValidationHostResume } from "./validation-host-contract.ts";
 import { readPlanPackage, readPlanPackagePublication } from "../../plan-store/packages.ts";
-import { listPlanHistory, showPlanMilestone, loadPublishedWorkRecordSource } from "../../plan-store/index.ts";
+import { loadPublishedWorkRecordSource } from "../../plan-store/index.ts";
 
 for (const remote of [false, true])
     for (const plans of [false, true]) {
@@ -125,12 +126,12 @@ for (const remote of [false, true])
                         equal(paths.includes("docs/plans/one/context.md"), plans);
                         equal(paths.includes("plan.wld.json"), false);
                         equal(await fs.readFile(join(p.path, "context.md"), "utf8"), "# A Plan\n\nProse — 世界\n");
-                        const delivered = (await listPlanHistory(f.root, "one")).milestones.filter(
+                        const delivered = (await listFixturePlanHistory(f.root, "one")).milestones.filter(
                             (entry) => entry.milestone === "delivered",
                         );
                         equal(delivered.length, 1);
                         equal(
-                            (await showPlanMilestone(f.root, "one", delivered[0].version))["context.md"],
+                            (await readFixtureMilestone(f.root, "one", delivered[0].version))["context.md"],
                             "# A Plan\n\nProse — 世界\n",
                         );
                         const legacyBefore = await fs

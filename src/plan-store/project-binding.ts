@@ -74,11 +74,11 @@ export function bindProjectPlanStore(projectId: ProjectId, options: ProjectPlanS
     const initialLocal = managed ? undefined : verifyLocal();
     return async <Result>(
         operation: (cwd: string) => Promise<Result>,
-        mode: "read" | "write" | "workflow-read" = "write",
+        mode: "read" | "write" | "workflow-read" | "history" = "write",
     ): Promise<Result> => {
         if (managed) {
             verifyManagedRegistration();
-            return await managed(operation);
+            return await managed(operation, mode === "history");
         }
         const local = verifyLocal();
         if (
@@ -89,7 +89,7 @@ export function bindProjectPlanStore(projectId: ProjectId, options: ProjectPlanS
             throw new Error("The Project's Plan owner changed after opening.");
         projects.launch.verifyAccountHome(initialLocal);
         const cwd = projects.home.storeLocation(local);
-        const scope = mode === "workflow-read" ? currentPackageProject() : undefined;
+        const scope = mode === "workflow-read" || mode === "history" ? currentPackageProject() : undefined;
         if (scope) {
             if (
                 scope.projectId !== local.projectId ||

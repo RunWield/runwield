@@ -255,6 +255,22 @@ test("a registered home-only Project authors and edits Plans without a source ch
         planId: before.planId,
         expectedRevision: definition.result.revision!,
     });
+    const list = await service.execute({ kind: "list-history", planId: before.planId, offset: 0, snapshot: "" });
+    ok("historyPage" in list.result);
+    const { milestones } = parseHistoryList(list.result.historyPage.text, before.planId);
+    const read = await service.execute({
+        kind: "show-history",
+        planId: before.planId,
+        version: milestones[0].version,
+        offset: 0,
+        snapshot: "",
+    });
+    ok("historyPage" in read.result);
+    equal(parseMilestoneDocuments(read.result.historyPage.text)["context.md"], "# Owner edit\n");
+    await rejects(
+        service.execute({ kind: "list-history", planId: "remote-only", offset: 0, snapshot: "" }),
+        /requires an admitted Plan/,
+    );
 });
 
 import { publicationFixture } from "../shared/workflow/testing/package-publication-fixture.ts";

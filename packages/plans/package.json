@@ -8,6 +8,8 @@
         "./store": "./store.ts",
         "./store-format": "./store-format.ts",
         "./file-snapshots": "./file-snapshots.ts",
+        "./history": "./history.ts",
+        "./history-files": "./history-files.ts",
         "./lifecycle": "./lifecycle.ts",
         "./controller-state": "./controller-state.ts",
         "./work-records": "./work-records.ts",

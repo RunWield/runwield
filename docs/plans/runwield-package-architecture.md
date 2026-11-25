@@ -19,14 +19,15 @@ status: "draft"
 
 # Extract RunWield one domain at a time
 
-Move one domain into a private package under the repository root's `packages/`, switch its existing consumers to
-the public exports, and verify their behavior before starting the next domain. Each extraction should be a no-op
-for users, integration clients, and existing data. The apps can consume a package from their current locations.
-Moving an entry point to `apps/` is a separate mechanical change when useful.
+Retire the root `src/` directory in three passes. Preserve behavior for users, integration clients, and existing data at every step.
+
+1. **Publish the interfaces.** Work through the domains below in order. Review one typed public interface at a time and migrate all callers of that capability. Apps continue running from their current locations. Move implementation that belongs to the interface as it is extracted, and record which operations still rely on a runtime implementation in `src/`.
+2. **Make the packages independent.** Start again with Tools and follow the same order. Move each domain's remaining implementation, storage drivers, and tests to its owner. For example, finish the project-bound Plan store opener and its local and managed storage operations. Add a CI check that rejects package imports or re-exports from root `src/`, imports of another package's internals, and cycles between packages, including type-only dependencies. Verify each package through its public entry points.
+3. **Construct the apps and retire `src/`.** Compose the packages in `apps/`. Move command handling, presentation, and process startup to the app that owns each entry point. Relocate the remaining tests and assets with their owners, update build and release paths, and exercise the shipped entry points. This pass is complete when root `src/` is gone and the apps build, test, and package from the new layout.
 
 ## Packages and extraction order
 
-Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The next interface review covers the project-bound store. Workflow extraction follows review of the complete Plans domain. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
+Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. This extraction covers Plan milestone history. Artifact content and publication copies still belong to the Plans domain before Workflow extraction. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
 
 | Order and package | Public interface and responsibilities | Evidence that the move preserved behavior |
 | --- | --- | --- |
@@ -190,7 +191,7 @@ for the current status. [Package entry point](../../packages/plans/index.ts)
 | `plans.lifecycle.actionsFor(status, fields)` | Returns available manual actions and reasons for blocked actions. |
 | `plans.lifecycle.changesFor(event, status, details)` | Validates a lifecycle event and returns its metadata changes. The store checks the observed revision and persists the result. |
 
-## Project-bound Plan Store under review
+## Project-bound Plan Store
 
 Open the store with the canonical `ProjectId` from Projects. Each handle addresses one project.
 The personal Workspace uses its active registration. A CLI or worker with an admitted checkout can use the identity returned by Projects.
@@ -209,7 +210,7 @@ The managed runtime uses its configured owner connection. The store checks the b
 
 The runtime adapter calls the existing store for locking, conflict checks, recovery, and local or managed writes.
 The filesystem driver in Plans captures and verifies the immutable input documents used by workflow attempts.
-History and publication copies still run through the current store.
+The host coordinates milestone capture with the lifecycle event that makes the version visible. Publication copies still run through the current store.
 PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)
 
 ### Work Records
@@ -225,6 +226,18 @@ Opening the Plan Store binds its `workRecords` collection to the same Project ID
 A document includes its typed front matter, title, summary, sections, body, original Markdown, and a relative document path. Absolute owner locations stay in the filesystem driver. Workspace applies its own visibility rules when displaying and indexing records. The agent memory tools retain their current-only policy and Mnemoteca search behavior.
 
 The `@runwield/plans/work-records` entry point owns the Markdown format. The Markdown/filesystem driver in `@runwield/plans/work-record-files` owns the personal and retained checkout layouts and durable file operations. The host admits the Project, routes managed reads and writes to its owner, and coordinates publication and secondary indexing. A future PostgreSQL driver can expose the same Project-bound collection.
+
+### Plan milestone history
+
+A caller opens the Project Plan Store once, then uses its `history` collection with the stable Plan ID. The CLI resolves its existing name-or-ID argument at the command boundary.
+
+| Operation | Result |
+| --- | --- |
+| `history.list(planId)` | The Plan ID, its current revision, and the recorded versions in order. Renamed and archived Plans retain their history. |
+| `history.read(planId, version)` | The Markdown documents frozen for that version, including any optional documents present at capture. The store verifies the frozen content against its saved digest. |
+| `history.restore(planId, version, expectedRevision)` | Restores the version’s document set and returns the new revision. A stale revision leaves current content intact. |
+
+Lifecycle operations trigger capture on approval, delivery, closure, and archive. The store assigns the version. Restore keeps the current Plan identity and delivery evidence and reopens review when changed content requires it. Managed callers use the personal owner’s store and its existing restore receipts. [Core milestone requirements](../prd/runwield-core-prd.md#plan-lifecycle)
 
 ### Consumer coverage
 

@@ -1,4 +1,5 @@
 import { projects, type HomeProjectOwner, type ProjectId } from "@runwield/projects";
+import { plans } from "@runwield/plans";
 import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "./packages.ts";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
@@ -172,15 +173,9 @@ interface HistoryCursor {
     offset: number;
     snapshot: string;
 }
-interface ProjectStoreHistoryList extends HistoryCursor {
-    kind: "list-history";
-    reference: string;
-}
-interface ProjectStoreHistoryShow extends HistoryCursor {
-    kind: "show-history";
-    reference: string;
-    version: string;
-}
+type HistoryPlanTarget = { planId: string; reference?: never } | { reference: string; planId?: never };
+type ProjectStoreHistoryList = HistoryCursor & HistoryPlanTarget & { kind: "list-history" };
+type ProjectStoreHistoryShow = HistoryCursor & HistoryPlanTarget & { kind: "show-history"; version: string };
 export interface ProjectStoreProseWrite extends PlanMutation {
     kind: "save-prose";
     body: string;
@@ -1093,15 +1088,21 @@ export class PreparedProjectStore {
                     };
                 }
                 if (command.kind === "list-history" || command.kind === "show-history") {
-                    const { listPlanHistory, showPlanMilestone } = await import("./history.ts");
+                    const { listLocalPlanHistory, readLocalPlanMilestone, resolveLocalHistoryPlan } =
+                        await import("./history.ts");
+                    // Existing clients can still send a name. Bound callers send only a durable ID.
+                    const planId = command.planId ?? (await resolveLocalHistoryPlan(command.reference));
+                    if (!plans.identity.isValid(planId)) throw new Error("Invalid Plan identity.");
                     const serialized = JSON.stringify(
                         command.kind === "list-history"
-                            ? await listPlanHistory(this.cwd, command.reference)
-                            : await showPlanMilestone(this.cwd, command.reference, command.version),
+                            ? await listLocalPlanHistory(this.cwd, planId)
+                            : await readLocalPlanMilestone(this.cwd, planId, command.version),
                     );
                     return { historyPage: pageStoreText(serialized, command) };
                 }
-                if (command.kind === "restore-history")
+                if (command.kind === "restore-history") {
+                    const { planId } = command;
+                    if (!plans.identity.isValid(planId)) throw new Error("Invalid Plan identity.");
                     return await withPlanPackageCatalogDiscovery(owner, () =>
                         runReceiptedOperation(
                             directory,
@@ -1111,15 +1112,16 @@ export class PreparedProjectStore {
                             async () => ({
                                 revision: await (
                                     await import("./history.ts")
-                                ).restorePlanMilestone(
+                                ).restoreLocalPlanMilestone(
                                     this.cwd,
-                                    command.planId,
+                                    planId,
                                     command.version,
                                     command.expectedRevision,
                                 ),
                             }),
                         ),
                     );
+                }
                 if (command.kind === "archive-catalog")
                     return { archives: await (await import("../plan-store.ts")).listArchivedPlans(this.cwd) };
                 if (command.kind === "read-archive")
