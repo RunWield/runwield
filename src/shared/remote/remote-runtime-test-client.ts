@@ -34,7 +34,8 @@ import { requestLocalReviewInteraction } from "../session/local-review-interacti
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { listEntries } from "../worktree-registry.ts";
 import { reconcileStoredPublication } from "../workflow/publication-machine.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { withRetainedPlanReadFixture } from "../testing/retained-plan-fixture.ts";
 import { continueWorkflowValidation } from "../workflow/validation.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
@@ -50,6 +51,7 @@ export interface RuntimeReviewConfiguration {
 }
 export interface RuntimeClientInput {
     review?: RuntimeReviewConfiguration;
+    planSource?: "retained-checkout";
     connection: RemoteSessionControlConnection;
     resources: string;
     laptopHome: string;
@@ -145,8 +147,8 @@ export interface RuntimeClientReport {
     isAgentTransitioning?: boolean;
     turnEndResults?: string[];
     publicationPhase?: string | null;
-    priorValidationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
-    validationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
+    priorValidationCheckpoint?: import("@runwield/plans/controller-state").ValidationCheckpoint;
+    validationCheckpoint?: import("@runwield/plans/controller-state").ValidationCheckpoint;
 }
 if (process.argv[2] === "--runtime-identity") {
     console.log(process.versions.bun || "");
@@ -215,7 +217,7 @@ function attachReviewInput() {
         },
     });
 }
-try {
+async function runCommands() {
     report("ready");
     while (true) {
         const next = await lines.read();
@@ -259,7 +261,7 @@ try {
                             run: () => Promise.resolve({ kind: "canceled", output: "Local recovery comparison" }),
                         },
                     });
-                    const recovered = await loadPlan(location.documentRoot, "remote-delivery");
+                    const recovered = await planDocumentsForCheckout(location.documentRoot).load("remote-delivery");
                     console.log(
                         JSON.stringify({
                             kind: command.kind,
@@ -741,6 +743,11 @@ try {
             report(command.kind, false, String(error));
         }
     }
+}
+
+try {
+    if (input.planSource === "retained-checkout") await withRetainedPlanReadFixture(input.cwd, runCommands);
+    else await runCommands();
 } finally {
     await Promise.all(pending);
     await runtime.closeAllSessionsWhenIdle();

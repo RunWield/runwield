@@ -110,7 +110,7 @@ export interface RuntimeFixture extends RuntimeCommandFixture {
     modelRequests: RuntimeModelRequest[];
     mcpTraffic: CapturedMcpTraffic[];
     policy: RuntimeProxyPolicy;
-    start(): Promise<RuntimeProcess>;
+    start(planSource?: RuntimeClientInput["planSource"]): Promise<RuntimeProcess>;
     dropConnection(): Promise<void>;
 }
 export interface RuntimeProcess {
@@ -367,7 +367,7 @@ export async function withRemoteRuntimeFixture(
                     async dropConnection() {
                         await service.close();
                     },
-                    async start() {
+                    async start(planSource) {
                         if (service.status().closed) {
                             service = startService();
                             baseUrl = `http://127.0.0.1:${service.port}`;
@@ -392,6 +392,7 @@ export async function withRemoteRuntimeFixture(
                                 memoryCollection,
                                 cwd: remoteProject,
                                 review,
+                                planSource,
                             },
                             remoteHome,
                             remotePath,

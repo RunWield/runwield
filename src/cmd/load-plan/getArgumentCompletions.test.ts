@@ -8,7 +8,7 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.ts";
 
 import { PlanFrontMatterParseError } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

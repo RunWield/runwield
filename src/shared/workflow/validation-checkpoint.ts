@@ -7,19 +7,6 @@ import {
 } from "@runwield/plans/controller-state";
 import { normalizeLedger } from "./review-ledger.ts";
 
-export {
-    isValidationCheckpoint,
-    VALIDATION_CHECKPOINT_VERSION,
-    type CiRunEvidence,
-    type HostRecorderState,
-    type HostReviewerContinuation,
-    type PendingCiDecision,
-    type ValidationCheckpoint,
-    type ValidationCheckpointPhase,
-    type ValidationCheckpointState,
-    type ValidationReviewState,
-} from "@runwield/plans/controller-state";
-
 export function validationPhaseForStatus(
     status: string | undefined,
     passedPhase?: ValidationCheckpointPhase,

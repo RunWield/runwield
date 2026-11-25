@@ -18,10 +18,10 @@ import {
     isEpicPlan,
     readPlanDeviations,
     formatPlanDeviationForPrompt,
+    isPlannedChangeClassification,
 } from "@runwield/plans/format";
-import { findPlansByParent, loadPlan } from "./index.ts";
-import type { PlanFrontMatter } from "./index.ts";
-import { isPlannedChangeClassification } from "../constants.ts";
+import { findPlansByParent, loadPlan } from "./queries.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import { isGitRepository } from "../shared/git.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
 import { prepareTargetBranchPlansByParent } from "../shared/workflow/planning-worktree.ts";

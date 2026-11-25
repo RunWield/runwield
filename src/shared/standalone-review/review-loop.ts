@@ -1,7 +1,6 @@
 import process from "node:process";
-import { AGENTS } from "../../constants.ts";
+import { AGENTS, agentRegistry } from "../session/agent-registry.ts";
 import { createSessionRuntime } from "../session/session-runtime.ts";
-import { agentRegistry } from "../session/agent-registry.ts";
 import { formatCodeReviewAnnotations, runCodeReview } from "../../ui/review/code-review.ts";
 import {
     type ReviewConversation,

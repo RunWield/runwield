@@ -5,7 +5,8 @@ import { relative } from "node:path";
 import { mkdir as fsMkdir, readdir as fsReaddir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan, listArchivedPlans, listPlans, loadArchivedPlan, loadPlan } from "../../plan-store/index.ts";
+import { archivePlan } from "../../plan-store/index.ts";
+import { listArchivedPlans, listPlans, loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { runPlansArchiveCommand } from "./archive.ts";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";

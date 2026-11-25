@@ -8,7 +8,7 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.ts";
-import { AGENTS } from "../constants.ts";
+import { AGENTS } from "../shared/session/agent-registry.ts";
 import { recordAcceptedTaskCompletion } from "../shared/session/task-completion-session.ts";
 import { readRequestAttemptEntries } from "../shared/session/request-dispatch.ts";
 import {

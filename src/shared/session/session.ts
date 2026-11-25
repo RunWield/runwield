@@ -81,7 +81,8 @@ import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
 import { intersectBashAllowedCommands } from "../bash-command-policy.ts";
 import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
-import { AGENTS, getCwd, getHomeDir, PROMPT_TEMPLATES_DIR } from "../../constants.ts";
+import { AGENTS, agentRegistry } from "./agent-registry.ts";
+import { getCwd, getHomeDir, PROMPT_TEMPLATES_DIR } from "../../constants.ts";
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
@@ -126,7 +127,6 @@ import { formatProviderModelReference, parseProviderModel } from "../models/mode
 import { readCurrentPairCheckpoint, recordPairCheckpointSnapshot } from "./pair-checkpoint-session.ts";
 import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { directoryExists, fileExists } from "../helpers.ts";
-import { agentRegistry } from "./agent-registry.ts";
 import {
     getCustomSetting,
     getMergedCustomSetting,

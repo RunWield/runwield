@@ -16,17 +16,22 @@ import {
     isManualBoardStatusChangeAllowed,
     type PlanEventDetails,
 } from "@runwield/plans/lifecycle";
-import { isEpicPlan, injectFrontMatter, type PlanFrontMatterInput } from "@runwield/plans/format";
+import {
+    isEpicPlan,
+    injectFrontMatter,
+    type PlanFrontMatterInput,
+    COLLABORATION_STATE_REMOTE_CANONICAL,
+} from "@runwield/plans/format";
 import { recordPlanEvent, stageValidationPassedInExecutionWorktree } from "../../plan-store/index.ts";
-import { loadPlan } from "../../plan-store/index.ts";
-import { COLLABORATION_STATE_REMOTE_CANONICAL, SharedPlanLockError } from "../collaboration/lock.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
+import { SharedPlanLockError } from "../collaboration/lock.ts";
 
-import { type ValidationCheckpoint } from "./validation-checkpoint.ts";
+import { type ValidationCheckpoint } from "@runwield/plans/controller-state";
 
 /**
  * @param {string} cwd
  * @param {string} planName
- * @param {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} updates
+ * @param {Partial<import('@runwield/plans').PlanFrontMatter>} updates
  */
 async function updatePlanFrontMatterForTest(cwd: string, planName: string, updates: PlanFrontMatterInput) {
     const plan = await loadPlan(cwd, planName);
@@ -858,7 +863,7 @@ test("stageValidationPassedInExecutionWorktree keeps reviewed evidence immutable
                 deliveryEvidence: TEST_DELIVERY_DETAILS.deliveryEvidence,
             });
 
-            const suppliedDeliveryEvidence = /** @type {import('../../plan-store/index.ts').DeliveryEvidence} */ {
+            const suppliedDeliveryEvidence = /** @type {import('@runwield/plans').DeliveryEvidence} */ {
                 ...TEST_DELIVERY_DETAILS.deliveryEvidence,
                 executionCommit: "dddddddddddddddddddddddddddddddddddddddd",
                 targetHeadBeforeMerge: "cccccccccccccccccccccccccccccccccccccccc",
@@ -1398,7 +1403,7 @@ testWithFsPermissions("recordPlanEvent blocks shared Plan lifecycle writes witho
 test("passing CI retains durable semantic review state across a fresh Plan load", async () => {
     const root = await makeTempDirectory({ prefix: "lifecycle-ci-review-state-" });
     return await withRetainedPlanFixture(root, async () => {
-        /** @type {import("./validation-checkpoint.ts").ValidationCheckpoint} */
+        /** @type {import("@runwield/plans/controller-state").ValidationCheckpoint} */
         const checkpoint: ValidationCheckpoint = {
             version: 1,
             attemptId: "attempt-review",

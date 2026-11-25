@@ -1,5 +1,12 @@
 import { seedPlanState, seedPlan } from "../../shared/testing/plan-state-fixture.ts";
-import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    readdir as fsReaddir,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -8,7 +15,8 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { loadPlanBodyById, loadPlan, archivePlan } from "../../plan-store/index.ts";
+import { archivePlan } from "../../plan-store/index.ts";
+import { loadPlanBodyById, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.ts";
 import { loadBoard, loadWorkspaceDetail, workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.ts";
@@ -20,6 +28,30 @@ import { PlanDetail } from "./components/PlanDetail.tsx";
 import { createWorkspaceApp } from "./server.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+import { withRetainedPlanReadFixture } from "../../shared/testing/retained-plan-fixture.ts";
+
+test("local Workspace catalogs browse retained Plans and keep fresh checkouts empty", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "workspace-local-catalog-"));
+    try {
+        assertEquals((await loadBoard(cwd)).plans, []);
+        assertEquals(await fsReaddir(cwd), []);
+        const plans = join(cwd, "docs", "plans");
+        await fsMkdir(plans, { recursive: true });
+        await fsWriteFile(
+            join(plans, "retained.md"),
+            "---\nplanId: retained-id\nclassification: PLANNED_CHANGE\nstatus: draft\n---\n# Retained Plan\n",
+        );
+        await withRetainedPlanReadFixture(cwd, async () => {
+            const board = await loadBoard(cwd);
+            assertEquals(
+                board.plans.map(({ planId }) => planId),
+                ["retained-id"],
+            );
+        });
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
 
 test("Workspace wrapper protects page routes and serves public assets without token", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
@@ -400,6 +432,21 @@ test("Workspace body-save API preserves canonical metadata rejects stale writes 
         );
         assertEquals(stale.status, 409);
         assertStringIncludes((await stale.json()).error, "changed on disk");
+
+        const staleHash = await app(
+            new Request("http://localhost/api/plans/api-id/body", {
+                method: "POST",
+                headers: { [PLAN_UI_TOKEN_HEADER]: "secret", "content-type": "application/json" },
+                body: JSON.stringify({
+                    body: "# Stale body\n",
+                    expectedBodyHash: loaded.bodyHash,
+                    expectedRevision: savedBody.plan.revision,
+                }),
+            }),
+        );
+        assertEquals(staleHash.status, 409);
+        assertEquals((await staleHash.json()).bodyHash, savedBody.bodyHash);
+        assertEquals(await fsReadFile(canonicalPath, "utf8"), "# Saved\n");
 
         await seedPlan(cwd, "epic", "# Epic\n", {
             planId: "epic-id",

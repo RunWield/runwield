@@ -8,7 +8,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { addEntry, getWorktreeRegistryPath } from "../worktree-registry.ts";
 import { HostedSession } from "./hosted-session.ts";

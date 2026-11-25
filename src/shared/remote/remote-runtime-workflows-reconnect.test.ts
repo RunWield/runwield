@@ -21,7 +21,7 @@ for (const evidenceAvailable of [true, false]) {
     test(`reconnect checks an unsaved publication result without replay (${evidenceAvailable ? "confirmed" : "uncertain"} evidence)`, async () => {
         await withRemoteRuntimeFixture(async (f) => {
             const upstream = await prepareDelivery(f);
-            const client = await f.start();
+            const client = await f.start("retained-checkout");
             await client.read();
             const id = await planDelivery(f, client);
             const execution = await executeDelivery(f, client);
@@ -83,7 +83,7 @@ for (const evidenceAvailable of [true, false]) {
             const ci = await ciRuns(f);
             const models = f.modelRequests.length;
             const evidenceBefore = await readOnlyEvidenceSnapshot(f.remoteProject, f.remoteHome);
-            const resumed = await f.start();
+            const resumed = await f.start("retained-checkout");
             await resumed.read();
             await resumed.send({ kind: "resume-command", sessionId: id });
             const loaded = await resumed.read();
@@ -159,7 +159,7 @@ test("transport loss during active validation resumes with uncertainty, without 
                 codereview: "none",
             }),
         );
-        const client = await f.start();
+        const client = await f.start("retained-checkout");
         await client.read();
         const id = await planDelivery(f, client);
         const execution = await executeDelivery(f, client);
@@ -206,7 +206,7 @@ test("transport loss during active validation resumes with uncertainty, without 
         const refs = await git(upstream, ["show-ref"]);
         const models = f.modelRequests.length;
         const evidenceBefore = await readOnlyEvidenceSnapshot(f.remoteProject, f.remoteHome);
-        const resumed = await f.start();
+        const resumed = await f.start("retained-checkout");
         await resumed.read();
         await resumed.send({ kind: "resume-command", sessionId: id });
         const loaded = await resumed.read();

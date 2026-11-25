@@ -4,7 +4,8 @@ import { ok as assert } from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan, ensurePlanIdentity } from "../../plan-store/index.ts";
+import { ensurePlanIdentity } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";

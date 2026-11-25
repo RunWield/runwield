@@ -23,10 +23,10 @@ import {
     planDocumentMarkdown,
     EPIC_ARTIFACT_FILE_NAMES,
 } from "@runwield/plans/format";
-import { loadPlan } from "./index.ts";
+import { loadPlan } from "./queries.ts";
 import { savePlan } from "../plan-store.ts";
 import { join } from "node:path";
-import type { PlanFrontMatter } from "./index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { assertControllerDocumentAvailable, listControllerDocumentWorktrees } from "./controllers.ts";
 

@@ -6,7 +6,7 @@ import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall, type AssistantMessage } from "@earendil-works/pi-ai";
 import { assertEquals } from "./assertions.ts";
 
-import { loadPlan } from "../plan-store/index.ts";
+import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 
 import { createGitPort } from "../shared/git-port.ts";
 import { git } from "../shared/git-test-fixture.ts";

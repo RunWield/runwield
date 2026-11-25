@@ -9,7 +9,7 @@ import type {
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
 } from "../../shared/session/session-runtime-interactions.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { createPlanDeviationTool } from "../plan-deviation.ts";
 

@@ -403,7 +403,7 @@ test("Plan and Epic authors share one architecture vocabulary", async () => {
 test("the Slicer receives the show-the-work practice through the subagent registry", async () => {
     // Slicer is a workflow-only subagent, so it never appears in the agent listing.
     // It shapes the child Plans a person reads, so the practice must reach it too.
-    const { SUBAGENTS } = await import("../../constants.ts");
+    const { SUBAGENTS } = await import("./agent-registry.ts");
     const slicer = await agentRegistry.isolated.load(SUBAGENTS.SLICER);
 
     assertStringIncludes(slicer.systemPrompt, SHOW_THE_WORK_MARKER);

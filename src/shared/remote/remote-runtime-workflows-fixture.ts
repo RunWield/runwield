@@ -43,6 +43,8 @@ The remote sentinel must say remote delivered.
 
 export async function prepareDelivery(f: RuntimeFixture) {
     await mkdir(join(f.remoteProject, ".wld"), { recursive: true });
+    await mkdir(join(f.remoteProject, "docs/plans"), { recursive: true });
+    await writeFile(join(f.remoteProject, "docs/plans/remote-delivery.md"), deliveryPlan);
     await writeFile(join(f.remoteProject, ".gitignore"), ".wld/\n");
     await writeFile(
         join(f.remoteProject, ".wld/settings.json"),
@@ -62,7 +64,6 @@ export async function prepareDelivery(f: RuntimeFixture) {
 
 export async function planDelivery(f: RuntimeFixture, client: RuntimeProcess) {
     f.setModelMessages([
-        fauxAssistantMessage(fauxToolCall("write", { path: "docs/plans/remote-delivery.md", content: deliveryPlan })),
         fauxAssistantMessage(
             fauxToolCall("plan_written", {
                 planName: "remote-delivery",

@@ -5,7 +5,7 @@ import { publishWorkflowToolEvent } from "./workflow-tool-events.ts";
 import { createReviewDiffReader } from "./review-diff.ts";
 import type { HostedSession } from "../session/hosted-session.ts";
 import type { ReviewInspection } from "./review-inspection.ts";
-import type { ReviewLedger } from "./review-ledger.ts";
+import type { ReviewLedger } from "@runwield/plans/controller-state";
 import type { ReviewDiffTexts } from "./review-diff.ts";
 
 export type {

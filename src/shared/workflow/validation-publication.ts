@@ -44,10 +44,11 @@ import {
  * so the durable Epic Manual QA artifact is sealed into child delivery.
  */
 
-import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
+import { isPlannedChangeClassification } from "@runwield/plans/format";
+import { AGENTS } from "../session/agent-registry.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { withPlanPublication } from "../../plan-store/index.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
 import { findEpicManualQaSection } from "../../plan-store/index.ts";
 import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.ts";
@@ -104,8 +105,8 @@ import {
 import type { PublicationAttempt } from "./publication-attempt.ts";
 import { preparePublicationRevalidation, PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
 
-type DeliveryEvidence = import("../../plan-store/index.ts").DeliveryEvidence;
-type WorktreeDeliveryEvidence = import("../../plan-store/index.ts").WorktreeDeliveryEvidence;
+type DeliveryEvidence = import("@runwield/plans").DeliveryEvidence;
+type WorktreeDeliveryEvidence = import("@runwield/plans").WorktreeDeliveryEvidence;
 type ManualQaPreparationResult = { kind: "ready" } | { kind: "blocked"; outcome: PublicationOutcome };
 
 function firstMarkdownHeading(markdown: string, fallback: string): string {
@@ -174,11 +175,15 @@ async function prepareEpicChildManualQaArtifact(
 ): Promise<ManualQaPreparationResult> {
     if (args.hostTurn) return { kind: "ready" };
     await preparePlanGeneratedArtifacts(args.planName);
-    const plan = await loadPlan(cwd, args.planName).catch(() => null);
+    const plan = await planDocumentsForCheckout(cwd)
+        .load(args.planName)
+        .catch(() => null);
     const parentPlan =
         typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim() ? plan.attrs.parentPlan.trim() : "";
     if (!parentPlan) return { kind: "ready" };
-    const parent = await loadPlan(cwd, parentPlan).catch(() => null);
+    const parent = await planDocumentsForCheckout(cwd)
+        .load(parentPlan)
+        .catch(() => null);
     if (parent?.attrs.classification !== "PROJECT") return { kind: "ready" };
 
     const existing = await findEpicManualQaSection(cwd, parentPlan, args.planName);
@@ -383,7 +388,7 @@ async function runLockedPublicationPhase(
     // Review and artifact generation can outlive the phase's initial Plan read.
     // Reload the execution document under the publication lock before selecting
     // a target or sealing commits.
-    const executionPlan = await loadPlan(context.executionCwd, args.planName);
+    const executionPlan = await planDocumentsForCheckout(context.executionCwd).load(args.planName);
     const requestedTarget = executionPlan ? effectiveDeliveryBranch(executionPlan.attrs) : undefined;
     const worktreeBaseBranch = requestedTarget
         ? await resolveTargetBranchName(context.projectRoot, requestedTarget)
@@ -1009,7 +1014,7 @@ export async function buildVerifiedResult(
     // sees is a merge still "running", on a run that finished successfully.
     const current = args.session.getCurrentProgress();
     const sealed = publication ? await readPublishedDeliverySources(projectRoot, publication) : undefined;
-    const local = sealed ? undefined : await loadPlan(projectRoot, args.planName);
+    const local = sealed ? undefined : await planDocumentsForCheckout(projectRoot).load(args.planName);
     const recordingOwner =
         sealed?.workRecordOwner ||
         (!publication ? (await resolveTargetedWorkRecordSource(projectRoot, args.planName)).source : undefined);

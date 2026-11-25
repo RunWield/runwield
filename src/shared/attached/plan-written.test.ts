@@ -1,4 +1,6 @@
 import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
+import { importUnfinishedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { compactStatus } from "./presentation.ts";
 import { stat as fsStat, mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
@@ -7,7 +9,7 @@ import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../runwield-owned-paths.ts";
@@ -135,6 +137,27 @@ test("a fresh process retrieves the durable pending review before a browser is o
         assert(fresh.result.ok);
         assertEquals(fresh.result, compactStatus(submitted, null));
         assertEquals(await readRecordBytes(projectRoot, planning.workflowId), recordBeforeStatus);
+    });
+});
+
+test("plan_written persists policy in the selected unfinished import and records its review revision", async () => {
+    await withProject(async (projectRoot) => {
+        const { planning } = await reachPlanning(projectRoot);
+        const fixture = await importUnfinishedPlanFixture(projectRoot, "dark-mode-toggle");
+        const before = await fsReadFile(fixture.packagePath, "utf8");
+        const submitted = await submit(projectRoot, { ...planning, collaborationRecommendation: "pair" });
+        assert(submitted.ok, JSON.stringify(submitted));
+        assertEquals(submitted.workflow.plan, { planId: fixture.planId, planName: "dark-mode-toggle" });
+        const retained = await fsReadFile(fixture.checkoutPath, "utf8");
+        assertEquals(parsePlanFrontMatter(retained).attrs.collaborationRecommendation, "pair");
+        assertStringIncludes(retained, "Use the retained checkout requirements.");
+        assertEquals(await fsReadFile(fixture.packagePath, "utf8"), before);
+        const loaded = await loadAttachedWorkflowRecord(locateAttachedWorkflows(projectRoot), planning.workflowId);
+        assert(loaded.status === "found");
+        const plan = await loadPlan(projectRoot, "dark-mode-toggle");
+        assert(plan);
+        assertEquals(loaded.record.review?.planRevision, plan.revision);
+        assertEquals(loaded.record.review?.controllerRevision, plan.controllerRevision);
     });
 });
 

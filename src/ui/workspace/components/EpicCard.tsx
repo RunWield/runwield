@@ -3,7 +3,7 @@ import type { PlanReadAvailability } from "../../../plan-store/index.ts";
 import { detailHref } from "./PlanCard.tsx";
 import { RunWieldCard } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
-import type { PlanFrontMatter } from "../../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { countChildPlanProgress } from "@runwield/plans/format";
 
 export interface ProjectCardChild {

@@ -8,7 +8,8 @@ import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:f
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { dirname, join, resolve } from "node:path";
-import { AGENTS, SLEEP_PROMPT_PATH } from "../../constants.ts";
+import { AGENTS } from "../../shared/session/agent-registry.ts";
+import { SLEEP_PROMPT_PATH } from "../../constants.ts";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
 import { resolveMemoryCollection } from "../../shared/memory-collection.ts";
 import { ensureMnemotecaBinary } from "../../shared/runtime-preflight.ts";

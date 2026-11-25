@@ -7,8 +7,8 @@
  */
 
 import { buildTriageReport } from "../../shared/workflow/workflow-prompts.ts";
-import { AGENTS } from "../../constants.ts";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import { AGENTS } from "../../shared/session/agent-registry.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 
 /** One commit in the "these paths changed since the Plan was written" warning. */
 export interface CommitHeadsUp {

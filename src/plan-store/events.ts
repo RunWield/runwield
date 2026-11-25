@@ -7,7 +7,7 @@ import {
     readManagedExecution,
 } from "./managed.ts";
 import { packageWorkflowLocks } from "./workflows.ts";
-import { plans } from "@runwield/plans";
+import { plans, type PlanFrontMatter } from "@runwield/plans";
 import {
     buildStalePlanStatusMessage,
     type PlanEvent,
@@ -25,9 +25,9 @@ import {
 } from "./workflows.ts";
 import { preparePlanWorkflow } from "./preparation.ts";
 import { loadPlan as queryPlan } from "./queries.ts";
-import { getPlanDocumentRoot, updatePlanFrontMatter, loadPlan, type PlanFrontMatter } from "../plan-store.ts";
-import { isPlannedChangeClassification } from "../constants.ts";
+import { getPlanDocumentRoot, updatePlanFrontMatter, loadPlan } from "../plan-store.ts";
 import {
+    isPlannedChangeClassification,
     isProjectPlan,
     getDeclaredPlanStatus,
     isPlanDependencySatisfiedStatus,
@@ -37,6 +37,7 @@ import {
 import { SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "../shared/collaboration/lock.ts";
 import { runPlanLifecycleEventTransition, type TransitionResource, type TransitionResult } from "./transitions.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";
+import { hasRetainedCheckoutSource } from "./retained-source.ts";
 import { findCompletionSiblings, prepareCompletionSiblings } from "./index.ts";
 
 export interface RecordPlanEventRequest {
@@ -83,7 +84,7 @@ export class PlanLifecycleTransitionError extends Error {
         this.recoveryActions = transition.recoveryActions || [];
     }
 }
-/** @param {import('./index.ts').PlanFrontMatter} attrs */
+/** @param {import('@runwield/plans').PlanFrontMatter} attrs */
 function hasModeAppropriateDeliveryEvidence(attrs: PlanFrontMatter) {
     if (!isPlannedChangeClassification(attrs.classification)) return true;
     const executionMode = normalizeExecutionMode(attrs.executionMode);
@@ -99,7 +100,7 @@ function hasModeAppropriateDeliveryEvidence(attrs: PlanFrontMatter) {
  * integration gate (`epic-integration.ts`), never from child statuses alone.
  * Epics without one, and Sequences, keep the legacy status-based completion.
  *
- * @param {Partial<import('./index.ts').PlanFrontMatter>} attrs
+ * @param {Partial<import('@runwield/plans').PlanFrontMatter>} attrs
  * @returns {boolean}
  */
 function hasEpicBranch(attrs: Partial<PlanFrontMatter>) {
@@ -112,7 +113,7 @@ function hasEpicBranch(attrs: Partial<PlanFrontMatter>) {
  * @param {string} opts.cwd
  * @param {string} opts.planName
  * @param {PlanEvent} opts.event
- * @param {import('./index.ts').PlanFrontMatter} opts.updatedAttrs
+ * @param {import('@runwield/plans').PlanFrontMatter} opts.updatedAttrs
  * @param {PlanEventDetails} [opts.details]
  * @returns {Promise<void>}
  */
@@ -170,7 +171,7 @@ async function advanceParentEpicWhenAllChildrenVerified({
  * @param {PlanEventDetails} [opts.details]
  * @param {string} [opts.expectedRevision]
  * @param {import("./workflows.ts").PackageWorkflowSelection} [opts.packageSelection]
- * @returns {Promise<import('./index.ts').PlanFrontMatter>}
+ * @returns {Promise<import('@runwield/plans').PlanFrontMatter>}
  */
 async function packageEventWorkflow(planName: string, event: PlanEvent) {
     const selected = await selectedPackage(planName);
@@ -436,7 +437,8 @@ export async function recordPlanEvent({
         if (!after) throw new Error("Managed Plan is unavailable after its event.");
         return after.attrs;
     }
-    if (expectedPlanId && !packageSelection && !currentPackageSelection())
+    const retained = hasRetainedCheckoutSource(cwd);
+    if (expectedPlanId && !retained && !packageSelection && !currentPackageSelection())
         return await withLocalPlanWorkflow(
             cwd,
             planName,
@@ -460,7 +462,7 @@ export async function recordPlanEvent({
             () => recordPlanEvent({ cwd, planName, event, currentStatus, details, expectedRevision, expectedPlanId }),
             planName,
         );
-    if (expectedPlanId !== undefined && currentPackageSelection()?.planId !== expectedPlanId)
+    if (expectedPlanId !== undefined && !retained && currentPackageSelection()?.planId !== expectedPlanId)
         throw new Error("Lifecycle event source changed Plan ID.");
     if (projects.home.current()) {
         if (
@@ -518,10 +520,12 @@ export async function recordPlanEvent({
     // Resolve once before the transaction, then keep that document locked even
     // if the event retires its execution attempt.
     const location = await resolveWorkflowPlanLocation(cwd, planName);
+    if (expectedPlanId !== undefined && location.plan?.attrs.planId !== expectedPlanId)
+        throw new Error("Lifecycle event source changed Plan ID.");
     cwd = location.documentRoot;
     /**
      * @param {Awaited<ReturnType<typeof loadPlan>>} beforePlan
-     * @returns {Promise<{ attrs: import('./index.ts').PlanFrontMatter, details: Record<string, unknown> }>}
+     * @returns {Promise<{ attrs: import('@runwield/plans').PlanFrontMatter, details: Record<string, unknown> }>}
      */
     const applyChildEvent = async (beforePlan: Awaited<ReturnType<typeof loadPlan>>): Promise<AppliedEvent> => {
         if (!beforePlan) throw new Error(`Plan not found: ${planName}`);
@@ -555,6 +559,7 @@ export async function recordPlanEvent({
         }
         const attrs = await updatePlanFrontMatter(cwd, planName, updates, canonicalDetails.triageMeta, {
             expectedRevision: beforePlan.revision,
+            expectedPlanId,
         });
         return { attrs, details: canonicalDetails };
     };
@@ -573,7 +578,7 @@ export async function recordPlanEvent({
             );
         }
         const value =
-            /** @type {{ attrs: import('./index.ts').PlanFrontMatter, details: Record<string, unknown> }} */
+            /** @type {{ attrs: import('@runwield/plans').PlanFrontMatter, details: Record<string, unknown> }} */
             transition.value as AppliedEvent;
         await advanceParentEpicWhenAllChildrenVerified({
             cwd,
@@ -632,7 +637,7 @@ export async function recordPlanEvent({
                         throw new Error(`Plan hierarchy changed while applying ${event} for ${planName}.`);
                     }
 
-                    /** @type {{ name: string, revision: string | undefined, attrs: import('./index.ts').PlanFrontMatter }[]} */
+                    /** @type {{ name: string, revision: string | undefined, attrs: import('@runwield/plans').PlanFrontMatter }[]} */
                     let childrenBeforeWrite: CompletionChild[] = [];
                     /** @type {Awaited<ReturnType<typeof loadPlan>>} */
                     let lockedParent: Awaited<ReturnType<typeof loadPlan>> = null;
@@ -711,6 +716,7 @@ export async function recordPlanEvent({
                             canonicalDetails.triageMeta,
                             {
                                 expectedRevision: beforePlan.revision,
+                                expectedPlanId,
                             },
                         );
                         if (parentUpdates && lockedParent) {
@@ -736,8 +742,9 @@ export async function recordPlanEvent({
                     transition.message || `Plan Lifecycle transition ${event} did not commit for ${planName}.`,
                 );
             }
-            return /** @type {{ attrs: import('./index.ts').PlanFrontMatter }} */ (transition.value as AppliedEvent)
-                .attrs;
+            return /** @type {{ attrs: import('@runwield/plans').PlanFrontMatter }} */ (
+                transition.value as AppliedEvent
+            ).attrs;
         }
         return await run();
     } catch (error) {
@@ -753,7 +760,7 @@ export async function recordPlanEvent({
 
 /**
  * @typedef {Object} ValidationPassedStagingResult
- * @property {import('./index.ts').PlanFrontMatter} attrs
+ * @property {import('@runwield/plans').PlanFrontMatter} attrs
  * @property {string[]} planPaths
  */
 

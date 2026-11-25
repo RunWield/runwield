@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan } from "../plan-store/index.ts";
+import { loadPlan } from "./testing/plan-query-fixture.ts";
 
 import {
     getEpicArtifactPath,

@@ -4,7 +4,8 @@ import { test } from "node:test";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertRejects } from "./testing/assertions.ts";
-import { ensurePlanIdentity, listPlans } from "./plan-store/index.ts";
+import { ensurePlanIdentity } from "./plan-store/index.ts";
+import { listPlans } from "./shared/testing/plan-query-fixture.ts";
 
 import { addEntry, listEntries } from "./shared/worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";

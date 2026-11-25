@@ -10,15 +10,19 @@ their existing owners. They are not moved here merely because they interact with
 
 For project-scoped commands, call `openProjectPlanStore(projectId)` from `index.ts`. The returned
 [`ProjectPlanStore`](../../packages/plans/store.ts) reads Plans by ID and requires the observed revision for changes.
-The Workspace Board uses its active registration. CLI and worker callers can supply an identity admitted by Projects.
+Workspace uses its active registration for the Board, sidebar, attention dashboard, search, documents, and review routes.
+The TUI picker carries the selected Project and Plan IDs into the load operation. Hosted and attached
+`plan_written` use the bound store for creation and revision. Core workflows read richer execution documents
+through `planDocumentsForCheckout`, which preserves the selected Plan and its admitted source.
+Other hosts can open the same store with an identity admitted by Projects.
 The runtime selects the owner and the `@runwield/plans/file-snapshots` driver stores retained workflow inputs.
 
 ## Supported operations
 
 | Intent                      | Interface examples                                                                            | Invariants owned here                                                                       |
 | --------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Author and edit             | `authorLocalPlan`, `savePlanDefinition`, `savePlanProse`, `operatePlanFile`                   | Complete authoring generations, protected fields, identity and stale-write refusal          |
-| Browse                      | `loadPlan`, `listPlans`, `readPlanResource`, `readPlanDocumentLink`                           | Admitted live source, passive reads, authorized resource resolution                         |
+| Author and edit             | `store.create`, `store.revise`, `store.edit`, `operatePlanFile`                   | Complete authoring generations, protected fields, identity and stale-write refusal          |
+| Browse                      | `store.list`, `store.read`, `store.readArchived`, `planDocumentsForCheckout`                           | Admitted live source, passive reads, authorized resource resolution                         |
 | Review                      | `applySharedPlanReviewDecision`, `applyPlanReviewForExecution`, `applySequenceReviewDecision` | Required input capture, complete Sequence membership, one guarded decision                  |
 | Execute                     | `reservePlanExecution`, `capturePlanExecutionContext`, `readFrozenPlanExecutionDocuments`     | Target binding and reservation under the same lock; exact recorded input and attempt        |
 | Persist events and evidence | `recordPlanEvent`, `recordPlanHumanReview`, `savePlanValidationCheckpoint`                    | Central lifecycle policy, named fields and revision/attempt preconditions                   |
@@ -26,6 +30,9 @@ The runtime selects the owner and the `@runwield/plans/file-snapshots` driver st
 | Import and archive          | `importPlans`, `renamePlan`, `archiveSavedPlan`, `restoreSavedPlan`                           | Explicit import, provenance, complete durable units and recoverable changes                 |
 | Publish                     | `preparePackageCopies`, `settlePackagePublication`, `finalizePublicationLifecycle`            | Frozen copies, retained receipts and persistence settlement; Git phase policy stays outside |
 | Prepare legacy Git effects  | `preparePlanningMergeDocuments`, `preserveUnpublishedPlanCopies`                              | Opaque prepared documents/backups; callers cannot edit a raw persistence payload            |
+
+`openRegisteredPlanDocuments` binds Workspace document, progress, search, and review operations to a Project registration.
+The checkout query signatures used to arrange and inspect historical fixtures live in `src/shared/testing/plan-query-fixture.ts`.
 
 The full explicit export list is in `index.ts`. No public arbitrary metadata updater, package CAS, lock acquisition,
 controller writer, or raw filesystem writer is exported. Generic atomic file replacement belongs to
@@ -51,7 +58,7 @@ Generic runtime transport and registry reconciliation remain outside this module
 ## Private implementation and formats
 
 All implementation files in this directory are private except `index.ts`. Two retained compatibility implementations
-also belong to the owner: `../plan-store.js` and `../shared/workflow/execution-plan-file.js`. They are not alternate
+also belong to the owner: `../plan-store.ts` and `../shared/workflow/execution-plan-file.ts`. They are not alternate
 public interfaces. Canonical live packages, retained legacy execution documents, explicit import provenance, and Git
 delivery copies are distinct sources inside the module. A missing canonical store never enables checkout fallback.
 Managed remote entry selects the initiating laptop service before workflow consumers load. Ordinary local and
@@ -127,5 +134,5 @@ Git registries, worktrees, publication staging and effect journals stay under th
 controllers and collaboration secrets are activated on the laptop only after exact staged bytes and ownership verify.
 
 The process fixture is `src/shared/remote/project-store-process.ts`. Run its bounded save/restart/reconnect scenario
-with `bun scripts/run-tests.js src/shared/remote/project-store.integration.test.ts`; it uses separate owner/client
+with `./scripts/with-bun.sh scripts/run-tests.ts src/shared/remote/project-store.integration.test.ts`; it uses separate owner/client
 processes and client homes, then compares the retained outcome and canonical owner bytes.

@@ -17,7 +17,8 @@ import {
     archivePlanPackage,
     restorePlanPackage,
 } from "./plan-store/packages.ts";
-import { loadPlan, listPlans, StalePlanWriteError } from "./plan-store/index.ts";
+import { StalePlanWriteError } from "./plan-store/index.ts";
+import { loadPlan, listPlans } from "./shared/testing/plan-query-fixture.ts";
 
 test("packages persist plain documents and separate versioned metadata across processes", async () => {
     const f = await packageFixture();

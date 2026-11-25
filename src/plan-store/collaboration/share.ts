@@ -10,8 +10,9 @@ import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.ts";
-import { hashPlanBody } from "@runwield/plans/format";
-import { ensurePlanIdentity, listPlans, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
+import { hashPlanBody, COLLABORATION_STATE_REMOTE_CANONICAL, normalizePlanServerUrl } from "@runwield/plans/format";
+import { ensurePlanIdentity, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
+import { listPlans } from "../queries.ts";
 import {
     generateBearerCapability,
     hashCapability,
@@ -21,7 +22,7 @@ import {
 } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
 import { encryptJsonPayload, exportContentKey, generateContentKey } from "../../shared/collaboration/crypto.ts";
-import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
+import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
 import { normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.ts";
 import {
     deleteSecretRecord,
@@ -33,7 +34,6 @@ import {
 } from "../../shared/collaboration/secrets.ts";
 import { buildCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { getDefaultPlanServerUrl } from "../../shared/settings.ts";
-import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
 import { collaborationPlanLocation as resolveWorkflowPlanLocation } from "./operations.ts";
 
 interface PlansShareArgs {

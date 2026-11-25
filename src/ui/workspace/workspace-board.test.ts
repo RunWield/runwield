@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { resolveSiblingChildPlanDependencyStates } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import {
     buildBoardGroups,
     buildWorkspaceBoard,
@@ -83,7 +83,14 @@ test("serializePlanSummary omits absolute paths and surfaces hierarchy/dependenc
 
 test("buildBoardGroups separates active closed and on-hold Plans", () => {
     const plans = [
-        { name: "active", planName: "active", planId: "a", status: "draft", attrs: {}, classification: "PLANNED_CHANGE" },
+        {
+            name: "active",
+            planName: "active",
+            planId: "a",
+            status: "draft",
+            attrs: {},
+            classification: "PLANNED_CHANGE",
+        },
         {
             name: "closed",
             planName: "closed",

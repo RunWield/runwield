@@ -24,8 +24,7 @@ import {
     type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
-import { AGENTS } from "../../constants.ts";
-import { agentRegistry } from "./agent-registry.ts";
+import { AGENTS, agentRegistry } from "./agent-registry.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import {
     __getRootSessionMetadataForTests,

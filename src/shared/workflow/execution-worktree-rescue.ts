@@ -4,7 +4,7 @@ import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat } from "node:fs/promises";
 /** Recover a deleted execution checkout from Git evidence left by a manual rescue. */
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { listPlanExecutionDocuments } from "../../plan-store/index.ts";
 import { loadTargetPlan, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";
 
@@ -193,7 +193,7 @@ export async function recoverMissingExecutionWorktree(
         await runGit(projectRoot, ["worktree", "add", attempt.path, attempt.branch]);
         worktreeAdded = true;
         await enterProjectRuntime(attempt.path);
-        const restored = await loadPlan(attempt.path, attempt.planName);
+        const restored = await planDocumentsForCheckout(attempt.path).load(attempt.planName);
         if (!restored || restored.attrs.planId !== attempt.planId) {
             throw new Error("the restored checkout did not contain the expected Plan");
         }

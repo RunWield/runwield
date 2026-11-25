@@ -15,7 +15,7 @@ import {
 
 import { agentRegistry } from "./agent-registry.ts";
 import { getCustomSetting } from "../settings.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 

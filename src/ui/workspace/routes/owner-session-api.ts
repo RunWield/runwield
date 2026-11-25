@@ -1,8 +1,6 @@
 /** @module ui/workspace/routes/owner-session-api */
 
-import { readPlanRecordingContinuation } from "../../../plan-store/index.ts";
 import { ownerPlanContinuationApi } from "./owner-plan-continuation.ts";
-import { resolveWorkflowPlanLocation } from "../../../plan-store/index.ts";
 import {
     ImageSubmissionValidationError,
     type WorkspaceSessionContinuationService,
@@ -21,7 +19,7 @@ import {
     type ProjectParams,
 } from "./owner-api.ts";
 import { ownerSecurityHeaders } from "../server/owner-origin.ts";
-import { findPlanEvidenceById } from "../../../plan-store/index.ts";
+import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "../server/owner-projects.ts";
 import { getSlashCommandDefinition } from "../../../cmd/registry.ts";
 
@@ -473,7 +471,6 @@ export async function ownerSessionPlanReviewApi(ctx: OwnerRouteContext<OwnerSess
 export async function ownerSessionPlanWorkflowApi(ctx: OwnerRouteContext<OwnerSessionState, SessionParams>) {
     try {
         const body = await readJson(ctx.req);
-        const projectRoot = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         const planId = requireBoundedString(body.planId, "planId", 300);
         if (body.action === "resume_from_hold") {
             return await ownerPlanContinuationApi({
@@ -482,18 +479,11 @@ export async function ownerSessionPlanWorkflowApi(ctx: OwnerRouteContext<OwnerSe
                 req: new Request(ctx.req.url, { method: "POST", body: JSON.stringify(body) }),
             });
         }
-        const retained =
-            body.action === "retry_work_record" ? await readPlanRecordingContinuation(projectRoot, planId) : null;
-        const recording = retained;
-        const primary = recording
-            ? { planId, planName: recording.planName }
-            : await findPlanEvidenceById(projectRoot, planId);
+        const documents = openRegisteredPlanDocuments(ctx.params.projectId, ctx.state.store.projects);
+        const recording = body.action === "retry_work_record" ? await documents.recordingContinuation(planId) : null;
         const plan = recording
-            ? { attrs: { planId }, markdown: "", body: "" }
-            : (await resolveWorkflowPlanLocation(projectRoot, primary.planName, { readOnly: true })).plan;
-        if (!plan || plan.attrs.planId !== primary.planId) {
-            throw new Error("Plan evidence is unavailable. Refresh and try again.");
-        }
+            ? { ...recording, attrs: { planId }, body: "" }
+            : await documents.workflowContinuation(planId);
         const result: WorkflowHandoffResult = await ctx.state.sessionContinuation.startPlanWorkflowHandoff({
             requestId: readOptionalBoundedString(body, "requestId", 128) || crypto.randomUUID(),
             deviceId: ctx.state.ownerDevice?.deviceId || null,
@@ -501,9 +491,9 @@ export async function ownerSessionPlanWorkflowApi(ctx: OwnerRouteContext<OwnerSe
             projectId: ctx.params.projectId,
             runwieldSessionId: ctx.params.runwieldSessionId,
             expectedGeneration: requireExpectedGeneration(body.expectedGeneration),
-            planName: primary.planName,
-            planContent: plan.markdown || plan.body || "",
-            triageMeta: { ...plan.attrs, planId: primary.planId },
+            planName: plan.planName,
+            planContent: plan.body,
+            triageMeta: { ...plan.attrs, planId: plan.planId },
         });
         if (result?.error) return ownerJson({ error: result.error }, 409);
         return ownerJson(result, 202);

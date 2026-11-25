@@ -31,7 +31,8 @@ import {
 } from "./workflow.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { loadPlan, loadCanonicalExecutionPlanSource } from "../../plan-store/index.ts";
+import { loadCanonicalExecutionPlanSource } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

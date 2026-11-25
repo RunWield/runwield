@@ -2,12 +2,12 @@ import { test } from "node:test";
 import { equal, rejects } from "node:assert/strict";
 import {
     authorLocalPlan,
-    loadPlan,
     readPlanDocuments,
     savePlanDefinition,
     withLocalPlanWorkflow,
     operatePlanFile,
 } from "./index.ts";
+import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 import { seedPlanState } from "../shared/testing/plan-state-fixture.ts";
 import { packageFixture, tree } from "../shared/testing/plan-package-fixture.ts";
 
@@ -334,7 +334,8 @@ test("simultaneous first creation serializes catalog discovery and keeps complet
     }
 });
 
-import { renamePlan, findPlanById } from "./index.ts";
+import { renamePlan } from "./index.ts";
+import { findPlanById } from "../shared/testing/plan-query-fixture.ts";
 test("rename preserves identity and refuses a stale definition without replacing another Plan", async () => {
     const fixture = await packageFixture();
     try {

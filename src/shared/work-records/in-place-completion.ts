@@ -1,5 +1,5 @@
 /** Approve a prepared record after Core establishes non-Git in-place completion. */
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { findWorkRecordById, replaceWorkRecord } from "./store.js";
 import { approveWorkRecord } from "./lifecycle.ts";
 import { formatWorkRecordMarkdown } from "./markdown.ts";
@@ -11,7 +11,7 @@ export async function completeInPlaceWorkRecord(
     planName: string,
     mnemotecaPort: WorkRecordMnemotecaPort,
 ): Promise<void> {
-    const plan = await loadPlan(cwd, planName);
+    const plan = await planDocumentsForCheckout(cwd).load(planName);
     if (plan?.attrs.status !== "verified" || plan.attrs.deliveryEvidence?.mode !== "non_git_in_place") return;
     const id = plan.attrs.workRecord?.recordId;
     if (!id) return;

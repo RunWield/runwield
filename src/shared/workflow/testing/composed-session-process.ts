@@ -3,7 +3,7 @@ import { ok, equal } from "node:assert/strict";
 import { createServer } from "node:http";
 import { openFileSessionStore } from "../../session/file-session-store.ts";
 import { createSessionRuntime } from "../../session/session-runtime.ts";
-import { loadPlan } from "../../../plan-store/index.ts";
+import { loadPlan } from "../../testing/plan-query-fixture.ts";
 
 const [command, root, locator] = process.argv.slice(2);
 const store = openFileSessionStore();

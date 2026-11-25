@@ -1,9 +1,10 @@
+import { injectFrontMatter, parsePlanFrontMatter } from "@runwield/plans/format";
 import { join } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { getCwd } from "../../constants.ts";
 import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import type { PlanFrontMatterInput } from "../../plan-store.ts";
+import type { PlanFrontMatterInput } from "@runwield/plans";
 import type { runCodeReview } from "../../ui/review/code-review.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { GitPort } from "../git-port.ts";
@@ -193,8 +194,7 @@ export async function makeValidationProjectRoot(
     existingRoot?: string,
 ) {
     const root = existingRoot || (await fsMkdtemp(join(tmpdir(), "runwield-validation-root-")));
-    const { savePlan, ensurePlanIdentity, loadPlan, updatePlanFrontMatter, injectFrontMatter, parsePlanFrontMatter } =
-        await import("../../plan-store.ts");
+    const { savePlan, ensurePlanIdentity, loadPlan, updatePlanFrontMatter } = await import("../../plan-store.ts");
     const { pickControllerState } = await import("@runwield/plans/controller-state");
     await savePlan(root, planName, markdown, {
         classification: "PLANNED_CHANGE",

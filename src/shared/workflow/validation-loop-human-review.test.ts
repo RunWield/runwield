@@ -11,7 +11,8 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 
-import { loadPlan, type PlanFrontMatterInput } from "../../plan-store/index.ts";
+import { type PlanFrontMatterInput } from "@runwield/plans";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { HostedSession } from "../session/hosted-session.ts";
 import type {

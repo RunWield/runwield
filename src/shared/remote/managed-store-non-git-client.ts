@@ -1,3 +1,6 @@
+import { HostedSession } from "../session/hosted-session.ts";
+import { createPlanWrittenTool } from "../../tools/plan-written.ts";
+import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { equal, ok, rejects } from "node:assert/strict";
 import { writeFile, readFile } from "node:fs/promises";
 import { remoteBackgroundTaskLogDirectory } from "./background-task-logs.ts";
@@ -6,8 +9,6 @@ import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { activateRemoteProjectOwner, type RemoteInteractiveConfig } from "./entry.ts";
 import {
-    authorLocalPlan,
-    loadPlan,
     recordPlanEvent,
     withLocalPlanWorkflow,
     loadPublishedWorkRecordSource,
@@ -15,6 +16,7 @@ import {
     readPlanRecordingContext,
     readRecordingPublication,
     type ProjectStoreBinding,
+    planDocumentsForCheckout,
 } from "../../plan-store/index.ts";
 import { ProjectStoreClient } from "./project-store-client.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../workflow/execution-start.ts";
@@ -32,25 +34,48 @@ const input: Pick<RemoteInteractiveConfig, "cwd" | "resources" | "connection"> =
 await lines.cancel();
 const clear = await activateRemoteProjectOwner(input);
 try {
+    const planningSession = new HostedSession({ id: "managed-planner", cwd: input.cwd });
+    const body = "# In-place result\n";
+    let reviewedPlanId: string | undefined;
+    planningSession.setInteractionAdapter({
+        requestInteraction(request) {
+            equal(request.type, "plan_review");
+            const id = request._meta?.planId;
+            ok(typeof id === "string" && id.length > 0);
+            reviewedPlanId = id;
+            return { outcome: "canceled" };
+        },
+    });
+    try {
+        const submitted = await createPlanWrittenTool({ hostedSession: planningSession }).execute(
+            "create-managed-plan",
+            {
+                planName: "in-place",
+                contextMarkdown: body,
+                executionAgent: "engineer",
+                collaborationRecommendation: "autonomous",
+            },
+            undefined,
+            undefined,
+            {} as ExtensionToolContext,
+        );
+        ok(reviewedPlanId, JSON.stringify(submitted));
+        const authored = await planDocumentsForCheckout(input.cwd).byId(reviewedPlanId);
+        equal(authored.body, body);
+        equal(authored.attrs.status, "draft");
+    } finally {
+        planningSession.dispose();
+    }
     await rememberNonGitExecutionConsent("featurePlan", input.cwd);
     setExactProjectCustomSetting("verification_command", "test -f result.txt", input.cwd);
     setExactProjectCustomSetting("codereview", "none", input.cwd);
-    await authorLocalPlan(input.cwd, {
-        planName: "in-place",
-        contextMarkdown: "# In-place result\n",
-        definition: {
-            classification: "PLANNED_CHANGE",
-            executionAgent: "engineer",
-            collaborationRecommendation: "autonomous",
-        },
-    });
     await withLocalPlanWorkflow(input.cwd, "in-place", async () => {
         for (const [event, currentStatus] of [
             ["review_approved", "draft"],
             ["readiness_passed", "approved"],
         ] as const)
             await recordPlanEvent({ cwd: input.cwd, planName: "in-place", event, currentStatus });
-        const ready = await loadPlan(input.cwd, "in-place");
+        const ready = await planDocumentsForCheckout(input.cwd).load("in-place");
         ok(ready);
         const execution = await startActiveExecutionWorkflow({
             cwd: input.cwd,
@@ -86,7 +111,7 @@ try {
                 ).catch(() => "")),
         );
         ok(result.hostRequest?.kind === "recorder", JSON.stringify(result));
-        const reviewed = await loadPlan(input.cwd, "in-place");
+        const reviewed = await planDocumentsForCheckout(input.cwd).load("in-place");
         ok(reviewed?.attrs.planId);
         const endpoint = `http://127.0.0.1:${input.connection.port}`;
         const admission = await fetch(`${endpoint}/project-store/admit`, {
@@ -117,7 +142,7 @@ try {
             }),
             /409/,
         );
-        equal((await loadPlan(input.cwd, "in-place"))?.revision, reviewed.revision);
+        equal((await planDocumentsForCheckout(input.cwd).load("in-place"))?.revision, reviewed.revision);
         result = await runValidationAttempt({
             projectRoot: input.cwd,
             planName: "in-place",
@@ -137,7 +162,7 @@ try {
                     "utf8",
                 ).catch(() => "")),
         );
-        const completed = await loadPlan(input.cwd, "in-place");
+        const completed = await planDocumentsForCheckout(input.cwd).load("in-place");
         equal(completed?.attrs.status, "verified");
         equal(completed?.attrs.executionMode, "non_git_in_place");
         equal(completed?.attrs.deliveryEvidence?.mode, "non_git_in_place");
@@ -157,7 +182,10 @@ try {
             attemptId: recording.publishedReference.attemptId,
         });
         ok("status" in settledAgain.result && settledAgain.result.status === "completed");
-        equal((await loadPlan(input.cwd, "in-place"))?.attrs.verifiedAt, completed?.attrs.verifiedAt);
+        equal(
+            (await planDocumentsForCheckout(input.cwd).load("in-place"))?.attrs.verifiedAt,
+            completed?.attrs.verifiedAt,
+        );
         const source = await loadPublishedWorkRecordSource(input.cwd, "in-place");
         equal(source?.body, "# In-place result\n");
         equal(source?.attrs.status, "verified");

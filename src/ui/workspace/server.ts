@@ -325,7 +325,7 @@ export function createRemoteWorkspaceApp(options: RemoteWorkspaceAppOptions = { 
 
 export function createOwnerWorkspaceApp(options: OwnerWorkspaceAppOptions) {
     const admissionRoot = planControllerRoot("") || undefined;
-    const packageAccess = capturePlanReadContext();
+    const packageAccess = capturePlanReadContext({ preserveSelection: false });
     const app = createWorkspaceRouter<OwnerWorkspaceRouterState>();
     const store = options.store;
     setAstroOwnerWorkspaceStore(store);
@@ -537,7 +537,7 @@ export function createOwnerWorkspaceApp(options: OwnerWorkspaceAppOptions) {
 }
 
 function createLocalWorkspaceApp({ cwd, token, skipTokenCheck = false, mnemotecaPort }: LocalWorkspaceAppOptions) {
-    const packageAccess = capturePlanReadContext();
+    const packageAccess = capturePlanReadContext({ preserveSelection: false });
     return {
         handler() {
             return async (request: Request) => {

@@ -9,7 +9,8 @@ import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { withPlanCatalogLock, withPlanLock } from "./plan-store.ts";
 import { injectFrontMatter } from "@runwield/plans/format";
-import { ensurePlanIdentity, listPlanResources } from "./plan-store/index.ts";
+import { ensurePlanIdentity } from "./plan-store/index.ts";
+import { listPlanResources } from "./shared/testing/plan-query-fixture.ts";
 import { savePlan } from "./plan-store.ts";
 import { resolveProjectRuntimeLayout } from "./shared/project-runtime-layout.ts";
 

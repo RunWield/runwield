@@ -1,5 +1,4 @@
-import { AGENTS } from "../../constants.ts";
-import { agentRegistry } from "./agent-registry.ts";
+import { AGENTS, agentRegistry } from "./agent-registry.ts";
 import { readPersistedActiveAgentName, readPersistedManualModelState } from "./active-agent-session.ts";
 import {
     assertThinkingLevelBackendSupportedForInvocation,

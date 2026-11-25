@@ -18,7 +18,7 @@ import {
 import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import { join } from "node:path";
 import { getRunWieldRuntimeDir } from "../constants.ts";
-import { listPlans, loadPlan } from "../plan-store/index.ts";
+import { listPlans, loadPlan } from "./testing/plan-query-fixture.ts";
 
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";

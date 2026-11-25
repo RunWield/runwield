@@ -84,7 +84,7 @@ test("owner Plan review refuses approval after real status evidence changes", as
                 _meta: { planId: "stale-plan", planName: "stale", planningAgentName: "planner" },
             },
             async ({ service, reference, response, root }) => {
-                const { loadPlan } = await import("../../plan-store/index.ts");
+                const { loadPlan } = await import("../../shared/testing/plan-query-fixture.ts");
                 const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
                 const { recordPlanEvent } = await import("../../plan-store/index.ts");
 
@@ -123,7 +123,7 @@ test("owner Sequence review refuses changed siblings and returns the complete cu
         const { prepareSequenceReview } = await import("../../plan-store/index.ts");
         const { writeFile } = await import("node:fs/promises");
 
-        const { loadPlan } = await import("../../plan-store/index.ts");
+        const { loadPlan } = await import("../../shared/testing/plan-query-fixture.ts");
         await savePlan(root, "sequence", "# Sequence\n", {
             classification: "PROJECT",
             type: "sequence",
@@ -288,7 +288,42 @@ test("owner requests retain admitted document identity and reject stale saves wi
         assert((await emptyPage.text()).includes("import"));
         equal((await handler(new Request(url.replace(project.projectId, empty.projectId), { headers }))).status, 403);
         deepEqual(await tree(emptyRoot), beforeEmpty);
-        const { withLocalPlanWorkflow, operatePlanFile, loadPlan } = await import("../../plan-store/index.ts");
+        const { projects } = await import("@runwield/projects");
+        const other = projects.checkout.inspect(emptyRoot);
+        if (other.kind !== "existing") throw new Error("The second Project was not admitted.");
+        await create(other.identity, {
+            documents: { "context.md": "# Independent Project Plan", "validation.md": "# Verify" },
+        });
+        const otherUrl = url.replace(project.projectId, empty.projectId);
+        const otherInitial = await handler(new Request(otherUrl, { headers }));
+        equal(otherInitial.status, 200, await otherInitial.clone().text());
+        const otherDocument = await otherInitial.json();
+        equal(otherDocument.body, "# Independent Project Plan");
+        const otherSaved = await handler(
+            new Request(otherUrl, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({ revision: otherDocument.revision, body: "# Independent edit" }),
+            }),
+        );
+        equal(otherSaved.status, 200, await otherSaved.clone().text());
+        equal((await otherSaved.json()).body, "# Independent edit");
+        equal((await (await get()).json()).body, "# Edited in another tab\n");
+        const otherPage = await handler(
+            new Request(`${origin}/projects/${empty.projectId}/plans/plan-one`, { headers }),
+        );
+        equal(otherPage.status, 200);
+        assert((await otherPage.text()).includes("Independent edit"));
+        const { openRegisteredPlanDocuments } = await import("../../plan-store/index.ts");
+        const otherDocuments = openRegisteredPlanDocuments(empty.projectId, store.projects);
+        const otherCatalog = await otherDocuments.openSearchCatalog();
+        equal((await otherCatalog.read("plan-one"))?.body, "# Independent edit");
+        store.projects.setStatus(empty.projectId, "inactive");
+        await assert.rejects(() => otherDocuments.document("plan-one", "context.md"), /inactive/i);
+        await assert.rejects(() => otherCatalog.read("plan-one"), /inactive/i);
+        store.projects.setStatus(empty.projectId, "active");
+        const { withLocalPlanWorkflow, operatePlanFile } = await import("../../plan-store/index.ts");
+        const { loadPlan } = await import("../../shared/testing/plan-query-fixture.ts");
         const { recordPlanEvent } = await import("../../plan-store/index.ts");
         await withLocalPlanWorkflow(f.root, "one", async () => {
             await recordPlanEvent({ cwd: f.root, planName: "one", event: "review_approved", currentStatus: "draft" });
@@ -309,6 +344,10 @@ test("owner requests retain admitted document identity and reject stale saves wi
         const admission = await selectPlanAccess(f.root, "one");
         await archivePlan(f.root, "one", { force: true, reason: "retired" });
         const archived = await read(f.identity);
+        const catalog = await handler(
+            new Request(`${origin}/api/owner/projects/${project.projectId}/plans`, { headers }),
+        );
+        equal(catalog.status, 200, await catalog.clone().text());
         await assert.rejects(
             () =>
                 withPlanAccess(f.root, admission, () => {

@@ -16,7 +16,11 @@
 import type { ContextEvent, ExtensionAPI, SessionCompactEvent } from "@earendil-works/pi-coding-agent";
 import { buildReAnchorMessage, type ReAnchorContext } from "../../shared/workflow/workflow-prompts.ts";
 import { projectEngineerPlanBody } from "../../shared/workflow/engineer-plan-projection.ts";
-import { loadPlan, readFrozenPlanExecutionDocuments, resumePlanAttempt } from "../../plan-store/index.ts";
+import {
+    readFrozenPlanExecutionDocuments,
+    resumePlanAttempt,
+    planDocumentsForCheckout,
+} from "../../plan-store/index.ts";
 import { normalizeWorkflowPlanName } from "../../shared/session/workflow-context-session.ts";
 import { normalizeLedger, renderOpenItems } from "../../shared/workflow/review-ledger.ts";
 import type { HostedSession } from "../../shared/session/hosted-session.ts";
@@ -65,7 +69,7 @@ async function resolveReAnchorContext(options: ReAnchorOptions): Promise<ReAncho
             const readBody = async () => {
                 const frozen = await readFrozenPlanExecutionDocuments(planName, activeWorkflow?.packageInput);
                 if (frozen) return frozen.planBody;
-                const plan = await loadPlan(executionCwd, planName);
+                const plan = await planDocumentsForCheckout(executionCwd).load(planName);
                 return plan ? projectEngineerPlanBody(plan.markdown) : "";
             };
             planBody = activeWorkflow?.packageSelection

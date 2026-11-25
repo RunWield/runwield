@@ -18,10 +18,9 @@ import { readPublishedDeliverySources } from "../../plan-store/index.ts";
  */
 
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
-import { isPlannedChangeClassification } from "../../constants.ts";
+import { isPlannedChangeClassification, isChildFeaturePlan, isProjectPlan } from "@runwield/plans/format";
 
-import { isChildFeaturePlan, isProjectPlan } from "@runwield/plans/format";
-import { findPlansByParent, listArchivedPlans, loadArchivedPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
@@ -63,7 +62,7 @@ interface TargetedWorkRecordSource {
     targetPlanName?: string;
 }
 
-type WorkRecordParentState = Pick<import("../../plan-store/index.ts").PlanFrontMatter, "status" | "epicCompletionMode">;
+type WorkRecordParentState = Pick<import("@runwield/plans").PlanFrontMatter, "status" | "epicCompletionMode">;
 
 /** The parent must be terminal before a child completion can record its Epic. */
 export function isTerminalWorkRecordParent(attrs: WorkRecordParentState): boolean {
@@ -87,15 +86,15 @@ async function loadActiveSource(cwd: string, name: string): Promise<WorkRecordSo
 async function withEpicChildren(cwd: string, source: WorkRecordSource): Promise<WorkRecordSource> {
     if (!isProjectPlan(source.attrs)) return source;
     const children: WorkRecordSource[] = [];
-    for (const child of await findPlansByParent(cwd, source.name)) {
+    for (const child of await planDocumentsForCheckout(cwd).children(source.name)) {
         const loaded = await loadActiveSource(cwd, child.name);
         if (loaded) children.push(loaded);
     }
-    for (const child of await listArchivedPlans(cwd)) {
+    for (const child of await planDocumentsForCheckout(cwd).archives()) {
         if (!isPlannedChangeClassification(child.attrs.classification) || child.attrs.parentPlan !== source.name) {
             continue;
         }
-        const loaded = await loadArchivedPlan(cwd, child.name);
+        const loaded = await planDocumentsForCheckout(cwd).archived(child.name);
         if (!loaded) continue;
         children.push({
             sourceKind: "archived",

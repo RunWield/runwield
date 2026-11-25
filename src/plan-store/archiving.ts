@@ -121,7 +121,7 @@ export async function archiveEpicPlanFamily(cwd: string, epicName: string, child
 
 export async function archivePlansByStatus(
     cwd: string,
-    status: import("../plan-store.ts").PlanFrontMatter["status"],
+    status: import("@runwield/plans").PlanFrontMatter["status"],
     options: ArchivePlanOptions = {},
 ): Promise<import("../plan-store.ts").BulkArchivePlansResult> {
     if (!isCanonicalPlanStatus(status)) {

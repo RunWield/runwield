@@ -1,6 +1,6 @@
 import type { PlanAccess, PackageWorkflowInput } from "../../plan-store/index.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { ReviewLedger } from "../workflow/review-ledger.ts";
+import type { ReviewLedger } from "@runwield/plans/controller-state";
 import type { HostedSession, MinimalSessionManagerLike } from "./hosted-session.ts";
 
 export interface ActiveExecutionWorkflow {

@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { ok as assert, rejects } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { withIntegrationNotes } from "../../plan-store/epic-context.ts";

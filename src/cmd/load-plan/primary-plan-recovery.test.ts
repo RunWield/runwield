@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { getDeclaredPlanStatus } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { createTestWorktreeAttempt, makeRepo } from "../../shared/worktree-test-helpers.ts";
 import { removeWorktreeGitArtifacts } from "../../shared/worktree.ts";

@@ -29,8 +29,13 @@ import { captureForegroundProcess } from "../shared/captured-process.ts";
 import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
 /** Immutable recording input retained after delivery removes the execution worktree. */
 import { join } from "node:path";
-import { canonicalizeStoredPlanName, isChildFeaturePlan, isProjectPlan, parsePlanFrontMatter } from "@runwield/plans/format";
-import { loadPlan } from "./index.ts";
+import {
+    canonicalizeStoredPlanName,
+    isChildFeaturePlan,
+    isProjectPlan,
+    parsePlanFrontMatter,
+} from "@runwield/plans/format";
+import { loadPlan } from "./queries.ts";
 import { savePlan } from "../plan-store.ts";
 import { findRecordingControllerByName, inspectControllerView, writeControllerState } from "./controllers.ts";
 import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
@@ -376,7 +381,7 @@ async function packageDeliverySources(
                 parentPlan: metadata.parentPlanId ? name(metadata.parentPlanId) : undefined,
                 dependencies: metadata.dependencyPlanIds.map(name),
                 status: (delivered || completedParent) && proved ? "verified" : metadata.definition.status,
-            } as import("../plan-store.ts").PlanFrontMatter,
+            } as import("@runwield/plans").PlanFrontMatter,
         });
         const recordingOwnerId =
             manifest.members.find((item) => item.metadata.planId === manifest.planId)?.metadata.parentPlanId ||

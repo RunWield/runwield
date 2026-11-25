@@ -9,7 +9,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { HostedSession } from "../session/hosted-session.ts";
 import {
@@ -18,8 +18,8 @@ import {
     listPendingTaskCompletions,
     recordAcceptedTaskCompletion,
 } from "../session/task-completion-session.ts";
+import { isValidationCheckpoint } from "@runwield/plans/controller-state";
 import {
-    isValidationCheckpoint,
     makeValidationCheckpoint,
     readValidationReviewState,
     validationCheckpointCanResume,

@@ -4,7 +4,7 @@ import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promis
 import { test } from "node:test";
 import { notDeepStrictEqual as assertNotEquals, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { getHomeDir } from "../../constants.ts";
 import { join } from "node:path";
 import { setCustomSetting } from "../settings.ts";
@@ -19,7 +19,8 @@ import {
 import { createEngineValidationArgs } from "./validation.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { runReviewerRound } from "./validation-semantic.ts";
-import { createLedger, type ReviewLedger } from "./review-ledger.ts";
+import { type ReviewLedger } from "@runwield/plans/controller-state";
+import { createLedger } from "./review-ledger.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import {
     git,
@@ -935,7 +936,7 @@ test("runValidationPhase carries existing ledger identities and repair report in
 test("round-two origin metrics are recorded separately from durable repair states", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     await setCustomSetting("workflowMetrics", true, "project", projectRoot);
-    /** @type {import('./review-ledger.ts').ReviewLedger} */
+    /** @type {import('@runwield/plans/controller-state').ReviewLedger} */
     const reviewLedger: ReviewLedger = {
         sequence: 2,
         items: ["R1-1", "R1-2"].map((id) => ({

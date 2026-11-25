@@ -1,4 +1,5 @@
-import { plans } from "@runwield/plans";
+import { bindProjectPlanStore, PlanAccessMismatchError } from "./project-binding.ts";
+import { plans, type PlanFrontMatterInput, type PlanFrontMatter } from "@runwield/plans";
 import type { CreateProjectPlan, PlanAuthoringDefinition } from "@runwield/plans/store";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import {
@@ -56,7 +57,7 @@ export function requiresPlanWorkflow(cwd: string): boolean {
 }
 
 /** A captured read context cannot grant access to another Project or owner. */
-export class PlanAccessMismatchError extends Error {}
+export { PlanAccessMismatchError } from "./project-binding.ts";
 
 /** Local passive reads have exactly one authority. A missing home never enables checkout discovery. */
 export async function readLocalHomeStore<T>(
@@ -83,7 +84,7 @@ export async function readLocalHomeStore<T>(
     }
     if (store.kind === "empty") return empty();
     if (store.kind !== "local") return await read();
-    return await withPackageProject(cwd, store.identity, read);
+    return await bindProjectPlanStore(store.identity.projectId, { admitted: store.identity })(read, "read");
 }
 
 export function missingHomePlan(path: string) {
@@ -107,13 +108,8 @@ import {
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { packageWorkflowRevision, packageController } from "./workflows.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
-import {
-    StalePlanWriteError,
-    canonicalizeStoredPlanName,
-    getStoredPlanPath,
-    type PlanFrontMatterInput,
-    type PlanFrontMatter,
-} from "../plan-store.ts";
+import { canonicalizeStoredPlanName } from "@runwield/plans/format";
+import { StalePlanWriteError, getStoredPlanPath } from "../plan-store.ts";
 
 /** A diagnostic/edit reference follows the selected storage owner even when loading the document failed. */
 export async function planDocumentReference(cwd: string, reference: string): Promise<string> {
@@ -304,10 +300,17 @@ export async function withLocalPlanWorkflow<T>(
     run: () => Promise<T>,
     planId?: string,
 ): Promise<T> {
-    if (managedPlanStoreActive()) return await withManagedPlan(cwd, await selectManagedPlan(cwd, name), run);
+    if (managedPlanStoreActive()) {
+        const selection = await selectManagedPlan(cwd, planId ?? name, planId !== undefined);
+        if (planId !== undefined && selection.planName !== name)
+            throw new Error("Plan selection does not match the requested Plan name.");
+        return await withManagedPlan(cwd, selection, run);
+    }
     const selection = await selectLocalPlanWorkflow(cwd, planId ?? name, planId !== undefined);
     if (planId !== undefined && !selection) throw new Error("Plan workflow requires its canonical owner.");
-    if (selection?.planId === currentPackageSelection()?.planId) return await run();
+    const current = currentPackageSelection();
+    if (selection?.planId === current?.planId && (planId === undefined || current?.expectedName === name))
+        return await run();
     return selection
         ? await withPackageWorkflow(cwd, selection, run, planId === undefined ? undefined : name)
         : await run();
@@ -382,10 +385,9 @@ export async function withLocalProjectAction<T>(cwd: string, action: () => Promi
     if (!projects.home.current()) await enterProjectRuntime(cwd);
     const admitted = inspectLocalHomeStore(cwd);
     if (admitted.kind !== "local") throw new Error("Project action requires an admitted local owner.");
-    return await withPackageProject(cwd, admitted.identity, action);
+    return await bindProjectPlanStore(admitted.identity.projectId, { admitted: admitted.identity })(action);
 }
 
-export type { PlanAuthoringDefinition } from "@runwield/plans/store";
 export interface PlanAuthoringInput extends CreateProjectPlan {
     expectedRevision?: string;
 }
@@ -403,6 +405,14 @@ export async function createSavedPlan(cwd: string, input: CreateProjectPlan): Pr
     const planId = randomUUID();
     await authorPackagePlan(cwd, creation, planId);
     return planId;
+}
+
+export async function reviseSavedPlan(cwd: string, planId: string, input: PlanAuthoringInput): Promise<void> {
+    if (managedPlanStoreActive()) {
+        await authorManagedPlanWithIdentity(cwd, input, planId);
+        return;
+    }
+    await authorPackagePlan(cwd, input, planId);
 }
 export async function authorPackagePlan(
     cwd: string,

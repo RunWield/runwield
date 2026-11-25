@@ -1,7 +1,5 @@
 import { readOptionalEnv } from "@runwield/resources/home";
 import { toolRegistry } from "@runwield/tools";
-export type { RoutingIntent, WorkKind } from "@runwield/tools";
-export { PLANS_DIR_NAME, isPlannedChangeClassification, type PlanClassification } from "@runwield/plans/format";
 
 export { CLI_BIN } from "./shared/cli-name.ts";
 /**
@@ -12,7 +10,6 @@ export { CLI_BIN } from "./shared/cli-name.ts";
 import { join } from "node:path";
 import { cwd } from "node:process";
 import { RUNWIELD_SOURCE_ROOT } from "../runtime-root.ts";
-import { agentRegistry } from "./shared/session/agent-registry.ts";
 
 export { describeUnsandboxedTestRun, getHomeDir, isTestModulePath } from "@runwield/resources/home";
 
@@ -61,10 +58,8 @@ export const SNIP_FILTERS_DIR = resolveBundledResourcePath("snip-filters");
 /** Path to the bundled Catppuccin Mocha theme JSON. */
 export const CATPPUCCIN_MOCHA_THEME_PATH = resolveBundledResourcePath("ui", "theme", "catppuccin-mocha.json");
 
-export const { normalizeWorkKind, workKinds: WORK_KINDS } = toolRegistry.get("triage_report");
-
 export function formatPlannedWorkLabel(workKind: string | null | undefined) {
-    switch (normalizeWorkKind(workKind)) {
+    switch (toolRegistry.get("triage_report").normalizeWorkKind(workKind)) {
         case "BUG_FIX":
             return "Planned bug fix";
         case "FEATURE":
@@ -153,8 +148,6 @@ export const PLAN_STAGING_DIR_NAME = "plan-staging";
 
 /** Git branch prefix for isolated execution worktrees. */
 export const WORKTREE_BRANCH_PREFIX = "worktree/";
-
-export const { primary: AGENTS, isolated: SUBAGENTS } = agentRegistry.ids;
 
 /** Max concurrent read-only Delegated Agent Sessions per HostedSession. */
 export const MAX_DELEGATED_READERS = 3;

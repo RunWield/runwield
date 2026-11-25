@@ -7,7 +7,7 @@ import {
     readManagedRelatedController,
     writeManagedRelatedController,
 } from "./managed.ts";
-import { isValidationCheckpoint } from "../shared/workflow/validation-checkpoint.ts";
+import { isValidationCheckpoint } from "@runwield/plans/controller-state";
 import {
     currentPackageSelection,
     packageWorkflowLocks,
@@ -46,7 +46,7 @@ import {
     type WorktreeRegistryEntry,
 } from "../shared/worktree-registry.ts";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
-import { parsePlanFrontMatter } from "../plan-store.ts";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { isPublicationCleanupPending } from "../shared/workflow/publication-attempt.ts";
 import {
     CONTROLLER_STATE_FIELDS,

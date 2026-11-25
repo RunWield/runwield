@@ -7,7 +7,6 @@ import { captureForegroundProcess } from "../captured-process.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import {
     authorLocalPlan,
-    loadPlan,
     recordPlanEvent,
     withLocalPlanWorkflow,
     savePlanProse,
@@ -16,6 +15,7 @@ import {
     listOwnedWorkRecords,
     searchOwnedWorkRecords,
 } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import type { HostTurnValidationResult, ValidationHostResume } from "./validation-host-turn.ts";

@@ -28,10 +28,11 @@ import {
     compareChildPlansByOrder,
     parsePlanFrontMatter,
     EPIC_INTEGRATION_REPORT_FILE_NAME,
+    isPlannedChangeClassification,
 } from "@runwield/plans/format";
-import { findPlansByParent, loadPlan, saveChildFeaturePlans } from "../../plan-store/index.ts";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
-import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
+import { saveChildFeaturePlans, planDocumentsForCheckout } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
+import { AGENTS } from "../session/agent-registry.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { isGitRepository } from "../git.ts";
 import { getCodeReviewMode, getCustomSetting, getExactProjectCustomSetting } from "../settings.ts";
@@ -51,6 +52,7 @@ import { ensureEpicBranch } from "./epic-branch.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { createValidationSessionPort, type SemanticReviewPort } from "./validation-session-adapter.ts";
 import { ReviewInspection } from "./review-inspection.ts";
+import type { ReviewLedger, EpicIntegrationReviewState } from "@runwield/plans/controller-state";
 import {
     applyRoundFindings,
     claimReviewFixes,
@@ -60,11 +62,9 @@ import {
     renderOpenItems,
     renderResolvedItems,
     unaccountedOpenItems,
-    type ReviewLedger,
 } from "./review-ledger.ts";
 import { readEpicIntegrationReview } from "../../plan-store/index.ts";
 import { StaleControllerWriteError } from "../../plan-store/index.ts";
-import type { EpicIntegrationReviewState } from "@runwield/plans/controller-state";
 import { SEMANTIC_REVIEW_CYCLES } from "./validation-types.ts";
 import { formatCodeReviewAnnotations, normalizeHumanReview } from "./validation-human-review.ts";
 import {
@@ -247,7 +247,7 @@ export async function readEpicDeliveryState(
         family.set(child.name, child as { name: string; path: string; attrs: PlanFrontMatter });
     }
     // Drafts not yet on the branch are still part of the Epic and are not delivered.
-    for (const child of await findPlansByParent(location.documentRoot, epicPlanName)) {
+    for (const child of await planDocumentsForCheckout(location.documentRoot).children(epicPlanName)) {
         if (!family.has(child.name)) family.set(child.name, child);
     }
     const included = [...family.values()]
@@ -302,7 +302,7 @@ export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: s
     const branch = epicBranchOf(prepared.plan?.attrs);
     if (branch && (await isGitRepository(projectRoot))) {
         await prepareTargetBranchPlansByParent(projectRoot, branch, epicPlanName);
-        for (const child of await findPlansByParent(prepared.documentRoot, epicPlanName)) {
+        for (const child of await planDocumentsForCheckout(prepared.documentRoot).children(epicPlanName)) {
             await preparePlanWorkflow(projectRoot, child.name);
         }
     }
@@ -706,7 +706,7 @@ async function addRepairChild(
     reportRelativePath: string,
     findings: GateFinding[],
 ): Promise<EpicContinuationResolution> {
-    const siblings = await findPlansByParent(documentRoot, epicPlanName);
+    const siblings = await planDocumentsForCheckout(documentRoot).children(epicPlanName);
     const highestOrder = Math.max(
         0,
         ...state.children.map((child) => child.order ?? 0),
@@ -751,7 +751,7 @@ async function addRepairChild(
             workKind: "BUG_FIX",
         },
     ]);
-    const child = await loadPlan(documentRoot, written.name);
+    const child = await planDocumentsForCheckout(documentRoot).load(written.name);
     if (!child) throw new Error(`Repair child was not saved: ${written.name}`);
     return {
         kind: "plan",
@@ -862,7 +862,7 @@ export async function runEpicIntegrationGate(
         head,
         async (checkoutPath): Promise<EpicIntegrationGateResult> => {
             // Review the requirements committed with this exact Epic head, not a primary copy.
-            const reviewEpic = await loadPlan(checkoutPath, epicPlanName);
+            const reviewEpic = await planDocumentsForCheckout(checkoutPath).load(epicPlanName);
             if (!reviewEpic)
                 return { kind: "paused", reason: `Epic document is missing from the checked branch: ${epicPlanName}` };
             try {

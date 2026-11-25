@@ -1,5 +1,5 @@
 import { recordWorkflowOutcome } from "../../shared/workflow/outcome-observations.ts";
-import { AGENTS } from "../../constants.ts";
+import { AGENTS } from "../../shared/session/agent-registry.ts";
 
 import { closeTransitionRecordByAttestation, runPlanRecoveryEffects } from "../../plan-store/index.ts";
 import { healSettledTransitionRecords } from "../../shared/workflow/transition-recovery.ts";

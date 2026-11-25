@@ -5,8 +5,7 @@
  * the Reviewer-Feedback Engineer, and the manual QA checklist.
  */
 
-import { SUBAGENTS } from "../../constants.ts";
-import { agentRegistry } from "../session/agent-registry.ts";
+import { SUBAGENTS, agentRegistry } from "../session/agent-registry.ts";
 
 /**
  * Load reviewer as a bare workflow prompt instead of a normal agent definition.

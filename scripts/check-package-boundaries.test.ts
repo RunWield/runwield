@@ -35,6 +35,8 @@ async function makeRepository(context: TestContext) {
         }),
         [`${alpha}/src/index.ts`]: "export {};",
         [`${alpha}/src/private.ts`]: "export {};",
+        "packages/plans/package.json": JSON.stringify({ name: "@runwield/plans", exports: "./index.ts" }),
+        "packages/plans/index.ts": "export {};",
         "packages/beta/package.json": JSON.stringify({ name: "beta", exports: "./entry.ts" }),
         "packages/plugin/package.json": JSON.stringify({
             name: "@sample/plugin",
@@ -142,4 +144,21 @@ test("checks executable Astro template expressions and skips literal markup", as
         lint(source, "src/example.astro").map(({ line }) => line),
         [2, 3, 4, 5, 6, 9],
     );
+});
+
+test("applications consume extracted packages through their declared entry points", async (context) => {
+    const { lint } = await makeRepository(context);
+    const source = [
+        'export * from "@runwield/plans";',
+        'export type { PlanId } from "../packages/plans/index.ts";',
+        'import { plans } from "@runwield/plans";',
+        'export { adapt } from "./plan-adapter.ts";',
+    ].join("\n");
+    const diagnostics = lint(source, "src/plan-store.ts");
+    assert.deepEqual(
+        diagnostics.map(({ line }) => line),
+        [1, 2],
+    );
+    assert.match(diagnostics[0].message, /Consumers must import @runwield\/plans directly/);
+    assert.deepEqual(lint('export * from "@runwield/plans";', "packages/beta/entry.ts"), []);
 });

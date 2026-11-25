@@ -6,8 +6,7 @@
  * small custom marker that `/resume` can use for newer sessions.
  */
 
-import { AGENTS } from "../../constants.ts";
-import { agentRegistry } from "./agent-registry.ts";
+import { AGENTS, agentRegistry } from "./agent-registry.ts";
 
 export const ACTIVE_AGENT_CUSTOM_TYPE = "runwield.active_agent";
 export const MANUAL_MODEL_CUSTOM_TYPE = "runwield.manual_model";

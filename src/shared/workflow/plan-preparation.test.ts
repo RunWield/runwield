@@ -4,7 +4,7 @@ import { strictEqual, ok } from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 

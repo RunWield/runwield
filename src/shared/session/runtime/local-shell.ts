@@ -1,4 +1,4 @@
-import { AGENTS } from "../../../constants.ts";
+import { AGENTS } from "../agent-registry.ts";
 import { normalizeRuntimeToolResult, RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { describeRuntimeTool } from ".././tool-event-title.ts";
 import { spawnForegroundShell } from "../../foreground-process.ts";

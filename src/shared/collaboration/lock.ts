@@ -3,13 +3,6 @@
 import { redactSecrets } from "./capabilities.ts";
 import { COLLABORATION_STATE_REMOTE_CANONICAL, type CollaborationFrontMatter } from "@runwield/plans/format";
 
-export {
-    COLLABORATION_FRONT_MATTER_KEYS,
-    COLLABORATION_STATE_REMOTE_CANONICAL,
-    normalizeCollaborationFrontMatter,
-    type CollaborationFrontMatter,
-} from "@runwield/plans/format";
-
 export const COLLABORATION_LOCK_BYPASS = Object.freeze({
     share: Symbol("runwield.collaborationLockBypass.share"),
     pull: Symbol("runwield.collaborationLockBypass.pull"),

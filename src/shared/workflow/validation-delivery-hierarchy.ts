@@ -6,8 +6,8 @@ import { readFile as fsReadFile } from "node:fs/promises";
  */
 
 import { getPlanRevisionForText } from "@runwield/plans/format";
-import { findPlansByParent, loadPlan } from "../../plan-store/index.ts";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 
 /** One sibling as captured before a publication, for later comparison. */
 export interface SiblingPlanSnapshot {
@@ -50,13 +50,15 @@ export async function loadDirectDeliveryHierarchySnapshot(
     projectRoot: string,
     planName: string,
 ): Promise<DirectDeliveryHierarchySnapshot> {
-    const plan = await loadPlan(projectRoot, planName);
+    const plan = await planDocumentsForCheckout(projectRoot).load(planName);
     if (!plan) throw new Error(`Plan not found: ${planName}`);
     const parentValue = plan.attrs?.parentPlan;
     const parentPlan = typeof parentValue === "string" && parentValue.trim() ? parentValue : undefined;
     const siblingPlans: SiblingPlanSnapshot[] = [];
     if (parentPlan) {
-        for (const sibling of await findPlansByParent(projectRoot, parentPlan).catch(() => [])) {
+        for (const sibling of await planDocumentsForCheckout(projectRoot)
+            .children(parentPlan)
+            .catch(() => [])) {
             siblingPlans.push({
                 name: sibling.name,
                 revision: await getPlanRevisionForText(await fsReadFile(sibling.path, "utf8")),

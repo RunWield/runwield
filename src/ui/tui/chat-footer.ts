@@ -4,9 +4,9 @@ import type { RuntimeUsage } from "../../shared/session/session-runtime-events.t
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.ts";
-import { AGENTS, getCwd, getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
+import { AGENTS, agentRegistry } from "../../shared/session/agent-registry.ts";
+import { getCwd, getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
 import { getSettingsManager } from "../../shared/settings.ts";
-import { agentRegistry } from "../../shared/session/agent-registry.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { readRunWieldPackageInstallSync } from "../../shared/package-install.ts";

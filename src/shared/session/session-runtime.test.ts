@@ -84,7 +84,8 @@ import { McpIntegration } from "../mcp/integration.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import { buildSemanticRepairSegmentContinuation } from "../workflow/execution-segment-handoff.ts";
 import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "../workflow/workflow-tool-events.ts";
-import { getHomeDir, SUBAGENTS } from "../../constants.ts";
+import { SUBAGENTS } from "./agent-registry.ts";
+import { getHomeDir } from "../../constants.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 
 interface DeferredVoidResult {

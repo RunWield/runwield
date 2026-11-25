@@ -13,7 +13,7 @@ import {
 import { join } from "node:path";
 import { withPlanPublication, restartPlanValidation, readRetainedExecutionPlan } from "../../plan-store/index.ts";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
 import { listWorkRecords } from "../work-records/store.js";
 import { gitStatusPaths } from "../git-runtime-safety.ts";
@@ -36,7 +36,7 @@ export async function prepareReviewedCandidateRevalidation(projectRoot: string, 
     return await withPlanPublication(projectRoot, planName, async (entry) => {
         if (!entry || entry.publication) return false;
         return await (async () => {
-            const plan = await loadPlan(entry.path, planName);
+            const plan = await planDocumentsForCheckout(entry.path).load(planName);
             const identity = plan?.attrs.validationCheckpoint?.candidateIdentity;
             if (plan?.attrs.status !== "reviewed" || !identity) return false;
             if (plan.attrs.planId !== entry.planId) throw new Error("Publication Plan identity changed.");

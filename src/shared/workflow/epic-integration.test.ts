@@ -7,7 +7,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { setCustomSetting } from "../settings.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import type { IsolatedAgentSessionOptions, SemanticReviewPort } from "./validation-session-adapter.ts";
 import { parseDiffFiles } from "./review-diff-tool.ts";

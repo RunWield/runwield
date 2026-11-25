@@ -1,36 +1,14 @@
 import { projects } from "@runwield/projects";
 import type { PlanFrontMatter, PlanFrontMatterInput, PlanFrontMatterWithCustomFields } from "@runwield/plans";
 
-export type {
-    DeliveryEvidence,
-    ExecutionMode,
-    HumanReviewDecision,
-    HumanReviewMode,
-    NonGitDeliveryEvidence,
-    ParsePlanFrontMatterResult,
-    PlanDocumentMetadata,
-    PlanFrontMatter,
-    PlanFrontMatterInput,
-    PlanPresentationFields,
-    WorktreeDeliveryEvidence,
-} from "@runwield/plans";
-export type {
-    PlanExecutionPolicy,
-    PlanExecutionPolicyError,
-    PlanExecutionPolicySuccess,
-    PlanTextMalformed,
-    SplitPlanBody,
-} from "@runwield/plans/format";
-
 import type { MoveEpicArtifactResult } from "./plan-store/artifacts.ts";
 
 import type { ControllerDocumentWorktree, PendingControllerRepair } from "./plan-store/controllers.ts";
+import { assertContainedProjectPath } from "./plan-store/resources.ts";
 
 import type { FrontMatterValue } from "./shared/front-matter.ts";
 
 export type { MoveEpicArtifactResult } from "./plan-store/artifacts.ts";
-
-export type { PlanDeviation } from "@runwield/plans/format";
 
 export type { WorktreeRegistryEntry } from "./shared/worktree-registry.ts";
 
@@ -197,6 +175,7 @@ export interface PlanWriteOptions {
     collaborationLockBypass?: symbol;
     expectedRevision?: string;
     expectedControllerRevision?: number;
+    expectedPlanId?: string;
     expectedRevisions?: Record<string, string>;
     onChildPlanWritten?: (result: SavedChildFeaturePlan) => Promise<void> | void;
 }
@@ -354,44 +333,10 @@ import {
     normalizeTicketReferences,
     assertNotReservedEpicArtifactPlanName,
     isEpicArtifactPlanName,
-} from "@runwield/plans/format";
-
-export {
-    canonicalizeStoredPlanName,
-    OBSOLETE_OBJECTIVE_CHECK_FRONT_MATTER_KEYS,
-    canonicalPlanStatus,
-    getDeclaredPlanStatus,
-    isRunWieldVerifiedStatus,
-    isUserVerifiedStatus,
-    isPlanDependencySatisfiedStatus,
-    isCompletedPlanStatus,
-    normalizeExecutionAgent,
-    normalizeCollaborationMode,
-    resolvePlanExecutionPolicy,
-    normalizePlanId,
-    normalizeExecutionMode,
-    normalizeDeliveryEvidence,
-    injectFrontMatter,
-    parsePlanFrontMatter,
-    summarizePlanBody,
-    planDocumentMarkdown,
-    splitPlanMarkdownBody,
-    mergeFrontMatterText,
-    hashPlanBody,
-    PlanFrontMatterParseError,
-    getPlanRevisionForText,
-    getPlanFrontMatterRevisionForText,
-    parsePlanTextStrict,
-    comparePlansForList,
-    isTerminalArchivableStatus,
-    isRecoverableWorktreeStatus,
-    compareChildPlansByOrder,
-    isHiddenPlanName,
-    resolveSiblingChildPlanDependencyStates,
-    isChildFeaturePlan,
-    isChildPlannedChangePlan,
-    groupPlanHierarchy,
-    countChildPlanProgress,
+    PLANS_DIR_NAME,
+    COLLABORATION_FRONT_MATTER_KEYS,
+    COLLABORATION_STATE_REMOTE_CANONICAL,
+    normalizeCollaborationFrontMatter,
 } from "@runwield/plans/format";
 
 import {
@@ -401,8 +346,6 @@ import {
     observePlanRevisions,
     stripSequencePrefix,
 } from "@runwield/plans/store-format";
-
-export { getKnownFrontMatterRevision } from "@runwield/plans/store-format";
 
 import { requiresPlanWorkflow } from "./plan-store/index.ts";
 
@@ -451,8 +394,6 @@ import {
 
 import { pid, platform } from "node:process";
 
-export { isEpicPlan, isProjectPlan, isSequencePlan } from "@runwield/plans/format";
-
 /**
  * @module plan-store
  * Manages plan persistence: front matter injection, save/load/list, and
@@ -474,7 +415,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { CLI_BIN, normalizeWorkKind, PLANS_DIR_NAME } from "./constants.ts";
+import { CLI_BIN } from "./constants.ts";
+import { toolRegistry } from "@runwield/tools";
 
 import { resolveWorkflowPlanLocation } from "./plan-store/location.ts";
 
@@ -519,17 +461,9 @@ import {
     writeControllerState,
 } from "./plan-store/controllers.ts";
 
-import {
-    assertSharedPlanWriteAllowed,
-    COLLABORATION_FRONT_MATTER_KEYS,
-    COLLABORATION_LOCK_BYPASS,
-    COLLABORATION_STATE_REMOTE_CANONICAL,
-    normalizeCollaborationFrontMatter,
-} from "./shared/collaboration/lock.ts";
+import { assertSharedPlanWriteAllowed, COLLABORATION_LOCK_BYPASS } from "./shared/collaboration/lock.ts";
 
 import { moveEpicArtifactsFromArchive, moveEpicArtifactsToArchive } from "./plan-store/artifacts.ts";
-
-export { PLAN_FRONT_MATTER_KEY_ORDER, PLAN_FRONT_MATTER_KEYS } from "@runwield/plans/format";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -1480,7 +1414,7 @@ export async function saveChildFeaturePlans(
             affectedPaths,
         };
         if (precondition.planId) metadata.planId = precondition.planId;
-        const workKind = normalizeWorkKind(child.workKind);
+        const workKind = toolRegistry.get("triage_report").normalizeWorkKind(child.workKind);
         if (workKind) metadata.workKind = workKind;
         const policyResult = resolvePlanExecutionPolicy({
             classification: "PLANNED_CHANGE",
@@ -1790,6 +1724,8 @@ export async function updatePlanFrontMatter(
                 planIssueMessage(result) || `Plan could not be updated: ${result.path}`,
             );
         }
+        if (options.expectedPlanId !== undefined && result.attrs.planId !== options.expectedPlanId)
+            throw new Error("Plan write source changed Plan ID.");
         assertSharedPlanWriteAllowed(result.attrs, options);
         if (options.expectedRevision === undefined) {
             throw new Error(`Plan Front Matter update for ${planName} requires expectedRevision.`);
@@ -2160,6 +2096,7 @@ async function readPlansWithTargetChildren(cwd: string, onlyEpic: string | null,
         const parseIssues: PlanParseIssue[] = [];
         const diagnostics: Map<string, PlanDocumentDiagnostic> = new Map();
         try {
+            await assertContainedProjectPath(cwd, dir);
             await collectPlans(dir, [], results, parseIssues);
         } catch (error) {
             if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;

@@ -3,10 +3,11 @@ import { savePlanValidationCheckpoint } from "../../plan-store/index.ts";
 import { buildValidationRepairPrompt } from "./validation-repair-prompt.ts";
 import { buildDiffInspectionSection } from "./review-diff.ts";
 import { readSemanticRound, recordLifecycleEvent } from "./validation-context.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { semanticReviewMode } from "./validation-types.ts";
 import type { PhaseContext, ValidationLoopArgs } from "./validation-types.ts";
-import { readValidationReviewState, type ValidationCheckpoint } from "./validation-checkpoint.ts";
+import { type ValidationCheckpoint } from "@runwield/plans/controller-state";
+import { readValidationReviewState } from "./validation-checkpoint.ts";
 import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
 import type { ValidationHostResume } from "./validation-host-contract.ts";
 import type { TriageMeta } from "./validation-types.ts";
@@ -17,7 +18,7 @@ export async function saveHostCheckpoint(
     patch: Partial<ValidationCheckpoint>,
 ): Promise<void> {
     const cwd = args.session.getActiveWorkflow()?.executionCwd || args.session.cwd;
-    const plan = await loadPlan(cwd, args.planName);
+    const plan = await planDocumentsForCheckout(cwd).load(args.planName);
     if (!plan?.attrs.validationCheckpoint) throw new Error("Validation checkpoint is missing.");
     const checkpoint = { ...plan.attrs.validationCheckpoint, ...patch };
     await savePlanValidationCheckpoint(cwd, args.planName, checkpoint, {

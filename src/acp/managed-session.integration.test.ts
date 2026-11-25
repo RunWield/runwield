@@ -241,7 +241,8 @@ test("ACP load queues a prompt while Workspace owns activation and sends it afte
 
 test("ACP protocol load-plan reads the same admitted home Plan after a document revision", async () => {
     const { create } = await import("../shared/testing/plan-package-fixture.ts");
-    const { withPlanAccess, selectPlanAccess, loadPlan } = await import("../plan-store/index.ts");
+    const { withPlanAccess, selectPlanAccess } = await import("../plan-store/index.ts");
+    const { loadPlan } = await import("../shared/testing/plan-query-fixture.ts");
     const { savePlanDocument } = await import("../plan-store/index.ts");
     await withRuntimeCommandFixture("acp-home-plan-", async ({ projectRoot }) => {
         const identity = await projects.checkout.admit(projectRoot);

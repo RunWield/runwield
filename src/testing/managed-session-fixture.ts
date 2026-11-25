@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { join } from "node:path";
-import { AGENTS } from "../constants.ts";
+import { AGENTS } from "../shared/session/agent-registry.ts";
 import { WORKFLOW_CONTEXT_CUSTOM_TYPE, type WorkflowContext } from "../shared/session/workflow-context-session.ts";
 import { ACTIVE_AGENT_CUSTOM_TYPE } from "../shared/session/active-agent-session.ts";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";

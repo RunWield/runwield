@@ -9,7 +9,7 @@ import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { loadPlanBodyById } from "../../plan-store/index.ts";
+import { loadPlanBodyById } from "../../shared/testing/plan-query-fixture.ts";
 
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.ts";
 import {
@@ -31,7 +31,7 @@ import {
 } from "./islands/PlanLifecycleActions.tsx";
 
 import { createWorkspaceApp } from "./server.ts";
-import { COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
+import { COLLABORATION_STATE_REMOTE_CANONICAL } from "@runwield/plans/format";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { listWorkRecords } from "../../shared/work-records/store.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";

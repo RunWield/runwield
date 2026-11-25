@@ -9,10 +9,9 @@
 
 import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.ts";
-import { loadPlan } from "../../plan-store/index.ts";
-
-import { agentRegistry } from "../session/agent-registry.ts";
+import { isPlannedChangeClassification } from "@runwield/plans/format";
+import { AGENTS, SUBAGENTS, agentRegistry } from "../session/agent-registry.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 
 import { runIsolatedAgentSession } from "../session/session.ts";
 import { type LocalCIPort, runLocalCI } from "./validation-local-ci.ts";
@@ -267,7 +266,9 @@ export async function runFeaturePostVerificationHandoffs({
     mnemotecaPort,
     pendingPublication,
 }: RunFeaturePostVerificationHandoffsOptions) {
-    const plan = await loadPlan(projectRoot, planName).catch(() => null);
+    const plan = await planDocumentsForCheckout(projectRoot)
+        .load(planName)
+        .catch(() => null);
     const isEpicChild = typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim().length > 0;
     if (!isEpicChild) {
         emitRunWieldSystemStatus(hostedSession, buildValidationUserMessage({ kind: "manual_qa_start" }));
@@ -397,7 +398,7 @@ async function runCompletionGatedRepair({
  * nobody addressed, and it makes a re-reported issue arrive as a new identity
  * beside the original, so one defect becomes two and the count grows each round.
  *
- * @param {import('./review-ledger.ts').ReviewLedger} ledger
+ * @param {import('@runwield/plans/controller-state').ReviewLedger} ledger
  * @param {import('../../tools/review-complete.ts').ReviewFinding[] | undefined} findings
  * @returns {string[]}
  */

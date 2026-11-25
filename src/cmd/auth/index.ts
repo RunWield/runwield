@@ -3,7 +3,7 @@
  * Login/logout/status commands for RunWield-owned model authentication.
  */
 
-import { AGENTS } from "../../constants.ts";
+import { AGENTS } from "../../shared/session/agent-registry.ts";
 import {
     getModelRegistry,
     isExternalCliProvider,

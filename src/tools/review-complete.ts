@@ -12,7 +12,7 @@ import type { HostedSession } from "../shared/session/hosted-session.ts";
 import { emitReviewResultMessage } from "../shared/session/workflow-messages.ts";
 import { recordWorkflowOutcome, workflowOutcomeEventId } from "../shared/workflow/outcome-observations.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
-import type { ReviewLedger } from "../shared/workflow/review-ledger.ts";
+import type { ReviewLedger } from "@runwield/plans/controller-state";
 import type { ReviewInspection } from "../shared/workflow/review-inspection.ts";
 
 export type { ReviewAdvisory, ReviewFinding, ReviewIntegrationNote } from "../shared/workflow/review-outcome.ts";

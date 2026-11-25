@@ -4,7 +4,7 @@ import { extractYaml } from "../shared/front-matter.ts";
 import { isDeepStrictEqual } from "node:util";
 import { withPlanLock, writePlanMarkdownWithRevision } from "../plan-store.ts";
 import { planDocumentMarkdown, splitPlanMarkdownBody } from "@runwield/plans/format";
-import { loadPlanStrict } from "./index.ts";
+import { loadPlanStrict } from "./queries.ts";
 
 type FormattingRecovery = {
     executionCwd: string;

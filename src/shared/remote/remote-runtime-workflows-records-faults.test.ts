@@ -66,7 +66,7 @@ test("remote record receipts support identical retries and refuse conflicting, o
             await future.text();
             return response;
         };
-        const client = await f.start();
+        const client = await f.start("retained-checkout");
         await client.read();
         await client.send({ kind: "plan-written" });
         const result = await client.read();
@@ -107,7 +107,7 @@ for (const kind of recordKinds) {
                 }
                 return Promise.resolve(response);
             };
-            const client = await f.start();
+            const client = await f.start("retained-checkout");
             await client.read();
             if (kind === "records") {
                 f.setModelResponseFactory(() => fauxAssistantMessage(fauxText("Saved before read fault.")));
@@ -132,7 +132,7 @@ for (const kind of recordKinds) {
             const count = f.modelRequests.length;
             await client.close();
             f.policy.handle = undefined;
-            const resumed = await f.start();
+            const resumed = await f.start("retained-checkout");
             await resumed.read();
             await resumed.send({ kind: "load", sessionId: id });
             const loaded = await resumed.read();
@@ -235,7 +235,7 @@ for (const contextSave of [1, 2]) {
                 }
                 return Promise.resolve(undefined);
             };
-            const client = await f.start();
+            const client = await f.start("retained-checkout");
             await client.read();
             await client.send({ kind: "plan-written" });
             const result = await client.read();

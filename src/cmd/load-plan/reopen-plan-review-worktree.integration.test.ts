@@ -15,7 +15,7 @@ import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { executePlan } from "../../shared/workflow/plan-executor.ts";
 import { join } from "node:path";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { preparePlanningWorktreeForPlan } from "../../shared/workflow/planning-worktree.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";

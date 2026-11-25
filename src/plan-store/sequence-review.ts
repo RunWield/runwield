@@ -23,7 +23,8 @@ import { resolvePlanQuestions, type PlanQuestionAnswer } from "../shared/plan-qu
 import { loadReviewFeedbackImages, type ReviewImageDecision } from "../shared/workflow/review-feedback-images.ts";
 /** A Sequence review is one decision over an ordinary PROJECT and its complete child set. */
 import { join, relative } from "node:path";
-import { updatePlanFrontMatter, writePlanMarkdownWithRevision } from "../plan-store.ts";
+import { writePlanMarkdownWithRevision } from "../plan-store.ts";
+import { savePlanDefinition } from "./definition.ts";
 import {
     getPlanRevisionForText,
     injectFrontMatter,
@@ -33,8 +34,9 @@ import {
     resolveSiblingChildPlanDependencyStates,
     isSequencePlan,
 } from "@runwield/plans/format";
-import { ensurePlanIdentity, findPlansByParent, loadPlan } from "./index.ts";
-import type { PlanFrontMatter } from "./index.ts";
+import { ensurePlanIdentity } from "./index.ts";
+import { findPlansByParent, loadPlan } from "./queries.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import { stripRuntimeFields } from "@runwield/plans/controller-state";
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
@@ -175,13 +177,13 @@ export async function prepareSequenceReview(
             if (!policy.ok) throw new Error(`Invalid policy for ${child.name}: ${policy.error}`);
         }
     }
+    const canonical = currentPackageSelection();
     for (const [index, member] of members.entries()) {
-        const identified = currentPackageSelection()
-            ? { revision: member.revision }
-            : await ensurePlanIdentity(cwd, member.name);
+        const identified = canonical ? member : await ensurePlanIdentity(cwd, member.name);
         const input = index > 0 ? inputs?.[index - 1] : undefined;
         if (input?.executionAgent || input?.collaborationRecommendation) {
-            await updatePlanFrontMatter(
+            if (canonical && !member.attrs.planId) throw new Error(`Sequence member ${member.name} has no Plan ID.`);
+            await savePlanDefinition(
                 cwd,
                 member.name,
                 {
@@ -190,8 +192,10 @@ export async function prepareSequenceReview(
                         ? { collaborationRecommendation: input.collaborationRecommendation }
                         : {}),
                 },
-                {},
-                { expectedRevision: identified.revision },
+                {
+                    expectedRevision: identified.revision,
+                    ...(canonical && { expectedPlanId: member.attrs.planId }),
+                },
             );
         }
     }

@@ -15,14 +15,8 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 
-import {
-    archivePlan,
-    listPlans,
-    loadPlan,
-    loadPlanBodyById,
-    restoreArchivedPlan,
-    savePlanBodyById,
-} from "../../plan-store/index.ts";
+import { archivePlan, savePlanBodyById } from "../../plan-store/index.ts";
+import { listPlans, loadPlan, loadPlanBodyById, restoreArchivedPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { addEntry, findById, updateEntry } from "../worktree-registry.ts";

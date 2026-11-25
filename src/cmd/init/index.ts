@@ -12,10 +12,10 @@ import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-en
 import { parseArgs } from "../../shared/cli-args.ts";
 import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { AGENTS, getCwd, SUBAGENTS } from "../../constants.ts";
+import { AGENTS, SUBAGENTS, agentRegistry } from "../../shared/session/agent-registry.ts";
+import { getCwd } from "../../constants.ts";
 import { COMMAND_NAMES } from "../registry.ts";
 import { EMPTY_PROJECT_DIRECTORY_INIT_NOOP_BODY, isEmptyProjectDirectory } from "../../shared/project-state.ts";
-import { agentRegistry } from "../../shared/session/agent-registry.ts";
 import { bundledSkills } from "../../shared/session/skill-assets.ts";
 import { extractBundledModelPresets } from "../../shared/model-presets.ts";
 import { createSessionRuntime, SessionRuntime } from "../../shared/session/session-runtime.ts";

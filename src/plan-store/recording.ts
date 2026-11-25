@@ -93,7 +93,7 @@ export interface PlanRecordingSource {
 export async function recordPlanWorkRecord(
     cwd: string,
     source: PlanRecordingSource,
-    workRecord: import("../plan-store.ts").PlanFrontMatter["workRecord"],
+    workRecord: import("@runwield/plans").PlanFrontMatter["workRecord"],
 ): Promise<void> {
     const { recordRetainedRecordingBacklink } = await import("./retained-recording.ts");
     if (await recordRetainedRecordingBacklink(source, workRecord)) return;

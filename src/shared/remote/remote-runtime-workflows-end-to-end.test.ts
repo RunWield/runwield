@@ -20,7 +20,7 @@ test("remote planning, forwarded browser review and Unix socket approval, isolat
         // Only the declared project runtime storage is excluded; all other paths and bytes are protected.
         const before = await snapshotProjectTree(f.projectRoot, [".wld"]);
         const upstream = await prepareDelivery(f);
-        const client = await f.start();
+        const client = await f.start("retained-checkout");
         await client.read();
         const id = await planDelivery(f, client);
         assertEquals(f.browserRequests.length, 1);

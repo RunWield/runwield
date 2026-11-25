@@ -4,7 +4,8 @@ import { mkdir, readFile, writeFile, lstat, rm, realpath } from "node:fs/promise
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { importPlans, listPlans, loadPlan, savePlanProse, withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { importPlans, savePlanProse, withLocalPlanWorkflow } from "../../plan-store/index.ts";
+import { listPlans, loadPlan } from "../testing/plan-query-fixture.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import {
     reachPlanning,

@@ -32,6 +32,10 @@ export interface CreateProjectPlan {
     dependencies?: string[];
 }
 
+export interface ReviseProjectPlan extends Omit<CreateProjectPlan, "planName"> {
+    expectedRevision: string;
+}
+
 export interface ProjectPlanReadAvailability {
     kind: "ready" | "pending";
     message?: string;
@@ -87,6 +91,7 @@ export interface ProjectPlanStore {
     read(planId: PlanId): Promise<ProjectPlanDocument>;
     readArchived(planId: PlanId): Promise<ProjectPlanDocument>;
     create(input: CreateProjectPlan): Promise<ProjectPlanDocument>;
+    revise(planId: PlanId, input: ReviseProjectPlan): Promise<ProjectPlanDocument>;
     edit(planId: PlanId, edit: EditProjectPlan): Promise<ProjectPlanDocument>;
     applyEvent(planId: PlanId, request: ApplyProjectPlanEvent): Promise<ProjectPlanDocument>;
     archive(planId: PlanId, options: ArchiveProjectPlan): Promise<ProjectPlanDocument>;

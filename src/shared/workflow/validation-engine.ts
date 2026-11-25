@@ -16,7 +16,7 @@ import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
  */
 
 import { canonicalPlanStatus, getDeclaredPlanStatus, PlanFrontMatterParseError } from "@runwield/plans/format";
-import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+import { ensurePlanIdentity, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { VALIDATION_PLAN_STATUSES } from "@runwield/plans/lifecycle";
 import { getProjectRoot, resolvePhaseContext } from "./validation-context.ts";
 import { emitStatus } from "./validation-emit.ts";
@@ -40,7 +40,7 @@ import { preparePlanController } from "../../plan-store/index.ts";
 import { validateHostReviewerResume } from "./validation-host-state.ts";
 
 type PlanStatus = "implemented" | "validated_ci" | "reviewed" | "validated";
-type PlanFrontMatter = import("../../plan-store/index.ts").PlanFrontMatter;
+type PlanFrontMatter = import("@runwield/plans").PlanFrontMatter;
 
 /**
  * One phase for the Plan's current status. Reads canonical state; holds none.
@@ -49,15 +49,15 @@ type PlanFrontMatter = import("../../plan-store/index.ts").PlanFrontMatter;
  * {@link runValidationLoop}, which drives phases until the Plan stops moving.
  */
 export async function runValidationPhase(args: ValidationLoopArgs): Promise<ValidationPhaseResult> {
+    args.session.assertLive();
     if (requiresPlanWorkflow(getProjectRoot(args)))
         return await withLocalPlanWorkflow(getProjectRoot(args), args.planName, () => runValidationPhase(args));
-    args.session.assertLive();
     // Admit controller reads without selecting through stale cached Session
     // paths or rejecting legacy IDs before execution-context recovery owns them.
     let documentRoot: string;
     try {
         documentRoot = await preparePlanController(getProjectRoot(args), args.planName);
-        let selected = await loadPlan(documentRoot, args.planName);
+        let selected = await planDocumentsForCheckout(documentRoot).load(args.planName);
         const candidate = args.executionContext || args.session.getActiveWorkflow();
         if (
             !selected ||
@@ -70,7 +70,7 @@ export async function runValidationPhase(args: ValidationLoopArgs): Promise<Vali
             const recovered = await resolvePhaseContext(args);
             if (recovered.kind === "blocked") return recovered.result;
             documentRoot = await preparePlanController(recovered.context.executionCwd, args.planName);
-            selected = await loadPlan(documentRoot, args.planName);
+            selected = await planDocumentsForCheckout(documentRoot).load(args.planName);
         }
         if (selected && !selected.attrs.planId) await ensurePlanIdentity(documentRoot, args.planName);
     } catch (error) {
@@ -161,6 +161,7 @@ function resolveNextPhase(
  * the next phase. Document revisions and presentation text never do.
  */
 export async function runValidationLoop(args: ValidationLoopArgs): Promise<WorkflowValidationResult> {
+    args.session.assertLive();
     if (requiresPlanWorkflow(getProjectRoot(args)))
         return await withLocalPlanWorkflow(getProjectRoot(args), args.planName, () => runValidationLoop(args));
     const projectRoot = getProjectRoot(args);
@@ -189,7 +190,7 @@ export async function runValidationLoop(args: ValidationLoopArgs): Promise<Workf
         // stopped without a word.
         phaseArgs = { ...phaseArgs, executionContext: undefined, continuationPhase: undefined };
     }
-    const plan = await loadPlan(validationPlanCwd(phaseArgs, projectRoot), args.planName);
+    const plan = await planDocumentsForCheckout(validationPlanCwd(phaseArgs, projectRoot)).load(args.planName);
     const phase = validationPhaseForStatus(plan?.attrs.status, plan?.attrs.validationPhase);
     emitStatus(args, validationUserMessage("retry_pause"), "warning");
     return {
@@ -237,7 +238,7 @@ export async function loadCanonicalValidationPlan(
     const projectRoot = getProjectRoot(args);
     let plan;
     try {
-        plan = await loadPlan(documentRoot, args.planName);
+        plan = await planDocumentsForCheckout(documentRoot).load(args.planName);
     } catch (error) {
         if (!(error instanceof PlanFrontMatterParseError)) throw error;
         return {

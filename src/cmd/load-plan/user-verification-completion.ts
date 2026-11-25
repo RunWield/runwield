@@ -1,6 +1,6 @@
 import { projects } from "@runwield/projects";
 import { retainUserVerifiedPlan, clearPlanRecoveryAfterCleanup } from "../../plan-store/index.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.ts";
 import { listEntries, pruneEntry } from "../../shared/worktree-registry.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
@@ -52,7 +52,7 @@ export async function completeUserVerification({
             forceRebuild: true,
         });
     }
-    Object.assign(plan, await loadPlan(primaryRoot, plan.planName));
+    Object.assign(plan, await planDocumentsForCheckout(primaryRoot).load(plan.planName));
     if (hasWorktreeContext(attempt)) {
         uiAPI.appendSystemMessage(
             "The User Verified Plan is saved in the primary checkout. Removing its worktree discards remaining uncommitted changes; branches with unmerged commits are kept.",
@@ -64,7 +64,7 @@ export async function completeUserVerification({
             { value: "cancel", label: "Keep worktree for now" },
         ]);
         if (answer !== "confirm") {
-            Object.assign(plan, await loadPlan(primaryRoot, plan.planName));
+            Object.assign(plan, await planDocumentsForCheckout(primaryRoot).load(plan.planName));
             return false;
         }
         await validateWorktreeDiscard({ projectRoot: primaryRoot, ...attempt });
@@ -90,7 +90,7 @@ export async function completeUserVerification({
             throw new Error(cleanup.message || "User Verification cleanup is incomplete.");
         }
     }
-    const primary = await loadPlan(primaryRoot, plan.planName);
+    const primary = await planDocumentsForCheckout(primaryRoot).load(plan.planName);
     if (primary) Object.assign(plan, primary);
     return true;
 }

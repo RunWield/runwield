@@ -14,14 +14,14 @@ import {
     type RuntimeProcess,
 } from "./remote-runtime-test-fixture.ts";
 import type { RuntimeClientReport } from "./remote-runtime-test-client.ts";
-import { deliveryPlan, prepareDelivery } from "./remote-runtime-workflows-fixture.ts";
+import { prepareDelivery } from "./remote-runtime-workflows-fixture.ts";
 
 for (const agentName of ["planner", "router"]) {
     test(`Approve and Run from a remote ${agentName} turn seals planning before execution`, async () => {
         await withRemoteRuntimeFixture(async (f) => {
             await prepareDelivery(f);
             scriptInitialExecution(f, agentName);
-            const client = await f.start();
+            const client = await f.start("retained-checkout");
             assertEquals((await client.read()).kind, "ready");
             await client.send({ kind: "workflow-plan", agentName, text: "Plan the remote sentinel delivery." });
             const ready = await client.read();
@@ -82,13 +82,6 @@ function scriptInitialExecution(f: RuntimeFixture, agentName = "planner") {
                       ),
               ]
             : []),
-        () =>
-            fauxAssistantMessage(
-                fauxToolCall("write", {
-                    path: "docs/plans/remote-delivery.md",
-                    content: deliveryPlan,
-                }),
-            ),
         () =>
             fauxAssistantMessage(
                 fauxToolCall("plan_written", {
@@ -156,7 +149,7 @@ test("canceling Approve and Run during the planning checkpoint prevents initial 
             }
             return response;
         };
-        const client = await f.start();
+        const client = await f.start("retained-checkout");
         try {
             await approveAndRun(f, await startPlanning(client));
             await within(checkpoint.promise);
@@ -224,7 +217,7 @@ test("an evidence-load failure after Approve and Run clears the Agent transition
             }
             return response;
         };
-        const client = await f.start();
+        const client = await f.start("retained-checkout");
         try {
             await approveAndRun(f, await startPlanning(client));
             const failed = await client.read();
@@ -250,7 +243,7 @@ test("Approve and Run TURN_END results do not expose the private execution hando
     await withRemoteRuntimeFixture(async (f) => {
         await prepareDelivery(f);
         scriptInitialExecution(f);
-        const client = await f.start();
+        const client = await f.start("retained-checkout");
         try {
             await approveAndRun(f, await startPlanning(client));
             const completed = await client.read();

@@ -7,13 +7,13 @@ import {
 } from "./managed.ts";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { type PlanFrontMatter } from "@runwield/plans";
 import {
     loadPlan,
     updatePlanFrontMatter,
     withPlanLock,
     getStoredPlanPath,
     writePlanMarkdownWithRevision,
-    type PlanFrontMatter,
 } from "../plan-store.ts";
 import { buildPlanEventUpdates, type PlanStatus } from "@runwield/plans/lifecycle";
 import { writeControllerState } from "./controllers.ts";

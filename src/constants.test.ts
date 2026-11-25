@@ -1,3 +1,4 @@
+import { toolRegistry } from "@runwield/tools";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -14,7 +15,6 @@ import { assertEquals, assertStringIncludes } from "./testing/assertions.ts";
 import {
     CATPPUCCIN_MOCHA_THEME_PATH,
     formatPlannedWorkLabel,
-    normalizeWorkKind,
     PROMPT_TEMPLATES_DIR,
     SKILLS_DIR,
     SNIP_FILTERS_DIR,
@@ -33,9 +33,9 @@ test("bundled resource constants point to file-readable assets", async () => {
 });
 
 test("documentation Work Kind normalizes and labels planned documentation", () => {
-    assertEquals(normalizeWorkKind("DOCUMENTATION"), "DOCUMENTATION");
-    assertEquals(normalizeWorkKind("DOCS"), undefined);
-    assertEquals(normalizeWorkKind(null), undefined);
+    assertEquals(toolRegistry.get("triage_report").normalizeWorkKind("DOCUMENTATION"), "DOCUMENTATION");
+    assertEquals(toolRegistry.get("triage_report").normalizeWorkKind("DOCS"), undefined);
+    assertEquals(toolRegistry.get("triage_report").normalizeWorkKind(null), undefined);
     assertEquals(formatPlannedWorkLabel("DOCUMENTATION"), "Planned documentation");
 });
 

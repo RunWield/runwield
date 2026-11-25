@@ -1,4 +1,5 @@
-import { authorLocalPlan, loadPlan } from "../../plan-store/index.ts";
+import { authorLocalPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";

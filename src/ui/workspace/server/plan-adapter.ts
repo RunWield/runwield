@@ -19,12 +19,12 @@ import {
     resolveSiblingChildPlanDependencyStates,
 } from "@runwield/plans/format";
 import {
-    findPlanById,
-    listPlanResources,
+    editCheckoutPlanBody,
     openProjectPlanStore,
-    readPlanResourceCatalog,
-    savePlanBodyById,
     StalePlanBodyError,
+    openRegisteredPlanDocuments,
+    planDocumentsForCheckout,
+    readCheckoutPlanDisplayCatalog,
 } from "../../../plan-store/index.ts";
 import {
     type PlanEvent,
@@ -556,7 +556,7 @@ export function serializePlanError<ErrorValue>(error: ErrorValue): SerializePlan
 }
 
 export async function loadPlanSummaries(cwd: string) {
-    const resources = await capturePlanReadContext()(cwd, () => listPlanResources(cwd));
+    const resources = await capturePlanReadContext()(cwd, () => planDocumentsForCheckout(cwd).resources());
     return summarizePlanResources(resources);
 }
 
@@ -564,16 +564,8 @@ export async function loadPlanSummaries(cwd: string) {
  * Browser-safe, display-only catalog. Detail and action callers keep the strict reader.
  */
 export async function loadPlanSummaryCatalog(cwd: string) {
-    const { resources, diagnostics } = await capturePlanReadContext()(cwd, () => readPlanResourceCatalog(cwd));
-    return {
-        plans: summarizePlanResources(resources),
-        diagnostics: diagnostics.map((diagnostic) => ({
-            name: diagnostic.name,
-            kind: diagnostic.kind,
-            message: sanitizeWorkspaceMessage(diagnostic.message, [cwd, diagnostic.path]),
-            ...(diagnostic.planId ? { planId: diagnostic.planId } : {}),
-        })),
-    };
+    const { resources, diagnostics } = await readCheckoutPlanDisplayCatalog(cwd);
+    return { plans: summarizePlanResources(resources), diagnostics };
 }
 
 function summarizePlanResources(resources: PlanSummaryResource[]) {
@@ -581,7 +573,7 @@ function summarizePlanResources(resources: PlanSummaryResource[]) {
 }
 
 export async function loadPlanDetail(cwd: string, planId: string) {
-    const resource = await findPlanById(cwd, planId);
+    const resource = await planDocumentsForCheckout(cwd).byId(planId);
     const summaries = await loadPlanSummaries(cwd);
     return serializePlanDetail(resource, summaries);
 }
@@ -589,10 +581,27 @@ export async function loadPlanDetail(cwd: string, planId: string) {
 export async function loadWorkspaceDetail(cwd: string, planId: string, options: WorkspacePlanDetailOptions = {}) {
     return await capturePlanReadContext()(cwd, () => loadWorkspaceDetailInProject(cwd, planId, options));
 }
+
+export async function loadRegisteredWorkspaceDetail(
+    projectId: string,
+    registry: ProjectRegistry,
+    planId: string,
+    options: WorkspacePlanDetailOptions = {},
+) {
+    const documents = openRegisteredPlanDocuments(projectId, registry);
+    if (options.documentName) {
+        const resource = await documents.unidentifiedDocument(options.documentName);
+        return serializePlanDetail({ ...resource, capabilities: { bodyEditing: false } });
+    }
+    const detail = await documents.detail(planId, options.reviewOnly);
+    if (options.reviewOnly) return serializeReviewDetail(detail);
+    return serializeEditableDetail(detail, detail.resources, registry.requireActiveRoot(projectId));
+}
+
 /** @param {string} cwd @param {string} planId @param {WorkspacePlanDetailOptions} options */
 async function loadWorkspaceDetailInProject(cwd: string, planId: string, options: WorkspacePlanDetailOptions) {
     if (options.documentName) {
-        const resource = (await listPlanResources(cwd)).find(
+        const resource = (await planDocumentsForCheckout(cwd).resources()).find(
             (candidate) => !candidate.planId && candidate.planName === options.documentName,
         );
         if (!resource) throw new Error("Plan document not found.");
@@ -601,20 +610,29 @@ async function loadWorkspaceDetailInProject(cwd: string, planId: string, options
         return serializePlanDetail({ ...resource, capabilities: { bodyEditing: false } });
     }
     const detail = await readPlanDetail(cwd, planId, options.reviewOnly);
-    const resource = detail.resource;
-    const packageDocument = detail.document;
-    if (options.reviewOnly) return { ...serializePlanDetail({ ...resource, packageDocument }), path: resource.path };
-    const summaries = await loadPlanSummaries(cwd);
+    if (options.reviewOnly) return serializeReviewDetail(detail);
+    return serializeEditableDetail(detail, await planDocumentsForCheckout(cwd).resources(), cwd);
+}
+
+type LoadedPlanDetail = Awaited<ReturnType<typeof readPlanDetail>>;
+
+function serializeReviewDetail({ resource, document: packageDocument }: LoadedPlanDetail) {
+    return { ...serializePlanDetail({ ...resource, packageDocument }), path: resource.path };
+}
+
+async function serializeEditableDetail(
+    { resource, document: packageDocument, bodyEditing }: LoadedPlanDetail,
+    resources: PlanSummaryResource[],
+    workspaceRoot: string,
+) {
     return projectWorkspaceDetail(
         {
             ...resource,
             packageDocument,
-            workspaceKey: await sha256Hex(cwd),
-            capabilities: {
-                bodyEditing: detail.bodyEditing,
-            },
+            workspaceKey: await sha256Hex(workspaceRoot),
+            capabilities: { bodyEditing },
         },
-        summaries,
+        summarizePlanResources(resources),
     );
 }
 
@@ -634,16 +652,18 @@ export async function saveWorkspacePlanBody(
     expectedBodyHash: string,
     expectedRevision: string,
 ) {
-    if (!expectedRevision) throw new Error("Workspace body save requires expectedRevision.");
-    const saved = await savePlanBodyById(cwd, planId, body, expectedBodyHash, { expectedRevision });
-    const summaries = await loadPlanSummaries(cwd);
+    const { resource, resources } = await editCheckoutPlanBody(cwd, planId, {
+        body,
+        expectedBodyHash,
+        expectedRevision,
+    });
     return projectWorkspaceDetail(
         {
-            ...saved,
+            ...resource,
             workspaceKey: await sha256Hex(cwd),
             capabilities: { bodyEditing: true },
         },
-        summaries,
+        summarizePlanResources(resources),
     );
 }
 
@@ -850,7 +870,7 @@ export async function applyWorkspaceLifecycleAction(
     const request = validateLifecycleActionPayload(payload, { requireRevision: true });
     const evidenceResult = await loadPlanActionEvidence(cwd, planId);
     if (evidenceResult.kind !== "success") throw new Error(evidenceResult.message);
-    const resource = await findPlanById(cwd, planId);
+    const resource = await planDocumentsForCheckout(cwd).byId(planId);
     const attrs: WorkspacePlanFrontMatter = safeObject(resource.attrs);
     if (isSharedPlanLocked(attrs)) {
         const lockError = new SharedPlanLockError(attrs);
@@ -979,10 +999,14 @@ export async function loadBoard(cwd: string) {
 }
 
 export async function loadRegisteredProjectBoard(projectId: string, registry: ProjectRegistry) {
+    return buildBoardFromCatalog(await loadRegisteredPlanSummaryCatalog(projectId, registry));
+}
+
+export async function loadRegisteredPlanSummaryCatalog(projectId: string, registry: ProjectRegistry) {
     const id = parseProjectId(projectId);
     if (!id) throw new Error("Project not found.");
     const { resources, diagnostics } = await openProjectPlanStore(id, { registry }).list();
-    return buildBoardFromCatalog({ plans: summarizePlanResources(resources), diagnostics });
+    return { plans: summarizePlanResources(resources), diagnostics };
 }
 
 function buildBoardFromCatalog({ plans, diagnostics }: Awaited<ReturnType<typeof loadPlanSummaryCatalog>>) {

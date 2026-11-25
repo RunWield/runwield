@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 
-import { loadPlan } from "../plan-store/index.ts";
+import { loadPlan } from "./testing/plan-query-fixture.ts";
 
 import type { PlanFrontMatterInput } from "@runwield/plans/format";
 import type { WorktreeRegistryEntry } from "./worktree-registry.ts";

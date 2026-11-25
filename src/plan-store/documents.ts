@@ -9,12 +9,12 @@ import {
     packageWorkflowLocks,
     reopenedPackageReview,
 } from "./workflows.ts";
+import { type PackageResourceRole } from "@runwield/plans/file-snapshots";
 import {
     savePlanPackageDocument,
     commitPlanPackageBatch,
     packageDocumentText,
     listPlanPackages,
-    type PackageResourceRole,
     type LoadedPlanPackage,
     type PlanPackageBatchWrite,
 } from "./packages.ts";

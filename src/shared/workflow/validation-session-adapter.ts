@@ -7,9 +7,8 @@ import { runIsolatedAgentSession } from "../session/session.ts";
 import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
 import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.ts";
 import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.ts";
-import { agentRegistry } from "../session/agent-registry.ts";
+import { agentRegistry, AGENTS, SUBAGENTS } from "../session/agent-registry.ts";
 import { ClaudeCliBackendError } from "../session/backends/claude-cli/failure.ts";
-import { AGENTS, SUBAGENTS } from "../../constants.ts";
 import {
     emitRunWieldSystemStatus,
     getCurrentValidationProgress,
@@ -19,7 +18,7 @@ import { clearValidationPosition, rememberValidationPosition } from "./validatio
 import { runFeaturePostVerificationHandoffs } from "./validation-helpers.ts";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { getLockHostname } from "../process-liveness.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
@@ -220,7 +219,7 @@ function readReviewerProviderFailure(messages: AgentMessage[]): ValidationOperat
 function buildReviewTools(
     hostedSession: HostedSession,
     review: ValidationReviewData,
-    ledger?: import("./review-ledger.ts").ReviewLedger,
+    ledger?: import("@runwield/plans/controller-state").ReviewLedger,
 ): ToolDefinition[] {
     const hasRepairScope = review.hasRepairScope ?? (review.requiredScope === "repair" || Boolean(review.repairDiff));
     const diffs = hasRepairScope ? { full: review.fullDiff, repair: review.repairDiff } : { full: review.fullDiff };
@@ -452,7 +451,7 @@ async function prepareRepairInvocation(hostedSession: HostedSession, cwd: string
     const workflow = hostedSession.getActiveExecutionWorkflow();
     if (!workflow?.planName) return;
     await preparePlanWorkflow(cwd, workflow.planName);
-    const plan = await loadPlan(cwd, workflow.planName);
+    const plan = await planDocumentsForCheckout(cwd).load(workflow.planName);
     if (!plan) return;
     const prior = plan.attrs.validationCheckpoint;
     const repairGeneration =
@@ -615,7 +614,7 @@ export function createValidationSessionPort(
             let prompt = userRequest;
             if (!repair) {
                 const cwd = workflow?.executionCwd || hostedSession.cwd;
-                const plan = workflow?.planName ? await loadPlan(cwd, workflow.planName) : null;
+                const plan = workflow?.planName ? await planDocumentsForCheckout(cwd).load(workflow.planName) : null;
                 const review = plan?.attrs.validationCheckpoint?.reviewState;
                 prompt = [
                     "Continue the interrupted validation repair in this checkout. Inspect the current files before editing.",

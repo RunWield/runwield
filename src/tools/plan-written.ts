@@ -2,15 +2,18 @@ import { planSessionArtifactReference } from "../plan-store/index.ts";
 import { savePlanDefinition } from "../plan-store/index.ts";
 
 import { withLocalPlanWorkflow } from "../plan-store/index.ts";
-import { authorLocalPlan } from "../plan-store/index.ts";
+import { admitPlanStoreForCheckout, hasRetainedCheckoutSource, openPlanStoreForCheckout } from "../plan-store/index.ts";
 import { buildPlanConversationRequest } from "../shared/workflow/plan-review-conversation.ts";
 import { reviewSourceStillMatches } from "../plan-store/index.ts";
 import {
     isSequencePlan,
+    parsePlanFrontMatter,
     projectPlanType,
     planDocumentMarkdown,
     resolvePlanExecutionPolicy,
     assertNotReservedEpicArtifactPlanName,
+    canonicalizeStoredPlanName,
+    type PlanClassification,
 } from "@runwield/plans/format";
 import { applySequenceReviewDecision, prepareSequenceReview } from "../plan-store/index.ts";
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../plan-store/index.ts";
@@ -33,8 +36,8 @@ import { rememberPlannedVerificationCommand } from "../shared/workflow/planned-v
 import { pathToFileURL as toFileUrl } from "node:url";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { toolRegistry, type WorkKind } from "@runwield/tools";
-import { CLI_BIN, type PlanClassification } from "../constants.ts";
-import { ensurePlanIdentity, loadPlan } from "../plan-store/index.ts";
+import { CLI_BIN } from "../constants.ts";
+import { ensurePlanIdentity, planDocumentsForCheckout } from "../plan-store/index.ts";
 import { recordPlanEvent } from "../plan-store/index.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../plan-store/index.ts";
@@ -58,7 +61,7 @@ import {
 } from "../shared/workflow/plan-review-recovery.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
-import type { PlanFrontMatter } from "../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 
 const planWritten = toolRegistry.get("plan_written");
 const triageReport = toolRegistry.get("triage_report");
@@ -276,7 +279,7 @@ async function resolveTriageMeta(
 ): Promise<TriageMeta> {
     let meta = triageMeta || {};
     try {
-        const plan = await loadPlan(cwd, planName);
+        const plan = await planDocumentsForCheckout(cwd).load(planName);
         if (plan?.attrs) {
             const planAttrs: TriageMeta = { ...plan.attrs };
             if (planAttrs.workKind === undefined || planAttrs.workKind === null) delete planAttrs.workKind;
@@ -310,7 +313,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
         ...planWritten.definition,
 
         async execute(toolCallId, params, _signal, onUpdate, _ctx) {
-            const planName = String(params.planName || "")
+            let planName = String(params.planName || "")
                 .trim()
                 .replace(/^docs\/plans\//i, "")
                 .replace(/\.md$/i, "")
@@ -322,6 +325,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 );
             }
             try {
+                planName = canonicalizeStoredPlanName(planName).name;
                 assertNotReservedEpicArtifactPlanName(planName);
             } catch (error) {
                 const reason = error instanceof Error ? error.message : String(error);
@@ -337,36 +341,57 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 );
             }
 
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
+            const sessionProject = hostedSession.getManagedMetadata?.()?.projectId;
+            const retained = hasRetainedCheckoutSource(cwd);
+            let store = retained ? undefined : openPlanStoreForCheckout(cwd);
+            if (!retained && sessionProject && sessionProject !== store?.projectId)
+                throw new Error("Plan authoring belongs to another Session Project.");
+            const context = hostedSession.getWorkflowContext?.();
+            const expectedPlanId = context?.planName === planName ? context.planId : undefined;
+            let submittedPlan;
             if (params.contextMarkdown !== undefined) {
-                await authorLocalPlan(cwd, {
-                    planName: params.planName,
-                    contextMarkdown: params.contextMarkdown,
-                    validationMarkdown: params.validationMarkdown,
-                    expectedRevision: params.expectedRevision,
-                    parentPlan: params.parentPlan,
-                    dependencies: params.dependencies,
-                    definition: {
-                        classification: params.planType
-                            ? "PROJECT"
-                            : params.expectedRevision
-                              ? undefined
-                              : triageMeta?.classification === "PROJECT"
+                if (retained) throw new Error("Plan authoring requires the canonical Project owner.");
+                store ??= await admitPlanStoreForCheckout(cwd);
+                submittedPlan = await store.author(
+                    {
+                        planName: params.planName,
+                        contextMarkdown: params.contextMarkdown,
+                        validationMarkdown: params.validationMarkdown,
+                        expectedRevision: params.expectedRevision,
+                        parentPlan: params.parentPlan,
+                        dependencies: params.dependencies,
+                        definition: {
+                            classification: params.planType
                                 ? "PROJECT"
-                                : "PLANNED_CHANGE",
-                        type: params.planType,
-                        targetBranch: params.targetBranch,
-                        order: params.order,
-                        summary: params.expectedRevision ? undefined : triageMeta?.summary,
-                        workKind: params.expectedRevision ? undefined : triageMeta?.workKind,
-                        complexity: params.expectedRevision ? undefined : triageMeta?.complexity,
-                        affectedPaths: params.expectedRevision ? undefined : triageMeta?.affectedPaths,
-                        ...params.definition,
-                        executionAgent: params.executionAgent,
-                        collaborationRecommendation: params.collaborationRecommendation,
+                                : params.expectedRevision
+                                  ? undefined
+                                  : triageMeta?.classification === "PROJECT"
+                                    ? "PROJECT"
+                                    : "PLANNED_CHANGE",
+                            type: params.planType,
+                            targetBranch: params.targetBranch,
+                            order: params.order,
+                            summary: params.expectedRevision ? undefined : triageMeta?.summary,
+                            workKind: params.expectedRevision ? undefined : triageMeta?.workKind,
+                            complexity: params.expectedRevision ? undefined : triageMeta?.complexity,
+                            affectedPaths: params.expectedRevision ? undefined : triageMeta?.affectedPaths,
+                            ...params.definition,
+                            executionAgent: params.executionAgent,
+                            collaborationRecommendation: params.collaborationRecommendation,
+                        },
                     },
-                });
+                    expectedPlanId,
+                );
             }
-            return await withLocalPlanWorkflow(cwd, planName, async () => {
+            const canonicalPlan =
+                submittedPlan ?? (store && (await store.resolveAuthoredPlan(planName, expectedPlanId)));
+            if (!canonicalPlan && !retained) {
+                return textResult(
+                    `plan_written: Plan ${planName} not found. Create it with plan_written contextMarkdown or import it first.`,
+                );
+            }
+            const runReview = async (cwd: string) => {
                 const publishAcceptedPlanOutcome = (details: ToolResultDetails, images: ReviewImage[] = []) => {
                     if (!details.outcome) return;
                     if (details.outcome === "repair_required") return;
@@ -404,7 +429,11 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                         `plan_written: Plan ${planName} not found. Write the Plan first using the write tool, then call plan_written.`,
                     );
                 }
+                const boundPlanId = canonicalPlan?.planId ?? expectedPlanId;
+                if (boundPlanId && location.plan.attrs.planId !== boundPlanId)
+                    throw new Error("The bound Plan identity changed.");
                 const planPath = location.plan.path;
+                const retainedReview = hasRetainedCheckoutSource(reviewCwd);
 
                 hostedSession.getManagedOperationCapability?.()?.assertLive();
                 try {
@@ -470,7 +499,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 }
 
                 if (Object.keys(policyOverrides).length > 0) {
-                    const loadedPlan = await loadPlan(reviewCwd, planName);
+                    const loadedPlan = await planDocumentsForCheckout(reviewCwd).load(planName);
                     if (!loadedPlan?.revision) {
                         return textResult(
                             `plan_written: could not load docs/plans/${planName}.md for execution-policy persistence. Call plan_written again after saving the Plan.`,
@@ -478,7 +507,10 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                             false,
                         );
                     }
+                    if (boundPlanId && loadedPlan.attrs.planId !== boundPlanId)
+                        throw new Error("The bound Plan identity changed.");
                     await savePlanDefinition(reviewCwd, planName, policyOverrides, {
+                        expectedPlanId: loadedPlan.attrs.planId,
                         expectedRevision: loadedPlan.revision,
                     });
                 }
@@ -551,29 +583,43 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
 
                 // Presenting changed meaning cancels an earlier approval. A formatter
                 // does not cancel it, and merely reopening the saved review writes nothing.
-                for (const name of sequenceDocuments?.map((doc) => doc.planName) || [planName]) {
-                    const current = await loadPlan(reviewCwd, name);
-                    const base = current?.attrs.planId
-                        ? hostedSession.planReviewConversations.getReviewBase(current.attrs.planId)
-                        : undefined;
+                for (const document of sequenceDocuments ?? [undefined]) {
+                    const name = document?.planName ?? planName;
+                    const documents = planDocumentsForCheckout(reviewCwd);
+                    const current = document
+                        ? {
+                              attrs: document.frontmatter,
+                              body: document.packageInput ? document.plan : parsePlanFrontMatter(document.plan).body,
+                              revision: document.revision,
+                          }
+                        : await documents.load(name);
+                    const planId = document?.planId ?? current?.attrs.planId;
+                    const base = planId ? hostedSession.planReviewConversations.getReviewBase(planId) : undefined;
                     if (
                         current &&
+                        planId &&
                         base &&
                         ["approved", "ready_for_work", "ready_for_decomposition"].includes(current.attrs.status) &&
                         !reviewSourceStillMatches(current, base.attrs, base.body)
                     ) {
-                        await recordPlanEvent({
-                            cwd: reviewCwd,
-                            planName: name,
-                            event: "review_reopened",
-                            currentStatus: current.attrs.status,
-                            expectedRevision: current.revision,
-                        });
-                        if (name === planName) effectiveMeta = (await loadPlan(reviewCwd, name))!.attrs;
-                        const document = sequenceDocuments?.find((doc) => doc.planName === name);
+                        const reopen = () =>
+                            recordPlanEvent({
+                                cwd: reviewCwd,
+                                planName: name,
+                                expectedPlanId: planId,
+                                event: "review_reopened",
+                                currentStatus: current.attrs.status,
+                                expectedRevision: current.revision,
+                            });
+                        if (retainedReview || name === planName) await reopen();
+                        else await withLocalPlanWorkflow(reviewCwd, name, reopen, planId);
+                        const updated = await documents.load(name);
+                        if (updated?.attrs.planId !== planId) throw new Error(`Plan identity changed: ${name}`);
+                        if (name === planName) effectiveMeta = updated.attrs;
                         if (document) {
-                            const updated = (await loadPlan(reviewCwd, name))!;
-                            document.plan = planDocumentMarkdown(updated.markdown);
+                            document.plan = document.packageInput
+                                ? updated.body
+                                : planDocumentMarkdown(updated.markdown);
                             document.frontmatter = updated.attrs;
                             document.revision = updated.revision;
                         }
@@ -586,7 +632,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 );
                 const canonicalReviewEvidence =
                     initialReviewEvidence.kind === "success" ? initialReviewEvidence.evidence : null;
-                const currentReviewPlan = (await loadPlan(reviewCwd, planName))?.markdown;
+                const currentReviewPlan = (await planDocumentsForCheckout(reviewCwd).load(planName))?.markdown;
                 if (currentReviewPlan === undefined) throw new Error(`Plan not found: ${planName}`);
                 const planVersions = reviewPlanVersions.get(planName) ?? [];
                 if (planVersions.at(-1)?.plan !== currentReviewPlan) {
@@ -870,6 +916,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     await recordPlanEvent({
                         cwd: reviewCwd,
                         planName,
+                        expectedPlanId: canonicalPlan?.planId,
                         event: "epic_readiness_passed",
                         currentStatus: "approved",
                         details: { triageMeta: projectMeta },
@@ -965,6 +1012,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 await recordPlanEvent({
                     cwd: reviewCwd,
                     planName,
+                    expectedPlanId: canonicalPlan?.planId,
                     event: "readiness_passed",
                     currentStatus: "approved",
                     details: { triageMeta: approvedMeta },
@@ -1050,7 +1098,10 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     true,
                     reviewResult.images,
                 );
-            });
+            };
+            return store && canonicalPlan
+                ? await store.withWorkflow(canonicalPlan.planId, planName, runReview)
+                : await withLocalPlanWorkflow(cwd, planName, () => runReview(cwd));
         },
     });
 }

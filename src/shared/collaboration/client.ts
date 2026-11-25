@@ -6,7 +6,8 @@ import {
     normalizeAppendRevisionPayload,
     normalizeCreateSharedSpacePayload,
 } from "./protocol.ts";
-import { buildApiUrl, normalizeServerUrl } from "./urls.ts";
+import { normalizeServerUrl } from "@runwield/plans/format";
+import { buildApiUrl } from "./urls.ts";
 
 import type {
     AppendCommentPayload,

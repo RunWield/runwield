@@ -6,7 +6,8 @@ import { equal, deepEqual, rejects } from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { join } from "node:path";
 import { readFile, writeFile, unlink, mkdtemp, rm, rename } from "node:fs/promises";
-import { PreparedProjectStore, authorLocalPlan, loadPlan, savePlanProse } from "./index.ts";
+import { PreparedProjectStore, authorLocalPlan, savePlanProse } from "./index.ts";
+import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 import { packageFixture, startDriver } from "../shared/testing/plan-package-fixture.ts";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -814,7 +815,7 @@ test("managed authorship retries a lost result and can reuse the name after rena
             const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
             ok(owner);
             await projects.home.withOwner(owner, async () => {
-                const { loadPlan } = await import("./index.ts");
+                const { loadPlan } = await import("../shared/testing/plan-query-fixture.ts");
                 const cwd = projects.home.storeLocation(owner);
                 equal((await loadPlan(cwd, "renamed"))?.attrs.planId, original);
                 equal((await loadPlan(cwd, "repeatable"))?.attrs.planId, next);

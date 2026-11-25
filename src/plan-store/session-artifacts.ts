@@ -1,13 +1,12 @@
 import { posix } from "node:path";
 import { readFile, realpath } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
-import { PLANS_DIR_NAME } from "../constants.ts";
+import { PLANS_DIR_NAME, EPIC_ARTIFACT_FILE_NAMES } from "@runwield/plans/format";
 import { readPlanResourceCatalog } from "./queries.ts";
 import { managedPlanStoreActive } from "./managed.ts";
 import { readPlanResource } from "./documents.ts";
 import { readLocalHomeStore } from "./access.ts";
 import { currentPackageProject } from "./workflows.ts";
-import { EPIC_ARTIFACT_FILE_NAMES } from "@runwield/plans/format";
 import { getEpicArtifactPath } from "./artifacts.ts";
 
 /** Session references are logical routes, not physical storage locations. */

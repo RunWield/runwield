@@ -1,5 +1,5 @@
 import { resetPlanExecutionMetadata, restoreRecreatedPlanExecution } from "../../plan-store/index.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { runPlanRecoveryEffects } from "../../plan-store/index.ts";
@@ -27,7 +27,7 @@ import { updateEntry as updateWorktreeRegistryEntry } from "../../shared/worktre
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { RecoveryWorktreeContext } from "./plan-session-types.ts";
 import type { RecoveryActionContext, RecoveryActionOutcome } from "./plan-recovery-actions.ts";
 
@@ -237,7 +237,7 @@ async function recreateRecoveryWorktree(context: RecoveryActionContext): Promise
             throw new Error(`Recovery recreate transaction returned no worktree for ${plan.planName}.`);
         }
         if (!recreated.path) throw new Error(`Recreated worktree has no path for ${plan.planName}.`);
-        const refreshedPlan = await loadPlan(recreated.path, plan.planName);
+        const refreshedPlan = await planDocumentsForCheckout(recreated.path).load(plan.planName);
         if (refreshedPlan?.revision) {
             plan.attrs = refreshedPlan.attrs;
             plan.revision = refreshedPlan.revision;

@@ -1,4 +1,5 @@
-import { projects } from "@runwield/projects";
+import { projects, type ProjectId } from "@runwield/projects";
+import { checkoutPlanIdentity } from "./project-binding.ts";
 import {
     managedPlanStoreActive,
     managedPersonalStoreActive,
@@ -11,7 +12,7 @@ import {
     type ManagedPlanSelection,
 } from "./managed.ts";
 /** Opaque request continuation. Its JSON representation remains the existing saved admission record. */
-import { selectLocalPlanWorkflow } from "./access.ts";
+import { PlanAccessMismatchError, selectLocalPlanWorkflow } from "./access.ts";
 import {
     currentPackageSelection,
     withPackageWorkflow,
@@ -47,9 +48,19 @@ export function hasCanonicalPlanAccess(): boolean {
     return !currentManagedRetainedExecution() && Boolean(capturePlanAccess());
 }
 
-export async function selectPlanAccess(cwd: string, reference: string): Promise<PlanAccess | undefined> {
-    if (managedPlanStoreActive()) return retainManagedPlanAccess(await selectManagedPlan(cwd, reference));
-    const selection = await selectLocalPlanWorkflow(cwd, reference);
+export async function selectPlanAccess(
+    cwd: string,
+    reference: string,
+    expectedPlanId?: string,
+    expectedProjectId?: ProjectId,
+): Promise<PlanAccess | undefined> {
+    if (expectedProjectId && checkoutPlanIdentity(cwd)?.projectId !== expectedProjectId)
+        throw new PlanAccessMismatchError("The selected Plan belongs to another Project.");
+    if (managedPlanStoreActive())
+        return retainManagedPlanAccess(
+            await selectManagedPlan(cwd, expectedPlanId || reference, Boolean(expectedPlanId)),
+        );
+    const selection = await selectLocalPlanWorkflow(cwd, expectedPlanId || reference, Boolean(expectedPlanId));
     return selection ? retainPlanAccess(selection) : undefined;
 }
 

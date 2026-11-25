@@ -6,14 +6,15 @@ import {
     compareChildPlansByOrder,
     getDeclaredPlanStatus,
     resolveSiblingChildPlanDependencyStates,
+    isPlannedChangeClassification,
 } from "@runwield/plans/format";
 /**
  * @module shared/workflow/epic-continuation
  * Strict ordered continuation for child FEATURE plans inside PROJECT Epics.
  */
 
-import { findPlansByParent, listPlans, loadPlan } from "../../plan-store/index.ts";
-import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
+import { type LoadedPlan, planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { AGENTS } from "../session/agent-registry.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { executePlan, runPlanningAgent } from "./workflow.ts";
 import { decidePostExecution, decidePostPlanning } from "./decisions.ts";
@@ -22,7 +23,7 @@ import { SYSTEM_SEMANTIC_REVIEW_PORT } from "./validation.ts";
 import { continueWorkflowValidation } from "./validation.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { buildPlanSummary } from "../plan-presentation.ts";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { HostedSession } from "../session/hosted-session.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { WorkflowValidationResult } from "./validation.ts";
@@ -110,7 +111,9 @@ export async function resolveEpicContinuation({
               ? getDeclaredPlanStatus(completedLocation.plan.markdown)
               : undefined);
     if (!completedAttrs) {
-        completedAttrs = (await listPlans(cwd)).find((plan) => plan.name === completedPlanName)?.attrs;
+        completedAttrs = (await planDocumentsForCheckout(cwd).list()).find(
+            (plan) => plan.name === completedPlanName,
+        )?.attrs;
     }
     if (!completedAttrs) return { kind: "none", reason: "completed_plan_missing", completedPlanName };
     let parentPlanName = typeof completedAttrs.parentPlan === "string" ? completedAttrs.parentPlan.trim() : "";
@@ -168,7 +171,7 @@ export async function resolveEpicContinuation({
     const family =
         !hasCanonicalPlanAccess() && targetBranch && (await isGitRepository(cwd))
             ? await prepareTargetBranchPlansByParent(cwd, targetBranch, parentPlanName)
-            : await findPlansByParent(cwd, parentPlanName);
+            : await planDocumentsForCheckout(cwd).children(parentPlanName);
     const siblings = family
         .filter((plan) => isPlannedChangeClassification(plan.attrs.classification))
         .map((plan) =>
@@ -267,9 +270,9 @@ export async function presentEpicChildPlan(
     hostedSession: HostedSession,
     planName: string,
     cwd = hostedSession.cwd,
-): Promise<Awaited<ReturnType<typeof loadPlan>> | null> {
+): Promise<LoadedPlan | null> {
     emitSystemStatus(hostedSession, `Loading Plan: ${planName}`, { header: "RunWield" });
-    const plan = await loadPlan(cwd, planName);
+    const plan = await planDocumentsForCheckout(cwd).load(planName);
     if (!plan) {
         emitSystemStatus(hostedSession, `Epic continuation stopped: child Plan not found: ${planName}`, {
             level: "warning",
@@ -330,7 +333,7 @@ export async function runEpicChildContinuation({
         executionAgentName: hostedSession.getActiveExecutionWorkflow?.()?.executionAgent || AGENTS.ENGINEER,
     });
     if (executionDecision.kind !== "run_validation") return null;
-    const latestPlan = await loadPlan(planRoot, planName);
+    const latestPlan = await planDocumentsForCheckout(planRoot).load(planName);
     return /** @type {any} */ await continueWorkflowValidation({
         hostedSession,
         planName,

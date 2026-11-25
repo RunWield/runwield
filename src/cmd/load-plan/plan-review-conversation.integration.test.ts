@@ -6,7 +6,8 @@ import { fauxAssistantMessage, fauxText, fauxToolCall, type TranscriptContext } 
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { parsePlanFrontMatter, planDocumentMarkdown } from "@runwield/plans/format";
-import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+import { ensurePlanIdentity } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";

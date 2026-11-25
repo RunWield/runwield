@@ -4,7 +4,6 @@ import { readFile, readlink } from "node:fs/promises";
 import process from "node:process";
 
 import type { ProcessIdentity } from "@runwield/plans/controller-state";
-export type { ProcessIdentity } from "@runwield/plans/controller-state";
 
 function query(command: string, args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {

@@ -5,6 +5,7 @@ import {
     compareChildPlansByOrder,
     isTerminalArchivableStatus,
     isProjectPlan,
+    isPlannedChangeClassification,
 } from "@runwield/plans/format";
 /**
  * @module cmd/load-plan/plan-epic-flow
@@ -15,8 +16,7 @@ import {
  * explicitly declares it done enough.
  */
 
-import { isPlannedChangeClassification } from "../../constants.ts";
-import { findPlansByParent } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { isInValidation } from "@runwield/plans/lifecycle";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
@@ -47,7 +47,7 @@ import {
 } from "./plan-epic-children.ts";
 import { isHoldableStatus, isUserVerifiableStatus, markPlanUserVerified, putPlanOnHold } from "./plan-hold.ts";
 import { validatePlanExecutionPolicyForReadiness } from "./plan-execution.ts";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 
@@ -72,7 +72,7 @@ export interface HandleEpicPlanOptions {
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, body: string, markdown: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, body: string, markdown: string, attrs: import('@runwield/plans').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface["runSlicerAgent"]} opts.runSlicerAgent
  * @param {(childPlanName: string) => Promise<void>} opts.loadChildPlan
@@ -139,7 +139,7 @@ export async function handleEpicPlan({
     const familyChildren =
         targetBranch && (await isGitRepository(projectRoot))
             ? await prepareTargetBranchPlansByParent(projectRoot, targetBranch, plan.planName)
-            : await findPlansByParent(projectRoot, plan.planName);
+            : await planDocumentsForCheckout(projectRoot).children(plan.planName);
     const children = familyChildren
         .filter((child) => isPlannedChangeClassification(child.attrs.classification))
         .sort(compareChildPlansByOrder);

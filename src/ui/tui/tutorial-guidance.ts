@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { listWorkRecords } from "../../shared/work-records/store.ts";
 import { isPlanExecutionRuntimeAgent } from "../../shared/workflow/execution-agent.ts";
-import { findPlanEvidenceById } from "../../plan-store/index.ts";
+import { type PlanResource as LoadedPlan, planDocumentsForCheckout } from "../../plan-store/index.ts";
 
 import { getCustomSetting } from "../../shared/settings.ts";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
@@ -15,7 +15,6 @@ import type { UiAPI } from "./api.ts";
 type SessionRuntimeEvent = import("../../shared/session/session-runtime-events.ts").SessionRuntimeEvent;
 type SessionRuntime = ReturnType<typeof import("../../shared/session/session-runtime.ts").createSessionRuntime>;
 type SessionSnapshot = NonNullable<ReturnType<SessionRuntime["getSessionSnapshot"]>>;
-type LoadedPlan = Awaited<ReturnType<typeof findPlanEvidenceById>>;
 
 type TutorialExplanation = {
     id: string;
@@ -139,7 +138,9 @@ async function readVerifiedTutorialPlan(
 ): Promise<VerifiedTutorialPlan | null> {
     const association = snapshot.planAssociations?.find((entry) => entry.planId === planId);
     if (!association?.planName) return null;
-    const plan = await findPlanEvidenceById(projectRoot, planId).catch(() => null);
+    const plan = await planDocumentsForCheckout(projectRoot)
+        .evidenceById(planId)
+        .catch(() => null);
     if (!plan || plan.planName !== association.planName || plan.attrs.planId !== planId) return null;
     if (plan.attrs.status !== "verified") return null;
     if (!(await hasPlanDeliveryEvidence(projectRoot, association.planName, planId))) return null;

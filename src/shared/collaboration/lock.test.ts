@@ -1,13 +1,11 @@
 import { test } from "node:test";
 import { assertEquals, assertInstanceOf, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import {
-    assertSharedPlanWriteAllowed,
     COLLABORATION_STATE_REMOTE_CANONICAL,
     normalizeCollaborationFrontMatter,
-    SHARED_PLAN_LOCK_REPAIR,
-    SharedPlanLockError,
     type CollaborationFrontMatter,
-} from "./lock.ts";
+} from "@runwield/plans/format";
+import { assertSharedPlanWriteAllowed, SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "./lock.ts";
 
 interface FixtureFrontMatter extends Omit<CollaborationFrontMatter, "collaborationRevision"> {
     collaborationRevision?: number | string;

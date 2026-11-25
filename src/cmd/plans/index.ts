@@ -11,7 +11,7 @@ import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-en
 import { parseArgs } from "../../shared/cli-args.ts";
 import { getCwd } from "../../constants.ts";
 import { countChildPlanProgress, groupPlanHierarchy } from "@runwield/plans/format";
-import { listPlans } from "../../plan-store/index.ts";
+import { type PlanListEntry as PlanEntry, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { printCommandHelp } from "../help/index.ts";
 import { runPlansArchiveCommand } from "./archive.ts";
 import { runPlansDoctorCommand } from "./doctor.ts";
@@ -24,8 +24,6 @@ import { runPlansUiCommand } from "./ui.ts";
 import { runPlansUnshareCommand } from "./unshare.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
-
-type PlanEntry = Awaited<ReturnType<typeof listPlans>>[number];
 
 function isHelp(argv: string[]): boolean {
     return argv.includes("--help") || argv.includes("-h");
@@ -149,7 +147,7 @@ async function runPlansCommandInStore(argv: string[]): Promise<void> {
         return;
     }
 
-    const plans = await listPlans(getCwd());
+    const plans = await planDocumentsForCheckout(getCwd()).list();
     if (plans.length === 0) {
         console.log("[RunWield] No saved plans found. Use wld plans import <file-or-folder> to import existing Plans.");
         return;

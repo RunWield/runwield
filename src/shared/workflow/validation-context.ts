@@ -13,7 +13,7 @@ import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
  */
 
 import { extractYaml } from "../front-matter.ts";
-import { AGENTS } from "../../constants.ts";
+import { AGENTS } from "../session/agent-registry.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";

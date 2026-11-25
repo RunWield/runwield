@@ -8,7 +8,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { isPlannedChangeClassification } from "../../constants.ts";
+import { isPlannedChangeClassification } from "@runwield/plans/format";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 

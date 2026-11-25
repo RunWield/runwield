@@ -1,4 +1,4 @@
-import { AGENTS } from "../../constants.ts";
+import { AGENTS } from "../../shared/session/agent-registry.ts";
 import { resolvePlanExecutionPolicy } from "@runwield/plans/format";
 import { decidePostExecution } from "../../shared/workflow/decisions.ts";
 import { validatePostExecutionDecision } from "./plan-execution.ts";

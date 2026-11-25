@@ -15,7 +15,8 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../session/hosted-session.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 
-import { loadPlan, resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
+import { resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { applySequenceReviewDecision, prepareSequenceReview } from "../../plan-store/index.ts";
 import {

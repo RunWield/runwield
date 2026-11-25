@@ -137,7 +137,7 @@ test("remote reads find laptop-seeded review and associations and enforce commit
             status: "draft",
         });
         f.setModelResponseFactory(() => fauxAssistantMessage(fauxText("Saved conversation.")));
-        const client = await f.start();
+        const client = await f.start("retained-checkout");
         await client.read();
         await client.send({ kind: "turn", text: "Create laptop-owned history." });
         const ready = await client.read();
@@ -272,7 +272,7 @@ test("remote reconnect restores laptop execution and tutorial context without re
 test("remote reconnect reconciles confirmed legacy completion from remote Plan evidence without rewriting it", async () => {
     await withRemoteRuntimeFixture(async (f) => {
         f.setModelResponseFactory(() => fauxAssistantMessage(fauxText("Saved history.")));
-        const client = await f.start();
+        const client = await f.start("retained-checkout");
         await client.read();
         await client.send({ kind: "turn", text: "Retain legacy completion evidence." });
         const ready = await client.read();
@@ -285,7 +285,7 @@ test("remote reconnect reconciles confirmed legacy completion from remote Plan e
         });
         const before = (await f.control.list(ready.savedId))[0].contents;
         await client.close();
-        const resumed = await f.start();
+        const resumed = await f.start("retained-checkout");
         await resumed.read();
         await resumed.send({ kind: "load", sessionId: ready.savedId });
         const loaded = await resumed.read();

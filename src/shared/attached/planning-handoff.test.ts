@@ -7,7 +7,8 @@ import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { readAttachedAction } from "./coordinator.ts";
 import { listEntries } from "../worktree-registry.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { importPlans, loadPlan } from "../../plan-store/index.ts";
+import { importPlans } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import {
     activateInput,
     EVIDENCE,

@@ -1,4 +1,4 @@
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 
 interface OrderedChild {
     name: string;

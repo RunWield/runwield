@@ -5,7 +5,7 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { getPlanRevisionForText } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";

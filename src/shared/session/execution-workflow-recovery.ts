@@ -8,7 +8,7 @@ import { readPersistedActiveAgentName } from "./active-agent-session.ts";
 import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
 import { readPlanAssociations } from "./plan-association.ts";
 import { listEntries } from "../worktree-registry.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
 import { readCurrentPairCheckpoint } from "./pair-checkpoint-session.ts";
 
@@ -109,7 +109,7 @@ export async function restoreExecutionWorkflow(
                 attachedCount++;
         }
         if (attachedCount !== 1) return;
-        const plan = await loadPlan(entry.path, association.planName);
+        const plan = await planDocumentsForCheckout(entry.path).load(association.planName);
         if (
             !plan ||
             plan.attrs.planId !== association.planId ||

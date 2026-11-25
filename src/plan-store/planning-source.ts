@@ -15,7 +15,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { inspectPlanTextStrict, getStoredPlanPath, withPlanCatalogLock } from "../plan-store.ts";
-import { loadPlan } from "./index.ts";
+import { loadPlan } from "./queries.ts";
 import { listEntries as listWorktreeRegistryEntries } from "../shared/worktree-registry.ts";
 
 import { ensureExecutionPlanFile } from "./index.ts";

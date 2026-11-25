@@ -13,7 +13,7 @@ import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { inspectSemantic, prepareIndexRuntime, toDelivery } from "./delivery-test-fixture.ts";
 import { DENO_CONFIG_PATH, EVIDENCE, spawnAttachedCli } from "./attached-test-fixture.ts";
 import { listWorkRecords } from "../work-records/store.js";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { git } from "../git-test-fixture.ts";
 import type { AttachedJsonObject, AttachedOperationName } from "./operations.ts";
 
@@ -155,7 +155,7 @@ export async function recoverDelivery(point: string, timing: string): Promise<vo
             ).length,
             1,
         );
-        const plan = await loadPlan(fixture.root, "p");
+        const plan = await planDocumentsForCheckout(fixture.root).load("p");
         assert(plan?.attrs.publicationReceipt);
         await git(fixture.root, ["merge-base", "--is-ancestor", plan.attrs.publicationReceipt.publishedCommit, "main"]);
         const evidence = await fixture.evidence();

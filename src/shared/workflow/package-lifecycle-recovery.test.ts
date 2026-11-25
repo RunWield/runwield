@@ -1,6 +1,6 @@
 import { seedPlanState, seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
 
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { planPackageJournalDirectory } from "../../plan-store/packages.ts";
 import { importPlanPackages } from "../../plan-store/packages.ts";
@@ -9,7 +9,7 @@ import { addEntry } from "../worktree-registry.ts";
 import { listPlanHistory, showPlanMilestone, preparePlanWorkflow } from "../../plan-store/index.ts";
 import { currentPackageSelection } from "../../plan-store/workflows.ts";
 import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "../../plan-store/retained-source.ts";
-import type { ValidationCheckpoint } from "./validation-checkpoint.ts";
+import type { ValidationCheckpoint } from "@runwield/plans/controller-state";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";

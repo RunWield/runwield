@@ -32,9 +32,8 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
-import { AGENTS, SUBAGENTS } from "../../../constants.ts";
+import { AGENTS, SUBAGENTS, agentRegistry } from "../agent-registry.ts";
 import { __resetSettingsForTests, getSettingsManager } from "../../settings.ts";
-import { agentRegistry } from "../agent-registry.ts";
 import { HostedSession, type HostedRuntimeEventObservation } from "../hosted-session.ts";
 import {
     buildAgentSession,

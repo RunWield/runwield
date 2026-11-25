@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { readFile } from "node:fs/promises";
-import { dirname, resolve, relative } from "node:path";
+import { dirname, isAbsolute, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 import { listCiFiles } from "./ci-files.ts";
@@ -68,15 +68,22 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
     };
     const violations: PlanStoreBoundaryViolation[] = [];
     const check = (node: ts.Node): void => {
-        const specifier = literal(node);
-        if (!specifier) return;
-        const resolved = ts.resolveModuleName(specifier, absolute, compilerOptions, ts.sys).resolvedModule
-            ?.resolvedFileName;
-        const target = resolved
-            ? relativeName(resolved)
-            : specifier.startsWith(".")
-              ? relativeName(resolve(dirname(absolute), specifier))
-              : "";
+        const reference = literal(node);
+        if (!reference) return;
+        const specifier = reference.startsWith("#") ? reference : reference.replace(/[?#].*$/, "");
+        let path = specifier;
+        if (specifier.startsWith("file:")) {
+            try {
+                path = fileURLToPath(specifier);
+            } catch {
+                return;
+            }
+        }
+        const resolved = ts.resolveModuleName(path, absolute, compilerOptions, ts.sys).resolvedModule?.resolvedFileName;
+        const target =
+            resolved || path.startsWith(".") || isAbsolute(path)
+                ? relativeName(resolved ?? resolve(dirname(absolute), path))
+                : "";
         if (file.startsWith("packages/plans/") && target.startsWith("src/") && !isTestCaller(file))
             violations.push({
                 file,
@@ -103,13 +110,23 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
             });
     };
     const visit = (node: ts.Node): void => {
-        if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+        if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node) || ts.isJSDocImportTag(node)) {
             if (node.moduleSpecifier) check(node.moduleSpecifier);
+        } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+            check(node.moduleReference.expression);
         } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) check(node.argument.literal);
         else if (
             ts.isCallExpression(node) &&
             (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-                (ts.isIdentifier(node.expression) && node.expression.text === "require")) &&
+                (ts.isIdentifier(node.expression) && node.expression.text === "require") ||
+                (ts.isPropertyAccessExpression(node.expression) &&
+                    ts.isIdentifier(node.expression.expression) &&
+                    node.expression.expression.text === "module" &&
+                    node.expression.name.text === "require") ||
+                (ts.isElementAccessExpression(node.expression) &&
+                    ts.isIdentifier(node.expression.expression) &&
+                    node.expression.expression.text === "module" &&
+                    literal(node.expression.argumentExpression) === "require")) &&
             node.arguments[0]
         )
             check(node.arguments[0]);

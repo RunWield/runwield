@@ -1,7 +1,14 @@
+import {
+    openPlanStoreForCheckout,
+    planDocumentsForCheckout,
+    readPlanDocuments,
+    withLocalPlanWorkflow,
+    selectPlanAccess,
+} from "./index.ts";
 import { equal, notEqual, rejects } from "node:assert/strict";
 import { test } from "node:test";
 import { packageFixture } from "../shared/testing/plan-package-fixture.ts";
-import { archiveSavedPlan, loadPlan, openProjectPlanStore, restoreSavedPlan, StalePlanWriteError } from "./index.ts";
+import { archiveSavedPlan, openProjectPlanStore, restoreSavedPlan, StalePlanWriteError } from "./index.ts";
 
 test("a project-bound store preserves Plan identity and guards each write across independent opens", async () => {
     const fixture = await packageFixture();
@@ -14,7 +21,7 @@ test("a project-bound store preserves Plan identity and guards each write across
         const created = await first.create({ planName: "proposal", contextMarkdown: "# Draft\n" });
         const id = created.planId;
         equal(created.attrs.status, "draft");
-        equal((await loadPlan(fixture.root, "proposal"))?.attrs.planId, id);
+        equal((await planDocumentsForCheckout(fixture.root).load("proposal"))?.attrs.planId, id);
         await rejects(second.create({ planName: "proposal", contextMarkdown: "duplicate" }), StalePlanWriteError);
         const foreign = openProjectPlanStore(other.identity.projectId, { admitted: other.identity });
         await rejects(foreign.read(id));
@@ -47,7 +54,7 @@ test("a project-bound store preserves Plan identity and guards each write across
         const restored = await open().restore(id, savedArchive.revision);
         equal(restored.planId, id);
         await rejects(first.readArchived(id));
-        equal((await loadPlan(fixture.root, "proposal"))?.body, edited.body);
+        equal((await planDocumentsForCheckout(fixture.root).load("proposal"))?.body, edited.body);
         equal((await open().read(id)).revision, restored.revision);
     } finally {
         await Promise.all([fixture.cleanup(), other.cleanup()]);
@@ -62,8 +69,29 @@ test("local Plan ID operations stay exact when another Plan has that name", asyn
         const alias = await store.create({ planName: created.planId, contextMarkdown: created.body });
         equal(alias.revision, created.revision);
         equal((await store.read(created.planId)).name, created.name);
-        const edited = await store.edit(created.planId, { body: "# Edited\n", expectedRevision: created.revision });
+        const edited = await store.revise(created.planId, {
+            contextMarkdown: "# Edited\n",
+            definition: { title: "Edited title", executionAgent: "frontend-engineer" },
+            validationMarkdown: "# Updated validation\n",
+            expectedRevision: created.revision,
+        });
+        const reopened = openProjectPlanStore(fixture.identity.projectId, { admitted: fixture.identity });
+        equal((await reopened.read(created.planId)).body, "# Edited\n");
+        const validation = await withLocalPlanWorkflow(
+            fixture.root,
+            created.name,
+            () => readPlanDocuments(created.planId, "validation.md"),
+            created.planId,
+        );
+        equal(validation.body, "# Updated validation\n");
+        equal(edited.attrs.title, "Edited title");
+        equal(edited.attrs.executionAgent, "frontend-engineer");
+        await rejects(
+            store.revise(created.planId, { contextMarkdown: "stale", expectedRevision: created.revision }),
+            StalePlanWriteError,
+        );
         equal((await store.read(alias.planId)).body, created.body);
+        equal((await store.read(alias.planId)).attrs.title, alias.attrs.title);
         const approved = await store.applyEvent(created.planId, {
             event: "review_approved",
             expectedRevision: edited.revision,
@@ -89,5 +117,27 @@ test("local Plan ID operations stay exact when another Plan has that name", asyn
         );
     } finally {
         await fixture.cleanup();
+    }
+});
+
+test("a checkout reader and picker keep the Project that admitted the Plan", async () => {
+    const first = await packageFixture();
+    const second = await packageFixture();
+    try {
+        const owner = openPlanStoreForCheckout(first.root)!;
+        const other = openProjectPlanStore(second.identity.projectId, { admitted: second.identity });
+        const saved = await owner.create({ planName: "proposal", contextMarkdown: "First" });
+        await other.create({ planName: "proposal", contextMarkdown: "Second" });
+        const reader = planDocumentsForCheckout(second.root);
+        equal((await reader.load("proposal"))?.body, "Second");
+        await owner.withWorkflow(saved.planId, saved.name, async () => {
+            await rejects(() => reader.load("proposal"), /different Project/);
+        });
+        await rejects(
+            () => selectPlanAccess(second.root, saved.name, saved.planId, owner.projectId),
+            /another Project/,
+        );
+    } finally {
+        await Promise.all([first.cleanup(), second.cleanup()]);
     }
 });

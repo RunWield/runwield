@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { hasNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 
 import { listTransitionRecoveryRecords } from "../../plan-store/index.ts";

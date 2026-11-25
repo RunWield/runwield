@@ -28,7 +28,8 @@ import {
 } from "@earendil-works/pi-ai";
 
 import { parsePlanFrontMatter, type PlanFrontMatterInput } from "@runwield/plans/format";
-import { loadArchivedPlan, loadPlan, resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
+import { resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
+import { loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
@@ -45,7 +46,8 @@ import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
-import { getRunWieldRuntimeDir, AGENTS } from "../../constants.ts";
+import { AGENTS } from "../../shared/session/agent-registry.ts";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/api.ts";
 
 interface LoadPlanUiFixture {

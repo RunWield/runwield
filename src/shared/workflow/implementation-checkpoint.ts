@@ -3,7 +3,7 @@ import { withPlanImplementationCompletion } from "../../plan-store/index.ts";
 import { capturePlanAccess } from "../../plan-store/index.ts";
 import { resumePlanAttempt } from "../../plan-store/index.ts";
 import { getPlanRevisionForText } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { checkpointExecutionWorktree } from "../worktree.ts";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
 import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.ts";
@@ -79,7 +79,7 @@ async function finalizeLockedImplementation({
             : projectRoot;
     let currentPlan = await (async () => {
         try {
-            return await loadPlan(planCwd, planName);
+            return await planDocumentsForCheckout(planCwd).load(planName);
         } catch {
             return null;
         }
@@ -101,7 +101,7 @@ async function finalizeLockedImplementation({
                 }`,
             );
         }
-        currentPlan = await loadPlan(executionContext.executionCwd, planName);
+        currentPlan = await planDocumentsForCheckout(executionContext.executionCwd).load(planName);
         restoredMissingPlan = true;
     }
     const expectedPlanId = typeof triageMeta.planId === "string" ? triageMeta.planId : undefined;

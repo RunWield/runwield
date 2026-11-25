@@ -2,7 +2,7 @@ import { projects } from "@runwield/projects";
 import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { mergeFrontMatterText } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { findActiveByPlanName } from "../worktree-registry.ts";
 import { executionWorktreePathExists, recoverMissingExecutionWorktree } from "./execution-worktree-rescue.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";
@@ -54,7 +54,7 @@ export async function prepareSessionPlanningWorktree(projectRoot: string, planNa
         if (!["present", "restored", "reconciled"].includes(result.kind)) {
             throw new Error(result.reason || `Cannot prepare the saved child Plan ${planName}.`);
         }
-        const plan = await loadPlan(planning.entry.path, planName);
+        const plan = await planDocumentsForCheckout(planning.entry.path).load(planName);
         if (plan) planning.plan = plan;
     }
     return { ...location, documentRoot: planning.entry.path, plan: planning.plan, planningNotStarted: false };

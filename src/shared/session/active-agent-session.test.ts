@@ -1,7 +1,8 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { AGENTS, getCwd } from "../../constants.ts";
+import { AGENTS } from "./agent-registry.ts";
+import { getCwd } from "../../constants.ts";
 import {
     ACTIVE_AGENT_CUSTOM_TYPE,
     readPersistedActiveAgentName,

@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 import { runPlansCommand } from "./index.ts";
-import { listPlans } from "../../plan-store/index.ts";
+import { listPlans } from "../../shared/testing/plan-query-fixture.ts";
 import { getDeliveryCopyPolicy, getExactProjectCustomSetting } from "../../shared/settings.ts";
 
 test("public Plan import preserves sources and retries without duplicate packages or implicit copy consent", async () => {

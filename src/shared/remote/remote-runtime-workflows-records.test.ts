@@ -25,7 +25,7 @@ test("remote plan_written commits its exact artifact, association and review and
                 ? fauxAssistantMessage(fauxToolCall("plan_written", { planName: "remote-records" }))
                 : fauxAssistantMessage(fauxText("Review saved.")),
         );
-        const client = await f.start();
+        const client = await f.start("retained-checkout");
         await client.read();
         await client.send({ kind: "plan-written" });
         const written = await client.read();
@@ -47,7 +47,7 @@ test("remote plan_written commits its exact artifact, association and review and
         assertEquals(reference?.planningAgentName, "remote-runtime");
         assertEquals(written.canReopen, true);
         await client.close();
-        const resumed = await f.start();
+        const resumed = await f.start("retained-checkout");
         await resumed.read();
         await resumed.send({ kind: "load", sessionId: id });
         const loaded = await resumed.read();
@@ -84,7 +84,7 @@ test("remote plan_written commits its exact artifact, association and review and
         assertEquals(review.reviewKind, "unanswered");
         assertEquals(f.modelRequests.length, turns, "Loading and reopening cannot replay the planning model turn");
         await resumed.close();
-        const fresh = await f.start();
+        const fresh = await f.start("retained-checkout");
         await fresh.read();
         await fresh.send({ kind: "load", sessionId: id });
         const roundtrip = await fresh.read();

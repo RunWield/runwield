@@ -9,8 +9,8 @@ import process from "node:process";
 
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 import { startReviewWorkspaceServer } from "../../review-workspace-server.ts";
-import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "@runwield/plans/format";
-import type { PlanExecutionPolicy, PlanFrontMatter } from "../../plan-store/index.ts";
+import { parsePlanFrontMatter, resolvePlanExecutionPolicy, type PlanExecutionPolicy } from "@runwield/plans/format";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.ts";
 import type { ReviewDecisionSink } from "../workspace/routes/api/review-handlers.ts";

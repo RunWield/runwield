@@ -1,5 +1,5 @@
-import { isPlannedChangeClassification } from "../../constants.ts";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import { isPlannedChangeClassification } from "@runwield/plans/format";
+import type { PlanFrontMatter } from "@runwield/plans";
 import { shouldAutoMergePlansIntoTargetBranch } from "../settings.ts";
 import { ensureTargetBranchRef, slugify } from "../worktree.ts";
 

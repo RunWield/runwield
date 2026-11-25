@@ -1,12 +1,12 @@
 import { compareChildPlansByOrder } from "@runwield/plans/format";
-import { listPlanDocuments } from "../../plan-store/index.ts";
+import { listSelectablePlanDocuments } from "../../plan-store/index.ts";
 import { getCwd } from "../../constants.ts";
 import type { CommandCompletionItem } from "../registry.ts";
 
 export async function getLoadPlanCompletions(argumentPrefix: string): Promise<CommandCompletionItem[]> {
     // Completion is an optional hint. A malformed or unreadable Plan must not
     // reject the editor's background lookup; command execution reports it.
-    const plans = await listPlanDocuments(getCwd()).catch(() => []);
+    const plans = await listSelectablePlanDocuments(getCwd()).catch(() => []);
     // A complete Plan name is ready to submit. Offering it again makes the
     // editor consume Enter as argument completion, depending on lookup timing.
     if (plans.some((plan) => plan.name === argumentPrefix)) return [];

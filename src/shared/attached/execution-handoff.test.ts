@@ -9,7 +9,7 @@ import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { addEntry, findById, listEntries } from "../worktree-registry.ts";
 import { EVIDENCE, runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { locateAttachedWorkflows, type AttachedWorkflowRecord } from "./record-store.ts";

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { toDelivery } from "./delivery-test-fixture.ts";
 import { git } from "../git-test-fixture.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { type CliRun, DENO_CONFIG_PATH, EVIDENCE, readRecordBytes, spawnAttachedCli } from "./attached-test-fixture.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";

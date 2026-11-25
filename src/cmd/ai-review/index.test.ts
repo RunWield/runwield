@@ -4,8 +4,7 @@ import { fauxAssistantMessage, fauxText, getSystemMessageText } from "@earendil-
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { parseGuidedReviewMetadataLine, parseGuidedReviewUsageEventLine } from "../guided-review/protocol.ts";
-import { AGENTS } from "../../constants.ts";
-import { agentRegistry } from "../../shared/session/agent-registry.ts";
+import { AGENTS, agentRegistry } from "../../shared/session/agent-registry.ts";
 import { getCliCommandDefinitions, requiresProjectDirectoryConsent } from "../registry.ts";
 import { runAiReviewCommand } from "./index.ts";
 

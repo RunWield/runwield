@@ -1,6 +1,6 @@
 import { withRetainedPlanFixture } from "../../testing/retained-plan-fixture.ts";
 import process from "node:process";
-import { loadPlan } from "../../../plan-store/index.ts";
+import { loadPlan } from "../../testing/plan-query-fixture.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../../plan-store/index.ts";
 
 const [root, planName] = process.argv.slice(2);

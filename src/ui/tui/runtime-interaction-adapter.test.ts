@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { createScriptedReviewBrowser } from "../review/review-test-fixture.ts";
 import { createUiApiFixture } from "./ui-api-test-fixture.ts";

@@ -44,7 +44,15 @@ interface SourcePiece {
 interface ModuleReference {
     specifier: string;
     offset: number;
+    reexport: boolean;
 }
+
+const EXTRACTED_DOMAIN_PACKAGES = new Set([
+    "@runwield/tools",
+    "@runwield/agents",
+    "@runwield/projects",
+    "@runwield/plans",
+]);
 
 export const PACKAGE_SOURCE_PATTERN = /\.(?:[cm]?[jt]sx?|astro|html)$/;
 
@@ -132,7 +140,11 @@ function typescriptModuleReferences(file: string, piece: SourcePiece): ModuleRef
     function visit(node: ts.Node): void {
         const specifier = moduleSpecifier(node);
         if (specifier && ts.isStringLiteralLike(specifier))
-            references.push({ specifier: specifier.text, offset: piece.offset + specifier.getStart(tree) });
+            references.push({
+                specifier: specifier.text,
+                offset: piece.offset + specifier.getStart(tree),
+                reexport: ts.isExportDeclaration(node),
+            });
         ts.forEachChild(node, visit);
         if ("jsDoc" in node) {
             const documentation = node as ts.Node & { jsDoc?: readonly ts.JSDoc[] };
@@ -147,7 +159,8 @@ function sourceModuleReferences(file: string, source: string): ModuleReference[]
     if (file.endsWith(".astro")) {
         const { code, mappings, scripts } = convertToTsx(source, { filename: file });
         const references: ModuleReference[] = [];
-        for (const { specifier, offset } of typescriptModuleReferences(`${file}.tsx`, { text: code, offset: 0 })) {
+        for (const reference of typescriptModuleReferences(`${file}.tsx`, { text: code, offset: 0 })) {
+            const { offset } = reference;
             const mapping = mappings.find(
                 ([virtualStart, virtualLength, , originalLength]) =>
                     offset >= virtualStart && offset < virtualStart + Math.min(virtualLength, originalLength),
@@ -155,7 +168,7 @@ function sourceModuleReferences(file: string, source: string): ModuleReference[]
             // Astro adds declarations for its generated component. Only mapped imports came from the file.
             if (!mapping) continue;
             const [virtualStart, , originalStart] = mapping;
-            references.push({ specifier, offset: originalStart + offset - virtualStart });
+            references.push({ ...reference, offset: originalStart + offset - virtualStart });
         }
         for (const script of scripts) {
             if (script.type === ExtractedScriptType.Json) continue;
@@ -243,20 +256,32 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
         return resolver;
     }
 
-    function packageViolation(importer: string, owner: PackageBoundary | undefined, specifier: string) {
+    function packageViolation(
+        importer: string,
+        owner: PackageBoundary | undefined,
+        { specifier, reexport }: ModuleReference,
+    ) {
+        const applicationReexport = reexport && contains(join(root, "src"), importer);
+        const violation = (target: PackageBoundary, publicEntry: boolean) => {
+            if (target === owner) return;
+            if (!publicEntry)
+                return `Private import "${specifier}" from ${target.name}. Use an entry point declared in ${relative(root, join(target.directory, "package.json"))}.`;
+            if (applicationReexport && EXTRACTED_DOMAIN_PACKAGES.has(target.name))
+                return `Application code re-exports "${specifier}". Consumers must import ${target.name} directly.`;
+        };
         const path = specifier.startsWith("#") ? specifier : specifier.replace(/[?#].*$/, "");
         const [first, second] = path.split("/");
         const packageName = first.startsWith("@") ? `${first}/${second}` : first;
         const named = byName.get(packageName);
         if (named) {
             const subpath = path === packageName ? "." : `.${path.slice(packageName.length)}`;
-            return named !== owner && !entryForSubpath(named, subpath).length ? named : undefined;
+            return violation(named, entryForSubpath(named, subpath).length > 0);
         }
 
         const direct = physicalImport(path, importer);
         if (direct) {
             const target = packageAt(direct);
-            if (target && (target === owner || isPublicFile(target, direct))) return;
+            if (target && (target === owner || isPublicFile(target, direct))) return violation(target, true);
         }
         const { options, cache } = resolverFor(importer);
         const loaded = ts.resolveModuleName(path, importer, options, ts.sys, cache).resolvedModule;
@@ -264,7 +289,7 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
         if (!resolved) return;
         const actual = ts.sys.realpath?.(resolved) ?? resolved;
         const target = packageAt(actual);
-        if (target && target !== owner && !isPublicFile(target, actual)) return target;
+        if (target) return violation(target, isPublicFile(target, actual));
     }
 
     return (source: string, file: string): PackageDiagnostic[] => {
@@ -272,15 +297,10 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
         const owner = packageAt(importer);
         const references = sourceModuleReferences(file, source);
         const diagnostics: PackageDiagnostic[] = [];
-        for (const { specifier, offset } of references.sort((left, right) => left.offset - right.offset)) {
-            const boundary = packageViolation(importer, owner, specifier);
-            if (boundary) {
-                diagnostics.push({
-                    file,
-                    line: source.slice(0, offset).split("\n").length,
-                    message: `Private import "${specifier}" from ${boundary.name}. Use an entry point declared in ${relative(root, join(boundary.directory, "package.json"))}.`,
-                });
-            }
+        for (const reference of references.sort((left, right) => left.offset - right.offset)) {
+            const message = packageViolation(importer, owner, reference);
+            if (message)
+                diagnostics.push({ file, line: source.slice(0, reference.offset).split("\n").length, message });
         }
         return diagnostics;
     };

@@ -1,6 +1,7 @@
 import { withRetainedPlanFixture } from "../../testing/retained-plan-fixture.ts";
 import process from "node:process";
-import { loadPlanBodyById, savePlanBodyById } from "../../../plan-store/index.ts";
+import { savePlanBodyById } from "../../../plan-store/index.ts";
+import { loadPlanBodyById } from "../../testing/plan-query-fixture.ts";
 
 await withRetainedPlanFixture(process.argv.slice(2)[0], async () => {
     const plan = await loadPlanBodyById(process.argv.slice(2)[0], process.argv.slice(2)[1]);

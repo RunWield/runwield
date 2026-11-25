@@ -11,9 +11,10 @@ import { applySequenceReviewDecision, prepareSequenceReview } from "../../plan-s
  * lifecycle, planning, execution, and Slicer handoffs.
  */
 
-import { AGENTS, CLI_BIN } from "../../constants.ts";
-import { type PlanFrontMatter } from "../../plan-store/index.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { AGENTS } from "../../shared/session/agent-registry.ts";
+import { CLI_BIN } from "../../constants.ts";
+import { type PlanFrontMatter } from "@runwield/plans";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { decidePostExecution, decidePostPlanning } from "../../shared/workflow/decisions.ts";
 import { isPlanReviewableWithoutReopen } from "@runwield/plans/lifecycle";
 import { recordPlanEvent } from "../../plan-store/index.ts";
@@ -253,7 +254,7 @@ export async function reviewLoadedPlanDirectly({
             return { keepPlanAgentActive: true };
         }
         if (!outcome.planName) throw new Error("The Sequence has no first child to execute.");
-        const child = await loadPlan(documentRoot, outcome.planName);
+        const child = await planDocumentsForCheckout(documentRoot).load(outcome.planName);
         if (!child || child.attrs.planId !== outcome.triageMeta?.planId) {
             uiAPI.appendSystemMessage(
                 "The first Sequence child changed. Reopen its saved Plan before execution.",

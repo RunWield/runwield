@@ -375,7 +375,7 @@ test("Workspace progress retains saved publication proof after cleanup and inval
             const execution = await loadProgress(projectRoot, options);
             assertEquals(execution.plan.status, "in_progress");
             assertEquals(execution.overall.settled, false);
-            const { findPlanById } = await import("../../plan-store/index.ts");
+            const { findPlanById } = await import("../../shared/testing/plan-query-fixture.ts");
             assertEquals((await findPlanById(projectRoot, "receipt-id")).attrs.publicationReceipt ?? null, null);
         } finally {
             await fsRm(projectRoot, { recursive: true, force: true });

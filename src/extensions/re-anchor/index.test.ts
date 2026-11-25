@@ -9,7 +9,7 @@ import type { ExtensionAPI, ContextEvent, SessionCompactEvent } from "@earendil-
 import reAnchorExtension from "./index.ts";
 import type { ReAnchorOptions } from "./index.ts";
 import { HostedSession } from "../../shared/session/hosted-session.ts";
-import type { ReviewLedger } from "../../shared/workflow/review-ledger.ts";
+import type { ReviewLedger } from "@runwield/plans/controller-state";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { approvePlanForExecution } from "../../shared/testing/ready-plan-fixture.ts";
@@ -17,9 +17,9 @@ import {
     withLocalPlanWorkflow,
     reservePlanExecution,
     capturePlanExecutionContext,
-    loadPlan,
     savePlanProse,
 } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 interface ContextResult {
     messages?: AgentMessage[];

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { assertEquals } from "../../testing/assertions.ts";
 import { normalizeReviewOutcome, reviewCompletionMetricDetails, type ReviewFindingInput } from "./review-outcome.ts";
-import { type ReviewLedger } from "./review-ledger.ts";
+import { type ReviewLedger } from "@runwield/plans/controller-state";
 
 // Literal contract values captured from review-complete.ts before extraction.
 const LEDGER: ReviewLedger = {

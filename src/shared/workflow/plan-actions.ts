@@ -2,9 +2,9 @@ import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 /** Shared Plan action evidence and lifecycle executor. */
 
-import { type PlanFrontMatter } from "../../plan-store/index.ts";
+import { type PlanFrontMatter } from "@runwield/plans";
 import { getPlanRevisionForText } from "@runwield/plans/format";
-import { findPlanEvidenceById, loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import {
     prepareWorktreeRegistry,
     readPlanActionWorktreeEvidence,
@@ -137,10 +137,12 @@ async function resolvePlanActionAuthority(projectRoot: string, planId: string): 
                     entryIds: registry.entryIds,
                 };
             }
-            const primaryPlan = await findPlanEvidenceById(projectRoot, planId).catch((error) => {
-                if (registry.live) return null;
-                throw error;
-            });
+            const primaryPlan = await planDocumentsForCheckout(projectRoot)
+                .evidenceById(planId)
+                .catch((error) => {
+                    if (registry.live) return null;
+                    throw error;
+                });
             if (primaryPlan?.readAvailability?.kind === "pending") {
                 return {
                     kind: "invalid_action",
@@ -158,7 +160,9 @@ async function resolvePlanActionAuthority(projectRoot: string, planId: string): 
                 };
             }
             const executionPlan = registry.live?.path
-                ? await loadPlan(registry.live.path, primaryPlan.planName).catch(() => null)
+                ? await planDocumentsForCheckout(registry.live.path)
+                      .load(primaryPlan.planName)
+                      .catch(() => null)
                 : null;
             if (executionPlan?.readAvailability?.kind === "pending") {
                 return {
@@ -329,7 +333,7 @@ export async function executePlanAction(projectRoot: string, request: PlanAction
                 entryIds: [request.expectedWorktree.id, ...(registry.live ? [registry.live.id] : [])],
             };
         }
-        const selected = await findPlanEvidenceById(projectRoot, request.planId);
+        const selected = await planDocumentsForCheckout(projectRoot).evidenceById(request.planId);
         if (!selected) return { kind: "invalid_action", message: "Plan not found." };
         await preparePlanWorkflow(projectRoot, selected.planName);
     } catch (error) {

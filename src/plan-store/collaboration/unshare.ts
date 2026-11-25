@@ -10,14 +10,16 @@ import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.ts";
-import { clearPlanCollaborationMetadata, listPlans, listPlanResources } from "../../plan-store/index.ts";
+import { clearPlanCollaborationMetadata } from "../../plan-store/index.ts";
+import { listPlans, listPlanResources } from "../queries.ts";
 import { redactSecrets } from "../../shared/collaboration/capabilities.ts";
 import {
     CollaborationApiError,
     createCollaborationClient,
     SYSTEM_COLLABORATION_FETCH,
 } from "../../shared/collaboration/client.ts";
-import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
+import { COLLABORATION_STATE_REMOTE_CANONICAL, normalizePlanServerUrl } from "@runwield/plans/format";
+import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
 import { normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.ts";
 import {
     deleteCompatibleSecretRecords,
@@ -25,7 +27,6 @@ import {
     getProjectSecretStoreLocation,
     resolveCompatibleSecretRecord,
 } from "../../shared/collaboration/secrets.ts";
-import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
 import { collaborationPlanLocation as resolveWorkflowPlanLocation } from "./operations.ts";
 
 interface PlansUnshareArgs {
