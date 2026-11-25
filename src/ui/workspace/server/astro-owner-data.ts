@@ -22,7 +22,6 @@ import {
     loadCanonicalWorkspaceDetail,
     loadDevPlanCatalogBoard,
 } from "./astro-canonical-data.ts";
-import { readSessionArtifact } from "../../../shared/session/read-session-artifact.ts";
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
 
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
@@ -41,18 +40,19 @@ type ProjectArtifactsImporter = (specifier: string) => Promise<ProjectArtifactsM
 interface OwnerWorkspaceGlobals {
     [OWNER_WORKSPACE_STORE_KEY]?: OwnerCoordinationStore | null;
     [OWNER_WORKSPACE_SESSION_CONTINUATION_KEY]?: SessionContinuation | null;
+    [PROJECT_ARTIFACTS_MODULE_KEY]?: Promise<ProjectArtifactsModule>;
 }
 
 type OwnerWorkspaceRuntime = typeof globalThis & OwnerWorkspaceGlobals;
 
 const BUNDLED_PLAN_ADAPTER_KEY = Symbol.for("runwield.workspace.plan-adapter-module");
+const PROJECT_ARTIFACTS_MODULE_KEY = Symbol.for("runwield.workspace.project-artifacts-module");
 // Production needs the bundled adapter; dev uses the canonical loader's native
 // Deno import so Vite does not try to resolve Core's JSR imports through Node.
 let bundledProjectArtifacts: Promise<ProjectArtifactsModule> | undefined;
 if (!isAstroDevelopmentMode()) {
     if (!Reflect.has(globalThis, BUNDLED_PLAN_ADAPTER_KEY))
         Reflect.set(globalThis, BUNDLED_PLAN_ADAPTER_KEY, import("./plan-adapter.ts"));
-    bundledProjectArtifacts = import("./project-artifacts.ts");
 }
 
 export const OWNER_WORKSPACE_STORE_KEY = Symbol.for("runwield.workspace.owner-store");
@@ -124,17 +124,21 @@ export async function loadOwnerProjectPlanProgress(
     return await (loadOwnerPlanProgress as OwnerPlanProgressLoader)(store, { projectId, planId, runwieldSessionId });
 }
 
+async function workspaceProjectArtifacts(): Promise<ProjectArtifactsModule> {
+    if (isAstroDevelopmentMode())
+        return await (Function("specifier", "return import(specifier)") as ProjectArtifactsImporter)(
+            new URL("./project-artifacts.ts", import.meta.url).href,
+        );
+    const hostModule = (globalThis as OwnerWorkspaceRuntime)[PROJECT_ARTIFACTS_MODULE_KEY];
+    return await (hostModule || (bundledProjectArtifacts ??= import("./project-artifacts.ts")));
+}
+
 export async function loadOwnerProjectArtifact(projectId: string, artifactType: string, sourceId: string) {
     const store = getAstroOwnerWorkspaceStore();
     if (!store) throw new Error("Owner Workspace store is not available.");
     const root = requireOwnerProjectRoot(store, projectId);
-    const module = isAstroDevelopmentMode()
-        ? await (Function("specifier", "return import(specifier)") as ProjectArtifactsImporter)(
-              new URL("./project-artifacts.ts", import.meta.url).href,
-          )
-        : await (Reflect.get(globalThis, Symbol.for("runwield.workspace.project-artifacts-module")) ||
-              bundledProjectArtifacts);
-    return await module!.readProjectArtifact(root, artifactType, sourceId, { projectId, registry: store.projects });
+    const module = await workspaceProjectArtifacts();
+    return await module.readProjectArtifact(root, artifactType, sourceId, { projectId, registry: store.projects });
 }
 
 export async function loadOwnerSessionArtifact(projectId: string, runwieldSessionId: string, artifactId: string) {
@@ -155,5 +159,6 @@ export async function loadOwnerSessionArtifact(projectId: string, runwieldSessio
         .listSessionArtifacts(runwieldSessionId)
         .find((candidate) => candidate.artifactId === artifactId);
     if (!artifact) throw new Error("Session artifact not found.");
-    return await readSessionArtifact(root, artifact);
+    const { readSessionArtifact } = await workspaceProjectArtifacts();
+    return await readSessionArtifact(root, artifact, { projectId, registry: store.projects });
 }

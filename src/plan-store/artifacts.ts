@@ -1,317 +1,350 @@
-import {
-    managedPlanStoreActive,
-    readManagedPlan,
-    readManagedDocument,
-    saveManagedEpicArtifact,
-    appendManagedEpicQa,
-} from "./managed.ts";
+import { packageDocumentContent } from "./documents.ts";
+import { join, dirname, relative } from "node:path";
+import { createHash } from "node:crypto";
+import { inspectLocalHomeStore, withLocalPlanWorkflow } from "./access.ts";
+import { plans, type PlanId } from "@runwield/plans";
 import {
     EPIC_MANUAL_QA_FILE_NAME,
     EPIC_INTEGRATION_REPORT_FILE_NAME,
-    EPIC_ARTIFACT_FILE_NAMES,
+    decodePackageMarkdown,
+    planArtifactReference,
+    isEpicArtifactName,
     splitPlanName,
+    type EpicArtifactName,
 } from "@runwield/plans/format";
-import { currentPackageSelection, selectedPackage, saveGeneratedManualQaArtifact } from "./workflows.ts";
+import {
+    checkoutEpicArtifactPath,
+    hasManualQaSection,
+    prepareManualQaSection,
+    readCheckoutEpicArtifact,
+    writeCheckoutEpicArtifact,
+} from "@runwield/plans/artifact-files";
+import type { ManualQaSection, ProjectPlanArtifact, ProjectPlanArtifacts } from "@runwield/plans/store";
+import {
+    appendManagedEpicQa,
+    managedPlanStoreActive,
+    readManagedActivePlanById,
+    readManagedDocument,
+    saveManagedEpicArtifact,
+} from "./managed.ts";
+import {
+    currentPackageProject,
+    currentPackageSelection,
+    packageWorkflowLocks,
+    packageWorkflowRevision,
+    selectedPackage,
+    saveGeneratedManualQaArtifact,
+} from "./workflows.ts";
 import { savePlanPackageDocument } from "./packages.ts";
-import { recoverWindowsRename } from "../shared/native-file-replace-windows.ts";
-import { rename as fsRename } from "node:fs/promises";
-import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
-import { loadPlan } from "../plan-store.ts";
+import { findPlanById, loadPlan } from "./queries.ts";
+import { PlanNotFoundError, StalePlanWriteError, withPlanLock } from "../plan-store.ts";
+import { withOrderedTransitionResources } from "./transitions.ts";
+import type { bindProjectPlanStore } from "./project-binding.ts";
 
-export type AppendEpicManualQaSectionArgs = {
-    projectRoot: string;
-    epicPlanName: string;
-    childPlanName: string;
-    childHeading: string;
-    checklistMarkdown: string;
+function requireArtifactName(name: string): EpicArtifactName {
+    if (!isEpicArtifactName(name)) throw new Error(`Unknown Epic Artifact: ${name}`);
+    return name;
+}
+
+function relativeArtifactPath(cwd: string, path: string): string {
+    return relative(cwd, path).replaceAll("\\", "/");
+}
+
+type ArtifactPlan = Awaited<ReturnType<typeof findPlanById>>;
+type ArtifactPlanIdentity = {
+    attrs: Pick<ArtifactPlan["attrs"], "classification" | "planId" | "parentPlan">;
+    path: string;
+    revision: string;
+    name: string;
 };
 
-export type AppendEpicManualQaSectionResult = {
-    status: "recorded" | "already_present";
-    relativePath: string;
-};
-
-export type MoveEpicArtifactResult = {
-    fileName: string;
-    fromPath: string;
-    toPath: string;
-    relativePath: string;
-};
-
-function assertSafePlanName(planName: string, label: string): string[] {
-    const segments = splitPlanName(planName);
-    if (segments.length === 0) throw new Error(`${label} is required.`);
-    for (const segment of segments) {
-        if (segment === "." || segment === ".." || segment.includes("\\")) {
-            throw new Error(`${label} contains an unsafe path segment: ${planName}`);
-        }
-    }
-    return segments;
+function requirePlanId(plan: ArtifactPlanIdentity): PlanId {
+    const planId = plan.attrs.planId;
+    if (!plans.identity.isValid(planId)) throw new Error("Plan artifact access requires a durable Plan ID.");
+    return planId;
 }
 
-function projectRelativePath(projectRoot: string, path: string): string {
-    return relative(projectRoot, path).replaceAll("\\", "/");
+function assertEpic(plan: ArtifactPlanIdentity): void {
+    if (plan.attrs.classification !== "PROJECT") throw new Error(`${plan.name} is not an Epic Plan.`);
 }
 
-export function getEpicArtifactPath(projectRoot: string, epicPlanName: string, fileName: string): string {
-    const segments = assertSafePlanName(epicPlanName, "Epic Plan name");
-    if (segments.length !== 1) throw new Error(`Epic Plan name must be top-level: ${epicPlanName}`);
-    if (!EPIC_ARTIFACT_FILE_NAMES.includes(fileName)) throw new Error(`Unknown Epic Artifact: ${fileName}`);
-    return join(projectRoot, "docs", "plans", segments[0], fileName);
+function checkoutArtifactRevision(planRevision: string, body: string | null): string {
+    return body === null
+        ? planRevision
+        : createHash("sha256")
+              .update(JSON.stringify([planRevision, body]))
+              .digest("hex");
 }
 
-/** Explicit package workflows resolve artifacts beside their ID-selected parent documents. */
-export async function resolveEpicArtifactPath(
-    projectRoot: string,
-    epicPlanName: string,
-    fileName: string,
-): Promise<string> {
-    if (managedPlanStoreActive()) {
-        if (!EPIC_ARTIFACT_FILE_NAMES.includes(fileName)) throw new Error(`Unknown Epic Artifact: ${fileName}`);
-        const plan = await readManagedPlan(projectRoot, epicPlanName);
-        if (!plan) throw new Error("Managed Epic is unavailable.");
-        return join(dirname(plan.path), fileName);
-    }
-    if (!currentPackageSelection()) return getEpicArtifactPath(projectRoot, epicPlanName, fileName);
-    if (!EPIC_ARTIFACT_FILE_NAMES.includes(fileName)) throw new Error(`Unknown Epic Artifact: ${fileName}`);
-    return join((await selectedPackage(epicPlanName)).path, fileName);
-}
-
-/** Save through the same package document owner used by editor writes. */
-export async function saveEpicArtifact(
-    projectRoot: string,
-    epicPlanName: string,
-    fileName: string,
-    text: string,
-): Promise<void> {
-    if (managedPlanStoreActive()) return await saveManagedEpicArtifact(projectRoot, epicPlanName, fileName, text);
-    const path = await resolveEpicArtifactPath(projectRoot, epicPlanName, fileName);
-    const selection = currentPackageSelection();
-    if (selection) {
-        const plan = await selectedPackage(epicPlanName);
-        const document = plan.documents.find((doc) => doc.name === fileName);
-        if (fileName !== EPIC_INTEGRATION_REPORT_FILE_NAME && fileName !== EPIC_MANUAL_QA_FILE_NAME)
-            throw new Error("Unsupported Epic artifact.");
-        await savePlanPackageDocument(selection.identity, plan.metadata.planId, fileName, document?.hash ?? null, text);
-    } else await writeAtomic(path, text);
-}
-
-function markerChild(childPlanName: string): string {
-    return childPlanName.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
-}
-
-function sectionStartMarker(childPlanName: string): string {
-    return `<!-- runwield:manual-qa:start child="${markerChild(childPlanName)}" -->`;
-}
-
-export async function findEpicManualQaSection(
-    projectRoot: string,
-    epicPlanName: string,
-    childPlanName: string,
-): Promise<{ exists: boolean; relativePath: string }> {
-    const path = await resolveEpicArtifactPath(projectRoot, epicPlanName, EPIC_MANUAL_QA_FILE_NAME);
-    if (managedPlanStoreActive()) {
-        const parent = await readManagedPlan(projectRoot, epicPlanName);
-        const child = await readManagedPlan(projectRoot, childPlanName);
-        if (!parent?.attrs.planId || !child?.attrs.planId || child.attrs.parentPlan !== epicPlanName)
-            throw new Error("QA names another Epic family.");
-        const documents = await readManagedDocument(parent.attrs.planId, "context.md", projectRoot);
-        const existing = documents.documents.some((document) => document.name === EPIC_MANUAL_QA_FILE_NAME)
-            ? (await readManagedDocument(parent.attrs.planId, EPIC_MANUAL_QA_FILE_NAME, projectRoot)).body
-            : null;
+async function planById(cwd: string, planId: PlanId): Promise<ArtifactPlanIdentity> {
+    if (!plans.identity.isValid(planId)) throw new Error("Plan artifact access requires a durable Plan ID.");
+    if (currentPackageProject()) {
+        const selected = await selectedPackage({ planId });
+        if (selected.metadata.archive && !selected.metadata.archive.restoredAt) throw new PlanNotFoundError(planId);
         return {
-            exists: Boolean(existing?.includes(sectionStartMarker(child.attrs.planId))),
-            relativePath: projectRelativePath(projectRoot, path),
+            attrs: { classification: selected.metadata.definition.classification, planId },
+            path: join(selected.path, "context.md"),
+            revision: packageWorkflowRevision(selected),
+            name: selected.metadata.name,
         };
     }
-    const existing = await readTextIfExists(path);
+    const plan = managedPlanStoreActive()
+        ? await readManagedActivePlanById(cwd, planId)
+        : await findPlanById(cwd, planId);
+    if (!plan || plan.planId !== planId) throw new PlanNotFoundError(planId);
+    return plan;
+}
+
+interface ArtifactRead {
+    body: string;
+    revision: string;
+    packageHash?: string;
+}
+
+async function readArtifact(
+    cwd: string,
+    plan: ArtifactPlanIdentity,
+    name: EpicArtifactName,
+): Promise<ArtifactRead | null> {
+    if (managedPlanStoreActive()) {
+        const context = await readManagedDocument(requirePlanId(plan), "context.md", cwd, "read");
+        if (!context.documents.some((document) => document.name === name)) return null;
+        const document = await readManagedDocument(requirePlanId(plan), name, cwd, "read");
+        return { body: document.body, revision: document.revision };
+    }
+    if (currentPackageProject()) {
+        const selected = await selectedPackage({ planId: requirePlanId(plan) });
+        return packageDocumentContent(selected, name);
+    }
+    const body = await readCheckoutEpicArtifact(cwd, plan.name, name);
+    return body === null ? null : { body, revision: checkoutArtifactRevision(plan.revision, body) };
+}
+
+function ensureExpectedRevision(expected: string | undefined, actual: string) {
+    if (expected !== undefined && expected !== actual) throw new StalePlanWriteError(expected, actual);
+}
+
+async function saveArtifact(
+    cwd: string,
+    plan: ArtifactPlanIdentity,
+    name: EpicArtifactName,
+    body: string,
+    expectedRevision?: string,
+) {
+    assertEpic(plan);
+    if (managedPlanStoreActive()) {
+        return await saveManagedEpicArtifact(cwd, requirePlanId(plan), name, body, plan.revision, expectedRevision);
+    }
+    const identity = currentPackageProject();
+    if (identity) {
+        const target = { planId: requirePlanId(plan) };
+        return await packageWorkflowLocks([target], async () => {
+            const current = await selectedPackage(target);
+            if (current.metadata.archive && !current.metadata.archive.restoredAt)
+                throw new PlanNotFoundError(target.planId);
+            if (current.metadata.definition.classification !== "PROJECT")
+                throw new Error(`${current.metadata.name} is not an Epic Plan.`);
+            ensureExpectedRevision(expectedRevision, packageWorkflowRevision(current));
+            const document = current.documents.find((entry) => entry.name === name);
+            return await savePlanPackageDocument(identity, target.planId, name, document?.hash ?? null, body);
+        });
+    }
+    return await withPlanLock(cwd, plan.name, async () => {
+        const current = await loadPlan(cwd, plan.name);
+        if (!current || current.attrs.planId !== plan.attrs.planId) throw new PlanNotFoundError(plan.name);
+        assertEpic({ ...current, name: plan.name });
+        if (expectedRevision !== undefined) {
+            const before = await readCheckoutEpicArtifact(cwd, plan.name, name);
+            ensureExpectedRevision(expectedRevision, checkoutArtifactRevision(current.revision, before));
+        }
+        const markdown = decodePackageMarkdown(new TextEncoder().encode(body));
+        await writeCheckoutEpicArtifact(cwd, plan.name, name, markdown);
+        return { body: markdown, revision: checkoutArtifactRevision(current.revision, markdown) };
+    });
+}
+
+async function assertEpicFamily(parent: ArtifactPlanIdentity, child: ArtifactPlanIdentity): Promise<void> {
+    assertEpic(parent);
+    if (currentPackageProject()) {
+        const loaded = await selectedPackage({ planId: requirePlanId(child) });
+        if (loaded.metadata.parentPlanId === parent.attrs.planId) return;
+    } else if (child.attrs.parentPlan === parent.name) {
+        const parentSegments = splitPlanName(parent.name);
+        const childSegments = splitPlanName(child.name);
+        if (
+            managedPlanStoreActive() ||
+            (parentSegments.length === 1 && childSegments.length === 2 && childSegments[0] === parentSegments[0])
+        )
+            return;
+    }
+    throw new Error(`Child Plan ${child.name} is not linked to Epic ${parent.name}.`);
+}
+
+function qaMarkerIdentity(child: ArtifactPlanIdentity): string {
+    return currentPackageProject() || managedPlanStoreActive() ? requirePlanId(child) : child.name;
+}
+
+async function findQa(cwd: string, epic: ArtifactPlanIdentity, child: ArtifactPlanIdentity): Promise<boolean> {
+    await assertEpicFamily(epic, child);
+    const existing = await readArtifact(cwd, epic, EPIC_MANUAL_QA_FILE_NAME);
+    return hasManualQaSection(existing?.body ?? null, qaMarkerIdentity(child));
+}
+
+async function appendQa(
+    cwd: string,
+    epic: ArtifactPlanIdentity,
+    child: ArtifactPlanIdentity,
+    section: ManualQaSection,
+): Promise<"recorded" | "already_present"> {
+    if (managedPlanStoreActive()) {
+        await assertEpicFamily(epic, child);
+        return await appendManagedEpicQa(cwd, requirePlanId(epic), requirePlanId(child), section);
+    }
+    const write = async (epic: ArtifactPlanIdentity, child: ArtifactPlanIdentity) => {
+        await assertEpicFamily(epic, child);
+        const existing = await readArtifact(cwd, epic, EPIC_MANUAL_QA_FILE_NAME);
+        const body = prepareManualQaSection(
+            existing?.body ?? null,
+            epic.name,
+            child.name,
+            qaMarkerIdentity(child),
+            section,
+        );
+        if (body === null) return "already_present" as const;
+        if (currentPackageProject()) {
+            const target = { planId: requirePlanId(epic) };
+            await saveGeneratedManualQaArtifact(
+                { planId: requirePlanId(child) },
+                target,
+                existing?.packageHash ?? null,
+                body,
+            );
+        } else {
+            await writeCheckoutEpicArtifact(cwd, epic.name, EPIC_MANUAL_QA_FILE_NAME, body);
+        }
+        return "recorded" as const;
+    };
+    if (currentPackageProject()) {
+        const epicId = requirePlanId(epic);
+        const childId = requirePlanId(child);
+        return await packageWorkflowLocks([{ planId: epicId }, { planId: childId }], async () =>
+            write(await planById(cwd, epicId), await planById(cwd, childId)),
+        );
+    }
+
+    async function reload(observed: ArtifactPlanIdentity): Promise<ArtifactPlanIdentity> {
+        const current = await loadPlan(cwd, observed.name);
+        if (
+            !current ||
+            current.attrs.planId !== observed.attrs.planId ||
+            (!observed.attrs.planId && current.revision !== observed.revision)
+        )
+            throw new Error(`Plan ${observed.name} changed before QA preparation.`);
+        return { ...current, name: observed.name };
+    }
+    return await withOrderedTransitionResources(
+        cwd,
+        [
+            { kind: "plan", id: epic.name },
+            { kind: "plan", id: child.name },
+        ],
+        async () => write(await reload(epic), await reload(child)),
+    );
+}
+
+function artifact(planId: PlanId, name: EpicArtifactName, content: Pick<ProjectPlanArtifact, "body" | "revision">) {
     return {
-        exists: Boolean(
-            existing?.includes(
-                sectionStartMarker(
-                    currentPackageSelection() ? (await selectedPackage(childPlanName)).metadata.planId : childPlanName,
-                ),
-            ),
-        ),
-        relativePath: projectRelativePath(projectRoot, path),
+        planId,
+        name,
+        relativePath: planArtifactReference(planId, name),
+        body: content.body,
+        revision: content.revision,
     };
 }
 
-function sectionEndMarker(childPlanName: string): string {
-    return `<!-- runwield:manual-qa:end child="${markerChild(childPlanName)}" -->`;
+export function projectPlanArtifacts(run: ReturnType<typeof bindProjectPlanStore>): ProjectPlanArtifacts {
+    return {
+        read: (planId, requested) =>
+            run(async (cwd) => {
+                const name = requireArtifactName(requested);
+                const plan = await planById(cwd, planId);
+                assertEpic(plan);
+                const content = await readArtifact(cwd, plan, name);
+                return content ? artifact(planId, name, content) : null;
+            }, "retained"),
+        save: (planId, requested, body, expectedRevision) =>
+            run(async (cwd) => {
+                const name = requireArtifactName(requested);
+                const content = await saveArtifact(cwd, await planById(cwd, planId), name, body, expectedRevision);
+                return artifact(planId, name, content);
+            }, "retained"),
+        findManualQaSection: (epicId, childId) =>
+            run(async (cwd) => {
+                const [epic, child] = await Promise.all([planById(cwd, epicId), planById(cwd, childId)]);
+                return {
+                    exists: await findQa(cwd, epic, child),
+                    relativePath: planArtifactReference(epicId, EPIC_MANUAL_QA_FILE_NAME),
+                };
+            }, "retained"),
+        appendManualQaSection: (epicId, childId, section) =>
+            run(async (cwd) => {
+                const [epic, child] = await Promise.all([planById(cwd, epicId), planById(cwd, childId)]);
+                const append = () => appendQa(cwd, epic, child, section);
+                const status =
+                    currentPackageProject() && !currentPackageSelection()
+                        ? await withLocalPlanWorkflow(cwd, child.name, append, childId)
+                        : await append();
+                return { status, relativePath: planArtifactReference(epicId, EPIC_MANUAL_QA_FILE_NAME) };
+            }, "retained"),
+    };
 }
 
-function validateChecklistMarkdown(childPlanName: string, checklistMarkdown: string): string {
-    const trimmed = String(checklistMarkdown || "").trim();
-    const lines = trimmed.split(/\r?\n/);
-    const heading = lines[0]?.trim() || "";
-    if (heading !== `Manual verification steps for ${childPlanName}`) {
-        throw new Error(`Manual QA checklist must start with "Manual verification steps for ${childPlanName}".`);
+/** Workflow names and display paths survive for retained checkout attempts and existing metadata. */
+export async function workflowEpicArtifacts(cwd: string, epicName: string) {
+    const owner = inspectLocalHomeStore(cwd);
+    const canonical = managedPlanStoreActive() || owner.kind === "local";
+    if (!canonical && owner.kind !== "retained-checkout") throw new Error("Epic artifacts require the admitted Plan.");
+    const epic = await loadPlan(cwd, epicName);
+    if (!epic) throw new PlanNotFoundError(epicName);
+    const { openPlanStoreForCheckout } = await import("./project-plans.ts");
+    const epicId = plans.identity.parse(epic.attrs.planId);
+    const store = canonical ? openPlanStoreForCheckout(cwd) : undefined;
+    if (canonical && (!store || !epicId)) throw new Error("Epic artifacts require the admitted Plan.");
+    const plan = { ...epic, name: epicName };
+    const qaPath = relativeArtifactPath(
+        cwd,
+        canonical
+            ? join(dirname(plan.path), EPIC_MANUAL_QA_FILE_NAME)
+            : checkoutEpicArtifactPath(cwd, epicName, EPIC_MANUAL_QA_FILE_NAME),
+    );
+    async function childPlan(name: string): Promise<ArtifactPlanIdentity> {
+        const child = await loadPlan(cwd, name);
+        if (!child) throw new PlanNotFoundError(name);
+        return { ...child, name };
     }
-    const checkboxes = lines.filter((line) => /^- \[ \] \S/.test(line.trim()));
-    if (checkboxes.length < 1 || checkboxes.length > 6) {
-        throw new Error("Manual QA checklist must contain 1 to 6 unchecked checklist items.");
-    }
-    const checked = lines.find((line) => /^- \[[xX]\]/.test(line.trim()));
-    if (checked) throw new Error("Manual QA checklist must not contain checked items when generated.");
-    return trimmed;
-}
-
-async function readTextIfExists(path: string): Promise<string | null> {
-    try {
-        return await fsReadFile(path, "utf8");
-    } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
-        throw error;
-    }
-}
-
-async function writeAtomic(path: string, text: string): Promise<void> {
-    await fsMkdir(dirname(path), { recursive: true });
-    const tmp = `${path}.${crypto.randomUUID()}.tmp`;
-    await fsWriteFile(tmp, text);
-    try {
-        await fsRename(tmp, path);
-    } catch (error) {
-        if (!(error instanceof Error && recoverWindowsRename(error, tmp, path))) throw error;
-    }
-}
-
-export async function appendEpicManualQaSection(
-    args: AppendEpicManualQaSectionArgs,
-): Promise<AppendEpicManualQaSectionResult> {
-    if (managedPlanStoreActive()) {
-        const before = await findEpicManualQaSection(args.projectRoot, args.epicPlanName, args.childPlanName);
-        if (before.exists) return { status: "already_present", relativePath: before.relativePath };
-        await appendManagedEpicQa(args);
-        return { status: "recorded", relativePath: before.relativePath };
-    }
-    const epicSegments = assertSafePlanName(args.epicPlanName, "Epic Plan name");
-    const childSegments = assertSafePlanName(args.childPlanName, "Child Plan name");
-    if (!currentPackageSelection() && epicSegments.length !== 1)
-        throw new Error(`Epic Plan name must be top-level: ${args.epicPlanName}`);
-    if (!currentPackageSelection() && (childSegments.length !== 2 || childSegments[0] !== epicSegments[0])) {
-        throw new Error(`Child Plan ${args.childPlanName} must belong to Epic ${args.epicPlanName}.`);
-    }
-
-    const child = await loadPlan(args.projectRoot, args.childPlanName);
-    if (!child) throw new Error(`Child Plan not found: ${args.childPlanName}`);
-    if (child.attrs.parentPlan !== args.epicPlanName) {
-        throw new Error(`Child Plan ${args.childPlanName} is not linked to Epic ${args.epicPlanName}.`);
-    }
-    const epic = await loadPlan(args.projectRoot, args.epicPlanName);
-    if (!epic) throw new Error(`Epic Plan not found: ${args.epicPlanName}`);
-    if (epic.attrs.classification !== "PROJECT") throw new Error(`${args.epicPlanName} is not an Epic Plan.`);
-
-    const checklist = validateChecklistMarkdown(args.childPlanName, args.checklistMarkdown);
-    const packagePlan = currentPackageSelection() ? await selectedPackage(args.epicPlanName) : null;
-    const packageDoc = packagePlan?.documents.find((doc) => doc.name === EPIC_MANUAL_QA_FILE_NAME);
-    const path = await resolveEpicArtifactPath(args.projectRoot, args.epicPlanName, EPIC_MANUAL_QA_FILE_NAME);
-    const relativePath = projectRelativePath(args.projectRoot, path);
-    const existing = packagePlan
-        ? packageDoc
-            ? new TextDecoder().decode(packageDoc.bytes)
-            : null
-        : await readTextIfExists(path);
-    const markerIdentity = packagePlan ? child.attrs.planId! : args.childPlanName;
-    const startMarker = sectionStartMarker(markerIdentity);
-    if (existing?.includes(startMarker)) return { status: "already_present", relativePath };
-    if (existing && existing.includes("runwield:manual-qa:start") && !existing.includes("runwield:manual-qa:end")) {
-        throw new Error(`Manual QA artifact appears malformed: ${relativePath}`);
-    }
-
-    const header =
-        `# Manual QA for ${args.epicPlanName}\n\n` +
-        "This checklist is advisory. It does not change RunWield verification status.\n";
-    const section = [
-        sectionStartMarker(markerIdentity),
-        `## ${args.childHeading.trim() || args.childPlanName}`,
-        "",
-        checklist,
-        sectionEndMarker(markerIdentity),
-    ].join("\n");
-    const base = existing === null ? header : existing.trimEnd();
-    if (packagePlan)
-        await saveGeneratedManualQaArtifact(
-            args.childPlanName,
-            args.epicPlanName,
-            packageDoc?.hash ?? null,
-            `${base}\n\n${section}\n`,
-        );
-    else await writeAtomic(path, `${base}\n\n${section}\n`);
-    return { status: "recorded", relativePath };
-}
-
-export function getActiveEpicArtifactPaths(projectRoot: string, epicPlanName: string): string[] {
-    return EPIC_ARTIFACT_FILE_NAMES.map((fileName) => getEpicArtifactPath(projectRoot, epicPlanName, fileName));
-}
-
-export function getArchivedEpicArtifactPath(projectRoot: string, epicPlanName: string, fileName: string): string {
-    const segments = assertSafePlanName(epicPlanName, "Epic Plan name");
-    if (segments.length !== 1) throw new Error(`Epic Plan name must be top-level: ${epicPlanName}`);
-    if (!EPIC_ARTIFACT_FILE_NAMES.includes(fileName)) throw new Error(`Unknown Epic Artifact: ${fileName}`);
-    return join(projectRoot, "docs", "plans", "archived", segments[0], fileName);
-}
-
-async function moveFileIfPresent(
-    projectRoot: string,
-    fileName: string,
-    fromPath: string,
-    toPath: string,
-): Promise<MoveEpicArtifactResult | null> {
-    const text = await readTextIfExists(fromPath);
-    if (text === null) return null;
-    if ((await readTextIfExists(toPath)) !== null) {
-        throw new Error(`Epic Artifact already exists: ${projectRelativePath(projectRoot, toPath)}`);
-    }
-    await fsMkdir(dirname(toPath), { recursive: true });
-    await fsRename(fromPath, toPath);
-    return { fileName, fromPath, toPath, relativePath: projectRelativePath(projectRoot, toPath) };
-}
-
-export async function moveEpicArtifactsToArchive(
-    projectRoot: string,
-    epicPlanName: string,
-): Promise<MoveEpicArtifactResult[]> {
-    if (currentPackageSelection()) return [];
-    const moved: MoveEpicArtifactResult[] = [];
-    try {
-        for (const fileName of EPIC_ARTIFACT_FILE_NAMES) {
-            const result = await moveFileIfPresent(
-                projectRoot,
-                fileName,
-                getEpicArtifactPath(projectRoot, epicPlanName, fileName),
-                getArchivedEpicArtifactPath(projectRoot, epicPlanName, fileName),
-            );
-            if (result) moved.push(result);
-        }
-        return moved;
-    } catch (error) {
-        for (const item of moved.toReversed()) await fsRename(item.toPath, item.fromPath).catch(() => {});
-        throw error;
-    }
-}
-
-export async function moveEpicArtifactsFromArchive(
-    projectRoot: string,
-    epicPlanName: string,
-): Promise<MoveEpicArtifactResult[]> {
-    if (currentPackageSelection()) return [];
-    const moved: MoveEpicArtifactResult[] = [];
-    try {
-        for (const fileName of EPIC_ARTIFACT_FILE_NAMES) {
-            const result = await moveFileIfPresent(
-                projectRoot,
-                fileName,
-                getArchivedEpicArtifactPath(projectRoot, epicPlanName, fileName),
-                getEpicArtifactPath(projectRoot, epicPlanName, fileName),
-            );
-            if (result) moved.push(result);
-        }
-        return moved;
-    } catch (error) {
-        for (const item of moved.toReversed()) await fsRename(item.toPath, item.fromPath).catch(() => {});
-        throw error;
-    }
+    return {
+        integrationReportPath: canonical
+            ? join(dirname(plan.path), EPIC_INTEGRATION_REPORT_FILE_NAME)
+            : relativeArtifactPath(cwd, checkoutEpicArtifactPath(cwd, epicName, EPIC_INTEGRATION_REPORT_FILE_NAME)),
+        async saveIntegrationReport(body: string) {
+            if (store && epicId) await store.artifacts.save(epicId, EPIC_INTEGRATION_REPORT_FILE_NAME, body);
+            else await saveArtifact(cwd, plan, EPIC_INTEGRATION_REPORT_FILE_NAME, body);
+        },
+        async findManualQaSection(name: string) {
+            const child = await childPlan(name);
+            const exists =
+                store && epicId
+                    ? (await store.artifacts.findManualQaSection(epicId, requirePlanId(child))).exists
+                    : await findQa(cwd, plan, child);
+            return { exists, relativePath: qaPath };
+        },
+        async appendManualQaSection(name: string, section: ManualQaSection) {
+            const child = await childPlan(name);
+            const status =
+                store && epicId
+                    ? (await store.artifacts.appendManualQaSection(epicId, requirePlanId(child), section)).status
+                    : await appendQa(cwd, plan, child, section);
+            return { status, relativePath: qaPath };
+        },
+    };
 }

@@ -12,13 +12,10 @@ import {
     settleRetainedExecutionRecording,
 } from "../../plan-store/index.ts";
 import {
-    sealPackagePublication,
-    freezePlanPublicationPolicy,
-    packageArtifactEvidence,
-    packagePublicationInput,
+    publicationCopiesForCheckout,
+    selectedPublicationCopies,
+    retainedPublicationCopiesForCheckout,
     settlePackagePublication,
-    packageTargetEvidence,
-    assertPackagePublicationOwner,
 } from "../../plan-store/index.ts";
 import { resolvePublicationUpstream as resolveRemoteTarget } from "../publication-target.ts";
 import { tmpdir } from "node:os";
@@ -35,7 +32,7 @@ import { rm as fsRm, stat as fsStat } from "node:fs/promises";
 
 import { join } from "node:path";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT, type WorkRecordMnemotecaPort } from "../work-records/mnemoteca-port.ts";
-import { hasFinalizedPublicationLifecycle, indexPublishedWorkRecords } from "../publication-lifecycle.ts";
+import { indexPublishedWorkRecords } from "../publication-lifecycle.ts";
 import { canonicalizeStoredPlanName, isChildFeaturePlan, parsePlanFrontMatter } from "@runwield/plans/format";
 import { isTerminalWorkRecordParent } from "../work-records/auto-generation.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
@@ -82,7 +79,9 @@ async function gitAncestor(cwd: string, ancestor: string, descendant: string): P
 async function artifactEvidence(attempt: PublicationAttempt): Promise<PublicationPhaseEvidence | null> {
     const head = await git(attempt.executionCwd, ["rev-parse", `refs/heads/${attempt.executionBranch}`]);
     if (attempt.packageInput)
-        return head.code === 0 ? await packageArtifactEvidence(attempt.executionCwd, attempt, head.stdout) : null;
+        return head.code === 0
+            ? await publicationCopiesForCheckout(attempt.executionCwd).verifyCandidate(attempt, head.stdout)
+            : null;
     if (head.code !== 0 || !head.stdout || head.stdout === attempt.validatedCommit) return null;
     if (!(await gitAncestor(attempt.executionCwd, attempt.validatedCommit, head.stdout))) return null;
     const count = await git(attempt.executionCwd, [
@@ -111,7 +110,7 @@ async function integratedEvidence(
         const target = await git(projectRoot, ["rev-parse", `refs/heads/${attempt.targetBranch}`]);
         if (
             target.code === 0 &&
-            (await packageTargetEvidence(projectRoot, projectRoot, attempt, target.stdout)) &&
+            (await publicationCopiesForCheckout(projectRoot).verifyTarget(projectRoot, attempt, target.stdout)) &&
             (await gitAncestor(projectRoot, attempt.targetHeadAtSeal, target.stdout))
         )
             return { targetBaseCommit: attempt.targetHeadAtSeal, integrationCommit: target.stdout };
@@ -132,8 +131,7 @@ async function integratedEvidence(
         return null;
     if (
         attempt.deliveryMetadataVersion &&
-        !(await hasFinalizedPublicationLifecycle(
-            attempt.publicationRoot,
+        !(await retainedPublicationCopiesForCheckout(attempt.publicationRoot).isFinalized(
             head.stdout,
             attempt.planName,
             attempt.planId,
@@ -145,7 +143,7 @@ async function integratedEvidence(
         return null;
     if (
         attempt.packageInput &&
-        !(await packageTargetEvidence(projectRoot, attempt.publicationRoot, attempt, head.stdout))
+        !(await publicationCopiesForCheckout(projectRoot).verifyTarget(attempt.publicationRoot, attempt, head.stdout))
     )
         return null;
     const merges = await git(attempt.publicationRoot, ["rev-list", "--merges", "--first-parent", "HEAD"]);
@@ -231,8 +229,7 @@ async function publishedEvidence(
             return null;
         if (
             attempt.deliveryMetadataVersion &&
-            !(await hasFinalizedPublicationLifecycle(
-                projectRoot,
+            !(await retainedPublicationCopiesForCheckout(projectRoot).isFinalized(
                 integrationCommit,
                 attempt.planName,
                 attempt.planId,
@@ -244,7 +241,12 @@ async function publishedEvidence(
             return null;
         if (
             attempt.packageInput &&
-            !(await packageTargetEvidence(projectRoot, projectRoot, attempt, integrationCommit, retainedManifest))
+            !(await publicationCopiesForCheckout(projectRoot).verifyTarget(
+                projectRoot,
+                attempt,
+                integrationCommit,
+                retainedManifest,
+            ))
         )
             return null;
         return {
@@ -280,8 +282,7 @@ async function publishedEvidence(
                 return null;
             if (
                 attempt.packageInput &&
-                !(await packageTargetEvidence(
-                    projectRoot,
+                !(await publicationCopiesForCheckout(projectRoot).verifyTarget(
                     inspectionRoot,
                     attempt,
                     integrationCommit,
@@ -291,8 +292,7 @@ async function publishedEvidence(
                 return null;
             if (
                 attempt.deliveryMetadataVersion &&
-                !(await hasFinalizedPublicationLifecycle(
-                    inspectionRoot,
+                !(await retainedPublicationCopiesForCheckout(inspectionRoot).isFinalized(
                     integrationCommit,
                     attempt.planName,
                     attempt.planId,
@@ -470,11 +470,11 @@ export async function startPublicationAttempt(args: {
         targetHeadAtSeal: args.targetHeadAtSeal,
     });
     if (hasCanonicalPlanAccess()) {
-        await freezePlanPublicationPolicy(args.planName, args.attemptId, {
+        await selectedPublicationCopies.freezePolicy(args.planName, args.attemptId, {
             ...getDeliveryCopyPolicy(args.executionCwd),
             autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(args.executionCwd),
         });
-        publication.packageInput = await sealPackagePublication(
+        publication.packageInput = await selectedPublicationCopies.seal(
             args.planName,
             args.attemptId,
             args.validatedCommit,
@@ -564,8 +564,8 @@ export async function reconcileStoredPublication(
     if (initial.revalidation) return initial;
     let current = initial;
     if (current.packageInput) {
-        await assertPackagePublicationOwner(current);
-        await packagePublicationInput(projectRoot, current.packageInput);
+        await selectedPublicationCopies.assertOwner(current);
+        await publicationCopiesForCheckout(projectRoot).read(current.packageInput);
     }
     if (current.phase === "candidate_sealed") {
         const evidence = await artifactEvidence(current);
@@ -889,7 +889,7 @@ export async function cleanupStoredPublication(
 /** Read recording outcome from the sealed delivery, even after its worktree is removed. */
 export async function publishedWorkRecordFailed(projectRoot: string, attempt: PublicationAttempt): Promise<boolean> {
     if (attempt.packageInput) {
-        await packagePublicationInput(projectRoot, attempt.packageInput);
+        await publicationCopiesForCheckout(projectRoot).read(attempt.packageInput);
         return false;
     }
     if (!attempt.artifactCommit) throw new Error("Published Plan artifact commit is missing.");

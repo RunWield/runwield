@@ -1,3 +1,10 @@
+import {
+    assertDeliveryCopies,
+    assertPackagePublicationReference,
+    type DeliveryCopy,
+    type ExecutionPublicationPolicy,
+    type PackagePublicationReference,
+} from "@runwield/plans/publication-copies";
 import { workRecords } from "@runwield/plans/work-records";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import {
@@ -23,6 +30,7 @@ import {
     normalizePackageName as normalizeName,
     packageFileDigest as digest,
     packageResources as resources,
+    packageResourceRoles,
     readPackageDocuments,
     readPackageFile as file,
     statPackagePath as stat,
@@ -181,11 +189,6 @@ export interface PackageGeneratedArtifact {
     text: string;
     hash: string;
 }
-export interface ExecutionPublicationPolicy {
-    plans: boolean;
-    workRecords: boolean;
-    autoGenerateRecords: boolean;
-}
 export interface FrozenExecutionPublicationPolicy extends ExecutionPublicationPolicy {
     attemptId: string;
 }
@@ -203,21 +206,6 @@ export interface PackageWorkflowEvidence {
     recordingSource?: PackagePublicationReference;
     recordingPreparation?: PackagePublicationReference;
     delivery?: PackageDeliveryReceipt;
-}
-export interface DeliveryCopy {
-    kind: "plan" | "work-record";
-    path: string;
-    text: string;
-}
-export interface PackagePublicationReference {
-    kind: "package";
-    projectId: string;
-    personalOwner: string;
-    repositoryId: string;
-    planId: string;
-    attemptId: string;
-    inputId: string;
-    digest: string;
 }
 export interface PackagePublicationMember {
     metadata: PlanPackageMetadata;
@@ -667,8 +655,8 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         if (workflow.recordingSource !== undefined)
             assertPackagePublicationReference(JSON.parse(JSON.stringify(workflow.recordingSource)));
         if (workflow.publication !== undefined) {
-            assertPackagePublicationReference(JSON.parse(JSON.stringify(workflow.publication)));
-            if (fields(workflow.publication, publicationReferenceFields).planId !== data.planId)
+            const publication = assertPackagePublicationReference(JSON.parse(JSON.stringify(workflow.publication)));
+            if (publication.planId !== data.planId)
                 fail("malformed_metadata", "Publication input belongs to another Plan.");
         }
         if (workflow.delivery !== undefined) {
@@ -680,9 +668,9 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
                 "mode",
                 "verifiedAt",
             ]);
-            assertPackagePublicationReference(JSON.parse(JSON.stringify(receipt.source)));
+            const source = assertPackagePublicationReference(JSON.parse(JSON.stringify(receipt.source)));
             if (
-                fields(receipt.source, publicationReferenceFields).planId !== data.planId ||
+                source.planId !== data.planId ||
                 !["local", "remote", "non_git_in_place"].includes(String(receipt.mode)) ||
                 ["validatedCommit", "publishedCommit", "targetBranch", "verifiedAt"].some(
                     (key) => typeof receipt[key] !== "string",
@@ -1362,7 +1350,7 @@ export async function savePlanPackageDocument(
     name: PackageResource,
     expectedHash: string | null,
     bytes: string | Uint8Array,
-): Promise<string> {
+) {
     if (!resources.includes(name)) fail("unsafe_path", "Unknown package resource.");
     return await mutate(identity, planId, async (paths) => {
         const current = await loaded(paths, planId);
@@ -1371,25 +1359,22 @@ export async function savePlanPackageDocument(
         const previous = live ? digest(live) : null;
         if (previous !== expectedHash) throw new StalePlanWriteError(expectedHash ?? "absent", previous ?? "absent");
         const path = join(current.path, name);
-        const text = typeof bytes === "string" ? bytes : new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        const nextBytes = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes;
+        const text = decodePackageMarkdown(nextBytes);
+        const nextHash = digest(nextBytes);
+        const next: PackageDocument = { name, role: packageResourceRoles[name], bytes: nextBytes, hash: nextHash };
         const changed = {
             ...current,
-            documents: current.documents.map((document) =>
-                document.name === name ? { ...document, hash: digest(new TextEncoder().encode(text)) } : document,
+            documents: resources.flatMap((resource) =>
+                resource === name ? [next] : current.documents.filter((document) => document.name === resource),
             ),
         };
-        if (
-            !commitOperationEffect(
-                path,
-                live === null ? null : new TextDecoder().decode(live),
-                text,
-                packageWorkflowRevision(changed),
-            )
-        )
-            writeTextAtomically(path, bytes);
+        const revision = packageWorkflowRevision(changed);
+        if (!commitOperationEffect(path, live === null ? null : decodePackageMarkdown(live), text, revision))
+            writeTextAtomically(path, nextBytes);
         if (!projects.home.isOwner(identity))
             await requestWorkspaceSearchRefresh(projects.checkout.primaryRoot(identity.checkoutRoot));
-        return digest(typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes);
+        return { body: text, revision };
     });
 }
 export async function renamePlanPackage(
@@ -2124,58 +2109,6 @@ export async function readPlanImportEvidence(
     return member.evidence;
 }
 
-const publicationReferenceFields = [
-    "kind",
-    "projectId",
-    "personalOwner",
-    "repositoryId",
-    "planId",
-    "attemptId",
-    "inputId",
-    "digest",
-];
-export function assertPackagePublicationReference(reference: PackagePublicationReference): void {
-    const value = fields(JSON.parse(JSON.stringify(reference)), publicationReferenceFields);
-    if (
-        value.kind !== "package" ||
-        publicationReferenceFields.some((key) => typeof value[key] !== "string" || !value[key]) ||
-        !/^[0-9a-f-]{36}$/.test(reference.inputId) ||
-        !/^[0-9a-f]{64}$/.test(reference.digest)
-    )
-        fail("malformed_metadata", "Invalid package publication reference.");
-    requireId(reference.planId);
-}
-
-export function assertDeliveryCopies(copies: DeliveryCopy[]): void {
-    if (!Array.isArray(copies)) fail("malformed_metadata", "Invalid delivery copies.");
-    const paths = new Set<string>();
-    for (const copy of copies) {
-        fields(JSON.parse(JSON.stringify(copy)), ["kind", "path", "text"]);
-        if (
-            typeof copy.text !== "string" ||
-            typeof copy.path !== "string" ||
-            !["plan", "work-record"].includes(copy.kind) ||
-            !copy.path.startsWith(copy.kind === "plan" ? "docs/plans/" : "docs/work-records/") ||
-            !copy.path.endsWith(".md") ||
-            copy.path.includes("\\") ||
-            copy.path
-                .split("/")
-                .some(
-                    (part) =>
-                        !part ||
-                        part === "." ||
-                        part === ".." ||
-                        [...part].some((character) => character.charCodeAt(0) < 32),
-                ) ||
-            paths.has(copy.path)
-        )
-            fail("unsafe_path", "Unsafe or duplicate delivery copy destination.");
-        if (decodePackageMarkdown(new TextEncoder().encode(copy.text)) !== copy.text)
-            fail("malformed_metadata", "Delivery copy is not valid UTF-8 Markdown.");
-        paths.add(copy.path);
-    }
-}
-
 function validateRecordingOutcome(value: JsonValue): void {
     const record = fields(value, ["status", "recordId", "path", "lastAttemptAt", "error"]);
     if (
@@ -2406,23 +2339,6 @@ export async function findPlanPackagePublication(
     if (manifest.validatedCommit !== commit)
         fail("malformed_metadata", "Retained candidate does not match publication.");
     return reference;
-}
-
-export function samePackagePublicationReference(
-    left: PackagePublicationReference | undefined,
-    right: PackagePublicationReference,
-): boolean {
-    return Boolean(
-        left &&
-        left.kind === right.kind &&
-        left.projectId === right.projectId &&
-        left.personalOwner === right.personalOwner &&
-        left.repositoryId === right.repositoryId &&
-        left.planId === right.planId &&
-        left.attemptId === right.attemptId &&
-        left.inputId === right.inputId &&
-        left.digest === right.digest,
-    );
 }
 
 /** Recover recording input published before its Plan reference, without consulting newer documents. */

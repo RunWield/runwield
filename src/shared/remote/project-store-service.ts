@@ -52,6 +52,8 @@ export class LaptopProjectStoreService {
             if (
                 error instanceof StalePlanWriteError &&
                 (input.command.kind === "restore-history" ||
+                    input.command.kind === "save-epic-artifact" ||
+                    input.command.kind === "append-epic-qa" ||
                     input.command.kind === "edit-documents" ||
                     (input.command.kind === "author-plan" && input.command.input.expectedRevision === undefined))
             )

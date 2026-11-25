@@ -9,19 +9,18 @@ const input: ComposedRemoteInput = JSON.parse(json);
 const managed = command.startsWith("managed");
 const clear = managed ? await activateRemoteProjectOwner(input) : () => {};
 try {
+    const { preparePublicationCopies } = await import("../workflow/publication-copy-commit.ts");
     const {
+        publicationCopiesForCheckout,
+        selectedPublicationCopies,
         importPlans,
         savePlanProse,
         withLocalPlanWorkflow,
         recordPlanEvent,
-        freezePlanPublicationPolicy,
-        sealPackagePublication,
         stageValidationPassedInExecutionWorktree,
-        preparePackageCopies,
         settlePackagePublication,
         workRecordsForCheckout,
         readPublishedDeliverySources,
-        readPublishedRecordMarkdown,
     } = await import("../../plan-store/index.ts");
     const { listPlans, loadPlan } = await import("../testing/plan-query-fixture.ts");
     if (command === "managed-author" || command === "managed-author-rename") {
@@ -32,6 +31,57 @@ try {
         ok(plan?.attrs.planId);
         if (command === "managed-author-rename") await renamePlan(input.cwd, "repeatable", "renamed", plan.revision);
         console.log(plan.attrs.planId);
+    } else if (command.startsWith("managed-artifact-")) {
+        const { plans } = await import("@runwield/plans");
+        const { authorLocalPlan, openPlanStoreForCheckout, reservePlanExecution, saveChildFeaturePlans } =
+            await import("../../plan-store/index.ts");
+        if (command === "managed-artifact-seed") {
+            await authorLocalPlan(input.cwd, {
+                planName: "artifact-family",
+                contextMarkdown: "# Family\n",
+                definition: { classification: "PROJECT", type: "epic" },
+            });
+            await saveChildFeaturePlans(input.cwd, "artifact-family", [
+                {
+                    title: "Child",
+                    summary: "A child",
+                    content: "# Child\n",
+                    dependencies: [],
+                    order: 1,
+                    affectedPaths: ["child.ts"],
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
+                },
+            ]);
+        } else if (command === "managed-artifact-prepare-qa") {
+            const planName = "artifact-family/child";
+            await recordPlanEvent({ cwd: input.cwd, planName, event: "review_approved", currentStatus: "draft" });
+            await recordPlanEvent({ cwd: input.cwd, planName, event: "readiness_passed", currentStatus: "approved" });
+            await withLocalPlanWorkflow(input.cwd, planName, () =>
+                reservePlanExecution(planName, { targetBranch: "main" }),
+            );
+        }
+        const store = openPlanStoreForCheckout(input.cwd);
+        const epicId = plans.identity.parse((await loadPlan(input.cwd, "artifact-family"))?.attrs.planId);
+        ok(store && epicId);
+        if (command === "managed-artifact-save") {
+            const change: { body: string; revision?: string } = JSON.parse(input.attemptId!);
+            console.log(
+                JSON.stringify(
+                    await store.artifacts.save(epicId, "integration-report.md", change.body, change.revision),
+                ),
+            );
+        } else if (command === "managed-artifact-qa") {
+            const childId = plans.identity.parse((await loadPlan(input.cwd, "artifact-family/child"))?.attrs.planId);
+            ok(childId);
+            const result = await store.artifacts.appendManualQaSection(epicId, childId, {
+                childHeading: "Child",
+                checklistMarkdown: "Manual verification steps for artifact-family/child\n- [ ] Inspect the child.",
+            });
+            console.log(result.status);
+        } else {
+            console.log(JSON.stringify(await store.read(epicId)));
+        }
     } else if (command.startsWith("managed-mixed-")) {
         const { authorLocalPlan } = await import("../../plan-store/index.ts");
         if (command === "managed-mixed-seed") {
@@ -291,7 +341,7 @@ try {
             );
             ok(later.plan?.markdown.includes(managed ? "Laptop sibling sentinel" : "Remote personal decoy"));
             await withLocalPlanWorkflow(input.cwd, "family/first", async () => {
-                await freezePlanPublicationPolicy("family/first", execution.worktreeId!, {
+                await selectedPublicationCopies.freezePolicy("family/first", execution.worktreeId!, {
                     plans: false,
                     workRecords: false,
                     autoGenerateRecords: true,
@@ -335,7 +385,7 @@ try {
                 equal(staging.attrs.status, "reviewed");
                 ok(staging.planPaths.includes("docs/plans/family/first.md"));
                 equal((await loadPlan(input.cwd, "family/first"))?.attrs.status, "reviewed");
-                await sealPackagePublication("family/first", execution.worktreeId!, commit, "main", true);
+                await selectedPublicationCopies.seal("family/first", execution.worktreeId!, commit, "main", true);
                 const { autoGenerateWorkRecordForCompletedPlan } = await import("../work-records/auto-generation.ts");
                 const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
                 const recordId = managed ? crypto.randomUUID() : undefined;
@@ -384,7 +434,7 @@ try {
                     input.cwd,
                     attempt,
                     "artifacts_committed",
-                    await preparePackageCopies(input.cwd, attempt),
+                    await preparePublicationCopies(input.cwd, attempt),
                 );
                 await publishExecutionWorktreeIsolated({
                     projectRoot: input.cwd,
@@ -415,9 +465,18 @@ try {
                 const delivered = await readPublishedDeliverySources(input.cwd, cleanup.attempt);
                 const recordPath = delivered.workRecordOwner?.attrs.workRecord?.path;
                 ok(recordPath);
-                const record = await readPublishedRecordMarkdown(input.cwd, cleanup.attempt, recordPath);
+                const record = await publicationCopiesForCheckout(input.cwd).readPublishedWorkRecord(
+                    cleanup.attempt,
+                    recordPath,
+                );
                 ok(record?.includes(managed ? "Laptop composed delivery" : "Manual composed delivery"));
-                equal(await readPublishedRecordMarkdown(input.cwd, cleanup.attempt, "../another-record.md"), null);
+                equal(
+                    await publicationCopiesForCheckout(input.cwd).readPublishedWorkRecord(
+                        cleanup.attempt,
+                        "../another-record.md",
+                    ),
+                    null,
+                );
             });
             equal((await loadPlan(input.cwd, "family/first"))?.attrs.status, "verified");
             for (const [name, , , body] of originals)

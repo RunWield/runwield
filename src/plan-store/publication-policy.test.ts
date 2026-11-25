@@ -1,3 +1,7 @@
+import { materializeDeliveryCopy } from "@runwield/plans/publication-files";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok, rejects, deepEqual } from "node:assert/strict";
@@ -5,8 +9,8 @@ import { randomUUID } from "node:crypto";
 import {
     PreparedProjectStore,
     withLocalPlanWorkflow,
-    sealPackagePublication,
-    packagePublicationInput,
+    selectedPublicationCopies,
+    openProjectPlanStore,
 } from "./index.ts";
 import { publicationFixture } from "../shared/workflow/testing/package-publication-fixture.ts";
 import { git } from "../shared/git-test-fixture.ts";
@@ -27,7 +31,7 @@ for (const plans of [false, true]) {
             const seal = () =>
                 projects.home.withOwner(owner, () =>
                     withLocalPlanWorkflow(projects.home.storeLocation(owner), "one", () =>
-                        sealPackagePublication("one", fixture.workflow.worktreeId!, candidate, "main", true),
+                        selectedPublicationCopies.seal("one", fixture.workflow.worktreeId!, candidate, "main", true),
                     ),
                 );
             await rejects(seal(), /settings must be frozen/);
@@ -57,12 +61,23 @@ for (const plans of [false, true]) {
                 policy: { plans: !plans, workRecords: plans, autoGenerateRecords: plans },
             });
             const reference = await seal();
-            const manifest = await packagePublicationInput(fixture.root, reference);
+            const result = await restarted.execute({ kind: "read-publication", planId: "plan-one", reference });
+            ok("manifest" in result.result);
+            const manifest = result.result.manifest;
+            const store = openProjectPlanStore(owner.projectId, { admitted: owner });
+            const copies = await store.publicationCopies.read(reference);
+            deepEqual(copies, manifest.copies);
+            await rejects(store.publicationCopies.read({ ...reference, digest: "0".repeat(64) }), /missing or changed/);
+            await rejects(
+                store.publicationCopies.read({ ...reference, personalOwner: "another-owner" }),
+                /another owner or repository/,
+            );
+            await rejects(store.publicationCopies.read({ ...reference, projectId: randomUUID() }), /another Project/);
             equal(manifest.planCopies, plans);
             equal(manifest.workRecordCopies, !plans);
             equal(manifest.autoGenerateRecords, !plans);
             equal(
-                manifest.copies.some((copy) => copy.kind === "plan"),
+                copies.some((copy) => copy.kind === "plan"),
                 plans,
             );
         } finally {
@@ -70,3 +85,21 @@ for (const plans of [false, true]) {
         }
     });
 }
+
+test("publication copy materialization rejects paths outside the checkout", async () => {
+    const root = await mkdtemp(join(tmpdir(), "publication-copy-destination-"));
+    try {
+        const checkout = join(root, "checkout");
+        const protectedFile = join(root, "protected.md");
+        const original = "Keep these bytes.\n";
+        await mkdir(checkout);
+        await writeFile(protectedFile, original);
+        await rejects(
+            materializeDeliveryCopy(checkout, { kind: "plan", path: "../protected.md", text: "New content" }, original),
+            /Unsafe or duplicate delivery copy destination/,
+        );
+        equal(await readFile(protectedFile, "utf8"), original);
+    } finally {
+        await rm(root, { recursive: true });
+    }
+});

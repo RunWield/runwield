@@ -1,9 +1,12 @@
 import { versions } from "node:process";
-import { stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { mkdir as fsMkdir, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
+import { openPlanStoreForCheckout } from "../../plan-store/index.ts";
+import { planArtifactReference } from "@runwield/plans/format";
 import { createOwnerWorkspaceApp } from "./server.ts";
+import { loadOwnerSessionArtifact } from "./server/astro-owner-data.ts";
 
 for (const kind of ["plan", "prd", "adr", "work-record", "epic-artifact", "report"] as const) {
     test(`registered ${kind} artifacts share the reader and reject unrelated Sessions`, async () => {
@@ -67,6 +70,34 @@ for (const kind of ["plan", "prd", "adr", "work-record", "epic-artifact", "repor
                 ),
             );
             assertEquals(wrongSession.status, 404);
+            if (kind === "plan") {
+                const plan = await openPlanStoreForCheckout(fixture.projectRoot)!.create({
+                    planName: "saved-plan",
+                    contextMarkdown: "# Plan in the owner store\n",
+                });
+                const path = planArtifactReference(plan.planId);
+                await fsMkdir(`${fixture.projectRoot}/docs/plans`, { recursive: true });
+                await fsWriteFile(`${fixture.projectRoot}/docs/plans/${plan.name}.md`, "# Stale checkout copy\n");
+                const registered = fixture.registerArtifact(path, "Saved Plan");
+                const resolved = await loadOwnerSessionArtifact(
+                    fixture.project.projectId,
+                    fixture.session.runwieldSessionId,
+                    registered.artifactId,
+                );
+                assertEquals(resolved.markdown, "# Plan in the owner store\n");
+                const planResponse = await app.handler()(
+                    new Request(`http://127.0.0.1:8787${sessionPath}/artifacts/${registered.artifactId}`, { headers }),
+                );
+                if (built) {
+                    const planHtml = await planResponse.text();
+                    const renderError = /<h2>Session artifact could not be opened<\/h2>\s*<p>([^<]*)<\/p>/.exec(
+                        planHtml,
+                    )?.[1];
+                    assertEquals(planResponse.status, 200, renderError);
+                    assertStringIncludes(planHtml, "Plan in the owner store");
+                    assertEquals(planHtml.includes("Stale checkout copy"), false);
+                } else assertEquals(planResponse.status, 503);
+            }
         } finally {
             await app.close();
             store.close();

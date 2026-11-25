@@ -3,11 +3,10 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
-import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { resolveEpicArtifactPath } from "../../plan-store/index.ts";
+import { openPlanStoreForCheckout } from "../../plan-store/index.ts";
+import { plans } from "@runwield/plans";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import type { TriageMeta } from "../../tools/plan-written.ts";
-import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
@@ -180,11 +179,8 @@ test("Epic child delivery commits its Manual QA artifact with verified metadata"
     assertEquals(result.epicContinuation?.completedPlanName, "epic/01-one");
     assertEquals(result.epicContinuation?.projectRoot, projectRoot);
     assertEquals((await loadPlan(projectRoot, "epic/01-one"))?.attrs.status, "verified");
-    const artifact = await withLocalPlanWorkflow(
-        projectRoot,
-        "epic",
-        async () => await fsReadFile(await resolveEpicArtifactPath(projectRoot, "epic", "manual-qa.md"), "utf8"),
-    );
+    const epicId = plans.identity.parse((await loadPlan(projectRoot, "epic"))?.attrs.planId)!;
+    const artifact = (await openPlanStoreForCheckout(projectRoot)!.artifacts.read(epicId, "manual-qa.md"))!.body;
     assertStringIncludes(artifact, "# Manual QA for epic");
     assertStringIncludes(artifact, "This checklist is advisory. It does not change RunWield verification status.");
     assertStringIncludes(

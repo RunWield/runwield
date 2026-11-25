@@ -224,7 +224,7 @@ export async function proveManagedRetainedPublication(
 export interface RetainedRecordingProof {
     proof: import("../workflow/publication-attempt.ts").PublicationAttempt;
     sources: import("../../plan-store/index.ts").PublishedDeliverySources;
-    recordCopy: import("../../plan-store/index.ts").DeliveryCopy | null;
+    recordCopy: import("@runwield/plans/publication-copies").DeliveryCopy | null;
 }
 /** Source bytes are read by the trusted execution process from the independently proven commit. */
 export async function readManagedRetainedRecordingProof(

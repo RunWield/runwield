@@ -2,8 +2,20 @@ import { deepEqual, equal, match, notEqual } from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { plans, type PlanId } from "@runwield/plans";
-import { mergeFrontMatterText } from "@runwield/plans/format";
+import { mergeFrontMatterText, parsePlanArtifactReference, planArtifactReference } from "@runwield/plans/format";
 import { workRecords } from "@runwield/plans/work-records";
+
+test("logical Plan resource paths preserve imported IDs without aliasing URI escapes", () => {
+    for (const resource of ["context.md", "integration-report.md"] as const) {
+        const ids = ["release notes", "release%20notes", "%", ".", "..", "parent/child"];
+        const references = ids.map((id) => planArtifactReference(id, resource));
+        equal(new Set(references).size, ids.length);
+        deepEqual(
+            references.map((reference) => parsePlanArtifactReference(reference, resource)),
+            ids,
+        );
+    }
+});
 
 test("an existing Plan keeps its identity, custom fields and body across a review decision", async () => {
     const markdown =

@@ -11,7 +11,7 @@ import {
     renamePlanPackage,
 } from "../../plan-store/packages.ts";
 import { findPlansByParent } from "../testing/plan-query-fixture.ts";
-import { appendEpicManualQaSection } from "../../plan-store/index.ts";
+import { workflowEpicArtifacts } from "../../plan-store/index.ts";
 import { prepareSequenceReview, applySequenceReviewDecision } from "../../plan-store/index.ts";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
@@ -439,10 +439,8 @@ test("live ID relationships survive rename and unrelated sibling edits without s
                 });
                 executionCwd = execution.executionCwd;
                 equal((await loadPackageWorkflowPlan("one")).attrs.targetBranch, "main");
-                await appendEpicManualQaSection({
-                    projectRoot: f.root,
-                    epicPlanName: "renamed-parent",
-                    childPlanName: "one",
+                const artifacts = await workflowEpicArtifacts(f.root, "renamed-parent");
+                await artifacts.appendManualQaSection("one", {
                     childHeading: "Check",
                     checklistMarkdown: "Manual verification steps for one\n- [ ] Check behavior",
                 });

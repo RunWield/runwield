@@ -1,4 +1,5 @@
 import { projectPlanDocuments } from "./checkout-documents.ts";
+import { projectPlanArtifacts } from "./artifacts.ts";
 
 import { currentRetainedCheckoutSource, hasRetainedCheckoutSource } from "./retained-source.ts";
 import { plans, type PlanEventDetails, type PlanId } from "@runwield/plans";
@@ -16,6 +17,7 @@ import {
     selectProjectWorkRecord,
 } from "./project-work-records.ts";
 import { bindProjectPlanStore, checkoutPlanIdentity, type ProjectPlanStoreOptions } from "./project-binding.ts";
+import { packagePublicationInput } from "./publication.ts";
 import { PlanNotFoundError, StalePlanWriteError, type PlanResource } from "../plan-store.ts";
 import {
     createSavedPlan,
@@ -25,7 +27,7 @@ import {
     type PlanAuthoringInput,
 } from "./access.ts";
 import { archiveSavedPlan, restoreSavedPlan } from "./archiving.ts";
-import { canonicalizeStoredPlanName } from "@runwield/plans/format";
+import { canonicalizeStoredPlanName, planArtifactReference } from "@runwield/plans/format";
 import { recordPlanEvent } from "./events.ts";
 import {
     listLocalPlanHistory,
@@ -129,7 +131,7 @@ async function readActive(cwd: string, planId: PlanId): Promise<ProjectPlanDocum
 async function readArchived(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
     const resource = await loadArchivedPlan(cwd, planId, true);
     if (!resource || resource.attrs.planId !== planId) throw new PlanNotFoundError(planId);
-    return { ...documentFields({ ...resource, relativePath: `plans/${planId}/context.md` }), planId };
+    return { ...documentFields({ ...resource, relativePath: planArtifactReference(planId) }), planId };
 }
 
 function eventDetails(details: PlanEventDetails = {}): PlanEventDetails {
@@ -188,6 +190,7 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
     const listRecords = () => run(listProjectWorkRecords, "read");
     return {
         projectId,
+        artifacts: projectPlanArtifacts(run),
         history: {
             list: (id) =>
                 run((cwd) => {
@@ -195,14 +198,14 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
                     return managedPersonalStoreActive()
                         ? readManagedPlanHistory(cwd, planId)
                         : listLocalPlanHistory(cwd, planId);
-                }, "history"),
+                }, "retained"),
             read: (id, version) =>
                 run((cwd) => {
                     const planId = requirePlanId(id);
                     return managedPersonalStoreActive()
                         ? readManagedPlanMilestone(cwd, planId, version)
                         : readLocalPlanMilestone(cwd, planId, version);
-                }, "history"),
+                }, "retained"),
             restore: (id, version, expectedRevision) =>
                 run((cwd) => {
                     const planId = requirePlanId(id);
@@ -210,7 +213,15 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
                     return managedPersonalStoreActive()
                         ? restoreManagedPlanMilestone(cwd, planId, version, expectedRevision)
                         : restoreLocalPlanMilestone(cwd, planId, version, expectedRevision);
-                }, "history"),
+                }, "retained"),
+        },
+        publicationCopies: {
+            read: (reference) =>
+                run(async (cwd) => {
+                    if (reference.projectId !== projectId)
+                        throw new Error("Publication reference belongs to another Project.");
+                    return (await packagePublicationInput(cwd, reference)).copies;
+                }, "workflow-read"),
         },
         workRecords: {
             create: (input) =>
@@ -307,7 +318,7 @@ export function openPlanStoreForCheckout(cwd: string): CoreProjectPlanStore | un
                     managedPersonalStoreActive()
                         ? resolveManagedHistoryPlan(cwd, reference)
                         : resolveLocalHistoryPlan(reference),
-                "history",
+                "retained",
             ),
         author: (input, id) => authorProjectPlan(store, input, id),
         resolveAuthoredPlan: (reference, id) => resolveProjectPlan(store, reference, id),

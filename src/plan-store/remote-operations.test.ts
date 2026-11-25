@@ -6,7 +6,7 @@ import { parseHistoryList, parseMilestoneDocuments } from "../shared/remote/proj
 import { test } from "node:test";
 import { equal, deepEqual, rejects } from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { readFile, writeFile, unlink, mkdtemp, rm, rename } from "node:fs/promises";
 import { PreparedProjectStore, authorLocalPlan, savePlanProse } from "./index.ts";
 import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
@@ -896,6 +896,120 @@ test("managed multi-file edit resumes a dropped successful response and preserve
                 revision: after.revision,
                 source: "Updated source",
             });
+        } finally {
+            proxy.stop(true);
+            await f.cleanup();
+        }
+    });
+});
+
+test("managed artifact retries replay unresolved receipts and fresh calls receive a new disposition", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    const { ProjectStoreClient } = await import("../shared/remote/project-store-client.ts");
+    const { operationDigest } = await import("./operation-receipts.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        const requests: string[] = [];
+        let dropReply = false;
+        let lostRevision = "";
+        const proxy = observeOwnerResponse(f.endpoint, async (kind, response, operationId) => {
+            if (kind !== "save-epic-artifact" && kind !== "append-epic-qa") return response;
+            if (operationId) requests.push(operationId);
+            if (!dropReply || !response.ok) return response;
+            dropReply = false;
+            const reply: import("./project-service.ts").ProjectStoreReply = await response.json();
+            if ("revision" in reply.result) lostRevision = reply.result.revision!;
+            return new Response(null, { status: 503 });
+        });
+        try {
+            const seeded: import("@runwield/plans/store").ProjectPlanDocument = JSON.parse(
+                await f.run("managed-artifact-seed"),
+            );
+            const admission = await fetch(f.endpoint + "/project-store/admit", { method: "POST", headers: f.headers });
+            equal(admission.status, 200);
+            const client = new ProjectStoreClient(f.endpoint, f.input.connection.credential, await admission.json());
+            let currentRevision = seeded.revision;
+            for (const revisionSource of ["explicit", "observed"]) {
+                requests.length = 0;
+                dropReply = true;
+                lostRevision = "";
+                const body = `# First ${revisionSource} report\n`;
+                const later = `# Later ${revisionSource} report\n`;
+                const revision = revisionSource === "explicit" ? currentRevision : undefined;
+                const payload = JSON.stringify({ body, revision });
+                const first = await f.runRaw("managed-artifact-save", proxy.port, payload);
+                equal(first.code, 1);
+                equal(dropReply, false);
+                ok(lostRevision);
+                const write = await client.execute({
+                    kind: "save-epic-artifact",
+                    planId: seeded.planId,
+                    resource: "integration-report.md",
+                    operationId: randomUUID(),
+                    body: later,
+                    expectedRevision: lostRevision,
+                });
+                ok("revision" in write.result && write.result.revision);
+                currentRevision = write.result.revision;
+
+                const retry: import("@runwield/plans/store").ProjectPlanArtifact = JSON.parse(
+                    await f.run("managed-artifact-save", proxy.port, payload),
+                );
+                equal(retry.body, body);
+                equal(retry.revision, lostRevision);
+                equal(requests.length, 2);
+                equal(requests[0], requests[1]);
+
+                if (revisionSource === "explicit") {
+                    const journals = new Bun.Glob("**/managed-operations/managed-operation-*.json");
+                    let journalDirectory = "";
+                    for await (const path of journals.scan({ cwd: f.remoteHome, absolute: true, dot: true })) {
+                        if ((await readFile(path, "utf8")).includes(requests[0])) {
+                            journalDirectory = dirname(path);
+                            break;
+                        }
+                    }
+                    ok(journalDirectory);
+                    const legacyIntent = {
+                        kind: "save-epic-artifact",
+                        planId: seeded.planId,
+                        expectedRevision: revision,
+                        resource: "integration-report.md",
+                        body,
+                    };
+                    const binding = client.binding;
+                    const legacyKey = operationDigest(JSON.stringify({ binding, command: legacyIntent }));
+                    await writeFile(
+                        join(journalDirectory, `managed-operation-${legacyKey}.json`),
+                        JSON.stringify({ binding, command: { ...legacyIntent, operationId: requests[0] } }),
+                    );
+
+                    const fresh = await f.runRaw("managed-artifact-save", proxy.port, payload);
+                    ok(new TextDecoder().decode(fresh.stderr).includes("StalePlanWriteError"));
+                    equal(fresh.code, 1);
+                    ok(requests[2] && requests[2] !== requests[0]);
+                }
+                const stored = await client.execute({
+                    kind: "read-documents",
+                    planId: seeded.planId,
+                    resource: "integration-report.md",
+                });
+                ok("documentView" in stored.result);
+                equal(stored.result.documentView.body, later);
+                equal(stored.result.documentView.revision, currentRevision);
+            }
+
+            await f.run("managed-artifact-prepare-qa");
+            requests.length = 0;
+            dropReply = true;
+            equal((await f.runRaw("managed-artifact-qa", proxy.port)).code, 1);
+            equal(dropReply, false);
+            equal(await f.run("managed-artifact-qa", proxy.port), "recorded");
+            equal(await f.run("managed-artifact-qa", proxy.port), "already_present");
+            equal(requests.length, 3);
+            equal(requests[0], requests[1]);
+            ok(requests[2] && requests[2] !== requests[0]);
         } finally {
             proxy.stop(true);
             await f.cleanup();

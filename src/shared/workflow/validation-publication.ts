@@ -1,11 +1,11 @@
+import { preparePublicationCopies } from "./publication-copy-commit.ts";
 import { preparePlanInPlacePublication } from "../../plan-store/index.ts";
 import { preparePlanGeneratedArtifacts } from "../../plan-store/index.ts";
 import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import {
-    preparePackageCopies,
     settlePackageInPlace,
-    sealPackagePublication,
-    freezePlanPublicationPolicy,
+    selectedPublicationCopies,
+    publicationCopiesForCheckout,
 } from "../../plan-store/index.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
@@ -29,11 +29,7 @@ import {
     getDeliveryCopyPolicy,
     shouldAutoGenerateWorkRecordsOnPlanCompletion,
 } from "../settings.ts";
-import {
-    readPublishedDeliverySources,
-    readPublishedRecordMarkdown,
-    retainPublishedWorkRecordSource,
-} from "../../plan-store/index.ts";
+import { readPublishedDeliverySources, retainPublishedWorkRecordSource } from "../../plan-store/index.ts";
 /**
  * @module shared/workflow/validation-publication
  * The publication phase: merging the validated worktree into the target branch
@@ -50,7 +46,7 @@ import { logValidationFailure } from "./validation-state-errors.ts";
 import { withPlanPublication } from "../../plan-store/index.ts";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
-import { findEpicManualQaSection } from "../../plan-store/index.ts";
+import { workflowEpicArtifacts } from "../../plan-store/index.ts";
 import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.ts";
@@ -186,7 +182,8 @@ async function prepareEpicChildManualQaArtifact(
         .catch(() => null);
     if (parent?.attrs.classification !== "PROJECT") return { kind: "ready" };
 
-    const existing = await findEpicManualQaSection(cwd, parentPlan, args.planName);
+    const artifacts = await workflowEpicArtifacts(cwd, parentPlan);
+    const existing = await artifacts.findManualQaSection(args.planName);
     if (existing.exists) {
         emitStatus(
             args,
@@ -293,6 +290,7 @@ export async function runPublicationPhase(
                 context.projectRoot,
                 args.planName,
                 async () => await runLockedPublicationPhase(args, context, humanReviewMetadata),
+                { lockEpicFamily: true },
             );
             args.session.assertLive();
             if (!outcome.recorded && (await preparePublicationRevalidation(context.projectRoot, args.planName))) {
@@ -746,11 +744,17 @@ async function runLockedPublicationPhase(
                     },
                 });
             if (hasCanonicalPlanAccess()) {
-                await freezePlanPublicationPolicy(args.planName, worktreeId, {
+                await selectedPublicationCopies.freezePolicy(args.planName, worktreeId, {
                     ...getDeliveryCopyPolicy(context.executionCwd),
                     autoGenerateRecords: shouldAutoGenerateWorkRecordsOnPlanCompletion(context.executionCwd),
                 });
-                await sealPackagePublication(args.planName, worktreeId, candidate.executionCommit, targetBranch, true);
+                await selectedPublicationCopies.seal(
+                    args.planName,
+                    worktreeId,
+                    candidate.executionCommit,
+                    targetBranch,
+                    true,
+                );
                 await runPostVerificationHandoffs(args, context.executionCwd, true);
             }
             publicationAttempt = await startPublicationAttempt({
@@ -766,7 +770,7 @@ async function runLockedPublicationPhase(
         }
 
         if (publicationAttempt.phase === "candidate_sealed" && publicationAttempt.packageInput) {
-            const evidence = await preparePackageCopies(context.projectRoot, publicationAttempt);
+            const evidence = await preparePublicationCopies(context.projectRoot, publicationAttempt);
             publicationAttempt = await advanceStoredPublication(
                 context.projectRoot,
                 publicationAttempt,
@@ -1033,7 +1037,9 @@ export async function buildVerifiedResult(
     if (planArtifact) evidence.artifacts.push(planArtifact);
     const recordPath = recordingOwner?.attrs.workRecord?.path;
     const recordMarkdown =
-        publication && recordPath ? await readPublishedRecordMarkdown(projectRoot, publication, recordPath) : null;
+        publication && recordPath
+            ? await publicationCopiesForCheckout(projectRoot).readPublishedWorkRecord(publication, recordPath)
+            : null;
     const recordArtifact =
         publication && recordMarkdown
             ? await saveDeliveredWorkRecordEvidence(projectRoot, publication, recordMarkdown)

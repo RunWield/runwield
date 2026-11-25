@@ -1,3 +1,4 @@
+import { samePackagePublicationReference, type PackagePublicationReference } from "@runwield/plans/publication-copies";
 import { decodePackageMarkdown } from "@runwield/plans/format";
 import { workRecords } from "@runwield/plans/work-records";
 import { projects } from "@runwield/projects";
@@ -14,8 +15,6 @@ import {
     readPlanPackage,
     readPlanPackageInput,
     readPlanPackagePublication,
-    samePackagePublicationReference,
-    type PackagePublicationReference,
     type PackageDeliveryReceipt,
 } from "./packages.ts";
 import {

@@ -1,6 +1,6 @@
 import { toolRegistry } from "@runwield/tools";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
-import { appendEpicManualQaSection } from "../plan-store/index.ts";
+import { workflowEpicArtifacts } from "../plan-store/index.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
 
@@ -28,10 +28,8 @@ export function createQaChecklistGeneratedTool(options: QaChecklistGeneratedTool
 
         async execute(toolCallId, params): Promise<QaChecklistGeneratedResult> {
             try {
-                const result = await appendEpicManualQaSection({
-                    projectRoot: options.projectRoot,
-                    epicPlanName: options.epicPlanName,
-                    childPlanName: options.childPlanName,
+                const artifacts = await workflowEpicArtifacts(options.projectRoot, options.epicPlanName);
+                const result = await artifacts.appendManualQaSection(options.childPlanName, {
                     childHeading: options.childHeading,
                     checklistMarkdown: params.checklistMarkdown,
                 });

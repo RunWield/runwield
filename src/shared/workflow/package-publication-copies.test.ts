@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read } from "../testing/plan-package-fixture.ts";
 import { git } from "../git-test-fixture.ts";
-import { readPlanPackagePublication } from "../../plan-store/packages.ts";
+import { openProjectPlanStore } from "../../plan-store/index.ts";
 
 for (const plans of [false, true]) {
     test(`one copies commit composes prepared Work Record and Plan copies ${plans}`, async () => {
@@ -123,7 +123,7 @@ test("publication input variants reject mixed formats, malformed references and 
     const { publicationFixture } = await import("./testing/package-publication-fixture.ts");
     const { assertPublicationAttempt } = await import("./publication-attempt.ts");
     const { loadPublicationAttempt } = await import("./publication-machine.ts");
-    const { packageArtifactEvidence } = await import("../../plan-store/index.ts");
+    const { publicationCopiesForCheckout } = await import("../../plan-store/index.ts");
     const f = await publicationFixture(true);
     try {
         equal((await f.drive("artifact_receipt")).code, 86);
@@ -139,15 +139,17 @@ test("publication input variants reject mixed formats, malformed references and 
             /Unknown/,
         );
         await rejects(
-            readPlanPackagePublication(f.identity, { ...attempt.packageInput, digest: "0".repeat(64) }),
+            openProjectPlanStore(f.identity.projectId, { admitted: f.identity }).publicationCopies.read({
+                ...attempt.packageInput,
+                digest: "0".repeat(64),
+            }),
             /changed/,
         );
         await fs.writeFile(join(attempt.executionCwd, "docs/plans/one/context.md"), "# Wrong payload\n");
         await git(attempt.executionCwd, ["add", "docs/plans/one/context.md"]);
         await git(attempt.executionCwd, ["commit", "--amend", "--no-edit"]);
         equal(
-            await packageArtifactEvidence(
-                f.root,
+            await publicationCopiesForCheckout(f.root).verifyCandidate(
                 attempt,
                 await git(attempt.executionCwd, ["rev-parse", "HEAD"]),
                 attempt.executionCwd,
@@ -181,10 +183,9 @@ for (const scenario of ["changed", "unchanged", "externally-edited"] as const) {
                 await git(editor, ["commit", "-m", "edit prior delivery copy"]);
                 await git(editor, ["push", "origin", "main"]);
                 const target = await git(f.remote, ["rev-parse", "main"]);
-                const { assertPackageCopyTargets } = await import("../../plan-store/index.ts");
+                const { publicationCopiesForCheckout } = await import("../../plan-store/index.ts");
                 await rejects(
-                    assertPackageCopyTargets(
-                        f.root,
+                    publicationCopiesForCheckout(f.root).assertTargetDestinations(
                         editor,
                         (await read(f.identity)).metadata.workflow!.publication!,
                         "HEAD",
@@ -223,7 +224,7 @@ test("retained Markdown preserves BOM and CRLF bytes in copies and Recorder sour
     const { captureForegroundProcess } = await import("../captured-process.ts");
     const { loadPublishedWorkRecordSource } = await import("../../plan-store/index.ts");
     const { decodePackageMarkdown } = await import("@runwield/plans/format");
-    const { assertDeliveryCopies } = await import("../../plan-store/packages.ts");
+    const { assertDeliveryCopies } = await import("@runwield/plans/publication-copies");
     throws(() => decodePackageMarkdown(new Uint8Array([0xff])));
     throws(() => assertDeliveryCopies([{ kind: "work-record", path: "docs/work-records/invalid.md", text: "\ud800" }]));
     const documents = {

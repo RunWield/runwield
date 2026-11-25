@@ -55,7 +55,7 @@ function inferTitle(markdown: string, artifactPath: string): string {
 async function resolveArtifact(
     projectRoot: string,
     requestedPath: string,
-): Promise<{ relativePath: string; markdown: string }> {
+): Promise<{ relativePath: string; sessionPath: string; markdown: string }> {
     if (isAbsolute(requestedPath)) throw new Error("Artifact path must be relative to the Project root");
     const root = await fsRealpath(projectRoot);
     const absolutePath = await fsRealpath(resolve(root, requestedPath));
@@ -66,7 +66,7 @@ async function resolveArtifact(
     if (!relativePath.toLowerCase().endsWith(".md")) throw new Error("Session artifacts must be Markdown files");
     const info = await fsStat(absolutePath);
     if (!info.isFile()) throw new Error("Artifact path must identify a file");
-    return { relativePath, markdown: await fsReadFile(absolutePath, "utf8") };
+    return { relativePath, sessionPath: relativePath, markdown: await fsReadFile(absolutePath, "utf8") };
 }
 
 function assertKindPath(kind: SessionArtifactKind, path: string): void {
@@ -96,7 +96,7 @@ export function createArtifactWrittenTool(options: ArtifactWrittenOptions = {}) 
                 const title = params.title?.trim() || inferTitle(resolved.markdown, resolved.relativePath);
                 const artifact = capability.registerArtifact({
                     kind,
-                    path: resolved.relativePath,
+                    path: resolved.sessionPath,
                     title,
                     registeredBy: options.agentName?.trim() || "agent",
                 });
@@ -172,7 +172,7 @@ export function createArtifactWrittenTool(options: ArtifactWrittenOptions = {}) 
                     }
                 }
                 return {
-                    content: [{ type: "text", text: `Registered ${kind} artifact: ${artifact.path}` }],
+                    content: [{ type: "text", text: `Registered ${kind} artifact: ${resolved.relativePath}` }],
                     details: { outcome: "registered", artifact },
                 };
             } catch (error) {

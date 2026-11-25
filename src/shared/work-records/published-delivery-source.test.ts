@@ -4,7 +4,7 @@ import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWr
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { readPublishedDeliverySources, readPublishedRecordMarkdown } from "../../plan-store/index.ts";
+import { publicationCopiesForCheckout, readPublishedDeliverySources } from "../../plan-store/index.ts";
 import { advancePublicationAttempt, createPublicationAttempt } from "../workflow/publication-attempt.ts";
 import {
     readDeliveryEvidence,
@@ -75,8 +75,7 @@ test("sealed delivery keeps child evidence and terminal parent record despite a 
             assertEquals(sources.delivered.attrs.humanReviewDecision, "approved");
             assertEquals(sources.workRecordOwner?.planId, "parent-id");
             assertEquals(sources.workRecordOwner?.attrs.workRecord?.path, "docs/work-records/epic.md");
-            const recordMarkdown = await readPublishedRecordMarkdown(
-                root,
+            const recordMarkdown = await publicationCopiesForCheckout(root).readPublishedWorkRecord(
                 publication,
                 sources.workRecordOwner?.attrs.workRecord?.path || "",
             );
@@ -188,8 +187,7 @@ test("confirmed child delivery keeps the prepared reviewed Epic Work Record in i
                 assertEquals(sources.delivered.planId, "child-id");
                 assertEquals(sources.workRecordOwner?.planId, "parent-id");
                 assertEquals(sources.workRecordOwner?.attrs.status, "reviewed");
-                const markdown = await readPublishedRecordMarkdown(
-                    root,
+                const markdown = await publicationCopiesForCheckout(root).readPublishedWorkRecord(
                     confirmed,
                     sources.workRecordOwner?.attrs.workRecord?.path || "",
                 );
@@ -259,12 +257,18 @@ test("record attachment uses exact confirmed publication, never pending or later
                 artifactCommit: candidate,
                 publishedCommit,
             };
-            assertEquals(await readPublishedRecordMarkdown(root, attempt, path), null);
+            assertEquals(await publicationCopiesForCheckout(root).readPublishedWorkRecord(attempt, path), null);
             await fsWriteFile(`${root}/${path}`, "Later unrelated edits\n");
             for (const phase of ["publication_verified", "cleanup_complete"] as const) {
-                assertEquals(await readPublishedRecordMarkdown(root, { ...attempt, phase }, path), approved);
                 assertEquals(
-                    await readPublishedRecordMarkdown(root, { ...attempt, phase, publishedCommit: "missing" }, path),
+                    await publicationCopiesForCheckout(root).readPublishedWorkRecord({ ...attempt, phase }, path),
+                    approved,
+                );
+                assertEquals(
+                    await publicationCopiesForCheckout(root).readPublishedWorkRecord(
+                        { ...attempt, phase, publishedCommit: "missing" },
+                        path,
+                    ),
                     null,
                 );
             }

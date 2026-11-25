@@ -77,3 +77,37 @@ test("managed history can resolve a name to a legacy Plan ID and use it for exac
         },
     });
 });
+
+test("managed Epic artifact commands accept durable IDs and guard the exact family and resource", () => {
+    const common = {
+        planId: "epic.1",
+        operationId: crypto.randomUUID(),
+        expectedRevision: "c".repeat(64),
+    };
+    const qa = {
+        ...common,
+        kind: "append-epic-qa" as const,
+        childPlanId: "child.2",
+        childRevision: "d".repeat(64),
+        childHeading: "Check",
+        checklistMarkdown: "Manual verification steps for child\n\n- [ ] Check",
+    };
+    const save = {
+        ...common,
+        kind: "save-epic-artifact" as const,
+        resource: "integration-report.md",
+        body: "# Report",
+    };
+    validateProjectStoreRequest({ binding, command: qa });
+    validateProjectStoreRequest({ binding, command: save });
+    validateProjectStoreRequest({
+        binding,
+        command: { kind: "read-documents", planId: common.planId, resource: save.resource },
+    });
+    throws(() => validateProjectStoreRequest({ binding, command: { ...qa, childPlanId: qa.planId } }), /QA section/);
+    throws(() => validateProjectStoreRequest({ binding, command: { ...qa, childRevision: "" } }), /QA section/);
+    throws(
+        () => validateProjectStoreRequest({ binding, command: { ...save, resource: "context.md" } }),
+        /Epic artifact/,
+    );
+});

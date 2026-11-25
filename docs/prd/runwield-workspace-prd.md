@@ -885,6 +885,8 @@ Callout authoring is owned by [Core Plan authoring](runwield-core-prd.md#plan-au
   document.
 - An Ideator PRD review, a Session artifact, and a `wld plans read` command show the same reader with different return
   actions.
+- Given a Session reference to a Plan or Epic artifact, the reader opens the owning Project's saved document even if
+  there is an older delivery copy in the checkout. If the saved document is missing, the reader reports it unavailable.
 - From Search, the reader returns to Search with its query and filters.
 - Given WARNING, NOTE, and TIP callouts, each shows its icon, label, title, and text on desktop, phone, and paper.
 - Given an annotation on callout text, it keeps its selection through View, Edit, and feedback.

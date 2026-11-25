@@ -18,7 +18,7 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
-import { readPublishedRecordMarkdown } from "../../plan-store/index.ts";
+import { publicationCopiesForCheckout } from "../../plan-store/index.ts";
 import { syncWorkRecordToIndex } from "../work-records/index-adapter.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
@@ -185,7 +185,10 @@ test("remote delivery retains verification through index failure and recovers in
                 await git(root, ["rev-parse", `refs/runwield/deliveries/${encodeURIComponent(entry.id)}`]),
                 delivered.publicationCommit,
             );
-            const attached = await readPublishedRecordMarkdown(root, failed.attempt, successorPath);
+            const attached = await publicationCopiesForCheckout(root).readPublishedWorkRecord(
+                failed.attempt,
+                successorPath,
+            );
             assert(attached);
             const publishedRecord = workRecords.documents.parse(attached);
             const sealedRecord = workRecords.documents.parse(
@@ -222,7 +225,10 @@ test("remote delivery retains verification through index failure and recovers in
             const repeated = await cleanupStoredPublication(root, recovered.attempt, index);
             assertEquals(repeated.complete, true);
             assertEquals(index.snapshot().length, 2);
-            assertEquals(await readPublishedRecordMarkdown(root, repeated.attempt, successorPath), attached);
+            assertEquals(
+                await publicationCopiesForCheckout(root).readPublishedWorkRecord(repeated.attempt, successorPath),
+                attached,
+            );
         } finally {
             await fsRm(root, { recursive: true });
             await fsRm(temporary, { recursive: true });

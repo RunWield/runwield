@@ -117,7 +117,7 @@ function executionRepositoryRoot(identity: ProjectIdentity): string {
 
 export interface PackageDeliveryCopyPolicy {
     plans: boolean;
-    workRecords?: import("./packages.ts").DeliveryCopy[];
+    workRecords?: import("@runwield/plans/publication-copies").DeliveryCopy[];
 }
 
 export interface PackageWorkflowSelection {
@@ -954,8 +954,8 @@ export function capturePackageWorkflowAccess({ preserveSelection = true } = {}) 
 
 /** Durably record Core's generated checklist separately from the exact reviewed input. */
 export async function saveGeneratedManualQaArtifact(
-    childName: string,
-    parentName: string,
+    childName: PackageWorkflowTarget,
+    parentName: PackageWorkflowTarget,
     beforeHash: string | null,
     text: string,
 ): Promise<void> {
@@ -987,7 +987,7 @@ export async function saveGeneratedManualQaArtifact(
 }
 
 /** Replay only the recorded before/after bytes; ordinary concurrent edits still fail. */
-export async function recoverGeneratedManualQaArtifact(childName: string): Promise<void> {
+export async function recoverGeneratedManualQaArtifact(childName: PackageWorkflowTarget): Promise<void> {
     const child = await selectedPackage(childName);
     const artifact = child.metadata.workflow?.generatedArtifact;
     if (!artifact) return;

@@ -26,9 +26,11 @@ export class ProjectStoreClient {
             throw new ProjectStorePreconditionError(
                 command.kind === "author-plan"
                     ? "Plan already exists."
-                    : command.kind === "edit-documents"
+                    : command.kind === "edit-documents" || command.kind === "save-epic-artifact"
                       ? "A Plan document changed before the edit."
-                      : "Plan revision changed before restore.",
+                      : command.kind === "append-epic-qa"
+                        ? "Epic family changed or has no reserved child attempt."
+                        : "Plan revision changed before restore.",
             );
         if (!response.ok)
             throw new Error(`Project store request refused (${response.status}); retain its operation identity.`);

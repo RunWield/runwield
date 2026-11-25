@@ -1,3 +1,4 @@
+import { retainedPublicationCopiesForCheckout } from "../plan-store/index.ts";
 import { workRecords } from "@runwield/plans/work-records";
 import { projects } from "@runwield/projects";
 import { withWorkRecordOwner } from "./work-records/owner.ts";
@@ -9,12 +10,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../testing/as
 import { join } from "node:path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-import {
-    finalizeLocalPublicationLifecycle,
-    finalizePublicationLifecycle,
-    hasFinalizedPublicationLifecycle,
-    recoverLocalPublicationLifecycle,
-} from "./publication-lifecycle.ts";
+import { finalizeLocalPublicationLifecycle, recoverLocalPublicationLifecycle } from "./publication-lifecycle.ts";
 
 const planId = "11111111-1111-4111-8111-111111111111";
 const recordId = "22222222-2222-4222-8222-222222222222";
@@ -76,8 +72,7 @@ for (const autocrlf of [false, true]) {
                 assertEquals(finalized.body.includes(candidate), false);
                 assertEquals(finalized.body.includes("Historical pre-publication notes"), false);
                 assertEquals(
-                    await hasFinalizedPublicationLifecycle(
-                        root,
+                    await retainedPublicationCopiesForCheckout(root).isFinalized(
                         delivered,
                         "feature",
                         planId,
@@ -88,7 +83,13 @@ for (const autocrlf of [false, true]) {
                     true,
                 );
                 assertEquals(
-                    await hasFinalizedPublicationLifecycle(root, candidate, "feature", planId, candidate, [planPath]),
+                    await retainedPublicationCopiesForCheckout(root).isFinalized(
+                        candidate,
+                        "feature",
+                        planId,
+                        candidate,
+                        [planPath],
+                    ),
                     false,
                 );
                 assertEquals(await fsReadFile(join(root, "personal-note.txt"), "utf8"), "Keep me\n");
@@ -218,7 +219,7 @@ test("record changes outside the sealed candidate cannot be approved and leave P
             `${await fsReadFile(join(root, recordPath), "utf8")}\nUnreviewed claim\n`,
         );
         await assertRejects(
-            () => finalizePublicationLifecycle(root, "feature", candidate, [planPath]),
+            () => retainedPublicationCopiesForCheckout(root).finalize("feature", candidate, [planPath]),
             Error,
             "outside its sealed publication",
         );
@@ -243,7 +244,14 @@ test("already published legacy metadata still proves delivery without rewriting 
         await git(root, ["commit", "-m", "legacy publication"]);
         const published = await git(root, ["rev-parse", "HEAD"]);
         assert(
-            await hasFinalizedPublicationLifecycle(root, published, "feature", planId, candidate, [planPath], "main"),
+            await retainedPublicationCopiesForCheckout(root).isFinalized(
+                published,
+                "feature",
+                planId,
+                candidate,
+                [planPath],
+                "main",
+            ),
         );
         assertEquals(await git(root, ["rev-parse", "HEAD"]), published);
     } finally {
@@ -280,7 +288,7 @@ for (const edited of [false, true]) {
             await fsWriteFile(join(root, recordPath), legacy);
             if (edited) {
                 await assertRejects(
-                    () => finalizePublicationLifecycle(root, "feature", candidate, [planPath], "main"),
+                    () => retainedPublicationCopiesForCheckout(root).finalize("feature", candidate, [planPath], "main"),
                     Error,
                     "outside its sealed publication",
                 );
@@ -289,16 +297,19 @@ for (const edited of [false, true]) {
                     "reviewed",
                 );
             } else {
-                assertEquals(await finalizePublicationLifecycle(root, "feature", candidate, [planPath], "main"), [
-                    planPath,
-                ]);
-                assertEquals(await finalizePublicationLifecycle(root, "feature", candidate, [planPath], "main"), []);
+                assertEquals(
+                    await retainedPublicationCopiesForCheckout(root).finalize("feature", candidate, [planPath], "main"),
+                    [planPath],
+                );
+                assertEquals(
+                    await retainedPublicationCopiesForCheckout(root).finalize("feature", candidate, [planPath], "main"),
+                    [],
+                );
                 await git(root, ["add", "docs"]);
                 await git(root, ["commit", "-m", "Historical wrapper publication"]);
                 const published = await git(root, ["rev-parse", "HEAD"]);
                 assertEquals(
-                    await hasFinalizedPublicationLifecycle(
-                        root,
+                    await retainedPublicationCopiesForCheckout(root).isFinalized(
                         published,
                         "feature",
                         planId,
@@ -346,10 +357,12 @@ test("publication supersession reads sealed checkout copies without touching the
                 { fileName: "prior.md" },
             );
             const before = await fsReadFile(personal.path, "utf8");
-            await finalizePublicationLifecycle(root, "feature", candidate, [planPath]);
+            await retainedPublicationCopiesForCheckout(root).finalize("feature", candidate, [planPath]);
             assertEquals(await fsReadFile(personal.path, "utf8"), before);
         });
-        const predecessor = workRecords.documents.parse(await fsReadFile(join(root, "docs/work-records/prior.md"), "utf8"));
+        const predecessor = workRecords.documents.parse(
+            await fsReadFile(join(root, "docs/work-records/prior.md"), "utf8"),
+        );
         assertEquals(predecessor.attrs.status, "superseded");
         assertEquals(predecessor.attrs.supersededBy, recordId);
         assertStringIncludes(predecessor.body, "Published predecessor");

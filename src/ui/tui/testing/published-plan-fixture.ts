@@ -2,7 +2,7 @@ import { captureForegroundProcess } from "../../../shared/captured-process.ts";
 import { inspectLocalHomeStore } from "../../../plan-store/access.ts";
 import { withLocalPlanWorkflow } from "../../../plan-store/index.ts";
 import { selectedPackage } from "../../../plan-store/workflows.ts";
-import { packagePublicationInput } from "../../../plan-store/index.ts";
+import { publicationCopiesForCheckout } from "../../../plan-store/index.ts";
 import { readPublishedDeliverySources } from "../../../plan-store/index.ts";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
 
@@ -30,8 +30,8 @@ export async function readGoldenPublishedPlan(root: string, name: string, remote
             throw new Error("Expected a confirmed Git delivery receipt.");
         await remoteGit(root, remote, ["merge-base", "--is-ancestor", receipt.publishedCommit, head]);
         await remoteGit(root, remote, ["merge-base", "--is-ancestor", receipt.validatedCommit, head]);
-        const manifest = await packagePublicationInput(root, receipt.source);
-        for (const copy of manifest.copies) {
+        const copies = await publicationCopiesForCheckout(root).read(receipt.source);
+        for (const copy of copies) {
             const bytes = await remoteGit(root, remote, ["show", `${receipt.publishedCommit}:${copy.path}`]);
             if (bytes !== copy.text) throw new Error(`Published copy differs from the sealed input: ${copy.path}`);
         }
@@ -44,8 +44,8 @@ export async function readGoldenPublishedPlan(root: string, name: string, remote
         });
         return {
             markdown:
-                manifest.copies.find((copy) => copy.kind === "plan" && copy.path === `docs/plans/${name}/context.md`)
-                    ?.text ?? sources.delivered.body,
+                copies.find((copy) => copy.kind === "plan" && copy.path === `docs/plans/${name}/context.md`)?.text ??
+                sources.delivered.body,
             body: sources.delivered.body,
             attrs: { ...sources.delivered.attrs, validatedCommit: receipt.validatedCommit },
         };

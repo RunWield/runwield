@@ -53,6 +53,11 @@ export type {
 } from "./document.ts";
 export {
     EPIC_MANUAL_QA_FILE_NAME,
+    planArtifactReference,
+    parsePlanArtifactReference,
+    type PlanArtifactResource,
+    isEpicArtifactName,
+    type EpicArtifactName,
     EPIC_INTEGRATION_REPORT_FILE_NAME,
     EPIC_ARTIFACT_FILE_NAMES,
     isEpicArtifactPlanName,

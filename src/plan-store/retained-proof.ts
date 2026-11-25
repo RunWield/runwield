@@ -1,3 +1,4 @@
+import type { PackagePublicationReference } from "@runwield/plans/publication-copies";
 /** Durable laptop receipt for independently rechecked execution-host Git evidence. */
 import { projects, type HomeProjectOwner } from "@runwield/projects";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import {
     proveManagedProjectPublication,
     type ManagedProjectStoreLaunch,
 } from "../shared/remote/project-store-launch.ts";
-import { readPlanPackagePublication, type PackagePublicationReference } from "./packages.ts";
+import { readPlanPackagePublication } from "./packages.ts";
 import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
 
 export async function confirmManagedPublication(

@@ -63,7 +63,7 @@ export interface RetainedRecordingContext {
     proof: PublicationAttempt;
     source?: WorkRecordSource;
     preparation?: RecordingPreparation;
-    recordCopy?: import("./packages.ts").DeliveryCopy;
+    recordCopy?: import("@runwield/plans/publication-copies").DeliveryCopy;
 }
 export async function readRetainedRecordingContext(
     owner: HomeProjectOwner,

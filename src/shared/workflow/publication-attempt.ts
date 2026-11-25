@@ -1,4 +1,8 @@
-import { assertPlanPublicationReference, type PackagePublicationReference } from "../../plan-store/index.ts";
+import {
+    assertPackagePublicationReference,
+    type ExecutionPublicationPolicy,
+    type PackagePublicationReference,
+} from "@runwield/plans/publication-copies";
 /**
  * Durable authority for publishing one validated execution attempt.
  *
@@ -36,7 +40,7 @@ export type PublicationFailure = {
 
 export type PublicationAttempt = {
     deliveryMetadataVersion?: 1;
-    retainedPublicationPolicy?: import("../../plan-store/index.ts").ExecutionPublicationPolicy;
+    retainedPublicationPolicy?: ExecutionPublicationPolicy;
     packageInput?: PackagePublicationReference;
     copiesPrepared?: boolean;
     version: 1;
@@ -237,7 +241,7 @@ export function assertPublicationAttempt(value: PublicationAttempt): void {
     )
         throw new Error("Invalid retained publication copy policy.");
     if (value.packageInput !== undefined) {
-        assertPlanPublicationReference(value.packageInput);
+        assertPackagePublicationReference(value.packageInput);
         if (
             value.deliveryMetadataVersion !== undefined ||
             value.packageInput.planId !== value.planId ||
