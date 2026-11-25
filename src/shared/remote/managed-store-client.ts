@@ -601,22 +601,22 @@ async function executeManagedFixture() {
                 throw new Error("Laptop Plan did not receive confirmed remote Git publication.");
         });
         const { readWorkRecordById, searchWorkRecords } = await import("../work-records/search.ts");
-        const { readWorkRecord, listWorkRecords } = await import("../work-records/store.ts");
+        const { readWorkRecord } = await import("../work-records/store.ts");
+        const { workRecordsForCheckout } = await import("../../plan-store/index.ts");
         const { basename } = await import("node:path");
         const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
         const recordId = (await loadPlan(input.cwd, "public-tool"))?.attrs.workRecord?.recordId;
         if (!recordId) throw new Error("Completed Plan lost its record backlink.");
-        const records = await listWorkRecords(input.cwd);
-        const record = records.find((entry) => entry.attrs.recordId === recordId);
-        if (
-            !record ||
-            record.attrs.status !== "approved" ||
-            !record.path.startsWith(`${input.resources.globalRoot}/projects/`)
-        )
+        const canonical = workRecordsForCheckout(input.cwd);
+        if (!(await canonical.list()).some((entry) => entry.attrs.recordId === recordId))
             throw new Error("Public record catalog lost its canonical owner.");
+        const record = await canonical.read(recordId);
+        const displayed = await readWorkRecordById(input.cwd, recordId, { accessMode: "current" });
         if (
-            (await readWorkRecordById(input.cwd, recordId, { accessMode: "current" })).status !== "approved" ||
-            (await readWorkRecord(input.cwd, basename(record.path))).attrs.recordId !== recordId
+            record?.attrs.status !== "approved" ||
+            displayed.status !== "approved" ||
+            !displayed.path.startsWith(`${input.resources.globalRoot}/projects/`) ||
+            (await readWorkRecord(input.cwd, basename(displayed.path))).attrs.recordId !== recordId
         )
             throw new Error("Public record retrieval lost approved delivery.");
         const searched = await searchWorkRecords(input.cwd, "Managed delivery", {

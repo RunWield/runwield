@@ -1,9 +1,9 @@
+import { workRecords } from "@runwield/plans/work-records";
+import type { RecordingPreparation } from "@runwield/plans/work-record-files";
 import { projects } from "@runwield/projects";
 /** Durable Recorder acceptance and canonical settlement for one admitted delivery attempt. */
-import fs from "node:fs/promises";
 import { basename, join } from "node:path";
-import { writeJsonAtomically } from "../private-json-file.ts";
-import { workRecordOwnerLayout, assertWorkRecordPath, withWorkRecordMutation } from "./owner.ts";
+import { currentWorkRecordOwner, requireOwnedWorkRecordFiles, withWorkRecordMutation } from "./owner.ts";
 import { findWorkRecordById, replaceWorkRecord } from "./store.ts";
 import {
     generateRecorderSections,
@@ -11,7 +11,6 @@ import {
     normalizeRecorderOutput,
     validateRecorderProposals,
 } from "./generation.ts";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.ts";
 import { approveWorkRecord } from "./lifecycle.ts";
 import { applyWorkRecordSupersession } from "./supersession.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
@@ -21,43 +20,12 @@ import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 
 type Source = import("./generation.ts").WorkRecordSource;
 type Options = import("./generation.ts").WorkRecordGenerationOptions;
-type Sections = import("@runwield/plans/work-record-schema").GeneratedWorkRecordSections;
-export interface RecordingPreparation {
-    version: 1;
-    attemptId: string;
-    recordId: string;
-    createdAt: string;
-    sections?: Sections;
-    record?: DeliveryCopy;
-    settled?: boolean;
-}
-function preparationPath(attemptId: string): string {
-    if (!/^[a-zA-Z0-9_-]+$/.test(attemptId)) throw new Error("Invalid recording attempt identity.");
-    const owner = workRecordOwnerLayout();
-    if (!owner) throw new Error("Recording requires admitted personal ownership.");
-    const path = join(owner.internal, "preparations", `${attemptId}.json`);
-    assertWorkRecordPath(path);
-    return path;
-}
 export async function readPreparedPackageRecord(attemptId: string): Promise<RecordingPreparation | null> {
-    const text = await fs.readFile(preparationPath(attemptId), "utf8").catch((error: NodeJS.ErrnoException) => {
-        if (error.code === "ENOENT") return null;
-        throw error;
-    });
-    if (text === null) return null;
-    if (!text.trim()) throw new Error("Recording preparation is empty.");
-    const state: RecordingPreparation = JSON.parse(text);
-    if (
-        state.version !== 1 ||
-        state.attemptId !== attemptId ||
-        typeof state.recordId !== "string" ||
-        !/^[a-f0-9-]{36}$/i.test(state.recordId) ||
-        (state.settled !== undefined && typeof state.settled !== "boolean")
-    )
-        throw new Error("Recording preparation identity changed.");
-    if (state.sections !== undefined) normalizeRecorderOutput(state.sections);
+    const state = await requireOwnedWorkRecordFiles().readPreparation(attemptId);
+    if (state?.sections !== undefined) normalizeRecorderOutput(state.sections);
     return state;
 }
+
 export async function inspectPreparedPackageRecord(attemptId: string) {
     const state = await readPreparedPackageRecord(attemptId);
     return state
@@ -79,7 +47,7 @@ export async function reservePreparedPackageRecord(attemptId: string): Promise<R
             recordId: crypto.randomUUID(),
             createdAt: new Date().toISOString(),
         };
-        writeJsonAtomically(preparationPath(attemptId), state);
+        await requireOwnedWorkRecordFiles().writePreparation(state);
         return state;
     });
 }
@@ -112,7 +80,7 @@ export async function generatePreparedPackageRecord(cwd: string, source: Source,
                     ),
                 );
                 prepared.sections = sections;
-                writeJsonAtomically(preparationPath(attemptId), prepared);
+                await requireOwnedWorkRecordFiles().writePreparation(prepared);
                 return sections;
             },
         },
@@ -126,7 +94,7 @@ export async function generatePreparedPackageRecord(cwd: string, source: Source,
                 path: `docs/work-records/${basename(record.path)}`,
                 text: record.markdown,
             };
-            writeJsonAtomically(preparationPath(attemptId), prepared);
+            await requireOwnedWorkRecordFiles().writePreparation(prepared);
         }
     }
     return result;
@@ -153,7 +121,7 @@ export async function settlePreparedRecord(
 ): Promise<string | undefined> {
     const copy = manifest.preparedRecord;
     if (!copy) return undefined;
-    const frozen = parseWorkRecordMarkdown(copy.text, { path: copy.path, relativePath: copy.path });
+    const frozen = workRecords.documents.parse(copy.text, { path: copy.path, relativePath: copy.path });
     let record = await findWorkRecordById(cwd, frozen.attrs.recordId);
     if (!record) throw new Error("Prepared canonical Work Record is missing; delivery remains confirmed.");
     const preparation = await readPreparedPackageRecord(manifest.attemptId);
@@ -161,7 +129,7 @@ export async function settlePreparedRecord(
         throw new Error("Retained recording preparation does not match delivery.");
     if (!preparation.settled) {
         await withWorkRecordMutation(async () => {
-            const owner = workRecordOwnerLayout()!;
+            const owner = currentWorkRecordOwner()!;
             if (
                 manifest.copies.some(
                     (item) => item.kind === "work-record" && item.path === copy.path && item.text === copy.text,
@@ -170,7 +138,7 @@ export async function settlePreparedRecord(
                 await retainWorkRecordLocation(frozen.attrs.recordId, {
                     kind: "copy",
                     sourcePath: join(
-                        executionRepositoryRoot ?? projects.home.requireCheckout(owner.identity).checkoutRoot,
+                        executionRepositoryRoot ?? projects.home.requireCheckout(owner).checkoutRoot,
                         copy.path,
                     ),
                     repositoryId: manifest.repositoryId,
@@ -218,14 +186,14 @@ export async function settlePreparedRecord(
                     ? await replaceWorkRecord(
                           cwd,
                           settled,
-                          formatWorkRecordMarkdown(approveWorkRecord(settled.attrs), settled.body),
+                          workRecords.documents.format(approveWorkRecord(settled.attrs), settled.body),
                       )
                     : settled;
             return undefined;
         });
         if (indexWarning) return indexWarning;
         preparation.settled = true;
-        writeJsonAtomically(preparationPath(manifest.attemptId), preparation);
+        await requireOwnedWorkRecordFiles().writePreparation(preparation);
     }
     try {
         await syncWorkRecordToIndex(cwd, record, { mnemotecaPort });
@@ -240,16 +208,9 @@ export async function unfinishedRecordingPins() {
     const records = new Set<string>();
     const plans = new Set<string>();
     const attempts = new Set<string>();
-    const owner = workRecordOwnerLayout();
-    if (!owner) return { records, plans, attempts };
-    const dir = join(owner.internal, "preparations");
-    assertWorkRecordPath(dir);
-    const files = await fs.readdir(dir).catch((error: NodeJS.ErrnoException) => {
-        if (error.code === "ENOENT") return [];
-        throw error;
-    });
-    for (const file of files.filter((name) => name.endsWith(".json"))) {
-        const state = await readPreparedPackageRecord(file.slice(0, -5));
+    if (!currentWorkRecordOwner()) return { records, plans, attempts };
+    for (const attemptId of await requireOwnedWorkRecordFiles().listPreparationAttempts()) {
+        const state = await readPreparedPackageRecord(attemptId);
         if (!state) throw new Error("Cannot verify Recorder pins for a missing preparation.");
         if (state.settled) continue;
         attempts.add(state.attemptId);
@@ -257,7 +218,7 @@ export async function unfinishedRecordingPins() {
         for (const proposal of state.sections?.supersessionProposals || [])
             records.add(proposal.recordId.toLowerCase());
         if (state.record) {
-            const { attrs } = parseWorkRecordMarkdown(state.record.text);
+            const { attrs } = workRecords.documents.parse(state.record.text);
             for (const id of attrs.provenance?.sourcePlans || []) plans.add(id);
             for (const id of [attrs.supersedes || []].flat()) records.add(id.toLowerCase());
         }

@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { projects } from "@runwield/projects";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { test } from "node:test";
@@ -11,7 +12,6 @@ import { loadArchivedPlan } from "../testing/plan-query-fixture.ts";
 import { withWorkRecordOwner, workRecordOwnerLayout, withWorkRecordMutation } from "./owner.ts";
 import { writeWorkRecord, listWorkRecords, readWorkRecord, replaceWorkRecord, deleteWorkRecord } from "./store.ts";
 import { recordAttrs, recordBody } from "./test-fixtures/package-records.ts";
-import { formatWorkRecordMarkdown } from "./markdown.ts";
 import { applyWorkRecordSupersession } from "./supersession.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { importPlans } from "../../plan-store/index.ts";
@@ -125,16 +125,32 @@ test("ordinary canonical mutations ignore retained repository copies", async () 
             const replaced = await replaceWorkRecord(
                 f.root,
                 record,
-                formatWorkRecordMarkdown({ ...record.attrs, archivedAt: "2026-11-02" }, record.body),
+                workRecords.documents.format({ ...record.attrs, archivedAt: "2026-11-02" }, record.body),
             );
             equal(replaced.body, record.body);
             const { formatWorkRecordListEntry } = await import("./list.ts");
-            ok(formatWorkRecordListEntry(replaced).includes(`path: ${replaced.path}`));
+            ok(formatWorkRecordListEntry(replaced, replaced.path).includes(`path: ${replaced.path}`));
             await rejects(() => writeWorkRecord(f.root, record.attrs, recordBody), /identity already exists/);
             await deleteWorkRecord(f.root, replaced);
             equal((await listWorkRecords(f.root)).length, 0);
         });
         equal(await fs.readFile(legacy.path, "utf8"), "poisoned repository copy");
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test("admitted edits and deletes reject a stale canonical snapshot", async () => {
+    const f = await packageFixture();
+    try {
+        await withWorkRecordOwner(f.root, f.identity, async () => {
+            const record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+            const edited = workRecords.documents.format(record.attrs, record.body + "\nEdited in another tab.\n");
+            await replaceWorkRecord(f.root, record, edited);
+            await rejects(() => replaceWorkRecord(f.root, record, record.markdown), /reload before replacing/);
+            await rejects(() => deleteWorkRecord(f.root, record), /reload before deleting/);
+            equal((await readWorkRecord(f.root, basename(record.path))).markdown, edited);
+        });
     } finally {
         await f.cleanup();
     }
@@ -209,7 +225,7 @@ test("a linked checkout process waits for the shared native record lock", async 
         ok(linked.kind === "existing");
         const path = join(clone, "import.md");
         const readyPath = join(clone, "ready");
-        await fs.writeFile(path, formatWorkRecordMarkdown(recordAttrs(), recordBody));
+        await fs.writeFile(path, workRecords.documents.format(recordAttrs(), recordBody));
         await withWorkRecordOwner(f.root, f.identity, async () => {
             let child: ReturnType<typeof captureForegroundProcess>;
             await withWorkRecordMutation(async () => {
@@ -259,7 +275,7 @@ test("Work Record retention keeps the count floor first and every record inside 
                         const attrs = recordAttrs({ recordId: id(start + i), createdAt });
                         await fs.writeFile(
                             join(dir, `${attrs.recordId}.md`),
-                            formatWorkRecordMarkdown(attrs, recordBody),
+                            workRecords.documents.format(attrs, recordBody),
                         );
                     }),
                 );
@@ -375,7 +391,7 @@ test("retry after canonical unlink clears the old index and copy locations befor
         await withWorkRecordOwner(f.root, f.identity, async () => {
             const path = join(f.root, "original.md");
             const attrs = recordAttrs();
-            const markdown = formatWorkRecordMarkdown(attrs, recordBody);
+            const markdown = workRecords.documents.format(attrs, recordBody);
             await fs.writeFile(path, markdown);
             const [{ record }] = await importWorkRecords(f.root, path, options);
             const oldLocations = await readWorkRecordLocations(attrs.recordId);
@@ -440,7 +456,7 @@ test(
             await withWorkRecordOwner(f.root, f.identity, async () => {
                 const path = join(directory, "copy.md");
                 const attrs = recordAttrs({ createdAt: "2001-01-01T00:00:00Z" });
-                const markdown = formatWorkRecordMarkdown(attrs, recordBody);
+                const markdown = workRecords.documents.format(attrs, recordBody);
                 await fs.writeFile(path, markdown);
                 await importWorkRecords(f.root, path, { mnemotecaPort: port });
                 await writeWorkRecord(f.root, recordAttrs({ createdAt: "2000-01-01T00:00:00Z" }), recordBody);
@@ -497,7 +513,9 @@ test("interrupted confirmation resumes its original set and skips unsafe, moved 
             };
             await retainWorkRecordLocation(first.attrs.recordId, location);
             const path = join(workRecordOwnerLayout()!.internal, "locations", first.attrs.recordId + ".json");
-            const stored: import("./import.ts").WorkRecordLocations = JSON.parse(await fs.readFile(path, "utf8"));
+            const stored: import("@runwield/plans/work-record-files").WorkRecordLocations = JSON.parse(
+                await fs.readFile(path, "utf8"),
+            );
             for (const relative of ["../" + basename(f.root) + "/protected.md", "missing.md", "old-name.md"])
                 stored.locations.push({ ...location, repositoryPath: relative, sourcePath: join(f.root, relative) });
             stored.locations.push({

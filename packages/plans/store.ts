@@ -2,6 +2,15 @@ import type { ProjectId } from "@runwield/projects";
 import type { PlanFrontMatter } from "./document.ts";
 import type { PlanId } from "./identity.ts";
 import type { PlanEvent, PlanEventDetails } from "./lifecycle.ts";
+import type { WorkRecordResource } from "./work-records.ts";
+
+export type ProjectWorkRecord = Omit<WorkRecordResource, "path">;
+
+export interface ProjectWorkRecords {
+    list(): Promise<ProjectWorkRecord[]>;
+    /** Return null for a missing ID. Duplicate IDs are ambiguous across all statuses. */
+    read(recordId: string): Promise<ProjectWorkRecord | null>;
+}
 
 export interface PlanAuthoringDefinition {
     title?: string;
@@ -87,6 +96,7 @@ export interface ApplyProjectPlanEvent {
 /** Operations against a single admitted Project and its canonical Plan owner. */
 export interface ProjectPlanStore {
     readonly projectId: ProjectId;
+    readonly workRecords: ProjectWorkRecords;
     list(): Promise<ProjectPlanCatalog>;
     read(planId: PlanId): Promise<ProjectPlanDocument>;
     readArchived(planId: PlanId): Promise<ProjectPlanDocument>;

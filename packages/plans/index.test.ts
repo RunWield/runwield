@@ -1,8 +1,9 @@
-import { equal, match, notEqual } from "node:assert/strict";
+import { deepEqual, equal, match, notEqual } from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { plans, type PlanId } from "@runwield/plans";
 import { mergeFrontMatterText } from "@runwield/plans/format";
+import { workRecords } from "@runwield/plans/work-records";
 
 test("an existing Plan keeps its identity, custom fields and body across a review decision", async () => {
     const markdown =
@@ -29,4 +30,46 @@ test("document revisions cover the exact front matter and body bytes used by the
     equal(await plans.documents.revision(markdown), createHash("sha256").update(markdown).digest("hex"));
     const changedBody = markdown.replace("# Before", "# After");
     notEqual(await plans.documents.revision(changedBody), await plans.documents.revision(markdown));
+});
+
+test("Work Record documents preserve legacy Markdown and textual identity", () => {
+    const markdown = `---
+kind: work_record
+recordId: "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE"
+status: approved
+scope: feature
+origin: internal
+completionMode: verified
+createdAt: 2026-07-14T08:32:00-04:00
+provenance:
+    sourcePlans: ["historical-plan"]
+---
+# Legacy record
+
+## Result
+
+Implemented the original plan.
+
+## Deferred Work
+
+Some follow-up work.
+`;
+    const path = "/repo/work-records/legacy.md";
+    const relativePath = "work-records/legacy.md";
+    const record = workRecords.documents.parse(markdown, { path, relativePath });
+
+    equal(record.markdown, markdown);
+    equal(record.attrs.recordId, "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE");
+    equal(record.attrs.scope, "planned_change");
+    equal(record.attrs.createdAt, "2026-07-14T12:32:00.000Z");
+    deepEqual(record.attrs.provenance?.sourcePlans, ["historical-plan"]);
+    equal(record.summary, "Implemented the original plan.");
+    deepEqual(record.sections, { "Deferred Work": "Some follow-up work." });
+    equal(record.path, path);
+    equal(record.relativePath, relativePath);
+
+    const formatted = workRecords.documents.format(record.attrs, record.body);
+    match(formatted, /recordId: "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE"/);
+    match(formatted, /scope: "planned_change"/);
+    equal(workRecords.documents.parse(formatted).body, record.body);
 });

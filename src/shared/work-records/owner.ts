@@ -1,52 +1,38 @@
 /** Explicit personal Work Record authority; discovery alone never selects it. */
+import { workRecordFiles } from "@runwield/plans/work-record-files";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
-import { lstatSync } from "node:fs";
-import { dirname, join, relative, isAbsolute } from "node:path";
-import { ensurePrivateDir } from "../private-json-file.ts";
-import { openNativeFileLock } from "../native-file-lock.ts";
+import { join } from "node:path";
 
 const owners = new AsyncLocalStorage<ProjectIdentity>();
-const mutations = new AsyncLocalStorage<string>();
 
 export function currentWorkRecordOwner(): ProjectIdentity | undefined {
     return owners.getStore();
 }
 
-export function workRecordOwnerLayout() {
-    const identity = owners.getStore();
-    if (!identity) return undefined;
-    projects.home.assertStoreIdentity(identity);
-    const root = join(identity.executionAccountHome, ".wld", "projects", identity.projectId);
-    const internal = join(root, "internal", "work-records");
-    const key = createHash("sha256").update(identity.personalOwner.identity).digest("hex");
-    return {
-        identity,
-        root,
-        internal,
-        records: join(root, "work-records"),
-        database: join(internal, "index.sqlite3"),
-        lock: join(internal, "records.lock"),
-        collection: `${identity.projectId}:${key}:work-records`,
-    };
+export function ownedWorkRecordFiles() {
+    const identity = currentWorkRecordOwner();
+    return identity ? workRecordFiles.forOwner(identity) : undefined;
 }
 
-export function assertWorkRecordPath(path: string): void {
-    const owner = owners.getStore();
-    if (!owner) return;
-    const root = owner.executionAccountHome;
-    const rel = relative(root, path);
-    if (isAbsolute(rel) || rel === ".." || rel.startsWith("../")) throw new Error("Work Record path leaves its owner.");
-    for (let cursor = path; ; cursor = dirname(cursor)) {
-        try {
-            if (lstatSync(cursor).isSymbolicLink())
-                throw new Error(`Work Record path contains a symbolic link: ${cursor}`);
-        } catch (error) {
-            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-        }
-        if (cursor === root) break;
-    }
+export function requireOwnedWorkRecordFiles() {
+    const files = ownedWorkRecordFiles();
+    if (!files) throw new Error("Work Records require explicit personal-store admission.");
+    return files;
+}
+
+export function workRecordOwnerLayout() {
+    const identity = currentWorkRecordOwner();
+    if (!identity) return undefined;
+    const layout = workRecordFiles.forOwner(identity).layout;
+    const key = createHash("sha256").update(identity.personalOwner.identity).digest("hex");
+    return {
+        ...layout,
+        identity,
+        database: join(layout.internal, "index.sqlite3"),
+        collection: `${identity.projectId}:${key}:work-records`,
+    };
 }
 
 export async function withWorkRecordOwner<T>(
@@ -73,17 +59,8 @@ export async function withWorkRecordOwner<T>(
 
 /** All admitted record mutations, including multi-record supersession, share one native lock. */
 export async function withWorkRecordMutation<T>(run: () => Promise<T>): Promise<T> {
-    const layout = workRecordOwnerLayout();
-    if (!layout || mutations.getStore() === layout.lock) return await run();
-    assertWorkRecordPath(layout.lock);
-    ensurePrivateDir(layout.internal);
-    const lock = openNativeFileLock(layout.lock);
-    try {
-        await lock.lock(true);
-        return await mutations.run(layout.lock, run);
-    } finally {
-        lock.close();
-    }
+    const files = ownedWorkRecordFiles();
+    return files ? await files.mutate(run) : await run();
 }
 
 /** A registered legacy Project must not inherit another Project's personal authority. */

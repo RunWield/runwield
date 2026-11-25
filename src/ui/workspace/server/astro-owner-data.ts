@@ -134,7 +134,7 @@ export async function loadOwnerProjectArtifact(projectId: string, artifactType: 
           )
         : await (Reflect.get(globalThis, Symbol.for("runwield.workspace.project-artifacts-module")) ||
               bundledProjectArtifacts);
-    return await module!.readProjectArtifact(root, artifactType, sourceId);
+    return await module!.readProjectArtifact(root, artifactType, sourceId, { projectId, registry: store.projects });
 }
 
 export async function loadOwnerSessionArtifact(projectId: string, runwieldSessionId: string, artifactId: string) {

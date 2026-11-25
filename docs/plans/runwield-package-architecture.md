@@ -209,8 +209,21 @@ The managed runtime uses its configured owner connection. The store checks the b
 
 The runtime adapter calls the existing store for locking, conflict checks, recovery, and local or managed writes.
 The filesystem driver in Plans captures and verifies the immutable input documents used by workflow attempts.
-Existing history, Work Record persistence, and publication copies still run through the current store.
+History and publication copies still run through the current store.
 PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)
+
+### Work Records
+
+Opening the Plan Store binds its `workRecords` collection to the same Project ID and personal owner. Neither method needs a checkout path. Each call rechecks the binding and reads the current documents.
+
+| Operation | Result |
+| --- | --- |
+| `workRecords.list()` | All stored documents, including drafts, archived records and superseded records. A passive read of an empty store returns an empty list. |
+| `workRecords.read(recordId)` | One document by case-insensitive record ID, or `null` if missing. Multiple documents with that ID cause an ambiguity error. |
+
+A document includes its typed front matter, title, summary, sections, body, original Markdown, and a relative document path. Absolute owner locations stay in the filesystem driver. Workspace applies its own visibility rules when displaying and indexing records. The agent memory tools retain their current-only policy and Mnemoteca search behavior.
+
+The `@runwield/plans/work-records` entry point owns the Markdown format. The Markdown/filesystem driver in `@runwield/plans/work-record-files` owns the personal and retained checkout layouts and durable file operations. The host admits the Project, routes managed reads and writes to its owner, and coordinates publication and secondary indexing. A future PostgreSQL driver can expose the same Project-bound collection.
 
 ### Consumer coverage
 

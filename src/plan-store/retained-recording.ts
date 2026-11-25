@@ -1,4 +1,6 @@
 /** Recording for an admitted original execution never imports its repository Plan into the catalog. */
+import { workRecords, type GeneratedWorkRecordSections } from "@runwield/plans/work-records";
+import type { RecordingPreparation } from "@runwield/plans/work-record-files";
 import { type HomeProjectOwner } from "@runwield/projects";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { join } from "node:path";
@@ -15,9 +17,7 @@ import {
     reservePreparedPackageRecord,
     generatePreparedPackageRecord,
     settlePreparedRecord,
-    type RecordingPreparation,
 } from "../shared/work-records/package-recording.ts";
-import type { GeneratedWorkRecordSections } from "@runwield/plans/work-record-schema";
 import type { WorkRecordSource } from "../shared/work-records/generation.ts";
 import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
@@ -182,11 +182,9 @@ export async function settleRetainedRecord(
         if (!context?.preparation?.record) return undefined;
         if (context.proof.retainedPublicationPolicy?.workRecords) {
             const frozen = context.preparation.record;
-            const { parseWorkRecordMarkdown, formatWorkRecordMarkdown } =
-                await import("../shared/work-records/markdown.ts");
             const { approveWorkRecord } = await import("../shared/work-records/lifecycle.ts");
-            const parsed = parseWorkRecordMarkdown(frozen.text);
-            const expected = formatWorkRecordMarkdown(approveWorkRecord(parsed.attrs), parsed.body);
+            const parsed = workRecords.documents.parse(frozen.text);
+            const expected = workRecords.documents.format(approveWorkRecord(parsed.attrs), parsed.body);
             if (!context.recordCopy || context.recordCopy.path !== frozen.path || context.recordCopy.text !== expected)
                 throw new Error("Retained delivered record differs from its canonical preparation.");
             const { retainWorkRecordLocation, workRecordDigest } = await import("../shared/work-records/import.ts");

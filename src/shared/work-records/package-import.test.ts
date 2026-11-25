@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { test } from "node:test";
 import { equal, rejects, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -8,7 +9,6 @@ import { withWorkRecordOwner, workRecordOwnerLayout } from "./owner.ts";
 import { importWorkRecords, readWorkRecordLocations } from "./import.ts";
 import { listWorkRecords } from "./store.ts";
 import { recordAttrs, recordBody } from "./test-fixtures/package-records.ts";
-import { formatWorkRecordMarkdown } from "./markdown.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { runWorkRecordsCommand } from "../../cmd/wr/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -23,7 +23,7 @@ test("explicit command directory import preserves exact status bytes and repeat 
             const source = join(f.root, "imports");
             await fs.mkdir(source);
             const markdown = ["approved", "draft", "pending_verification", "superseded"].map((status) =>
-                formatWorkRecordMarkdown(
+                workRecords.documents.format(
                     recordAttrs({
                         status: status as "approved" | "draft" | "pending_verification" | "superseded",
                         ...(status === "superseded" ? { supersededBy: crypto.randomUUID() } : {}),
@@ -31,7 +31,7 @@ test("explicit command directory import preserves exact status bytes and repeat 
                     recordBody,
                 ),
             );
-            markdown.push(formatWorkRecordMarkdown(recordAttrs({ archivedAt: "2026-11-02" }), recordBody));
+            markdown.push(workRecords.documents.format(recordAttrs({ archivedAt: "2026-11-02" }), recordBody));
             for (const [index, text] of markdown.entries()) await fs.writeFile(join(source, `${index}.md`), text);
             await withWorkRecordOwner(f.root, f.identity, async () => {
                 const options = { mnemotecaPort: createWorkRecordMnemotecaFixture() };
@@ -62,7 +62,7 @@ test("imports preserve canonical bytes through conflicts, collisions and metadat
             const options = { mnemotecaPort: createWorkRecordMnemotecaFixture() };
             const path = join(external, "record.md");
             const attrs = recordAttrs();
-            const text = formatWorkRecordMarkdown(attrs, recordBody);
+            const text = workRecords.documents.format(attrs, recordBody);
             await fs.writeFile(path, text);
             const [first] = await importWorkRecords(f.root, path, options);
             const ledger = join(workRecordOwnerLayout()!.internal, "locations", `${attrs.recordId}.json`);
@@ -70,10 +70,10 @@ test("imports preserve canonical bytes through conflicts, collisions and metadat
             await importWorkRecords(f.root, path, options);
             equal((await listWorkRecords(f.root)).length, 1);
             equal((await readWorkRecordLocations(attrs.recordId))!.locations[0].repositoryPath, undefined);
-            await fs.writeFile(path, formatWorkRecordMarkdown(attrs, recordBody + "Editor change\n"));
+            await fs.writeFile(path, workRecords.documents.format(attrs, recordBody + "Editor change\n"));
             await rejects(() => importWorkRecords(f.root, path, options), /Conflicting content/);
             equal(await fs.readFile(first.record.path, "utf8"), text);
-            await fs.writeFile(path, formatWorkRecordMarkdown(recordAttrs(), recordBody));
+            await fs.writeFile(path, workRecords.documents.format(recordAttrs(), recordBody));
             await importWorkRecords(f.root, path, options);
             equal((await listWorkRecords(f.root)).length, 2);
             await fs.writeFile(path, "malformed");
@@ -94,7 +94,7 @@ test("a fresh process resumes import after canonical publication and before loca
     try {
         const path = join(f.root, "import.md");
         const attrs = recordAttrs({ status: "pending_verification" });
-        const text = formatWorkRecordMarkdown(attrs, recordBody);
+        const text = workRecords.documents.format(attrs, recordBody);
         await fs.writeFile(path, text);
         const { captureForegroundProcess } = await import("../captured-process.ts");
         const invoke = (interrupt = false) =>

@@ -10,6 +10,7 @@ import type {
     ReviseProjectPlan,
 } from "@runwield/plans/store";
 import { type ProjectId } from "@runwield/projects";
+import { listProjectWorkRecords, selectProjectWorkRecord } from "./project-work-records.ts";
 import { bindProjectPlanStore, checkoutPlanIdentity, type ProjectPlanStoreOptions } from "./project-binding.ts";
 import { PlanNotFoundError, StalePlanWriteError, type PlanResource } from "../plan-store.ts";
 import {
@@ -167,8 +168,13 @@ export function openProjectPlanStore(projectId: ProjectId, options: ProjectPlanS
 }
 
 function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProjectPlanStore>): ProjectPlanStore {
+    const listRecords = () => run(listProjectWorkRecords, "read");
     return {
         projectId,
+        workRecords: {
+            list: listRecords,
+            read: async (id) => selectProjectWorkRecord(await listRecords(), id),
+        },
         list: () => run(readProjectPlanDisplayCatalog, "read"),
         read: (planId) => run((cwd) => readActive(cwd, requirePlanId(planId)), "read"),
         readArchived: (planId) => run((cwd) => readArchived(cwd, requirePlanId(planId)), "read"),

@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { test } from "node:test";
 import { equal, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -66,12 +67,11 @@ test("pending records require proof and no-copy recovery survives execution clea
         await git(f.root, ["worktree", "remove", "--force", f.workflow.executionCwd!]);
         await f.scope(async () => {
             const { replaceWorkRecord } = await import("../work-records/store.ts");
-            const { formatWorkRecordMarkdown } = await import("../work-records/markdown.ts");
             const record = (await listWorkRecords(f.root))[0];
             await replaceWorkRecord(
                 f.root,
                 record,
-                formatWorkRecordMarkdown(
+                workRecords.documents.format(
                     { ...record.attrs, archivedAt: "2026-11-03" },
                     record.body + "\nEditor note.\n",
                 ),

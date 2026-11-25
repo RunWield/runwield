@@ -1,104 +1,166 @@
-/**
- * @module shared/work-records/markdown
- * Parse, validate, and format canonical Work Record markdown.
- */
-
-import { extractYaml, test as hasFrontMatter, type FrontMatterValue } from "../front-matter.ts";
-import { toolRegistry } from "@runwield/tools";
-import { normalizeTicketReferences, type TicketReference } from "@runwield/plans/format";
 import {
-    isWorkRecordCompletionMode,
-    isWorkRecordOrigin,
-    isWorkRecordScope,
-    isWorkRecordStatus,
-    WORK_RECORD_FRONT_MATTER_KEYS,
-    WORK_RECORD_KIND,
-    WORK_RECORD_OPTIONAL_SECTION_TITLES,
-    type WorkRecordEvidence,
-    type WorkRecordFrontMatter,
-    type WorkRecordProvenance,
-    type WorkRecordResource,
-    type WorkRecordSections,
-    type WorkRecordSupersessionCandidate,
-    type WorkRecordSupersessionProposal,
-} from "@runwield/plans/work-record-schema";
+    extractYaml,
+    test as hasFrontMatter,
+    type FrontMatterRecord,
+    type FrontMatterValue,
+} from "@runwield/parsing/front-matter";
+import { toolRegistry, type WorkKind } from "@runwield/tools";
+import { normalizeTicketReferences, type TicketReference } from "../format/ticket-references.ts";
 
-/** Raw YAML values retain the existing normalization and validation boundaries. */
-export interface RawWorkRecordFrontMatter {
-    [key: string]: unknown;
-    kind?: unknown;
-    recordId?: unknown;
-    status?: unknown;
-    scope?: unknown;
-    workKind?: unknown;
-    origin?: unknown;
-    completionMode?: unknown;
-    createdAt?: unknown;
-    tickets?: FrontMatterValue;
-    archivedAt?: unknown;
-    supersedes?: unknown;
-    supersededBy?: unknown;
-    supersessionProposal?: unknown;
-    provenance?: unknown;
+const { normalizeWorkKind } = toolRegistry.get("triage_report");
+
+const WORK_RECORD_KIND = "work_record";
+
+const WORK_RECORD_STATUSES = Object.freeze(["pending_verification", "draft", "approved", "superseded"]);
+
+const WORK_RECORD_SCOPES = Object.freeze(["planned_change", "feature", "epic", "quick_fix"]);
+const WORK_RECORD_ORIGINS = Object.freeze(["internal", "external"]);
+const WORK_RECORD_COMPLETION_MODES = Object.freeze([
+    "verified",
+    "closed_without_verification",
+    "user_verified",
+    "done_enough",
+]);
+
+const WORK_RECORD_OPTIONAL_SECTION_TITLES = Object.freeze([
+    "Deviations from Plan",
+    "Out of Scope",
+    "Deferred Work",
+    "Future Planning Notes",
+    "Required Record Notes",
+]);
+
+const WORK_RECORD_FRONT_MATTER_KEYS = Object.freeze({
+    kind: "kind",
+    recordId: "recordId",
+    status: "status",
+    scope: "scope",
+    workKind: "workKind",
+    origin: "origin",
+    completionMode: "completionMode",
+    createdAt: "createdAt",
+    tickets: "tickets",
+    archivedAt: "archivedAt",
+    supersedes: "supersedes",
+    supersededBy: "supersededBy",
+    supersessionProposal: "supersessionProposal",
+    provenance: "provenance",
+});
+
+type WorkRecordStatus = "pending_verification" | "draft" | "approved" | "superseded";
+export type WorkRecordScope = "planned_change" | "feature" | "epic" | "quick_fix";
+type WorkRecordOrigin = "internal" | "external";
+export type WorkRecordCompletionMode = "verified" | "closed_without_verification" | "user_verified" | "done_enough";
+
+type WorkRecordEvidence = {
+    path: string;
+    note: string;
+};
+
+type WorkRecordProvenance = {
+    sourcePlans?: string[];
+    evidence?: WorkRecordEvidence[];
+};
+
+export type WorkRecordSupersessionCandidate = {
+    recordId: string;
+    reason: string;
+};
+
+type WorkRecordSupersessionProposal = {
+    candidates: WorkRecordSupersessionCandidate[];
+};
+
+export type WorkRecordFrontMatter = {
+    kind: typeof WORK_RECORD_KIND;
+    recordId: string;
+    status: WorkRecordStatus;
+    scope: WorkRecordScope;
+    workKind?: WorkKind;
+    origin: WorkRecordOrigin;
+    completionMode: WorkRecordCompletionMode;
+    createdAt: string;
+    tickets?: TicketReference[];
+    archivedAt?: string;
+    supersedes?: string | string[];
+    supersededBy?: string;
+    supersessionProposal?: WorkRecordSupersessionProposal;
+    provenance?: WorkRecordProvenance;
+};
+
+type UnvalidatedWorkRecordFrontMatter = Omit<
+    WorkRecordFrontMatter,
+    "kind" | "status" | "scope" | "origin" | "completionMode"
+> & {
+    kind: FrontMatterValue | undefined;
+    status: string;
+    scope: string;
+    origin: string;
+    completionMode: string;
+};
+
+interface WorkRecordSections {
+    title: string;
+    summary: string;
+    optional: Record<string, string>;
 }
 
-export type WorkRecordFrontMatterInput = WorkRecordFrontMatter | RawWorkRecordFrontMatter;
-export type ParseWorkRecordOptions = Partial<Pick<WorkRecordResource, "path" | "relativePath">>;
-
-interface RawWorkRecordEvidence {
-    path?: unknown;
-    note?: unknown;
+export interface GeneratedWorkRecordSections extends Pick<WorkRecordSections, "title" | "summary"> {
+    outOfScope?: string;
+    futurePlanningNotes?: string;
+    supersessionProposals?: WorkRecordSupersessionCandidate[];
 }
 
-interface RawWorkRecordProvenance {
-    sourcePlans?: unknown;
-    evidence?: unknown;
+export interface WorkRecordResource {
+    attrs: WorkRecordFrontMatter;
+    body: string;
+    markdown: string;
+    title: string;
+    summary: string;
+    sections: Record<string, string>;
+    path: string;
+    relativePath: string;
 }
 
-interface RawSupersessionProposal {
-    candidates?: unknown;
+type ParseWorkRecordOptions = Partial<Pick<WorkRecordResource, "path" | "relativePath">>;
+
+function isFrontMatterList(value: FrontMatterValue | undefined): value is readonly FrontMatterValue[] {
+    return Array.isArray(value);
 }
 
-interface RawSupersessionCandidate {
-    recordId?: unknown;
-    reason?: unknown;
-}
-
-interface RawYamlRecord {
-    [key: string]: unknown;
+function isFrontMatterRecord(value: FrontMatterValue | undefined): value is FrontMatterRecord {
+    return value !== null && typeof value === "object" && !isFrontMatterList(value) && !(value instanceof Date);
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function asTrimmedString(value: unknown): string {
+function asTrimmedString(value: FrontMatterValue | undefined): string {
     if (typeof value === "string") return value.trim();
     if (value instanceof Date) return value.toISOString();
     return "";
 }
 
-function stringList(value: unknown): string[] | undefined {
-    if (!Array.isArray(value)) return undefined;
+function stringList(value: FrontMatterValue | undefined): string[] | undefined {
+    if (!isFrontMatterList(value)) return undefined;
     const list = value.map(asTrimmedString).filter(Boolean);
     return list.length ? list : undefined;
 }
 
-function evidenceList(value: unknown): WorkRecordEvidence[] | undefined {
-    if (!Array.isArray(value) || !value.length) return undefined;
+function evidenceList(value: FrontMatterValue | undefined): WorkRecordEvidence[] | undefined {
+    if (!isFrontMatterList(value) || !value.length) return undefined;
     return value.map((item) => {
-        if (!item || typeof item !== "object") return { path: "", note: "" };
-        const record = item as RawWorkRecordEvidence;
+        if (!isFrontMatterRecord(item)) return { path: "", note: "" };
         return {
-            path: asTrimmedString(record.path),
-            note: asTrimmedString(record.note),
+            path: asTrimmedString(item.path),
+            note: asTrimmedString(item.note),
         };
     });
 }
 
-export function normalizeWorkRecordProvenance(value: unknown): WorkRecordProvenance | undefined {
-    if (!value || typeof value !== "object") return undefined;
-    const record = value as RawWorkRecordProvenance;
-    const sourcePlans = stringList(record.sourcePlans);
-    const evidence = evidenceList(record.evidence);
+function normalizeWorkRecordProvenance(value: FrontMatterValue | undefined): WorkRecordProvenance | undefined {
+    if (!isFrontMatterRecord(value)) return undefined;
+    const sourcePlans = stringList(value.sourcePlans);
+    const evidence = evidenceList(value.evidence);
     if (!sourcePlans && !evidence) return undefined;
     return {
         ...(sourcePlans ? { sourcePlans } : {}),
@@ -107,38 +169,37 @@ export function normalizeWorkRecordProvenance(value: unknown): WorkRecordProvena
 }
 
 function normalizeSupersessionProposal(
-    value: unknown,
+    value: FrontMatterValue | undefined,
     supersedes: Set<string>,
 ): WorkRecordSupersessionProposal | undefined {
     if (value === undefined || value === null) return undefined;
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
+    if (!isFrontMatterRecord(value) && !(value instanceof Date)) {
         throw new Error("Invalid Work Record: supersessionProposal must be an object.");
     }
-    const proposal = value as RawSupersessionProposal;
-    const proposalKeys = Object.keys(proposal);
+    const proposalKeys = Object.keys(value);
     if (proposalKeys.some((key) => key !== "candidates")) {
         throw new Error("Invalid Work Record: supersessionProposal contains unknown keys.");
     }
-    if (!Array.isArray(proposal.candidates)) {
+    const rawCandidates = value instanceof Date ? undefined : value.candidates;
+    if (!isFrontMatterList(rawCandidates)) {
         throw new Error("Invalid Work Record: supersessionProposal.candidates must be an array.");
     }
     const seen = new Set<string>();
     const candidates: WorkRecordSupersessionCandidate[] = [];
-    for (const item of proposal.candidates) {
-        if (!item || typeof item !== "object" || Array.isArray(item)) {
+    for (const candidate of rawCandidates) {
+        if (!isFrontMatterRecord(candidate) && !(candidate instanceof Date)) {
             throw new Error("Invalid Work Record: each supersessionProposal candidate must be an object.");
         }
-        const candidate = item as RawSupersessionCandidate;
         if (Object.keys(candidate).some((key) => key !== "recordId" && key !== "reason")) {
             throw new Error("Invalid Work Record: supersessionProposal candidate contains unknown keys.");
         }
-        const recordId = asTrimmedString(candidate.recordId);
-        const reason = asTrimmedString(candidate.reason);
+        const recordId = asTrimmedString(candidate instanceof Date ? undefined : candidate.recordId);
         if (!UUID_RE.test(recordId)) {
             throw new Error(
                 "Invalid Work Record: supersessionProposal candidate recordId must be a plain UUID string.",
             );
         }
+        const reason = asTrimmedString(candidate instanceof Date ? undefined : candidate.reason);
         if (!reason) {
             throw new Error("Invalid Work Record: supersessionProposal candidate reason must be a non-blank string.");
         }
@@ -153,9 +214,9 @@ function normalizeSupersessionProposal(
     return candidates.length ? { candidates } : undefined;
 }
 
-export function normalizeWorkRecordFrontMatter(attrs: WorkRecordFrontMatterInput): WorkRecordFrontMatter {
+function normalizeWorkRecordFrontMatter(attrs: FrontMatterRecord): UnvalidatedWorkRecordFrontMatter {
     const provenance = normalizeWorkRecordProvenance(attrs.provenance);
-    const normalizedSupersedes = Array.isArray(attrs.supersedes)
+    const normalizedSupersedes = isFrontMatterList(attrs.supersedes)
         ? stringList(attrs.supersedes) || []
         : asTrimmedString(attrs.supersedes) || undefined;
     const supersedesIdentities = new Set(
@@ -167,38 +228,37 @@ export function normalizeWorkRecordFrontMatter(attrs: WorkRecordFrontMatterInput
         ).map((recordId) => recordId.toLowerCase()),
     );
     const supersessionProposal = normalizeSupersessionProposal(attrs.supersessionProposal, supersedesIdentities);
-    const rawWorkKind =
-        typeof attrs.workKind === "string"
-            ? toolRegistry.get("triage_report").normalizeWorkKind(attrs.workKind)
-            : undefined;
+    const rawWorkKind = typeof attrs.workKind === "string" ? normalizeWorkKind(attrs.workKind) : undefined;
     const rawScope = asTrimmedString(attrs.scope);
     const normalizedScope = rawScope === "feature" ? "planned_change" : rawScope;
-    const normalized: WorkRecordFrontMatter = {
-        kind: attrs.kind === WORK_RECORD_KIND ? WORK_RECORD_KIND : (attrs.kind as WorkRecordFrontMatter["kind"]),
+    const tickets = normalizeTicketReferences(attrs.tickets);
+    const archivedAt = asTrimmedString(attrs.archivedAt);
+    const supersededBy = asTrimmedString(attrs.supersededBy);
+    return {
+        kind: attrs.kind,
         recordId: asTrimmedString(attrs.recordId),
-        status: asTrimmedString(attrs.status) as WorkRecordFrontMatter["status"],
-        scope: normalizedScope as WorkRecordFrontMatter["scope"],
+        status: asTrimmedString(attrs.status),
+        scope: normalizedScope,
         ...(rawWorkKind ? { workKind: rawWorkKind } : {}),
-        origin: asTrimmedString(attrs.origin) as WorkRecordFrontMatter["origin"],
-        completionMode: asTrimmedString(attrs.completionMode) as WorkRecordFrontMatter["completionMode"],
+        origin: asTrimmedString(attrs.origin),
+        completionMode: asTrimmedString(attrs.completionMode),
         createdAt: asTrimmedString(attrs.createdAt),
-        ...(normalizeTicketReferences(attrs.tickets) ? { tickets: normalizeTicketReferences(attrs.tickets) } : {}),
-        ...(asTrimmedString(attrs.archivedAt) ? { archivedAt: asTrimmedString(attrs.archivedAt) } : {}),
+        ...(tickets ? { tickets } : {}),
+        ...(archivedAt ? { archivedAt } : {}),
         ...(normalizedSupersedes ? { supersedes: normalizedSupersedes } : {}),
-        ...(asTrimmedString(attrs.supersededBy) ? { supersededBy: asTrimmedString(attrs.supersededBy) } : {}),
+        ...(supersededBy ? { supersededBy } : {}),
         ...(supersessionProposal ? { supersessionProposal } : {}),
         ...(provenance ? { provenance } : {}),
     };
-    return normalized;
 }
 
 function yamlScalar(value: string) {
     return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-function appendScalarOrList(lines: string[], key: string, value: unknown) {
+function appendScalarOrList(lines: string[], key: string, value: FrontMatterValue | undefined) {
     if (value === undefined || value === null) return;
-    if (Array.isArray(value)) {
+    if (isFrontMatterList(value)) {
         if (!value.length) return;
         lines.push(`${key}:`);
         for (const item of value) lines.push(`    - ${yamlScalar(String(item))}`);
@@ -207,16 +267,16 @@ function appendScalarOrList(lines: string[], key: string, value: unknown) {
     if (String(value).trim()) lines.push(`${key}: ${yamlScalar(String(value))}`);
 }
 
-function appendYamlValue(lines: string[], key: string, value: unknown, indent: number) {
+function appendYamlValue(lines: string[], key: string, value: FrontMatterValue | undefined, indent: number) {
     const pad = " ".repeat(indent);
-    if (Array.isArray(value)) {
+    if (isFrontMatterList(value)) {
         if (!value.length) return;
         lines.push(`${pad}${key}:`);
         for (const item of value) appendYamlObjectListItem(lines, item, indent + 4);
         return;
     }
-    if (value && typeof value === "object") {
-        const entries = Object.entries(value as RawYamlRecord).filter(([, child]) => child !== undefined);
+    if (isFrontMatterRecord(value)) {
+        const entries = Object.entries(value).filter(([, child]) => child !== undefined);
         if (!entries.length) return;
         lines.push(`${pad}${key}:`);
         for (const [childKey, childValue] of entries) appendYamlValue(lines, childKey, childValue, indent + 4);
@@ -227,10 +287,10 @@ function appendYamlValue(lines: string[], key: string, value: unknown, indent: n
     else lines.push(`${pad}${key}: ${String(value)}`);
 }
 
-function appendYamlObjectListItem(lines: string[], value: unknown, indent: number) {
+function appendYamlObjectListItem(lines: string[], value: FrontMatterValue | undefined, indent: number) {
     const pad = " ".repeat(indent);
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-        const entries = Object.entries(value as RawYamlRecord).filter(([, child]) => child !== undefined);
+    if (isFrontMatterRecord(value)) {
+        const entries = Object.entries(value).filter(([, child]) => child !== undefined);
         if (!entries.length) return;
         const [firstKey, firstValue] = entries[0];
         if (typeof firstValue === "string") lines.push(`${pad}- ${firstKey}: ${yamlScalar(firstValue)}`);
@@ -247,11 +307,6 @@ function appendYamlObjectListItem(lines: string[], value: unknown, indent: numbe
     if (typeof value === "string") lines.push(`${pad}- ${yamlScalar(value)}`);
     else if (value === null) lines.push(`${pad}- null`);
     else lines.push(`${pad}- ${String(value)}`);
-}
-
-function appendTickets(lines: string[], tickets: TicketReference[] | undefined) {
-    const normalized = normalizeTicketReferences(tickets);
-    if (normalized) appendYamlValue(lines, WORK_RECORD_FRONT_MATTER_KEYS.tickets, normalized, 0);
 }
 
 function appendProvenance(lines: string[], provenance: WorkRecordProvenance | undefined) {
@@ -273,7 +328,7 @@ function appendProvenance(lines: string[], provenance: WorkRecordProvenance | un
     }
 }
 
-export function formatWorkRecordFrontMatter(attrs: WorkRecordFrontMatterInput) {
+function formatWorkRecordFrontMatter(attrs: WorkRecordFrontMatter) {
     const fm = normalizeWorkRecordFrontMatter(attrs);
     const lines = ["---"];
     appendScalarOrList(lines, WORK_RECORD_FRONT_MATTER_KEYS.kind, fm.kind);
@@ -284,7 +339,7 @@ export function formatWorkRecordFrontMatter(attrs: WorkRecordFrontMatterInput) {
     appendScalarOrList(lines, WORK_RECORD_FRONT_MATTER_KEYS.origin, fm.origin);
     appendScalarOrList(lines, WORK_RECORD_FRONT_MATTER_KEYS.completionMode, fm.completionMode);
     appendScalarOrList(lines, WORK_RECORD_FRONT_MATTER_KEYS.createdAt, fm.createdAt);
-    appendTickets(lines, fm.tickets);
+    if (fm.tickets) appendYamlValue(lines, WORK_RECORD_FRONT_MATTER_KEYS.tickets, fm.tickets, 0);
     appendProvenance(lines, fm.provenance);
     appendScalarOrList(lines, WORK_RECORD_FRONT_MATTER_KEYS.archivedAt, fm.archivedAt);
     appendScalarOrList(lines, WORK_RECORD_FRONT_MATTER_KEYS.supersedes, fm.supersedes);
@@ -296,11 +351,11 @@ export function formatWorkRecordFrontMatter(attrs: WorkRecordFrontMatterInput) {
     return lines.join("\n");
 }
 
-export function formatWorkRecordMarkdown(attrs: WorkRecordFrontMatterInput, body: string) {
+function formatWorkRecordMarkdown(attrs: WorkRecordFrontMatter, body: string) {
     return `${formatWorkRecordFrontMatter(attrs)}\n${String(body || "").replace(/^\s*/, "")}`;
 }
 
-export function extractWorkRecordSections(body: string): WorkRecordSections {
+function extractWorkRecordSections(body: string): WorkRecordSections {
     const text = String(body || "").replace(/^\s+/, "");
     const titleMatch = text.match(/^#\s+(.+)\s*$/m);
     const title = titleMatch ? titleMatch[1].trim() : "";
@@ -322,14 +377,17 @@ export function extractWorkRecordSections(body: string): WorkRecordSections {
     return { title, summary: sections.Summary || sections.Result || "", optional };
 }
 
-export function validateWorkRecord(attrs: WorkRecordFrontMatter, body: string) {
+function validateWorkRecord(
+    attrs: UnvalidatedWorkRecordFrontMatter,
+    sections: WorkRecordSections,
+): asserts attrs is WorkRecordFrontMatter {
     const errors = [];
     if (attrs.kind !== WORK_RECORD_KIND) errors.push('kind must be "work_record".');
     if (!UUID_RE.test(attrs.recordId || "")) errors.push("recordId must be a plain UUID string.");
-    if (!isWorkRecordStatus(attrs.status)) errors.push(`status is invalid: ${attrs.status || "missing"}.`);
-    if (!isWorkRecordScope(attrs.scope)) errors.push(`scope is invalid: ${attrs.scope || "missing"}.`);
-    if (!isWorkRecordOrigin(attrs.origin)) errors.push(`origin is invalid: ${attrs.origin || "missing"}.`);
-    if (!isWorkRecordCompletionMode(attrs.completionMode)) {
+    if (!WORK_RECORD_STATUSES.includes(attrs.status)) errors.push(`status is invalid: ${attrs.status || "missing"}.`);
+    if (!WORK_RECORD_SCOPES.includes(attrs.scope)) errors.push(`scope is invalid: ${attrs.scope || "missing"}.`);
+    if (!WORK_RECORD_ORIGINS.includes(attrs.origin)) errors.push(`origin is invalid: ${attrs.origin || "missing"}.`);
+    if (!WORK_RECORD_COMPLETION_MODES.includes(attrs.completionMode)) {
         errors.push(`completionMode is invalid: ${attrs.completionMode || "missing"}.`);
     }
     if (!attrs.createdAt) errors.push("createdAt is required.");
@@ -341,30 +399,17 @@ export function validateWorkRecord(attrs: WorkRecordFrontMatter, body: string) {
             if (!entry.path || !entry.note) errors.push("provenance.evidence entries require path and note.");
         }
     }
-    if (attrs.supersessionProposal) {
-        if (!Array.isArray(attrs.supersessionProposal.candidates)) {
-            errors.push("supersessionProposal.candidates must be an array.");
-        } else {
-            for (const candidate of attrs.supersessionProposal.candidates) {
-                if (!UUID_RE.test(candidate.recordId || "")) {
-                    errors.push("supersessionProposal candidate recordId must be a plain UUID string.");
-                }
-                if (!candidate.reason) errors.push("supersessionProposal candidate reason must be a non-blank string.");
-            }
-        }
-    }
-    const sections = extractWorkRecordSections(body);
     if (!sections.title) errors.push("Markdown body must start with an H1 title.");
     if (!sections.summary) errors.push("Markdown body must include a non-empty ## Summary section.");
     if (errors.length) throw new Error(`Invalid Work Record: ${errors.join(" ")}`);
 }
 
-export function parseWorkRecordMarkdown(markdown: string, options: ParseWorkRecordOptions = {}): WorkRecordResource {
+function parseWorkRecordMarkdown(markdown: string, options: ParseWorkRecordOptions = {}): WorkRecordResource {
     if (!hasFrontMatter(markdown)) throw new Error("Invalid Work Record: front matter is required.");
     const { attrs, body } = extractYaml(markdown);
     const normalized = normalizeWorkRecordFrontMatter(attrs);
-    validateWorkRecord(normalized, body);
     const sections = extractWorkRecordSections(body);
+    validateWorkRecord(normalized, sections);
     return {
         attrs: normalized,
         body,
@@ -376,3 +421,8 @@ export function parseWorkRecordMarkdown(markdown: string, options: ParseWorkReco
         relativePath: options.relativePath || "",
     };
 }
+
+export const documents = {
+    parse: parseWorkRecordMarkdown,
+    format: formatWorkRecordMarkdown,
+} as const;

@@ -1,3 +1,5 @@
+import { workRecords } from "@runwield/plans/work-records";
+import { workRecordFiles } from "@runwield/plans/work-record-files";
 import { parseProjectId, projects, type HomeProjectOwner } from "@runwield/projects";
 import { tmpdir } from "node:os";
 import { parseHistoryList, parseMilestoneDocuments } from "../shared/remote/project-store-protocol.ts";
@@ -368,22 +370,41 @@ test("retained delivery permits owner-side record persistence and index reconcil
         receipt.outcome.status = "pending";
         await writeFile(receiptPath, JSON.stringify(receipt));
         deepEqual(await service.execute(request), saved);
-        const record = await service.execute({
-            kind: "read-record",
+        ok("recordId" in saved.result && saved.result.recordId);
+        const readRequest = {
+            kind: "read-record" as const,
             planId: "plan-one",
-            recordId: "recordId" in saved.result ? saved.result.recordId! : "missing",
-        });
+            recordId: saved.result.recordId,
+        };
+        const record = await service.execute(readRequest);
         ok("records" in record.result);
         equal(record.result.records.length, 1);
-        ok(record.result.records[0]!.markdown.includes("Owner record evidence."));
-        const query = await service.execute({
-            kind: "search-records",
+        const markdown = record.result.records[0]!.markdown;
+        ok(markdown.includes("Owner record evidence."));
+        const searchRequest = {
+            kind: "search-records" as const,
             planId: "plan-one",
             query: "Owner record evidence",
             limit: 5,
-        });
+        };
+        const query = await service.execute(searchRequest);
         ok("records" in query.result);
         equal(query.result.records.length, 1);
+
+        const duplicatePath = join(workRecordFiles.forOwner(registration).layout.records, "duplicate.md");
+        const { attrs, body } = workRecords.documents.parse(markdown);
+        // Introduce colliding durable evidence without changing the derived index.
+        await writeFile(
+            duplicatePath,
+            workRecords.documents.format({ ...attrs, recordId: attrs.recordId.toUpperCase() }, body),
+        );
+        try {
+            await rejects(service.execute(readRequest), /Project store request refused/);
+            await rejects(service.execute(searchRequest), /Project store request refused/);
+        } finally {
+            await unlink(duplicatePath);
+        }
+        deepEqual(await service.execute(readRequest), record);
     } finally {
         await connection?.close();
         if (moved) await rename(`${fixture.root}-unavailable`, fixture.root);

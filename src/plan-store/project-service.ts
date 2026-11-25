@@ -3,7 +3,7 @@ import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "./packages.ts";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
 import { readPlanRecordingContext, type PlanRecordingContext } from "./recording.ts";
-import type { GeneratedWorkRecordSections } from "@runwield/plans/work-record-schema";
+import type { GeneratedWorkRecordSections } from "@runwield/plans/work-records";
 import type { PublishedDeliverySources } from "./published-source.ts";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
 import { confirmManagedPublication } from "./retained-proof.ts";
@@ -39,7 +39,8 @@ import {
     settlePreparedPackageRecord,
 } from "../shared/work-records/package-recording.ts";
 import { findWorkRecordById } from "../shared/work-records/store.ts";
-import { searchWorkRecords } from "../shared/work-records/search.ts";
+import { searchWorkRecordDocumentsInOwner, searchWorkRecords } from "../shared/work-records/search.ts";
+import { listProjectWorkRecords, selectProjectWorkRecord } from "./project-work-records.ts";
 import { syncWorkRecordToIndex } from "../shared/work-records/index-adapter.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 import {
@@ -500,7 +501,7 @@ export interface ProjectStoreRecordQuery {
     accessMode: "current" | "all";
 }
 export interface ProjectStoreRecordResources {
-    recordResources: import("@runwield/plans/work-record-schema").WorkRecordResource[];
+    recordResources: import("@runwield/plans/work-records").WorkRecordResource[];
 }
 export interface ProjectStoreRecordQueryResult {
     recordSearch: import("../shared/work-records/search.ts").WorkRecordSearchResult;
@@ -1252,20 +1253,20 @@ export class PreparedProjectStore {
                     };
                 }
                 if (command.kind === "read-record") {
-                    const record = await findWorkRecordById(this.cwd, command.recordId);
+                    const record = selectProjectWorkRecord(await listProjectWorkRecords(this.cwd), command.recordId);
                     return { records: record ? [{ recordId: record.attrs.recordId, markdown: record.markdown }] : [] };
                 }
                 if (command.kind === "search-records") {
-                    const result = await searchWorkRecords(this.cwd, command.query, {
+                    const result = await searchWorkRecordDocumentsInOwner(this.cwd, command.query, {
                         limit: command.limit,
                         mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
                     });
-                    const records = [];
-                    for (const item of result.records) {
-                        const record = await findWorkRecordById(this.cwd, item.recordId);
-                        if (record) records.push({ recordId: record.attrs.recordId, markdown: record.markdown });
-                    }
-                    return { records };
+                    return {
+                        records: result.records.map((record) => ({
+                            recordId: record.attrs.recordId,
+                            markdown: record.markdown,
+                        })),
+                    };
                 }
                 if (command.kind === "read-frozen") {
                     const manifest = await readPlanPackagePublication(owner, {

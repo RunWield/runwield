@@ -719,7 +719,7 @@ export async function verifyManagedRecording(
 
 export async function listManagedWorkRecords(
     cwd: string,
-): Promise<import("@runwield/plans/work-record-schema").WorkRecordResource[]> {
+): Promise<import("@runwield/plans/work-records").WorkRecordResource[]> {
     const owner = await client(cwd);
     if (!owner) return [];
     const result = (await owner.execute({ kind: "record-catalog" })).result;

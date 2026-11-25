@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { projects } from "@runwield/projects";
 import { withWorkRecordOwner } from "./work-records/owner.ts";
 import { writeWorkRecord } from "./work-records/store.ts";
@@ -8,7 +9,6 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../testing/as
 import { join } from "node:path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./work-records/markdown.ts";
 import {
     finalizeLocalPublicationLifecycle,
     finalizePublicationLifecycle,
@@ -29,7 +29,7 @@ const fixture = defineGitFixture(async (root) => {
     );
     await fsWriteFile(
         join(root, recordPath),
-        formatWorkRecordMarkdown(
+        workRecords.documents.format(
             {
                 kind: "work_record",
                 recordId,
@@ -67,11 +67,11 @@ for (const autocrlf of [false, true]) {
                     "verified",
                 );
                 assertEquals(
-                    parseWorkRecordMarkdown(await git(root, ["show", `${target}:${recordPath}`])).attrs.status,
+                    workRecords.documents.parse(await git(root, ["show", `${target}:${recordPath}`])).attrs.status,
                     "approved",
                 );
-                const finalized = parseWorkRecordMarkdown(await git(root, ["show", `${target}:${recordPath}`]));
-                const sealed = parseWorkRecordMarkdown(await git(root, ["show", `${candidate}:${recordPath}`]));
+                const finalized = workRecords.documents.parse(await git(root, ["show", `${target}:${recordPath}`]));
+                const sealed = workRecords.documents.parse(await git(root, ["show", `${candidate}:${recordPath}`]));
                 assertEquals(finalized.body, sealed.body);
                 assertEquals(finalized.body.includes(candidate), false);
                 assertEquals(finalized.body.includes("Historical pre-publication notes"), false);
@@ -233,11 +233,11 @@ test("already published legacy metadata still proves delivery without rewriting 
     try {
         const candidate = await git(root, ["rev-parse", "HEAD"]);
         const plan = await fsReadFile(join(root, planPath), "utf8");
-        const record = parseWorkRecordMarkdown(await fsReadFile(join(root, recordPath), "utf8"));
+        const record = workRecords.documents.parse(await fsReadFile(join(root, recordPath), "utf8"));
         await fsWriteFile(join(root, planPath), plan.replace("status: reviewed", "status: verified"));
         await fsWriteFile(
             join(root, recordPath),
-            formatWorkRecordMarkdown({ ...record.attrs, status: "approved" }, record.body),
+            workRecords.documents.format({ ...record.attrs, status: "approved" }, record.body),
         );
         await git(root, ["add", "docs"]);
         await git(root, ["commit", "-m", "legacy publication"]);
@@ -256,7 +256,7 @@ for (const edited of [false, true]) {
         const root = await fixture.checkout();
         try {
             const candidate = await git(root, ["rev-parse", "HEAD"]);
-            const original = parseWorkRecordMarkdown(await fsReadFile(join(root, recordPath), "utf8"));
+            const original = workRecords.documents.parse(await fsReadFile(join(root, recordPath), "utf8"));
             const legacyBody = [
                 `# ${original.title}`,
                 "",
@@ -276,7 +276,7 @@ for (const edited of [false, true]) {
                 ...original.body.split("\n").map((line) => `> ${line}`),
                 ...(edited ? ["Unreviewed claim."] : []),
             ].join("\n");
-            const legacy = formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, legacyBody);
+            const legacy = workRecords.documents.format({ ...original.attrs, status: "approved" }, legacyBody);
             await fsWriteFile(join(root, recordPath), legacy);
             if (edited) {
                 await assertRejects(
@@ -322,18 +322,18 @@ test("publication supersession reads sealed checkout copies without touching the
         const admitted = await projects.checkout.admit(root);
         assert(admitted.kind === "existing");
         const predecessorId = "33333333-3333-4333-8333-333333333333";
-        const successor = parseWorkRecordMarkdown(await fsReadFile(join(root, recordPath), "utf8"));
+        const successor = workRecords.documents.parse(await fsReadFile(join(root, recordPath), "utf8"));
         const priorAttrs = { ...successor.attrs, recordId: predecessorId, status: "approved" as const };
         await fsWriteFile(
             join(root, "docs/work-records/prior.md"),
-            formatWorkRecordMarkdown(
+            workRecords.documents.format(
                 priorAttrs,
                 "# Published predecessor\n\n## Summary\n\nDelivered before this change.\n",
             ),
         );
         await fsWriteFile(
             join(root, recordPath),
-            formatWorkRecordMarkdown({ ...successor.attrs, supersedes: predecessorId }, successor.body),
+            workRecords.documents.format({ ...successor.attrs, supersedes: predecessorId }, successor.body),
         );
         await git(root, ["add", "docs/work-records"]);
         await git(root, ["commit", "-m", "Seal successor and predecessor"]);
@@ -349,7 +349,7 @@ test("publication supersession reads sealed checkout copies without touching the
             await finalizePublicationLifecycle(root, "feature", candidate, [planPath]);
             assertEquals(await fsReadFile(personal.path, "utf8"), before);
         });
-        const predecessor = parseWorkRecordMarkdown(await fsReadFile(join(root, "docs/work-records/prior.md"), "utf8"));
+        const predecessor = workRecords.documents.parse(await fsReadFile(join(root, "docs/work-records/prior.md"), "utf8"));
         assertEquals(predecessor.attrs.status, "superseded");
         assertEquals(predecessor.attrs.supersededBy, recordId);
         assertStringIncludes(predecessor.body, "Published predecessor");

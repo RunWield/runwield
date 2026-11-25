@@ -1,10 +1,10 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
-import { workRecordOwnerLayout, assertWorkRecordPath } from "../../../shared/work-records/owner.ts";
 import { readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
 /** @module ui/workspace/server/project-artifacts */
 
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { getWorkRecordsDir, listWorkRecords } from "../../../shared/work-records/store.ts";
+import { registeredWorkRecords, workRecordsForCheckout } from "../../../plan-store/index.ts";
+import type { ProjectRegistry } from "@runwield/projects";
 import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-records/list.ts";
 
 export const PROJECT_ARTIFACT_TYPES = new Set(["work-record", "prd", "adr", "design-system", "domain-language"]);
@@ -75,41 +75,19 @@ function acceptedDocumentationPath(type, sourceId) {
     return false;
 }
 
-/** @param {string} root @param {string} path */
-export async function assertReadableWorkRecordPath(root, path) {
-    const owner = workRecordOwnerLayout();
-    if (!owner) return await assertContainedProjectPath(root, path);
-    if (resolve(root) !== resolve(owner.identity.checkoutRoot))
-        throw new Error("Work Record belongs to another Project.");
-    assertWorkRecordPath(path);
-    return await assertContainedProjectPath(owner.records, path);
-}
-
-/** @param {string} root */
-async function currentWorkRecords(root) {
-    try {
-        await assertReadableWorkRecordPath(root, getWorkRecordsDir(root));
-    } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
-        throw error;
-    }
-    const records = await listWorkRecords(root, { createDir: false });
-    for (const record of records) await assertReadableWorkRecordPath(root, record.path);
-    return records;
-}
-
-/** @param {string} root @param {string} type @param {string} sourceId */
-export async function readProjectArtifact(root, type, sourceId) {
+export async function readProjectArtifact(
+    root: string,
+    type: string,
+    sourceId: string,
+    registration?: { projectId: string; registry: ProjectRegistry },
+) {
     if (!PROJECT_ARTIFACT_TYPES.has(type)) throw new Error("Artifact type is not supported.");
     if (type === "work-record") {
-        const matches = (await currentWorkRecords(root)).filter(
-            (record) => record.attrs.recordId.toLowerCase() === sourceId.toLowerCase(),
-        );
-        if (matches.length > 1) {
-            throw new Error("Duplicate Work Record identity. Repair the Project before opening it.");
-        }
-        if (matches.length === 0 || !isCurrentWorkRecord(matches[0])) throw new Error("Work Record not found.");
-        const record = matches[0];
+        const records = registration
+            ? registeredWorkRecords(registration.projectId, registration.registry)
+            : workRecordsForCheckout(root);
+        const record = await records.read(sourceId);
+        if (!record || !isCurrentWorkRecord(record)) throw new Error("Work Record not found.");
         const sourceLinks = record.attrs.provenance?.sourcePlans || [];
         return {
             kind: "work-record",

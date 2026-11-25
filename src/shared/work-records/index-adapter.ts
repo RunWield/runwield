@@ -1,6 +1,7 @@
 import { projects } from "@runwield/projects";
-import { readLocalHomeStore } from "../../plan-store/index.ts";
-import { workRecordOwnerLayout, assertWorkRecordPath } from "./owner.ts";
+import { readLocalHomeStore, workRecordsForCheckout } from "../../plan-store/index.ts";
+import { workRecordOwnerLayout } from "./owner.ts";
+import { assertContainedPath } from "@runwield/resources/fs";
 import { mkdir as fsMkdir } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 /**
@@ -11,9 +12,8 @@ import { captureForegroundProcess } from "../captured-process.ts";
 import { checkedProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { remoteProjectOwner } from "../remote/personal-resources.ts";
 import { basename, dirname } from "node:path";
-import { listWorkRecords } from "./store.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
-import type { WorkRecordResource } from "@runwield/plans/work-record-schema";
+import type { ProjectWorkRecord } from "@runwield/plans/store";
 
 export interface WorkRecordIndexOptions {
     mnemotecaPort: WorkRecordMnemotecaPort;
@@ -78,7 +78,7 @@ async function getWorkRecordIndexCollectionNameInScope(cwd: string) {
     return `${resolveWorkRecordIndexProjectName(cwd, await resolveGitCommonDir(cwd))}:work-records`;
 }
 
-export function getWorkRecordLocatorTag(record: WorkRecordResource) {
+export function getWorkRecordLocatorTag(record: ProjectWorkRecord) {
     return `${LOCATOR_PREFIX}${record.attrs.recordId}`;
 }
 
@@ -87,7 +87,7 @@ export function recordIdFromTags(tags: string[]) {
     return tag ? tag.slice(LOCATOR_PREFIX.length) : "";
 }
 
-export function buildWorkRecordIndexTags(record: WorkRecordResource) {
+export function buildWorkRecordIndexTags(record: ProjectWorkRecord) {
     const tags = [
         `status:${record.attrs.status}`,
         `scope:${record.attrs.scope}`,
@@ -101,7 +101,7 @@ export function buildWorkRecordIndexTags(record: WorkRecordResource) {
     return [...new Set(tags)];
 }
 
-export function buildWorkRecordIndexDocument(record: WorkRecordResource) {
+export function buildWorkRecordIndexDocument(record: ProjectWorkRecord) {
     const sourcePlans = record.attrs.provenance?.sourcePlans || [];
     const ticketUrls = (record.attrs.tickets || []).map((ticket) => ticket.url).filter(Boolean);
     return [
@@ -150,7 +150,7 @@ async function runMnemotecaWorkRecordCommandInScope(cwd: string, args: string[],
     try {
         const admitted = workRecordOwnerLayout();
         if (admitted) {
-            assertWorkRecordPath(admitted.database);
+            await assertContainedPath(admitted.identity.executionAccountHome, admitted.database);
             await fsMkdir(dirname(admitted.database), { recursive: true, mode: 0o700 });
             result = await mnemotecaPort.run(args, { cwd, env: { MNEMOTECA_DB_PATH: admitted.database } });
         } else {
@@ -237,7 +237,7 @@ export async function findIndexedDocumentIdsByRecordId(cwd: string, recordId: st
 
 export async function syncWorkRecordToIndex(
     cwd: string,
-    record: WorkRecordResource,
+    record: ProjectWorkRecord,
     options: WorkRecordIndexOptions,
 ): Promise<WorkRecordIndexSyncResult> {
     await verifyMnemotecaUpdateAvailable(cwd, options);
@@ -281,6 +281,14 @@ export async function rebuildWorkRecordIndex(
     cwd: string,
     options: WorkRecordIndexOptions,
 ): Promise<WorkRecordIndexRebuildResult> {
+    return await rebuildWorkRecordIndexForRecords(cwd, options, await workRecordsForCheckout(cwd).list());
+}
+
+export async function rebuildWorkRecordIndexForRecords(
+    cwd: string,
+    options: WorkRecordIndexOptions,
+    records: readonly ProjectWorkRecord[],
+): Promise<WorkRecordIndexRebuildResult> {
     await verifyMnemotecaUpdateAvailable(cwd, options);
     const collection = await getWorkRecordIndexCollectionName(cwd);
     try {
@@ -289,7 +297,6 @@ export async function rebuildWorkRecordIndex(
         // Collection may not exist yet; init below is authoritative for rebuild bootstrap.
     }
     await initializeWorkRecordIndex(cwd, options);
-    const records = await listWorkRecords(cwd, { createDir: false });
     const failures: WorkRecordIndexFailure[] = [];
     let added = 0;
     for (const record of records) {

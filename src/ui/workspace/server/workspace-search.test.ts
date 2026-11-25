@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { projects } from "@runwield/projects";
 import { seedPlan } from "../../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture, withRetainedPlanReadFixture } from "../../../shared/testing/retained-plan-fixture.ts";
@@ -28,7 +29,6 @@ import { loadPlan } from "../../../shared/testing/plan-query-fixture.ts";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
 import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.ts";
-import { formatWorkRecordMarkdown } from "../../../shared/work-records/markdown.ts";
 import { replaceWorkRecord, writeWorkRecord } from "../../../shared/work-records/store.ts";
 import {
     getWorkspaceSearchRefreshMarker,
@@ -148,7 +148,7 @@ test("Workspace search hydrates current Work Record confidence, summary, links, 
         await replaceWorkRecord(
             fixture.root,
             record,
-            formatWorkRecordMarkdown(
+            workRecords.documents.format(
                 { ...attrs, completionMode: "done_enough", provenance: { sourcePlans: ["current-plan"] } },
                 "# Search Record\n\n## Summary\n\nCurrent searchable summary.\n\n## Deferred Work\n\nFollow up.\n",
             ),
@@ -877,7 +877,7 @@ test("Workspace search reports duplicate Work Record identity diagnostics and ex
         // Corrupt the stored bytes directly: the public writer correctly refuses duplicate identities.
         await fsWriteFile(
             join(original.path, "..", "duplicate.md"),
-            formatWorkRecordMarkdown(
+            workRecords.documents.format(
                 { ...base, status: "approved" },
                 "# Duplicate Record\n\n## Summary\n\nDuplicate record.\n",
             ),

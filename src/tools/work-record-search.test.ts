@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { writeWorkRecord } from "../shared/work-records/index.ts";
-import type { WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
+import type { WorkRecordFrontMatter } from "@runwield/plans/work-records";
 import type { WorkRecordMnemotecaPort } from "../shared/work-records/mnemoteca-port.ts";
 import { createWorkRecordMnemotecaFixture } from "../shared/work-records/test-fixtures/mnemoteca-port.ts";
 import { createWorkRecordSearchTool } from "./work-record-search.ts";

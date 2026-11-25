@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import {
     commitOperationEffect,
@@ -7,7 +8,6 @@ import {
     type BatchOperationIntent,
 } from "./operation-receipts.ts";
 import { requestWorkspaceSearchRefresh } from "../shared/workspace-search-refresh.ts";
-import { parseWorkRecordMarkdown } from "../shared/work-records/markdown.ts";
 /** Explicit personal Plan packages. Legacy discovery and lifecycle admission remain separate. */
 import fs from "node:fs/promises";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -2376,7 +2376,7 @@ async function validatePublicationManifest(
         validateRecordingOutcome(JSON.parse(JSON.stringify(manifest.recordingOutcome)));
     if (manifest.preparedRecord) {
         assertDeliveryCopies([manifest.preparedRecord]);
-        const record = parseWorkRecordMarkdown(manifest.preparedRecord.text);
+        const record = workRecords.documents.parse(manifest.preparedRecord.text);
         const ownerId =
             manifest.members.find((member) => member.metadata.planId === manifest.planId)?.metadata.parentPlanId ||
             manifest.planId;

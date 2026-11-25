@@ -46,7 +46,7 @@ import {
     confirmWorkRecordSupersessionProposal,
     rejectWorkRecordSupersessionProposal,
 } from "../work-records/supersession.ts";
-import type { WorkRecordSupersessionCandidate } from "@runwield/plans/work-record-schema";
+import type { WorkRecordSupersessionCandidate } from "@runwield/plans/work-records";
 
 export type WorkRecordSupersessionDecision = "confirm" | "reject" | "later";
 

@@ -1,4 +1,5 @@
 import { projects } from "@runwield/projects";
+import { withLocalProjectAction } from "../../plan-store/index.ts";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import process from "node:process";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
@@ -7,7 +8,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import type { WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
+import { workRecords, type WorkRecordFrontMatter } from "@runwield/plans/work-records";
 import { findWorkRecordById, listWorkRecords, writeWorkRecord } from "../../shared/work-records/index.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
@@ -116,6 +117,20 @@ test("wld wr defaults to current Work Records from the project store", async () 
         const all = await captureCommand(["list", "--all"]);
         assertStringIncludes(all, "Superseded Record");
         assertStringIncludes(all, `WARNING: superseded by ${CURRENT_RECORD_ID}.`);
+    });
+});
+
+test("wld wr list displays the canonical path from an admitted owner scope", async () => {
+    await withRuntimeCommandFixture("wr-list-owned-path-", async ({ projectRoot }) => {
+        process.chdir(projectRoot);
+        await withLocalProjectAction(projectRoot, async () => {
+            const record = await writeWorkRecord(
+                projectRoot,
+                recordAttrs(CURRENT_RECORD_ID, "plan-current"),
+                "# Current Record\n\n## Summary\n\nCanonical path evidence.",
+            );
+            assertStringIncludes(await captureCommand(["list"]), `path: ${record.path}`);
+        });
     });
 });
 
@@ -421,12 +436,11 @@ test("listing, preview and decline preserve an imported record and its committed
         const fs = await import("node:fs/promises");
         const { git } = await import("../../shared/git-test-fixture.ts");
         const { setCustomSetting } = await import("../../shared/settings.ts");
-        const { formatWorkRecordMarkdown } = await import("../../shared/work-records/markdown.ts");
         await git(projectRoot, ["init", "-q"]);
         await projects.checkout.admit(projectRoot);
         await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", projectRoot);
         const path = join(projectRoot, "delivered.md");
-        const bytes = formatWorkRecordMarkdown(
+        const bytes = workRecords.documents.format(
             recordAttrs(CURRENT_RECORD_ID, "old-plan"),
             "# Delivered\n\n## Summary\n\nDistinct outcome.",
         );

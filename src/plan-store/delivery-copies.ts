@@ -1,8 +1,8 @@
+import { workRecords, type WorkRecordResource } from "@runwield/plans/work-records";
 import { opendir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
 import { mergeFrontMatterText, parsePlanFrontMatter } from "@runwield/plans/format";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "../shared/work-records/markdown.ts";
 async function git(cwd: string, args: string[]): Promise<string> {
     const result = await captureForegroundProcess("git", { cwd, args });
     if (!result.success) throw new Error(new TextDecoder().decode(result.stderr));
@@ -15,7 +15,7 @@ async function publicationRecordCopies(cwd: string) {
         if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
         const relativePath = `docs/work-records/${entry.name}`;
         const markdown = await fsReadFile(join(cwd, relativePath), "utf8");
-        records.push({ ...parseWorkRecordMarkdown(markdown), markdown, relativePath });
+        records.push({ ...workRecords.documents.parse(markdown), markdown, relativePath });
     }
     return records;
 }
@@ -50,9 +50,9 @@ async function matchesGitDocument(
 
 /** Match only the exact wrapper emitted by older publishers; never write this form. */
 function legacyWrappedRecord(sealedRecord: string, sealedCommit: string, targetBranch?: string): string {
-    const original = parseWorkRecordMarkdown(sealedRecord);
+    const original = workRecords.documents.parse(sealedRecord);
     if (original.attrs.status !== "pending_verification") {
-        return formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, original.body);
+        return workRecords.documents.format({ ...original.attrs, status: "approved" }, original.body);
     }
     const body = [
         `# ${original.title}`,
@@ -72,13 +72,13 @@ function legacyWrappedRecord(sealedRecord: string, sealedCommit: string, targetB
         "",
         ...original.body.split("\n").map((line) => `> ${line}`),
     ].join("\n");
-    return formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, body);
+    return workRecords.documents.format({ ...original.attrs, status: "approved" }, body);
 }
 
 /** Publication approves the sealed content without changing its prose. */
 function finalizedRecord(sealedRecord: string): string {
-    const original = parseWorkRecordMarkdown(sealedRecord);
-    return formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, original.body);
+    const original = workRecords.documents.parse(sealedRecord);
+    return workRecords.documents.format({ ...original.attrs, status: "approved" }, original.body);
 }
 
 /**
@@ -143,7 +143,7 @@ export async function finalizePublicationLifecycle(
             throw new Error("Invalid publication Work Record path.");
         }
         const recordText = await fsReadFile(join(cwd, recordPath), "utf8");
-        const record = parseWorkRecordMarkdown(recordText);
+        const record = workRecords.documents.parse(recordText);
         if (
             record.attrs.recordId !== expected.workRecord.recordId ||
             !record.attrs.provenance?.sourcePlans?.includes(expected.planId || "")
@@ -183,7 +183,7 @@ export async function finalizePublicationLifecycle(
                 ) {
                     throw new Error(`Supersession changed during publication: ${id}`);
                 }
-                const text = formatWorkRecordMarkdown(
+                const text = workRecords.documents.format(
                     {
                         ...predecessor.attrs,
                         status: "superseded",
@@ -280,7 +280,7 @@ export async function readPublishedWorkRecordIndex(
     sourcePlanCommit = commit,
 ) {
     const planKinds = new Map<string, string>();
-    const records: ReturnType<typeof parseWorkRecordMarkdown>[] = [];
+    const records: WorkRecordResource[] = [];
     const linkedIds = new Set<string>();
     for (const path of planPaths) {
         // The original delivery owns these record identities even if its Plan
@@ -300,7 +300,7 @@ export async function readPublishedWorkRecordIndex(
     for (const path of paths) {
         const text = await sealedDocument(gitRoot, commit, path);
         if (!text) continue;
-        const record = parseWorkRecordMarkdown(text, { path: join(projectRoot, path), relativePath: path });
+        const record = workRecords.documents.parse(text, { path: join(projectRoot, path), relativePath: path });
         if (
             linkedIds.has(record.attrs.recordId) ||
             (record.attrs.supersededBy && linkedIds.has(record.attrs.supersededBy))

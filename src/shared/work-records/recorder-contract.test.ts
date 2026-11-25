@@ -9,8 +9,8 @@ import { getCwd } from "../../constants.ts";
 import { assertEquals, assertExists, assertThrows } from "../../testing/assertions.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
 import { HostedSession } from "../session/hosted-session.ts";
-import { findWorkRecordById, parseWorkRecordMarkdown, runWorkRecordBackfill } from "./index.ts";
-import type { WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
+import { findWorkRecordById, runWorkRecordBackfill } from "./index.ts";
+import { workRecords, type WorkRecordFrontMatter } from "@runwield/plans/work-records";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 
 for (const field of ["deviationsFromPlan", "deferredWork"]) {
@@ -105,7 +105,7 @@ for (const recorded of [false, true]) {
 
 for (const heading of ["Out of Scope", "Deferred Work"]) {
     test(`Work Record readers retain ${heading}`, () => {
-        const record = parseWorkRecordMarkdown(
+        const record = workRecords.documents.parse(
             `---
 kind: work_record
 recordId: 11111111-1111-4111-8111-111111111111

@@ -13,9 +13,8 @@ import {
 import { join } from "node:path";
 import { withPlanPublication, restartPlanValidation, readRetainedExecutionPlan } from "../../plan-store/index.ts";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-import { planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout, workRecordsForCheckout } from "../../plan-store/index.ts";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
-import { listWorkRecords } from "../work-records/store.js";
 import { gitStatusPaths } from "../git-runtime-safety.ts";
 import { recoverSealedPlanFormatting } from "../../plan-store/index.ts";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
@@ -100,12 +99,8 @@ async function sourceNeedsRevalidation(attempt: PublicationAttempt, head: string
     const recorder = source?.attrs.validationCheckpoint?.hostRecorder;
     if (!recordPath && source && recorder?.sections) {
         // The canonical record can be durable before generation saves its backlink.
-        const records = await listWorkRecords(attempt.executionCwd, { createDir: false });
-        recordPath = records.find(
-            (record) =>
-                record.attrs.recordId === recorder.recordId &&
-                record.attrs.provenance?.sourcePlans?.includes(source.planId),
-        )?.relativePath;
+        const record = await workRecordsForCheckout(attempt.executionCwd).read(recorder.recordId);
+        if (record?.attrs.provenance?.sourcePlans?.includes(source.planId)) recordPath = record.relativePath;
     }
     for (const path of new Set(paths)) {
         if (isRunWieldOwnedRuntimePath(path)) continue;
