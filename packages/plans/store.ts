@@ -1,7 +1,9 @@
 import type { ProjectId } from "@runwield/projects";
 import type { PlanFrontMatter } from "./document.ts";
+import type { EpicArtifactName } from "./format/artifacts.ts";
 import type { PackageDocuments, PlanHistory } from "./history.ts";
 import type { PlanId } from "./identity.ts";
+import type { ProjectPublicationCopies } from "./publication-copies.ts";
 import type { PlanEvent, PlanEventDetails } from "./lifecycle.ts";
 import type { WorkRecordFrontMatter, WorkRecordResource } from "./work-records.ts";
 
@@ -117,11 +119,51 @@ export interface ProjectPlanHistory {
     restore(planId: PlanId, version: string, expectedRevision: string): Promise<string>;
 }
 
+export interface ProjectPlanArtifact {
+    planId: PlanId;
+    name: EpicArtifactName;
+    /** Logical reference to this resource inside the admitted Project. */
+    relativePath: string;
+    body: string;
+    /** Revision used to guard the next save of this artifact. */
+    revision: string;
+}
+
+export interface ManualQaSection {
+    childHeading: string;
+    checklistMarkdown: string;
+}
+
+export interface ManualQaSectionLookup {
+    exists: boolean;
+    relativePath: string;
+}
+
+export interface ManualQaSectionAppend {
+    status: "recorded" | "already_present";
+    relativePath: string;
+}
+
+export interface ProjectPlanArtifacts {
+    /** Return null when the Epic exists and this optional artifact has not been created. */
+    read(planId: PlanId, name: EpicArtifactName): Promise<ProjectPlanArtifact | null>;
+    /** Save a generated artifact. A supplied revision must still match the owner's current artifact revision. */
+    save(planId: PlanId, name: EpicArtifactName, body: string, expectedRevision?: string): Promise<ProjectPlanArtifact>;
+    findManualQaSection(epicPlanId: PlanId, childPlanId: PlanId): Promise<ManualQaSectionLookup>;
+    appendManualQaSection(
+        epicPlanId: PlanId,
+        childPlanId: PlanId,
+        section: ManualQaSection,
+    ): Promise<ManualQaSectionAppend>;
+}
+
 /** Operations against a single admitted Project and its canonical Plan owner. */
 export interface ProjectPlanStore {
     readonly projectId: ProjectId;
     readonly history: ProjectPlanHistory;
+    readonly artifacts: ProjectPlanArtifacts;
     readonly workRecords: ProjectWorkRecords;
+    readonly publicationCopies: ProjectPublicationCopies;
     list(): Promise<ProjectPlanCatalog>;
     read(planId: PlanId): Promise<ProjectPlanDocument>;
     readArchived(planId: PlanId): Promise<ProjectPlanDocument>;

@@ -3,7 +3,7 @@ import { withRetainedPlanFixture } from "../../testing/retained-plan-fixture.ts"
 import { type PackageWorkflowSelection } from "../../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
 import { readPlanPackage } from "../../../plan-store/packages.ts";
-import { preparePackageCopies } from "../../../plan-store/index.ts";
+import { preparePublicationCopies } from "../publication-copy-commit.ts";
 import { captureForegroundProcess } from "../../captured-process.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
@@ -123,7 +123,7 @@ const run = async () => {
 
         attempt = await reconcileStoredPublication(config.projectRoot, attempt);
         if (attempt.phase === "candidate_sealed" && attempt.packageInput) {
-            const evidence = await preparePackageCopies(config.projectRoot, attempt);
+            const evidence = await preparePublicationCopies(config.projectRoot, attempt);
             crash(config, "artifact_effect");
             attempt = await advanceStoredPublication(config.projectRoot, attempt, "artifacts_committed", evidence);
             crash(config, "artifact_receipt");

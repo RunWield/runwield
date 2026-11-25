@@ -1,8 +1,38 @@
+import { isPlanId, type PlanId } from "../identity.ts";
+
 /** Storage-free names and classification for Plan companion documents. */
 export const EPIC_MANUAL_QA_FILE_NAME = "manual-qa.md";
 /** The latest failing Epic integration gate report; a repair child is planned from it. */
 export const EPIC_INTEGRATION_REPORT_FILE_NAME = "integration-report.md";
-export const EPIC_ARTIFACT_FILE_NAMES = Object.freeze([EPIC_MANUAL_QA_FILE_NAME, EPIC_INTEGRATION_REPORT_FILE_NAME]);
+export type EpicArtifactName = typeof EPIC_MANUAL_QA_FILE_NAME | typeof EPIC_INTEGRATION_REPORT_FILE_NAME;
+export const EPIC_ARTIFACT_FILE_NAMES: readonly string[] = Object.freeze([
+    EPIC_MANUAL_QA_FILE_NAME,
+    EPIC_INTEGRATION_REPORT_FILE_NAME,
+]);
+
+export function isEpicArtifactName(name: string): name is EpicArtifactName {
+    return EPIC_ARTIFACT_FILE_NAMES.includes(name);
+}
+
+export type PlanArtifactResource = "context.md" | EpicArtifactName;
+
+export function planArtifactReference(planId: string, resource: PlanArtifactResource = "context.md"): string {
+    if (!isPlanId(planId)) throw new Error("A durable Plan ID is required.");
+    const id = /^\.{1,2}$/.test(planId) ? planId.replaceAll(".", "%2E") : encodeURIComponent(planId);
+    return `plans/${id}/${resource}`;
+}
+
+export function parsePlanArtifactReference(path: string, resource: PlanArtifactResource): PlanId | undefined {
+    if (!path.startsWith("plans/") || !path.endsWith(`/${resource}`)) return;
+    const id = path.slice("plans/".length, -resource.length - 1);
+    try {
+        const decoded = decodeURIComponent(id);
+        if (isPlanId(decoded) && planArtifactReference(decoded, resource) === path) return decoded;
+    } catch (error) {
+        if (!(error instanceof URIError)) throw error;
+    }
+}
+
 const EPIC_ARTIFACT_PLAN_SEGMENTS = new Set(EPIC_ARTIFACT_FILE_NAMES.map((fileName) => fileName.replace(/\.md$/, "")));
 
 export function splitPlanName(planName: string): string[] {

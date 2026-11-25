@@ -26,6 +26,7 @@ export async function assertContainedProjectPath(root, path) {
 }
 
 export { assertAuthorizedPlanPath, assertReadablePlanResource } from "../../../plan-store/index.ts";
+export { readSessionArtifact } from "../../../shared/session/read-session-artifact.ts";
 
 /** @param {string} root @param {string} relativePath */
 export async function readSafeProjectMarkdown(root, relativePath) {

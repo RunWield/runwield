@@ -107,6 +107,7 @@ async function executeManagedFixture() {
         const {
             authorLocalPlan,
             openPlanStoreForCheckout,
+            StalePlanWriteError,
             recordPlanEvent,
             withLocalPlanWorkflow,
             reservePlanExecution,
@@ -534,12 +535,8 @@ async function executeManagedFixture() {
         await withLocalPlanWorkflow(input.cwd, "public-tool", async () => {
             const { startPublicationAttempt, advanceStoredPublication, cleanupStoredPublication } =
                 await import("../workflow/publication-machine.ts");
-            const {
-                preparePackageCopies,
-                settlePackagePublication,
-                freezePlanPublicationPolicy,
-                sealPackagePublication,
-            } = await import("../../plan-store/index.ts");
+            const { selectedPublicationCopies, settlePackagePublication } = await import("../../plan-store/index.ts");
+            const { preparePublicationCopies } = await import("../workflow/publication-copy-commit.ts");
             const { publishExecutionWorktreeIsolated } = await import("../isolated-publication.ts");
             const { captureForegroundProcess } = await import("../captured-process.ts");
             const commit = async (cwd: string, ref: string) => {
@@ -547,12 +544,12 @@ async function executeManagedFixture() {
                 if (!result.success) throw new Error("Git commit unavailable.");
                 return new TextDecoder().decode(result.stdout).trim();
             };
-            await freezePlanPublicationPolicy("public-tool", attemptId, {
+            await selectedPublicationCopies.freezePolicy("public-tool", attemptId, {
                 plans: input.copyDocuments,
                 workRecords: input.copyDocuments,
                 autoGenerateRecords: true,
             });
-            await sealPackagePublication(
+            await selectedPublicationCopies.seal(
                 "public-tool",
                 attemptId,
                 await commit(execution.executionCwd!, "HEAD"),
@@ -584,6 +581,17 @@ async function executeManagedFixture() {
                 validatedCommit: await commit(execution.executionCwd!, "HEAD"),
                 targetHeadAtSeal: await commit(input.cwd, "refs/heads/main"),
             });
+            const publicationStore = openPlanStoreForCheckout(input.cwd);
+            if (!publicationStore || !attempt.packageInput)
+                throw new Error("Managed publication did not retain a Project-bound copy reference.");
+            const copies = await publicationStore.publicationCopies.read(attempt.packageInput);
+            if (
+                input.copyDocuments
+                    ? !copies.some((copy) => copy.kind === "plan") ||
+                      !copies.some((copy) => copy.kind === "work-record" && copy.text.includes("Managed delivery"))
+                    : copies.length !== 0
+            )
+                throw new Error("Managed publication copies did not match the frozen delivery settings.");
             let refusedUnpublished = false;
             try {
                 await settlePackagePublication(input.cwd, attempt);
@@ -592,7 +600,7 @@ async function executeManagedFixture() {
             }
             if (!refusedUnpublished || (await loadPlan(input.cwd, "public-tool"))?.attrs.status !== "reviewed")
                 throw new Error("Unpublished Git was incorrectly accepted as delivery.");
-            const artifacts = await preparePackageCopies(input.cwd, attempt);
+            const artifacts = await preparePublicationCopies(input.cwd, attempt);
             attempt = await advanceStoredPublication(input.cwd, attempt, "artifacts_committed", artifacts);
             await publishExecutionWorktreeIsolated({
                 projectRoot: input.cwd,
@@ -811,13 +819,7 @@ async function executeManagedFixture() {
             !projected.markdown.includes("Verify the integrated family.")
         )
             throw new Error("Epic projections did not reach its canonical owner.");
-        const {
-            operatePlanFile,
-            saveEpicArtifact,
-            resolveEpicArtifactPath,
-            appendEpicManualQaSection,
-            findEpicManualQaSection,
-        } = await import("../../plan-store/index.ts");
+        const { operatePlanFile } = await import("../../plan-store/index.ts");
         const fileEdited = await operatePlanFile(input.cwd, {
             path: projected.path,
             mode: "edit",
@@ -842,29 +844,50 @@ async function executeManagedFixture() {
             rejectedCheckoutEdit = true;
         }
         if (!rejectedCheckoutEdit) throw new Error("Managed file tool wrote a checkout Plan.");
-        await saveEpicArtifact(input.cwd, "managed-epic", "integration-report.md", "# Integrated family report\n");
-        const artifactPath = await resolveEpicArtifactPath(input.cwd, "managed-epic", "integration-report.md");
+        const artifactStore = openPlanStoreForCheckout(input.cwd)!;
+        const { artifacts } = artifactStore;
+        const epicId = plans.identity.parse(projected.attrs.planId)!;
+        const childId = plans.identity.parse(slice.attrs.planId)!;
+        const initialEpicRevision = (await artifactStore.read(epicId)).revision;
+        const firstReport = "# Integrated family report\n";
+        const recordedReport = await artifacts.save(epicId, "integration-report.md", firstReport, initialEpicRevision);
+        const report = await artifacts.read(epicId, "integration-report.md");
         if (
-            !artifactPath.startsWith(input.resources.globalRoot) ||
-            (
-                await readPlanResource(
-                    input.cwd,
-                    { planId: projected.attrs.planId!, planName: "managed-epic" },
-                    "integration-report.md",
-                )
-            ).body !== "# Integrated family report\n"
+            report?.relativePath !== `plans/${epicId}/integration-report.md` ||
+            report.body !== "# Integrated family report\n" ||
+            (await readPlanResource(input.cwd, { planId: epicId, planName: "managed-epic" }, "integration-report.md"))
+                .body !== report.body
         )
             throw new Error("Epic artifact lost canonical ownership.");
+        const updatedReport = "# Integrated family report\n\nNew review findings.\n";
+        const updatedArtifact = await artifacts.save(epicId, "integration-report.md", updatedReport, report.revision);
+        let staleArtifactRejected = false;
+        try {
+            await artifacts.save(epicId, "integration-report.md", "# Stale report\n", report.revision);
+        } catch (error) {
+            staleArtifactRejected = error instanceof StalePlanWriteError;
+        }
+        let identicalStaleSaveRejected = false;
+        try {
+            await artifacts.save(epicId, "integration-report.md", firstReport, initialEpicRevision);
+        } catch (error) {
+            identicalStaleSaveRejected = error instanceof StalePlanWriteError;
+        }
+        if (
+            !staleArtifactRejected ||
+            !identicalStaleSaveRejected ||
+            recordedReport.revision !== report.revision ||
+            updatedArtifact.revision === report.revision ||
+            (await artifacts.read(epicId, "integration-report.md"))?.body !== updatedReport
+        )
+            throw new Error("Managed Epic artifact accepted a stale save.");
         const qa = {
-            projectRoot: input.cwd,
-            epicPlanName: "managed-epic",
-            childPlanName: "managed-epic/slice",
             childHeading: "Slice",
             checklistMarkdown: "Manual verification steps for managed-epic/slice\n- [ ] Inspect the integrated slice.",
         };
         let missingAttemptRejected = false;
         try {
-            await appendEpicManualQaSection(qa);
+            await artifacts.appendManualQaSection(epicId, childId, qa);
         } catch {
             missingAttemptRejected = true;
         }
@@ -884,10 +907,15 @@ async function executeManagedFixture() {
         await withLocalPlanWorkflow(input.cwd, "managed-epic/slice", () =>
             reservePlanExecution("managed-epic/slice", { targetBranch: "epic/managed" }),
         );
+        const competingQa = await Promise.all([
+            artifacts.appendManualQaSection(epicId, childId, qa),
+            artifacts.appendManualQaSection(epicId, childId, qa),
+        ]);
         if (
-            (await appendEpicManualQaSection(qa)).status !== "recorded" ||
-            !(await findEpicManualQaSection(input.cwd, qa.epicPlanName, qa.childPlanName)).exists ||
-            (await appendEpicManualQaSection(qa)).status !== "already_present"
+            competingQa.filter(({ status }) => status === "recorded").length !== 1 ||
+            competingQa.filter(({ status }) => status === "already_present").length !== 1 ||
+            !(await artifacts.findManualQaSection(epicId, childId)).exists ||
+            (await artifacts.appendManualQaSection(epicId, childId, qa)).status !== "already_present"
         )
             throw new Error("Generated QA did not retain its exact family attempt.");
         const { sharePlanForReview, pullPlanForRevision, pushPlanRevision, unsharePlan } =

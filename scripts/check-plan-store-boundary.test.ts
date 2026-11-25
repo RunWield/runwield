@@ -47,11 +47,13 @@ test("Plan boundary permits public operations, pure formatting and explicit priv
     );
 });
 
-test("only the Plan store binds the retained-input filesystem driver", () => {
-    const source = 'import { readRetainedPlanInput } from "@runwield/plans/file-snapshots";';
-    equal(inspectPlanStoreImports("src/plan-store/packages.ts", source).length, 0);
-    equal(inspectPlanStoreImports("src/tools/example.ts", source).length, 1);
-    equal(inspectPlanStoreImports("packages/plans/index.ts", source).length, 1);
+test("only the Plan store binds its retained-input, artifact and publication filesystem drivers", () => {
+    for (const entry of ["file-snapshots", "artifact-files", "publication-files"]) {
+        const source = `import * as driver from "@runwield/plans/${entry}";`;
+        equal(inspectPlanStoreImports("src/plan-store/packages.ts", source).length, 0, entry);
+        equal(inspectPlanStoreImports("src/tools/example.ts", source).length, 1, entry);
+        equal(inspectPlanStoreImports("packages/plans/index.ts", source).length, 1, entry);
+    }
 });
 
 test("the Plans package cannot import application code, including type-only imports", () => {

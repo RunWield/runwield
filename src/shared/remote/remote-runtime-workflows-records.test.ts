@@ -39,7 +39,7 @@ test("remote plan_written commits its exact artifact, association and review and
         const id = written.savedId;
         const artifacts = f.store.listSessionArtifacts(id);
         assertEquals(artifacts.length, 1);
-        assertEquals(artifacts[0].path, "docs/plans/remote-records.md");
+        assertEquals(artifacts[0].path, "plans/remote-records-plan/context.md");
         assertEquals(artifacts[0].kind, "plan");
         const associations = f.store.listSessionPlanAssociations(id);
         assertEquals(associations.length, 1);

@@ -1,14 +1,12 @@
 import { projects } from "@runwield/projects";
 import type { PlanFrontMatter, PlanFrontMatterInput, PlanFrontMatterWithCustomFields } from "@runwield/plans";
 
-import type { MoveEpicArtifactResult } from "./plan-store/artifacts.ts";
+import type { MoveEpicArtifactResult } from "@runwield/plans/artifact-files";
 
 import type { ControllerDocumentWorktree, PendingControllerRepair } from "./plan-store/controllers.ts";
 import { assertContainedProjectPath } from "./plan-store/resources.ts";
 
 import type { FrontMatterValue } from "./shared/front-matter.ts";
-
-export type { MoveEpicArtifactResult } from "./plan-store/artifacts.ts";
 
 export type { WorktreeRegistryEntry } from "./shared/worktree-registry.ts";
 
@@ -317,6 +315,7 @@ import {
     injectFrontMatter,
     parsePlanFrontMatter,
     planDocumentMarkdown,
+    planArtifactReference,
     splitPlanMarkdownBody,
     mergeFrontMatterText,
     hashPlanBody,
@@ -463,7 +462,7 @@ import {
 
 import { assertSharedPlanWriteAllowed, COLLABORATION_LOCK_BYPASS } from "./shared/collaboration/lock.ts";
 
-import { moveEpicArtifactsFromArchive, moveEpicArtifactsToArchive } from "./plan-store/artifacts.ts";
+import { moveCheckoutEpicArtifacts } from "@runwield/plans/artifact-files";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -2485,7 +2484,7 @@ export async function archivePlan(
                 try {
                     movedArtifacts =
                         source.attrs.classification === "PROJECT" && source.name.split("/").length === 1
-                            ? await moveEpicArtifactsToArchive(cwd, source.name)
+                            ? await moveCheckoutEpicArtifacts(cwd, source.name, true)
                             : [];
                     await fsRm(source.path);
                     await syncDirectory(dirname(source.path));
@@ -2949,7 +2948,7 @@ export async function restoreArchivedPlan(
                 try {
                     movedArtifacts =
                         archived.attrs.classification === "PROJECT" && archived.name.split("/").length === 1
-                            ? await moveEpicArtifactsFromArchive(cwd, archived.name)
+                            ? await moveCheckoutEpicArtifacts(cwd, archived.name, false)
                             : [];
                     await syncDirectory(dirname(destination.filePath));
                     if (renamedAttempt) {
@@ -3276,7 +3275,7 @@ async function readPlanResourceCatalogInProject(cwd: string): Promise<ReadPlanRe
                     planName: entry.metadata.name,
                     name: entry.metadata.name,
                     planId: entry.metadata.planId,
-                    relativePath: `plans/${entry.metadata.planId}/context.md`,
+                    relativePath: planArtifactReference(entry.metadata.planId),
                 };
             }),
         );
@@ -3419,7 +3418,7 @@ async function findPlanEvidenceByIdInProject(cwd: string, planId: string): Promi
             name: entry.metadata.name,
             planName: entry.metadata.name,
             planId: entry.metadata.planId,
-            relativePath: `plans/${entry.metadata.planId}/context.md`,
+            relativePath: planArtifactReference(entry.metadata.planId),
         };
     }
     return await withProjectRuntimeReadScope(async () => {

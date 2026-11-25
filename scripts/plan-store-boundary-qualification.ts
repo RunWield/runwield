@@ -62,10 +62,6 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         reason: "Inject an applying execution journal after a real consent/start operation to qualify lost-write reconciliation.",
         modules: ["src/plan-store/workflows.ts"],
     },
-    "src/shared/epic-artifacts.test.ts": {
-        reason: "Owner unit qualification for retained Epic artifact paths, archive moves and collision behavior.",
-        modules: ["src/plan-store/artifacts.ts"],
-    },
     "src/shared/local-home-store.integration.test.ts": {
         reason: "Only archived metadata helper is private; author/import/archive/restore journeys exercise public commands.",
         modules: ["src/plan-store.ts"],

@@ -56,12 +56,7 @@ export {
 } from "../shared/workflow/execution-plan-file.ts";
 export { requiresPlanWorkflow } from "./access.ts";
 export { capturePackageWorkflowAccess as capturePlanReadContext } from "./workflows.ts";
-export {
-    resolveEpicArtifactPath,
-    saveEpicArtifact,
-    appendEpicManualQaSection,
-    findEpicManualQaSection,
-} from "./artifacts.ts";
+export { workflowEpicArtifacts } from "./artifacts.ts";
 export {
     resolveWorkflowPlanLocation,
     needsSessionPlanningWorktree,
@@ -78,17 +73,9 @@ export {
     retainPublishedWorkRecordSource,
     loadPublishedWorkRecordSource,
     readPublishedDeliverySources,
-    readPublishedRecordMarkdown,
     verifyPackageRecordingDelivery,
 } from "./published-source.ts";
-export type {
-    DeliveryCopy,
-    ExecutionPublicationPolicy,
-    PackageAttemptContinuation,
-    PackagePublicationManifest,
-    PackagePublicationReference,
-    PackageWorkflowInput,
-} from "./packages.ts";
+export type { PackageAttemptContinuation, PackagePublicationManifest, PackageWorkflowInput } from "./packages.ts";
 
 export {
     savePlanDefinition,
@@ -177,22 +164,7 @@ export { loadPlanDetail } from "./resources.ts";
 export { runPlansDoctor, type DoctorIssue } from "./doctor.ts";
 
 // Publication commands own Plan evidence and copy persistence; Git publication remains with its state machine.
-export {
-    packagePublicationInput,
-    sealPackagePublication,
-    freezePlanPublicationPolicy,
-    packageArtifactEvidence,
-    uncommittedPackageCopyPaths,
-    preparePackageCopies,
-    settlePackagePublication,
-    settlePlanPublicationRecording,
-    packageTargetEvidence,
-    settlePackageInPlace,
-    assertPackageCopyTargets,
-    retirePackageCopies,
-    assertPackagePublicationOwner,
-    assertPackagePublicationCandidate,
-} from "./publication.ts";
+export { settlePackagePublication, settlePlanPublicationRecording, settlePackageInPlace } from "./publication.ts";
 // Named effect coordination derives its lock resources internally; callers perform external Git effects.
 export {
     runExecutionPreparationTransition,
@@ -218,7 +190,12 @@ export { readPlanPublicationReference } from "./recording.ts";
 export { readRetainedExecutionPlan } from "./execution-recovery.ts";
 export { findCompletionSiblings, prepareCompletionSiblings } from "./family.ts";
 
-export { planSessionArtifactReference, readPlanSessionArtifact } from "./session-artifacts.ts";
+export {
+    isPlanSessionArtifactReference,
+    planSessionArtifactAlias,
+    readPlanSessionArtifact,
+    type RegisteredPlanSessionProject,
+} from "./session-artifacts.ts";
 
 export {
     archiveSavedPlan,
@@ -242,7 +219,6 @@ export {
     readControllerWorktree as readPlanExecution,
     listControllerDocumentWorktrees as listPlanExecutionDocuments,
 } from "./controllers.ts";
-export { assertPackagePublicationReference as assertPlanPublicationReference } from "./packages.ts";
 
 export { collectArchivedPlanUnits, type ArchivedPlanUnit } from "./archive-retention.ts";
 
@@ -288,17 +264,11 @@ export { withPlanPublication, restartPlanValidation, preparePlanGeneratedArtifac
 export { loadPlanningTargetForPreparation } from "./planning-source.ts";
 
 export {
-    finalizePublicationLifecycle,
-    hasFinalizedPublicationLifecycle,
-    checkLocalPublicationMetadata,
-    readPublishedWorkRecordIndex,
-} from "./delivery-copies.ts";
-
-export {
-    preserveUnpublishedPlanCopies,
-    restoreUnpublishedPlanCopies,
-    type PlanDeliveryBackup,
-} from "./delivery-backup.ts";
+    publicationCopiesForCheckout,
+    retainedPublicationCopiesForCheckout,
+    selectedPublicationCopies,
+} from "./publication-copies.ts";
+export type { PlanDeliveryBackup } from "./delivery-backup.ts";
 
 export {
     mergePlanningDocumentBlobs,

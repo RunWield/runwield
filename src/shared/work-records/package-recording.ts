@@ -1,3 +1,4 @@
+import type { DeliveryCopy } from "@runwield/plans/publication-copies";
 import type { HostRecorderState } from "@runwield/plans/controller-state";
 import { workRecords } from "@runwield/plans/work-records";
 import type { RecordingPreparation } from "@runwield/plans/work-record-files";
@@ -17,7 +18,7 @@ import { approveWorkRecord } from "./lifecycle.ts";
 import { applyWorkRecordSupersession } from "./supersession.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import { retainWorkRecordLocation, workRecordDigest } from "./import.ts";
-import type { DeliveryCopy, PackagePublicationManifest } from "../../plan-store/index.ts";
+import type { PackagePublicationManifest } from "../../plan-store/index.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 
 type Source = import("./generation.ts").WorkRecordSource;

@@ -1,5 +1,8 @@
+import type { ExecutionPublicationPolicy, PackagePublicationReference } from "@runwield/plans/publication-copies";
 import { projects, type HomeProjectOwner, type ProjectId } from "@runwield/projects";
 import { plans } from "@runwield/plans";
+import { isEpicArtifactName } from "@runwield/plans/format";
+import { openPlanStoreForCheckout } from "./project-plans.ts";
 import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "./packages.ts";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
@@ -9,7 +12,7 @@ import type { GeneratedWorkRecordSections } from "@runwield/plans/work-records";
 import type { PublishedDeliverySources } from "./published-source.ts";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
 import { confirmManagedPublication } from "./retained-proof.ts";
-import { loadPlan, listPlans } from "../plan-store.ts";
+import { loadPlan, listPlans, StalePlanWriteError } from "../plan-store.ts";
 import { authorLocalPlan, authorPackagePlan, type PlanAuthoringInput } from "./access.ts";
 import {
     getGlobalSecretStoreLocation,
@@ -62,8 +65,6 @@ import {
     readPlanPackageInput,
     readPlanPackagePublication,
     withPlanPackageCatalogDiscovery,
-    type ExecutionPublicationPolicy,
-    type PackagePublicationReference,
     type PackagePublicationManifest,
     type PackageWorkflowInput,
 } from "./packages.ts";
@@ -1366,36 +1367,43 @@ export class PreparedProjectStore {
                                 command.planId,
                                 async (recovering) => {
                                     const child = await selectedPackage({ planId: command.childPlanId });
+                                    if (child.metadata.parentPlanId !== command.planId)
+                                        throw new Error("Epic family changed before QA preparation.");
+                                    const artifacts = openPlanStoreForCheckout(this.cwd)!.artifacts;
+                                    const epicId = plans.identity.parse(command.planId)!;
+                                    const childId = plans.identity.parse(command.childPlanId)!;
                                     if (
                                         recovering &&
                                         child.metadata.workflow?.generatedArtifact?.operationId === command.operationId
                                     ) {
                                         await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
                                             import("./workflows.ts").then(({ recoverGeneratedManualQaArtifact }) =>
-                                                recoverGeneratedManualQaArtifact(child.metadata.name),
+                                                recoverGeneratedManualQaArtifact({ planId: childId }),
                                             ),
                                         );
-                                        return { revision: (await readPlanDocuments(command.planId)).revision };
+                                        return {
+                                            revision: (await readPlanDocuments(command.planId)).revision,
+                                            qaStatus: "recorded",
+                                        };
                                     }
-                                    if (
-                                        child.metadata.parentPlanId !== command.planId ||
-                                        (await readPlanDocuments(command.childPlanId)).revision !==
-                                            command.childRevision ||
-                                        (await readPlanDocuments(command.planId)).revision !== command.expectedRevision
-                                    )
-                                        throw new Error("Epic family changed before QA preparation.");
-                                    await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
-                                        import("./artifacts.ts").then(({ appendEpicManualQaSection }) =>
-                                            appendEpicManualQaSection({
-                                                projectRoot: this.cwd,
-                                                epicPlanName: plan.metadata.name,
-                                                childPlanName: child.metadata.name,
-                                                childHeading: command.childHeading,
-                                                checklistMarkdown: command.checklistMarkdown,
-                                            }),
-                                        ),
+                                    const parentRevision = (await readPlanDocuments(command.planId)).revision;
+                                    if ((await artifacts.findManualQaSection(epicId, childId)).exists)
+                                        return { revision: parentRevision, qaStatus: "already_present" };
+                                    const childRevision = (await readPlanDocuments(command.childPlanId)).revision;
+                                    if (parentRevision !== command.expectedRevision)
+                                        throw new StalePlanWriteError(command.expectedRevision, parentRevision);
+                                    if (childRevision !== command.childRevision || !child.metadata.workflow?.attempt)
+                                        throw new StalePlanWriteError(command.childRevision, childRevision);
+                                    const result = await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
+                                        artifacts.appendManualQaSection(epicId, childId, {
+                                            childHeading: command.childHeading,
+                                            checklistMarkdown: command.checklistMarkdown,
+                                        }),
                                     );
-                                    return { revision: (await readPlanDocuments(command.planId)).revision };
+                                    return {
+                                        revision: (await readPlanDocuments(command.planId)).revision,
+                                        qaStatus: result.status,
+                                    };
                                 },
                                 true,
                             ),
@@ -1775,13 +1783,17 @@ export class PreparedProjectStore {
                                 if (reviewed.cancellationReason || reviewed.recoveryRequired)
                                     throw new Error(reviewed.feedback || "Review requires refreshed evidence.");
                             } else if (command.kind === "save-epic-artifact") {
-                                if ((await readPlanDocuments(command.planId)).revision !== command.expectedRevision)
-                                    throw new Error("Epic artifact source changed.");
-                                await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
-                                    import("./artifacts.ts").then(({ saveEpicArtifact }) =>
-                                        saveEpicArtifact(this.cwd, plan.metadata.name, command.resource, command.body),
+                                const resource = command.resource;
+                                if (!isEpicArtifactName(resource)) throw new Error("Unsupported Epic artifact.");
+                                const saved = await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
+                                    openPlanStoreForCheckout(this.cwd)!.artifacts.save(
+                                        plans.identity.parse(command.planId)!,
+                                        resource,
+                                        command.body,
+                                        command.expectedRevision,
                                     ),
                                 );
+                                return { revision: saved.revision };
                             } else if (command.kind === "edit-documents") {
                                 await (await import("./documents.ts")).savePlanDocumentBatch(command.edits);
                             } else if (command.kind === "save-document") {

@@ -30,6 +30,10 @@ Use `store.workRecords.list()` to browse a Project and `store.workRecords.read(r
 
 Use `store.history.list(planId)` to obtain the current revision and version catalog, then `store.history.read(planId, version)` to inspect the captured Markdown. To restore, pass the chosen version and observed revision to `store.history.restore(planId, version, expectedRevision)`. Local and managed callers use the same operations. The existing `wld plans history` commands continue to accept a name or ID.
 
+### Artifacts and publication copies
+
+Use `store.artifacts` to read and save Epic documents, check a child's Manual QA section, or append it once. The caller supplies Plan IDs. The store resolves the admitted owner and file layout. Use `store.publicationCopies.read(reference)` to read the destinations and content retained for a publication attempt. Pass the reference returned by the sealing operation. [Artifact contract](../../packages/plans/store.ts) · [Copy contract](../../packages/plans/publication-copies.ts)
+
 ## Supported operations
 
 | Intent                      | Interface examples                                                                            | Invariants owned here                                                                       |
@@ -41,7 +45,7 @@ Use `store.history.list(planId)` to obtain the current revision and version cata
 | Persist events and evidence | `recordPlanEvent`, `recordPlanHumanReview`, `savePlanValidationCheckpoint`                    | Central lifecycle policy, named fields and revision/attempt preconditions                   |
 | Recover                     | `resetPlanExecutionMetadata`, `restoreRecreatedPlanExecution`, `retainUserVerifiedPlan`       | Revalidated identity, original continuation, fixed recovery writes and compensation         |
 | Import and archive          | `importPlans`, `renamePlan`, `archiveSavedPlan`, `restoreSavedPlan`                           | Explicit import, provenance, complete durable units and recoverable changes                 |
-| Publish                     | `preparePackageCopies`, `settlePackagePublication`, `finalizePublicationLifecycle`            | Frozen copies, retained receipts and persistence settlement; Git phase policy stays outside |
+| Publish                     | `store.publicationCopies.read`, `publicationCopiesForCheckout`, `settlePackagePublication`            | Frozen copies, retained receipts and persistence settlement; Git phase policy stays outside |
 | Prepare legacy Git effects  | `preparePlanningMergeDocuments`, `preserveUnpublishedPlanCopies`                              | Opaque prepared documents/backups; callers cannot edit a raw persistence payload            |
 
 `openRegisteredPlanDocuments` binds Workspace document, progress, search, and review operations to a Project registration.

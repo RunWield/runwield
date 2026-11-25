@@ -19,10 +19,11 @@ test("Connect document reads bind canonical Plan pages and Work Records to the c
         same(getDeliveryCopyPolicy(f.root), { plans: false, workRecords: false });
         await makeDirectory(join(f.root, "docs", "plans"), { recursive: true });
         await writeFile(join(f.root, "docs", "plans", "dark-mode-toggle.md"), "# Stale checkout copy\n");
+        const checklist = "# Manual QA\r\n\r\n- [ ] Check contrast.\r\n";
         const prose = "# Canonical Plan\n\n世界 café 🛠\n".repeat(20);
         await create(f.identity, {
             name: "dark-mode-toggle",
-            documents: { "context.md": prose, "validation.md": "# Checks\n" },
+            documents: { "context.md": prose, "validation.md": "# Checks\n", "manual-qa.md": checklist },
         });
         const { planning } = await reachPlanning(f.root);
         await withPlanAccess(f.root, (await selectPlanAccess(f.root, "plan-one"))!, async () => {
@@ -58,6 +59,10 @@ test("Connect document reads bind canonical Plan pages and Work Records to the c
             const validation = await call("read_plan", { resource: "validation.md" });
             assert(validation.ok && "content" in validation);
             equal(validation.content, "# Checks\n");
+            const qa = await call("read_plan", { resource: "manual-qa.md" });
+            assert(qa.ok && "documentRevision" in qa);
+            equal(qa.content, checklist);
+            equal(qa.planRevision, first.planRevision);
             const record = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);
             const archived = await restoreWorkRecordDocument(
                 f.root,

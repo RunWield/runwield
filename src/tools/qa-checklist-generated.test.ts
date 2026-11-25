@@ -1,4 +1,5 @@
 import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
@@ -15,25 +16,30 @@ function text(result: { content: Array<{ type: string; text?: string }> }): stri
     return item?.type === "text" ? item.text || "" : "";
 }
 
-async function makeRoot() {
+async function withRoot(run: (projectRoot: string) => Promise<void>) {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "qa-checklist-tool-"));
-    await seedPlan(projectRoot, "epic", "# Epic", {
-        classification: "PROJECT",
-        status: "ready_for_work",
-        summary: "Epic",
-    });
-    await seedPlan(projectRoot, "epic/01-one", "# One", {
-        classification: "PLANNED_CHANGE",
-        status: "reviewed",
-        parentPlan: "epic",
-        summary: "One",
-    });
-    return projectRoot;
+    try {
+        await withRetainedPlanFixture(projectRoot, async () => {
+            await seedPlan(projectRoot, "epic", "# Epic", {
+                classification: "PROJECT",
+                status: "ready_for_work",
+                summary: "Epic",
+            });
+            await seedPlan(projectRoot, "epic/01-one", "# One", {
+                classification: "PLANNED_CHANGE",
+                status: "reviewed",
+                parentPlan: "epic",
+                summary: "One",
+            });
+            await run(projectRoot);
+        });
+    } finally {
+        await fsRm(projectRoot, { recursive: true });
+    }
 }
 
 test("qa_checklist_generated records a real Epic child checklist", async () => {
-    const projectRoot = await makeRoot();
-    try {
+    await withRoot(async (projectRoot) => {
         const tool = createQaChecklistGeneratedTool({
             projectRoot,
             epicPlanName: "epic",
@@ -54,14 +60,11 @@ test("qa_checklist_generated records a real Epic child checklist", async () => {
         assertEquals(result.details?.outcome, "recorded");
         assertStringIncludes(text(result), "docs/plans/epic/manual-qa.md");
         assertStringIncludes(await fsReadFile(`${projectRoot}/docs/plans/epic/manual-qa.md`, "utf8"), "Check one");
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-    }
+    });
 });
 
 test("qa_checklist_generated rejects invalid content without throwing", async () => {
-    const projectRoot = await makeRoot();
-    try {
+    await withRoot(async (projectRoot) => {
         const tool = createQaChecklistGeneratedTool({
             projectRoot,
             epicPlanName: "epic",
@@ -80,8 +83,6 @@ test("qa_checklist_generated rejects invalid content without throwing", async ()
         );
 
         assertEquals(result.details?.outcome, "rejected");
-        assertStringIncludes(text(result), "was not recorded");
-    } finally {
-        await fsRm(projectRoot, { recursive: true });
-    }
+        assertStringIncludes(text(result), "Manual QA checklist must start");
+    });
 });

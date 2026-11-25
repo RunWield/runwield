@@ -27,7 +27,7 @@ Retire the root `src/` directory in three passes. Preserve behavior for users, i
 
 ## Packages and extraction order
 
-Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. This extraction covers Plan milestone history. Artifact content and publication copies still belong to the Plans domain before Workflow extraction. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
+Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. [Plan milestone history](https://github.com/RunWield/runwield/pull/650) has merged. This extraction covers Plan artifacts and publication copies. Workflow is the next domain in the interface pass. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
 
 | Order and package | Public interface and responsibilities | Evidence that the move preserved behavior |
 | --- | --- | --- |
@@ -210,7 +210,7 @@ The managed runtime uses its configured owner connection. The store checks the b
 
 The runtime adapter calls the existing store for locking, conflict checks, recovery, and local or managed writes.
 The filesystem driver in Plans captures and verifies the immutable input documents used by workflow attempts.
-The host coordinates milestone capture with the lifecycle event that makes the version visible. Publication copies still run through the current store.
+The host coordinates milestone capture with the lifecycle event that makes the version visible.
 PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)
 
 ### Work Records
@@ -238,6 +238,14 @@ A caller opens the Project Plan Store once, then uses its `history` collection w
 | `history.restore(planId, version, expectedRevision)` | Restores the version’s document set and returns the new revision. A stale revision leaves current content intact. |
 
 Lifecycle operations trigger capture on approval, delivery, closure, and archive. The store assigns the version. Restore keeps the current Plan identity and delivery evidence and reopens review when changed content requires it. Managed callers use the personal owner’s store and its existing restore receipts. [Core milestone requirements](../prd/runwield-core-prd.md#plan-lifecycle)
+
+### Plan artifacts and publication copies
+
+An Epic can own a Manual QA checklist and an integration report. Use `store.artifacts` with the stable Plan ID and artifact name to read or save either document. A read of an absent optional document returns `null`. A successful read returns the Markdown, its logical reference, and the revision used for editing. The QA operations take the Epic and child IDs so a retried append can recognize the child's existing section. [Store contract](../../packages/plans/store.ts)
+
+Sessions that register a Plan document keep its stable Plan ID and resource so the TUI and Workspace can reopen it after a rename or archive. Older references that contain only a name still resolve that name through the admitted store. If a different Plan later takes that name, the old reference alone cannot identify the original. Workspace document editing and Attached document reads use the same package content and revision while retaining their existing permissions and response formats.
+
+Use `store.publicationCopies.read(reference)` with the retained reference from a publication attempt. It returns the repository destinations and exact Markdown frozen for delivery. An attempt with both copy settings disabled can return an empty list. Later Plan edits and changes to repository settings leave the sealed payload intact. Plans owns the copy format, destination validation, and filesystem writes. In this first pass, the runtime still binds the local or managed owner, reads retained manifests, and checks Git evidence for earlier deliveries. Workflow decides when to create the copies commit, advance the target, or retry publication. [Publication copy contract](../../packages/plans/publication-copies.ts)
 
 ### Consumer coverage
 

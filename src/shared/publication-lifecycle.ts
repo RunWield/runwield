@@ -1,9 +1,4 @@
-import {
-    finalizePublicationLifecycle,
-    checkLocalPublicationMetadata,
-    readPublishedWorkRecordIndex,
-} from "../plan-store/index.ts";
-export { finalizePublicationLifecycle, hasFinalizedPublicationLifecycle } from "../plan-store/index.ts";
+import { retainedPublicationCopiesForCheckout } from "../plan-store/index.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "./captured-process.ts";
@@ -42,7 +37,7 @@ export async function recoverLocalPublicationLifecycle(
     if (branch !== targetBranch) return;
     const message = await git(cwd, ["show", "-s", "--format=%B", "HEAD"]);
     if (!message.split("\n").includes(`RunWield-Delivery-Candidate: ${sealedCommit}`)) return;
-    const paths = await checkLocalPublicationMetadata(cwd, "HEAD^", "HEAD");
+    const paths = await retainedPublicationCopiesForCheckout(cwd).checkMetadata("HEAD^", "HEAD");
     if (paths.length) await git(cwd, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ...paths]);
 }
 
@@ -62,8 +57,7 @@ export async function finalizeLocalPublicationLifecycle(
     try {
         await git(cwd, ["worktree", "add", "--detach", temporary, before]);
         attached = true;
-        const paths = await finalizePublicationLifecycle(
-            temporary,
+        const paths = await retainedPublicationCopiesForCheckout(temporary).finalize(
             planName,
             sealedCommit,
             allowedPlanPaths,
@@ -80,7 +74,7 @@ export async function finalizeLocalPublicationLifecycle(
         ]);
         const commit = await git(temporary, ["rev-parse", "HEAD"]);
         const targetCheckout = await localPublicationCheckout(cwd, targetBranch);
-        if (targetCheckout) await checkLocalPublicationMetadata(targetCheckout, before, commit);
+        if (targetCheckout) await retainedPublicationCopiesForCheckout(targetCheckout).checkMetadata(before, commit);
         await git(cwd, ["update-ref", `refs/heads/${targetBranch}`, commit, before]);
         if (targetCheckout) await recoverLocalPublicationLifecycle(targetCheckout, targetBranch, sealedCommit);
         return commit;
@@ -99,8 +93,7 @@ export async function indexPublishedWorkRecords(
     mnemotecaPort: WorkRecordMnemotecaPort,
     sourcePlanCommit = commit,
 ): Promise<Map<string, string>> {
-    const { planKinds, records } = await readPublishedWorkRecordIndex(
-        projectRoot,
+    const { planKinds, records } = await retainedPublicationCopiesForCheckout(projectRoot).readWorkRecordIndex(
         gitRoot,
         commit,
         planPaths,

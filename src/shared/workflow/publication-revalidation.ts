@@ -1,6 +1,7 @@
 import { reconcileStoredPublication } from "./publication-machine.ts";
-import { retirePackageCopies, uncommittedPackageCopyPaths } from "../../plan-store/index.ts";
+import { publicationCopiesForCheckout } from "../../plan-store/index.ts";
 import { rename as fsRename } from "node:fs/promises";
+import { checkpointExecutionWorktree } from "../worktree.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import {
     lstat as fsLstat,
@@ -69,6 +70,33 @@ async function exists(path: string): Promise<boolean> {
     }
 }
 
+/** Retain the candidate before removing its proven copies commit from the branch. */
+async function retirePublicationCopies(projectRoot: string, attempt: PublicationAttempt): Promise<void> {
+    if (!attempt.packageInput) return;
+    const retirement = await publicationCopiesForCheckout(projectRoot).prepareRetirement(attempt);
+    if (!retirement) return;
+    const cwd = attempt.executionCwd;
+    const checkpoint = await checkpointExecutionWorktree({
+        worktreePath: cwd,
+        branch: attempt.executionBranch,
+        planName: attempt.planName,
+    });
+    const backup = `refs/runwield/revalidation/${attempt.packageInput.inputId}`;
+    if (!(await git(cwd, ["update-ref", backup, checkpoint.executionCommit])).success)
+        throw new Error("Cannot retain the code candidate before revalidation.");
+    const rebased = await git(cwd, [
+        "rebase",
+        "--onto",
+        retirement.parent,
+        retirement.copiesCommit,
+        attempt.executionBranch,
+    ]);
+    if (!rebased.success) {
+        await git(cwd, ["rebase", "--abort"]);
+        throw new Error("Unpublished copies could not be separated from code; the original candidate is retained.");
+    }
+}
+
 async function sourceNeedsRevalidation(attempt: PublicationAttempt, head: string): Promise<boolean> {
     const sealed = attempt.artifactCommit || attempt.validatedCommit;
     const available = await git(attempt.executionCwd, ["cat-file", "-e", `${sealed}^{commit}`]);
@@ -87,7 +115,7 @@ async function sourceNeedsRevalidation(attempt: PublicationAttempt, head: string
     if (!changes.success) throw new Error("Could not inspect the sealed publication files.");
     const paths = [...changes.text.split("\0").filter(Boolean), ...(await gitStatusPaths(attempt.executionCwd))];
     if (attempt.packageInput) {
-        const copies = new Set(await uncommittedPackageCopyPaths(attempt));
+        const copies = new Set(await publicationCopiesForCheckout(attempt.executionCwd).uncommittedPaths(attempt));
         return paths.some((path) => !isRunWieldOwnedRuntimePath(path) && !copies.has(path));
     }
     if (attempt.phase !== "candidate_sealed") return paths.some((path) => !isRunWieldOwnedRuntimePath(path));
@@ -200,7 +228,7 @@ export async function preparePublicationRevalidation(projectRoot: string, planNa
                 await updatePublication(projectRoot, entry.id, current.revision, attempt);
             }
             await preserveAttempt(attempt);
-            if (attempt.packageInput) await retirePackageCopies(projectRoot, attempt);
+            await retirePublicationCopies(projectRoot, attempt);
             await restartPlanValidation(executionCwd, planName, entry.id, entry.planId);
             await retirePublicationForRevalidation(projectRoot, entry.id, attempt.revision);
             return attempt.revalidation!.archiveRoot;

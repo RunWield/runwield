@@ -1,3 +1,4 @@
+import type { PackagePublicationReference } from "@runwield/plans/publication-copies";
 import { projects } from "@runwield/projects";
 import {
     managedPersonalStoreActive as managedPlanStoreActive,
@@ -16,7 +17,7 @@ import {
 } from "../shared/work-records/package-recording.ts";
 /** Plan-side recording evidence. Work Record content and publication remain with their owners. */
 import { currentPackageSelection, selectedPackage, withPackageWorkflow } from "./workflows.ts";
-import { readPlanPackage, readPlanPackagePublication, type PackagePublicationReference } from "./packages.ts";
+import { readPlanPackage, readPlanPackagePublication } from "./packages.ts";
 import { loadPublishedWorkRecordSource, verifyPackageRecordingDelivery } from "./published-source.ts";
 import { getPlanDocumentRoot } from "../plan-store.ts";
 

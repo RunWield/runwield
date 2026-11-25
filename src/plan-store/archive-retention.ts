@@ -2,7 +2,7 @@ import { managedPersonalStoreActive } from "./managed.ts";
 import { opendir as fsOpendir, stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
 import { listArchivedPlans } from "../plan-store.ts";
-import { getArchivedEpicArtifactPath } from "./artifacts.ts";
+import { checkoutEpicArtifactPath } from "@runwield/plans/artifact-files";
 import { EPIC_ARTIFACT_FILE_NAMES } from "@runwield/plans/format";
 import { readLocalHomeStore } from "./access.ts";
 import { currentPackageProject } from "./workflows.ts";
@@ -75,7 +75,7 @@ async function collectLegacyArchivedPlanUnits(cwd: string): Promise<ArchivedPlan
             if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
         for (const artifactName of EPIC_ARTIFACT_FILE_NAMES) {
-            const artifactPath = getArchivedEpicArtifactPath(cwd, name, artifactName);
+            const artifactPath = checkoutEpicArtifactPath(cwd, name, artifactName, true);
             if (await pathExists(artifactPath)) paths.add(projectRelativePath(cwd, artifactPath));
         }
         units.push({

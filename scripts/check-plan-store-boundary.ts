@@ -13,6 +13,8 @@ const privateMembers = new Set([
     "src/plan-store.ts",
     "packages/plans/file-snapshots.ts",
     "packages/plans/history-files.ts",
+    "packages/plans/artifact-files.ts",
+    "packages/plans/publication-files.ts",
     "packages/plans/package-files.ts",
     // Existing retained-copy implementation. Its operations are public only through the owner interface.
     "src/shared/workflow/execution-plan-file.ts",

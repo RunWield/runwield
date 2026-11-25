@@ -1,4 +1,5 @@
 import { plans } from "@runwield/plans";
+import { isEpicArtifactName } from "@runwield/plans/format";
 import { validateWorkRecordCreation } from "@runwield/plans/work-record-files";
 import { isProjectId } from "@runwield/projects";
 import {
@@ -37,9 +38,15 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
     const command = request.command;
     if (!command) throw new Error("Invalid Plan identity.");
     if ("planId" in command) {
-        const history =
-            command.kind === "list-history" || command.kind === "show-history" || command.kind === "restore-history";
-        const valid = history ? plans.identity.isValid(command.planId) : identity(command.planId);
+        const durablePlanId =
+            command.kind === "list-history" ||
+            command.kind === "show-history" ||
+            command.kind === "restore-history" ||
+            command.kind === "plan-resource" ||
+            command.kind === "read-documents" ||
+            command.kind === "save-epic-artifact" ||
+            command.kind === "append-epic-qa";
+        const valid = durablePlanId ? plans.identity.isValid(command.planId) : identity(command.planId);
         if (!valid) throw new Error("Invalid Plan identity.");
     }
     const common = ["kind", "planId", "operationId", "expectedRevision"];
@@ -220,6 +227,20 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         !["context.md", "validation.md", "manual-qa.md", "integration-report.md"].includes(command.resource)
     )
         throw new Error("Unsupported document resource.");
+    if (
+        command.kind === "save-epic-artifact" &&
+        (!isEpicArtifactName(command.resource) || typeof command.body !== "string")
+    )
+        throw new Error("Invalid Epic artifact.");
+    if (
+        command.kind === "append-epic-qa" &&
+        (!plans.identity.isValid(command.childPlanId) ||
+            command.childPlanId === command.planId ||
+            !/^[a-f0-9]{64}$/.test(command.childRevision) ||
+            typeof command.childHeading !== "string" ||
+            typeof command.checklistMarkdown !== "string")
+    )
+        throw new Error("Invalid Epic QA section.");
     if (
         command.kind === "archive-plan" &&
         (typeof command.reason !== "string" ||
@@ -495,6 +516,7 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
                                       "operationId",
                                       "status",
                                       "revision",
+                                      "qaStatus",
                                       "snapshotId",
                                       "snapshotDigest",
                                       "attemptId",
@@ -751,6 +773,10 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
         !("status" in result) ||
         result.operationId !== request.command.operationId ||
         !["completed", "unstarted", "pending", "unavailable"].includes(result.status) ||
+        (result.qaStatus !== undefined &&
+            (result.status !== "completed" ||
+                !["append-epic-qa", "reconcile"].includes(request.command.kind) ||
+                !["recorded", "already_present"].includes(result.qaStatus))) ||
         (result.status === "completed" && !/^[a-f0-9]{64}$/.test(result.revision || ""))
     )
         throw new Error("Invalid operation reply.");

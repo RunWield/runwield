@@ -371,7 +371,8 @@ export async function runRemotePublicationProof(): Promise<void> {
                   input.requireCleanup === true,
               );
         if (input.recordingSource && input.execution) {
-            const { readPublishedDeliverySources } = await import("../../plan-store/index.ts");
+            const { publicationCopiesForCheckout, readPublishedDeliverySources } =
+                await import("../../plan-store/index.ts");
             const sources = await readPublishedDeliverySources(input.cwd, {
                 ...proof,
                 artifactCommit: input.candidateOnly ? proof.validatedCommit : proof.publishedCommit,
@@ -379,9 +380,7 @@ export async function runRemotePublicationProof(): Promise<void> {
             const recordPath = sources.workRecordOwner?.attrs.workRecord?.path;
             const text =
                 !input.candidateOnly && recordPath
-                    ? await (
-                          await import("../../plan-store/index.ts")
-                      ).readPublishedRecordMarkdown(input.cwd, proof, recordPath)
+                    ? await publicationCopiesForCheckout(input.cwd).readPublishedWorkRecord(proof, recordPath)
                     : null;
             const recordCopy = text && recordPath ? { kind: "work-record", path: recordPath, text } : null;
             console.log(JSON.stringify({ proof, sources, recordCopy }));

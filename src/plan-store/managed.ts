@@ -1,4 +1,4 @@
-import type { CreateProjectWorkRecord, ProjectWorkRecord } from "@runwield/plans/store";
+import type { CreateProjectWorkRecord, ManualQaSection, ProjectWorkRecord } from "@runwield/plans/store";
 import { workRecords } from "@runwield/plans/work-records";
 import { projects, type ProjectId, type ProjectStoreIdentity } from "@runwield/projects";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
@@ -24,6 +24,8 @@ import type { ProjectStoreBinding, ProjectStoreCommand, ProjectStoreReply } from
 import type { PlanAuthoringInput } from "./access.ts";
 import type { PlanExecutionReservation } from "./workflows.ts";
 import type { PlanId } from "@runwield/plans";
+import { decodePackageMarkdown, planArtifactReference, type EpicArtifactName } from "@runwield/plans/format";
+import { StalePlanWriteError } from "../plan-store.ts";
 
 interface ManagedConnection {
     closed: boolean;
@@ -128,8 +130,8 @@ export function captureManagedProjectPlanAccess(projectId: ProjectId, admitted?:
         return admitted.checkoutRoot;
     };
     verifyAdmission();
-    return async <Result>(operation: (cwd: string) => Promise<Result>, history: boolean) => {
-        if (!history && currentManagedRetainedExecution()) throw new Error("Managed Plan owner is unavailable.");
+    return async <Result>(operation: (cwd: string) => Promise<Result>, allowRetained: boolean) => {
+        if (!allowRetained && currentManagedRetainedExecution()) throw new Error("Managed Plan owner is unavailable.");
         const current = inspect();
         if (
             current.repositoryId !== initial.repositoryId ||
@@ -252,6 +254,8 @@ export async function withManagedPlan<T>(
     }
     return await selections.run(current, run);
 }
+type EpicArtifactRevisionSource = "explicit" | "observed";
+
 interface RetainedManagedCommand {
     acknowledged?: boolean;
     binding: ProjectStoreBinding;
@@ -262,6 +266,7 @@ async function executeManagedMutation<Result>(
     cwd: string,
     command: ProjectStoreCommand,
     readResult: (result: ProjectStoreReply["result"]) => Result,
+    artifactRevisionSource: EpicArtifactRevisionSource = "explicit",
 ): Promise<Result> {
     const owner = await client(cwd, true);
     if (!("operationId" in command)) throw new Error("Managed mutation requires an operation identity.");
@@ -270,13 +275,29 @@ async function executeManagedMutation<Result>(
     const repeatableCreation =
         command.kind === "create-project-work-record" ||
         (command.kind === "author-plan" && !command.input.expectedRevision);
-    // A CLI retry observes today's revision, but a pending restore still owns its original precondition.
-    const stableIntent =
-        command.kind === "restore-history"
-            ? { kind: command.kind, planId: command.planId, version: command.version }
-            : command.kind === "author-plan" && !command.input.expectedRevision
-              ? { kind: command.kind, input: command.input }
-              : intent;
+    const artifactMutation = command.kind === "save-epic-artifact" || command.kind === "append-epic-qa";
+    // These retries may observe a newer revision after the original command committed.
+    const stableIntent = (() => {
+        if (command.kind === "restore-history")
+            return { kind: command.kind, planId: command.planId, version: command.version };
+        if (command.kind === "author-plan" && !command.input.expectedRevision)
+            return { kind: command.kind, input: command.input };
+        if (command.kind === "append-epic-qa")
+            return {
+                kind: command.kind,
+                planId: command.planId,
+                childPlanId: command.childPlanId,
+                childHeading: command.childHeading,
+                checklistMarkdown: command.checklistMarkdown,
+            };
+        if (command.kind === "save-epic-artifact") {
+            if (artifactRevisionSource === "observed")
+                return { kind: command.kind, planId: command.planId, resource: command.resource, body: command.body };
+            // Old generated saves keyed by their observed revision without recording acknowledgment.
+            return { ...intent, revisionSource: artifactRevisionSource };
+        }
+        return intent;
+    })();
     const key = operationDigest(JSON.stringify({ binding: owner.binding, command: stableIntent }));
     const directory = join((await enterProjectRuntime(cwd)).selected.transitionJournalsDir, "managed-operations");
     const path = join(directory, `managed-operation-${key}.json`);
@@ -295,6 +316,7 @@ async function executeManagedMutation<Result>(
         if (
             retained.acknowledged &&
             (repeatableCreation ||
+                artifactMutation ||
                 (command.kind === "restore-history" &&
                     retained.command.kind === "restore-history" &&
                     retained.command.expectedRevision !== command.expectedRevision))
@@ -309,25 +331,35 @@ async function executeManagedMutation<Result>(
             if (
                 error instanceof ProjectStorePreconditionError &&
                 (command.kind === "restore-history" ||
+                    artifactMutation ||
                     (command.kind === "author-plan" && command.input.expectedRevision === undefined))
             )
                 writeJsonAtomically(path, { ...retained, acknowledged: true });
             throw error;
         });
         const value = readResult(result.result);
-        if ((command.kind === "restore-history" || repeatableCreation) && !retained.acknowledged)
+        if ((command.kind === "restore-history" || repeatableCreation || artifactMutation) && !retained.acknowledged)
             writeJsonAtomically(path, { ...retained, acknowledged: true });
         return value;
     } finally {
         lock.close();
     }
 }
-export async function mutateManagedPlan(cwd: string, command: ProjectStoreCommand) {
-    return await executeManagedMutation(cwd, command, (result) => {
-        if (!("status" in result) || result.status !== "completed")
-            throw new Error("Managed Plan operation remains recoverable under its retained identity.");
-        return result;
-    });
+export async function mutateManagedPlan(
+    cwd: string,
+    command: ProjectStoreCommand,
+    artifactRevisionSource: EpicArtifactRevisionSource = "explicit",
+) {
+    return await executeManagedMutation(
+        cwd,
+        command,
+        (result) => {
+            if (!("status" in result) || result.status !== "completed")
+                throw new Error("Managed Plan operation remains recoverable under its retained identity.");
+            return result;
+        },
+        artifactRevisionSource,
+    );
 }
 export async function authorManagedPlan(cwd: string, input: PlanAuthoringInput): Promise<void> {
     await authorManagedPlanWithIdentity(cwd, input);
@@ -413,7 +445,7 @@ export async function loadManagedWorkflowPlan(reference: string) {
 
 export async function readManagedPublication(
     cwd: string,
-    reference: import("./packages.ts").PackagePublicationReference,
+    reference: import("@runwield/plans/publication-copies").PackagePublicationReference,
 ) {
     const result = (
         await (await client(cwd, true)).execute({ kind: "read-publication", planId: reference.planId, reference })
@@ -424,7 +456,7 @@ export async function readManagedPublication(
 export async function freezeManagedPublicationPolicy(
     planName: string,
     attemptId: string,
-    policy: import("./packages.ts").ExecutionPublicationPolicy,
+    policy: import("@runwield/plans/publication-copies").ExecutionPublicationPolicy,
 ) {
     if (!active) throw new Error("Managed Plan owner is unavailable.");
     const plan = await loadManagedWorkflowPlan(planName);
@@ -443,7 +475,7 @@ export async function sealManagedPublication(
     validatedCommit: string,
     targetBranch: string,
     preparation: boolean,
-): Promise<import("./packages.ts").PackagePublicationReference> {
+): Promise<import("@runwield/plans/publication-copies").PackagePublicationReference> {
     if (!active) throw new Error("Managed Plan owner is unavailable.");
     const plan = await loadManagedWorkflowPlan(planName);
     const owner = await client(active.cwd, true);
@@ -474,7 +506,7 @@ export async function sealManagedPublication(
 
 export async function settleManagedPublication(
     root: string,
-    reference: import("./packages.ts").PackagePublicationReference,
+    reference: import("@runwield/plans/publication-copies").PackagePublicationReference,
 ) {
     const plan = await readManagedPlan(root, reference.planId);
     if (!plan) throw new Error("Publication Plan is unavailable.");
@@ -563,9 +595,12 @@ export async function readManagedDocument(
     planId: string,
     resource: string,
     cwd = active?.cwd,
+    access: "read" | "admit" = "admit",
 ): Promise<import("./documents.ts").PlanDocumentView> {
     if (!cwd) throw new Error("Managed Plan owner is unavailable.");
-    const result = (await (await client(cwd, true)).execute({ kind: "read-documents", planId, resource })).result;
+    const owner = access === "read" ? await client(cwd) : await client(cwd, true);
+    if (!owner) throw new Error("Managed Plan owner is unavailable.");
+    const result = (await owner.execute({ kind: "read-documents", planId, resource })).result;
     if (!("documentView" in result)) throw new Error("Managed Plan document is unavailable.");
     return result.documentView;
 }
@@ -651,7 +686,7 @@ function mountedRecordingSource(
 }
 export async function readManagedDeliverySources(
     cwd: string,
-    reference: import("./packages.ts").PackagePublicationReference,
+    reference: import("@runwield/plans/publication-copies").PackagePublicationReference,
     confirmed: boolean,
 ): Promise<import("./published-source.ts").PublishedDeliverySources> {
     const result = (
@@ -672,7 +707,7 @@ export async function generateManagedPreparedRecord(
     source: import("../shared/work-records/generation.ts").WorkRecordSource,
     attemptId: string,
     options: import("../shared/work-records/generation.ts").WorkRecordGenerationOptions,
-    reference: import("./packages.ts").PackagePublicationReference,
+    reference: import("@runwield/plans/publication-copies").PackagePublicationReference,
 ): ReturnType<typeof import("../shared/work-records/package-recording.ts").generatePreparedPackageRecord> {
     cwd = managedExecutionRoot();
     const plan = await readManagedPlan(cwd, source.planId);
@@ -720,7 +755,7 @@ export async function generateManagedPreparedRecord(
 
 export async function verifyManagedRecording(
     cwd: string,
-    reference: import("./packages.ts").PackagePublicationReference,
+    reference: import("@runwield/plans/publication-copies").PackagePublicationReference,
 ) {
     const result = (
         await (
@@ -947,7 +982,7 @@ export async function archiveManagedPlan(
         name: selected?.planName ?? name,
         fromPath: before.path,
         toPath: before.path,
-        relativePath: `plans/${planId}/context.md`,
+        relativePath: planArtifactReference(planId),
         attrs: before.attrs,
         artifacts: [],
     };
@@ -1001,7 +1036,7 @@ export async function restoreManagedPlan(
         name: destination || source.name,
         fromPath: beforePath,
         toPath: restored.path,
-        relativePath: `plans/${planId}/context.md`,
+        relativePath: planArtifactReference(planId),
         attrs: restored.attrs,
         artifacts: [],
     };
@@ -1506,30 +1541,56 @@ export async function writeManagedRelatedController(
     return saved;
 }
 
-export async function saveManagedEpicArtifact(cwd: string, name: string, resource: string, body: string) {
-    const plan = await selectManagedPlan(cwd, name);
-    await mutateManagedPlan(cwd, {
-        kind: "save-epic-artifact",
-        operationId: randomUUID(),
-        planId: plan.planId,
-        expectedRevision: plan.revision,
-        resource,
-        body,
-    });
+export async function saveManagedEpicArtifact(
+    cwd: string,
+    planId: PlanId,
+    resource: EpicArtifactName,
+    body: string,
+    observedRevision: string,
+    expectedRevision?: string,
+) {
+    const revision = expectedRevision ?? observedRevision;
+    try {
+        const outcome = await mutateManagedPlan(
+            cwd,
+            {
+                kind: "save-epic-artifact",
+                operationId: randomUUID(),
+                planId,
+                expectedRevision: revision,
+                resource,
+                body,
+            },
+            expectedRevision === undefined ? "observed" : "explicit",
+        );
+        if (!outcome.revision) throw new Error("Managed Epic artifact save has no revision.");
+        return { body: decodePackageMarkdown(new TextEncoder().encode(body)), revision: outcome.revision };
+    } catch (error) {
+        if (!(error instanceof ProjectStorePreconditionError)) throw error;
+        const current = await readManagedActivePlanById(cwd, planId);
+        throw new StalePlanWriteError(revision, current?.revision ?? "missing");
+    }
 }
-export async function appendManagedEpicQa(args: import("./artifacts.ts").AppendEpicManualQaSectionArgs) {
-    const parent = await selectManagedPlan(args.projectRoot, args.epicPlanName);
-    const child = await selectManagedPlan(args.projectRoot, args.childPlanName);
-    await mutateManagedPlan(args.projectRoot, {
+
+export async function appendManagedEpicQa(
+    cwd: string,
+    epicPlanId: PlanId,
+    childPlanId: PlanId,
+    section: ManualQaSection,
+) {
+    const parent = await selectManagedPlan(cwd, epicPlanId, true);
+    const child = await selectManagedPlan(cwd, childPlanId, true);
+    const result = await mutateManagedPlan(cwd, {
         kind: "append-epic-qa",
         operationId: randomUUID(),
-        planId: parent.planId,
+        planId: epicPlanId,
         expectedRevision: parent.revision,
-        childPlanId: child.planId,
+        childPlanId,
         childRevision: child.revision,
-        childHeading: args.childHeading,
-        checklistMarkdown: args.checklistMarkdown,
+        childHeading: section.childHeading,
+        checklistMarkdown: section.checklistMarkdown,
     });
+    return result.qaStatus ?? "recorded";
 }
 
 export async function importManagedPlans(cwd: string, selection: string) {

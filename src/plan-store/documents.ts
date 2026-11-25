@@ -1,6 +1,7 @@
 import { sameReviewedMarkdown } from "./review.ts";
 import { managedPlanStoreActive, readManagedDocument, saveManagedDocument, saveManagedProse } from "./managed.ts";
 import { posix } from "node:path";
+import { decodePackageMarkdown, isEpicArtifactName } from "@runwield/plans/format";
 import {
     currentPackageProject,
     selectedPackage,
@@ -56,20 +57,33 @@ export interface PlanDocumentView {
     documents: Array<{ name: string; role: PackageResourceRole }>;
 }
 
+/** Read one document and its revision from the same package snapshot. */
+export function packageDocumentContent(plan: LoadedPlanPackage, name: string) {
+    const document = plan.documents.find((entry) => entry.name === name);
+    if (!document) return null;
+    return {
+        body: isEpicArtifactName(document.name)
+            ? decodePackageMarkdown(document.bytes)
+            : new TextDecoder().decode(document.bytes),
+        revision: packageWorkflowRevision(plan),
+        packageHash: document.hash,
+    };
+}
+
 /** Document identity is resolved inside the admitted Project, never from a host path. */
 export async function readPlanDocuments(planId: string, name: string = "context.md"): Promise<PlanDocumentView> {
     if (managedPlanStoreActive()) return await readManagedDocument(planId, name);
     const plan = await selectedPackage({ planId });
-    const document = plan.documents.find((entry) => entry.name === name);
-    if (!document) throw new Error("Plan document not found.");
+    const content = packageDocumentContent(plan, name);
+    if (!content) throw new Error("Plan document not found.");
     const controller = await packageController(plan);
     return {
         planId: plan.metadata.planId,
         planName: plan.metadata.name,
-        resource: document.name,
-        revision: packageWorkflowRevision(plan),
+        resource: name,
+        revision: content.revision,
         metadataRevision: plan.metadata.revision,
-        body: new TextDecoder().decode(document.bytes),
+        body: content.body,
         writable:
             (!plan.metadata.archive || Boolean(plan.metadata.archive.restoredAt)) && !isSharedPlanLocked(controller),
         documents: plan.documents.map((entry) => ({ name: entry.name, role: entry.role })),
@@ -153,7 +167,9 @@ export async function savePlanDocument(
         if (plan.metadata.archive && !plan.metadata.archive.restoredAt)
             throw new Error("This Plan package is archived.");
         assertSharedPlanWriteAllowed(await packageController(plan), options);
-        const previous = new TextDecoder().decode(document.bytes);
+        const previous = isEpicArtifactName(document.name)
+            ? decodePackageMarkdown(document.bytes)
+            : new TextDecoder().decode(document.bytes);
         if (previous !== body) {
             const changed = await reviewUpdateForDocumentChanges(plan, [{ previous, next: body }]);
             if (changed) {

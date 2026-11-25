@@ -570,6 +570,8 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
   document save rejects an old document hash; a metadata update rejects an old metadata revision independently.
 - Given an Epic package renamed or archived, its ID, Session references, children and dependency IDs stay stable;
   reserved QA and integration resources never become executable Plans.
+- Given a saved Session Plan or Epic artifact reference and a replacement Plan using the original name, the Session
+  reader continues to show the document owned by the original Plan ID, including after archive.
 - Given `Epic/first` on a case-insensitive filesystem, creating or renaming another package to `epic/second` fails
   before publication. Existing packages remain readable, and a correctly spelled destination remains usable.
 - Given package inspection in a missing or damaged store, no identities, locks, directories or repairs are created;

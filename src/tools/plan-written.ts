@@ -1,4 +1,4 @@
-import { planSessionArtifactReference } from "../plan-store/index.ts";
+import { planSessionArtifactAlias } from "../plan-store/index.ts";
 import { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "../plan-store/index.ts";
 import { buildPlanConversationRequest } from "../shared/workflow/plan-review-conversation.ts";
 import { reviewSourceStillMatches } from "../plan-store/index.ts";
@@ -7,6 +7,7 @@ import {
     parsePlanFrontMatter,
     projectPlanType,
     planDocumentMarkdown,
+    planArtifactReference,
     resolvePlanExecutionPolicy,
     assertNotReservedEpicArtifactPlanName,
     canonicalizeStoredPlanName,
@@ -513,7 +514,9 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 if (managedCapability) {
                     managedCapability.registerArtifact({
                         kind: "plan",
-                        path: planSessionArtifactReference(planName),
+                        path: reviewContainerPlanId
+                            ? planArtifactReference(reviewContainerPlanId)
+                            : planSessionArtifactAlias(planName),
                         title: planName.replaceAll("-", " "),
                         registeredBy: agentName,
                     });
@@ -633,7 +636,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                         }
                         managedCapability?.registerArtifact({
                             kind: "plan",
-                            path: planSessionArtifactReference(document.planName),
+                            path: planArtifactReference(document.planId),
                             title: document.planName,
                             registeredBy: agentName,
                         });

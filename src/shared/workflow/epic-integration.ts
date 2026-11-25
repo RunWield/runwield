@@ -1,6 +1,5 @@
 import { projects } from "@runwield/projects";
 import { saveEpicIntegrationReview } from "../../plan-store/index.ts";
-import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { REVIEW_DIFF_FORMAT_ARGS } from "./git-snapshot.ts";
@@ -24,12 +23,7 @@ import { rm as fsRm } from "node:fs/promises";
 
 import { join } from "node:path";
 import { savePlanProse, preparePlanRepairDraft } from "../../plan-store/index.ts";
-import {
-    compareChildPlansByOrder,
-    parsePlanFrontMatter,
-    EPIC_INTEGRATION_REPORT_FILE_NAME,
-    isPlannedChangeClassification,
-} from "@runwield/plans/format";
+import { compareChildPlansByOrder, parsePlanFrontMatter, isPlannedChangeClassification } from "@runwield/plans/format";
 import { saveChildFeaturePlans, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
 import { AGENTS } from "../session/agent-registry.ts";
@@ -42,7 +36,7 @@ import {
     formatCapturedProcessOutput,
     PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
 } from "./process-output.ts";
-import { resolveEpicArtifactPath, saveEpicArtifact } from "../../plan-store/index.ts";
+import { workflowEpicArtifacts } from "../../plan-store/index.ts";
 import type { HostedSession } from "../session/hosted-session.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
@@ -954,21 +948,10 @@ export async function runEpicIntegrationGate(
                 };
             }
             const findings = [...(checks.finding ? [checks.finding] : []), ...reviewFindings(ledger, review.outcome)];
-            const reportPath = await resolveEpicArtifactPath(
-                location.documentRoot,
-                epicPlanName,
-                EPIC_INTEGRATION_REPORT_FILE_NAME,
-            );
-            const reportRelativePath = hasCanonicalPlanAccess()
-                ? reportPath
-                : `docs/plans/${epicPlanName}/${EPIC_INTEGRATION_REPORT_FILE_NAME}`;
+            const artifacts = await workflowEpicArtifacts(location.documentRoot, epicPlanName);
+            const reportRelativePath = artifacts.integrationReportPath;
             if (findings.length) {
-                await saveEpicArtifact(
-                    location.documentRoot,
-                    epicPlanName,
-                    EPIC_INTEGRATION_REPORT_FILE_NAME,
-                    renderReport(epicPlanName, state, base, findings),
-                );
+                await artifacts.saveIntegrationReport(renderReport(epicPlanName, state, base, findings));
                 await recordPlanEvent({
                     cwd: primaryRoot,
                     planName: epicPlanName,
@@ -1077,12 +1060,7 @@ export async function runEpicIntegrationGate(
             }
             if (codeReview?.kind === "changes_requested") {
                 findings.push(codeReview.finding);
-                await saveEpicArtifact(
-                    location.documentRoot,
-                    epicPlanName,
-                    EPIC_INTEGRATION_REPORT_FILE_NAME,
-                    renderReport(epicPlanName, state, base, findings),
-                );
+                await artifacts.saveIntegrationReport(renderReport(epicPlanName, state, base, findings));
                 await recordPlanEvent({
                     cwd: primaryRoot,
                     planName: epicPlanName,

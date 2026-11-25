@@ -319,6 +319,10 @@ test("plan_written reviews a canonical Plan from an unregistered linked checkout
             assertEquals(reference?.planId, "linked-only-id");
             assertEquals(reference?.planName, "linked-only");
             assertEquals(reference?.planningAgentName, "planner");
+            assertEquals(
+                fixture.store.listSessionArtifacts(fixture.session.runwieldSessionId).map((artifact) => artifact.path),
+                ["plans/linked-only-id/context.md"],
+            );
             assertEquals((await loadPlan(linked, "linked-only"))?.attrs.status, "ready_for_work");
             assertEquals(existsSync(join(primary, "docs", "plans")), false);
             assertEquals(await git(primary, ["rev-parse", "HEAD"]), primaryHead);

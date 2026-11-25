@@ -9,7 +9,7 @@ import { finalizePlanImplementation } from "../implementation-checkpoint.ts";
 import { git } from "../../git-test-fixture.ts";
 import { captureForegroundProcess } from "../../captured-process.ts";
 import type { PackageDocuments } from "@runwield/plans/history";
-import type { DeliveryCopy } from "../../../plan-store/packages.ts";
+import type { DeliveryCopy } from "@runwield/plans/publication-copies";
 
 export async function publicationFixture(
     plans = false,

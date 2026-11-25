@@ -23,7 +23,7 @@ import {
     verifyPackageRecordingDelivery,
 } from "./published-source.ts";
 import fs from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
 import {
     capturePlanPackageInput,
@@ -35,11 +35,7 @@ import {
     withPlanPackageLocks,
     findPlanPackagePublication,
     findPlanPackageRecordingPreparation,
-    samePackagePublicationReference,
-    type PackagePublicationReference,
     type PackagePublicationManifest,
-    type DeliveryCopy,
-    type ExecutionPublicationPolicy,
 } from "./packages.ts";
 import {
     currentPackageSelection,
@@ -49,15 +45,19 @@ import {
     packageWorkflowLocks,
     updatePackageWorkflowMetadata,
 } from "./workflows.ts";
-import type { PublicationAttempt, PublicationPhaseEvidence } from "../shared/workflow/publication-attempt.ts";
-import { checkpointExecutionWorktree } from "../shared/worktree.ts";
+import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
+import {
+    samePackagePublicationReference,
+    type DeliveryCopy,
+    type ExecutionPublicationPolicy,
+    type PackagePublicationReference,
+    type PublicationCandidate,
+    type PublicationCopyEvidence,
+    type MaterializedPublicationCopies,
+} from "@runwield/plans/publication-copies";
+import { materializeDeliveryCopy } from "@runwield/plans/publication-files";
 import { gitStatusPaths } from "../shared/git-runtime-safety.ts";
 import { isRunWieldOwnedRuntimePath } from "../shared/runwield-owned-paths.ts";
-
-type PackageCandidateEvidence = Pick<
-    PublicationAttempt,
-    "packageInput" | "validatedCommit" | "targetBranch" | "attemptId" | "planId" | "artifactCommit"
->;
 
 async function git(root: string, args: string[]) {
     const result = await captureForegroundProcess("git", { cwd: root, args });
@@ -337,11 +337,11 @@ async function changedCopyPaths(
 /** Verify exact payload and code boundary; commit messages alone are not evidence. */
 export async function packageArtifactEvidence(
     root: string,
-    attempt: PackageCandidateEvidence,
+    attempt: PublicationCandidate,
     commit: string,
     gitRoot = root,
     retainedManifest?: PackagePublicationManifest,
-): Promise<PublicationPhaseEvidence | null> {
+): Promise<PublicationCopyEvidence | null> {
     if (!attempt.packageInput) throw new Error("Package publication input is missing.");
     const manifest = retainedManifest ?? (await packagePublicationInput(root, attempt.packageInput));
     if (
@@ -370,9 +370,8 @@ export async function packageArtifactEvidence(
 }
 
 /** Exact frozen writes left before the copies commit are artifacts, not implementation changes. */
-export async function uncommittedPackageCopyPaths(attempt: PublicationAttempt): Promise<string[]> {
+export async function uncommittedPackageCopyPaths(cwd: string, attempt: PublicationCandidate): Promise<string[]> {
     if (!attempt.packageInput || attempt.artifactCommit) return [];
-    const cwd = attempt.executionCwd;
     const manifest = await packagePublicationInput(cwd, attempt.packageInput);
     const changed = new Set(await changedCopyPaths(cwd, cwd, manifest, attempt.validatedCommit));
     const dirty = new Set(await gitStatusPaths(cwd));
@@ -413,14 +412,14 @@ export async function uncommittedPackageCopyPaths(attempt: PublicationAttempt): 
 }
 
 /** The single assembler accepts both Plan and already prepared Work Record documents. */
-export async function preparePackageCopies(
+export async function materializePackageCopies(
     root: string,
-    attempt: PublicationAttempt,
-): Promise<PublicationPhaseEvidence> {
+    attempt: PublicationCandidate & { executionCwd: string },
+): Promise<MaterializedPublicationCopies> {
     const manifest = await packagePublicationInput(root, attempt.packageInput!);
     const head = await git(attempt.executionCwd, ["rev-parse", "HEAD"]);
     const existing = await packageArtifactEvidence(attempt.executionCwd, attempt, head.text);
-    if (existing) return existing;
+    if (existing) return { kind: "committed", evidence: existing };
     if (head.code !== 0 || head.text !== attempt.validatedCommit)
         throw new Error("Publication source requires revalidation.");
     const permitted = new Map(manifest.copies.map((copy) => [copy.path, copy.text]));
@@ -436,37 +435,9 @@ export async function preparePackageCopies(
         const base = await committedCopy(attempt.executionCwd, attempt.validatedCommit, copy.path);
         if (base !== null)
             await assertOwnedPreviousCopy(root, attempt.executionCwd, manifest, attempt.validatedCommit, copy, base);
-        const path = join(attempt.executionCwd, copy.path);
-        // Never follow an execution-checkout symlink while materializing a copy.
-        let cursor = attempt.executionCwd;
-        for (const segment of copy.path.split("/")) {
-            cursor = join(cursor, segment);
-            const stat = await fs.lstat(cursor).catch((error) => {
-                if (error.code === "ENOENT") return null;
-                throw error;
-            });
-            if (stat?.isSymbolicLink()) throw new Error("Delivery copy destination contains a symbolic link.");
-        }
-        const current = await fs.readFile(path, "utf8").catch((error) => {
-            if (error.code === "ENOENT") return null;
-            throw error;
-        });
-        if (current !== null && current !== copy.text && current !== base)
-            throw new Error(`Delivery copy collides with editor content: ${copy.path}`);
-        await fs.mkdir(dirname(path), { recursive: true });
-        await fs.writeFile(path, copy.text);
+        await materializeDeliveryCopy(attempt.executionCwd, copy, base);
     }
-    const result = await checkpointExecutionWorktree({
-        worktreePath: attempt.executionCwd,
-        branch: attempt.executionBranch,
-        planName: attempt.planName,
-        mergeTargetRef: attempt.targetHeadAtSeal,
-        publicationAttemptId: attempt.attemptId,
-        publicationPlanPaths: manifest.copies.map((copy) => copy.path),
-    });
-    const evidence = await packageArtifactEvidence(attempt.executionCwd, attempt, result.executionCommit);
-    if (!evidence) throw new Error("Delivery copies do not match the frozen input.");
-    return evidence;
+    return { kind: "written", paths: manifest.copies.map((copy) => copy.path) };
 }
 
 async function settlePackageParent(manifest: PackagePublicationManifest, verifiedAt: string): Promise<void> {
@@ -582,7 +553,7 @@ export async function settlePackagePublication(root: string, attempt: Publicatio
 export async function packageTargetEvidence(
     ownerRoot: string,
     gitRoot: string,
-    attempt: PackageCandidateEvidence,
+    attempt: PublicationCandidate,
     commit: string,
     retainedManifest?: PackagePublicationManifest,
 ): Promise<boolean> {
@@ -663,8 +634,11 @@ export async function assertPackageCopyTargets(
     }
 }
 
-/** Remove only a proven unpublished copies commit before validating a changed code candidate. */
-export async function retirePackageCopies(root: string, attempt: PublicationAttempt): Promise<void> {
+/** Identify the copies commit or remove exact unfinished writes before revalidation. */
+export async function preparePackageCopyRetirement(
+    root: string,
+    attempt: PublicationCandidate & { executionCwd: string },
+): Promise<{ copiesCommit: string; parent: string } | undefined> {
     if (!attempt.packageInput) return;
     const manifest = await packagePublicationInput(root, attempt.packageInput);
     if (!manifest.copies.length) return;
@@ -712,7 +686,7 @@ export async function retirePackageCopies(root: string, attempt: PublicationAtte
         ]);
         if (same.code !== 0) throw new Error("Unpublished copy ownership cannot be proven.");
         const dirty = (await gitStatusPaths(cwd)).filter((path) => manifest.copies.some((copy) => copy.path === path));
-        const owned = new Set(await uncommittedPackageCopyPaths(attempt));
+        const owned = new Set(await uncommittedPackageCopyPaths(cwd, attempt));
         if (dirty.some((path) => !owned.has(path)))
             throw new Error("Edited delivery copies are preserved; restore their sealed bytes before revalidation.");
         for (const path of dirty) {
@@ -739,19 +713,7 @@ export async function retirePackageCopies(root: string, attempt: PublicationAtte
         if ((await fs.readFile(join(cwd, copy.path), "utf8")) !== copy.text)
             throw new Error("Edited delivery copies are preserved; restore their sealed bytes before revalidation.");
     }
-    const checkpoint = await checkpointExecutionWorktree({
-        worktreePath: cwd,
-        branch: attempt.executionBranch,
-        planName: attempt.planName,
-    });
-    const backup = `refs/runwield/revalidation/${attempt.packageInput.inputId}`;
-    if ((await git(cwd, ["update-ref", backup, checkpoint.executionCommit])).code !== 0)
-        throw new Error("Cannot retain the code candidate before revalidation.");
-    const rebased = await git(cwd, ["rebase", "--onto", parent, copiesCommit, attempt.executionBranch]);
-    if (rebased.code !== 0) {
-        await git(cwd, ["rebase", "--abort"]);
-        throw new Error("Unpublished copies could not be separated from code; the original candidate is retained.");
-    }
+    return { copiesCommit, parent };
 }
 
 /** Refuse an inapplicable package reference before publication can change Git. */
@@ -797,7 +759,7 @@ export async function assertPackagePublicationCandidate(
     integrated: string,
 ): Promise<void> {
     const manifest = await packagePublicationInput(ownerRoot, reference);
-    const evidence: PackageCandidateEvidence = {
+    const evidence: PublicationCandidate = {
         packageInput: reference,
         validatedCommit: manifest.validatedCommit,
         targetBranch: manifest.targetBranch,

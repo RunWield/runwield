@@ -196,7 +196,7 @@ bun scripts/run-tests.js src/plan-package-store.test.ts src/plan-package-concurr
 Existing regressions to preserve:
 
 ```sh
-bun scripts/run-tests.js src/plan-store.test.js src/plan-store-locks.test.ts src/plan-store-passive-reads.test.ts src/shared/epic-artifacts.test.ts src/shared/project-runtime-home.integration.test.ts
+bun scripts/run-tests.js src/plan-store.test.js src/plan-store-locks.test.ts src/plan-store-passive-reads.test.ts src/plan-store/artifacts.test.ts src/shared/project-runtime-home.integration.test.ts
 ```
 
 Use `defineGitFixture` and `makeValidationProjectRoot` where Git/legacy Plans are involved, disposable homes, and

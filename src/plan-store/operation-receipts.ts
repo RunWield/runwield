@@ -1,4 +1,5 @@
 /** Owner-private receipt recovery. The package catalog lock protects both intent and effect. */
+import type { ManualQaSectionAppend } from "@runwield/plans/store";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, unlinkSync, lstatSync } from "node:fs";
@@ -14,6 +15,7 @@ export interface OperationOutcome {
     snapshotId?: string;
     snapshotDigest?: string;
     attemptId?: string;
+    qaStatus?: ManualQaSectionAppend["status"];
 }
 interface Receipt {
     version: 1;
@@ -83,6 +85,8 @@ function readReceipt(directory: string, id: string): Receipt | null {
         !/^[a-f0-9]{64}$/.test(receipt.digest) ||
         !["unstarted", "completed", "pending"].includes(receipt.outcome.status) ||
         (receipt.outcome.status === "completed" && !/^[a-f0-9]{64}$/.test(receipt.outcome.revision || "")) ||
+        (receipt.outcome.qaStatus !== undefined &&
+            !["recorded", "already_present"].includes(receipt.outcome.qaStatus)) ||
         (receipt.outcome.snapshotId !== undefined &&
             (!/^[a-f0-9-]{36}$/.test(receipt.outcome.snapshotId) ||
                 !/^[a-f0-9]{64}$/.test(receipt.outcome.snapshotDigest || "") ||
