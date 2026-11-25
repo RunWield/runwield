@@ -1,6 +1,7 @@
 import { projects } from "@runwield/projects";
 import { seedPlanController } from "../../shared/testing/plan-state-fixture.ts";
-import { authorLocalPlan, importPlans, loadPlan, openProjectPlanStore } from "../../plan-store/index.ts";
+import { authorLocalPlan, importPlans, openProjectPlanStore } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { withRetainedPlanReadFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { deepStrictEqual, strictEqual, ok, rejects } from "node:assert/strict";
@@ -341,7 +342,7 @@ test("production Workspace reads target-only Plans from local Git objects withou
             await git(root, ["remote", "add", "origin", `${root}-unavailable.git`]);
             const before = await snapshot(root);
             owner = await workspace(root);
-            const { findPlanById } = await import("../../plan-store/index.ts");
+            const { findPlanById } = await import("../../shared/testing/plan-query-fixture.ts");
             const { assertAuthorizedPlanPath, assertReadablePlanResource } =
                 await import("./server/project-artifacts.ts");
             const { loadWorkspaceDetail } = await import("./server/plan-adapter.ts");

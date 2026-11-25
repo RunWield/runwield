@@ -4,7 +4,7 @@ import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import { parse as parseJsonc, type JsonRecord, type JsonValue } from "./jsonc.ts";
 import lockfile from "proper-lockfile";
-import { normalizePlanServerUrl } from "./collaboration/urls.ts";
+import { normalizePlanServerUrl } from "@runwield/plans/format";
 import { getCwd, getHomeDir } from "../constants.ts";
 import { getBundledModelPresets, type ModelPresetsMap, type ModelPresetVisionFallback } from "./model-presets.ts";
 import { remoteSettingsSnapshot, updateRemoteGlobalSetting, type SettingsUpdate } from "./remote/settings-bridge.ts";

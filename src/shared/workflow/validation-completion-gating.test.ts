@@ -5,7 +5,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
 import { HostedSession } from "../session/hosted-session.ts";

@@ -15,7 +15,7 @@ import {
     listPlans,
     loadPlan,
     loadPlanBodyById,
-} from "./plan-store/index.ts";
+} from "./shared/testing/plan-query-fixture.ts";
 import { getRunWieldRuntimeDir } from "./constants.ts";
 import { defineGitFixture, git } from "./shared/git-test-fixture.ts";
 import {

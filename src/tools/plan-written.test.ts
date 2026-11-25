@@ -1,9 +1,10 @@
 import { projects } from "@runwield/projects";
+import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { applySharedPlanReviewDecision } from "../plan-store/index.ts";
 import { capturePlanReviewInput } from "../plan-store/index.ts";
-import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
+import { importUnfinishedPlanFixture, withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
 import { importPlans } from "../plan-store/index.ts";
 import process from "node:process";
 import {
@@ -13,6 +14,7 @@ import {
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
+import { rejects } from "node:assert/strict";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
@@ -21,7 +23,7 @@ import { HostedSession } from "../shared/session/hosted-session.ts";
 import { createPlanWrittenTool } from "./plan-written.ts";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan } from "../plan-store/index.ts";
+import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
 import { defineCommittedGitFixture, git } from "../shared/git-test-fixture.ts";
@@ -365,7 +367,89 @@ test("submitting plain Plan text assigns identity before review", async () => {
     });
 });
 
-import { authorLocalPlan } from "../plan-store/index.ts";
+import { authorLocalPlan, recordPlanEvent, renamePlan } from "../plan-store/index.ts";
+
+test("plan_written persists policy in the original checkout selected for an unfinished import", async () => {
+    const root = await LINKED_REVIEW_GIT.checkout();
+    const session = new HostedSession({ id: "retained-policy-review", cwd: root });
+    try {
+        const fixture = await importUnfinishedPlanFixture(root, "legacy");
+        const before = await fsReadFile(fixture.packagePath, "utf8");
+        let reviewPath;
+        session.setInteractionAdapter({
+            requestInteraction: (request) => {
+                if (request.type === "plan_review") reviewPath = request._meta?.planPath;
+                return { outcome: "canceled" };
+            },
+        });
+        const result = await createPlanWrittenTool({ hostedSession: session }).execute(
+            "legacy-policy",
+            { planName: "legacy", collaborationRecommendation: "pair" },
+            undefined,
+            undefined,
+            EXTENSION_CONTEXT,
+        );
+        assertEquals(reviewPath, fixture.checkoutPath, resultText(result));
+        const retained = await fsReadFile(fixture.checkoutPath, "utf8");
+        assertEquals(parsePlanFrontMatter(retained).attrs.collaborationRecommendation, "pair");
+        assertStringIncludes(retained, "Use the retained checkout requirements.");
+        assertEquals(await fsReadFile(fixture.packagePath, "utf8"), before);
+    } finally {
+        session.dispose();
+        await fsRm(root, { recursive: true, force: true });
+    }
+});
+
+test("plan_written reopens the changed approved child during Sequence review", async () => {
+    await withRuntimeCommandFixture("sequence-child-reopen-", async ({ projectRoot }) => {
+        const parentName = "sequence";
+        const childName = "sequence/first";
+        const siblingName = "sequence/second";
+        const names = [parentName, childName, siblingName];
+        await authorLocalPlan(projectRoot, {
+            planName: parentName,
+            contextMarkdown: "# Sequence\n",
+            definition: { classification: "PROJECT", type: "sequence" },
+        });
+        for (const [index, name] of [childName, siblingName].entries()) {
+            await authorLocalPlan(projectRoot, {
+                planName: name,
+                parentPlan: parentName,
+                contextMarkdown: `# Child ${index + 1}\n`,
+                definition: { classification: "PLANNED_CHANGE", order: index + 1, executionAgent: "engineer" },
+            });
+        }
+        for (const planName of names) await recordPlanEvent({ cwd: projectRoot, planName, event: "review_approved" });
+        const child = (await loadPlan(projectRoot, childName))!;
+        const session = new HostedSession({ id: "sequence-child-reopen", cwd: projectRoot });
+        try {
+            let reviews = 0;
+            session.setInteractionAdapter({
+                requestInteraction: (request) => {
+                    if (request.type === "plan_review") reviews++;
+                    return { outcome: "canceled" };
+                },
+            });
+            const tool = createPlanWrittenTool({ hostedSession: session });
+            const submit = () =>
+                tool.execute(crypto.randomUUID(), { planName: parentName }, undefined, undefined, EXTENSION_CONTEXT);
+            await submit();
+            const revisedBody = "Revised child requirements\n=======\n";
+            await fsWriteFile(child.path, revisedBody);
+            const reopened = await submit();
+
+            const updated = (await loadPlan(projectRoot, childName))!;
+            assertEquals(reviews, 2, JSON.stringify(reopened));
+            assertEquals(updated.attrs.planId, child.attrs.planId);
+            assertEquals(updated.attrs.status, "draft");
+            assertEquals(updated.body, revisedBody);
+            assertEquals((await loadPlan(projectRoot, parentName))?.attrs.status, "approved");
+            assertEquals((await loadPlan(projectRoot, siblingName))?.attrs.status, "approved");
+        } finally {
+            session.dispose();
+        }
+    });
+});
 
 test("plan_written prose revision preserves PROJECT metadata without planType or triage defaults", async () => {
     await withRuntimeCommandFixture("prose-plan-review-", async ({ projectRoot }) => {
@@ -412,5 +496,77 @@ test("plan_written prose revision preserves PROJECT metadata without planType or
         } finally {
             session.dispose();
         }
+    });
+});
+
+test("plan_written cannot revise a replacement for the Session's bound Plan", async () => {
+    await withRuntimeCommandFixture("bound-plan-review-", async ({ projectRoot }) => {
+        const draft = "# Original Plan\n";
+        await authorLocalPlan(projectRoot, { planName: "proposal", contextMarkdown: draft });
+        const original = (await loadPlan(projectRoot, "proposal"))!;
+        const session = new HostedSession({ id: "bound-plan-review", cwd: projectRoot });
+        try {
+            session.setWorkflowExecutionContext({ planName: "proposal", triageMeta: original.attrs });
+            await renamePlan(projectRoot, original.attrs.planId!, "renamed", original.revision);
+            await authorLocalPlan(projectRoot, { planName: "proposal", contextMarkdown: draft });
+            const replacement = (await loadPlan(projectRoot, "proposal"))!;
+            assertEquals(replacement.revision, original.revision);
+            await rejects(
+                createPlanWrittenTool({ hostedSession: session }).execute(
+                    "revise-bound",
+                    { planName: "proposal", contextMarkdown: "# Changed\n", expectedRevision: original.revision },
+                    undefined,
+                    undefined,
+                    EXTENSION_CONTEXT,
+                ),
+                /bound Plan identity changed/,
+            );
+            assertEquals((await loadPlan(projectRoot, "proposal"))?.body, draft);
+            assertEquals((await loadPlan(projectRoot, "renamed"))?.body, draft);
+        } finally {
+            session.dispose();
+        }
+    });
+});
+
+test("hosted plan_written refuses a retained Plan from another Session Project before review", async () => {
+    await withRuntimeCommandFixture("retained-session-project-", async ({ projectRoot, alternateRoot }) => {
+        const foreign = await projects.checkout.admit(alternateRoot);
+        if (foreign.kind !== "existing") throw new Error("Expected an admitted second Project.");
+        await withRetainedPlanFixture(projectRoot, async () => {
+            await seedPlan(projectRoot, "proposal", "# Retained\n", {
+                planId: crypto.randomUUID(),
+                status: "draft",
+                classification: "PLANNED_CHANGE",
+            });
+            const previous = (await loadPlan(projectRoot, "proposal"))!;
+            const session = new HostedSession({ id: "retained-session", cwd: projectRoot });
+            session.setManagedMetadata({
+                runwieldSessionId: session.id,
+                projectId: foreign.identity.projectId,
+                piSessionId: session.id,
+                transcriptPath: join(alternateRoot, "session.jsonl"),
+                generation: null,
+                name: null,
+                activeAgent: "planner",
+                workflowContext: null,
+            });
+            try {
+                await rejects(
+                    createPlanWrittenTool({ hostedSession: session }).execute(
+                        "foreign-retained-submission",
+                        { planName: "proposal", executionAgent: "engineer", collaborationRecommendation: "autonomous" },
+                        undefined,
+                        undefined,
+                        EXTENSION_CONTEXT,
+                    ),
+                    /another Session Project/,
+                );
+                assertEquals((await loadPlan(projectRoot, "proposal"))?.revision, previous.revision);
+                assertEquals(await fsReadFile(previous.path, "utf8"), previous.markdown);
+            } finally {
+                await session.dispose();
+            }
+        });
     });
 });

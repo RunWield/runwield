@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { packageFixture } from "../../shared/testing/plan-package-fixture.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
-import { listPlans } from "../../plan-store/index.ts";
+import { listPlans } from "../../shared/testing/plan-query-fixture.ts";
 
 test("load by name never adopts checkout prose; explicit path imports once and canonical references survive source deletion", async () => {
     const fixture = await packageFixture();

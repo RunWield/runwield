@@ -13,7 +13,7 @@ import {
 import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
 /** Locate the editable document independently from the shared controller files. */
 import { canonicalizeStoredPlanName, isCompletedPlanStatus, isSequencePlan } from "@runwield/plans/format";
-import { loadPlan } from "./index.ts";
+import { loadPlan } from "./queries.ts";
 import { findActiveByPlanName, listEntries } from "../shared/worktree-registry.ts";
 import { isGitRepository } from "../shared/git.ts";
 import { inspectProjectRuntimeReadAccess, withProjectRuntimeReadScope } from "../shared/project-runtime-layout.ts";

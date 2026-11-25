@@ -20,7 +20,7 @@ import {
     submitReview,
     withProject,
 } from "./attached-test-fixture.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { recordPlanEvent } from "../../plan-store/index.ts";
 

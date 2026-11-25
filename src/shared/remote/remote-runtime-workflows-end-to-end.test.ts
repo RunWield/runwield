@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals } from "../../testing/assertions.ts";
 import { git } from "../workflow/validation-test-helpers.ts";
-import { assertRemoteStorageAbsent, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
+import { assertRemoteStorageAbsent, withRetainedRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 import {
     ciRuns,
     executeDelivery,
@@ -16,7 +16,7 @@ import {
 } from "./remote-runtime-workflows-fixture.ts";
 
 test("remote planning, forwarded browser review and Unix socket approval, isolated execution, semantic repair and Work Record publication leave laptop project unchanged", async () => {
-    await withRemoteRuntimeFixture(async (f) => {
+    await withRetainedRemoteRuntimeFixture(async (f) => {
         // Only the declared project runtime storage is excluded; all other paths and bytes are protected.
         const before = await snapshotProjectTree(f.projectRoot, [".wld"]);
         const upstream = await prepareDelivery(f);

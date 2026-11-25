@@ -1,7 +1,7 @@
 /** @module ui/workspace/server/owner-plan-sessions */
 
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
-import { findPlanEvidenceById } from "../../../plan-store/index.ts";
+import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
 import { findPlanAssociatedSessions } from "../../../shared/session/plan-session-lookup.ts";
 import { ownerErrorJson, ownerJson } from "../routes/owner-api.ts";
 import { requireOwnerProjectRoot } from "./owner-projects.ts";
@@ -20,9 +20,12 @@ export async function ownerProjectPlanSessionsApi(ctx: OwnerRouteContext): Promi
     try {
         const projectId = ctx.params.projectId;
         const planId = ctx.params.planId;
-        const root = requireOwnerProjectRoot(ctx.state.store, projectId);
-        await findPlanEvidenceById(root, planId);
-        const sessions = await findPlanAssociatedSessions(ctx.state.store, { cwd: root, planId });
+        const store = ctx.state.store;
+        await openRegisteredPlanDocuments(projectId, store.projects).evidenceById(planId);
+        const sessions = await findPlanAssociatedSessions(store, {
+            cwd: requireOwnerProjectRoot(store, projectId),
+            planId,
+        });
         return ownerJson({
             planId,
             sessions: sessions.map(({ transcriptPath: _transcriptPath, ...session }) => session),

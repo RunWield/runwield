@@ -21,7 +21,7 @@ import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 
 type Source = import("./generation.ts").WorkRecordSource;
 type Options = import("./generation.ts").WorkRecordGenerationOptions;
-type Sections = import("./generation.ts").GeneratedWorkRecordSections;
+type Sections = import("@runwield/plans/work-record-schema").GeneratedWorkRecordSections;
 export interface RecordingPreparation {
     version: 1;
     attemptId: string;

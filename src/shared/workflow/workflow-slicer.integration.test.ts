@@ -7,7 +7,7 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ToolParameters } from "@runwield/tools";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { HostedSession } from "../session/hosted-session.ts";
 import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";

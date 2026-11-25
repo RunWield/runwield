@@ -31,8 +31,8 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         modules: ["src/plan-store/packages.ts"],
     },
     "src/plan-package-snapshots.test.ts": {
-        reason: "Qualify complete immutable input capture and crash recovery independently of workflow presentation.",
-        modules: ["src/plan-store/packages.ts"],
+        reason: "Qualify complete immutable input capture, driver errors and crash recovery independently of workflow presentation.",
+        modules: ["src/plan-store/packages.ts", "packages/plans/file-snapshots.ts"],
     },
     "src/plan-package-store.test.ts": {
         reason: "Qualify low-level durable package create/CAS/rename/archive/resource semantics.",
@@ -81,6 +81,10 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     "src/shared/testing/plan-package-process-driver.ts": {
         reason: "Cross-process owner qualification for package contention, crash points, input capture and recovery.",
         modules: ["src/plan-store/packages.ts", "src/plan-store/workflows.ts"],
+    },
+    "src/shared/testing/plan-query-fixture.ts": {
+        reason: "Observe historical checkout query behavior in retained and managed Plan qualification.",
+        modules: ["src/plan-store/queries.ts"],
     },
     "src/shared/testing/plan-state-fixture.ts": {
         reason: "Arrange historical/interrupted states and observe controllers/journals for consumer tests; never production API.",
@@ -233,12 +237,17 @@ export const PLAN_TEST_SUPPORT = new Set([
     "src/shared/attached/review-chat-test-fixture.ts",
     "src/shared/attached/validation-test-fixture.ts",
     "src/shared/remote/remote-runtime-effects-client.ts",
+    "src/shared/remote/remote-runtime-test-client.ts",
+    "src/shared/remote/remote-runtime-test-fixture.ts",
     "src/shared/remote/remote-runtime-workflows-fixture.ts",
+    "src/shared/remote/remote-rollover-debug-fixture.ts",
     "src/shared/remote/verify-remote-reviews.ts",
     "src/shared/remote/verify-remote-workflows.ts",
+    "src/ui/tui/testing/remote-submit-fixture.ts",
     "src/shared/testing/plan-controller-fixture.ts",
     "src/shared/testing/plan-package-fixture.ts",
     "src/shared/testing/plan-package-process-driver.ts",
+    "src/shared/testing/plan-query-fixture.ts",
     "src/shared/testing/plan-state-fixture.ts",
     "src/shared/testing/ready-plan-fixture.ts",
     "src/shared/testing/retained-plan-fixture.ts",

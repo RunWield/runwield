@@ -22,7 +22,8 @@ import type { PhaseContext } from "../workflow/validation-types.ts";
 import { createValidationSessionPort } from "../workflow/validation-session-adapter.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { withRetainedPlanReadFixture } from "../testing/retained-plan-fixture.ts";
 import { remoteBackgroundTaskLogDirectory } from "./background-task-logs.ts";
 import { git } from "../workflow/validation-test-helpers.ts";
 
@@ -60,7 +61,7 @@ const runtime = new SessionRuntime({
     ownerInstanceId: crypto.randomUUID(),
 });
 let ciStarted = 0;
-try {
+async function runScenario() {
     const sessionId = await runtime.createPromptReadySession({ cwd: input.cwd, agentName: "remote-runtime" });
     await runtime
         .promptUserTurn(sessionId, {
@@ -108,7 +109,7 @@ try {
                         } else {
                             const manager = session.getRootSessionManager() as SessionManager | null;
                             if (!manager) throw new Error("Missing root manager");
-                            let plan = await loadPlan(input.cwd, "effect-gate");
+                            let plan = await planDocumentsForCheckout(input.cwd).load("effect-gate");
                             if (!plan) throw new Error("Missing fixture Plan");
                             let executionCwd = input.cwd;
                             if (input.scenario !== "handoff") {
@@ -131,7 +132,7 @@ try {
                                     executionContext: workflow,
                                     hostedSession: session,
                                 });
-                                plan = (await loadPlan(executionCwd, "effect-gate"))!;
+                                plan = (await planDocumentsForCheckout(executionCwd).load("effect-gate"))!;
                             }
                             const args = {
                                 hostedSession: session,
@@ -166,7 +167,7 @@ try {
                                 { planName: "effect-gate", planId: "effect-gate-plan", status: plan.attrs.status },
                                 { persist: true },
                             );
-                            const canonicalPlan = await loadPlan(executionCwd, "effect-gate");
+                            const canonicalPlan = await planDocumentsForCheckout(executionCwd).load("effect-gate");
                             const beforePlan = await readFile(join(executionCwd, "docs/plans/effect-gate.md"), "utf8");
                             const beforeRefs = await git(input.cwd, ["show-ref"]);
                             const beforeCommands = await readFile(input.commandLog, "utf8");
@@ -237,6 +238,11 @@ try {
             if (input.scenario === "logs") throw error;
             console.log(JSON.stringify({ runtimeError: String(error) }));
         });
+}
+
+try {
+    if (input.scenario === "logs") await runScenario();
+    else await withRetainedPlanReadFixture(input.cwd, runScenario);
 } finally {
     await runtime.closeAllSessionsWhenIdle();
     clearModels();

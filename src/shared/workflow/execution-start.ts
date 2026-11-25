@@ -20,7 +20,7 @@ import { stat as fsStat } from "node:fs/promises";
 import { prepareEditedSiblingPlans } from "../../plan-store/index.ts";
 import { CLI_BIN } from "../../constants.ts";
 import { getPlanFrontMatterRevisionForText } from "@runwield/plans/format";
-import { ensurePlanIdentity, findPlansByParent, loadPlan } from "../../plan-store/index.ts";
+import { ensurePlanIdentity, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import {
     defaultPlanBranchName,
     effectiveDeliveryBranch,
@@ -191,7 +191,7 @@ async function materializeEpicPlanFamily(projectRoot, executionCwd, planName, pl
     const materializedPaths = [];
     const relatedPlanNames = [
         parentPlan,
-        ...(await findPlansByParent(projectRoot, parentPlan)).map((plan) => plan.name),
+        ...(await planDocumentsForCheckout(projectRoot).children(parentPlan)).map((plan) => plan.name),
     ];
     for (const relatedPlanName of new Set(relatedPlanNames)) {
         if (relatedPlanName === planName) continue;
@@ -234,7 +234,9 @@ export async function reconcileExecutionPreparationLocation(
     const projectRoot = projects.checkout.primaryRoot(cwd);
     await prepareWorktreeRegistry(projectRoot);
     const records = await listTransitionRecoveryRecords(projectRoot);
-    const source = await loadPlan(cwd, planName).catch(() => null);
+    const source = await planDocumentsForCheckout(cwd)
+        .load(planName)
+        .catch(() => null);
     const entries = await listWorktreeRegistryEntries(projectRoot);
     // Only an interrupted first preparation can use the approved source when its
     // selected worktree has no document yet. A worker's later deletion cannot.
@@ -273,7 +275,7 @@ export async function reconcileExecutionPreparationLocation(
     }
     if (unmaterialized) {
         const selected = entries.find((entry) => entry.planId === source.attrs.planId && entry.status === "active");
-        if (selected && !(await loadPlan(selected.path, planName))) {
+        if (selected && !(await planDocumentsForCheckout(selected.path).load(planName))) {
             return {
                 registryRoot: projectRoot,
                 documentRoot: cwd,
@@ -289,7 +291,7 @@ export async function reconcileExecutionPreparationLocation(
 interface ExecutionStartOptions {
     packageSelection?: PlanAccess;
     planName: string;
-    triageMeta: Partial<import("../../plan-store/index.ts").PlanFrontMatter>;
+    triageMeta: Partial<import("@runwield/plans").PlanFrontMatter>;
     currentStatus: import("@runwield/plans/lifecycle").PlanStatus;
     cwd?: string;
     existingExecution?: import("../session/hosted-session.ts").ActiveExecutionWorkflow | null;
@@ -306,6 +308,7 @@ interface ExecutionStartOptions {
 export async function startActiveExecutionWorkflow(
     options: ExecutionStartOptions,
 ): Promise<import("../session/hosted-session.ts").ActiveExecutionWorkflow> {
+    options.hostedSession?.getManagedOperationCapability?.()?.assertLive();
     const cwd = options.cwd || options.hostedSession?.cwd;
     if (!cwd) throw new Error("Execution requires its launch directory.");
     if (!options.packageSelection && !capturePlanAccess()) {
@@ -409,7 +412,7 @@ async function startActiveExecutionWorkflowInScope({
             suggestedAttemptId: triageMeta.worktreeId,
             executionMode: "non_git_in_place",
         });
-        const canonicalPlan = await loadPlan(projectRoot, planName);
+        const canonicalPlan = await planDocumentsForCheckout(projectRoot).load(planName);
         if (!canonicalPlan) throw new Error(`Plan not found: ${planName}`);
         await healSettledTransitionRecords(projectRoot, { planName, evidenceProjectRoot: projectRoot });
         const needsExecutionStartedEvent = canonicalPlan.attrs.status !== "in_progress";
@@ -540,7 +543,9 @@ async function startActiveExecutionWorkflowInScope({
         planAuthorityRoot === reusable?.path
             ? reusablePlanSource
             : await loadCanonicalPlanSource(planAuthorityRoot, planName);
-    const canonicalPlanForRevision = await loadPlan(planAuthorityRoot, planName).catch(() => null);
+    const canonicalPlanForRevision = await planDocumentsForCheckout(planAuthorityRoot)
+        .load(planName)
+        .catch(() => null);
     if (preflightCanonicalPlanSource.kind !== "loaded") {
         throw new Error(
             `Cannot load execution Plan ${preflightCanonicalPlanSource.relativePath}: ${
@@ -617,7 +622,7 @@ async function startActiveExecutionWorkflowInScope({
         worktreeId: attemptId,
         targetRef: resolvedTargetBranch || targetBranch || undefined,
         expectedRevision: hasCanonicalPlanAccess()
-            ? (await loadPlan(planAuthorityRoot, planName))?.revision
+            ? (await planDocumentsForCheckout(planAuthorityRoot).load(planName))?.revision
             : canonicalPlanForRevision?.revision,
         expectedPlanEvent: needsExecutionStartedEvent,
         resumeInterrupted: sourceLocation.resumeInterruptedPreparation === true,
@@ -805,7 +810,7 @@ async function startActiveExecutionWorkflowInScope({
             const materializedPlanPaths = [planFile.relativePath, ...relatedPlanPaths];
             if (needsPreparationCheckpoint)
                 await prepareExecutionSetup(hostedSession, worktree.path, materializedPlanPaths);
-            const executionPlan = await loadPlan(worktree.path, planName);
+            const executionPlan = await planDocumentsForCheckout(worktree.path).load(planName);
             if (!executionPlan) throw new Error(`Plan not found in its execution worktree: ${planName}`);
             // Re-entering an in-progress attempt must keep the tree from before the
             // implementation began. Capturing the current tree here makes completed
@@ -1005,7 +1010,7 @@ async function startActiveExecutionWorkflowInScope({
                 }
             }
             {
-                const worktreePlan = await loadPlan(workflow.executionCwd, planName);
+                const worktreePlan = await planDocumentsForCheckout(workflow.executionCwd).load(planName);
                 if (!worktreePlan) {
                     throw new Error(`Execution preparation did not materialize Plan file for ${planName}.`);
                 }
@@ -1037,7 +1042,7 @@ async function startActiveExecutionWorkflowInScope({
                 worktreeBranch: workflow.worktreeBranch,
                 worktreeBaseBranch: workflow.worktreeBaseBranch,
                 baselineTree: workflow.baselineTree,
-                planRevision: (await loadPlan(workflow.executionCwd, planName))?.revision,
+                planRevision: (await planDocumentsForCheckout(workflow.executionCwd).load(planName))?.revision,
             };
         },
     });

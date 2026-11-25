@@ -5,10 +5,10 @@ import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { extractYaml, type FrontMatterRecord } from "../shared/front-matter.ts";
-import { EPIC_ARTIFACT_FILE_NAMES } from "@runwield/plans/format";
+import { EPIC_ARTIFACT_FILE_NAMES, canonicalPlanStatus } from "@runwield/plans/format";
 import { plans } from "@runwield/plans";
-import { canonicalPlanStatus, getPlanDocumentRoot } from "../plan-store.ts";
-import { PlanPackageError } from "./packages.ts";
+import { getPlanDocumentRoot } from "../plan-store.ts";
+import { PlanPackageError } from "@runwield/plans/file-snapshots";
 import { resolveWorkflowPlanLocation } from "./location.ts";
 import {
     controllerRecordPath,

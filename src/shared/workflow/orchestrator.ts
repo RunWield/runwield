@@ -23,16 +23,16 @@
  * iterates without rebuilding LLM context.
  */
 
-import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
+import { isPlannedChangeClassification } from "@runwield/plans/format";
+import { AGENTS, agentRegistry } from "../session/agent-registry.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { switchActiveAgent } from "../session/agent-switching.ts";
 import { runRootTurn } from "../session/session.ts";
-import { agentRegistry } from "../session/agent-registry.ts";
 import { toolRegistry, type TriageOutcome, type TriageOutcomeInput } from "@runwield/tools";
 import {
     emitHostedSessionRuntimeEvent,
@@ -574,7 +574,7 @@ export async function dispatchPostTriage({
         const decisionTriageMeta = normalizeTriageOutcome(decisionMeta) || normalizedTriage;
         checkCanceled();
         if (hostedSession.getManagedMetadata?.()) {
-            const approvedPlan = await loadPlan(projectRoot, planName);
+            const approvedPlan = await planDocumentsForCheckout(projectRoot).load(planName);
             const evidence = await loadPlanActionEvidence(projectRoot, approvedPlan?.attrs.planId || "");
             checkCanceled();
             if (evidence.kind !== "success") throw new Error(evidence.message);
@@ -660,7 +660,7 @@ export async function dispatchPostTriage({
         }
         if (executionDecision.kind === "run_validation") {
             const validationRoot = executionResult.executionContext?.executionCwd || projectRoot;
-            const plan = await loadPlan(validationRoot, planName);
+            const plan = await planDocumentsForCheckout(validationRoot).load(planName);
             const validationTriageMeta = plan?.attrs ? { ...decisionTriageMeta, ...plan.attrs } : decisionTriageMeta;
             if (shouldRunWorkflowValidation(decisionTriageMeta)) {
                 const validationResult = await runWorkflowValidationToStableBoundary({

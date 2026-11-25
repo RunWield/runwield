@@ -22,12 +22,8 @@ import { getCwd, getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { injectFrontMatter } from "@runwield/plans/format";
-import {
-    listPlans,
-    loadPlan,
-    listTransitionRecoveryRecords,
-    runExecutionPreparationTransition,
-} from "../../plan-store/index.ts";
+import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "../../plan-store/index.ts";
+import { listPlans, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { addEntry, findById, getWorktreeRegistryPath, listEntries } from "../../shared/worktree-registry.ts";
 import { runValidationOutcomeTransition } from "../../plan-store/transitions.ts";
 import { runPlansDoctor, runPlansDoctorCommand } from "./doctor.ts";

@@ -27,14 +27,14 @@ import {
     getCommandInvocationNames,
     getSlashCommandDefinitions,
 } from "../../cmd/registry.ts";
-import { AGENTS, getCwd } from "../../constants.ts";
+import { AGENTS, agentRegistry } from "../../shared/session/agent-registry.ts";
+import { getCwd } from "../../constants.ts";
 import {
     EMPTY_PROJECT_DIRECTORY_HEADER,
     EMPTY_PROJECT_DIRECTORY_PROMPT_NOTE,
     EMPTY_PROJECT_DIRECTORY_WELCOME_BODY,
     isEmptyProjectDirectory,
 } from "../../shared/project-state.ts";
-import { agentRegistry } from "../../shared/session/agent-registry.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import {
     getCustomSetting,
@@ -534,14 +534,19 @@ export async function startInteractiveSession(
         const installAutocompleteProvider = (): void => {
             const autocompleteProvider = new CombinedAutocompleteProvider(
                 [
-                    ...Array.from(chatBuiltinSlashNames).map((name) => ({
-                        name,
-                        description:
-                            name === "init" && !initCommandAvailable
-                                ? "Already initialized for this project"
-                                : commandRegistry[name].description,
-                        getArgumentCompletions: commandRegistry[name].getArgumentCompletions,
-                    })),
+                    ...Array.from(chatBuiltinSlashNames).map((name) => {
+                        const { description, getArgumentCompletions } = commandRegistry[name];
+                        return {
+                            name,
+                            description:
+                                name === "init" && !initCommandAvailable
+                                    ? "Already initialized for this project"
+                                    : description,
+                            getArgumentCompletions: getArgumentCompletions
+                                ? (prefix: string) => getArgumentCompletions(prefix, runtimeSnapshot().cwd)
+                                : undefined,
+                        };
+                    }),
                     ...invokablePromptTemplates.map((template) => ({
                         name: template.name,
                         argumentHint: template.argumentHint,

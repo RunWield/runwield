@@ -225,7 +225,7 @@ async function requestHostedSessionInteractionInScope(
                 for (const doc of meta.sequenceDocuments) {
                     hostedSession.planReviewConversations.rememberReviewBase(doc.planId, {
                         attrs: doc.frontmatter,
-                        body: parsePlanFrontMatter(doc.plan).body,
+                        body: doc.packageInput ? doc.plan : parsePlanFrontMatter(doc.plan).body,
                     });
                 }
             } else if (

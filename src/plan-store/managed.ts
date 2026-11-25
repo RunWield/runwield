@@ -92,6 +92,11 @@ async function client(cwd: string, admit = false): Promise<ProjectStoreClient | 
     return selected.client;
 }
 
+/** The trusted launcher admits its configured execution repository on the first deliberate write. */
+export async function admitManagedPlanCheckout(cwd: string): Promise<void> {
+    await client(cwd, true);
+}
+
 /** Bind a project request to its configured managed connection for its lifetime. */
 export function captureManagedProjectPlanAccess(projectId: ProjectId, admitted?: ProjectStoreIdentity) {
     if (!managedPersonalStoreActive()) return undefined;
@@ -106,18 +111,20 @@ export function captureManagedProjectPlanAccess(projectId: ProjectId, admitted?:
         return root.identity;
     };
     const initial = inspect();
-    if (admitted) {
+    const verifyAdmission = () => {
+        if (!admitted) return configured.cwd;
         projects.home.assertStoreIdentity(admitted);
         if (
             projects.home.isOwner(admitted) ||
-            initial.checkoutId !== admitted.checkoutId ||
             initial.repositoryId !== admitted.repositoryId ||
             initial.personalOwner.kind !== admitted.personalOwner.kind ||
             initial.personalOwner.identity !== admitted.personalOwner.identity ||
             initial.executionAccountHome !== admitted.executionAccountHome
         )
-            throw new Error("Managed Plan access requires its configured Project checkout and account.");
-    }
+            throw new Error("Managed Plan access requires its configured Project repository and account.");
+        return admitted.checkoutRoot;
+    };
+    verifyAdmission();
     return async <Result>(operation: (cwd: string) => Promise<Result>) => {
         const current = inspect();
         if (
@@ -128,7 +135,8 @@ export function captureManagedProjectPlanAccess(projectId: ProjectId, admitted?:
             current.executionAccountHome !== initial.executionAccountHome
         )
             throw new Error("Managed Plan Project authority changed.");
-        return await projectConnections.run(configured, () => operation(current.cwd));
+        const cwd = verifyAdmission();
+        return await projectConnections.run(configured, () => operation(cwd));
     };
 }
 function managedLocator(cwd: string, path: string, toOwner = false): string {
@@ -156,6 +164,9 @@ export async function readManagedPlan(cwd: string, reference: string) {
         .result;
     if (!("plan" in result)) throw new Error("Managed owner returned another query result.");
     const plan = result.plan;
+    const selected = currentManagedPlanSelection();
+    if (selected?.planName === reference && plan?.attrs.planId !== selected.planId)
+        throw new Error("The bound Plan identity changed.");
     return plan
         ? {
               ...plan,
@@ -173,11 +184,15 @@ export async function listManagedPlans(cwd: string) {
     if (!("plans" in result)) throw new Error("Managed owner returned another catalog result.");
     return result.plans.map((plan) => ({ ...plan, path: managedLocator(cwd, plan.path) }));
 }
-export async function selectManagedPlan(cwd: string, reference: string): Promise<ManagedPlanSelection> {
+export async function selectManagedPlan(cwd: string, reference: string, byId = false): Promise<ManagedPlanSelection> {
     const owner = await client(cwd, true);
-    const plan = await readManagedPlan(cwd, reference);
     const retained = await readManagedRetainedExecution(cwd, reference);
-    if (retained && !retained.cleanupComplete && !retained.abandonmentComplete)
+    if (
+        retained &&
+        (!byId || retained.planId === reference) &&
+        !retained.cleanupComplete &&
+        !retained.abandonmentComplete
+    )
         return {
             kind: "managed-plan",
             binding: owner.binding,
@@ -186,6 +201,7 @@ export async function selectManagedPlan(cwd: string, reference: string): Promise
             retainedAttemptId: retained.attempt.id,
             revision: operationHash(JSON.stringify(retained.controller)),
         };
+    const plan = byId ? await readManagedActivePlanById(cwd, reference) : await readManagedPlan(cwd, reference);
     if (!plan?.attrs.planId || !plan.revision)
         throw new Error("No canonical Plan or unfinished retained execution matches the requested reference.");
     const catalog = await listManagedPlans(cwd);
@@ -204,7 +220,7 @@ export async function withManagedPlan<T>(
     selection: ManagedPlanSelection,
     run: () => Promise<T>,
 ): Promise<T> {
-    const current = await selectManagedPlan(cwd, selection.planId);
+    const current = await selectManagedPlan(cwd, selection.planId, true);
     if (!sameProjectStoreBinding(current.binding, selection.binding) || current.revision !== selection.revision)
         throw new Error("Managed Plan admission changed; reload the current Plan.");
     if (current.retainedAttemptId) {
@@ -302,13 +318,18 @@ export async function mutateManagedPlan(cwd: string, command: ProjectStoreComman
 export async function authorManagedPlan(cwd: string, input: PlanAuthoringInput): Promise<void> {
     await authorManagedPlanWithIdentity(cwd, input);
 }
-export async function authorManagedPlanWithIdentity(cwd: string, input: PlanAuthoringInput): Promise<string> {
+export async function authorManagedPlanWithIdentity(
+    cwd: string,
+    input: PlanAuthoringInput,
+    expectedPlanId?: string,
+): Promise<string> {
     await client(cwd, true);
-    const prior = input.expectedRevision === undefined ? null : await readManagedPlan(cwd, input.planName);
+    const prior =
+        expectedPlanId || input.expectedRevision === undefined ? null : await readManagedPlan(cwd, input.planName);
     const result = await mutateManagedPlan(cwd, {
         kind: "author-plan",
         operationId: randomUUID(),
-        planId: prior?.attrs.planId || randomUUID(),
+        planId: expectedPlanId || prior?.attrs.planId || randomUUID(),
         input,
     });
     if (!result.planId) throw new Error("Managed authoring did not return a Plan ID.");
@@ -469,7 +490,7 @@ export async function settleManagedInPlace(planName: string): Promise<void> {
 export async function saveManagedValidationCheckpoint(
     cwd: string,
     name: string,
-    checkpoint: import("../plan-store.ts").PlanFrontMatter["validationCheckpoint"],
+    checkpoint: import("@runwield/plans").PlanFrontMatter["validationCheckpoint"],
     expectedRevision: string,
 ) {
     const plan = await readManagedPlan(cwd, name);
@@ -491,8 +512,9 @@ export async function saveManagedDefinition(
     name: string,
     changes: import("./definition.ts").PlanDefinitionChanges,
     expectedRevision: string,
+    planId?: string,
 ) {
-    const plan = await readManagedPlan(cwd, name);
+    const plan = planId ? await readManagedActivePlanById(cwd, planId) : await readManagedPlan(cwd, name);
     if (!plan?.attrs.planId) throw new Error("Managed Plan is unavailable.");
     await mutateManagedPlan(cwd, {
         kind: "save-definition",
@@ -501,7 +523,7 @@ export async function saveManagedDefinition(
         changes,
         expectedRevision,
     });
-    return (await loadManagedWorkflowPlan(name)).attrs;
+    return planId ? (await readManagedActivePlanById(cwd, planId))!.attrs : (await loadManagedWorkflowPlan(name)).attrs;
 }
 
 export async function assertManagedPublicationOwner(claim: import("./publication.ts").PublicationOwnerClaim) {
@@ -813,7 +835,7 @@ export async function recordManagedHumanReview(
 export async function saveManagedEpicReview(
     cwd: string,
     name: string,
-    review: import("../plan-store.ts").PlanFrontMatter["epicIntegrationReview"],
+    review: import("@runwield/plans").PlanFrontMatter["epicIntegrationReview"],
     expectedRevision: string,
 ) {
     const selected = await selectManagedPlan(cwd, name);
@@ -1168,8 +1190,8 @@ export async function authorManagedChildren(
     return written;
 }
 
-export async function snapshotManagedSequence(cwd: string, name: string) {
-    const selected = await selectManagedPlan(cwd, name);
+export async function snapshotManagedSequence(cwd: string, name: string, planId?: string) {
+    const selected = await selectManagedPlan(cwd, planId ?? name, planId !== undefined);
     const owner = await client(cwd, true);
     const result = (await owner.execute({ kind: "sequence-snapshot", planId: selected.planId })).result;
     if (!("sequenceDocuments" in result)) throw new Error("Owner returned another Sequence snapshot.");
@@ -1183,7 +1205,11 @@ export async function prepareManagedSequence(
     name: string,
     inputs?: import("./sequence-review.ts").SequenceChildInput[],
 ) {
-    const selected = await selectManagedPlan(cwd, name);
+    const current = currentManagedPlanSelection();
+    const selected =
+        current?.planName === name
+            ? await selectManagedPlan(cwd, current.planId, true)
+            : await selectManagedPlan(cwd, name);
     await mutateManagedPlan(cwd, {
         kind: "prepare-sequence",
         planId: selected.planId,
@@ -1191,7 +1217,7 @@ export async function prepareManagedSequence(
         expectedRevision: selected.revision,
         inputs: inputs ?? null,
     });
-    return await snapshotManagedSequence(cwd, name);
+    return await snapshotManagedSequence(cwd, selected.planName, selected.planId);
 }
 export async function applyManagedSequenceDecision(
     options: import("./sequence-review.ts").ApplySequenceReviewOptions,

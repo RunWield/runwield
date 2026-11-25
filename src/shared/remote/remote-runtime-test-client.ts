@@ -11,7 +11,8 @@ import { runSleepCommand, SYSTEM_SLEEP_MNEMOTECA_PORT } from "../../cmd/sleep/in
 import { startInteractiveSession } from "../../ui/tui/chat-session.ts";
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
-import { configureRemotePersonalResources } from "./personal-resources.ts";
+import { configureRemotePersonalResources, type RemotePersonalResources } from "./personal-resources.ts";
+import { activateRemoteProjectOwner } from "./entry.ts";
 import { configureRemoteModelConnection } from "../models/model-registry.ts";
 import { configureRemoteMemoryConnection } from "./memory-bridge.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
@@ -34,7 +35,8 @@ import { requestLocalReviewInteraction } from "../session/local-review-interacti
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { listEntries } from "../worktree-registry.ts";
 import { reconcileStoredPublication } from "../workflow/publication-machine.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { withRetainedPlanReadFixture } from "../testing/retained-plan-fixture.ts";
 import { continueWorkflowValidation } from "../workflow/validation.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
@@ -50,6 +52,7 @@ export interface RuntimeReviewConfiguration {
 }
 export interface RuntimeClientInput {
     review?: RuntimeReviewConfiguration;
+    planSource?: "managed-owner" | "retained-checkout";
     connection: RemoteSessionControlConnection;
     resources: string;
     laptopHome: string;
@@ -145,8 +148,8 @@ export interface RuntimeClientReport {
     isAgentTransitioning?: boolean;
     turnEndResults?: string[];
     publicationPhase?: string | null;
-    priorValidationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
-    validationCheckpoint?: import("../workflow/validation-checkpoint.ts").ValidationCheckpoint;
+    priorValidationCheckpoint?: import("@runwield/plans/controller-state").ValidationCheckpoint;
+    validationCheckpoint?: import("@runwield/plans/controller-state").ValidationCheckpoint;
 }
 if (process.argv[2] === "--runtime-identity") {
     console.log(process.versions.bun || "");
@@ -154,10 +157,13 @@ if (process.argv[2] === "--runtime-identity") {
 }
 const lines = processLines(stdinStream());
 const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
-configureRemotePersonalResources({
+const resources: RemotePersonalResources = {
     globalRoot: input.resources,
     personalOwner: { kind: "managed-remote", identity: input.laptopHome },
-});
+};
+let clearPlanStore: (() => void) | undefined;
+if (input.planSource === "managed-owner") clearPlanStore = await activateRemoteProjectOwner({ ...input, resources });
+else configureRemotePersonalResources(resources);
 configureRemoteSettingsConnection(input.connection);
 const clearMcp = configureRemoteMcpConnection(input.connection);
 const clearMemory = configureRemoteMemoryConnection({ ...input.connection, collection: input.memoryCollection });
@@ -215,7 +221,7 @@ function attachReviewInput() {
         },
     });
 }
-try {
+async function runCommands() {
     report("ready");
     while (true) {
         const next = await lines.read();
@@ -259,7 +265,7 @@ try {
                             run: () => Promise.resolve({ kind: "canceled", output: "Local recovery comparison" }),
                         },
                     });
-                    const recovered = await loadPlan(location.documentRoot, "remote-delivery");
+                    const recovered = await planDocumentsForCheckout(location.documentRoot).load("remote-delivery");
                     console.log(
                         JSON.stringify({
                             kind: command.kind,
@@ -741,11 +747,17 @@ try {
             report(command.kind, false, String(error));
         }
     }
+}
+
+try {
+    if (input.planSource === "retained-checkout") await withRetainedPlanReadFixture(input.cwd, runCommands);
+    else await runCommands();
 } finally {
     await Promise.all(pending);
     await runtime.closeAllSessionsWhenIdle();
     clearGuideRunner();
     clearReviewHost();
+    clearPlanStore?.();
     await clearMcp();
     clearModels();
     clearMemory();

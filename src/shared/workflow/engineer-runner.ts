@@ -1,6 +1,5 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
-import { AGENTS } from "../../constants.ts";
-import { agentRegistry } from "../session/agent-registry.ts";
+import { AGENTS, agentRegistry } from "../session/agent-registry.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { runActiveAgentTurn } from "../session/agent-switching.ts";
 import { createPairCheckpointTool } from "../../tools/pair-checkpoint.ts";

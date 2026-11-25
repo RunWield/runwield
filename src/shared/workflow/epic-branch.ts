@@ -16,10 +16,9 @@ import { rm as fsRm } from "node:fs/promises";
  */
 
 import { join, relative } from "node:path";
-import { parsePlanFrontMatter, projectPlanType } from "@runwield/plans/format";
-import { ensurePlanIdentity, findPlansByParent, loadPlan } from "../../plan-store/index.ts";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
-import { isPlannedChangeClassification } from "../../constants.ts";
+import { parsePlanFrontMatter, projectPlanType, isPlannedChangeClassification } from "@runwield/plans/format";
+import { ensurePlanIdentity, planDocumentsForCheckout } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import { isGitRepository } from "../git.ts";
 import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
@@ -128,7 +127,7 @@ async function adoptDefaultEpicBranch(
     branch: string,
     children: Array<{ name: string; attrs: PlanFrontMatter }>,
 ): Promise<void> {
-    const epic = await loadPlan(documentRoot, epicPlanName);
+    const epic = await planDocumentsForCheckout(documentRoot).load(epicPlanName);
     if (!epic) throw new Error(`Epic not found: ${epicPlanName}`);
     if (!epicTargetBranch(epic.attrs)) {
         await savePlanDefinition(
@@ -152,7 +151,7 @@ async function inheritEpicBranch(
     for (const child of children) {
         if (!UNSTARTED_CHILD_STATUSES.has(child.attrs.status)) continue;
         if (epicTargetBranch(child.attrs)) continue;
-        const current = await loadPlan(documentRoot, child.name);
+        const current = await planDocumentsForCheckout(documentRoot).load(child.name);
         if (!current || epicTargetBranch(current.attrs)) continue;
         await savePlanDefinition(
             documentRoot,
@@ -246,7 +245,7 @@ async function seedEpicChildren(
         const relativePath = relative(documentRoot, child.path).replaceAll("\\", "/");
         return !onBranch.has(relativePath) && epicTargetBranch(child.attrs) === branch;
     });
-    const epic = await loadPlan(documentRoot, epicPlanName);
+    const epic = await planDocumentsForCheckout(documentRoot).load(epicPlanName);
     if (!epic) throw new Error(`Epic document is missing: ${epicPlanName}`);
     const epicPath = relative(documentRoot, epic.path).replaceAll("\\", "/");
     const epicOnBranch = await runGit(primaryRoot, ["ls-tree", "--name-only", head, "--", epicPath]);
@@ -301,10 +300,12 @@ async function seedEpicChildren(
 async function localEpicChildren(primaryRoot: string, documentRoot: string, epicPlanName: string) {
     const registered = new Set((await listPlanExecutionDocuments(primaryRoot)).map((entry) => entry.planName));
     const children = [];
-    for (const child of await findPlansByParent(documentRoot, epicPlanName)) {
+    for (const child of await planDocumentsForCheckout(documentRoot).children(epicPlanName)) {
         if (!isPlannedChangeClassification(child.attrs.classification) || registered.has(child.name)) continue;
         // The catalog can report a branch copy; the Epic's own draft is the local document.
-        const local = child.path.includes(":docs/plans/") ? await loadPlan(documentRoot, child.name) : child;
+        const local = child.path.includes(":docs/plans/")
+            ? await planDocumentsForCheckout(documentRoot).load(child.name)
+            : child;
         if (local && !local.path.includes(":docs/plans/")) {
             children.push({ name: child.name, path: local.path, attrs: local.attrs });
         }
@@ -371,7 +372,7 @@ export async function ensureEpicBranch(
     }
     if (created) {
         const baseCommit = await refCommit(primaryRoot, `refs/heads/${branch}`);
-        const current = await loadPlan(documentRoot, epicPlanName);
+        const current = await planDocumentsForCheckout(documentRoot).load(epicPlanName);
         if (baseCommit && current && !current.attrs.epicBaseCommit) {
             await savePlanDefinition(
                 documentRoot,

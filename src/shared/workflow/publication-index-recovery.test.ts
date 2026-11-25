@@ -13,7 +13,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";

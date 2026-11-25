@@ -9,10 +9,9 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
  * Fail-closed resolver for Workflow Validation execution context.
  */
 
-import { isPlannedChangeClassification } from "../../constants.ts";
+import { isPlannedChangeClassification, normalizeExecutionMode } from "@runwield/plans/format";
 
-import { normalizeExecutionMode } from "@runwield/plans/format";
-import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+import { ensurePlanIdentity, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import {
     describeRegistryAmbiguity,
     findActiveByPlanName as findWorktreeRegistryEntryByPlanName,
@@ -34,7 +33,7 @@ import type { ValidationRecoveryNotice } from "./validation-user-messages.ts";
 
 const VALIDATION_ELIGIBLE_WORKTREE_STATUSES = new Set(["active", "completed", "validation_failed", "validated"]);
 
-type PlanFrontMatter = import("../../plan-store/index.ts").PlanFrontMatter;
+type PlanFrontMatter = import("@runwield/plans").PlanFrontMatter;
 type ResolutionSource = "explicit" | "active_session" | "durable_recovery";
 type ScalarValue = string | number | boolean | null | undefined;
 export interface ExecutionContextCandidate {
@@ -217,7 +216,7 @@ export async function resolveValidationExecutionContext(
     options: ResolveValidationExecutionContextOptions,
 ): Promise<ValidationContextResolution> {
     const documentRoot = await preparePlanController(options.projectRoot, options.planName);
-    const document = await loadPlan(documentRoot, options.planName);
+    const document = await planDocumentsForCheckout(documentRoot).load(options.planName);
     if (document && !document.attrs.planId) await ensurePlanIdentity(documentRoot, options.planName);
     return await withProjectRuntimeReadScope(() => resolveValidationExecutionContextInScope(options));
 }
@@ -233,7 +232,9 @@ async function resolveValidationExecutionContextInScope({
     const selectedExecutionCwd =
         selected.context?.executionMode === "worktree" ? asString(selected.context.executionCwd) : undefined;
     const executionPlan = selectedExecutionCwd
-        ? await loadPlan(selectedExecutionCwd, planName).catch(() => null)
+        ? await planDocumentsForCheckout(selectedExecutionCwd)
+              .load(planName)
+              .catch(() => null)
         : null;
     let plan;
     try {
@@ -242,10 +243,10 @@ async function resolveValidationExecutionContextInScope({
         const recorded = await findWorktreeRegistryEntryByPlanName(projectRoot, planName);
         plan =
             (recorded && (await executionWorktreePathExists(recorded.path))
-                ? await loadPlan(recorded.path, planName)
+                ? await planDocumentsForCheckout(recorded.path).load(planName)
                 : null) ||
             executionPlan ||
-            (await loadPlan(projectRoot, planName));
+            (await planDocumentsForCheckout(projectRoot).load(planName));
     } catch (error) {
         const described = describeRegistryAmbiguity(error);
         if (!described) throw error;
@@ -416,7 +417,9 @@ async function resolveValidationExecutionContextInScope({
             "Recovery cannot use the primary checkout as an execution worktree. Its branch and files were left unchanged.",
         );
     }
-    const authoritativePlan = await loadPlan(worktreePath, planName).catch(() => null);
+    const authoritativePlan = await planDocumentsForCheckout(worktreePath)
+        .load(planName)
+        .catch(() => null);
     if (authoritativePlan) {
         plan = authoritativePlan;
         attrs = authoritativePlan.attrs;

@@ -1,11 +1,11 @@
 import type { ProjectRegistry, RegisteredProject } from "@runwield/projects";
 import type { PlanReadAvailability } from "../../../plan-store/index.ts";
+import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
 /** @module ui/workspace/server/owner-dashboard */
 
 import { compareChildPlansByOrder, isSequencePlan } from "@runwield/plans/format";
 import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
-import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
-import { loadPlanSummaries, loadPlanSummaryCatalog } from "./plan-adapter.ts";
+import { loadRegisteredPlanSummaryCatalog } from "./plan-adapter.ts";
 import type { OwnerProjectView } from "./owner-projects.ts";
 import { requireOwnerProjectRoot, serializeOwnerProject } from "./owner-projects.ts";
 import { readLiveSessionConnection } from "../../../shared/session/live-session-connection.ts";
@@ -114,7 +114,7 @@ type SidebarProject = Omit<OwnerProjectView, "healthStatus"> & {
 };
 
 type OwnerStore = {
-    projects: Pick<ProjectRegistry, "list" | "getHealth" | "requireActiveRoot">;
+    projects: ProjectRegistry;
     listSessionPlanAssociations?: (
         runwieldSessionId: string,
         projectId?: string,
@@ -556,7 +556,17 @@ async function projectPayload(
     let plans: OwnerPlan[] = [];
     if (root) {
         try {
-            plans = (await loadPlanSummaries(root)) as OwnerPlan[];
+            const catalog = await loadRegisteredPlanSummaryCatalog(projectRecord.projectId, store.projects);
+            plans = catalog.plans as OwnerPlan[];
+            for (const issue of catalog.diagnostics) {
+                diagnostics.push({
+                    source: "plans-reader",
+                    message: issue.message,
+                    repairHref: `/projects/${encodeURIComponent(project.projectId)}/plans`,
+                    repairLabel: "Browse Plans",
+                });
+            }
+            if (catalog.diagnostics.length) reportFailure(CATEGORY_ORDER);
             const pending = plans.find((plan) => plan.readAvailability?.kind === "pending");
             if (pending) {
                 diagnostics.push({
@@ -814,7 +824,10 @@ async function projectPayload(
                 let ready = false;
                 if (root && READY.has(planStatus(plan))) {
                     try {
-                        const result = await loadPlanActionEvidence(root, plan.planId);
+                        const result = await openRegisteredPlanDocuments(
+                            projectRecord.projectId,
+                            store.projects,
+                        ).actionEvidence(plan.planId);
                         if (result.kind === "success") ready = READY.has(result.evidence.status);
                         else {
                             diagnostics.push({
@@ -942,7 +955,7 @@ export async function loadOwnerSidebar(
                     const plansRead = (async (): Promise<OwnerPlan[]> => {
                         if (!root) return [];
                         try {
-                            const catalog = await loadPlanSummaryCatalog(root);
+                            const catalog = await loadRegisteredPlanSummaryCatalog(record.projectId, store.projects);
                             const plans = catalog.plans as OwnerPlan[];
                             planDiagnostics = catalog.diagnostics;
                             const pending = plans.find((plan) => plan.readAvailability?.kind === "pending");

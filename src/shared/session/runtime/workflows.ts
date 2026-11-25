@@ -1,6 +1,6 @@
 import { retrySessionWorkRecord } from "./work-record-retry.ts";
 import { buildPlanConversationRequest } from "../../workflow/plan-review-conversation.ts";
-import { AGENTS, SUBAGENTS } from "../../../constants.ts";
+import { AGENTS, SUBAGENTS } from "../agent-registry.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../../workflow/execution-agent.ts";
 import { runActiveAgentTurn } from ".././agent-switching.ts";
 import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.ts";
@@ -338,18 +338,18 @@ export class RuntimeWorkflows {
     async reviewSavedPlan(sessionId: string, planId: string): Promise<RuntimeValidationResult> {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("Session not found.");
-        const { findPlanEvidenceById } = await import("../../../plan-store/index.ts");
+        const { planDocumentsForCheckout } = await import("../../../plan-store/index.ts");
         const { loadPlanActionEvidence } = await import("../../workflow/plan-actions.ts");
         const { createPlanWrittenTool } = await import("../../../tools/plan-written.ts");
         const { claimWorkflowToolEvent, settleWorkflowToolEvent } =
             await import("../../workflow/workflow-tool-events.ts");
-        const plan = await findPlanEvidenceById(session.cwd, planId);
+        const plan = await planDocumentsForCheckout(session.cwd).evidenceById(planId);
         const agentName = plan.attrs.classification === "PROJECT" ? AGENTS.ARCHITECT : AGENTS.PLANNER;
         const reviewed = await this.managedOperations.runManagedStandaloneMutation(
             sessionId,
             "workflow_operation",
             async (activeSession) => {
-                const selected = await findPlanEvidenceById(activeSession.cwd, planId);
+                const selected = await planDocumentsForCheckout(activeSession.cwd).evidenceById(planId);
                 const prepared = await prepareSessionPlanningWorktree(activeSession.cwd, selected.planName);
                 const current = prepared.plan;
                 if (!current || !["approved", "ready_for_work"].includes(current.attrs.status || "")) {
@@ -416,7 +416,7 @@ ${outcome.feedback || ""}`,
             });
         }
         if (outcome.outcome !== "approved_execute") return { kind: outcome.outcome };
-        const approved = await findPlanEvidenceById(session.cwd, outcome.triageMeta?.planId || planId);
+        const approved = await planDocumentsForCheckout(session.cwd).evidenceById(outcome.triageMeta?.planId || planId);
         const evidence = await loadPlanActionEvidence(session.cwd, approved.planId);
         if (evidence.kind !== "success") throw new Error(evidence.message);
         const result = await this.executeApprovedPlan(sessionId, {
@@ -827,8 +827,10 @@ ${outcome.feedback || ""}`,
             ? await runRepair()
             : await this.runWorkflowOperation(session, "semanticRepairSegment", options, runRepair);
         if (repairResult?.kind === "semantic_repair_completed") {
-            const { loadPlan } = await import("../../../plan-store/index.ts");
-            const completedPlan = await loadPlan(executionCwd, continuation.plan.planName || options.planName);
+            const { planDocumentsForCheckout } = await import("../../../plan-store/index.ts");
+            const completedPlan = await planDocumentsForCheckout(executionCwd).load(
+                continuation.plan.planName || options.planName,
+            );
             if (!completedPlan) throw new Error("Completed semantic repair Plan is unavailable.");
             const refreshedWorkflow = {
                 ...(session.getActiveExecutionWorkflow?.() || continuation.activeWorkflow),

@@ -12,14 +12,16 @@ import {
     rm as fsRm,
     stat as fsStat,
     readdir as fsReaddir,
+    realpath as fsRealpath,
     readFile as fsReadFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { serveHttp } from "../http-server.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { projects } from "@runwield/projects";
+import { USE_PROJECT_MEMORY } from "../memory-collection.ts";
 import { writeWorkflowBinaryFixtures } from "../../testing/workflow-binary-fixtures.ts";
 import type { MemoryRequest } from "./memory-bridge.ts";
 import {
@@ -30,6 +32,7 @@ import {
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { startRemoteControlService } from "./control.ts";
+import { writeManagedStoreSshFixture } from "./managed-store-ssh-fixture.ts";
 import { RemoteSessionControl } from "./session-control-client.ts";
 import {
     type RemoteSessionControlRequest,
@@ -195,15 +198,27 @@ async function startProcess(
         },
     };
 }
-export async function withRemoteRuntimeFixture(
+interface RemoteRuntimeFixtureOptions extends RuntimeCommandFixtureOptions {
+    planSource?: RuntimeClientInput["planSource"];
+}
+
+/** The laptop binds the Session to the same Project as the surviving execution checkout. */
+export function withRetainedRemoteRuntimeFixture(
     run: (fixture: RuntimeFixture) => Promise<void>,
     options: RuntimeCommandFixtureOptions = {},
+) {
+    return withRemoteRuntimeFixture(run, { ...options, planSource: "retained-checkout" });
+}
+
+export async function withRemoteRuntimeFixture(
+    run: (fixture: RuntimeFixture) => Promise<void>,
+    options: RemoteRuntimeFixtureOptions = {},
 ) {
     await withRuntimeCommandFixture(
         "remote-runtime-",
         async (local) => {
-            const remoteProject = await repositories.checkout();
-            const remoteHome = await fsMkdtemp(join(tmpdir(), "remote-runtime-home-"));
+            const remoteProject = await fsRealpath(await repositories.checkout());
+            const remoteHome = await fsRealpath(await fsMkdtemp(join(tmpdir(), "remote-runtime-home-")));
             await fsMkdir(join(remoteHome, "tmp"));
             const remoteBin = await writeWorkflowBinaryFixtures(remoteHome);
             const remoteCommandLog = join(remoteHome, "git-commands.log");
@@ -243,7 +258,14 @@ export async function withRemoteRuntimeFixture(
             const identityResult = await projects.checkout.admit(local.projectRoot);
             if (identityResult.kind !== "existing")
                 throw new Error(`Unexpected Project identity: ${identityResult.kind}`);
-            const memoryCollection = identityResult.identity.projectId;
+            const memoryCollection = options.planSource ? USE_PROJECT_MEMORY : identityResult.identity.projectId;
+            if (options.planSource) {
+                const transportBin = join(local.homeDir, "ssh-fixture-bin");
+                await fsMkdir(transportBin);
+                await writeManagedStoreSshFixture(transportBin, remoteHome);
+                // The enclosing runtime fixture holds the process lock and restores PATH.
+                process.env.PATH = [transportBin, process.env.PATH].join(delimiter);
+            }
             const startService = () =>
                 startRemoteControlService(
                     identity,
@@ -269,6 +291,10 @@ export async function withRemoteRuntimeFixture(
                         },
                     },
                     memoryCollection,
+                    review.origin,
+                    options.planSource
+                        ? { host: "fixture-host", cwd: remoteProject, remoteHome, executable: "/verified/runtime/wld" }
+                        : undefined,
                 );
             let service = startService();
             const controls: CapturedControl[] = [];
@@ -392,6 +418,7 @@ export async function withRemoteRuntimeFixture(
                                 memoryCollection,
                                 cwd: remoteProject,
                                 review,
+                                planSource: options.planSource,
                             },
                             remoteHome,
                             remotePath,

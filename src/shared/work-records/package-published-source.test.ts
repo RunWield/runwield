@@ -1,4 +1,5 @@
-import { renamePlan, findPlanById } from "../../plan-store/index.ts";
+import { renamePlan } from "../../plan-store/index.ts";
+import { findPlanById } from "../testing/plan-query-fixture.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";

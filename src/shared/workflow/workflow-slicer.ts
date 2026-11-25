@@ -8,18 +8,16 @@ import { dirname } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.ts";
+import { isPlannedChangeClassification, isEpicPlan } from "@runwield/plans/format";
+import { AGENTS, SUBAGENTS, agentRegistry } from "../session/agent-registry.ts";
 import {
-    findPlansByParent,
-    loadPlan,
     finalizePlanDecomposition,
     materializePlanChildren,
+    planDocumentsForCheckout,
 } from "../../plan-store/index.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.ts";
-import { agentRegistry } from "../session/agent-registry.ts";
 import { buildSlicerRequest } from "./workflow-prompts.ts";
-import { isEpicPlan } from "@runwield/plans/format";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { TriageMeta } from "../../tools/plan-written.ts";
@@ -227,7 +225,7 @@ async function prepareEpicBranchSummary(cwd, planName) {
 }
 
 /**
- * @param {{ name: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} child
+ * @param {{ name: string, attrs: import('@runwield/plans').PlanFrontMatter }} child
  * @returns {{ name: string, order: number | undefined, status: string | undefined, summary: string | undefined, workKind: string | undefined, dependencies: string[], affectedPaths: string[], tickets?: import('@runwield/plans/format').TicketReference[] }}
  */
 function summarizeChild(child) {
@@ -279,10 +277,10 @@ export async function runSlicerAgent({
     let boundary = null;
 
     try {
-        const epic = await loadPlan(projectRoot, planName);
+        const epic = await planDocumentsForCheckout(projectRoot).load(planName);
         if (!epic) throw new Error(`Epic plan not found: ${planName}`);
         if (!isEpicPlan(epic.attrs)) throw new Error(`Plan is not a PROJECT Epic: ${planName}`);
-        const children = (await findPlansByParent(projectRoot, planName))
+        const children = (await planDocumentsForCheckout(projectRoot).children(planName))
             .filter((child) => isPlannedChangeClassification(child.attrs.classification))
             .map(summarizeChild);
         boundary = beginSlicerContextPhase({ planName, hostedSession, sessionManager });
@@ -376,7 +374,7 @@ export async function openSlicerDecomposition({
     // Read and parse plan file
     let currentPlan;
     try {
-        const loaded = await loadPlan(hostedSession.cwd, planName);
+        const loaded = await planDocumentsForCheckout(hostedSession.cwd).load(planName);
         currentPlan = loaded ? { attrs: loaded.attrs, body: loaded.body } : undefined;
     } catch {
         // fall through to validation / error below

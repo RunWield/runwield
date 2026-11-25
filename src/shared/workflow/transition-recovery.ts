@@ -10,7 +10,7 @@ import { stat as fsStat } from "node:fs/promises";
  * provable and get on with it, not hand out a diagnosis and stop.
  */
 
-import { inspectPlanStrict, loadPlanStrict } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import {
     type EffectProver,
@@ -82,7 +82,8 @@ export function buildEffectProver(
     facts: { registryEntries: RegistryEntry[]; gitWorktreePaths: string[] },
     options: { diagnostic?: boolean } = {},
 ): EffectProver {
-    const readPlan = options.diagnostic ? inspectPlanStrict : loadPlanStrict;
+    const documents = planDocumentsForCheckout(projectRoot);
+    const readPlan = options.diagnostic ? documents.inspect : documents.loadStrict;
     const entryById = new Map(facts.registryEntries.map((entry) => [entry.id, entry]));
     const trackedPaths = new Set(facts.registryEntries.map((entry) => entry.path));
     return async (effect, record) => {
@@ -96,7 +97,7 @@ export function buildEffectProver(
             }
             const states = await Promise.all(
                 group.plans.map(async (plan) => {
-                    const loaded = await readPlan(projectRoot, plan.planName);
+                    const loaded = await readPlan(plan.planName);
                     return {
                         planName: plan.planName,
                         before:
@@ -231,7 +232,7 @@ export function buildEffectProver(
         if (COMPLETION_MARKER_EFFECTS.has(effect.effect)) {
             const planName = typeof record.planName === "string" ? record.planName : undefined;
             if (!planName) return { settled: false, reason: "the record names no Plan to confirm" };
-            const loaded = await readPlan(projectRoot, planName);
+            const loaded = await readPlan(planName);
             if (loaded.kind !== "loaded" || !("attrs" in loaded)) {
                 return { settled: false, reason: `Plan ${planName} cannot be read (${loaded.kind})` };
             }

@@ -9,10 +9,14 @@ import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 // Seed the checkout contract still owned by the managed remote runtime.
 const savePlan: typeof saveOwnedPlan = (root, ...args) =>
     withRetainedPlanFixture(root, () => saveOwnedPlan(root, ...args));
-import { assertRemoteStorageAbsent, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
+import {
+    assertRemoteStorageAbsent,
+    withRemoteRuntimeFixture,
+    withRetainedRemoteRuntimeFixture,
+} from "./remote-runtime-test-fixture.ts";
 
 test("remote plan_written commits its exact artifact, association and review and a fresh runtime reopens the saved review", async () => {
-    await withRemoteRuntimeFixture(async (f) => {
+    await withRetainedRemoteRuntimeFixture(async (f) => {
         await savePlan(f.remoteProject, "remote-records", "# Remote records\n\nPreserve laptop records.\n", {
             planId: "remote-records-plan",
             classification: "QUICK_FIX",

@@ -1,6 +1,6 @@
-import { AGENTS, SUBAGENTS, getCwd } from "../../constants.ts";
+import { AGENTS, SUBAGENTS, agentRegistry } from "../session/agent-registry.ts";
+import { getCwd } from "../../constants.ts";
 import { createGitPort } from "../git-port.ts";
-import { agentRegistry } from "../session/agent-registry.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import {
     abortActiveSession,

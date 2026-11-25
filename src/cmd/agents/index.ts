@@ -3,14 +3,14 @@ import process from "node:process";
 
 import type { Component } from "@earendil-works/pi-tui";
 import { formatCommandHelp, printCommandHelp } from "../help/index.ts";
-import { agentRegistry } from "../../shared/session/agent-registry.ts";
+import { agentRegistry, AGENTS } from "../../shared/session/agent-registry.ts";
 import {
     applyUserAgentSelection,
     buildWorkflowOnlyAgentMessage,
     listUserAgentOptions,
 } from "../../shared/session/user-selection.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { AGENTS, getCwd } from "../../constants.ts";
+import { getCwd } from "../../constants.ts";
 import { COMMAND_NAMES } from "../registry.ts";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";

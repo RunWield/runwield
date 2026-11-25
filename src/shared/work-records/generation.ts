@@ -16,8 +16,8 @@ import type {
     WorkRecordSupersessionCandidate,
 } from "@runwield/plans/work-record-schema";
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
-import { AGENTS, isPlannedChangeClassification } from "../../constants.ts";
 import {
+    isPlannedChangeClassification,
     type PlanFrontMatter,
     type PlanTextLoaded,
     type PlanDeviation,
@@ -28,13 +28,8 @@ import {
     readPlanDeviations,
     renderPlanDeviationsForWorkRecord,
 } from "@runwield/plans/format";
-import {
-    ensurePlanIdentity,
-    listArchivedPlans,
-    listPlans,
-    loadArchivedPlan,
-    loadPlan,
-} from "../../plan-store/index.ts";
+import { AGENTS } from "../session/agent-registry.ts";
+import { ensurePlanIdentity, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../session/hosted-session.ts";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
@@ -79,8 +74,6 @@ export interface WorkRecordSource {
     skipReason?: string;
     existingRecord?: WorkRecordResource;
 }
-
-export type { GeneratedWorkRecordSections } from "@runwield/plans/work-record-schema";
 
 export interface GenerationOptions {
     /** Cancellation of the recording operation. */
@@ -301,15 +294,15 @@ export function evaluateWorkRecordSource(
 
 export async function discoverWorkRecordSources(cwd: string): Promise<WorkRecordSource[]> {
     const sources: WorkRecordSource[] = [];
-    for (const entry of await listPlans(cwd)) {
-        const loaded = await loadPlan(cwd, entry.name);
+    for (const entry of await planDocumentsForCheckout(cwd).list()) {
+        const loaded = await planDocumentsForCheckout(cwd).load(entry.name);
         if (!loaded) continue;
         sources.push(buildActiveWorkRecordSource(entry.name, loaded));
     }
     // Repository archives retain their legacy owner; admitted retries use package sources only.
     if (capturePlanAccess()) return sources;
-    for (const entry of await listArchivedPlans(cwd)) {
-        const loaded = await loadArchivedPlan(cwd, entry.name);
+    for (const entry of await planDocumentsForCheckout(cwd).archives()) {
+        const loaded = await planDocumentsForCheckout(cwd).archived(entry.name);
         if (!loaded) continue;
         sources.push({
             sourceKind: "archived",

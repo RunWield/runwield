@@ -1,12 +1,12 @@
 import { managedPlanStoreActive, readManagedRetainedExecution } from "./managed.ts";
 import { currentPackageProject } from "./workflows.ts";
 import { readLocalHomeStore } from "./index.ts";
-import { listPlans } from "./index.ts";
+import { listPlans } from "./queries.ts";
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 /** Read-only identity evidence for repairing a registry that cannot route normal reads. */
 import { join } from "node:path";
 import { getPlansDir } from "../plan-store.ts";
-import { type PlanFrontMatter } from "./index.ts";
+import { type PlanFrontMatter } from "@runwield/plans";
 import { parsePlanFrontMatter, isEpicArtifactPlanName } from "@runwield/plans/format";
 
 interface DiagnosticAttempt {

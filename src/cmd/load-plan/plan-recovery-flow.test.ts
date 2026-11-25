@@ -39,7 +39,8 @@ import {
     settleRecoveryRecords,
     type RecoveryActionContext,
 } from "./plan-recovery-actions.ts";
-import { listPlans, loadPlan, resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
+import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
+import { listPlans, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import {
     addEntry as addWorktreeRegistryEntry,
     findById as findWorktreeRegistryEntryById,

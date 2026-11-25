@@ -99,7 +99,7 @@ export interface PromptSessionOptions {
     signal?: AbortSignal;
     planName?: string;
     planContent?: string;
-    triageMeta?: Partial<import("../../../plan-store/index.ts").PlanFrontMatter>;
+    triageMeta?: Partial<import("@runwield/plans").PlanFrontMatter>;
 }
 
 export interface PromptSessionResult {

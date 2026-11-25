@@ -17,7 +17,7 @@ import {
 } from "./attached-test-fixture.ts";
 import { conversation, pendingChat, reply, reviewApi, sendChat, status } from "./review-chat-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 
 test("Plan page chat queues in order, replies through the saved source, and still accepts a structured decision", async () => {

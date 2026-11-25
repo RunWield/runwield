@@ -21,7 +21,7 @@ import {
     writeJsonAtomically,
     writeTextAtomically,
 } from "../shared/private-json-file.ts";
-import { plans, type PlanId } from "@runwield/plans";
+import { plans, type PlanId, type PlanFrontMatter } from "@runwield/plans";
 import {
     packageResourceRoles as roles,
     packageResources as resources,
@@ -40,8 +40,9 @@ import {
     type TicketReference,
     normalizePlanDeviations,
     type PlanDeviation,
+    canonicalPlanStatus,
 } from "@runwield/plans/format";
-import { canonicalPlanStatus, StalePlanWriteError, type PlanFrontMatter } from "../plan-store.ts";
+import { StalePlanWriteError } from "../plan-store.ts";
 import {
     preparePlanPackageImport,
     revalidatePlanImport,
@@ -52,16 +53,6 @@ import {
 } from "./import-source.ts";
 import { CONTROLLER_STATE_FIELDS, type WorkflowControllerState } from "@runwield/plans/controller-state";
 
-export {
-    PlanPackageError,
-    type PackageDocument,
-    type PackageInput,
-    type PackageInputManifest,
-    type PackageInputReference,
-    type PackageIssueKind,
-    type PackageResource,
-    type PackageResourceRole,
-} from "@runwield/plans/file-snapshots";
 export interface PackageDocuments {
     "context.md": string;
     "validation.md": string;
@@ -200,7 +191,7 @@ export interface PackageWorkflowEvidence {
     publicationPolicy?: FrozenExecutionPublicationPolicy;
     generatedArtifact?: PackageGeneratedArtifact;
     legacySettlement?: LegacyPackageSettlement;
-    workRecord?: import("../plan-store.ts").PlanFrontMatter["workRecord"];
+    workRecord?: import("@runwield/plans").PlanFrontMatter["workRecord"];
     integration?: PackageWorkflowInput;
     review?: PackageWorkflowInput;
     readiness?: PackageWorkflowInput;

@@ -10,7 +10,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadArchivedPlan, loadPlan, archivePlan } from "../../plan-store/index.ts";
+import { archivePlan } from "../../plan-store/index.ts";
+import { loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { runPlansCommand } from "./index.ts";
 import { addEntry } from "../../shared/worktree-registry.ts";

@@ -15,6 +15,7 @@ import type { RemoteSessionRequest } from "./session-protocol.ts";
 import {
     assertRemoteStorageAbsent,
     withRemoteRuntimeFixture,
+    withRetainedRemoteRuntimeFixture,
     type RuntimeFixture,
 } from "./remote-runtime-test-fixture.ts";
 
@@ -29,7 +30,7 @@ async function request(f: RuntimeFixture, input: RemoteSessionRequest) {
 const recordKinds = ["records", "artifact", "plan-association", "plan-review"] as const;
 
 test("remote record receipts support identical retries and refuse conflicting, out-of-order and settled identities", async () => {
-    await withRemoteRuntimeFixture(async (f) => {
+    await withRetainedRemoteRuntimeFixture(async (f) => {
         await savePlan(f.remoteProject, "record-retries", "# Record retries\n", {
             planId: "retry-plan",
             classification: "QUICK_FIX",
@@ -87,7 +88,7 @@ test("remote record receipts support identical retries and refuse conflicting, o
 
 for (const kind of recordKinds) {
     test(`a lost remote ${kind} receipt faults the manager, stops later saves and reconnect does not replay work`, async () => {
-        await withRemoteRuntimeFixture(async (f) => {
+        await withRetainedRemoteRuntimeFixture(async (f) => {
             await savePlan(f.remoteProject, "record-fault", "# Record fault\n", {
                 planId: "fault-plan",
                 classification: "QUICK_FIX",
@@ -196,7 +197,7 @@ test("an invalid laptop record operation stays faulted and cannot be repaired by
 
 for (const contextSave of [1, 2]) {
     test(`Plan submission stops project writes after workflow-context save ${contextSave} fails`, async () => {
-        await withRemoteRuntimeFixture(async (f) => {
+        await withRetainedRemoteRuntimeFixture(async (f) => {
             await savePlan(f.remoteProject, "context-fault", "# Context fault\n", {
                 planId: "context-fault-plan",
                 classification: "QUICK_FIX",

@@ -6,7 +6,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { makeValidationProjectRoot } from "./validation-test-helpers.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import type { SharedPlanReviewDecision } from "../../plan-store/index.ts";

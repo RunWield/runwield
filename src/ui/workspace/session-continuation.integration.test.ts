@@ -28,7 +28,8 @@ import {
 } from "./routes/owner-session-api.ts";
 import { associatedPlanSession } from "./routes/owner-api.ts";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
-import { AGENTS, getHomeDir } from "../../constants.ts";
+import { AGENTS } from "../../shared/session/agent-registry.ts";
+import { getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../../shared/settings.ts";

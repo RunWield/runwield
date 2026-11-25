@@ -1,6 +1,5 @@
 import { getCwd } from "../../constants.ts";
-import { agentRegistry } from "../../shared/session/agent-registry.ts";
-import { AGENTS } from "../../constants.ts";
+import { agentRegistry, AGENTS } from "../../shared/session/agent-registry.ts";
 import type { CommandCompletionItem } from "../registry.ts";
 
 export async function getAgentCompletions(argumentPrefix: string): Promise<CommandCompletionItem[]> {

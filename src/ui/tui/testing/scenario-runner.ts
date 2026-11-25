@@ -1,6 +1,6 @@
 import { projects } from "@runwield/projects";
 import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
-import type { PlanFrontMatter } from "../../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { ValidationPhaseName } from "../../../shared/workflow/validation-ports.ts";
 
 import type { PlanApprovalAction } from "../../../shared/workflow/plan-approval.ts";
@@ -585,7 +585,7 @@ import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
 
 import { parsePlanFrontMatter } from "@runwield/plans/format";
 
-import { findPlansByParent, listPlans, loadPlan } from "../../../plan-store/index.ts";
+import { findPlansByParent, listPlans, loadPlan } from "../../../shared/testing/plan-query-fixture.ts";
 
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 

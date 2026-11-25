@@ -10,7 +10,7 @@ import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { runLoadPlanCommand } from "./index.ts";
 
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { addEntry, findById } from "../../shared/worktree-registry.ts";
 import { git } from "../../shared/git-test-fixture.ts";

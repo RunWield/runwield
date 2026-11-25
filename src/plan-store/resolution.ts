@@ -19,7 +19,7 @@ import { preparePlanWorkflow } from "./index.ts";
 import { realpath as fsRealpath } from "node:fs/promises";
 import { updatePlanFrontMatter } from "../plan-store.ts";
 import { canonicalizeStoredPlanName, canonicalPlanStatus, getDeclaredPlanStatus } from "@runwield/plans/format";
-import { findPlanEvidenceById, loadPlan, resolvePlan } from "./index.ts";
+import { findPlanEvidenceById, loadPlan, resolvePlan } from "./queries.ts";
 import { type MissingExecutionWorktreeRecovery } from "./location.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";

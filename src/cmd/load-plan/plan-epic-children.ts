@@ -7,11 +7,11 @@ import { preparePlanDependencies } from "../../plan-store/index.ts";
  * questions about the children rather than driving the Epic.
  */
 
-import { isPlannedChangeClassification } from "../../constants.ts";
+import { isPlannedChangeClassification } from "@runwield/plans/format";
 import { resolveSiblingChildPlanDependencies as resolveSiblingChildPlanDependenciesFn } from "../../plan-store/index.ts";
 import { isInValidation } from "@runwield/plans/lifecycle";
 import { buildPlanSummary, type SummarisablePlan } from "../../shared/plan-presentation.ts";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { SelectOption, UiAPI } from "../../ui/tui/api.ts";
 
 /** Tallies used by the Epic progress views. */
@@ -66,7 +66,7 @@ export interface EpicChildPlan {
 }
 
 /**
- * @param {import('../../plan-store/index.ts').PlanFrontMatter} attrs
+ * @param {import('@runwield/plans').PlanFrontMatter} attrs
  * @returns {boolean}
  */
 export function isDecomposedEpicStatus(attrs: PlanFrontMatter): boolean {
@@ -80,7 +80,7 @@ export function isDecomposedEpicStatus(attrs: PlanFrontMatter): boolean {
 }
 
 /**
- * @param {{ name: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} child
+ * @param {{ name: string, attrs: import('@runwield/plans').PlanFrontMatter }} child
  * @returns {string}
  */
 export function formatChildPlanLabel(child: EpicChildPlan): string {
@@ -97,7 +97,7 @@ export function formatChildPlanLabel(child: EpicChildPlan): string {
 }
 
 /**
- * @param {{ name: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} child
+ * @param {{ name: string, attrs: import('@runwield/plans').PlanFrontMatter }} child
  * @returns {string | undefined}
  */
 export function formatChildPlanDescription(child: EpicChildPlan): string | undefined {
@@ -110,7 +110,7 @@ export function formatChildPlanDescription(child: EpicChildPlan): string | undef
 }
 
 /**
- * @param {{ name: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} child
+ * @param {{ name: string, attrs: import('@runwield/plans').PlanFrontMatter }} child
  * @returns {string}
  */
 export function formatNextChildLabel(child: EpicChildPlan): string {
@@ -120,7 +120,7 @@ export function formatNextChildLabel(child: EpicChildPlan): string {
 }
 
 /**
- * @param {{ attrs: import('../../plan-store/index.ts').PlanFrontMatter }} child
+ * @param {{ attrs: import('@runwield/plans').PlanFrontMatter }} child
  * @returns {boolean}
  */
 export function isActionableNextChild(child: EpicChildPlan): boolean {
@@ -133,7 +133,7 @@ export function isActionableNextChild(child: EpicChildPlan): boolean {
 }
 
 /**
- * @param {{ name: string, attrs: Partial<import('../../plan-store/index.ts').PlanFrontMatter> }} plan
+ * @param {{ name: string, attrs: Partial<import('@runwield/plans').PlanFrontMatter> }} plan
  * @returns {{ value: string, label: string, description: string }}
  */
 export function formatTopLevelPlanOption(plan: ListedPlan): PlanSelectOption {
@@ -147,7 +147,7 @@ export function formatTopLevelPlanOption(plan: ListedPlan): PlanSelectOption {
 }
 
 /**
- * @param {Array<{ attrs: import('../../plan-store/index.ts').PlanFrontMatter }>} children
+ * @param {Array<{ attrs: import('@runwield/plans').PlanFrontMatter }>} children
  * @returns {{ total: number, verified: number, userVerified: number, completed: number, active: number, remaining: number, failed: number, onHold: number }}
  */
 export function countEpicChildStatuses(children: EpicChildPlan[]): EpicChildCounts {
@@ -178,7 +178,7 @@ export function countEpicChildStatuses(children: EpicChildPlan[]): EpicChildCoun
 }
 
 /**
- * @param {Array<{ attrs: import('../../plan-store/index.ts').PlanFrontMatter }>} children
+ * @param {Array<{ attrs: import('@runwield/plans').PlanFrontMatter }>} children
  * @returns {string}
  */
 export function formatEpicProgressSummary(children: EpicChildPlan[]): string {
@@ -195,7 +195,7 @@ export function formatEpicProgressSummary(children: EpicChildPlan[]): string {
 }
 
 /**
- * @param {Array<{ name: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }>} children
+ * @param {Array<{ name: string, attrs: import('@runwield/plans').PlanFrontMatter }>} children
  * @returns {string}
  */
 export function formatEpicChildFeatureList(children: EpicChildPlan[]): string {
@@ -204,8 +204,8 @@ export function formatEpicChildFeatureList(children: EpicChildPlan[]): string {
 }
 
 /**
- * @param {{ attrs: import('../../plan-store/index.ts').PlanFrontMatter, body: string, markdown: string }} plan
- * @param {Array<{ name: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }>} children
+ * @param {{ attrs: import('@runwield/plans').PlanFrontMatter, body: string, markdown: string }} plan
+ * @param {Array<{ name: string, attrs: import('@runwield/plans').PlanFrontMatter }>} children
  * @returns {string}
  */
 export function buildEpicPlanSummary(plan: SummarisablePlan, children: EpicChildPlan[]): string {
@@ -216,7 +216,7 @@ export function buildEpicPlanSummary(plan: SummarisablePlan, children: EpicChild
 }
 
 /**
- * @param {Array<{ attrs: import('../../plan-store/index.ts').PlanFrontMatter }>} children
+ * @param {Array<{ attrs: import('@runwield/plans').PlanFrontMatter }>} children
  * @returns {string}
  */
 export function buildEpicDoneEnoughSummary(children: EpicChildPlan[]): string {
@@ -228,7 +228,7 @@ export function buildEpicDoneEnoughSummary(children: EpicChildPlan[]): string {
 }
 
 /**
- * @param {{ attrs: import('../../plan-store/index.ts').PlanFrontMatter }} plan
+ * @param {{ attrs: import('@runwield/plans').PlanFrontMatter }} plan
  * @returns {boolean}
  */
 export function isDoneEnoughEpic(plan: { attrs: PlanFrontMatter }): boolean {
@@ -252,7 +252,7 @@ export function formatDependencyWarning(unmetDependencies: UnmetChildDependency[
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('@runwield/plans').PlanFrontMatter }} plan
  * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @param {typeof resolveSiblingChildPlanDependenciesFn} resolveSiblingChildPlanDependencies
  * @returns {Promise<boolean>}

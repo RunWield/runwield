@@ -352,14 +352,3 @@ export type {
 } from "./pairing.ts";
 
 export type { OwnerCoordinationDatabase, OpenOwnerDatabaseOptions } from "./database.ts";
-
-export type {
-    ProjectStatus,
-    ProjectHealthStatus,
-    RegisteredProject,
-    ProjectHealth,
-    ProjectClockOptions,
-    RegisterProjectOptions,
-    RelinkProjectOptions,
-    ProjectRootEvidence,
-} from "@runwield/projects";

@@ -11,15 +11,6 @@ import {
     EPIC_ARTIFACT_FILE_NAMES,
     splitPlanName,
 } from "@runwield/plans/format";
-export {
-    EPIC_MANUAL_QA_FILE_NAME,
-    EPIC_INTEGRATION_REPORT_FILE_NAME,
-    EPIC_ARTIFACT_FILE_NAMES,
-    splitPlanName,
-    isEpicArtifactPlanName,
-    isEpicArtifactPlanPath,
-    assertNotReservedEpicArtifactPlanName,
-} from "@runwield/plans/format";
 import { currentPackageSelection, selectedPackage, saveGeneratedManualQaArtifact } from "./workflows.ts";
 import { savePlanPackageDocument } from "./packages.ts";
 import { recoverWindowsRename } from "../shared/native-file-replace-windows.ts";

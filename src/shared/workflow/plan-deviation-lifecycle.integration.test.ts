@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { HostedSession } from "../session/hosted-session.ts";
 import { createGitPort } from "../git-port.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";

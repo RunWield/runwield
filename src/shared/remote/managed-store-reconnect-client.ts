@@ -15,13 +15,13 @@ const clear = await activateRemoteProjectOwner(input);
 try {
     const {
         archiveSavedPlan,
-        loadPlan,
+        planDocumentsForCheckout,
         openProjectPlanStore,
         restoreSavedPlan,
         withLocalPlanWorkflow,
         readPlanResource,
     } = await import("../../plan-store/index.ts");
-    const plan = await loadPlan(input.cwd, input.planId);
+    const plan = await planDocumentsForCheckout(input.cwd).load(input.planId);
     if (!plan || plan.path !== input.expectedPath || !plan.path.startsWith(input.resources.globalRoot))
         throw new Error("Reconnect changed canonical ownership.");
     await withLocalPlanWorkflow(input.cwd, input.planId, async () => {
@@ -40,7 +40,7 @@ try {
     const alias = await store.create({ planName: created.planId, contextMarkdown: created.body });
     equal(alias.revision, created.revision);
     equal((await store.read(created.planId)).name, created.name);
-    const edited = await store.edit(created.planId, { body: "# Reviewed\n", expectedRevision: created.revision });
+    const edited = await store.editBody(created.planId, { body: "# Reviewed\n", expectedRevision: created.revision });
     equal(edited.body, "# Reviewed\n");
     equal((await store.read(alias.planId)).body, created.body);
     const approved = await store.applyEvent(created.planId, {

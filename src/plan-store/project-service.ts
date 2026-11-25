@@ -3,7 +3,7 @@ import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "./packages.ts";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
 import { readPlanRecordingContext, type PlanRecordingContext } from "./recording.ts";
-import type { GeneratedWorkRecordSections } from "../shared/work-records/generation.ts";
+import type { GeneratedWorkRecordSections } from "@runwield/plans/work-record-schema";
 import type { PublishedDeliverySources } from "./published-source.ts";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
 import { confirmManagedPublication } from "./retained-proof.ts";
@@ -394,7 +394,7 @@ export interface ProjectStoreRetainedRecordingRead {
 export interface ProjectStoreRetainedRecordingPrepare extends importRetainedCleanup {
     kind: "prepare-retained-record";
     pendingPublication: boolean;
-    sections: import("../shared/work-records/generation.ts").GeneratedWorkRecordSections | null;
+    sections: GeneratedWorkRecordSections | null;
 }
 export interface ProjectStoreRetainedRecordingResult {
     retainedRecording: import("./retained-recording.ts").RetainedRecordingContext | null;
@@ -470,7 +470,7 @@ export interface ProjectStoreHumanReview extends PlanMutation {
 }
 export interface ProjectStoreEpicReview extends PlanMutation {
     kind: "save-epic-review";
-    review: import("../plan-store.ts").PlanFrontMatter["epicIntegrationReview"];
+    review: import("@runwield/plans").PlanFrontMatter["epicIntegrationReview"];
 }
 export interface ProjectStoreReviewCapture {
     kind: "capture-review";
@@ -482,13 +482,13 @@ export interface ProjectStoreReviewInput {
 }
 export interface ProjectStoreReviewDecision extends PlanMutation {
     kind: "review-decision";
-    sourceStatus: import("../plan-store.ts").PlanFrontMatter["status"];
+    sourceStatus: import("@runwield/plans").PlanFrontMatter["status"];
     sourceMarkdown: string;
     controllerRevision: number | null;
     input: import("./packages.ts").PackageWorkflowInput;
     decision: import("./review.ts").SharedPlanReviewDecision;
-    classification: import("../plan-store.ts").PlanFrontMatter["classification"];
-    workKind: import("../plan-store.ts").PlanFrontMatter["workKind"] | null;
+    classification: import("@runwield/plans").PlanFrontMatter["classification"];
+    workKind: import("@runwield/plans").PlanFrontMatter["workKind"] | null;
 }
 export interface ProjectStoreRecordCatalog {
     kind: "record-catalog";

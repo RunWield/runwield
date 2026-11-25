@@ -14,7 +14,7 @@ import { startReviewWorkspaceServer } from "../workspace/server.ts";
 import { join } from "node:path";
 
 import { parsePlanFrontMatter, type PlanFrontMatter } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { submitPlanForReview } from "./plan-review.ts";
@@ -338,7 +338,12 @@ classification: PROJECT
             cwd: dir,
             planName: "plan",
             planPath,
-            triageMeta: { classification: "PLANNED_CHANGE", complexity: "MEDIUM", summary: "Feature", affectedPaths: [] },
+            triageMeta: {
+                classification: "PLANNED_CHANGE",
+                complexity: "MEDIUM",
+                summary: "Feature",
+                affectedPaths: [],
+            },
             browser: scriptedBrowser.browser,
         });
         const attrs = (await loadPlan(dir, "plan"))?.attrs;

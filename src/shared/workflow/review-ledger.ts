@@ -16,7 +16,6 @@
 import type { ReviewFinding } from "./review-outcome.ts";
 
 import type { LedgerItem, ReviewLedger } from "@runwield/plans/controller-state";
-export type { LedgerItem, ReviewIssueStatus, ReviewLedger } from "@runwield/plans/controller-state";
 
 export function createLedger(): ReviewLedger {
     return { items: [], sequence: 0 };

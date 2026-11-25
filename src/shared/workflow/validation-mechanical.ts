@@ -5,8 +5,8 @@ import { recordDeliveryEvidence } from "./delivery-evidence.ts";
  */
 
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { AGENTS } from "../../constants.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { AGENTS } from "../session/agent-registry.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import type { AgentTurnOutcome, ValidationLocalCIResult } from "./validation-ports.ts";
 import type { PhaseContext, UserActionPause, ValidationLoopArgs, ValidationPhaseResult } from "./validation-types.ts";
 import {
@@ -29,7 +29,7 @@ import {
     waitForValidationRetryWithSessionCancellation,
 } from "./validation-recovery.ts";
 
-import type { CiRunEvidence } from "./validation-checkpoint.ts";
+import type { CiRunEvidence } from "@runwield/plans/controller-state";
 import { candidateIdentity } from "./validation-scope.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { runValidationCommand, saveValidationCommand } from "./validation-local-ci.ts";
@@ -161,7 +161,7 @@ async function reloadValidationPlanSnapshot(args: ValidationLoopArgs): Promise<V
             : args.executionContext?.executionMode === "worktree" && args.executionContext.executionCwd
               ? args.executionContext.executionCwd
               : projectRoot;
-    const plan = await loadPlan(planCwd, args.planName);
+    const plan = await planDocumentsForCheckout(planCwd).load(args.planName);
     if (!plan) {
         const message = buildValidationUserMessage({
             kind: "user_action",

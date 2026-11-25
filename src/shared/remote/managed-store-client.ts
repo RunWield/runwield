@@ -105,8 +105,6 @@ async function executeManagedFixture() {
     try {
         const {
             authorLocalPlan,
-            loadPlan,
-            listPlans,
             listPlanHistory,
             showPlanMilestone,
             restorePlanMilestone,
@@ -118,6 +116,7 @@ async function executeManagedFixture() {
             savePlanProse,
             savePlanDefinition,
         } = await import("../../plan-store/index.ts");
+        const { loadPlan, listPlans } = await import("../testing/plan-query-fixture.ts");
         const before = await listPlans(input.cwd);
         if (before.length) throw new Error("Passive catalog must remain empty before authoring.");
         const { selectPlanAccess, resumePlanAttempt, capturePlanAccess } = await import("../../plan-store/index.ts");
@@ -405,15 +404,10 @@ async function executeManagedFixture() {
         const { capturePlanReviewInput, applyPlanReviewForExecution } = await import("../../plan-store/index.ts");
         const reviewPlan = await loadPlan(input.cwd, "public-tool");
         if (!reviewPlan) throw new Error("Review Plan is unavailable.");
-        const {
-            assertAuthorizedPlanPath,
-            assertReadablePlanResource,
-            loadPlanDetail,
-            readPlanReviewPresentation,
-            findPlanEvidenceById,
-            readPlanResourceCatalog,
-            resolvePlan,
-        } = await import("../../plan-store/index.ts");
+        const { assertAuthorizedPlanPath, assertReadablePlanResource, loadPlanDetail, readPlanReviewPresentation } =
+            await import("../../plan-store/index.ts");
+        const { findPlanEvidenceById, readPlanResourceCatalog, resolvePlan } =
+            await import("../testing/plan-query-fixture.ts");
         const detail = await loadPlanDetail(input.cwd, plan.attrs.planId);
         const presented = await withLocalPlanWorkflow(input.cwd, "public-tool", () => readPlanReviewPresentation());
         if (
@@ -630,14 +624,9 @@ async function executeManagedFixture() {
         });
         if (!searched.records.some((entry) => entry.recordId === recordId))
             throw new Error("Public record search omitted confirmed delivery.");
-        const {
-            renamePlan,
-            archiveSavedPlan,
-            restoreSavedPlan,
-            listArchivedPlans,
-            loadArchivedPlan,
-            deleteArchivedPlanUnit,
-        } = await import("../../plan-store/index.ts");
+        const { renamePlan, archiveSavedPlan, restoreSavedPlan } = await import("../../plan-store/index.ts");
+        const { listArchivedPlans, loadArchivedPlan, deleteArchivedPlanUnit } =
+            await import("../testing/plan-query-fixture.ts");
         const delivered = await loadPlan(input.cwd, "public-tool");
         if (!delivered) throw new Error("Published Plan is unavailable for archive.");
         await renamePlan(input.cwd, "public-tool", "renamed-public-tool", delivered.revision);
@@ -684,7 +673,8 @@ async function executeManagedFixture() {
             contextMarkdown: "# Sequence\n",
             definition: { classification: "PROJECT", type: "sequence", targetBranch: "main" },
         });
-        const { saveChildFeaturePlans, findPlansByParent } = await import("../../plan-store/index.ts");
+        const { saveChildFeaturePlans } = await import("../../plan-store/index.ts");
+        const { findPlansByParent } = await import("../testing/plan-query-fixture.ts");
         const children = await saveChildFeaturePlans(input.cwd, "managed-sequence", [
             {
                 title: "First",

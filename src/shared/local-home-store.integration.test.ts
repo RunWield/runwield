@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { deepEqual, equal, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { listPlans, listPlanResources, loadPlan, readPlanResourceCatalog } from "../plan-store/index.ts";
+import { listPlans, listPlanResources, loadPlan, readPlanResourceCatalog } from "./testing/plan-query-fixture.ts";
 
 import { importPlans, authorLocalPlan } from "../plan-store/index.ts";
 import { updateArchivedPlanFrontMatter } from "../plan-store.ts";
@@ -75,14 +75,9 @@ test("ordinary authoring creates a first canonical draft and preserves identity 
 test("archive and restore use canonical metadata and preserve document identity without checkout copies", async () => {
     const fixture = await packageFixture();
     try {
-        const {
-            archivePlan,
-            listArchivedPlans,
-            loadArchivedPlan,
-            restoreArchivedPlan,
-            resolvePlan,
-            deleteArchivedPlanUnit,
-        } = await import("../plan-store/index.ts");
+        const { archivePlan } = await import("../plan-store/index.ts");
+        const { listArchivedPlans, loadArchivedPlan, restoreArchivedPlan, resolvePlan, deleteArchivedPlanUnit } =
+            await import("./testing/plan-query-fixture.ts");
         await seedPlan(fixture.root, "retained", "# Keep the bytes\n");
         const first = await loadPlan(fixture.root, "retained");
         await archivePlan(fixture.root, "retained", { force: true, reason: "Finished" });

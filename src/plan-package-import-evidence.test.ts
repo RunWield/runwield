@@ -19,7 +19,8 @@ import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
 import { addEntry, getWorktreeRegistryPath, updateEntry } from "./shared/worktree-registry.ts";
 
 import { createPublicationAttempt } from "./shared/workflow/publication-attempt.ts";
-import { validationCheckpointCanResume, type ValidationCheckpoint } from "./shared/workflow/validation-checkpoint.ts";
+import { type ValidationCheckpoint } from "@runwield/plans/controller-state";
+import { validationCheckpointCanResume } from "./shared/workflow/validation-checkpoint.ts";
 import { hasApplicablePublicationReceipt } from "./shared/workflow/publication-receipt.ts";
 
 const markdown = (body: string, fields = "") =>

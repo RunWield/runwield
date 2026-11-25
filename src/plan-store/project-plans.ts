@@ -1,62 +1,41 @@
+import { projectPlanDocuments } from "./checkout-documents.ts";
+
+import { currentRetainedCheckoutSource, hasRetainedCheckoutSource } from "./retained-source.ts";
 import { plans, type PlanEventDetails, type PlanId } from "@runwield/plans";
-import type { ProjectPlanCatalogEntry, ProjectPlanDocument, ProjectPlanStore } from "@runwield/plans/store";
-import {
-    parseProjectId,
-    projects,
-    type ProjectId,
-    type ProjectRegistry,
-    type ProjectStoreIdentity,
-} from "@runwield/projects";
+import type {
+    ProjectPlanCatalogEntry,
+    ProjectPlanCatalog,
+    ProjectPlanDocument,
+    ProjectPlanStore,
+    ReviseProjectPlan,
+} from "@runwield/plans/store";
+import { type ProjectId } from "@runwield/projects";
+import { bindProjectPlanStore, checkoutPlanIdentity, type ProjectPlanStoreOptions } from "./project-binding.ts";
 import { PlanNotFoundError, StalePlanWriteError, type PlanResource } from "../plan-store.ts";
-import { createSavedPlan } from "./access.ts";
+import {
+    createSavedPlan,
+    reviseSavedPlan,
+    withLocalProjectAction,
+    withLocalPlanWorkflow,
+    type PlanAuthoringInput,
+} from "./access.ts";
 import { archiveSavedPlan, restoreSavedPlan } from "./archiving.ts";
+import { canonicalizeStoredPlanName } from "@runwield/plans/format";
 import { recordPlanEvent } from "./events.ts";
 import {
-    captureManagedProjectPlanAccess,
-    managedPersonalStoreActive,
+    admitManagedPlanCheckout,
+    currentManagedRetainedExecution,
     managedPlanStoreActive,
     readManagedActivePlanById,
 } from "./managed.ts";
 import {
     findPlanById,
+    listPlanDocuments,
     loadArchivedPlan,
     loadPlanBodyById,
     readPlanResourceCatalog,
     savePlanBodyById,
 } from "./queries.ts";
-import { hasRetainedCheckoutSource } from "./retained-source.ts";
-import { withPackageProject } from "./workflows.ts";
-
-export type ProjectPlanStoreOptions = RegisteredProjectPlanOptions | AdmittedProjectPlanOptions;
-
-interface RegisteredProjectPlanOptions {
-    /** Trusted registration already opened by the application. */
-    registry?: ProjectRegistry;
-    admitted?: never;
-}
-
-interface AdmittedProjectPlanOptions {
-    /** The checkout or owner already admitted by Projects. */
-    admitted: ProjectStoreIdentity;
-    registry?: never;
-}
-
-function registeredRoot(projectId: ProjectId, registry: ProjectPlanStoreOptions["registry"]): string {
-    if (registry) return projects.registrations.requireActiveRoot(registry, projectId);
-    const opened = projects.registrations.open();
-    try {
-        return projects.registrations.requireActiveRoot(opened, projectId);
-    } finally {
-        opened.close();
-    }
-}
-
-function checkoutIdentity(projectId: ProjectId, root: string) {
-    const inspected = projects.checkout.inspect(root);
-    if (inspected.kind !== "existing" || inspected.identity.projectId !== projectId)
-        throw new Error("Plan access requires this Project's admitted checkout.");
-    return inspected.identity;
-}
 
 function requirePlanId(planId: string): PlanId {
     if (!plans.identity.isValid(planId)) throw new Error("Plan access requires a durable Plan ID.");
@@ -104,6 +83,19 @@ function catalogEntry(resource: PlanResource): ProjectPlanCatalogEntry {
     return resource.planId ? { ...document, planId: requirePlanId(resource.planId) } : { ...document, planId: "" };
 }
 
+export async function readProjectPlanDisplayCatalog(cwd: string): Promise<ProjectPlanCatalog> {
+    const catalog = await readPlanResourceCatalog(cwd);
+    return {
+        resources: catalog.resources.map(catalogEntry),
+        diagnostics: catalog.diagnostics.map(({ name, kind, message, path, planId }) => ({
+            name,
+            kind,
+            message: safeDiagnostic(message, cwd, path),
+            ...(plans.identity.isValid(planId) ? { planId } : {}),
+        })),
+    };
+}
+
 function document(resource: PlanResource, planId: PlanId): ProjectPlanDocument {
     if (resource.planId !== planId) throw new PlanNotFoundError(planId);
     return { ...documentFields(resource), planId };
@@ -128,91 +120,81 @@ function eventDetails(details: PlanEventDetails = {}): PlanEventDetails {
     return input;
 }
 
+/** Internal review entry point for workflows that still use operational Plan evidence. */
+interface CoreProjectPlanStore extends ProjectPlanStore {
+    resolveAuthoredPlan(reference: string, expectedPlanId?: string): Promise<ProjectPlanDocument | undefined>;
+    author(input: PlanAuthoringInput, expectedPlanId?: string): Promise<ProjectPlanDocument>;
+    withWorkflow<Result>(planId: PlanId, name: string, run: (cwd: string) => Promise<Result>): Promise<Result>;
+}
+
+/** Resolve an agent-facing name within the admitted Project's active catalog. */
+async function resolveProjectPlan(
+    store: ProjectPlanStore,
+    reference: string,
+    expectedPlanId?: string,
+): Promise<ProjectPlanDocument | undefined> {
+    const { name } = canonicalizeStoredPlanName(reference);
+    if (expectedPlanId !== undefined) {
+        const plan = await store.read(requirePlanId(expectedPlanId));
+        if (plan.name !== name) throw new Error("The bound Plan identity changed.");
+        return plan;
+    }
+    const catalog = await store.list();
+    const entry = catalog.resources.find((plan) => plan.name === name);
+    if (!entry?.planId) return undefined;
+    return { ...entry, planId: entry.planId };
+}
+
+/** Select the observed identity before passing authoring to the owner's guarded write. */
+async function authorProjectPlan(
+    store: ProjectPlanStore,
+    input: PlanAuthoringInput,
+    expectedPlanId?: string,
+): Promise<ProjectPlanDocument> {
+    const { planName: reference, expectedRevision, ...draft } = input;
+    if (expectedRevision === undefined && expectedPlanId === undefined) {
+        return await store.create({ ...draft, planName: canonicalizeStoredPlanName(reference).name });
+    }
+    const current = await resolveProjectPlan(store, reference, expectedPlanId);
+    if (!current) throw new StalePlanWriteError(expectedRevision || "required", "missing");
+    if (!expectedRevision) throw new StalePlanWriteError("required", current.revision);
+    return await store.revise(current.planId, { ...draft, expectedRevision });
+}
+
 /** Open without admitting a fresh Project or exposing an owner locator. */
 export function openProjectPlanStore(projectId: ProjectId, options: ProjectPlanStoreOptions = {}): ProjectPlanStore {
-    if (!parseProjectId(projectId)) throw new Error("Invalid Project ID.");
-    const admitted = options.admitted && structuredClone(options.admitted);
-    if (admitted && admitted.projectId !== projectId) throw new Error("Plan access belongs to a different Project.");
-    const managed = captureManagedProjectPlanAccess(projectId, admitted);
-    const registry = options.registry;
-    const verifyLocal = () => {
-        if (managedPersonalStoreActive()) throw new Error("The Project's Plan owner changed after opening.");
-        if (admitted) {
-            projects.home.assertStoreIdentity(admitted);
-            if (projects.home.isOwner(admitted)) return admitted;
-        }
-        const current = checkoutIdentity(projectId, admitted?.checkoutRoot ?? registeredRoot(projectId, registry));
-        if (current.personalOwner.kind !== "execution-account") throw new Error("Managed Plan owner is unavailable.");
-        if (
-            admitted &&
-            (projects.home.isOwner(admitted) ||
-                current.repositoryId !== admitted.repositoryId ||
-                current.checkoutId !== admitted.checkoutId ||
-                current.personalOwner.identity !== admitted.personalOwner.identity ||
-                current.executionAccountHome !== admitted.executionAccountHome)
-        )
-            throw new Error("Project Plan authority changed.");
-        return current;
-    };
-    const verifyManagedRegistration = () => {
-        if (registry) checkoutIdentity(projectId, projects.registrations.requireActiveRoot(registry, projectId));
-    };
-    if (managed) verifyManagedRegistration();
-    const initialLocal = managed ? undefined : verifyLocal();
-    const run = async <Result>(operation: (cwd: string) => Promise<Result>, passive = false): Promise<Result> => {
-        if (managed) {
-            verifyManagedRegistration();
-            return await managed(operation);
-        }
-        const local = verifyLocal();
-        if (
-            !initialLocal ||
-            local.personalOwner.identity !== initialLocal.personalOwner.identity ||
-            local.executionAccountHome !== initialLocal.executionAccountHome
-        )
-            throw new Error("The Project's Plan owner changed after opening.");
-        projects.launch.verifyAccountHome(initialLocal);
-        const cwd = projects.home.storeLocation(local);
-        if (projects.home.isOwner(local))
-            return await projects.home.withOwner(local, () => withPackageProject(cwd, local, () => operation(cwd)));
-        if (hasRetainedCheckoutSource(cwd)) {
-            if (!passive) throw new Error("Plan mutation requires the canonical Project owner.");
-            return await operation(cwd);
-        }
-        return await withPackageProject(cwd, local, () => operation(cwd));
-    };
+    return projectPlanStore(projectId, bindProjectPlanStore(projectId, options));
+}
 
+function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProjectPlanStore>): ProjectPlanStore {
     return {
         projectId,
-        list: () =>
-            run(async (cwd) => {
-                const catalog = await readPlanResourceCatalog(cwd);
-                return {
-                    resources: catalog.resources.map(catalogEntry),
-                    diagnostics: catalog.diagnostics.map(({ name, kind, message, path, planId }) => ({
-                        name,
-                        kind,
-                        message: safeDiagnostic(message, cwd, path),
-                        ...(plans.identity.isValid(planId) ? { planId } : {}),
-                    })),
-                };
-            }, true),
-        read: (planId) => run((cwd) => readActive(cwd, requirePlanId(planId)), true),
-        readArchived: (planId) => run((cwd) => readArchived(cwd, requirePlanId(planId)), true),
+        list: () => run(readProjectPlanDisplayCatalog, "read"),
+        read: (planId) => run((cwd) => readActive(cwd, requirePlanId(planId)), "read"),
+        readArchived: (planId) => run((cwd) => readArchived(cwd, requirePlanId(planId)), "read"),
         create: (input) =>
             run(async (cwd) => {
                 const planId = requirePlanId(await createSavedPlan(cwd, input));
                 return await readActive(cwd, planId);
             }),
-        edit: (id, edit) =>
+        revise: (id, input: ReviseProjectPlan) =>
             run(async (cwd) => {
                 const planId = requirePlanId(id);
-                requireRevision(edit.expectedRevision);
+                requireRevision(input.expectedRevision);
+                const current = await readActive(cwd, planId);
+                checkRevision(input.expectedRevision, current.revision);
+                await reviseSavedPlan(cwd, planId, { ...input, planName: current.name });
+                return await readActive(cwd, planId);
+            }),
+        editBody: (id, { body, expectedRevision }) =>
+            run(async (cwd) => {
+                const planId = requirePlanId(id);
+                requireRevision(expectedRevision);
                 await readActive(cwd, planId);
                 const current = await loadPlanBodyById(cwd, planId);
-                checkRevision(edit.expectedRevision, current.revision);
-                const saved = await savePlanBodyById(cwd, planId, edit.body, current.bodyHash, {
-                    expectedRevision: edit.expectedRevision,
+                checkRevision(expectedRevision, current.revision);
+                const saved = await savePlanBodyById(cwd, planId, body, current.bodyHash, {
+                    expectedRevision,
                 });
                 return document(saved, planId);
             }),
@@ -256,4 +238,76 @@ export function openProjectPlanStore(projectId: ProjectId, options: ProjectPlanS
                 return await readActive(cwd, planId);
             }),
     };
+}
+
+/** Resolve a host checkout without creating a Project during a passive read. */
+export function openPlanStoreForCheckout(cwd: string): CoreProjectPlanStore | undefined {
+    const identity = checkoutPlanIdentity(cwd);
+    if (!identity) return undefined;
+    const run = bindProjectPlanStore(identity.projectId, { admitted: identity });
+    const store = projectPlanStore(identity.projectId, run);
+    return {
+        ...store,
+        author: (input, id) => authorProjectPlan(store, input, id),
+        resolveAuthoredPlan: (reference, id) => resolveProjectPlan(store, reference, id),
+        withWorkflow: (id, name, operation) =>
+            run(async (cwd) => {
+                const planId = requirePlanId(id);
+                const current = await readActive(cwd, planId);
+                if (current.name !== name) throw new Error("The bound Plan identity changed.");
+                return await withLocalPlanWorkflow(cwd, name, () => operation(cwd), planId);
+            }),
+    };
+}
+
+/** A write may admit a fresh checkout using the ordinary Project entry rules. */
+export async function admitPlanStoreForCheckout(cwd: string) {
+    if (managedPlanStoreActive()) await admitManagedPlanCheckout(cwd);
+    return await withLocalProjectAction(cwd, () => {
+        const store = openPlanStoreForCheckout(cwd);
+        if (!store) throw new Error("Plan authoring requires an admitted Project.");
+        return Promise.resolve(store);
+    });
+}
+
+/** Picker reads are passive. Retained executions expose only their own checkout documents. */
+export async function listSelectablePlanDocuments(cwd: string) {
+    if (currentManagedRetainedExecution() || hasRetainedCheckoutSource(cwd)) {
+        return (await listPlanDocuments(cwd)).map(({ name, attrs }) => ({
+            name,
+            attrs,
+            planId: attrs.planId,
+            projectId: undefined,
+        }));
+    }
+    const store = openPlanStoreForCheckout(cwd);
+    if (!store) return [];
+    const catalog = await store.list();
+    if (catalog.diagnostics.length) throw new Error(catalog.diagnostics[0].message);
+    return catalog.resources.map(({ name, attrs, planId }) => ({ name, attrs, planId, projectId: store.projectId }));
+}
+
+/** Capture the read source once. Queries reject if a retained attempt or the admitted Project changes. */
+function checkoutDocumentAccess(cwd: string): Parameters<typeof projectPlanDocuments>[0] {
+    const retained = currentRetainedCheckoutSource();
+    const managedAttempt = currentManagedRetainedExecution();
+    const identity = retained ? undefined : checkoutPlanIdentity(cwd);
+    const run = identity && bindProjectPlanStore(identity.projectId, { admitted: identity });
+    return async (query) => {
+        if (currentRetainedCheckoutSource() !== retained || currentManagedRetainedExecution() !== managedAttempt)
+            throw new Error("Plan read authority changed. Reopen the Project.");
+        if (run) return await run(query, "workflow-read");
+        if (!hasRetainedCheckoutSource(cwd) && checkoutPlanIdentity(cwd))
+            throw new Error("Plan read authority changed. Reopen the Project.");
+        return await query(cwd);
+    };
+}
+
+/** Keep admission failures on the same asynchronous error path as storage failures. */
+export function planDocumentsForCheckout(cwd: string) {
+    try {
+        return projectPlanDocuments(checkoutDocumentAccess(cwd));
+    } catch (error) {
+        return projectPlanDocuments(() => Promise.reject(error));
+    }
 }

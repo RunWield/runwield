@@ -1,4 +1,4 @@
-import { AGENTS } from "../../../constants.ts";
+import { AGENTS, agentRegistry } from "../agent-registry.ts";
 import { abortActiveSession as abortActiveSessionFn, steerRootSessionWithTarget } from ".././session.ts";
 import { formatBackgroundTaskCompletion } from "../background-tasks.ts";
 import type { BackgroundTaskStatus } from "../background-tasks.ts";
@@ -7,7 +7,6 @@ import { getRuntimeErrorMessage, RuntimeEventTypes } from ".././session-runtime-
 import { rollSessionTranscriptSegment } from ".././segment-rollover.ts";
 import { promptTemplateWorkflowConflict, resolvePromptTemplateSettings } from "../prompt-template-settings.ts";
 import { recordManualModelSelection } from "../active-agent-session.ts";
-import { agentRegistry } from "../agent-registry.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from ".././session-runtime-interactions.ts";
 
 import {

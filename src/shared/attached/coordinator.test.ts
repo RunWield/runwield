@@ -13,7 +13,7 @@ import {
 import { throws as assertThrows, ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { WORK_KINDS } from "../../constants.ts";
+import { toolRegistry } from "@runwield/tools";
 import { git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { ATTACHED_OPERATIONS, type AttachedJsonObject } from "./operations.ts";
@@ -34,7 +34,7 @@ async function activated(projectRoot: string) {
     return { result, ...pendingTriage(result) };
 }
 
-for (const workKind of WORK_KINDS) {
+for (const workKind of toolRegistry.get("triage_report").workKinds) {
     test(`a PLANNED_CHANGE ${workKind} outcome moves the workflow to planning`, async () => {
         await withProject(async (projectRoot) => {
             const triage = await activated(projectRoot);

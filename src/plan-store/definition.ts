@@ -7,7 +7,10 @@ import {
     recordManagedHumanReview,
     saveManagedEpicReview,
 } from "./managed.ts";
-import { updatePlanFrontMatter, type PlanFrontMatter } from "../plan-store.ts";
+import { type PlanFrontMatter } from "@runwield/plans";
+import { updatePlanFrontMatter } from "../plan-store.ts";
+import { updatePackageWorkflowMetadata } from "./workflows.ts";
+import { hasRetainedCheckoutSource } from "./retained-source.ts";
 
 const definitionFields = [
     "classification",
@@ -38,6 +41,7 @@ export type PlanDefinitionChanges = Partial<Pick<PlanFrontMatter, (typeof defini
 export interface PlanWritePrecondition {
     expectedRevision: string;
     expectedControllerRevision?: number;
+    expectedPlanId?: string;
 }
 
 /** Change authoring facts without allowing a caller to overwrite lifecycle or execution evidence. */
@@ -50,7 +54,20 @@ export async function savePlanDefinition(
     for (const field of Object.keys(changes))
         if (!definitionFields.some((allowed) => allowed === field))
             throw new Error(`Plan definition cannot change protected field: ${field}`);
-    if (managedPlanStoreActive()) return await saveManagedDefinition(cwd, name, changes, precondition.expectedRevision);
+    if (managedPlanStoreActive())
+        return await saveManagedDefinition(
+            cwd,
+            name,
+            changes,
+            precondition.expectedRevision,
+            precondition.expectedPlanId,
+        );
+    if (precondition.expectedPlanId && !hasRetainedCheckoutSource(cwd))
+        return await updatePackageWorkflowMetadata(
+            { planId: precondition.expectedPlanId },
+            changes,
+            precondition.expectedRevision,
+        );
     return await updatePlanFrontMatter(cwd, name, changes, {}, precondition);
 }
 

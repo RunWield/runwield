@@ -6,9 +6,9 @@ import type { MergeRepairError } from "../worktree.ts";
  * dispatch for the publication phase.
  */
 
-import { AGENTS } from "../../constants.ts";
+import { AGENTS } from "../session/agent-registry.ts";
 import { PlanLockTimeoutError } from "../../plan-store/index.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { requestHostRepair } from "./validation-host-state.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import type { PhaseContext, UserActionPause, ValidationLoopArgs } from "./validation-types.ts";
@@ -258,7 +258,7 @@ export async function dispatchMergeRepair(
             "After all conflict resolutions are staged and no unmerged paths remain, call task_completed. Do not create a commit. If a conflict cannot be resolved here, leave the rest staged and end your turn in plain text naming the file and what stopped you, rather than calling task_completed.",
     });
     if (args.hostTurn) {
-        const plan = await loadPlan(context.executionCwd, args.planName);
+        const plan = await planDocumentsForCheckout(context.executionCwd).load(args.planName);
         if (!plan) throw new Error(`Plan not found: ${args.planName}`);
         await requestHostRepair(args, context, prompt, "publication", undefined, {
             cwd: repairCwd,

@@ -1,4 +1,4 @@
-import type { PlanAuthoringDefinition } from "../../plan-store/index.ts";
+import type { PlanAuthoringDefinition } from "@runwield/plans/store";
 /**
  * @module shared/attached/operations
  * The bounded operation contract between an External Agent Host carrier and the
@@ -309,8 +309,8 @@ export interface AttachedPlanningAction extends PendingHostAction {
 }
 
 export interface AttachedValidationProgress {
-    phase: import("../workflow/validation-checkpoint.ts").ValidationCheckpointPhase;
-    checkpointState: import("../workflow/validation-checkpoint.ts").ValidationCheckpointState;
+    phase: import("@runwield/plans/controller-state").ValidationCheckpointPhase;
+    checkpointState: import("@runwield/plans/controller-state").ValidationCheckpointState;
     updatedAt: string;
 }
 
@@ -375,7 +375,7 @@ export type AttachedNextAction = (
           planName: string;
           guidance: string;
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
-          workRecord?: import("../../plan-store/index.ts").PlanFrontMatter["workRecord"];
+          workRecord?: import("@runwield/plans").PlanFrontMatter["workRecord"];
       }
     | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string }
 ) & { dispatch?: CodexRoleDispatch };
@@ -401,7 +401,7 @@ export type AttachedWorkflowClosure =
     | {
           reason: "delivered";
           completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
-          workRecord?: import("../../plan-store/index.ts").PlanFrontMatter["workRecord"];
+          workRecord?: import("@runwield/plans").PlanFrontMatter["workRecord"];
       };
 
 export interface ProjectMovedRecovery {

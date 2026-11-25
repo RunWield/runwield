@@ -1,8 +1,7 @@
 import { mkdirSync } from "node:fs";
-import { AGENTS } from "../../../constants.ts";
+import { AGENTS, agentRegistry } from "../agent-registry.ts";
 import { recordManualModelSelection } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
-import { agentRegistry } from "../agent-registry.ts";
 import { switchActiveAgent } from ".././agent-switching.ts";
 import {
     drainSessionCompactionMetrics,

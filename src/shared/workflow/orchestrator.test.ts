@@ -13,7 +13,7 @@ import {
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan, listPlans } from "../../plan-store/index.ts";
+import { loadPlan, listPlans } from "../testing/plan-query-fixture.ts";
 
 import { git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";

@@ -6,7 +6,8 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promise
 import { join } from "node:path";
 import { assertEquals, assertRejects } from "./testing/assertions.ts";
 import { injectFrontMatter, mergeFrontMatterText } from "@runwield/plans/format";
-import { ensurePlanIdentity, listPlans, listPlanResources, loadPlan } from "./plan-store/index.ts";
+import { ensurePlanIdentity } from "./plan-store/index.ts";
+import { listPlans, listPlanResources, loadPlan } from "./shared/testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
 import { addEntry, getWorktreeRegistryPath, listEntries } from "./shared/worktree-registry.ts";

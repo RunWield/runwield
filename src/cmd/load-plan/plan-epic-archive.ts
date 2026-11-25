@@ -10,10 +10,10 @@ import {
     isRecoverableWorktreeStatus,
     isTerminalArchivableStatus,
 } from "@runwield/plans/format";
-import { findPlansByParent, loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { startBackgroundArchive } from "./archive-background.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { UiAPI } from "../../ui/tui/api.ts";
 
 export interface ArchiveEpicPlanRef {
@@ -47,13 +47,15 @@ export async function archiveEpicWithChildren({ projectRoot, plan, uiAPI }: Arch
         return false;
     }
 
-    const loadedEpic = await loadPlan(projectRoot, plan.planName);
+    const loadedEpic = await planDocumentsForCheckout(projectRoot).load(plan.planName);
     if (!loadedEpic) {
         uiAPI.appendSystemMessage(`Epic not found: ${plan.planName}`, true, "RunWield");
         return false;
     }
     const epicEntry: ListedPlanForArchive = { name: plan.planName, path: loadedEpic.path, attrs: loadedEpic.attrs };
-    const children = (await findPlansByParent(projectRoot, plan.planName)).sort(compareChildPlansByOrder);
+    const children = (await planDocumentsForCheckout(projectRoot).children(plan.planName)).sort(
+        compareChildPlansByOrder,
+    );
     const allPlans = [epicEntry, ...children];
     const blockers = blockingWorktreePlans(allPlans);
     if (blockers.length > 0) {

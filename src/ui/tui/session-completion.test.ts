@@ -1,7 +1,7 @@
 import { seedPlanState, seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import process from "node:process";
 import { writeFile as fsWriteFile } from "node:fs/promises";

@@ -15,15 +15,8 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { dirname, join } from "node:path";
 
 import { hashPlanBody } from "@runwield/plans/format";
-import {
-    archivePlan,
-    archiveSavedPlan,
-    listArchivedPlans,
-    listPlans,
-    loadPlan,
-    restoreArchivedPlan,
-    updatePlanCollaborationMetadata,
-} from "../../plan-store/index.ts";
+import { archivePlan, archiveSavedPlan, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
+import { listArchivedPlans, listPlans, loadPlan, restoreArchivedPlan } from "../testing/plan-query-fixture.ts";
 
 import { COLLABORATION_LOCK_BYPASS } from "../collaboration/lock.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";

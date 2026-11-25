@@ -4,7 +4,7 @@ import type { OwnerPlanProgress } from "./server/owner-plan-progress.ts";
 import type { WorkspacePlanReviewStarted } from "./server/session-continuation.ts";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { savePlanWithController as savePlan } from "../../shared/testing/plan-controller-fixture.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";

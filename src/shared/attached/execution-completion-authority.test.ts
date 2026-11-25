@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { findById } from "../worktree-registry.ts";
 import { withProject } from "./attached-test-fixture.ts";
 import { completionInput, implementing } from "./execution-test-fixture.ts";

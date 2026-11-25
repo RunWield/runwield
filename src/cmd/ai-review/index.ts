@@ -1,5 +1,6 @@
 import process from "node:process";
-import { AGENTS, getCwd } from "../../constants.ts";
+import { AGENTS } from "../../shared/session/agent-registry.ts";
+import { getCwd } from "../../constants.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import {

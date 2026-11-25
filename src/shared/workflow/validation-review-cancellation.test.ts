@@ -6,7 +6,7 @@ import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";

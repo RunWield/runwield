@@ -15,7 +15,7 @@ import { resumePlanAttempt } from "../../plan-store/index.ts";
 
 import * as engine from "./validation-engine.ts";
 import { runValidationAttempt, type ValidationTrigger } from "./validation-supervisor.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { emitProgress, emitStatus } from "./validation-emit.ts";
@@ -29,7 +29,7 @@ import type { ValidationSessionPort } from "./validation-ports.ts";
 import type { ValidationPhaseResult, WorkflowValidationResult } from "./validation-types.ts";
 import type { ValidationLoopArgs as EngineValidationLoopArgs } from "./validation-types.ts";
 import type { LocalCIPort } from "./validation-local-ci.ts";
-import type { ValidationCheckpoint, ValidationCheckpointPhase } from "./validation-checkpoint.ts";
+import type { ValidationCheckpoint, ValidationCheckpointPhase } from "@runwield/plans/controller-state";
 
 export {
     loadManualQaPrompt,
@@ -46,7 +46,7 @@ export { type SemanticReviewPort, SYSTEM_SEMANTIC_REVIEW_PORT } from "./validati
 
 export type { ValidationPhaseResult, WorkflowValidationResult } from "./validation-types.ts";
 
-type PlanFrontMatter = import("../../plan-store/index.ts").PlanFrontMatter;
+type PlanFrontMatter = import("@runwield/plans").PlanFrontMatter;
 type TriageMeta = import("../../tools/plan-written.ts").TriageMeta & Partial<PlanFrontMatter>;
 type ActiveExecutionWorkflow = import("../session/hosted-session.ts").ActiveExecutionWorkflow;
 type HostedSession = import("../session/hosted-session.ts").HostedSession;
@@ -210,7 +210,9 @@ export async function continueWorkflowValidation(
         result.recovery?.code !== "validation_owner_active" &&
         result.recovery?.code !== "task_completion_already_settled"
     ) {
-        const settledPlan = await loadPlan(await validationPlanCwd(projectRoot, args.planName), args.planName);
+        const settledPlan = await planDocumentsForCheckout(await validationPlanCwd(projectRoot, args.planName)).load(
+            args.planName,
+        );
         if (settledPlan) {
             const progress = getCurrentValidationProgress(args.hostedSession);
             const active = args.hostedSession.getActiveExecutionWorkflow();
@@ -255,7 +257,9 @@ export async function runWorkflowValidationToStableBoundary(
     for (let phase = 0; phase < 5; phase += 1) {
         if (result?.kind !== "paused" || !result.continueValidation) break;
         const planCwd = await validationPlanCwd(validationProjectRoot(args), args.planName);
-        const plan = await loadPlan(planCwd, args.planName).catch(() => null);
+        const plan = await planDocumentsForCheckout(planCwd)
+            .load(args.planName)
+            .catch(() => null);
         const status = String(plan?.attrs.status || "");
         if (!plan) break;
         if (

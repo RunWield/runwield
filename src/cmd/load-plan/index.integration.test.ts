@@ -11,12 +11,13 @@ import {
     readFile as fsReadFile,
     readlink as fsReadlink,
     realpath as fsRealpath,
+    rename as fsRename,
     rm as fsRm,
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import {
     fauxAssistantMessage,
@@ -28,7 +29,8 @@ import {
 } from "@earendil-works/pi-ai";
 
 import { parsePlanFrontMatter, type PlanFrontMatterInput } from "@runwield/plans/format";
-import { loadArchivedPlan, loadPlan, resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
+import { resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
+import { loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
@@ -37,7 +39,7 @@ import { discardWorktreeGitArtifacts } from "../../shared/worktree.ts";
 import { addEntry, findById, removeEntry, updateEntry } from "../../shared/worktree-registry.ts";
 import { setCustomSetting } from "../../shared/settings.ts";
 import { executePlanAction, loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { importPlans, PlanAccessMismatchError, recordPlanEvent } from "../../plan-store/index.ts";
 
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
@@ -45,7 +47,8 @@ import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
-import { getRunWieldRuntimeDir, AGENTS } from "../../constants.ts";
+import { AGENTS } from "../../shared/session/agent-registry.ts";
+import { getRunWieldRuntimeDir } from "../../constants.ts";
 import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/api.ts";
 
 interface LoadPlanUiFixture {
@@ -405,6 +408,59 @@ test("load-plan discovers real top-level Plans and leaves child Plans out of the
         }
     });
 });
+
+for (const otherDocument of ["available", "unavailable"] as const) {
+    test(`load-plan rejects a picker choice from another Project with the same Plan ID (${otherDocument} document)`, async () => {
+        await withRuntimeCommandFixture("runwield-picker-project-", async ({ projectRoot, alternateRoot }) => {
+            const planId = "shared-plan-id";
+            const planName = "proposal";
+            for (const [root, heading] of [
+                [projectRoot, "First Project"],
+                [alternateRoot, "Second Project"],
+            ]) {
+                const path = join(root, `${planName}.md`);
+                await fsWriteFile(path, `---\nplanId: ${planId}\nstatus: draft\n---\n# ${heading}\n`);
+                const imported = await importPlans(root, path);
+                assertEquals(imported.importedPlanIds, [planId]);
+            }
+            const first = (await loadPlan(projectRoot, planName))!;
+            const second = (await loadPlan(alternateRoot, planName))!;
+            assertEquals(first.body, "# First Project\n");
+            assertEquals(second.body, "# Second Project\n");
+            const displacedDocument = `${second.path}.unavailable`;
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi([planName]);
+            const promptSelect = ui.uiAPI.promptSelect;
+            ui.uiAPI.promptSelect = async (title, options, config) => {
+                const choice = await promptSelect(title, options, config);
+                if (title !== "Load plan:") return choice;
+                assertEquals(
+                    options.map((option) => option.value),
+                    [planName],
+                );
+                const switched = await runtime.switchAgent(sessionId, { agentName: "router", cwd: alternateRoot });
+                assertEquals(switched.ok, true);
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.cwd, alternateRoot);
+                if (otherDocument === "unavailable") await fsRename(second.path, displacedDocument);
+                return choice;
+            };
+            try {
+                await assertRejects(
+                    () => runLoadPlanCommand([], { sessionRuntime: runtime, sessionId, uiAPI: ui.uiAPI }),
+                    PlanAccessMismatchError,
+                    "The selected Plan belongs to another Project.",
+                );
+                assertEquals(ui.prompts, ["Load plan:"]);
+                assertEquals(ui.messages, []);
+                if (otherDocument === "unavailable") await fsRename(displacedDocument, second.path);
+                assertEquals(await loadPlan(projectRoot, planName), first);
+                assertEquals(await loadPlan(alternateRoot, planName), second);
+            } finally {
+                runtime.closeAllSessions();
+            }
+        });
+    });
+}
 
 test("load-plan reports an empty real Plan catalogue without touching the checkout", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {

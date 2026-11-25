@@ -20,15 +20,15 @@ import { isEpicPlan, projectPlanType, canonicalPlanStatus, isRecoverableWorktree
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-import { AGENTS, CLI_BIN, getCwd } from "../../constants.ts";
+import { AGENTS } from "../../shared/session/agent-registry.ts";
+import { CLI_BIN, getCwd } from "../../constants.ts";
 import {
     archivePlan,
     ensurePlanIdentity,
-    listPlanDocuments,
-    loadPlan,
+    listSelectablePlanDocuments,
     onboardExternalPlan,
-    resolvePlan,
     resolveSiblingChildPlanDependencies,
+    planDocumentsForCheckout,
 } from "../../plan-store/index.ts";
 import { isPlanArchivePending, startBackgroundArchive } from "./archive-background.ts";
 import { decidePostPlanning } from "../../shared/workflow/decisions.ts";
@@ -125,6 +125,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         return;
     }
 
+    let selectedPlan: Awaited<ReturnType<typeof listSelectablePlanDocuments>>[number] | undefined;
     let [planArg] = parsedArgs._.map(String);
     if (!planArg) {
         if (options.uiAPI) {
@@ -138,7 +139,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             }
             const activeSnapshot = sessionRuntime.getSessionSnapshot(runtimeSessionId);
             if (!activeSnapshot) throw new Error("runLoadPlanCommand runtime session is missing");
-            const plans = (await listPlanDocuments(activeSnapshot.cwd)).filter(
+            const plans = (await listSelectablePlanDocuments(activeSnapshot.cwd)).filter(
                 (plan) => !isPlanArchivePending(activeSnapshot.cwd, plan.name),
             );
             if (plans.length === 0) {
@@ -166,6 +167,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 return;
             }
 
+            selectedPlan = topLevelPlans.find((plan) => plan.name === chosen);
             planArg = chosen;
         } else {
             console.error(`Usage: ${CLI_BIN} load-plan <plan-name-or-path>`);
@@ -196,7 +198,11 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             return;
         const startupResolved = await resolvePlanWithPrimaryRecovery(startupProjectRoot, planArg);
         if (!capturePlanAccess()) {
-            const selection = await selectPlanAccess(startupProjectRoot, startupResolved.plan.planName);
+            const selection = await selectPlanAccess(
+                startupProjectRoot,
+                startupResolved.plan.planName,
+                startupResolved.plan.attrs.planId,
+            );
             if (selection)
                 return await withPlanAccess(startupProjectRoot, selection, () =>
                     runLoadPlanCommand([startupResolved.plan.planName], options),
@@ -289,6 +295,9 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
     let unresolvedLifecycleRecords: TransitionRecoveryRecord[] = [];
 
     try {
+        const pickerAccess = selectedPlan?.planId
+            ? await selectPlanAccess(projectRoot, selectedPlan.name, selectedPlan.planId, selectedPlan.projectId)
+            : undefined;
         if (options.slashSurface !== "acp" && !(await admitProjectWithIdentityChoice(projectRoot))) return;
         await prepareWorktreeRegistry(projectRoot);
         const discovered = options.slashSurface === "acp" ? null : await discoverPlanDocumentRoot(projectRoot, planArg);
@@ -299,9 +308,18 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 : confirmProjectDirectory(discovered.path)))
         )
             return;
+        if (pickerAccess) {
+            skipRouterRestore = true;
+            return await withPlanAccess(
+                projectRoot,
+                pickerAccess,
+                () => runLoadPlanCommand([planArg], options),
+                planArg,
+            );
+        }
         const resolved = await resolvePlanWithPrimaryRecovery(projectRoot, planArg);
         if (!isCurrentPlan(resolved.plan.attrs.planId)) {
-            const selection = await selectPlanAccess(projectRoot, resolved.plan.planName);
+            const selection = await selectPlanAccess(projectRoot, resolved.plan.planName, resolved.plan.attrs.planId);
             if (selection) {
                 skipRouterRestore = true;
                 return await withPlanAccess(projectRoot, selection, () =>
@@ -387,7 +405,9 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         const recordedAttempt = await resolveRecoveryWorktree(projectRoot, plan);
         let cleanupPending = isPublicationCleanupPending(recordedAttempt?.publication);
         if (recordedAttempt?.path && !cleanupPending) {
-            const executionPlan = await loadPlan(recordedAttempt.path, plan.planName).catch(() => null);
+            const executionPlan = await planDocumentsForCheckout(recordedAttempt.path)
+                .load(plan.planName)
+                .catch(() => null);
             if (executionPlan) {
                 plan.path = executionPlan.path;
                 plan.attrs = executionPlan.attrs;
@@ -531,7 +551,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
 
         if (plan.attrs.parentPlan) {
             try {
-                const parentPlan = await resolvePlan(projectRoot, plan.attrs.parentPlan);
+                const parentPlan = await planDocumentsForCheckout(projectRoot).resolve(plan.attrs.parentPlan);
                 if (parentPlan.attrs.status === "on_hold") {
                     uiAPI.appendSystemMessage(
                         `Parent Epic "${parentPlan.planName}" is on hold. Resume the parent before working on child Planned Change "${plan.planName}".`,

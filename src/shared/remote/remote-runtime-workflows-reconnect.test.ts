@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { kill } from "node:process";
 import { assertEquals } from "../../testing/assertions.ts";
 import { git } from "../workflow/validation-test-helpers.ts";
-import { assertRemoteStorageAbsent, within, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
+import { assertRemoteStorageAbsent, within, withRetainedRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 import {
     ciRuns,
     executeDelivery,
@@ -19,7 +19,7 @@ import {
 
 for (const evidenceAvailable of [true, false]) {
     test(`reconnect checks an unsaved publication result without replay (${evidenceAvailable ? "confirmed" : "uncertain"} evidence)`, async () => {
-        await withRemoteRuntimeFixture(async (f) => {
+        await withRetainedRemoteRuntimeFixture(async (f) => {
             const upstream = await prepareDelivery(f);
             const client = await f.start();
             await client.read();
@@ -147,7 +147,7 @@ for (const evidenceAvailable of [true, false]) {
 }
 
 test("transport loss during active validation resumes with uncertainty, without replaying CI or publication", async () => {
-    await withRemoteRuntimeFixture(async (f) => {
+    await withRetainedRemoteRuntimeFixture(async (f) => {
         const upstream = await prepareDelivery(f);
         const started = join(f.remoteHome, "ci-started");
         const release = join(f.remoteHome, "ci-release");

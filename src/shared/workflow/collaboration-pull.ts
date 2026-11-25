@@ -1,10 +1,11 @@
 import { isEpicPlan } from "@runwield/plans/format";
 /** @module shared/workflow/collaboration-pull */
 
-import { AGENTS, CLI_BIN } from "../../constants.ts";
+import { AGENTS } from "../session/agent-registry.ts";
+import { CLI_BIN } from "../../constants.ts";
 import { redactSecrets } from "../collaboration/capabilities.ts";
 
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { DecryptedReviewCommentPayload } from "../collaboration/protocol.ts";
 
 export interface PullReviewComment {

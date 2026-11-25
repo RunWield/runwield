@@ -8,7 +8,7 @@ import { planDocumentReference } from "../../plan-store/index.ts";
 
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordDeliveryEvidence } from "./delivery-evidence.ts";
-import { AGENTS } from "../../constants.ts";
+import { AGENTS } from "../session/agent-registry.ts";
 import { captureWorktreeTree, getWorkflowDiff, getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { buildDiffInspectionSection, requiredReviewDiffFiles, ReviewDiffParseError } from "./review-diff.ts";
 import { ReviewInspection } from "./review-inspection.ts";
@@ -52,7 +52,8 @@ import { persistHumanReviewMetadata, runHumanReviewPhase } from "./validation-hu
 import { runPublicationPhase } from "./validation-publication.ts";
 import { buildValidationRepairPrompt } from "./validation-repair-prompt.ts";
 import { projectEngineerPlanBody } from "./engineer-plan-projection.ts";
-import { makeValidationCheckpoint, type ValidationReviewState } from "./validation-checkpoint.ts";
+import { type ValidationReviewState } from "@runwield/plans/controller-state";
+import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { classifyValidationOperationalError } from "./validation-operational-errors.ts";
 import {
     decideValidationRecovery,

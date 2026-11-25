@@ -1,6 +1,6 @@
 import { seedPlanState, seedPlan } from "./plan-state-fixture.ts";
 
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "./plan-query-fixture.ts";
 
 import { inspectLocalHomeStore } from "../../plan-store/access.ts";
 import { pickControllerState } from "@runwield/plans/controller-state";

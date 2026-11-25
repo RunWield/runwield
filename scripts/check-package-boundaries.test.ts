@@ -35,6 +35,8 @@ async function makeRepository(context: TestContext) {
         }),
         [`${alpha}/src/index.ts`]: "export {};",
         [`${alpha}/src/private.ts`]: "export {};",
+        "packages/plans/package.json": JSON.stringify({ name: "@runwield/plans", exports: "./index.ts" }),
+        "packages/plans/index.ts": "export {};",
         "packages/beta/package.json": JSON.stringify({ name: "beta", exports: "./entry.ts" }),
         "packages/plugin/package.json": JSON.stringify({
             name: "@sample/plugin",
@@ -142,4 +144,59 @@ test("checks executable Astro template expressions and skips literal markup", as
         lint(source, "src/example.astro").map(({ line }) => line),
         [2, 3, 4, 5, 6, 9],
     );
+});
+
+test("applications consume extracted packages through their declared entry points", async (context) => {
+    const { lint } = await makeRepository(context);
+    const source = [
+        'export * from "@runwield/plans";',
+        'export type { PlanId } from "../packages/plans/index.ts";',
+        'import { plans } from "@runwield/plans";',
+        'export { adapt } from "./plan-adapter.ts";',
+    ].join("\n");
+    const diagnostics = lint(source, "src/plan-store.ts");
+    assert.deepEqual(
+        diagnostics.map(({ line }) => line),
+        [1, 2],
+    );
+    assert.match(diagnostics[0].message, /Consumers must import @runwield\/plans directly/);
+    assert.deepEqual(lint('export * from "@runwield/plans";', "packages/beta/entry.ts"), []);
+});
+
+test("application re-exports follow imported bindings to their package and report the export line", async (context) => {
+    const { lint } = await makeRepository(context);
+    const source = [
+        "export type { LocalId as PublicId };",
+        'import type { PlanId as LocalId } from "../packages/plans/index.ts";',
+        'import { plans } from "@runwield/plans";',
+        "export { plans as registry };",
+        'import * as domain from "@runwield/plans";',
+        "export default (domain);",
+        'import adapter from "./adapter.ts";',
+        "export { adapter };",
+        "export function read(id: LocalId) { return plans.read(id); }",
+        'import defaultExport from "@runwield/plans";',
+        "export { defaultExport };",
+        'import moduleBinding = require("@runwield/plans");',
+        "export { moduleBinding as planModule };",
+        'export { plans as externalPlans } from "./adapter.ts";',
+        'const { plans: loaded } = require("@runwield/plans");',
+        "export { loaded };",
+        'const loadPlans = (await import("@runwield/plans")).plans;',
+        "export { loadPlans as dynamicPlans };",
+        "const adapted = makeAdapter(plans);",
+        "export { adapted };",
+        "const alias = plans;",
+        "export const planRegistry = alias;",
+        "export const derived = makeAdapter(plans);",
+        "export const namespacePlans = domain.plans;",
+    ].join("\n");
+    const diagnostics = lint(source, "src/example.ts");
+    assert.deepEqual(
+        diagnostics.map(({ line }) => line),
+        [1, 4, 6, 11, 13, 16, 18, 22, 24],
+    );
+    for (const diagnostic of diagnostics)
+        assert.match(diagnostic.message, /Consumers must import @runwield\/plans directly/);
+    assert.deepEqual(lint(source, "packages/beta/entry.ts"), []);
 });

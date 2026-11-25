@@ -13,7 +13,8 @@ import {
 } from "./workflows.ts";
 /** Action-owned runtime preparation. Passive lookups must not call this module. */
 import { isProjectPlan, parsePlanFrontMatter } from "@runwield/plans/format";
-import { ensurePlanIdentity, findPlansByParent, loadPlan } from "./index.ts";
+import { ensurePlanIdentity } from "./index.ts";
+import { findPlansByParent, loadPlan } from "./queries.ts";
 import { findActiveByPlanName, prepareWorktreeRegistry } from "../shared/worktree-registry.ts";
 import {
     assertControllerDocumentAvailable,

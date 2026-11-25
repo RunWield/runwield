@@ -14,7 +14,7 @@ import type { BrowserNotificationPolicy } from "../../../shared/session/notifica
 import type { ImageAttachment } from "../../../shared/session/image-attachments.ts";
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../plan-store/index.ts";
-import type { PlanFrontMatter } from "../../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { PlanWorktreeExpectation } from "../../../shared/workflow/plan-actions.ts";
 import type { SharedPlanReviewDecision } from "../../../plan-store/index.ts";
 import type { ReviewImageDecision } from "../../../shared/workflow/review-feedback-images.ts";
@@ -47,7 +47,7 @@ import {
     waitForSessionActivationSettlement,
 } from "../../../shared/session/live-session-connection.ts";
 import { createHash } from "node:crypto";
-import { findPlanEvidenceById } from "../../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../../plan-store/index.ts";
 import {
     clearMascotEnabledCache,
     getMergedCustomSetting,
@@ -1475,7 +1475,7 @@ export class WorkspaceSessionContinuationService {
                         // not substitute the latest Plan as the source that the user reviewed.
                         const plan = Array.isArray(request._meta?.sequenceDocuments)
                             ? null
-                            : await findPlanEvidenceById(root, reviewPlanId);
+                            : await planDocumentsForCheckout(root).evidenceById(reviewPlanId);
                         if (
                             plan &&
                             request._meta?.reviewedSource &&

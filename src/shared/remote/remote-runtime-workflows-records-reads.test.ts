@@ -29,6 +29,7 @@ import { parseRemoteSessionTranscript } from "./session-protocol.ts";
 import {
     assertRemoteStorageAbsent,
     withRemoteRuntimeFixture,
+    withRetainedRemoteRuntimeFixture,
     type RuntimeFixture,
 } from "./remote-runtime-test-fixture.ts";
 
@@ -130,7 +131,7 @@ async function seedLaptopRecords(
 }
 
 test("remote reads find laptop-seeded review and associations and enforce committed tutorial identity", async () => {
-    await withRemoteRuntimeFixture(async (f) => {
+    await withRetainedRemoteRuntimeFixture(async (f) => {
         await savePlan(f.remoteProject, "laptop-only", "# Laptop-only Plan\n", {
             planId: "laptop-only-plan",
             classification: "QUICK_FIX",
@@ -270,7 +271,7 @@ test("remote reconnect restores laptop execution and tutorial context without re
 });
 
 test("remote reconnect reconciles confirmed legacy completion from remote Plan evidence without rewriting it", async () => {
-    await withRemoteRuntimeFixture(async (f) => {
+    await withRetainedRemoteRuntimeFixture(async (f) => {
         f.setModelResponseFactory(() => fauxAssistantMessage(fauxText("Saved history.")));
         const client = await f.start();
         await client.read();

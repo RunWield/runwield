@@ -3,7 +3,7 @@ import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { type PlanFrontMatter } from "../../plan-store/index.ts";
+import { type PlanFrontMatter } from "@runwield/plans";
 import { parsePlanFrontMatter, mergeFrontMatterText, planDocumentMarkdown } from "@runwield/plans/format";
 import { stripRuntimeFields } from "@runwield/plans/controller-state";
 import { platform } from "node:process";

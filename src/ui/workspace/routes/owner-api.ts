@@ -12,7 +12,7 @@ import {
 import { Buffer } from "node:buffer";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { isAbsolute } from "node:path";
-import { readPlanDocuments, savePlanDocument, readPlanDocumentLink } from "../../../plan-store/index.ts";
+import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
 import { loadOwnerUsage } from "../server/owner-usage.ts";
 import {
     loadUsageSettings,
@@ -20,7 +20,7 @@ import {
     UsageSettingsError,
     type UsageSettingsRequest,
 } from "../server/owner-usage-settings.ts";
-import { loadPlanActionEvidence, type PlanActionRequest } from "../../../shared/workflow/plan-actions.ts";
+import type { PlanActionRequest } from "../../../shared/workflow/plan-actions.ts";
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import type { WorkspaceLiveInteraction, WorkspaceSessionContinuationService } from "../server/session-continuation.ts";
 import type { createWorkspaceSearchService } from "../server/workspace-search.ts";
@@ -34,7 +34,7 @@ import {
     deviceCookieHeaders,
     getCookie,
 } from "../server/owner-auth.ts";
-import { loadRegisteredProjectBoard, loadWorkspaceDetail } from "../server/plan-adapter.ts";
+import { loadRegisteredProjectBoard, loadRegisteredWorkspaceDetail } from "../server/plan-adapter.ts";
 import { runOwnerPlanAction } from "../server/owner-plan-actions.ts";
 import { loadOwnerPlanProgress } from "../server/owner-plan-progress.ts";
 import { loadOwnerDashboard, loadOwnerSidebar, subscribeOwnerDashboard } from "../server/owner-dashboard.ts";
@@ -573,8 +573,9 @@ export async function ownerProjectBoardApi(ctx: OwnerRouteContext<OwnerStoreStat
 
 export async function ownerProjectPlanDetailApi(ctx: OwnerRouteContext<OwnerStoreState, ProjectPlanParams>) {
     try {
-        const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
-        const plan = ownerReadOnlyPlanValue(await loadWorkspaceDetail(root, ctx.params.planId));
+        const plan = ownerReadOnlyPlanValue(
+            await loadRegisteredWorkspaceDetail(ctx.params.projectId, ctx.state.store.projects, ctx.params.planId),
+        );
         return ownerJson({ projectId: ctx.params.projectId, plan: sanitizeOwnerPlanValue(plan), readOnly: true });
     } catch (error) {
         return ownerErrorJson(error, 404);
@@ -583,11 +584,13 @@ export async function ownerProjectPlanDetailApi(ctx: OwnerRouteContext<OwnerStor
 
 export async function ownerProjectFileContentApi(ctx: OwnerRouteContext<OwnerStoreState, ProjectParams>) {
     try {
-        const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         const url = new URL(ctx.req.url);
         const planId = url.searchParams.get("planId");
         if (planId) {
-            const document = await readPlanDocumentLink(planId, url.searchParams.get("path") || "");
+            const document = await openRegisteredPlanDocuments(
+                ctx.params.projectId,
+                ctx.state.store.projects,
+            ).documentLink(planId, url.searchParams.get("path") || "");
             if (document)
                 return ownerJson({
                     codeFile: true,
@@ -596,6 +599,7 @@ export async function ownerProjectFileContentApi(ctx: OwnerRouteContext<OwnerSto
                     planDocument: document,
                 });
         }
+        const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
         return await reviewFileContentApi(ctx.req, { cwd: root });
     } catch (error) {
         return ownerErrorJson(error, 404);
@@ -705,8 +709,7 @@ export async function ownerProjectPlanProgressApi(ctx: OwnerRouteContext<OwnerSe
         const canRecover = continuable && progress.overall?.state === "needs_attention";
         const evidence =
             progress.plan.status === "on_hold"
-                ? await loadPlanActionEvidence(
-                      requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId),
+                ? await openRegisteredPlanDocuments(ctx.params.projectId, ctx.state.store.projects).actionEvidence(
                       ctx.params.planId,
                   )
                 : null;
@@ -806,12 +809,15 @@ interface PlanDocumentBody {
 }
 export async function ownerProjectPlanDocumentApi(ctx: OwnerRouteContext<OwnerStoreState, ProjectDocumentParams>) {
     try {
-        requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
-        if (ctx.req.method === "GET") return ownerJson(await readPlanDocuments(ctx.params.planId, ctx.params.document));
+        const { projectId, planId, document } = ctx.params;
+        const documents = openRegisteredPlanDocuments(projectId, ctx.state.store.projects);
+        if (ctx.req.method === "GET") return ownerJson(await documents.document(planId, document));
         const body = await readJson<PlanDocumentBody>(ctx.req);
         if (typeof body.body !== "string" || typeof body.revision !== "string")
             return ownerJson({ error: "Document body and revision are required." }, 400);
-        return ownerJson(await savePlanDocument(ctx.params.planId, ctx.params.document, body.revision, body.body));
+        return ownerJson(
+            await documents.saveDocument(planId, document, { expectedRevision: body.revision, body: body.body }),
+        );
     } catch (error) {
         return ownerErrorJson(error, error instanceof Error && error.name === "StalePlanWriteError" ? 409 : 403);
     }

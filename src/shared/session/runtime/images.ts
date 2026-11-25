@@ -1,7 +1,6 @@
 import { isRemovedAgyProvider, removedAgyModelError } from "../../models/removed-providers.ts";
-import { AGENTS } from "../../../constants.ts";
+import { AGENTS, agentRegistry } from "../agent-registry.ts";
 import { readPersistedManualModelState, resolveResumeAgentName } from ".././active-agent-session.ts";
-import { agentRegistry } from "../agent-registry.ts";
 import { resolveModel } from ".././session.ts";
 import { resolvePromptTemplateSettings } from "../prompt-template-settings.ts";
 import { resolveNamedInvocation } from ".././named-invocation.ts";

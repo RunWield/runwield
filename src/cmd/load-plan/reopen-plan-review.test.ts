@@ -8,7 +8,8 @@ import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { renamePlan } from "../../plan-store/index.ts";
-import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+import { ensurePlanIdentity } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";

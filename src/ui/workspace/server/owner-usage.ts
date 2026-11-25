@@ -6,10 +6,10 @@ import type { UsageLink } from "../../../shared/workflow/usage-reporting.ts";
 import { listOwnerProjects, requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import type { OwnerProjectStore } from "./owner-projects.ts";
 import type { FileSessionStore } from "../../../shared/session/file-session-store-types.ts";
-import { loadWorkspaceDetail } from "./plan-adapter.ts";
+import { loadRegisteredWorkspaceDetail } from "./plan-adapter.ts";
 
 interface UsageOwnerStore extends OwnerProjectStore {
-    projects: OwnerProjectStore["projects"] & Pick<ProjectRegistry, "listRootEvidence">;
+    projects: ProjectRegistry;
     listProjectSessions: FileSessionStore["listProjectSessions"];
 }
 
@@ -66,7 +66,7 @@ export async function loadOwnerUsageReport(store: UsageOwnerStore, params: URLSe
         report.projects.map(async (project) => {
             const registration = registrations.get(project.projectId);
             if (!registration) throw new Error("Registered Project identity changed. Refresh Usage.");
-            const { owner, root } = registration;
+            const { owner } = registration;
             const projectHref = `/projects/${encodeURIComponent(owner.projectId)}`;
             const labels = new Set([owner.displayName || owner.rootLabel]);
             for (const evidence of store.projects.listRootEvidence(owner.projectId)) labels.add(evidence.displayName);
@@ -100,7 +100,12 @@ export async function loadOwnerUsageReport(store: UsageOwnerStore, params: URLSe
                         planId,
                         (async () => {
                             try {
-                                const detail = await loadWorkspaceDetail(root, planId, { reviewOnly: true });
+                                const detail = await loadRegisteredWorkspaceDetail(
+                                    owner.projectId,
+                                    store.projects,
+                                    planId,
+                                    { reviewOnly: true },
+                                );
                                 return {
                                     href: `${projectHref}/plans/${encodeURIComponent(planId)}`,
                                     label: detail.title,

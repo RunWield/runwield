@@ -18,7 +18,7 @@ export interface RuntimeTriageFields {
     worktree?: import("../../workflow/plan-actions.ts").PlanWorktreeExpectation;
 }
 export type RuntimePersistedTriageInput = Omit<
-    import("../../../plan-store/index.ts").PlanFrontMatter,
+    import("@runwield/plans").PlanFrontMatter,
     "status" | "executionAgent"
 > & {
     status?: string;
@@ -28,7 +28,7 @@ export type RuntimeTriageInput =
     | RuntimeTriageFields
     | RuntimePersistedTriageInput
     | import("../../../tools/plan-written.ts").TriageMeta
-    | import("../../../plan-store/index.ts").PlanFrontMatter;
+    | import("@runwield/plans").PlanFrontMatter;
 export type RuntimeExecutePlanOptions = Partial<
     Omit<import("../../workflow/plan-executor.ts").ExecutePlanOptions, "hostedSession" | "triageMeta">
 > & {

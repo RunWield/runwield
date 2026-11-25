@@ -3,10 +3,9 @@ import { readPlanPublicationReference } from "../../plan-store/index.ts";
 import { capturePlanReviewInput } from "../../plan-store/index.ts";
 import { withPlanReadScope, readPlanResource } from "../../plan-store/index.ts";
 import { requiresPlanWorkflow } from "../../plan-store/index.ts";
-import { savePlanDefinition } from "../../plan-store/index.ts";
 
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { authorLocalPlan } from "../../plan-store/index.ts";
+import { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "../../plan-store/index.ts";
 
 import type { PackageWorkflowInput } from "../../plan-store/index.ts";
 
@@ -47,7 +46,7 @@ import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../no
 import { findActiveByPlanName, findById, listEntries } from "../worktree-registry.ts";
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative } from "node:path";
-import { type PlanFrontMatter } from "../../plan-store/index.ts";
+import { type PlanFrontMatter } from "@runwield/plans";
 import {
     canonicalizeStoredPlanName,
     getPlanRevisionForText,
@@ -55,8 +54,8 @@ import {
     resolvePlanExecutionPolicy,
     assertNotReservedEpicArtifactPlanName,
 } from "@runwield/plans/format";
-import { ensurePlanIdentity, loadArchivedPlan, loadPlan } from "../../plan-store/index.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { ensurePlanIdentity, planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { runWieldGitignoreNeedsUpdate } from "../runwield-owned-paths.ts";
 import { VERSION } from "../version.js";
 
@@ -312,13 +311,15 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     }
     if (record.state === "implementing" && record.execution && record.plan && pending) {
         const executionCwd = record.execution.executionCwd || currentAttachedProjectRoot(record);
-        const packagePlan = await loadPlan(
+        const packagePlan = await planDocumentsForCheckout(
             hasCanonicalPlanAccess() ? currentAttachedProjectRoot(record) : executionCwd,
-            record.plan.planName,
-        ).catch((error) => {
-            if (!hasCanonicalPlanAccess() && error instanceof Error && error.message.includes("ENOENT")) return null;
-            throw error;
-        });
+        )
+            .load(record.plan.planName)
+            .catch((error) => {
+                if (!hasCanonicalPlanAccess() && error instanceof Error && error.message.includes("ENOENT"))
+                    return null;
+                throw error;
+            });
         return {
             kind: "implementation",
             ...pending,
@@ -397,7 +398,9 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
     )
         return record;
     if (record.state === "validating" || record.state === "reviewed") {
-        const delivered = await loadPlan(currentAttachedProjectRoot(record), record.plan.planName).catch(() => null);
+        const delivered = await planDocumentsForCheckout(currentAttachedProjectRoot(record))
+            .load(record.plan.planName)
+            .catch(() => null);
         const receipt = delivered?.attrs.publicationReceipt;
         if (
             receipt &&
@@ -435,7 +438,12 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
     // Execution evidence selects the document; the invoking Plan may still be ready_for_work.
     const executionRoot = record.execution?.executionCwd;
     const location = executionRoot
-        ? { plan: await loadPlan(executionRoot, record.plan.planName).catch(() => null), archived: false }
+        ? {
+              plan: await planDocumentsForCheckout(executionRoot)
+                  .load(record.plan.planName)
+                  .catch(() => null),
+              archived: false,
+          }
         : await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
               readOnly: true,
           });
@@ -450,7 +458,9 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
     }
     const archivedPlan =
         !plan && !archived
-            ? await loadArchivedPlan(executionRoot || currentAttachedProjectRoot(record), record.plan.planId)
+            ? await planDocumentsForCheckout(executionRoot || currentAttachedProjectRoot(record)).archived(
+                  record.plan.planId,
+              )
             : null;
     // Missing execution documents are restored by the completion authority, not this projection.
     if (!plan && !archived && !archivedPlan) {
@@ -931,88 +941,87 @@ async function submitPlanDocument(
     triage: TriageOutcome,
     expectedPlan: AttachedPlanReference | null,
 ): Promise<PlanSubmission> {
-    let planName;
-    let location;
     try {
-        planName = canonicalizeStoredPlanName(payload.planName).name;
+        const planName = canonicalizeStoredPlanName(payload.planName).name;
         if (expectedPlan && planName !== expectedPlan.planName) {
             return { ok: false, message: "Submit only the Plan bound to this workflow." };
         }
         assertNotReservedEpicArtifactPlanName(planName);
         if (isHiddenPlanName(planName)) throw new Error(`Plan is archived or hidden: ${planName}`);
-        if (await loadPlan(projectRoot, planName)) {
-            const planning = await resolveWorkflowPlanLocation(projectRoot, planName, {
-                readOnly: true,
-                loadFromTarget: true,
-            });
-            if (planning.planningNotStarted) throw new Error(`Start planning ${planName} first. Nothing was changed.`);
-        }
-        if (payload.contextMarkdown !== undefined) {
-            const policy = resolvePlanExecutionPolicy({
-                ...triage,
-                executionAgent: payload.executionAgent,
-                collaborationRecommendation: payload.collaborationRecommendation,
-            });
-            if (!policy.ok) throw new Error(policy.error);
-            await authorLocalPlan(projectRoot, {
-                planName,
-                contextMarkdown: payload.contextMarkdown,
-                validationMarkdown: payload.validationMarkdown,
-                expectedRevision: payload.expectedRevision,
-                definition: {
-                    classification: "PLANNED_CHANGE",
-                    summary: triage.summary,
-                    workKind: triage.workKind,
-                    complexity: triage.complexity,
-                    ...payload.definition,
-                    executionAgent: policy.policy.executionAgent,
-                    collaborationRecommendation: policy.policy.collaborationRecommendation,
-                },
-            });
-        }
-        location = await resolveWorkflowPlanLocation(projectRoot, planName);
+        const contextMarkdown = payload.contextMarkdown;
+        const submission: PlanSubmissionOptions = {
+            expectedPlanId: expectedPlan?.planId,
+            requirePlanningStarted: true,
+            prepareAuthor:
+                contextMarkdown === undefined
+                    ? undefined
+                    : () => {
+                          const policy = resolvePlanExecutionPolicy({
+                              ...triage,
+                              executionAgent: payload.executionAgent,
+                              collaborationRecommendation: payload.collaborationRecommendation,
+                          });
+                          if (!policy.ok) throw new Error(policy.error);
+                          return {
+                              contextMarkdown,
+                              validationMarkdown: payload.validationMarkdown,
+                              expectedRevision: payload.expectedRevision,
+                              definition: {
+                                  classification: "PLANNED_CHANGE",
+                                  summary: triage.summary,
+                                  workKind: triage.workKind,
+                                  complexity: triage.complexity,
+                                  ...payload.definition,
+                                  executionAgent: policy.policy.executionAgent,
+                                  collaborationRecommendation: policy.policy.collaborationRecommendation,
+                              },
+                          };
+                      },
+        };
+        const submit = async ({
+            documentRoot,
+            plan,
+            saveDefinition,
+        }: PlanSubmissionDocument): Promise<PlanSubmission> => {
+            const updates: Partial<PlanFrontMatter> = {
+                classification: triage.classification,
+                complexity: triage.complexity,
+            };
+            if (triage.workKind) updates.workKind = triage.workKind;
+            if (payload.executionAgent !== undefined) updates.executionAgent = payload.executionAgent;
+            if (payload.collaborationRecommendation !== undefined)
+                updates.collaborationRecommendation = payload.collaborationRecommendation;
+            const policy = resolvePlanExecutionPolicy({ ...plan.attrs, ...updates });
+            if (!policy.ok) {
+                return {
+                    ok: false,
+                    message:
+                        `${policy.error} Correct executionAgent or collaborationRecommendation in the call or in ` +
+                        `docs/plans/${planName}.md, then call plan_written again.`,
+                };
+            }
+
+            await saveDefinition(updates);
+            const planId = plan.attrs.planId ?? (await ensurePlanIdentity(documentRoot, planName)).planId;
+            const submittedPlan = await planDocumentsForCheckout(documentRoot).load(planName);
+            if (!submittedPlan || submittedPlan.attrs.planId !== planId)
+                throw new Error(`Plan identity changed: ${planName}`);
+            return {
+                ok: true,
+                plan: { planId, planName },
+                revision: submittedPlan.revision,
+                controllerRevision: submittedPlan.controllerRevision,
+            };
+        };
+        return (
+            (await withPlanSubmission(projectRoot, planName, submission, submit)) ?? {
+                ok: false,
+                message: `docs/plans/${planName}.md not found. Write the Plan first, then call plan_written again.`,
+            }
+        );
     } catch (error) {
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
     }
-    if (!location.plan) {
-        return {
-            ok: false,
-            message: `docs/plans/${planName}.md not found. Write the Plan first, then call plan_written again.`,
-        };
-    }
-    if (expectedPlan && location.plan.attrs.planId !== expectedPlan.planId) {
-        return { ok: false, message: "The bound Plan identity changed. Nothing was submitted." };
-    }
-
-    const updates: Partial<PlanFrontMatter> = { classification: triage.classification, complexity: triage.complexity };
-    if (triage.workKind) updates.workKind = triage.workKind;
-    if (payload.executionAgent !== undefined) updates.executionAgent = payload.executionAgent;
-    if (payload.collaborationRecommendation !== undefined) {
-        updates.collaborationRecommendation = payload.collaborationRecommendation;
-    }
-    const policy = resolvePlanExecutionPolicy({ ...location.plan.attrs, ...updates });
-    if (!policy.ok) {
-        return {
-            ok: false,
-            message:
-                `${policy.error} Correct executionAgent or collaborationRecommendation in the call or in ` +
-                `docs/plans/${planName}.md, then call plan_written again.`,
-        };
-    }
-
-    await enterProjectRuntime(projectRoot);
-    await savePlanDefinition(location.documentRoot, planName, updates, {
-        expectedRevision: location.plan.revision,
-    });
-    const identified = await ensurePlanIdentity(location.documentRoot, planName);
-    const submittedPlan = await loadPlan(location.documentRoot, planName);
-    if (!submittedPlan) throw new Error(`Plan not found: ${planName}`);
-    return {
-        ok: true,
-        plan: { planId: identified.planId, planName },
-        revision: identified.revision,
-        controllerRevision: submittedPlan.controllerRevision,
-    };
 }
 
 export async function planWritten(envelope: PlanWrittenEnvelope): Promise<AttachedOperationResult> {
@@ -1044,7 +1053,7 @@ export async function planWritten(envelope: PlanWrittenEnvelope): Promise<Attach
                 };
             }
             const submitted = await submitPlanDocument(
-                envelope.projectRoot,
+                currentAttachedProjectRoot(current),
                 envelope.payload,
                 current.triageOutcome,
                 current.plan,
@@ -1226,7 +1235,9 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
                     existingExecution: current.execution,
                     ports,
                 });
-                const issuedPlan = await loadPlan(prepared.executionCwd || location.projectRoot, current.plan.planName);
+                const issuedPlan = await planDocumentsForCheckout(prepared.executionCwd || location.projectRoot).load(
+                    current.plan.planName,
+                );
                 if (!issuedPlan || issuedPlan.attrs.planId !== current.plan.planId) {
                     throw new Error("The prepared execution Plan identity is missing or changed.");
                 }

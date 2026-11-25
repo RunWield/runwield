@@ -6,7 +6,7 @@
  * in this module reads or writes the Plan store, so it needs no fixture to test.
  */
 
-import type { PlanFrontMatter } from "../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 
 /** The parts of a loaded Plan the summary view reads. */
 export interface SummarisablePlan {

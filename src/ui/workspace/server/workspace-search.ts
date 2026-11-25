@@ -1,4 +1,5 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
+import type { ProjectId, ProjectRegistry } from "@runwield/projects";
 import { capturePlanReadContext } from "../../../plan-store/index.ts";
 /** @module ui/workspace/server/workspace-search */
 
@@ -8,13 +9,12 @@ import { clearInterval, clearTimeout, setInterval, setTimeout } from "node:timer
 import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { dirname, join, relative } from "node:path";
 import { getHomeDir } from "../../../constants.ts";
-import { listPlanResources, readPlanResourceCatalog } from "../../../plan-store/index.ts";
+import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
 import { getWorkRecordsDir, listWorkRecords } from "../../../shared/work-records/store.ts";
 import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-records/list.ts";
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
 import { getWorkspaceSearchRefreshMarker } from "../../../shared/workspace-search-refresh.ts";
 import {
-    assertReadablePlanResource,
     assertReadableWorkRecordPath,
     assertContainedProjectPath,
     domainLanguagePaths,
@@ -135,25 +135,15 @@ async function readSearchDocuments(reader, read) {
     }
 }
 
-/** @param {string} root */
-async function scanProjectDocuments(root) {
+async function scanProjectDocuments(root: string, projectId: ProjectId, registry: ProjectRegistry) {
     /** @type {SearchDocument[]} */
     const documents = [];
     documents.push(
         ...(await readSearchDocuments("Plan reader", async () => {
-            try {
-                await assertContainedProjectPath(root, join(root, "docs", "plans"));
-            } catch (error) {
-                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-            }
-            const found = [];
-            const plans = await listPlanResources(root);
-            for (const plan of plans) {
-                if (!plan.planId) continue;
-                if (plan.readAvailability?.kind === "pending") throw new Error(plan.readAvailability.message);
-                await assertReadablePlanResource(root, plan);
+            const plans = await openRegisteredPlanDocuments(projectId, registry).searchResources();
+            return plans.map((plan) => {
                 const facts = markdownFacts(plan.markdown);
-                found.push({
+                return {
                     projectId: "",
                     projectName: "",
                     type: "plan",
@@ -165,9 +155,8 @@ async function scanProjectDocuments(root) {
                     revision: plan.revision,
                     updatedAt: String(plan.attrs.updatedAt || plan.attrs.createdAt || ""),
                     metadata: JSON.stringify({ status: plan.attrs.status || "" }),
-                });
-            }
-            return found;
+                };
+            });
         })),
     );
 
@@ -408,17 +397,16 @@ async function hydrateCandidate(root, row, store, catalogs) {
     }
     if (row.content_type === "plan") {
         const catalog = await cachedCatalog(catalogs, `${row.project_id}:plan`, () =>
-            readSearchDocuments("Plan reader", () => readPlanResourceCatalog(root)),
+            readSearchDocuments("Plan reader", () =>
+                openRegisteredPlanDocuments(row.project_id, store.projects).openSearchCatalog(),
+            ),
         );
-        const plan = catalog.resources.find((candidate) => candidate.planId === row.source_id);
+        const plan = await readSearchDocuments("Plan reader", () => catalog.read(row.source_id));
         if (!plan) {
-            if (catalog.diagnostics.length)
+            if (catalog.hasDiagnostics)
                 throw new SearchReaderError("Plan reader", new Error("Plan authority is unavailable."));
             throw new Error("Plan not found.");
         }
-        if (plan.readAvailability?.kind === "pending")
-            throw new SearchReaderError("Plan reader", new Error(plan.readAvailability.message));
-        await readSearchDocuments("Plan reader", () => assertReadablePlanResource(root, plan));
         const facts = markdownFacts(plan.markdown);
         return {
             ...row,
@@ -475,7 +463,7 @@ async function hydrateCandidate(root, row, store, catalogs) {
 
 /** @param {{ store: import('../../../shared/owner-coordination/index.ts').OwnerCoordinationStore, dbPath?: string, scanIntervalMs?: number }} options */
 export function createWorkspaceSearchService(options) {
-    const packageAccess = capturePlanReadContext();
+    const packageAccess = capturePlanReadContext({ preserveSelection: false });
     const dbPath =
         options.dbPath ||
         (options.store.path === ":memory:"
@@ -513,7 +501,9 @@ export function createWorkspaceSearchService(options) {
                 projectStates.set(project.projectId, { state: "indexing" });
                 try {
                     const root = options.store.projects.requireActiveRoot(project.projectId);
-                    const documents = await packageAccess(root, () => scanProjectDocuments(root));
+                    const documents = await packageAccess(root, () =>
+                        scanProjectDocuments(root, project.projectId, options.store.projects),
+                    );
                     documents.push(
                         ...(await readSearchDocuments("Session reader", () =>
                             scanSessionDocuments(options.store, project.projectId, root),
@@ -650,7 +640,10 @@ export function createWorkspaceSearchService(options) {
         for (const row of rows) {
             try {
                 const root = options.store.projects.requireActiveRoot(String(row.project_id));
-                const hydrated = await packageAccess(root, () => hydrateCandidate(root, row, options.store, catalogs));
+                const hydrated =
+                    row.content_type === "plan"
+                        ? await hydrateCandidate(root, row, options.store, catalogs)
+                        : await packageAccess(root, () => hydrateCandidate(root, row, options.store, catalogs));
                 const candidate = /** @type {SearchDocument} */ {
                     projectId: String(row.project_id),
                     projectName: String(row.project_name),

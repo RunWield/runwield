@@ -1,14 +1,14 @@
 import type { ProjectRegistry } from "@runwield/projects";
 import { hasApplicablePublicationReceipt } from "../../../shared/workflow/publication-receipt.ts";
 import type { PlanReadAvailability } from "../../../plan-store/index.ts";
-import { findPlanById } from "../../../plan-store/index.ts";
+import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
 import { findByPlanId, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import {
     isValidationCheckpoint,
     type ValidationCheckpoint,
-    validationCheckpointCanResume,
     type ValidationCheckpointPhase,
-} from "../../../shared/workflow/validation-checkpoint.ts";
+} from "@runwield/plans/controller-state";
+import { validationCheckpointCanResume } from "../../../shared/workflow/validation-checkpoint.ts";
 import { getRunWieldSessionDir } from "../../../shared/session/root-session.ts";
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
@@ -50,7 +50,7 @@ type OwnerSession = {
     transcriptCwd: string;
 };
 type OwnerStore = {
-    projects: Pick<ProjectRegistry, "get" | "requireActiveRoot">;
+    projects: ProjectRegistry;
     getSessionById: (runwieldSessionId: string) => OwnerSession | null;
     inspectSessionActivation: (runwieldSessionId: string) => {
         activation?: { state?: string; ownerProcessKind?: string | null; activeAgentName?: string } | null;
@@ -365,12 +365,17 @@ async function sessionProjection(store: OwnerStore, projectId: string, planId: s
     };
 }
 
+interface OwnerPlanProgressOptions {
+    projectId: string;
+    planId: string;
+    runwieldSessionId?: string | null;
+}
+
 export async function loadOwnerPlanProgress(
     store: OwnerStore,
-    options: { projectId: string; planId: string; runwieldSessionId?: string | null },
+    options: OwnerPlanProgressOptions,
 ): Promise<OwnerPlanProgress> {
-    const projectRoot = requireOwnerProjectRoot(store, options.projectId);
-    const resource = await findPlanById(projectRoot, options.planId);
+    const resource = await openRegisteredPlanDocuments(options.projectId, store.projects).byId(options.planId);
     const primary = resource as PlanEvidence;
     if (primary.readAvailability?.kind === "pending") {
         return degraded(
@@ -384,6 +389,7 @@ export async function loadOwnerPlanProgress(
     const authoritative = primary;
     let published = false;
     try {
+        const projectRoot = requireOwnerProjectRoot(store, options.projectId);
         registry = await findByPlanId(projectRoot, primary.planId);
         // The canonical resource already selected and checked document authority.
         // A registry path alone must not authorize another repository.

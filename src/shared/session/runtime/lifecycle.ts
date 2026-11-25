@@ -1,6 +1,6 @@
 import { projects } from "@runwield/projects";
 import { stat as fsStat } from "node:fs/promises";
-import { AGENTS } from "../../../constants.ts";
+import { AGENTS } from "../agent-registry.ts";
 import {
     classifyRootSessionLocator,
     createRootSessionManager,

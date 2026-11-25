@@ -1,6 +1,6 @@
 import { projects } from "@runwield/projects";
 import { seedPlan } from "../../../shared/testing/plan-state-fixture.ts";
-import { withRetainedPlanFixture } from "../../../shared/testing/retained-plan-fixture.ts";
+import { withRetainedPlanFixture, withRetainedPlanReadFixture } from "../../../shared/testing/retained-plan-fixture.ts";
 import { serveHttp } from "../../../shared/http-server.ts";
 import { constants as fsConstants, readdirSync as fsReaddirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -23,7 +23,8 @@ import { platform, tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { join } from "node:path";
 import { DatabaseSync } from "../../../shared/sqlite.ts";
-import { authorLocalPlan, savePlanProse, loadPlan } from "../../../plan-store/index.ts";
+import { authorLocalPlan, savePlanProse } from "../../../plan-store/index.ts";
+import { loadPlan } from "../../../shared/testing/plan-query-fixture.ts";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
 import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.ts";
@@ -204,6 +205,32 @@ test("Workspace search rejects Project reader symlink escapes and names the fail
         assertEquals(payload.states[0].reader, "Documentation reader");
         assertEquals(payload.states[0].message, "Documentation reader indexing failed.");
         assertEquals(JSON.stringify(payload).includes(outside), false);
+    } finally {
+        await fixture.close();
+    }
+});
+
+test("Workspace search reads the Project Plan Store when checkout delivery copies are unsafe", async () => {
+    const fixture = await searchFixture("plan-store-authority");
+    try {
+        const outside = join(fixture.dir, "outside");
+        await fsMkdir(outside);
+        await fsWriteFile(join(outside, "decoy.md"), "# Escaped checkout needle\n");
+        await fsMkdir(join(fixture.root, "docs"));
+        await fsSymlink(outside, join(fixture.root, "docs", "plans"));
+        await authorLocalPlan(fixture.root, { planName: "authority", contextMarkdown: "# Canonical Plan needle\n" });
+        await fixture.search.refresh();
+        const payload = await fixture.search.search({ query: "needle", contentType: "plan" });
+        assertEquals(
+            payload.results.map((row: { title: string }) => row.title),
+            ["Canonical Plan needle"],
+        );
+        await withRetainedPlanReadFixture(fixture.root, async () => {
+            await fixture.search.refresh();
+            const retained = await fixture.search.search({ query: "needle", contentType: "plan" });
+            assertEquals(retained.total, 0);
+            assertEquals(retained.states[0].reader, "Plan reader");
+        });
     } finally {
         await fixture.close();
     }
@@ -922,7 +949,7 @@ test("nested and execution-worktree Plan writes request refresh for the primary 
     }
 });
 
-test("admitted search reads home Plans and Work Records while isolating another registered Project", async () => {
+test("owner search uses each registered Project's Plan authority and filters by Project ID", async () => {
     const { packageFixture, create, tree } = await import("../../../shared/testing/plan-package-fixture.ts");
     const { withPlanAccess, selectPlanAccess } = await import("../../../plan-store/index.ts");
     const { recordAttrs, recordBody } = await import("../../../shared/work-records/test-fixtures/package-records.ts");
@@ -948,10 +975,11 @@ test("admitted search reads home Plans and Work Records while isolating another 
         assertEquals(found.results.length, 1);
         assertEquals(found.results[0].contentType, "work-record");
         assertEquals((await search.search({ query: "Prose", projectId: project.projectId })).results.length, 1);
-        assertEquals(
-            (await search.search({ query: "Other private home Plan", projectId: unrelated.projectId })).results.length,
-            0,
-        );
+        const query = "Other private home Plan";
+        const otherPlans = await search.search({ query, projectId: unrelated.projectId });
+        assertEquals(otherPlans.results.length, 1);
+        assertEquals(otherPlans.results[0].projectId, unrelated.projectId);
+        assertEquals((await search.search({ query, projectId: project.projectId })).results.length, 0);
         await withPlanAccess(f.root, (await selectPlanAccess(f.root, "plan-one"))!, async () => {
             const artifact = await readProjectArtifact(f.root, "work-record", record.attrs.recordId);
             assertStringIncludes(artifact.markdown, "Canonical evidence");

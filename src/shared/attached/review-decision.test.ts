@@ -5,7 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { listEntries } from "../worktree-registry.ts";
 import { executionInput } from "./execution-test-fixture.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";

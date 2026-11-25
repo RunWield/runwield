@@ -15,7 +15,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 import { Type } from "typebox";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
-import { AGENTS } from "../../constants.ts";
+import { AGENTS } from "./agent-registry.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { HostedSession } from "./hosted-session.ts";
 import { getRunWieldSessionDir, openPersistedRootSession } from "./root-session.ts";

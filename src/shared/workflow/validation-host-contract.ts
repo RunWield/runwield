@@ -11,11 +11,6 @@ import type {
     ValidationInteractionResponse,
     ValidationRepairIdentity,
 } from "@runwield/plans/controller-state";
-export type {
-    ValidationDecisionIdentity,
-    ValidationHostIdentity,
-    ValidationRepairIdentity,
-} from "@runwield/plans/controller-state";
 import type { ValidationRecoveryResult } from "./validation-recovery.ts";
 
 export type ValidationReviewerIdentity = ValidationHostIdentity & {
@@ -55,7 +50,7 @@ export type HostTurnValidationResult =
           kind: "verified";
           planName: string;
           completionMode?: HostDeliveryMode;
-          workRecord?: import("../../plan-store/index.ts").PlanFrontMatter["workRecord"];
+          workRecord?: import("@runwield/plans").PlanFrontMatter["workRecord"];
       }
     | { kind: "paused" | "failed"; reason: string; recovery?: ValidationRecoveryResult };
 export type ValidationHostTurn = { resume?: ValidationHostResume; consumed?: boolean; signal?: AbortSignal };

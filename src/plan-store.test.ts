@@ -23,6 +23,7 @@ import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "./constants.ts";
 import { getWorktreeRegistryPath } from "./shared/worktree-registry.ts";
 import { readControllerRecord } from "./plan-store/controllers.ts";
+import { type PlanFrontMatter } from "@runwield/plans";
 import {
     ensurePlansDir,
     getPlansDir,
@@ -34,7 +35,6 @@ import {
     withPlanCatalogLock,
     withPlanLock,
     savePlan,
-    type PlanFrontMatter,
 } from "./plan-store.ts";
 import {
     canonicalPlanStatus,
@@ -44,14 +44,22 @@ import {
     PlanFrontMatterParseError,
     resolvePlanExecutionPolicy,
     resolveSiblingChildPlanDependencyStates,
+    COLLABORATION_STATE_REMOTE_CANONICAL,
 } from "@runwield/plans/format";
 import {
     archivePlan,
     archivePlansByStatus,
     clearPlanCollaborationMetadata,
     createPulledCollaborationPlan,
-    deleteArchivedPlanUnit,
     ensurePlanIdentity,
+    onboardExternalPlan,
+    saveChildFeaturePlans,
+    savePlanBodyById,
+    StalePlanWriteError,
+    updatePlanCollaborationMetadata,
+} from "./plan-store/index.ts";
+import {
+    deleteArchivedPlanUnit,
     findPlanById,
     findPlansByParent,
     listArchivedPlans,
@@ -61,19 +69,10 @@ import {
     loadPlan,
     loadPlanBodyById,
     loadPlanStrict,
-    onboardExternalPlan,
     resolvePlan,
     restoreArchivedPlan,
-    saveChildFeaturePlans,
-    savePlanBodyById,
-    StalePlanWriteError,
-    updatePlanCollaborationMetadata,
-} from "./plan-store/index.ts";
-import {
-    COLLABORATION_LOCK_BYPASS,
-    COLLABORATION_STATE_REMOTE_CANONICAL,
-    SharedPlanLockError,
-} from "./shared/collaboration/lock.ts";
+} from "./shared/testing/plan-query-fixture.ts";
+import { COLLABORATION_LOCK_BYPASS, SharedPlanLockError } from "./shared/collaboration/lock.ts";
 
 type PlanOrderingFixture = [string, PlanFrontMatter["classification"], PlanFrontMatter["status"]];
 
@@ -150,15 +149,15 @@ async function recordActiveAttempt(cwd: string, planName: string) {
 /**
  * @param {string} cwd
  * @param {string} planName
- * @param {Partial<import('./plan-store/index.ts').PlanFrontMatter>} updates
- * @param {Partial<import('./plan-store/index.ts').PlanFrontMatter>} [recoveryAttrs]
+ * @param {Partial<import('@runwield/plans').PlanFrontMatter>} updates
+ * @param {Partial<import('@runwield/plans').PlanFrontMatter>} [recoveryAttrs]
  * @param {import('./plan-store/index.ts').PlanWriteOptions} [options]
  */
 async function updatePlanFrontMatterForTest(
     cwd: string,
     planName: string,
-    updates: Partial<import("./plan-store.ts").PlanFrontMatter>,
-    recoveryAttrs: Partial<import("./plan-store.ts").PlanFrontMatter> = {},
+    updates: Partial<import("@runwield/plans").PlanFrontMatter>,
+    recoveryAttrs: Partial<import("@runwield/plans").PlanFrontMatter> = {},
     options: import("./plan-store.ts").PlanWriteOptions = {},
 ) {
     const plan = await loadPlan(cwd, planName);
@@ -171,15 +170,15 @@ async function updatePlanFrontMatterForTest(
 /**
  * @param {string} cwd
  * @param {string} planName
- * @param {import('./plan-store/index.ts').PlanFrontMatter['status']} status
- * @param {Partial<import('./plan-store/index.ts').PlanFrontMatter>} [recoveryAttrs]
+ * @param {import('@runwield/plans').PlanFrontMatter['status']} status
+ * @param {Partial<import('@runwield/plans').PlanFrontMatter>} [recoveryAttrs]
  * @param {import('./plan-store/index.ts').PlanWriteOptions} [options]
  */
 async function updatePlanStatusForTest(
     cwd: string,
     planName: string,
-    status: import("./plan-store.ts").PlanFrontMatter["status"],
-    recoveryAttrs: Partial<import("./plan-store.ts").PlanFrontMatter> = {},
+    status: import("@runwield/plans").PlanFrontMatter["status"],
+    recoveryAttrs: Partial<import("@runwield/plans").PlanFrontMatter> = {},
     options: import("./plan-store.ts").PlanWriteOptions = {},
 ) {
     const plan = await loadPlan(cwd, planName);
@@ -1680,7 +1679,7 @@ testWithFs("plan-store resolves external plans and injects defaults when front m
 });
 
 test("delivery evidence front matter validates compact shapes and rejects malformed values", () => {
-    const worktreeEvidence: import("./plan-store.ts").DeliveryEvidence = {
+    const worktreeEvidence: import("@runwield/plans").DeliveryEvidence = {
         version: 1,
         mode: "worktree_merge",
         executionCommit: "a".repeat(40),
@@ -1791,8 +1790,8 @@ testWithFs("updatePlanFrontMatter preserves exact body bytes", async () => {
 testWithFs("updatePlanFrontMatter preserves and clears Delivery Evidence on partial updates", async () => {
     const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     return await withRetainedPlanFixture(cwd, async () => {
-        /** @type {import("./plan-store/index.ts").DeliveryEvidence} */
-        const deliveryEvidence: import("./plan-store.ts").DeliveryEvidence = {
+        /** @type {import("@runwield/plans").DeliveryEvidence} */
+        const deliveryEvidence: import("@runwield/plans").DeliveryEvidence = {
             version: 1,
             mode: "worktree_merge",
             executionCommit: "a".repeat(40),

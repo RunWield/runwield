@@ -20,7 +20,7 @@ import { atomicWriteTextFileIfAbsent } from "../atomic-text-file.ts";
  * /*
  */
 import type { Stats } from "node:fs";
-import type { PlanFrontMatter } from "../../plan-store.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 
 export interface ReconciledPlanIdentity {
     from: string | undefined;

@@ -17,7 +17,7 @@ import { createGitPort } from "../git-port.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 test("session validation resumes the exact non-Git package attempt outside its original scope", async () => {
     const root = await fs.realpath(await fs.mkdtemp(join(tmpdir(), "package-session-validation-")));

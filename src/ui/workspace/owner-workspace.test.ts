@@ -1,5 +1,6 @@
 import { seedPlanState, seedPlan } from "../../shared/testing/plan-state-fixture.ts";
-import { withLocalPlanWorkflow, capturePlanReviewInput, loadPlan } from "../../plan-store/index.ts";
+import { withLocalPlanWorkflow, capturePlanReviewInput } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,

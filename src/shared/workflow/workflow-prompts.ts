@@ -3,11 +3,11 @@
  * User prompts and agent request text used by workflow execution.
  */
 
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { TriageMeta } from "../../tools/plan-written.ts";
 import type { TicketReference } from "@runwield/plans/format";
 
-import { AGENTS } from "../../constants.ts";
+import { AGENTS } from "../session/agent-registry.ts";
 import { projectEngineerPlanBody } from "./engineer-plan-projection.ts";
 
 export interface TriageReportContext {

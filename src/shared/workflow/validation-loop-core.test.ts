@@ -22,7 +22,8 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 
 import { setCustomSetting } from "../settings.ts";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+import { ensurePlanIdentity } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";

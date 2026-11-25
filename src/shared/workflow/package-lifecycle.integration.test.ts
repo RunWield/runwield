@@ -2,14 +2,15 @@ import { seedPlanController, inspectPlanFixtureController } from "../testing/pla
 import { listPlanHistory, showPlanMilestone, selectPlanAccess } from "../../plan-store/index.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
-import { loadPlanBodyById, savePlanBodyById } from "../../plan-store/index.ts";
+import { savePlanBodyById } from "../../plan-store/index.ts";
+import { loadPlanBodyById } from "../testing/plan-query-fixture.ts";
 import {
     updatePlanPackageMetadata,
     readPlanPackageInput,
     readPlanPackage,
     renamePlanPackage,
 } from "../../plan-store/packages.ts";
-import { findPlansByParent } from "../../plan-store/index.ts";
+import { findPlansByParent } from "../testing/plan-query-fixture.ts";
 import { appendEpicManualQaSection } from "../../plan-store/index.ts";
 import { prepareSequenceReview, applySequenceReviewDecision } from "../../plan-store/index.ts";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";

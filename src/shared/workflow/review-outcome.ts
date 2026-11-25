@@ -1,5 +1,6 @@
 /** Host-neutral review completion normalization and ledger identity gates. */
-import { type ReviewLedger, unaccountedOpenItems } from "./review-ledger.ts";
+import { type ReviewLedger } from "@runwield/plans/controller-state";
+import { unaccountedOpenItems } from "./review-ledger.ts";
 
 export interface ReviewFinding {
     id?: string;

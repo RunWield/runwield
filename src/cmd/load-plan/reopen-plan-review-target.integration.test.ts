@@ -7,7 +7,8 @@ import { dirname, join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 
-import { archivePlan, loadArchivedPlan, ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+import { archivePlan, ensurePlanIdentity } from "../../plan-store/index.ts";
+import { loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";

@@ -4,7 +4,8 @@ import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promis
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan, loadPlan } from "../../plan-store/index.ts";
+import { archivePlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { openAttachedReviewRound } from "./coordinator.ts";
 import { readRecordBytes, runOperation, spawnAttachedCli, submitReview, withProject } from "./attached-test-fixture.ts";

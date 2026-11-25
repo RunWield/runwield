@@ -12,7 +12,11 @@ import { relative } from "node:path";
 import { CLI_BIN, getCwd } from "../../constants.ts";
 import { archiveSavedPlan, restoreSavedPlan, archivedPlanProjectRoot } from "../../plan-store/index.ts";
 import { isChildFeaturePlan } from "@runwield/plans/format";
-import { listArchivedPlans, listPlans, loadPlan } from "../../plan-store/index.ts";
+import {
+    type ArchivedPlanEntry,
+    type PlanListEntry as PlanEntry,
+    planDocumentsForCheckout,
+} from "../../plan-store/index.ts";
 import { formatArchiveRetentionNudge } from "../../shared/plan-archive-retention.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import {
@@ -31,7 +35,6 @@ async function confirmArchivePlanRoot(cwd: string, name: string): Promise<void> 
     await preparePlanWorkflow(cwd, name);
 }
 
-type PlanEntry = Awaited<ReturnType<typeof listPlans>>[number];
 type PlanStatus = PlanEntry["attrs"]["status"];
 
 interface ArchiveOptions {
@@ -64,7 +67,7 @@ function printArchiveHelp(): void {
 Archived Plans remain available through the Plan store.`);
 }
 
-function printArchivedPlans(plans: Awaited<ReturnType<typeof listArchivedPlans>>): void {
+function printArchivedPlans(plans: ArchivedPlanEntry[]): void {
     if (plans.length === 0) {
         console.log("[RunWield] No archived plans found.");
         return;
@@ -118,7 +121,7 @@ function normalizePlanNameArgument(target: string): string {
 
 async function resolveActiveArchiveTarget(cwd: string, target: string): Promise<{ name: string; revision?: string }> {
     const normalized = normalizePlanNameArgument(target);
-    const catalog = await listPlans(cwd);
+    const catalog = await planDocumentsForCheckout(cwd).list();
     const named = catalog.find((plan) => plan.name === normalized);
     const identified = catalog.filter((plan) => plan.attrs.planId === target);
     if (!named && identified.length > 1)
@@ -127,11 +130,11 @@ async function resolveActiveArchiveTarget(cwd: string, target: string): Promise<
     await confirmArchivePlanRoot(cwd, normalizedName);
     const byName = (await resolveWorkflowPlanLocation(cwd, normalizedName, { readOnly: true })).plan;
     if (byName) return { name: normalizedName, revision: byName.revision };
-    const matches = (await listPlans(cwd)).filter((plan) => plan.attrs.planId === target);
+    const matches = (await planDocumentsForCheckout(cwd).list()).filter((plan) => plan.attrs.planId === target);
     if (matches.length > 1) throw new Error(`Duplicate planId values found for ${target}; use a Plan name instead.`);
     if (matches.length !== 1) throw new Error(`Active Plan not found: ${target}`);
     await confirmArchivePlanRoot(cwd, matches[0].name);
-    const loaded = await loadPlan(cwd, matches[0].name);
+    const loaded = await planDocumentsForCheckout(cwd).load(matches[0].name);
     if (!loaded) throw new Error(`Active Plan not found: ${matches[0].name}`);
     return { name: matches[0].name, revision: loaded.revision };
 }
@@ -141,8 +144,8 @@ async function archivePlansByStatusTransactionally(
     status: PlanStatus,
     archiveOptions: ArchiveOptions,
 ): Promise<BulkArchiveResult> {
-    for (const plan of await listPlans(cwd)) await preparePlanWorkflow(cwd, plan.name);
-    const plans = await listPlans(cwd);
+    for (const plan of await planDocumentsForCheckout(cwd).list()) await preparePlanWorkflow(cwd, plan.name);
+    const plans = await planDocumentsForCheckout(cwd).list();
     const childrenByParent = new Map<string, PlanEntry[]>();
     for (const plan of plans) {
         if (!isChildFeatureArchiveCandidate(plan)) continue;
@@ -237,7 +240,7 @@ async function runPlansArchiveCommandInScope(argv: string[]): Promise<void> {
     if (parsed.status !== undefined) throw new Error("--status requires --all for bulk archive.");
 
     if (positionals.length === 0) {
-        printArchivedPlans(await listArchivedPlans(getCwd()));
+        printArchivedPlans(await planDocumentsForCheckout(getCwd()).archives());
         return;
     }
 

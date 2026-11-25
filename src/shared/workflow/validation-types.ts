@@ -8,13 +8,13 @@
  * in the phase modules; this module is what they agree on.
  */
 
-import type { ReviewLedger } from "./review-ledger.ts";
+import type { ReviewLedger } from "@runwield/plans/controller-state";
 import type { ResolvedValidationContext } from "./execution-context.ts";
 import type { ValidationLocalCIPort, ValidationSessionPort, ValidationWorkflowState } from "./validation-ports.ts";
-import type { ValidationCheckpoint, ValidationCheckpointPhase } from "./validation-checkpoint.ts";
+import type { ValidationCheckpoint, ValidationCheckpointPhase } from "@runwield/plans/controller-state";
 import type { ValidationRecoveryResult } from "./validation-recovery.ts";
 
-type PlanFrontMatter = import("../../plan-store/index.ts").PlanFrontMatter;
+type PlanFrontMatter = import("@runwield/plans").PlanFrontMatter;
 type GitPort = import("../git-port.ts").GitPort;
 type WorkRecordMnemotecaPort = import("../work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort;
 type RecordPlanEventArgs = Parameters<typeof import("../../plan-store/index.ts").recordPlanEvent>[0];

@@ -9,7 +9,7 @@ import { preparePlanValidationInput } from "../../plan-store/index.ts";
 import { preparePlanController } from "../../plan-store/index.ts";
 import { type OutcomeSession, recordWorkflowOutcome } from "./outcome-observations.ts";
 import { resolvePlanExecutionPolicy } from "@runwield/plans/format";
-import { ensurePlanIdentity, loadPlan, StalePlanWriteError } from "../../plan-store/index.ts";
+import { ensurePlanIdentity, StalePlanWriteError, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { StaleControllerWriteError } from "../../plan-store/index.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
 import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";
@@ -18,11 +18,10 @@ import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-regi
 import { hostSemanticRepairPrompt, requestHostRepair } from "./validation-host-state.ts";
 import { runValidationLoop } from "./validation-engine.ts";
 import { type ValidationLoopArgs, type WorkflowValidationResult } from "./validation-types.ts";
+import { isValidationCheckpoint, type ValidationCheckpoint } from "@runwield/plans/controller-state";
 import {
-    isValidationCheckpoint,
     makeValidationCheckpoint,
     readValidationReviewState,
-    type ValidationCheckpoint,
     validationCheckpointCanResume,
     validationPhaseForStatus,
 } from "./validation-checkpoint.ts";
@@ -86,7 +85,7 @@ type ClaimResult =
     | { kind: "settled_completion"; projectRoot: string };
 
 function checkpointRecord(
-    value: import("../../plan-store/index.ts").PlanFrontMatter["validationCheckpoint"],
+    value: import("@runwield/plans").PlanFrontMatter["validationCheckpoint"],
 ): ValidationCheckpoint | undefined {
     if (!value || !isValidationCheckpoint(value)) return undefined;
     return value;
@@ -111,10 +110,10 @@ async function claimValidation(args: RunValidationAttemptArgs): Promise<ClaimRes
     const projectRoot = args.projectRoot;
     await preparePlanController(projectRoot, args.planName);
     const planCwd = await validationPlanCwd(args);
-    const selected = await loadPlan(planCwd, args.planName);
+    const selected = await planDocumentsForCheckout(planCwd).load(args.planName);
     if (selected && !selected.attrs.planId) await ensurePlanIdentity(planCwd, args.planName);
     for (let attempt = 0; attempt < 3; attempt += 1) {
-        const plan = await loadPlan(planCwd, args.planName);
+        const plan = await planDocumentsForCheckout(planCwd).load(args.planName);
         if (!plan) throw new ValidationStateError("plan_missing");
         let phase = validationPhaseForStatus(plan.attrs.status, plan.attrs.validationPhase);
         if (!phase && plan.attrs.status === "validated" && planCwd !== projectRoot) {
@@ -190,7 +189,7 @@ async function settleValidation(
     // Canonical controller state remains owned by the admitted Project.
     planCwd = planControllerRoot(result.kind === "verified" ? args.projectRoot : planCwd);
     for (let attempt = 0; attempt < 3; attempt += 1) {
-        const plan = await loadPlan(planCwd, args.planName);
+        const plan = await planDocumentsForCheckout(planCwd).load(args.planName);
         if (!plan) return;
         const current = checkpointRecord(plan.attrs.validationCheckpoint);
         if (
@@ -266,7 +265,7 @@ type ValidationRepairCompletionArgs = {
  */
 export async function recordValidationRepairCompletion(args: ValidationRepairCompletionArgs): Promise<void> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
-        const plan = await loadPlan(args.projectRoot, args.planName);
+        const plan = await planDocumentsForCheckout(args.projectRoot).load(args.planName);
         if (!plan) throw new Error(`Plan not found: ${args.planName}`);
         const checkpoint = checkpointRecord(plan.attrs.validationCheckpoint);
         if (!checkpoint || checkpoint.repairGeneration !== args.repairGeneration) {
@@ -462,7 +461,7 @@ async function continueValidationAttempt(
     try {
         const projectRoot = args.projectRoot;
         if (args.hostResume?.kind === "decision") {
-            const plan = await loadPlan(await validationPlanCwd(args), args.planName);
+            const plan = await planDocumentsForCheckout(await validationPlanCwd(args)).load(args.planName);
             const pending = plan?.attrs.validationCheckpoint?.pendingHostDecision;
             if (!pending || !sameHostIdentity(pending.identity, args.hostResume.identity)) {
                 return {
@@ -475,7 +474,7 @@ async function continueValidationAttempt(
         }
         if (args.hostResume?.kind === "task_completed") {
             const cwd = await validationPlanCwd(args);
-            const plan = await loadPlan(cwd, args.planName);
+            const plan = await planDocumentsForCheckout(cwd).load(args.planName);
             const checkpoint = plan?.attrs.validationCheckpoint;
             const resume = args.hostResume;
             if (

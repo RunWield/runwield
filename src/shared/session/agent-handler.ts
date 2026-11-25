@@ -25,7 +25,7 @@ import {
 } from "../workflow/validation.ts";
 import { runWorkflowValidationToStableBoundary } from "../workflow/validation.ts";
 import { switchActiveAgent } from "./agent-switching.ts";
-import { agentRegistry } from "./agent-registry.ts";
+import { agentRegistry, AGENTS } from "./agent-registry.ts";
 import { emitHostedSessionRuntimeEvent, emitSystemStatus, RuntimeEventTypes } from "./session-runtime-events.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import {
@@ -38,12 +38,12 @@ import {
     settleWorkflowToolEvent,
     type WorkflowToolEvent,
 } from "../workflow/workflow-tool-events.ts";
-import { loadPlan } from "../../plan-store/index.ts";
-import { AGENTS } from "../../constants.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { isValidationCheckpoint, validationCheckpointCanResume } from "../workflow/validation-checkpoint.ts";
+import { isValidationCheckpoint } from "@runwield/plans/controller-state";
+import { validationCheckpointCanResume } from "../workflow/validation-checkpoint.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { TriageOutcome } from "@runwield/tools";
 import type { ImageAttachment } from "./image-attachments.ts";
@@ -479,14 +479,14 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
             let validationTriageMeta = triageMeta;
             try {
                 const validationRoot = executionResult.executionContext?.executionCwd || projectRoot;
-                const executionPlan = await loadPlan(validationRoot, planName);
+                const executionPlan = await planDocumentsForCheckout(validationRoot).load(planName);
                 planContent = executionPlan?.markdown || executionPlan?.body || "";
                 if (executionPlan?.attrs) {
                     validationTriageMeta = { ...triageMeta, ...executionPlan.attrs };
                 }
             } catch {
                 try {
-                    planContent = (await loadPlan(projectRoot, planName))?.markdown || "";
+                    planContent = (await planDocumentsForCheckout(projectRoot).load(planName))?.markdown || "";
                 } catch {
                     // The owner could not supply the Plan; do not substitute a checkout copy.
                 }
@@ -700,7 +700,7 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                 if (workflow.planName && workflow.planName !== "quick-fix") {
                     try {
                         const validationRoot = workflow.executionCwd || projectRoot;
-                        const executionPlan = await loadPlan(validationRoot, workflow.planName);
+                        const executionPlan = await planDocumentsForCheckout(validationRoot).load(workflow.planName);
                         planContent = executionPlan?.markdown || executionPlan?.body || "";
                         if (executionPlan?.attrs) {
                             validationTriageMeta = { ...workflow.triageMeta, ...executionPlan.attrs };

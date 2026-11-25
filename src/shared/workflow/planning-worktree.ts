@@ -16,7 +16,7 @@ import {
     installPlanningDocument,
 } from "../../plan-store/index.ts";
 
-import { hasCanonicalPlanAccess, loadPlan } from "../../plan-store/index.ts";
+import { hasCanonicalPlanAccess, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import {
     addEntry as addWorktreeRegistryEntry,
     listEntries as listWorktreeRegistryEntries,
@@ -88,20 +88,20 @@ async function preparePlanningWorktreeForPlanEntered(
             }
             const target = await prepareExistingTargetSnapshot(projectRoot, targetBranchForPlan(planAttrs));
             const targetPlan = canonicalPlan
-                ? await loadPlan(projectRoot, planName)
+                ? await planDocumentsForCheckout(projectRoot).load(planName)
                 : await loadPlanningTargetForPreparation(projectRoot, planName, target.baseBranch, target.baseRef);
             if (!targetPlan || targetPlan.attrs.planId !== planId || existing.baseBranch !== target.baseBranch) {
                 throw new Error(`Target Plan ${planName} does not match the saved planning identity.`);
             }
             existing = await refreshPlanningWorktree(projectRoot, existing, target.baseRef, target.targetRef);
-            const renamed = await loadPlan(existing.path, planName);
+            const renamed = await planDocumentsForCheckout(existing.path).load(planName);
             if (!renamed || renamed.attrs.planId !== planId) {
                 throw new Error(`Refreshed planning worktree is missing ${planName}. Your saved work is preserved.`);
             }
             existing = await renamePlanningWorktreePlan(projectRoot, existing.id, existing.planName, planName);
         }
         if (await pathExists(existing.path)) {
-            const plan = await loadPlan(existing.path, planName);
+            const plan = await planDocumentsForCheckout(existing.path).load(planName);
             if (!plan) throw new Error(`Registered worktree is missing its Plan: ${existing.path}`);
             if (plan.attrs.planId !== planId) {
                 throw new Error(`Registered worktree contains a different Plan ID. Your files were not changed.`);
@@ -127,7 +127,7 @@ async function preparePlanningWorktreeForPlanEntered(
                 }
             }
             const entry = await refreshPlanningWorktree(projectRoot, existing, target.baseRef, target.targetRef);
-            const refreshedPlan = await loadPlan(entry.path, planName);
+            const refreshedPlan = await planDocumentsForCheckout(entry.path).load(planName);
             if (!refreshedPlan) throw new Error(`Registered worktree is missing its Plan: ${entry.path}`);
             return { entry, plan: refreshedPlan, reused: true };
         }
@@ -140,7 +140,7 @@ async function preparePlanningWorktreeForPlanEntered(
     }
     const target = await prepareExistingTargetSnapshot(projectRoot, targetBranch);
     const targetPlan = canonicalPlan
-        ? await loadPlan(projectRoot, planName)
+        ? await planDocumentsForCheckout(projectRoot).load(planName)
         : await loadPlanningTargetForPreparation(projectRoot, planName, target.baseBranch, target.baseRef);
     if (!targetPlan) throw new Error(`Plan ${planName} does not exist on target ${target.baseBranch}.`);
     if (targetPlan.attrs.planId && targetPlan.attrs.planId !== planId) {
@@ -164,7 +164,7 @@ async function preparePlanningWorktreeForPlanEntered(
                         `Planning worktree for ${planName} found a different registered Plan: ${concurrentExisting.planName}.`,
                     );
                 }
-                const plan = await loadPlan(concurrentExisting.path, planName);
+                const plan = await planDocumentsForCheckout(concurrentExisting.path).load(planName);
                 if (!plan) throw new Error(`Registered worktree is missing its Plan: ${concurrentExisting.path}`);
                 if (plan.attrs.planId !== planId) {
                     throw new Error(`Registered worktree contains a different Plan ID. Your files were not changed.`);
@@ -198,7 +198,7 @@ async function preparePlanningWorktreeForPlanEntered(
                     branch: entry.branch,
                     status: entry.status,
                 });
-                const plan = await loadPlan(projectRoot, planName);
+                const plan = await planDocumentsForCheckout(projectRoot).load(planName);
                 if (!plan || plan.attrs.planId !== planId)
                     throw new Error("Canonical Plan identity changed during planning preparation.");
                 return { entry, plan, reused: false };
@@ -241,7 +241,7 @@ async function preparePlanningWorktreeForPlanEntered(
                 });
             }
             await updateWorktreeRegistryEntry(projectRoot, entry.id, { status: "planning" });
-            const plan = await loadPlan(entry.path, planName);
+            const plan = await planDocumentsForCheckout(entry.path).load(planName);
             if (!plan) throw new Error(`Planning worktree is missing its Plan after preparation: ${entry.path}`);
             await bindPlanningDocument(projectRoot, planName, planId, entry.id);
             await markEffect("controller_document_worktree_recorded", { worktreeId: entry.id });

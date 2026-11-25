@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 
-import { findPlansByParent, loadPlan } from "../../plan-store/index.ts";
+import { findPlansByParent, loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";

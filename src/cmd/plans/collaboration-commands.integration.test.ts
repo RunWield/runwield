@@ -18,7 +18,8 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { hashPlanBody, injectFrontMatter } from "@runwield/plans/format";
-import { loadPlan, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
+import { updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { PlanningNotStartedError } from "../../plan-store/index.ts";

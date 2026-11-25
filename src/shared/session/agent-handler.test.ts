@@ -1,4 +1,4 @@
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { seedPlan as savePlan } from "../testing/plan-state-fixture.ts";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
 import { applySharedPlanReviewDecision, capturePlanReviewInput } from "../../plan-store/index.ts";

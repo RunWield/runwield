@@ -219,7 +219,7 @@ test("partial-clone passive object reads never fetch missing promised Plan blobs
                 args: ["cat-file", "-e", `${commit}:docs/plans/${childName(0)}.md`],
             });
             assertEquals(missing.success, false, "fixture must lack the promised Plan blob");
-            const { listPlans } = await import("../../plan-store/index.ts");
+            const { listPlans } = await import("../testing/plan-query-fixture.ts");
             await mkdir(join(partial, "docs/plans"), { recursive: true });
             await writeFile(
                 join(partial, "docs/plans/epic.md"),

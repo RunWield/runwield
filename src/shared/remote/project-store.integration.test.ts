@@ -12,10 +12,10 @@ import { packageFixture } from "../testing/plan-package-fixture.ts";
 import {
     authorLocalPlan,
     PreparedProjectStore,
-    loadPlan,
     type ProjectStoreBinding,
     type ProjectStoreCommand,
 } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { startRemoteControlService } from "./control.ts";
 import { ProjectStoreClient } from "./project-store-client.ts";
 const build = { buildId: "a".repeat(64), protocol: 1 };

@@ -5,7 +5,7 @@ import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promis
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import type { WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
 import { findWorkRecordById, listWorkRecords, writeWorkRecord } from "../../shared/work-records/index.ts";

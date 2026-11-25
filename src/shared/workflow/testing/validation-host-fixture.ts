@@ -24,7 +24,7 @@ import { assertEquals, assertExists } from "../../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
 
-import { loadPlan } from "../../../plan-store/index.ts";
+import { loadPlan } from "../../testing/plan-query-fixture.ts";
 
 import { selectedPackage, packageController } from "../../../plan-store/workflows.ts";
 import { setCustomSetting, setExactProjectCustomSetting } from "../../settings.ts";

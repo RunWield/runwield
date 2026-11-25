@@ -3,11 +3,15 @@ import { retainChildAuthoringResult } from "./operation-receipts.ts";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import {
-    loadPlan,
-    resolveChildPlanNames,
     resolvePlanExecutionPolicy,
     parsePlanFrontMatter,
     injectFrontMatter,
+    isEpicPlan,
+    isProjectPlan,
+} from "@runwield/plans/format";
+import {
+    loadPlan,
+    resolveChildPlanNames,
     StalePlanWriteError,
     type ChildFeaturePlanDescriptor,
     type PlanWriteOptions,
@@ -25,7 +29,6 @@ import { currentPackageProject, packageController, packageWorkflowRevision } fro
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { pickControllerState } from "@runwield/plans/controller-state";
 import { writePackageControllerEvidence } from "./controllers.ts";
-import { isEpicPlan, isProjectPlan } from "@runwield/plans/format";
 
 /** Allocate the whole family before resolving relations, then publish one recoverable generation. */
 export async function authorPackageChildren(

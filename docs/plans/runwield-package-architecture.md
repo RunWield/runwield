@@ -202,7 +202,8 @@ The managed runtime uses its configured owner connection. The store checks the b
 | `list` | No arguments | Catalog entries and document diagnostics, including the existing passive display of legacy Plans. |
 | `create` | A Plan name, Markdown prose, and optional typed definition and validation instructions | A saved draft with an assigned Plan ID and revision. |
 | `read`, `readArchived` | The Plan ID | The saved Plan in the requested collection. |
-| `edit` | Plan ID, new body, observed revision | Updated prose and revision. |
+| `editBody` | Plan ID, new body, observed revision | Updated prose and revision. |
+| `revise` | Plan ID, observed revision, authored prose, validation instructions, and definition fields | An authored revision of the same Plan. The store checks identity, revision, and review locks. |
 | `applyEvent` | Plan ID, named lifecycle event, observed revision, and any required event evidence | The persisted lifecycle result. |
 | `archive`, `restore` | Plan ID and observed revision | An archived or restored Plan with its original ID. |
 
@@ -210,6 +211,20 @@ The runtime adapter calls the existing store for locking, conflict checks, recov
 The filesystem driver in Plans captures and verifies the immutable input documents used by workflow attempts.
 Existing history, Work Record persistence, and publication copies still run through the current store.
 PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)
+
+### Consumer coverage
+
+| Consumer | Entry and responsibility |
+| --- | --- |
+| TUI `/load-plan` and completion | List Plans in the session checkout without registering it. The picker carries the Project and Plan IDs across the selection prompt. Execution continues through the existing directory, review, and recovery checks. |
+| Workspace Board, sidebar, attention dashboard, and search | Read each registered Project through its active Projects registration. Each surface owns its presentation and joins with Session or Git state. |
+| Workspace Plan review, progress, usage, documents, and edits | Open the requested Project for the entire operation, including lookups that take only a Plan ID or resource name. Two Projects may have the same imported Plan ID. |
+| Hosted and attached `plan_written` | Bind the Session or attached request to its Project, then create or revise by Plan ID. Sequence child decisions use the captured child IDs. Retained execution continues through its admitted source. |
+| Core CLI, Session, and workflow operations | Use the project-bound host document reader for Markdown, file locations, and workflow evidence. Named commands own transaction locks, attempt recovery, archive-by-name compatibility, and publication evidence. |
+
+The Tools registry owns schemas and pure results. The Agent registry owns role IDs and definitions. The host constructs the registry using the bundled assets. Projects owns checkout identity and registration. Plan types, document formats, and lifecycle rules come directly from Plans. The package import check also rejects application re-exports of those domains.
+
+The factory router prototype lives outside this branch. Its old Agent loader and triage normalizer imports must move to the Agent registry and the registered `triage_report` tool when it is integrated. Factory admission must bind the canonical Project ID before handing work to the worker. The worker's scratch directory is an execution location.
 
 ## MCP and app boundaries
 

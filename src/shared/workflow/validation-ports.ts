@@ -18,13 +18,13 @@
 
 import type { ReviewAdvisory, ReviewFinding, ReviewIntegrationNote } from "../../tools/review-complete.ts";
 import type { ValidationOperationalFailure } from "./validation-operational-errors.ts";
-import type { ReviewLedger } from "./review-ledger.ts";
-import type { ReviewDiffScope, ReviewInspection } from "./review-inspection.ts";
-
 import type {
+    ReviewLedger,
     ValidationInteractionRequest as StoredInteractionRequest,
     ValidationInteractionResponse as StoredInteractionResponse,
 } from "@runwield/plans/controller-state";
+import type { ReviewDiffScope, ReviewInspection } from "./review-inspection.ts";
+
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 
 /** Live requests may carry callbacks that the validation host strips before saving the wait. */

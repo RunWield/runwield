@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import type { SubAgentDefinitionId } from "@runwield/agents";
-import { AGENTS, SUBAGENTS } from "../../constants.ts";
+import { AGENTS, SUBAGENTS, agentRegistry } from "./agent-registry.ts";
 import {
     assertEquals,
     assertExists,
@@ -9,7 +9,6 @@ import {
     assertThrows,
 } from "../../testing/assertions.ts";
 import { checkBashCommand, intersectBashAllowedCommands } from "../bash-command-policy.ts";
-import { agentRegistry } from "./agent-registry.ts";
 
 const USER_AUTHORITY_MARKER = "After one concern, the discussion is complete. The user decides. Continue the work.";
 

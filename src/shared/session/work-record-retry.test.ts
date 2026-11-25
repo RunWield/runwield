@@ -4,7 +4,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture as withBaseRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { listWorkRecords } from "../work-records/index.ts";
 import { createSessionRuntime } from "./session-runtime.ts";

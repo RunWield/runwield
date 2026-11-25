@@ -7,7 +7,7 @@ import { managedPlanStoreActive, inspectManagedOwner, readManagedRetainedExecuti
 import { currentPackageProject } from "./workflows.ts";
 import { readLocalHomeStore, withLocalProjectAction } from "./index.ts";
 import { listPlanPackages, recoverPlanPackages } from "./packages.ts";
-import { listArchivedPlans } from "./index.ts";
+import { listArchivedPlans } from "./queries.ts";
 
 import { inspectControllerDocumentWorktrees } from "./controllers.ts";
 import { hasApplicablePublicationReceipt } from "../shared/workflow/publication-receipt.ts";
@@ -23,9 +23,14 @@ import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
  */
 
 import { join } from "node:path";
-import { CLI_BIN, isPlannedChangeClassification, WORKTREE_BRANCH_PREFIX } from "../constants.ts";
+import {
+    isPlannedChangeClassification,
+    isProjectPlan,
+    parsePlanFrontMatter,
+    isEpicArtifactPlanName,
+} from "@runwield/plans/format";
+import { CLI_BIN, WORKTREE_BRANCH_PREFIX } from "../constants.ts";
 import { getPlanDocumentRoot, getPlansDir, inspectPlanFileStrict } from "../plan-store.ts";
-import { isProjectPlan, parsePlanFrontMatter, isEpicArtifactPlanName } from "@runwield/plans/format";
 import { ensurePlanIdentity } from "./index.ts";
 import {
     enterProjectRuntime,

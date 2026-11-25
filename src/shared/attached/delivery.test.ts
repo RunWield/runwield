@@ -7,7 +7,7 @@ import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { prepareIndexRuntime, toDelivery } from "./delivery-test-fixture.ts";
 import { listWorkRecords } from "../work-records/store.js";
 import { git } from "../git-test-fixture.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 test("Attached FEATURE records Claude sections and proves publication before delivered closure", async () => {
     const fixture = await attachedValidationFixture({ attrs: { workKind: "FEATURE", humanReviewMode: "none" } });

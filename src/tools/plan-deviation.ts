@@ -7,7 +7,7 @@ import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow, HostedSession } from "../shared/session/hosted-session.ts";
-import { loadPlan, recordPlanDeviation, StalePlanWriteError } from "../plan-store/index.ts";
+import { recordPlanDeviation, StalePlanWriteError, planDocumentsForCheckout } from "../plan-store/index.ts";
 import { syncEpicChildPlanDeviations } from "../plan-store/index.ts";
 import { formatPlanDeviationForPrompt, type PlanDeviation } from "@runwield/plans/format";
 import {
@@ -95,7 +95,7 @@ export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOpti
             const executionCwd = workflow.executionCwd || "";
             const planName = workflow.planName;
 
-            const current = await loadPlan(executionCwd, planName);
+            const current = await planDocumentsForCheckout(executionCwd).load(planName);
             if (!current) {
                 return deviationResult(
                     `Plan not found in the active execution checkout: ${planName}. Pause; no deviation was recorded.`,
@@ -196,7 +196,7 @@ export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOpti
                     { decision: "stale", reason: "execution_context_changed" },
                 );
             }
-            const latest = await loadPlan(executionCwd, planName);
+            const latest = await planDocumentsForCheckout(executionCwd).load(planName);
             if (!latest || latest.revision !== current.revision) {
                 return deviationResult(
                     "The Plan changed before the confirmed deviation could be saved. Reload the effective Plan and ask for confirmation again.",

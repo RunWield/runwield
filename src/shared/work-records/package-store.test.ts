@@ -7,7 +7,7 @@ import { basename, join } from "node:path";
 import { packageFixture, create, read } from "../testing/plan-package-fixture.ts";
 import { withPlanAccess, selectPlanAccess } from "../../plan-store/index.ts";
 import { runWorkRecordBackfill } from "./generation.ts";
-import { loadArchivedPlan } from "../../plan-store/index.ts";
+import { loadArchivedPlan } from "../testing/plan-query-fixture.ts";
 import { withWorkRecordOwner, workRecordOwnerLayout, withWorkRecordMutation } from "./owner.ts";
 import { writeWorkRecord, listWorkRecords, readWorkRecord, replaceWorkRecord, deleteWorkRecord } from "./store.ts";
 import { recordAttrs, recordBody } from "./test-fixtures/package-records.ts";

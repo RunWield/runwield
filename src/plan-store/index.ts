@@ -10,7 +10,7 @@ export {
     type PlanFileCommand,
     type PlanFileResult,
 } from "./agent-files.ts";
-export { authorLocalPlan, type PlanAuthoringInput, type PlanAuthoringDefinition } from "./access.ts";
+export { authorLocalPlan, type PlanAuthoringInput } from "./access.ts";
 export { readPlanDocuments, savePlanDocument, readPlanDocumentLink, saveReviewedPlanDocument } from "./documents.ts";
 export { importPlans, importedPlanCopyChoice } from "./imports.ts";
 export {
@@ -25,24 +25,11 @@ export {
     PlanFileIssueError,
 } from "../plan-store.ts";
 export type {
-    DeliveryEvidence,
-    ExecutionMode,
-    PlanFrontMatter,
-    PlanFrontMatterInput,
-    ParsePlanFrontMatterResult,
-    WorktreeDeliveryEvidence,
-} from "@runwield/plans";
-export type {
-    PlanExecutionPolicy,
-    PlanExecutionPolicyError,
-    PlanExecutionPolicySuccess,
-    PlanTextMalformed,
-    SplitPlanBody,
-} from "@runwield/plans/format";
-export type {
     ChildFeaturePlanDescriptor,
     PlanBodyResource,
     PlanResource,
+    PlanListEntry,
+    ArchivedPlanEntry,
     PlanReadAvailability,
     PlanTextLoaded,
     PlanWriteOptions,
@@ -335,7 +322,6 @@ export {
 } from "./project-service.ts";
 
 export { configureManagedPlanStore } from "./managed.ts";
-export { loadPlan, listPlans, loadPlanStrict, inspectPlanStrict } from "./queries.ts";
 
 export { receiveManagedRuntimeTransfer, acknowledgeManagedRuntimeRetirement } from "./runtime-adoption.ts";
 
@@ -346,24 +332,9 @@ export {
     searchOwnedWorkRecords,
 } from "./recording.ts";
 
-export { findPlanById, findPlanEvidenceById, loadPlanBodyById } from "./queries.ts";
+export { savePlanBodyById } from "./queries.ts";
 
-export {
-    listPlanDocuments,
-    listPlanResources,
-    readPlanResourceCatalog,
-    resolvePlan,
-    findPlansByParent,
-    savePlanBodyById,
-} from "./queries.ts";
-
-export {
-    listArchivedPlans,
-    loadArchivedPlan,
-    archivePlan,
-    restoreArchivedPlan,
-    deleteArchivedPlanUnit,
-} from "./queries.ts";
+export { archivePlan } from "./queries.ts";
 
 export { readRetainedManagedExecution, type RetainedManagedExecution } from "./retained-managed-execution.ts";
 
@@ -430,4 +401,13 @@ export { readExecutionRetention, type RetentionContext } from "./retention.ts";
 
 export { pendingPruneRequest, confirmPruneRequest } from "./prune-requests.ts";
 
-export { openProjectPlanStore, type ProjectPlanStoreOptions } from "./project-plans.ts";
+export {
+    openProjectPlanStore,
+    planDocumentsForCheckout,
+    listSelectablePlanDocuments,
+    openPlanStoreForCheckout,
+} from "./project-plans.ts";
+export { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "./authoring.ts";
+export type { ProjectPlanStoreOptions } from "./project-binding.ts";
+export { openRegisteredPlanDocuments } from "./registered-documents.ts";
+export { editCheckoutPlanBody, readCheckoutPlanDisplayCatalog } from "./checkout-presentation.ts";

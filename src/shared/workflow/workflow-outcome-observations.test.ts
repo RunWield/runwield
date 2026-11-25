@@ -5,7 +5,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import { setCustomSetting, setExactProjectCustomSetting } from "../settings.ts";
 import { HostedSession } from "../session/hosted-session.ts";

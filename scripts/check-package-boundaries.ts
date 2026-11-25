@@ -44,7 +44,15 @@ interface SourcePiece {
 interface ModuleReference {
     specifier: string;
     offset: number;
+    reexport: boolean;
 }
+
+const EXTRACTED_DOMAIN_PACKAGES = new Set([
+    "@runwield/tools",
+    "@runwield/agents",
+    "@runwield/projects",
+    "@runwield/plans",
+]);
 
 export const PACKAGE_SOURCE_PATTERN = /\.(?:[cm]?[jt]sx?|astro|html)$/;
 
@@ -126,13 +134,105 @@ function moduleSpecifier(node: ts.Node): ts.Node | undefined {
         return node.arguments[0];
 }
 
+/** Find a directly forwarded binding or module load. Calls that construct application values stop the lookup. */
+function forwardedValue(expression: ts.Expression): ts.Expression {
+    while (
+        ts.isAwaitExpression(expression) ||
+        ts.isParenthesizedExpression(expression) ||
+        ts.isPropertyAccessExpression(expression) ||
+        ts.isElementAccessExpression(expression) ||
+        ts.isAsExpression(expression) ||
+        ts.isTypeAssertionExpression(expression) ||
+        ts.isSatisfiesExpression(expression) ||
+        ts.isNonNullExpression(expression)
+    )
+        expression = expression.expression;
+    return expression;
+}
+
+function importBindingNames(binding: ts.BindingName): ts.Identifier[] {
+    if (ts.isIdentifier(binding)) return [binding];
+    return binding.elements.flatMap((item) => (ts.isBindingElement(item) ? importBindingNames(item.name) : []));
+}
+
+/** Pair exports of local import bindings with their original module, regardless of declaration order. */
+function localReexports(
+    statements: ts.NodeArray<ts.Statement>,
+    tree: ts.SourceFile,
+    offset: number,
+): ModuleReference[] {
+    const imports = new Map<string, string>();
+    const aliases = new Map<string, string>();
+    const exported: ts.ModuleExportName[] = [];
+    for (const statement of statements) {
+        if (ts.isImportDeclaration(statement) && ts.isStringLiteralLike(statement.moduleSpecifier)) {
+            const source = statement.moduleSpecifier.text;
+            const clause = statement.importClause;
+            if (clause?.name) imports.set(clause.name.text, source);
+            const bindings = clause?.namedBindings;
+            if (bindings && ts.isNamespaceImport(bindings)) imports.set(bindings.name.text, source);
+            if (bindings && ts.isNamedImports(bindings)) {
+                for (const { name } of bindings.elements) imports.set(name.text, source);
+            }
+        } else if (ts.isVariableStatement(statement)) {
+            const exportedHere = statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+            for (const { name, initializer } of statement.declarationList.declarations) {
+                if (!initializer) continue;
+                const value = forwardedValue(initializer);
+                const source = moduleSpecifier(value);
+                if (source && ts.isStringLiteralLike(source)) {
+                    for (const binding of importBindingNames(name)) {
+                        imports.set(binding.text, source.text);
+                        if (exportedHere) exported.push(binding);
+                    }
+                } else if (statement.declarationList.flags & ts.NodeFlags.Const && ts.isIdentifier(value)) {
+                    for (const binding of importBindingNames(name)) {
+                        aliases.set(binding.text, value.text);
+                        if (exportedHere) exported.push(binding);
+                    }
+                }
+            }
+        } else if (ts.isImportEqualsDeclaration(statement)) {
+            const source = moduleSpecifier(statement);
+            if (source && ts.isStringLiteralLike(source)) imports.set(statement.name.text, source.text);
+        } else if (ts.isExportDeclaration(statement) && !statement.moduleSpecifier && statement.exportClause) {
+            if (ts.isNamedExports(statement.exportClause)) {
+                for (const item of statement.exportClause.elements) exported.push(item.propertyName ?? item.name);
+            }
+        } else if (ts.isExportAssignment(statement)) {
+            const value = forwardedValue(statement.expression);
+            if (ts.isIdentifier(value)) exported.push(value);
+        }
+    }
+    return exported.flatMap((name) => {
+        let binding = name.text;
+        const seen = new Set<string>();
+        while (aliases.has(binding) && !seen.has(binding)) {
+            seen.add(binding);
+            binding = aliases.get(binding)!;
+        }
+        const specifier = imports.get(binding);
+        return specifier ? [{ specifier, offset: offset + name.getStart(tree), reexport: true }] : [];
+    });
+}
+
 function typescriptModuleReferences(file: string, piece: SourcePiece): ModuleReference[] {
     const tree = ts.createSourceFile(file, piece.text, ts.ScriptTarget.Latest, true);
     const references: ModuleReference[] = [];
     function visit(node: ts.Node): void {
+        if (ts.isSourceFile(node) || ts.isModuleBlock(node)) {
+            references.push(...localReexports(node.statements, tree, piece.offset));
+        }
         const specifier = moduleSpecifier(node);
         if (specifier && ts.isStringLiteralLike(specifier))
-            references.push({ specifier: specifier.text, offset: piece.offset + specifier.getStart(tree) });
+            references.push({
+                specifier: specifier.text,
+                offset: piece.offset + specifier.getStart(tree),
+                reexport:
+                    ts.isExportDeclaration(node) ||
+                    (ts.isImportEqualsDeclaration(node) &&
+                        (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0),
+            });
         ts.forEachChild(node, visit);
         if ("jsDoc" in node) {
             const documentation = node as ts.Node & { jsDoc?: readonly ts.JSDoc[] };
@@ -147,7 +247,8 @@ function sourceModuleReferences(file: string, source: string): ModuleReference[]
     if (file.endsWith(".astro")) {
         const { code, mappings, scripts } = convertToTsx(source, { filename: file });
         const references: ModuleReference[] = [];
-        for (const { specifier, offset } of typescriptModuleReferences(`${file}.tsx`, { text: code, offset: 0 })) {
+        for (const reference of typescriptModuleReferences(`${file}.tsx`, { text: code, offset: 0 })) {
+            const { offset } = reference;
             const mapping = mappings.find(
                 ([virtualStart, virtualLength, , originalLength]) =>
                     offset >= virtualStart && offset < virtualStart + Math.min(virtualLength, originalLength),
@@ -155,7 +256,7 @@ function sourceModuleReferences(file: string, source: string): ModuleReference[]
             // Astro adds declarations for its generated component. Only mapped imports came from the file.
             if (!mapping) continue;
             const [virtualStart, , originalStart] = mapping;
-            references.push({ specifier, offset: originalStart + offset - virtualStart });
+            references.push({ ...reference, offset: originalStart + offset - virtualStart });
         }
         for (const script of scripts) {
             if (script.type === ExtractedScriptType.Json) continue;
@@ -243,20 +344,32 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
         return resolver;
     }
 
-    function packageViolation(importer: string, owner: PackageBoundary | undefined, specifier: string) {
+    function packageViolation(
+        importer: string,
+        owner: PackageBoundary | undefined,
+        { specifier, reexport }: ModuleReference,
+    ) {
+        const applicationReexport = reexport && contains(join(root, "src"), importer);
+        const violation = (target: PackageBoundary, publicEntry: boolean) => {
+            if (target === owner) return;
+            if (!publicEntry)
+                return `Private import "${specifier}" from ${target.name}. Use an entry point declared in ${relative(root, join(target.directory, "package.json"))}.`;
+            if (applicationReexport && EXTRACTED_DOMAIN_PACKAGES.has(target.name))
+                return `Application code re-exports "${specifier}". Consumers must import ${target.name} directly.`;
+        };
         const path = specifier.startsWith("#") ? specifier : specifier.replace(/[?#].*$/, "");
         const [first, second] = path.split("/");
         const packageName = first.startsWith("@") ? `${first}/${second}` : first;
         const named = byName.get(packageName);
         if (named) {
             const subpath = path === packageName ? "." : `.${path.slice(packageName.length)}`;
-            return named !== owner && !entryForSubpath(named, subpath).length ? named : undefined;
+            return violation(named, entryForSubpath(named, subpath).length > 0);
         }
 
         const direct = physicalImport(path, importer);
         if (direct) {
             const target = packageAt(direct);
-            if (target && (target === owner || isPublicFile(target, direct))) return;
+            if (target && (target === owner || isPublicFile(target, direct))) return violation(target, true);
         }
         const { options, cache } = resolverFor(importer);
         const loaded = ts.resolveModuleName(path, importer, options, ts.sys, cache).resolvedModule;
@@ -264,7 +377,7 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
         if (!resolved) return;
         const actual = ts.sys.realpath?.(resolved) ?? resolved;
         const target = packageAt(actual);
-        if (target && target !== owner && !isPublicFile(target, actual)) return target;
+        if (target) return violation(target, isPublicFile(target, actual));
     }
 
     return (source: string, file: string): PackageDiagnostic[] => {
@@ -272,15 +385,10 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
         const owner = packageAt(importer);
         const references = sourceModuleReferences(file, source);
         const diagnostics: PackageDiagnostic[] = [];
-        for (const { specifier, offset } of references.sort((left, right) => left.offset - right.offset)) {
-            const boundary = packageViolation(importer, owner, specifier);
-            if (boundary) {
-                diagnostics.push({
-                    file,
-                    line: source.slice(0, offset).split("\n").length,
-                    message: `Private import "${specifier}" from ${boundary.name}. Use an entry point declared in ${relative(root, join(boundary.directory, "package.json"))}.`,
-                });
-            }
+        for (const reference of references.sort((left, right) => left.offset - right.offset)) {
+            const message = packageViolation(importer, owner, reference);
+            if (message)
+                diagnostics.push({ file, line: source.slice(0, reference.offset).split("\n").length, message });
         }
         return diagnostics;
     };

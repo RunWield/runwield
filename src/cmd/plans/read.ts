@@ -5,7 +5,7 @@
 
 import { CLI_BIN, getCwd } from "../../constants.ts";
 import { type PlanReadAvailability } from "../../plan-store/index.ts";
-import { findPlanById, listArchivedPlans, loadArchivedPlan, PlanNotFoundError } from "../../plan-store/index.ts";
+import { PlanNotFoundError, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { NO_OPEN_BROWSER_PORT, SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { startArtifactReadSurface } from "../../ui/review/review-launcher.ts";
@@ -82,7 +82,7 @@ export async function runPlansReadCommand(argv: string[]): Promise<void> {
         return;
     }
 
-    const archived = await loadArchivedPlan(getCwd(), target);
+    const archived = await planDocumentsForCheckout(getCwd()).archived(target);
     if (archived) {
         await openPlanReadSurface(
             {
@@ -96,12 +96,14 @@ export async function runPlansReadCommand(argv: string[]): Promise<void> {
         return;
     }
 
-    const archivedMatches = (await listArchivedPlans(getCwd())).filter((plan) => plan.planId === target);
+    const archivedMatches = (await planDocumentsForCheckout(getCwd()).archives()).filter(
+        (plan) => plan.planId === target,
+    );
     if (archivedMatches.length > 1) {
         throw new Error(`Duplicate archived planId values found for ${target}; use an archived Plan name instead.`);
     }
     if (archivedMatches.length === 1) {
-        const loaded = await loadArchivedPlan(getCwd(), archivedMatches[0].name);
+        const loaded = await planDocumentsForCheckout(getCwd()).archived(archivedMatches[0].name);
         if (loaded) {
             await openPlanReadSurface(
                 {
@@ -117,7 +119,7 @@ export async function runPlansReadCommand(argv: string[]): Promise<void> {
     }
 
     try {
-        const activeById = await findPlanById(getCwd(), target);
+        const activeById = await planDocumentsForCheckout(getCwd()).byId(target);
         await openPlanReadSurface(
             {
                 title: activeById.planName,

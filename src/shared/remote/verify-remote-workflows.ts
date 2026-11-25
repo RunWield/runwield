@@ -267,6 +267,7 @@ async function main(): Promise<void> {
                 "--exclude=docs-site",
                 "--exclude=.wld",
                 `${sourceRoot}/src`,
+                `${sourceRoot}/packages`,
                 `${sourceRoot}/scripts`,
                 `${sourceRoot}/node_modules`,
                 `${sourceRoot}/package.json`,
@@ -474,9 +475,11 @@ async function main(): Promise<void> {
                             JSON.stringify({
                                 connection,
                                 resources,
+                                laptopHome: local.homeDir,
                                 memoryCollection: "live-remote-workflows",
                                 cwd: project,
                                 review,
+                                planSource: "retained-checkout",
                             }) + "\n",
                         ),
                     );
@@ -588,12 +591,11 @@ async function main(): Promise<void> {
                 let hiddenEvidence: string[] = [];
                 let savedSessionId: string | undefined;
                 try {
+                    await ssh(`mkdir -p ${quote(`${project}/docs/plans`)}`);
+                    await writeRemote(`${project}/docs/plans/remote-delivery.md`, deliveryPlan);
                     let client = await start();
                     equal((await client.read()).kind, "ready");
                     local.setModelMessages([
-                        fauxAssistantMessage(
-                            fauxToolCall("write", { path: "docs/plans/remote-delivery.md", content: deliveryPlan }),
-                        ),
                         fauxAssistantMessage(
                             fauxToolCall("plan_written", {
                                 planName: "remote-delivery",

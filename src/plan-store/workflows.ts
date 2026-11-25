@@ -16,6 +16,7 @@ import { journalPackageMetadataWrite } from "./transitions.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { type PackageInputReference } from "@runwield/plans/file-snapshots";
 import {
     capturePlanPackageInput,
     commitPlanPackageBatch,
@@ -38,7 +39,6 @@ import {
     type PackageDefinition,
     type PackageControllerState,
     type PackageWorkflowEvidence,
-    type PackageInputReference,
 } from "./packages.ts";
 import { readPackageControllerEvidence, writePackageControllerEvidence } from "./controllers.ts";
 import {
@@ -47,7 +47,7 @@ import {
     type WorkflowControllerState,
 } from "@runwield/plans/controller-state";
 import { findById } from "../shared/worktree-registry.ts";
-import type { PlanFrontMatter } from "../plan-store.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 
 export interface PlanExecutionHost {
     projectId: string;
@@ -125,6 +125,7 @@ export interface PackageWorkflowSelection {
     identity: ProjectIdentity;
     planId: string;
     expectedRevision: number;
+    expectedName?: string;
     deliveryCopies?: PackageDeliveryCopyPolicy;
 }
 
@@ -233,7 +234,7 @@ export async function withPackageWorkflow<T>(
         ) {
             throw new Error("Package selection changed; reload its current metadata.");
         }
-        const admitted = { ...selection, expectedRevision };
+        const admitted = { ...selection, expectedRevision, ...(planName ? { expectedName: planName } : {}) };
         return await withWorkRecordOwner(cwd, selection.identity, () =>
             sources.run({ identity: selection.identity, selection: admitted }, run),
         );
@@ -274,15 +275,16 @@ export async function selectedPackage(target: PackageWorkflowTarget): Promise<Lo
     const planName = target;
     const catalog = await listPlanPackages(identity, true);
     if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-    const admitted = catalog.packages.find((p) => p.metadata.planId === currentPackageSelection()?.planId);
+    const selection = currentPackageSelection();
+    const admitted = catalog.packages.find((p) => p.metadata.planId === selection?.planId);
     if (admitted?.metadata.name === planName) return admitted;
+    if (selection?.expectedName === planName) throw new Error("The bound Plan identity changed.");
     const reference = admitted?.metadata.workflow?.publication;
     if (reference) {
         const retained = await readPlanPackagePublication(identity, reference);
         if (
             retained.members.some(
-                (member) =>
-                    member.metadata.planId === currentPackageSelection()?.planId && member.metadata.name === planName,
+                (member) => member.metadata.planId === selection?.planId && member.metadata.name === planName,
             )
         )
             return admitted;
@@ -923,8 +925,8 @@ export async function reservePackageExecution(
 }
 
 /** Retain an explicit admission across requests; resolve fresh revisions under its verified owner. */
-export function capturePackageWorkflowAccess() {
-    const admitted = currentPackageSelection();
+export function capturePackageWorkflowAccess({ preserveSelection = true } = {}) {
+    const admitted = preserveSelection ? currentPackageSelection() : undefined;
     return async function access<T>(cwd: string | undefined, run: () => Promise<T>): Promise<T> {
         if (!cwd) return await sources.exit(() => withoutWorkRecordOwner(run));
         if (!admitted) {

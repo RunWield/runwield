@@ -8,7 +8,8 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { importPlans, loadPlan, listPlans } from "../../plan-store/index.ts";
+import { importPlans } from "../../plan-store/index.ts";
+import { loadPlan, listPlans } from "../testing/plan-query-fixture.ts";
 
 const repository = defineCommittedGitFixture({ "README.md": "Recovery composition\n" });
 const driver = new URL("./testing/composed-runtime-process.ts", import.meta.url).pathname;

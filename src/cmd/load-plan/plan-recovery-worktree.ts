@@ -12,7 +12,7 @@ import { stat as fsStat } from "node:fs/promises";
 
 import { refreshPlanExecutionReference, reopenPlanReview } from "../../plan-store/index.ts";
 import { resolvePlanExecutionPolicy } from "@runwield/plans/format";
-import { loadPlan } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 
 import { resolveValidationExecutionContext } from "../../shared/workflow/execution-context.ts";
 import {
@@ -29,7 +29,7 @@ import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 import { recordPlanEvent } from "../../plan-store/index.ts";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { PlanStatus } from "@runwield/plans/lifecycle";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
@@ -92,15 +92,15 @@ export interface ReopenPlanForReviewOptions {
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('@runwield/plans').PlanFrontMatter }} plan
  * @returns {Promise<RecoveryWorktreeContext | null>}
  */
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter, revision?: string }} plan
+ * @param {{ planName: string, attrs: import('@runwield/plans').PlanFrontMatter, revision?: string }} plan
  * @param {RecoveryWorktreeContext | null} context
- * @returns {Promise<import('../../plan-store/index.ts').PlanFrontMatter>}
+ * @returns {Promise<import('@runwield/plans').PlanFrontMatter>}
  */
 export async function persistRecoveredWorktreeMetadata(
     projectRoot: string,
@@ -144,7 +144,7 @@ export function assertRecoveryWorktreeIsManaged(
  *
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, path: string, body: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter, revision?: string }} opts.plan
+ * @param {{ planName: string, path: string, body: string, attrs: import('@runwield/plans').PlanFrontMatter, revision?: string }} opts.plan
  * @param {import('@runwield/plans/lifecycle').PlanStatus} opts.currentStatus
  * @param {RecoveryWorktreeContext | null | undefined} [opts.worktreeContext]
  * @param {PlanSessionSurface} opts.session
@@ -175,7 +175,7 @@ export async function reopenPlanForReview({
     const { documentRoot } = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
     await reopenPlanReview(documentRoot, plan.planName, priorWorktreeId, currentStatus, plan.revision);
     session.clearActiveExecutionWorkflow();
-    const refreshed = await loadPlan(documentRoot, plan.planName);
+    const refreshed = await planDocumentsForCheckout(documentRoot).load(plan.planName);
     if (refreshed) Object.assign(plan, refreshed);
 }
 
@@ -235,7 +235,7 @@ export function reportInvalidRecoveryPolicy(
 
 /**
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} plan
+ * @param {{ planName: string, attrs: import('@runwield/plans').PlanFrontMatter }} plan
  * @param {RecoveryWorktreeContext | null} context
  * @param {PlanSessionSurface} session
  * @param {import('../../ui/tui/api.ts').UiAPI} [uiAPI]
@@ -324,7 +324,7 @@ export async function rehydrateActiveRecoveryWorkflow(
  * Append recovery context for a partially executed Plan.
  *
  * @param {string} projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter, body: string, markdown: string }} plan
+ * @param {{ planName: string, attrs: import('@runwield/plans').PlanFrontMatter, body: string, markdown: string }} plan
  * @param {import('../../ui/tui/api.ts').UiAPI} uiAPI
  * @param {RecoveryWorktreeContext | null} worktreeContext
  * @returns {Promise<void>}

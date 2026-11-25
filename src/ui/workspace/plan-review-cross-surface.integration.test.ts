@@ -9,7 +9,7 @@ import { test } from "node:test";
 import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -158,7 +158,8 @@ test("Workspace rejects a changed Plan from a live TUI review", async () => {
 
 test("ordinary Core browser review rejects a concurrent package edit and reloads the admitted input", async () => {
     const { packageFixture, create, read } = await import("../../shared/testing/plan-package-fixture.ts");
-    const { withPlanAccess, selectPlanAccess, loadPlan } = await import("../../plan-store/index.ts");
+    const { withPlanAccess, selectPlanAccess } = await import("../../plan-store/index.ts");
+    const { loadPlan } = await import("../../shared/testing/plan-query-fixture.ts");
     const { submitPlanForReview } = await import("../review/plan-review.ts");
     const { savePlanDocument } = await import("../../plan-store/index.ts");
     const { equal } = await import("node:assert/strict");

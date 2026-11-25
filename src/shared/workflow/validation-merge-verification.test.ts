@@ -11,7 +11,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { createGitPort } from "../git-port.ts";

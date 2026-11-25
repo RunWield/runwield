@@ -1,9 +1,8 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
-import { AGENTS } from "../../constants.ts";
+import { AGENTS, agentRegistry } from "./agent-registry.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
 import { getSettingsManager } from "../settings.ts";
-import { agentRegistry } from "./agent-registry.ts";
 import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session-runtime.ts";
 import { setActiveSessionModel } from "./model-selection.ts";
 

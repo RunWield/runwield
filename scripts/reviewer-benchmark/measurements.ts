@@ -1,4 +1,4 @@
-import { AGENTS } from "../../src/constants.ts";
+import { AGENTS } from "../../src/shared/session/agent-registry.ts";
 
 export type Measurement = number | "unavailable";
 export interface ReviewMeasurements {

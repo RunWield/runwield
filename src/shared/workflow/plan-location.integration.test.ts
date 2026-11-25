@@ -28,7 +28,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
 
-import { listPlans, loadPlan } from "../../plan-store/index.ts";
+import { listPlans, loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";

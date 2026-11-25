@@ -1,7 +1,8 @@
 /** Private recovery for local collaboration effects after an external response has been accepted. */
 import type { CollaborationResult } from "./operations.ts";
-import type { PlanFrontMatter } from "../../plan-store.ts";
-import { normalizeCollaborationFrontMatter, COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
+import { normalizeCollaborationFrontMatter } from "@runwield/plans/format";
+import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
 import { loadPlan } from "../queries.ts";
 import {
     operationDigest,

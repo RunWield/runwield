@@ -4,7 +4,8 @@ import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixt
 import { test } from "node:test";
 import { assertEquals } from "../../testing/assertions.ts";
 
-import { archiveSavedPlan, loadArchivedPlan, loadPlan } from "../../plan-store/index.ts";
+import { archiveSavedPlan } from "../../plan-store/index.ts";
+import { loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";

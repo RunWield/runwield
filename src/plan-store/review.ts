@@ -24,7 +24,8 @@ import {
 import { resolve } from "node:path";
 import quikdown from "quikdown";
 import { getStoredPlanPath, loadPlanFileStrict, writePlanMarkdownWithRevision } from "../plan-store.ts";
-import { loadPlan, StalePlanWriteError } from "./index.ts";
+import { StalePlanWriteError } from "./index.ts";
+import { loadPlan } from "./queries.ts";
 import { buildPlanEventUpdates, isPlanReviewableWithoutReopen } from "@runwield/plans/lifecycle";
 import { recordPlanEvent } from "./index.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
@@ -34,7 +35,7 @@ import { pickControllerState, stripRuntimeFields } from "@runwield/plans/control
 import { writeControllerState } from "./controllers.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
-import type { PlanFrontMatter } from "./index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { PlanApprovalAction } from "../shared/workflow/plan-approval.ts";
 import type { PlanWorktreeExpectation } from "../shared/workflow/plan-actions.ts";
 

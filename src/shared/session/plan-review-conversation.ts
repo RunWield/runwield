@@ -1,4 +1,4 @@
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import type { HostedRuntimeEventObservation } from "./hosted-session.ts";
 

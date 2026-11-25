@@ -13,7 +13,7 @@ export type HandoffImage = { base64: string; mimeType: string };
 type JsonScalar = string | number | boolean | null;
 type JsonValue = JsonScalar | JsonValue[] | { [key: string]: JsonValue };
 type SegmentExecutionState = { executionCwd?: string; baselineTree?: string };
-type SegmentReviewLedger = import("./review-ledger.ts").ReviewLedger;
+type SegmentReviewLedger = import("@runwield/plans/controller-state").ReviewLedger;
 
 /**
  * Who resumes a handed-off segment. New markers name a runtime Plan executor;

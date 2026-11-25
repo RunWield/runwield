@@ -1,16 +1,16 @@
 import { planSessionArtifactReference } from "../plan-store/index.ts";
-import { savePlanDefinition } from "../plan-store/index.ts";
-
-import { withLocalPlanWorkflow } from "../plan-store/index.ts";
-import { authorLocalPlan } from "../plan-store/index.ts";
+import { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "../plan-store/index.ts";
 import { buildPlanConversationRequest } from "../shared/workflow/plan-review-conversation.ts";
 import { reviewSourceStillMatches } from "../plan-store/index.ts";
 import {
     isSequencePlan,
+    parsePlanFrontMatter,
     projectPlanType,
     planDocumentMarkdown,
     resolvePlanExecutionPolicy,
     assertNotReservedEpicArtifactPlanName,
+    canonicalizeStoredPlanName,
+    type PlanClassification,
 } from "@runwield/plans/format";
 import { applySequenceReviewDecision, prepareSequenceReview } from "../plan-store/index.ts";
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../plan-store/index.ts";
@@ -33,11 +33,10 @@ import { rememberPlannedVerificationCommand } from "../shared/workflow/planned-v
 import { pathToFileURL as toFileUrl } from "node:url";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { toolRegistry, type WorkKind } from "@runwield/tools";
-import { CLI_BIN, type PlanClassification } from "../constants.ts";
-import { ensurePlanIdentity, loadPlan } from "../plan-store/index.ts";
+import { CLI_BIN } from "../constants.ts";
+import { ensurePlanIdentity, planDocumentsForCheckout } from "../plan-store/index.ts";
 import { recordPlanEvent } from "../plan-store/index.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
-import { resolveWorkflowPlanLocation } from "../plan-store/index.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";
 import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 import {
@@ -58,7 +57,7 @@ import {
 } from "../shared/workflow/plan-review-recovery.ts";
 import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
-import type { PlanFrontMatter } from "../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 
 const planWritten = toolRegistry.get("plan_written");
 const triageReport = toolRegistry.get("triage_report");
@@ -276,7 +275,7 @@ async function resolveTriageMeta(
 ): Promise<TriageMeta> {
     let meta = triageMeta || {};
     try {
-        const plan = await loadPlan(cwd, planName);
+        const plan = await planDocumentsForCheckout(cwd).load(planName);
         if (plan?.attrs) {
             const planAttrs: TriageMeta = { ...plan.attrs };
             if (planAttrs.workKind === undefined || planAttrs.workKind === null) delete planAttrs.workKind;
@@ -310,7 +309,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
         ...planWritten.definition,
 
         async execute(toolCallId, params, _signal, onUpdate, _ctx) {
-            const planName = String(params.planName || "")
+            let planName = String(params.planName || "")
                 .trim()
                 .replace(/^docs\/plans\//i, "")
                 .replace(/\.md$/i, "")
@@ -322,6 +321,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 );
             }
             try {
+                planName = canonicalizeStoredPlanName(planName).name;
                 assertNotReservedEpicArtifactPlanName(planName);
             } catch (error) {
                 const reason = error instanceof Error ? error.message : String(error);
@@ -337,36 +337,50 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 );
             }
 
-            if (params.contextMarkdown !== undefined) {
-                await authorLocalPlan(cwd, {
-                    planName: params.planName,
-                    contextMarkdown: params.contextMarkdown,
-                    validationMarkdown: params.validationMarkdown,
-                    expectedRevision: params.expectedRevision,
-                    parentPlan: params.parentPlan,
-                    dependencies: params.dependencies,
-                    definition: {
-                        classification: params.planType
-                            ? "PROJECT"
-                            : params.expectedRevision
-                              ? undefined
-                              : triageMeta?.classification === "PROJECT"
-                                ? "PROJECT"
-                                : "PLANNED_CHANGE",
-                        type: params.planType,
-                        targetBranch: params.targetBranch,
-                        order: params.order,
-                        summary: params.expectedRevision ? undefined : triageMeta?.summary,
-                        workKind: params.expectedRevision ? undefined : triageMeta?.workKind,
-                        complexity: params.expectedRevision ? undefined : triageMeta?.complexity,
-                        affectedPaths: params.expectedRevision ? undefined : triageMeta?.affectedPaths,
-                        ...params.definition,
-                        executionAgent: params.executionAgent,
-                        collaborationRecommendation: params.collaborationRecommendation,
-                    },
-                });
-            }
-            return await withLocalPlanWorkflow(cwd, planName, async () => {
+            hostedSession.getManagedOperationCapability?.()?.assertLive();
+            const context = hostedSession.getWorkflowContext?.();
+            const contextMarkdown = params.contextMarkdown;
+            const submission: PlanSubmissionOptions = {
+                expectedPlanId: context?.planName === planName ? context.planId : undefined,
+                expectedProjectId: hostedSession.getManagedMetadata?.()?.projectId,
+                prepareAuthor:
+                    contextMarkdown === undefined
+                        ? undefined
+                        : () => ({
+                              contextMarkdown,
+                              validationMarkdown: params.validationMarkdown,
+                              expectedRevision: params.expectedRevision,
+                              parentPlan: params.parentPlan,
+                              dependencies: params.dependencies,
+                              definition: {
+                                  classification: params.planType
+                                      ? "PROJECT"
+                                      : params.expectedRevision
+                                        ? undefined
+                                        : triageMeta?.classification === "PROJECT"
+                                          ? "PROJECT"
+                                          : "PLANNED_CHANGE",
+                                  type: params.planType,
+                                  targetBranch: params.targetBranch,
+                                  order: params.order,
+                                  summary: params.expectedRevision ? undefined : triageMeta?.summary,
+                                  workKind: params.expectedRevision ? undefined : triageMeta?.workKind,
+                                  complexity: params.expectedRevision ? undefined : triageMeta?.complexity,
+                                  affectedPaths: params.expectedRevision ? undefined : triageMeta?.affectedPaths,
+                                  ...params.definition,
+                                  executionAgent: params.executionAgent,
+                                  collaborationRecommendation: params.collaborationRecommendation,
+                              },
+                          }),
+            };
+            const runReview = async ({
+                cwd,
+                documentRoot: reviewCwd,
+                plan,
+                planId: boundPlanId,
+                saveDefinition,
+                reopenReview,
+            }: PlanSubmissionDocument) => {
                 const publishAcceptedPlanOutcome = (details: ToolResultDetails, images: ReviewImage[] = []) => {
                     if (!details.outcome) return;
                     if (details.outcome === "repair_required") return;
@@ -396,15 +410,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                         },
                     });
                 };
-                if (!cwd) throw new Error("plan_written: cwd or hostedSession cwd is required");
-                const location = await resolveWorkflowPlanLocation(cwd, planName);
-                const reviewCwd = location.plan ? location.documentRoot : cwd;
-                if (!location.plan) {
-                    return textResult(
-                        `plan_written: Plan ${planName} not found. Write the Plan first using the write tool, then call plan_written.`,
-                    );
-                }
-                const planPath = location.plan.path;
+                const planPath = plan.path;
 
                 hostedSession.getManagedOperationCapability?.()?.assertLive();
                 try {
@@ -470,7 +476,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 }
 
                 if (Object.keys(policyOverrides).length > 0) {
-                    const loadedPlan = await loadPlan(reviewCwd, planName);
+                    const loadedPlan = await planDocumentsForCheckout(reviewCwd).load(planName);
                     if (!loadedPlan?.revision) {
                         return textResult(
                             `plan_written: could not load docs/plans/${planName}.md for execution-policy persistence. Call plan_written again after saving the Plan.`,
@@ -478,9 +484,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                             false,
                         );
                     }
-                    await savePlanDefinition(reviewCwd, planName, policyOverrides, {
-                        expectedRevision: loadedPlan.revision,
-                    });
+                    await saveDefinition(policyOverrides, loadedPlan);
                 }
 
                 let reviewContainerPlanId = "";
@@ -551,29 +555,38 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
 
                 // Presenting changed meaning cancels an earlier approval. A formatter
                 // does not cancel it, and merely reopening the saved review writes nothing.
-                for (const name of sequenceDocuments?.map((doc) => doc.planName) || [planName]) {
-                    const current = await loadPlan(reviewCwd, name);
-                    const base = current?.attrs.planId
-                        ? hostedSession.planReviewConversations.getReviewBase(current.attrs.planId)
-                        : undefined;
+                for (const document of sequenceDocuments ?? [undefined]) {
+                    const name = document?.planName ?? planName;
+                    const documents = planDocumentsForCheckout(reviewCwd);
+                    const current = document
+                        ? {
+                              attrs: document.frontmatter,
+                              body: document.packageInput ? document.plan : parsePlanFrontMatter(document.plan).body,
+                              revision: document.revision,
+                          }
+                        : await documents.load(name);
+                    const planId = document?.planId ?? current?.attrs.planId;
+                    const base = planId ? hostedSession.planReviewConversations.getReviewBase(planId) : undefined;
                     if (
                         current &&
+                        planId &&
                         base &&
                         ["approved", "ready_for_work", "ready_for_decomposition"].includes(current.attrs.status) &&
                         !reviewSourceStillMatches(current, base.attrs, base.body)
                     ) {
-                        await recordPlanEvent({
-                            cwd: reviewCwd,
+                        await reopenReview({
                             planName: name,
-                            event: "review_reopened",
+                            expectedPlanId: planId,
                             currentStatus: current.attrs.status,
                             expectedRevision: current.revision,
                         });
-                        if (name === planName) effectiveMeta = (await loadPlan(reviewCwd, name))!.attrs;
-                        const document = sequenceDocuments?.find((doc) => doc.planName === name);
+                        const updated = await documents.load(name);
+                        if (updated?.attrs.planId !== planId) throw new Error(`Plan identity changed: ${name}`);
+                        if (name === planName) effectiveMeta = updated.attrs;
                         if (document) {
-                            const updated = (await loadPlan(reviewCwd, name))!;
-                            document.plan = planDocumentMarkdown(updated.markdown);
+                            document.plan = document.packageInput
+                                ? updated.body
+                                : planDocumentMarkdown(updated.markdown);
                             document.frontmatter = updated.attrs;
                             document.revision = updated.revision;
                         }
@@ -586,7 +599,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 );
                 const canonicalReviewEvidence =
                     initialReviewEvidence.kind === "success" ? initialReviewEvidence.evidence : null;
-                const currentReviewPlan = (await loadPlan(reviewCwd, planName))?.markdown;
+                const currentReviewPlan = (await planDocumentsForCheckout(reviewCwd).load(planName))?.markdown;
                 if (currentReviewPlan === undefined) throw new Error(`Plan not found: ${planName}`);
                 const planVersions = reviewPlanVersions.get(planName) ?? [];
                 if (planVersions.at(-1)?.plan !== currentReviewPlan) {
@@ -870,6 +883,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     await recordPlanEvent({
                         cwd: reviewCwd,
                         planName,
+                        expectedPlanId: boundPlanId,
                         event: "epic_readiness_passed",
                         currentStatus: "approved",
                         details: { triageMeta: projectMeta },
@@ -965,6 +979,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 await recordPlanEvent({
                     cwd: reviewCwd,
                     planName,
+                    expectedPlanId: boundPlanId,
                     event: "readiness_passed",
                     currentStatus: "approved",
                     details: { triageMeta: approvedMeta },
@@ -1050,7 +1065,13 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     true,
                     reviewResult.images,
                 );
-            });
+            };
+            return (
+                (await withPlanSubmission(cwd, planName, submission, runReview)) ??
+                textResult(
+                    `plan_written: Plan ${planName} not found. Create it with plan_written contextMarkdown or import it first.`,
+                )
+            );
         },
     });
 }

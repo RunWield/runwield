@@ -25,7 +25,7 @@ interface PlanResourceReference {
     planName: string;
     planId?: string;
 }
-async function assertContainedProjectPath(root: string, path: string) {
+export async function assertContainedProjectPath(root: string, path: string) {
     const canonicalRoot = await fsRealpath(root);
     const canonicalPath = await fsRealpath(path);
     const contained = relative(canonicalRoot, canonicalPath).replaceAll("\\", "/");
@@ -108,8 +108,8 @@ export interface PlanReviewPresentation {
     planId: string;
     plan: string;
     planName: string;
-    frontmatter: import("../plan-store.ts").PlanFrontMatter;
-    classification: import("../plan-store.ts").PlanFrontMatter["classification"];
+    frontmatter: import("@runwield/plans").PlanFrontMatter;
+    classification: import("@runwield/plans").PlanFrontMatter["classification"];
     documentRevision: string;
     linkedFiles: Record<string, string>;
 }
@@ -157,7 +157,7 @@ export function planControllerRoot(fallback: string): string {
 /** Render metadata only for retained legacy review documents; canonical prose stays metadata-free. */
 export function renderPlanReviewMarkdown(
     body: string,
-    attrs: Partial<import("../plan-store.ts").PlanFrontMatter>,
+    attrs: Partial<import("@runwield/plans").PlanFrontMatter>,
 ): string {
     return currentPackageSelection() || currentManagedPlanSelection()
         ? body

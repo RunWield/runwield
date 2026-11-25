@@ -1,12 +1,14 @@
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
-import { syncEpicChildPlanDeviations, archivePlan, loadArchivedPlan, loadPlan } from "../../plan-store/index.ts";
+import { syncEpicChildPlanDeviations, archivePlan } from "../../plan-store/index.ts";
+import { loadArchivedPlan, loadPlan } from "../testing/plan-query-fixture.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { type GeneratedWorkRecordSections, type WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
 import {
     buildWorkRecordIndexDocument,
     findWorkRecordById,
@@ -25,8 +27,6 @@ import {
     searchWorkRecords,
     syncWorkRecordToIndex,
     writeWorkRecord,
-    type GeneratedWorkRecordSections,
-    type WorkRecordFrontMatter,
 } from "./index.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { type WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
@@ -66,7 +66,7 @@ function createCommandMnemotecaPort(commandOutput: MnemotecaCommand): WorkRecord
  * Script only the external Recorder model response. Prompt construction,
  * structured-output parsing, Work Record persistence, and Plan backlinks stay real.
  *
- * @param {import("./generation.ts").GeneratedWorkRecordSections} sections
+ * @param {GeneratedWorkRecordSections} sections
  */
 function recorderResponse(sections: GeneratedWorkRecordSections) {
     return () => Promise.resolve(sections);

@@ -120,7 +120,8 @@ test("multi_file_edit applies legacy edits and rejects incomplete edits without 
     }
 });
 
-import { authorLocalPlan, loadPlan } from "../../plan-store/index.ts";
+import { authorLocalPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { packageFixture } from "../../shared/testing/plan-package-fixture.ts";
 
 test("multi_file_edit uses canonical Plan operations and rolls back an earlier edit after a later mismatch", async () => {

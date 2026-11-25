@@ -8,7 +8,7 @@
 
 import { projects } from "@runwield/projects";
 import { CLI_BIN } from "../../constants.ts";
-import { findPlansByParent } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { isProjectPlan } from "@runwield/plans/format";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";
@@ -31,10 +31,10 @@ import { formatEpicProgressSummary } from "./plan-epic-children.ts";
 import { confirmWorktreeAction, hasWorktreeContext, resolveRecoveryWorktree } from "./plan-recovery-worktree.ts";
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { detachPlanExecution } from "../../plan-store/index.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { completeUserVerification } from "./user-verification-completion.ts";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
 
@@ -124,7 +124,7 @@ export function isUserVerifiableStatus(status: string): boolean {
 }
 
 /**
- * @param {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} attrs
+ * @param {Partial<import('@runwield/plans').PlanFrontMatter>} attrs
  * @returns {string | undefined}
  */
 export function getHoldStalenessBaseline(attrs: PlanFrontMatter): string | undefined {
@@ -132,7 +132,7 @@ export function getHoldStalenessBaseline(attrs: PlanFrontMatter): string | undef
 }
 
 /**
- * @param {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} attrs
+ * @param {Partial<import('@runwield/plans').PlanFrontMatter>} attrs
  * @returns {boolean}
  */
 export function hasRecordedWorktreeMetadata(attrs: PlanFrontMatter): boolean {
@@ -156,7 +156,7 @@ export async function confirmHoldWarning(uiAPI: UiAPI, message: string): Promise
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('@runwield/plans').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
@@ -167,7 +167,7 @@ export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldO
     }
 
     if (isProjectPlan(plan.attrs)) {
-        const children = await findPlansByParent(projectRoot, plan.planName);
+        const children = await planDocumentsForCheckout(projectRoot).children(plan.planName);
         const childSummary = children.length > 0 ? `\n\n${formatEpicProgressSummary(children)}` : "";
         const confirmed = await confirmHoldWarning(
             uiAPI,
@@ -199,7 +199,7 @@ export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldO
         },
     });
     plan.attrs = { ...plan.attrs, ...updatedAttrs };
-    const refreshed = await loadPlan(projectRoot, plan.planName);
+    const refreshed = await planDocumentsForCheckout(projectRoot).load(plan.planName);
     if (refreshed) Object.assign(plan, refreshed);
     uiAPI.appendSystemMessage(
         `Plan put on hold. Resume later with: ${CLI_BIN} load-plan ${plan.planName}`,
@@ -212,7 +212,7 @@ export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldO
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('@runwield/plans').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
@@ -308,7 +308,7 @@ export async function markPlanUserVerified({
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('@runwield/plans').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<{ status: "pass" | "warn" | "fail", messages: string[] }>}
  */
@@ -398,7 +398,7 @@ export async function runResumeCheck({
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter }} opts.plan
+ * @param {{ planName: string, attrs: import('@runwield/plans').PlanFrontMatter }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @returns {Promise<boolean>}
  */
@@ -485,7 +485,7 @@ export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHe
     const transitionValue = (transition.value || {}) as { value?: PlanFrontMatter };
     const updatedAttrs = transitionValue.value as PlanFrontMatter;
     plan.attrs = { ...plan.attrs, ...updatedAttrs };
-    const refreshed = await loadPlan(projectRoot, plan.planName);
+    const refreshed = await planDocumentsForCheckout(projectRoot).load(plan.planName);
     if (refreshed) Object.assign(plan, refreshed);
     uiAPI.appendSystemMessage(
         action === "reset_delete"
@@ -500,7 +500,7 @@ export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHe
 /**
  * @param {Object} opts
  * @param {string} opts.projectRoot
- * @param {{ planName: string, attrs: import('../../plan-store/index.ts').PlanFrontMatter, body: string, markdown?: string }} opts.plan
+ * @param {{ planName: string, attrs: import('@runwield/plans').PlanFrontMatter, body: string, markdown?: string }} opts.plan
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface} opts.session
  * @returns {Promise<"resume" | "handled">}
@@ -581,11 +581,11 @@ export async function handleOnHoldPlan({
                 details: { triageMeta: plan.attrs, heldFromStatus: restoredStatus },
             });
             plan.attrs = { ...plan.attrs, ...updatedAttrs };
-            const refreshed = await loadPlan(projectRoot, plan.planName);
+            const refreshed = await planDocumentsForCheckout(projectRoot).load(plan.planName);
             if (refreshed) Object.assign(plan, refreshed);
             uiAPI.appendSystemMessage(`Resumed from hold. Restored status: ${plan.attrs.status}.`, false, "RunWield");
             if (isProjectPlan(plan.attrs)) {
-                const children = await findPlansByParent(projectRoot, plan.planName);
+                const children = await planDocumentsForCheckout(projectRoot).children(plan.planName);
                 if (children.length > 0) {
                     uiAPI.appendSystemMessage(formatEpicProgressSummary(children), false, "RunWield");
                 }

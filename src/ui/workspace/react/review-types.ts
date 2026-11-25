@@ -1,4 +1,4 @@
-import type { PlanClassification } from "../../../constants.ts";
+import type { PlanClassification } from "@runwield/plans/format";
 
 export type PlanExecutionAgent = "engineer" | "frontend-engineer";
 export type PlanCollaborationRecommendation = "autonomous" | "pair";

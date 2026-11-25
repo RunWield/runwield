@@ -16,7 +16,7 @@ import { ok as assert } from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { updatePlanFrontMatter } from "../../plan-store.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { savePlan } from "../../plan-store.ts";
 import {
     closeTransitionRecordByAttestation,
@@ -405,7 +405,10 @@ test("semantic transition matrix records operation-specific resources, effects, 
             try {
                 await savePlan(cwd, "demo", "# Demo", { status: "ready_for_work", classification: "PLANNED_CHANGE" });
                 await savePlan(cwd, "epic", "# Epic", { status: "ready_for_work", classification: "PROJECT" });
-                await savePlan(cwd, "epic/01-demo", "# Demo child", { status: "verified", classification: "PLANNED_CHANGE" });
+                await savePlan(cwd, "epic/01-demo", "# Demo child", {
+                    status: "verified",
+                    classification: "PLANNED_CHANGE",
+                });
                 await savePlan(cwd, "epic/02-other", "# Other child", {
                     status: "verified",
                     classification: "PLANNED_CHANGE",
@@ -453,7 +456,10 @@ test("semantic transition matrix records operation-specific resources, effects, 
             const cleanCwd = await makeProject();
             await withRetainedPlanFixture(cleanCwd, async () => {
                 try {
-                    await savePlan(cleanCwd, "demo", "# Demo", { status: "ready_for_work", classification: "PLANNED_CHANGE" });
+                    await savePlan(cleanCwd, "demo", "# Demo", {
+                        status: "ready_for_work",
+                        classification: "PLANNED_CHANGE",
+                    });
                     const cleanFailure = await runValidationOutcomeTransition({
                         projectRoot: cleanCwd,
                         planName: "demo",
@@ -871,8 +877,16 @@ test("a stranded Plan does not block lifecycle work on unrelated Plans", async (
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "alpha", "# A\n", { status: "implemented", classification: "PLANNED_CHANGE", planId: "p-a" });
-            await savePlan(cwd, "beta", "# B\n", { status: "implemented", classification: "PLANNED_CHANGE", planId: "p-b" });
+            await savePlan(cwd, "alpha", "# A\n", {
+                status: "implemented",
+                classification: "PLANNED_CHANGE",
+                planId: "p-a",
+            });
+            await savePlan(cwd, "beta", "# B\n", {
+                status: "implemented",
+                classification: "PLANNED_CHANGE",
+                planId: "p-b",
+            });
             const stranded = await runValidationOutcomeTransition({
                 projectRoot: cwd,
                 planName: "alpha",
@@ -918,7 +932,11 @@ test("reconciliation closes a record whose effects a prover accounts for", async
     const cwd = await makeProject();
     return await withRetainedPlanFixture(cwd, async () => {
         try {
-            await savePlan(cwd, "demo", "# Demo\n", { status: "verified", classification: "PLANNED_CHANGE", planId: "p-1" });
+            await savePlan(cwd, "demo", "# Demo\n", {
+                status: "verified",
+                classification: "PLANNED_CHANGE",
+                planId: "p-1",
+            });
             const failure = await runValidationOutcomeTransition({
                 projectRoot: cwd,
                 planName: "demo",

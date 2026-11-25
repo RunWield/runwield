@@ -6,7 +6,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { updateArchivedPlanFrontMatter } from "./plan-store.ts";
 import { getPlanRevisionForText } from "@runwield/plans/format";
-import { loadArchivedPlan, loadPlan, restoreArchivedPlan } from "./plan-store/index.ts";
+import { loadArchivedPlan, loadPlan, restoreArchivedPlan } from "./shared/testing/plan-query-fixture.ts";
 import { defineCommittedGitFixture } from "./shared/git-test-fixture.ts";
 
 const planId = "archived-legacy-id";

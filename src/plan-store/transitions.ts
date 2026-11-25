@@ -42,14 +42,13 @@ import {
     withControllerWriteTracking,
     writeControllerState,
 } from "./controllers.ts";
+import { getKnownFrontMatterRevision } from "@runwield/plans/store-format";
+import { parsePlanFrontMatter, splitPlanMarkdownBody } from "@runwield/plans/format";
 import {
-    getKnownFrontMatterRevision,
     getPlanDocumentRoot,
     getRecordedPlanWriteFrontMatterRevision,
     getRecordedPlanWriteRevision,
     loadArchivedPlan,
-    parsePlanFrontMatter,
-    splitPlanMarkdownBody,
     updatePlanFrontMatter,
     withPlanCatalogLock,
     withPlanLock,

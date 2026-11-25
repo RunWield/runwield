@@ -1,12 +1,12 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
 import { readFrozenPlanExecutionDocuments, planDocumentReference } from "../../plan-store/index.ts";
 import { type PlanAccess } from "../../plan-store/index.ts";
-import { withPlanAccess } from "../../plan-store/index.ts";
+import { capturePlanAccess, selectPlanAccess, withPlanAccess } from "../../plan-store/index.ts";
 import { isEpicPlan, resolvePlanExecutionPolicy, isProjectPlan } from "@runwield/plans/format";
-import { AGENTS, CLI_BIN } from "../../constants.ts";
+import { AGENTS, agentRegistry } from "../session/agent-registry.ts";
+import { CLI_BIN } from "../../constants.ts";
 
 import { emitSystemStatus } from "../session/session-runtime-events.ts";
-import { agentRegistry } from "../session/agent-registry.ts";
 import {
     requestHostedSessionInteraction,
     RuntimeInteractionOutcomes,
@@ -35,7 +35,7 @@ import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execu
 import { emitLaunchingExecutionAgent } from "./execution-preparation-progress.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { PlanFrontMatter } from "../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 import type { ActiveExecutionWorkflow, HostedSession } from "../session/hosted-session.ts";
 
 function isPlanReviewRetryAccepted(response) {
@@ -100,13 +100,13 @@ export interface ExecuteSingleEngineerPlanOptions {
 }
 
 export async function executePlan(options: ExecutePlanOptions): Promise<PlanExecutionResult> {
-    if (options.packageSelection)
-        return await withPlanAccess(
-            options.hostedSession.cwd,
-            options.packageSelection,
-            () => executePlanInScope(options),
-            options.planName,
-        );
+    options.hostedSession.getManagedOperationCapability?.()?.assertLive();
+    const cwd = options.hostedSession.cwd;
+    let selection = options.packageSelection;
+    if (!selection && options.approvalEvidence && !capturePlanAccess()) {
+        selection = await selectPlanAccess(cwd, options.planName, options.approvalEvidence.planId);
+    }
+    if (selection) return await withPlanAccess(cwd, selection, () => executePlanInScope(options), options.planName);
     return await executePlanInScope(options);
 }
 async function executePlanInScope({
@@ -276,7 +276,7 @@ async function executePlanInScope({
                 effectiveReviewImages = reviewMeta.images;
             }
             const approvedMeta =
-                /** @type {Partial<import('../../plan-store/index.ts').PlanFrontMatter>} */ reviewMeta.planAttrs ||
+                /** @type {Partial<import('@runwield/plans').PlanFrontMatter>} */ reviewMeta.planAttrs ||
                 _triageMeta ||
                 {};
             const approvalAction = normalizePlanApprovalAction({

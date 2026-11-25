@@ -75,7 +75,7 @@ export type WorkflowToolEventPayloadByKind = {
     review_diff: ReviewDiffEventPayload;
     review_complete: ReviewCompleteEventPayload;
     qa_checklist_generated: QaChecklistGeneratedEventPayload;
-    work_record_completed: import("../work-records/generation.ts").GeneratedWorkRecordSections;
+    work_record_completed: import("@runwield/plans/work-record-schema").GeneratedWorkRecordSections;
     manual_qa_completed: { checklistMarkdown: string };
 };
 

@@ -6,7 +6,7 @@ import { readDeliveryEvidence, recordDeliveryEvidence } from "./delivery-evidenc
  */
 
 import { getCodeReviewMode, getGuidedReviewMode } from "../settings.ts";
-import { AGENTS } from "../../constants.ts";
+import { AGENTS } from "../session/agent-registry.ts";
 import { recordPlanHumanReview } from "../../plan-store/index.ts";
 import { type ValidationInteractionResponse, ValidationInteractionTypes } from "./validation-ports.ts";
 import type {

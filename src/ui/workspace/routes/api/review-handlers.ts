@@ -12,7 +12,7 @@ import type {
     ReviewAnnotationInput,
 } from "../../../../shared/workflow/review-feedback-images.ts";
 import type { PlanQuestionAnswer } from "../../../../shared/plan-questions.ts";
-import type { PlanFrontMatter } from "../../../../plan-store/index.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
 
 export interface ReviewExecutionPolicy {
     executionAgent?: "engineer" | "frontend-engineer";

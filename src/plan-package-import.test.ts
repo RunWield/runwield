@@ -10,7 +10,7 @@ import {
     renamePlanPackage,
     savePlanPackageDocument,
 } from "./plan-store/packages.ts";
-import { loadPlan, listPlans } from "./plan-store/index.ts";
+import { loadPlan, listPlans } from "./shared/testing/plan-query-fixture.ts";
 
 async function source(root: string, name: string, markdown: string) {
     const path = join(root, "docs", "plans", `${name}.md`);

@@ -18,6 +18,7 @@ import {
 import {
     loadCanonicalBoard,
     loadCanonicalRegisteredProjectBoard,
+    loadCanonicalRegisteredWorkspaceDetail,
     loadCanonicalWorkspaceDetail,
     loadDevPlanCatalogBoard,
 } from "./astro-canonical-data.ts";
@@ -101,8 +102,7 @@ export async function loadOwnerProjectPlanDetail(
         return await loadCanonicalWorkspaceDetail(currentWorkspaceCwd(), planId, options);
     }
     if (!store) throw new Error("Owner Workspace store is not available.");
-    const root = requireOwnerProjectRoot(store, projectId);
-    return await loadCanonicalWorkspaceDetail(root, planId, options);
+    return await loadCanonicalRegisteredWorkspaceDetail(projectId, store.projects, planId, options);
 }
 
 export async function loadOwnerProjectPlanProgress(

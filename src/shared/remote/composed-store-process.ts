@@ -11,8 +11,6 @@ const clear = managed ? await activateRemoteProjectOwner(input) : () => {};
 try {
     const {
         importPlans,
-        listPlans,
-        loadPlan,
         savePlanProse,
         withLocalPlanWorkflow,
         recordPlanEvent,
@@ -25,6 +23,7 @@ try {
         readPublishedDeliverySources,
         readPublishedRecordMarkdown,
     } = await import("../../plan-store/index.ts");
+    const { listPlans, loadPlan } = await import("../testing/plan-query-fixture.ts");
     if (command === "managed-author" || command === "managed-author-rename") {
         const { authorLocalPlan, renamePlan } = await import("../../plan-store/index.ts");
         if (command === "managed-author")

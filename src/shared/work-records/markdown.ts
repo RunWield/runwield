@@ -4,7 +4,7 @@
  */
 
 import { extractYaml, test as hasFrontMatter, type FrontMatterValue } from "../front-matter.ts";
-import { normalizeWorkKind } from "../../constants.ts";
+import { toolRegistry } from "@runwield/tools";
 import { normalizeTicketReferences, type TicketReference } from "@runwield/plans/format";
 import {
     isWorkRecordCompletionMode,
@@ -22,7 +22,6 @@ import {
     type WorkRecordSupersessionCandidate,
     type WorkRecordSupersessionProposal,
 } from "@runwield/plans/work-record-schema";
-
 
 /** Raw YAML values retain the existing normalization and validation boundaries. */
 export interface RawWorkRecordFrontMatter {
@@ -168,7 +167,10 @@ export function normalizeWorkRecordFrontMatter(attrs: WorkRecordFrontMatterInput
         ).map((recordId) => recordId.toLowerCase()),
     );
     const supersessionProposal = normalizeSupersessionProposal(attrs.supersessionProposal, supersedesIdentities);
-    const rawWorkKind = typeof attrs.workKind === "string" ? normalizeWorkKind(attrs.workKind) : undefined;
+    const rawWorkKind =
+        typeof attrs.workKind === "string"
+            ? toolRegistry.get("triage_report").normalizeWorkKind(attrs.workKind)
+            : undefined;
     const rawScope = asTrimmedString(attrs.scope);
     const normalizedScope = rawScope === "feature" ? "planned_change" : rawScope;
     const normalized: WorkRecordFrontMatter = {

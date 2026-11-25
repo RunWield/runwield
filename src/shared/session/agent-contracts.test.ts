@@ -14,8 +14,7 @@ import { tmpdir } from "node:os";
  */
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { SUBAGENTS } from "../../constants.ts";
-import { agentRegistry } from "./agent-registry.ts";
+import { SUBAGENTS, agentRegistry } from "./agent-registry.ts";
 
 const EXECUTION_CONTRACTS: ReadonlyArray<{
     agentName: string;

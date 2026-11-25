@@ -30,7 +30,8 @@ import { PhotonImage } from "@silvia-odwyer/photon-node";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
-import { getCwd, getHomeDir, SUBAGENTS } from "../constants.ts";
+import { SUBAGENTS, agentRegistry } from "../shared/session/agent-registry.ts";
+import { getCwd, getHomeDir } from "../constants.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { __resetSettingsForTests } from "../shared/settings.ts";
 import { createImage } from "../shared/image-generation.ts";
@@ -39,7 +40,6 @@ import { buildAgentSession, composeClaudeCliBridgedTools } from "../shared/sessi
 import { CLAUDE_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "../shared/session/backends/claude-cli/mcp-bridge.ts";
 import { resolveImageGenerationSettings } from "../shared/image-generation-settings.ts";
 import type { ImageGenerationSettings } from "../shared/image-generation-settings.ts";
-import { agentRegistry } from "../shared/session/agent-registry.ts";
 import { resolveDelegatedToolNames } from "./delegate-agent.ts";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR4nGP4z8AARwzIHABvqgf5gNwAKAAAAABJRU5ErkJggg==";

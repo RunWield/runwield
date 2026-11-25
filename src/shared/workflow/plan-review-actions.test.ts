@@ -13,7 +13,8 @@ import {
     parsePlanFrontMatter,
     type PlanFrontMatter,
 } from "@runwield/plans/format";
-import { ensurePlanIdentity, loadPlan } from "../../plan-store/index.ts";
+import { ensurePlanIdentity } from "../../plan-store/index.ts";
+import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";

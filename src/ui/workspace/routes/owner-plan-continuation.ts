@@ -1,10 +1,6 @@
 /** Plan-scoped continuation entry points, including Plans without a working Session. */
-import { findPlanEvidenceById } from "../../../plan-store/index.ts";
-import {
-    executePlanAction,
-    loadPlanActionEvidence,
-    type PlanActionRequest,
-} from "../../../shared/workflow/plan-actions.ts";
+import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
+import { executePlanAction, type PlanActionRequest } from "../../../shared/workflow/plan-actions.ts";
 import { runWorkspaceResumeCheck } from "../server/plan-adapter.ts";
 import { runOwnerPlanAction } from "../server/owner-plan-actions.ts";
 import { requireOwnerProjectRoot } from "../server/owner-projects.ts";
@@ -40,9 +36,11 @@ export async function ownerPlanContinuationApi(ctx: PlanContinuationContext) {
             throw new Error("Plan action requestId is required.");
         }
         const root = requireOwnerProjectRoot(ctx.state.store, ctx.params.projectId);
-        const plan = await findPlanEvidenceById(root, ctx.params.planId);
+        const projectId = ctx.params.projectId;
+        const documents = openRegisteredPlanDocuments(projectId, ctx.state.store.projects);
+        const plan = await documents.evidenceById(ctx.params.planId);
         if (body.action === "resume_from_hold") {
-            const evidence = await loadPlanActionEvidence(root, plan.planId);
+            const evidence = await documents.actionEvidence(plan.planId);
             if (evidence.kind !== "success") throw new Error(evidence.message);
             const check = await runWorkspaceResumeCheck(root, plan.attrs);
             if (check.failures.length) return ownerJson({ error: check.failures.join(" "), resumeCheck: check }, 409);

@@ -219,7 +219,7 @@ for (const boundary of ["handoff", "validation", "repair", "publication"] as con
                 const { runPublicationPhase } = await import("../workflow/validation-publication.ts");
                 const { createGitPort } = await import("../git-port.ts");
                 const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
-                const { loadPlan } = await import("../../plan-store/index.ts");
+                const { loadPlan } = await import("../testing/plan-query-fixture.ts");
                 const { writeFile } = await import("node:fs/promises");
                 await savePlan(f.remoteProject, "effect-gate", "# Local effect gate\n", {
                     planId: "local-effect-plan",

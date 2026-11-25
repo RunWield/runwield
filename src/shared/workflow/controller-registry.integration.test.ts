@@ -21,9 +21,10 @@ import { assertEquals, assertExists, assertRejects, assertStringIncludes } from 
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { updatePlanFrontMatter } from "../../plan-store.ts";
-import { type PlanDocumentMetadata } from "../../plan-store.ts";
+import { type PlanDocumentMetadata } from "@runwield/plans";
 import { injectFrontMatter, mergeFrontMatterText } from "@runwield/plans/format";
-import { ensurePlanIdentity, listPlanResources, loadPlan } from "../../plan-store/index.ts";
+import { ensurePlanIdentity } from "../../plan-store/index.ts";
+import { listPlanResources, loadPlan } from "../testing/plan-query-fixture.ts";
 import { savePlan } from "../../plan-store.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { addEntry, getWorktreeRegistryPath, pruneEntry, updateEntry } from "../worktree-registry.ts";

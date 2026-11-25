@@ -4,8 +4,6 @@ import { assertCapabilityScope, type CapabilityScope, redactSecrets } from "./ca
 import { assertNonEmptyString } from "./protocol.ts";
 import { normalizeServerUrl } from "@runwield/plans/format";
 
-export { normalizePlanServerUrl, normalizeServerUrl } from "@runwield/plans/format";
-
 export interface CollaborationUrlInput {
     serverUrl: string;
     spaceId: string;

@@ -1,5 +1,5 @@
 import { seedPlan } from "./plan-state-fixture.ts";
-import { loadPlan } from "../../plan-store/index.ts";
+import { loadPlan } from "./plan-query-fixture.ts";
 
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";

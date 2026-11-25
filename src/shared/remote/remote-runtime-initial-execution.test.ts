@@ -1,6 +1,6 @@
 import { test } from "node:test";
-import { ok as assert } from "node:assert/strict";
-import { readFile, rename } from "node:fs/promises";
+import { ok as assert, rejects } from "node:assert/strict";
+import { readFile, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals } from "../../testing/assertions.ts";
@@ -10,34 +10,88 @@ import {
     latch,
     within,
     withRemoteRuntimeFixture,
+    withRetainedRemoteRuntimeFixture,
     type RuntimeFixture,
     type RuntimeProcess,
 } from "./remote-runtime-test-fixture.ts";
 import type { RuntimeClientReport } from "./remote-runtime-test-client.ts";
-import { deliveryPlan, prepareDelivery } from "./remote-runtime-workflows-fixture.ts";
+import {
+    deliveryContextMarkdown,
+    prepareDelivery,
+    prepareDeliveryProject,
+} from "./remote-runtime-workflows-fixture.ts";
+import { ProjectStoreClient } from "./project-store-client.ts";
+import type { ReviewPayload } from "../../ui/workspace/routes/api/review-handlers.ts";
+import type { ProjectStoreBinding } from "../../plan-store/index.ts";
 
-for (const agentName of ["planner", "router"]) {
-    test(`Approve and Run from a remote ${agentName} turn seals planning before execution`, async () => {
-        await withRemoteRuntimeFixture(async (f) => {
-            await prepareDelivery(f);
-            scriptInitialExecution(f, agentName);
-            const client = await f.start();
-            assertEquals((await client.read()).kind, "ready");
-            await client.send({ kind: "workflow-plan", agentName, text: "Plan the remote sentinel delivery." });
-            const ready = await client.read();
-            await approveAndRun(f, ready);
-            const completed = await client.read();
-            assertEquals(completed.ok, true, completed.error);
-            assert(completed.savedId);
-            const segments = f.store.listSessionTranscriptSegments(completed.savedId);
-            assertEquals(segments.length, 2, "Approve and Run must create an execution successor");
-            assertEquals(segments[1].kind, "execution");
-            assert(segments[0].sealedDigestHex, "The planning predecessor is sealed before execution");
-            assertEquals(f.store.getCurrentSessionSegment(completed.savedId)?.segmentId, segments[1].segmentId);
-            await client.close();
-            await assertRemoteStorageAbsent(f);
+for (const planSource of ["managed-owner", "retained-checkout"] as const) {
+    for (const agentName of ["planner", "router"]) {
+        test(`Approve and Run from a remote ${agentName} turn starts execution for the ${planSource} Plan`, async () => {
+            await withRemoteRuntimeFixture(
+                async (f) => {
+                    const canonical = planSource === "managed-owner";
+                    if (canonical) await prepareDeliveryProject(f);
+                    else await prepareDelivery(f);
+                    const model = scriptInitialExecution(f, agentName, canonical ? deliveryContextMarkdown : undefined);
+                    const client = await f.start();
+                    try {
+                        assertEquals((await client.read()).kind, "ready");
+                        await client.send({
+                            kind: "workflow-plan",
+                            agentName,
+                            text: "Plan the remote sentinel delivery.",
+                        });
+                        await approveAndRun(f, await client.read());
+                        const completed = await client.read();
+                        assertEquals(completed.ok, true, completed.error);
+                        assert(completed.savedId);
+                        const segments = f.store.listSessionTranscriptSegments(completed.savedId);
+                        assertEquals(segments.length, 2, "Approve and Run must create an execution successor");
+                        assertEquals(segments[1].kind, "execution");
+                        assert(segments[0].sealedDigestHex, "The planning predecessor is sealed before execution");
+                        assertEquals(
+                            f.store.getCurrentSessionSegment(completed.savedId)?.segmentId,
+                            segments[1].segmentId,
+                        );
+                        assertEquals(model.engineerRequests(), 1);
+                        if (canonical) await assertCanonicalExecution(f, completed);
+                    } catch (error) {
+                        await client.terminate();
+                        throw error;
+                    } finally {
+                        await client.close();
+                    }
+                    await assertRemoteStorageAbsent(f);
+                },
+                { planSource },
+            );
         });
+    }
+}
+
+async function assertCanonicalExecution(f: RuntimeFixture, completed: RuntimeClientReport) {
+    const endpoint = `http://127.0.0.1:${f.connection.port}`;
+    const response = await fetch(`${endpoint}/project-store/inspect`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${f.connection.credential}` },
     });
+    assertEquals(response.status, 200);
+    const binding: ProjectStoreBinding = await response.json();
+    assert(binding?.projectId, "Planning must admit a canonical Project owner");
+    const owner = new ProjectStoreClient(endpoint, f.connection.credential, binding);
+    const resolved = (await owner.execute({ kind: "resolve-plan", reference: "remote-delivery" })).result;
+    assert("plan" in resolved && resolved.plan?.attrs.planId);
+    const plan = resolved.plan;
+    const planId = plan.attrs.planId;
+    assert(planId);
+    assert(plan.path.startsWith(join(f.homeDir, ".wld", "projects", binding.projectId, "plans") + "/"));
+    assertEquals(await readFile(plan.path, "utf8"), deliveryContextMarkdown);
+    await rejects(stat(join(f.remoteProject, "docs/plans/remote-delivery.md")), { code: "ENOENT" });
+    const reserved = (await owner.execute({ kind: "read-execution", planId })).result;
+    assert("execution" in reserved && reserved.execution, "Owner must retain the execution reservation");
+    assert(completed.activeWorkflow?.packageSelection);
+    assertEquals(completed.activeWorkflow.packageAttemptId, reserved.execution.attemptId);
+    assertEquals(completed.activeWorkflow.packageInput, reserved.execution.input);
 }
 
 interface AcceptedPlanEntry {
@@ -67,7 +121,7 @@ function containsAcceptedExecution(contents: string) {
 }
 
 /** Only the external model is scripted; Plan review, writes and ownership are real. */
-function scriptInitialExecution(f: RuntimeFixture, agentName = "planner") {
+function scriptInitialExecution(f: RuntimeFixture, agentName = "planner", contextMarkdown?: string) {
     let executionProviderRequests = 0;
     f.setModelResponseFactories([
         ...(agentName === "router"
@@ -84,15 +138,19 @@ function scriptInitialExecution(f: RuntimeFixture, agentName = "planner") {
             : []),
         () =>
             fauxAssistantMessage(
-                fauxToolCall("write", {
-                    path: "docs/plans/remote-delivery.md",
-                    content: deliveryPlan,
-                }),
-            ),
-        () =>
-            fauxAssistantMessage(
                 fauxToolCall("plan_written", {
                     planName: "remote-delivery",
+                    ...(contextMarkdown === undefined
+                        ? {}
+                        : {
+                              contextMarkdown,
+                              validationMarkdown: "Read the sentinel and run the fixture verification command.\n",
+                              targetBranch: "main",
+                              definition: {
+                                  summary: "Deliver a remote-only sentinel change",
+                                  affectedPaths: ["sentinel.txt"],
+                              },
+                          }),
                     executionAgent: "engineer",
                     collaborationRecommendation: "autonomous",
                 }),
@@ -112,11 +170,20 @@ async function approveAndRun(f: RuntimeFixture, ready: RuntimeClientReport) {
     const page = new URL(ready.reviewUrl);
     const token = page.searchParams.get("token");
     assert(token);
+    const reviewPage = await fetch(page, { unix: f.review.socketPath });
+    assertEquals(reviewPage.status, 200);
+    const embedded = (await reviewPage.text()).match(
+        /<script[^>]*data-(?:code-)?review-payload[^>]*>([\s\S]*?)<\/script>/,
+    )?.[1];
+    assert(embedded, "Review page should contain the offered document revision");
+    const revisions: Pick<ReviewPayload, "documentRevision" | "reviewRevision"> = JSON.parse(embedded);
     const response = await fetch(new URL("/api/review/decision", page.origin), {
         unix: f.review.socketPath,
         method: "POST",
         headers: { "content-type": "application/json", "x-runwield-review-token": token },
         body: JSON.stringify({
+            documentRevision: revisions.documentRevision,
+            reviewRevision: revisions.reviewRevision,
             approved: true,
             approvalAction: "run",
             executionAgent: "engineer",
@@ -134,7 +201,7 @@ async function startPlanning(client: RuntimeProcess) {
 }
 
 test("canceling Approve and Run during the planning checkpoint prevents initial execution", async () => {
-    await withRemoteRuntimeFixture(async (f) => {
+    await withRetainedRemoteRuntimeFixture(async (f) => {
         await prepareDelivery(f);
         const model = scriptInitialExecution(f);
         const checkpoint = latch();
@@ -202,7 +269,7 @@ test("canceling Approve and Run during the planning checkpoint prevents initial 
 });
 
 test("an evidence-load failure after Approve and Run clears the Agent transition", async () => {
-    await withRemoteRuntimeFixture(async (f) => {
+    await withRetainedRemoteRuntimeFixture(async (f) => {
         await prepareDelivery(f);
         scriptInitialExecution(f);
         const planPath = join(f.remoteProject, "docs/plans/remote-delivery.md");
@@ -247,7 +314,7 @@ test("an evidence-load failure after Approve and Run clears the Agent transition
 });
 
 test("Approve and Run TURN_END results do not expose the private execution handoff", async () => {
-    await withRemoteRuntimeFixture(async (f) => {
+    await withRetainedRemoteRuntimeFixture(async (f) => {
         await prepareDelivery(f);
         scriptInitialExecution(f);
         const client = await f.start();
