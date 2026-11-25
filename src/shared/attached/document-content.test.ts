@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { setCustomSetting, getDeliveryCopyPolicy } from "../settings.ts";
 import { packageFixture, create, read, tree } from "../testing/plan-package-fixture.ts";
 import { savePlanDocument, withPlanAccess, selectPlanAccess } from "../../plan-store/index.ts";
-import { writeWorkRecord } from "../work-records/store.ts";
+import { restoreWorkRecordDocument } from "../work-records/store.ts";
 import { recordAttrs, recordBody } from "../work-records/test-fixtures/package-records.ts";
 import { EVIDENCE, reachPlanning, planWrittenInput, runOperation, readRecordBytes } from "./attached-test-fixture.ts";
 import type { AttachedJsonObject, AttachedReadOperationName } from "./operations.ts";
@@ -58,8 +58,8 @@ test("Connect document reads bind canonical Plan pages and Work Records to the c
             const validation = await call("read_plan", { resource: "validation.md" });
             assert(validation.ok && "content" in validation);
             equal(validation.content, "# Checks\n");
-            const record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
-            const archived = await writeWorkRecord(
+            const record = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);
+            const archived = await restoreWorkRecordDocument(
                 f.root,
                 recordAttrs({ archivedAt: "2026-11-02T00:00:00.000Z" }),
                 recordBody,
@@ -140,7 +140,7 @@ test("a restricted external host reads home documents through the actual MCP car
             other.root,
             (await selectPlanAccess(other.root, "plan-one"))!,
             async () => {
-                return await writeWorkRecord(other.root, recordAttrs(), recordBody);
+                return await restoreWorkRecordDocument(other.root, recordAttrs(), recordBody);
             },
         );
         await withPlanAccess(f.root, (await selectPlanAccess(f.root, "plan-one"))!, async () => {
@@ -150,8 +150,8 @@ test("a restricted external host reads home documents through the actual MCP car
                 planWrittenInput({ ...planning, executionAgent: "engineer", collaborationRecommendation: "pair" }),
             );
             assert(submitted.ok && submitted.workflow.review);
-            const record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
-            const archived = await writeWorkRecord(
+            const record = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);
+            const archived = await restoreWorkRecordDocument(
                 f.root,
                 recordAttrs({ archivedAt: "2026-11-02T00:00:00.000Z" }),
                 recordBody,
@@ -237,7 +237,7 @@ test("Recorder document reads retain all-status Work Record access without advan
         assert(started.ok);
         const ready = await approveSemantic(fixture, started.workflow);
         assert(ready.ok && ready.workflow.nextAction.kind === "recorder");
-        const archived = await writeWorkRecord(
+        const archived = await restoreWorkRecordDocument(
             fixture.root,
             recordAttrs({ archivedAt: "2026-11-02T00:00:00.000Z" }),
             recordBody,

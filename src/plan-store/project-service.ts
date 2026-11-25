@@ -3,6 +3,7 @@ import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "./packages.ts";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
 import { readPlanRecordingContext, type PlanRecordingContext } from "./recording.ts";
+import type { CreateProjectWorkRecord, ProjectWorkRecord } from "@runwield/plans/store";
 import type { GeneratedWorkRecordSections } from "@runwield/plans/work-records";
 import type { PublishedDeliverySources } from "./published-source.ts";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
@@ -40,7 +41,12 @@ import {
 } from "../shared/work-records/package-recording.ts";
 import { findWorkRecordById } from "../shared/work-records/store.ts";
 import { searchWorkRecordDocumentsInOwner, searchWorkRecords } from "../shared/work-records/search.ts";
-import { listProjectWorkRecords, selectProjectWorkRecord } from "./project-work-records.ts";
+import {
+    createLocalProjectWorkRecord,
+    listProjectWorkRecords,
+    readLocalProjectWorkRecordCreation,
+    selectProjectWorkRecord,
+} from "./project-work-records.ts";
 import { syncWorkRecordToIndex } from "../shared/work-records/index-adapter.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 import {
@@ -491,6 +497,15 @@ export interface ProjectStoreReviewDecision extends PlanMutation {
     classification: import("@runwield/plans").PlanFrontMatter["classification"];
     workKind: import("@runwield/plans").PlanFrontMatter["workKind"] | null;
 }
+export interface ProjectStoreRecordCreate {
+    kind: "create-project-work-record";
+    operationId: string;
+    input: CreateProjectWorkRecord;
+}
+export interface ProjectStoreRecordCreated {
+    operationId: string;
+    createdRecord: Pick<ProjectWorkRecord, "markdown" | "relativePath">;
+}
 export interface ProjectStoreRecordCatalog {
     kind: "record-catalog";
 }
@@ -617,6 +632,7 @@ export type ProjectStoreCommand =
     | ProjectStoreEpicReview
     | ProjectStoreReviewCapture
     | ProjectStoreReviewDecision
+    | ProjectStoreRecordCreate
     | ProjectStoreRecordCatalog
     | ProjectStoreRecordQuery
     | ProjectStoreRecordRead
@@ -690,6 +706,7 @@ export interface ProjectStoreReply {
         | ProjectStorePlanResource
         | ProjectStoreReviewPresentation
         | ProjectStoreReviewInput
+        | ProjectStoreRecordCreated
         | ProjectStoreRecordResources
         | ProjectStoreRecordQueryResult
         | ProjectStoreRecords
@@ -1115,6 +1132,40 @@ export class PreparedProjectStore {
                     const { readPlanResourceCatalog } = await import("../plan-store.ts");
                     return { resourceCatalog: await readPlanResourceCatalog(this.cwd) };
                 }
+                if (command.kind === "create-project-work-record")
+                    return await withPlanPackageCatalogDiscovery(owner, async () => {
+                        const operation = {
+                            operationId: command.operationId,
+                            digest: operationDigest(JSON.stringify({ binding: this.binding, command })),
+                        };
+                        const receipt = await runReceiptedOperation(
+                            directory,
+                            operation.operationId,
+                            operation.digest,
+                            owner.projectId,
+                            async () => {
+                                const { attrs, markdown, relativePath } = await createLocalProjectWorkRecord(
+                                    this.cwd,
+                                    command.input,
+                                    operation,
+                                );
+                                return {
+                                    recordId: attrs.recordId,
+                                    revision: operationDigest(JSON.stringify({ markdown, relativePath })),
+                                };
+                            },
+                        );
+                        const record = await readLocalProjectWorkRecordCreation(operation);
+                        if (!record || receipt.status !== "completed")
+                            throw new Error("Completed Work Record creation evidence is unavailable.");
+                        const createdRecord = { markdown: record.markdown, relativePath: record.relativePath };
+                        if (
+                            receipt.recordId !== record.attrs.recordId ||
+                            receipt.revision !== operationDigest(JSON.stringify(createdRecord))
+                        )
+                            throw new Error("Completed Work Record creation evidence changed.");
+                        return { operationId: operation.operationId, createdRecord };
+                    });
                 if (command.kind === "record-catalog") {
                     const { listLocalWorkRecords } = await import("../shared/work-records/store.ts");
                     return { recordResources: await listLocalWorkRecords(this.cwd, { createDir: false }) };
@@ -1778,12 +1829,20 @@ export class PreparedProjectStore {
                                 if (!sources.workRecordOwner || sources.workRecordOwner.planId !== command.planId)
                                     throw new Error("Recording requires its retained parent owner.");
                                 const workRecordOwner = sources.workRecordOwner;
-                                const prepared = await reservePreparedPackageRecord(command.attemptId);
+                                const checkpoint = (await packageController(delivery)).validationCheckpoint;
+                                const deliveryCheckpoint =
+                                    checkpoint?.attemptId === command.attemptId ? checkpoint : null;
+                                const prepared = await reservePreparedPackageRecord(
+                                    command.attemptId,
+                                    deliveryCheckpoint?.hostRecorder,
+                                );
                                 if (command.kind === "reserve-recording")
                                     return { revision: command.expectedRevision, recordId: prepared.recordId };
                                 const generate = async () => {
                                     const source = {
                                         ...workRecordOwner,
+                                        deliveryCheckpoint,
+                                        preparation: { attemptId: prepared.attemptId, recordId: prepared.recordId },
                                         pendingPublication: !delivery.metadata.workflow?.delivery,
                                     };
                                     const saved = await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>

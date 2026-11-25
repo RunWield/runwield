@@ -301,20 +301,43 @@ async function executeManagedFixture() {
                     await import("../work-records/auto-generation.ts");
                 const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT: retainedIndex } =
                     await import("../work-records/mnemoteca-port.ts");
+                const existingRecordId = input.recordParent ? crypto.randomUUID() : undefined;
+                if (existingRecordId) {
+                    const { savePlanValidationCheckpoint } = await import("../../plan-store/index.ts");
+                    const { recorderCheckpoint } = await import("../work-records/test-fixtures/package-records.ts");
+                    const child = await loadPlan(input.cwd, "retained");
+                    if (!child) throw new Error("Retained child is missing.");
+                    await savePlanValidationCheckpoint(
+                        input.cwd,
+                        "retained",
+                        recorderCheckpoint(retainedAttempt.id, retainedAttempt.path, existingRecordId),
+                        { expectedRevision: child.revision, expectedControllerRevision: child.controllerRevision },
+                    );
+                }
                 const retainedRecord = await recordRetained({
                     cwd: input.cwd,
                     planName: "retained",
                     pendingPublication: true,
                     mnemotecaPort: retainedIndex,
-                    runRecorderStep: () =>
-                        Promise.resolve({
+                    runRecorderStep: (prompt) => {
+                        const reference: { successorRecordId: string; source: { planId: string } } = JSON.parse(prompt);
+                        if (
+                            existingRecordId &&
+                            (reference.successorRecordId !== existingRecordId ||
+                                reference.source.planId !== retainedParentId)
+                        )
+                            throw new Error("Retained child checkpoint did not reach its parent's Recorder.");
+                        return Promise.resolve({
                             title: "Retained delivery",
                             summary: "Delivered the original execution through its laptop owner.",
-                        }),
+                        });
+                    },
                 });
                 if (retainedRecord.status !== "generated" && retainedRecord.status !== "linked")
                     throw new Error(`Retained Recorder failed: ${JSON.stringify(retainedRecord)}`);
                 retainedRecordId = retainedRecord.recordId || "";
+                if (existingRecordId && retainedRecordId !== existingRecordId)
+                    throw new Error("Retained recording lost the child's checkpointed Work Record identity.");
                 const artifact = await checkpointExecutionWorktree({
                     worktreePath: retainedAttempt.path,
                     branch: retainedAttempt.branch,

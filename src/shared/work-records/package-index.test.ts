@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { packageFixture } from "../testing/plan-package-fixture.ts";
 import { withWorkRecordOwner } from "./owner.ts";
-import { writeWorkRecord, replaceWorkRecord } from "./store.ts";
+import { restoreWorkRecordDocument, replaceWorkRecord } from "./store.ts";
 import { recordAttrs, recordBody } from "./test-fixtures/package-records.ts";
 import { getWorkRecordIndexCollectionName, rebuildWorkRecordIndex } from "./index-adapter.ts";
 import { searchWorkRecords } from "./search.ts";
@@ -21,7 +21,7 @@ test("index rebuild and stale candidates hydrate canonical status and absolute p
         let collection = "";
         let recordId = "";
         await withWorkRecordOwner(f.root, f.identity, async () => {
-            const record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+            const record = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);
             recordId = record.attrs.recordId;
             collection = await getWorkRecordIndexCollectionName(f.root);
             await rebuildWorkRecordIndex(f.root, options);
@@ -71,7 +71,7 @@ test("accepted linked clones share record identity while unrelated Projects stay
         let recordId = "";
         let collection = "";
         await withWorkRecordOwner(f.root, f.identity, async () => {
-            recordId = (await writeWorkRecord(f.root, recordAttrs(), recordBody)).attrs.recordId;
+            recordId = (await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody)).attrs.recordId;
             collection = await getWorkRecordIndexCollectionName(f.root);
         });
         await withWorkRecordOwner(clone, admitted.identity, async () => {

@@ -1,4 +1,4 @@
-import { deepEqual, equal, ok, rejects } from "node:assert/strict";
+import { deepEqual, equal, notEqual, ok, rejects } from "node:assert/strict";
 import { copyFile, mkdir, stat, symlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
@@ -6,7 +6,7 @@ import { packageFixture } from "../shared/testing/plan-package-fixture.ts";
 import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
 import { workRecordFiles } from "@runwield/plans/work-record-files";
 import { withWorkRecordOwner } from "../shared/work-records/owner.ts";
-import { writeWorkRecord } from "../shared/work-records/store.ts";
+import { restoreWorkRecordDocument } from "../shared/work-records/store.ts";
 import { recordAttrs, recordBody } from "../shared/work-records/test-fixtures/package-records.ts";
 import { openProjectPlanStore } from "./index.ts";
 import { withPackageProject } from "./workflows.ts";
@@ -24,10 +24,10 @@ test("project Work Record reads stay passive and resolve the same record ID with
         await rejects(stat(directory), { code: "ENOENT" });
 
         const written = await withWorkRecordOwner(first.root, first.identity, () =>
-            writeWorkRecord(first.root, attrs, recordBody),
+            restoreWorkRecordDocument(first.root, attrs, recordBody),
         );
         const elsewhere = await withWorkRecordOwner(second.root, second.identity, () =>
-            writeWorkRecord(
+            restoreWorkRecordDocument(
                 second.root,
                 { ...attrs, archivedAt: "2026-11-12" },
                 recordBody.replace("Durable outcome", "Another Project"),
@@ -56,10 +56,10 @@ test("an explicit retained Work Record read sees its checkout under an ambient c
         const records = openProjectPlanStore(fixture.identity.projectId, { admitted: fixture.identity }).workRecords;
         const attrs = recordAttrs();
         await withWorkRecordOwner(fixture.root, fixture.identity, () =>
-            writeWorkRecord(fixture.root, attrs, recordBody),
+            restoreWorkRecordDocument(fixture.root, attrs, recordBody),
         );
         await withRetainedPlanFixture(fixture.root, async () => {
-            const retained = await writeWorkRecord(
+            const retained = await restoreWorkRecordDocument(
                 fixture.root,
                 attrs,
                 recordBody.replace("Durable outcome", "Retained outcome"),
@@ -87,6 +87,26 @@ test("Project Work Record diagnostics describe a rejected link without exposing 
             error.message === "Work Record path contains a symbolic link." && error.cause === undefined;
         await rejects(records.list(), diagnostic);
         await rejects(records.read("missing"), diagnostic);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("the bound store assigns independent Work Record identities and returns the persisted documents", async () => {
+    const fixture = await packageFixture();
+    try {
+        const records = openProjectPlanStore(fixture.identity.projectId, { admitted: fixture.identity }).workRecords;
+        const { status, scope, origin, completionMode, provenance } = recordAttrs();
+        const input = { status, scope, origin, completionMode, provenance, body: recordBody };
+        const [first, second] = await Promise.all([records.create(input), records.create(input)]);
+        notEqual(first.attrs.recordId, second.attrs.recordId);
+        notEqual(first.relativePath, second.relativePath);
+        for (const record of [first, second]) {
+            ok(record.attrs.recordId);
+            ok(!("path" in record));
+            deepEqual(await records.read(record.attrs.recordId), record);
+        }
+        equal((await records.list()).length, 2);
     } finally {
         await fixture.cleanup();
     }

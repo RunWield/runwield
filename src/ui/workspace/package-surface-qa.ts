@@ -7,7 +7,7 @@ import { packageFixture, create } from "../../shared/testing/plan-package-fixtur
 import { readPlanPackage } from "../../plan-store/packages.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { writeWorkRecord } from "../../shared/work-records/store.ts";
+import { restoreWorkRecordDocument } from "../../shared/work-records/store.ts";
 import { recordAttrs, recordBody } from "../../shared/work-records/test-fixtures/package-records.ts";
 import {
     prepareSequenceReview,
@@ -108,7 +108,7 @@ await withPackageWorkflow(
     },
     async () => {
         if (!(await registeredWorkRecords(project.projectId, store.projects).list()).length)
-            await writeWorkRecord(root, recordAttrs(), recordBody);
+            await restoreWorkRecordDocument(root, recordAttrs(), recordBody);
         startWorkspaceServer({ mode: "owner", host: "127.0.0.1", port, store });
         if (sequence) {
             const documents = await prepareSequenceReview(root, plan.metadata.name);

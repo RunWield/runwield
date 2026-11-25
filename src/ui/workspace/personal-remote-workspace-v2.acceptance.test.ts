@@ -20,7 +20,7 @@ import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { savePlanWithController as savePlan } from "../../shared/testing/plan-controller-fixture.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-import { writeWorkRecord } from "../../shared/work-records/store.ts";
+import { restoreWorkRecordDocument } from "../../shared/work-records/store.ts";
 import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";
 import { createOwnerWorkspaceApp } from "./server.ts";
 import { projects } from "@runwield/projects";
@@ -152,7 +152,7 @@ test("every Workspace search result type opens its built destination", async () 
         classification: "PLANNED_CHANGE",
         status: "draft",
     });
-    await writeWorkRecord(
+    await restoreWorkRecordDocument(
         root,
         {
             kind: "work_record",

@@ -26,7 +26,7 @@ import {
     previewWorkRecordBackfill,
     rejectWorkRecordSupersession,
     WorkRecordSupersessionRollbackError,
-    writeWorkRecord,
+    restoreWorkRecordDocument,
 } from "./index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getRunWieldRuntimeDir } from "../../constants.ts";
@@ -129,9 +129,13 @@ function attrs(recordId: string) {
 }
 
 async function seed(cwd: string, withProposal = true) {
-    await writeWorkRecord(cwd, attrs(PREDECESSOR_ID), "# Old\n\n## Summary\n\nOld work.", { fileName: "old.md" });
-    await writeWorkRecord(cwd, attrs(OTHER_ID), "# Other\n\n## Summary\n\nOther work.", { fileName: "other.md" });
-    await writeWorkRecord(
+    await restoreWorkRecordDocument(cwd, attrs(PREDECESSOR_ID), "# Old\n\n## Summary\n\nOld work.", {
+        fileName: "old.md",
+    });
+    await restoreWorkRecordDocument(cwd, attrs(OTHER_ID), "# Other\n\n## Summary\n\nOther work.", {
+        fileName: "other.md",
+    });
+    await restoreWorkRecordDocument(
         cwd,
         {
             ...attrs(SUCCESSOR_ID),
@@ -457,12 +461,55 @@ test("rollback failure reports original error and every uncertain canonical path
     });
 });
 
+test("a replay that fails supersession preserves the successor published by another writer", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "recording-replay-"));
+    try {
+        const predecessor = await restoreWorkRecordDocument(
+            cwd,
+            attrs(PREDECESSOR_ID),
+            "# Old\n\n## Summary\n\nOld work.",
+        );
+        const planId = "plan-replayed-successor";
+        await seedPlan(cwd, "successor", "# Successor", {
+            planId,
+            classification: "PLANNED_CHANGE",
+            status: "verified",
+            supersedes: [PREDECESSOR_ID],
+        });
+        const source = (await previewWorkRecordBackfill(cwd)).eligible[0];
+        let peerId = "";
+        const outcome = await generateWorkRecordForSource(cwd, source, {
+            runRecorderStep: async (prompt) => {
+                const request: { successorRecordId: string } = JSON.parse(prompt);
+                peerId = request.successorRecordId;
+                await restoreWorkRecordDocument(
+                    cwd,
+                    {
+                        ...attrs(peerId),
+                        scope: "planned_change",
+                        origin: "internal",
+                        provenance: { sourcePlans: [planId] },
+                    },
+                    "# Published by peer\n\n## Summary\n\nPeer result.",
+                );
+                await fsRm(predecessor.path);
+                return { title: "Retry", summary: "Retry result." };
+            },
+            mnemotecaPort: createWorkRecordMnemotecaFixture(),
+        });
+        assertEquals(outcome.status, "failed");
+        assertEquals((await findWorkRecordById(cwd, peerId))?.title, "Published by peer");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
 test("generation preserves its successor when supersession rollback is incomplete", async () => {
     await withProcessGlobalTestLock(async () => {
         const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         const originalRename = fs.rename;
         try {
-            await writeWorkRecord(cwd, attrs(PREDECESSOR_ID), "# Old\n\n## Summary\n\nOld work.", {
+            await restoreWorkRecordDocument(cwd, attrs(PREDECESSOR_ID), "# Old\n\n## Summary\n\nOld work.", {
                 fileName: "old.md",
             });
             await seedPlan(cwd, "successor", "# Successor\n\n## Plan\n\nReplace old work.", {
@@ -482,17 +529,21 @@ test("generation preserves its successor when supersession rollback is incomplet
                 if (calls >= 2) return Promise.reject(new Error(`injected generation rename failure ${calls}`));
                 return originalRename(oldpath, newpath);
             };
+            let successorId = "";
             const outcome = await generateWorkRecordForSource(cwd, source, {
-                idGenerator: () => SUCCESSOR_ID,
                 now: () => new Date("2026-08-03T00:00:00.000Z"),
-                runRecorderStep: () => Promise.resolve({ title: "Successor", summary: "Replacement complete." }),
+                runRecorderStep: (prompt) => {
+                    const request: { successorRecordId: string } = JSON.parse(prompt);
+                    successorId = request.successorRecordId;
+                    return Promise.resolve({ title: "Successor", summary: "Replacement complete." });
+                },
                 mnemotecaPort: createWorkRecordMnemotecaFixture(),
             });
 
             assertEquals(outcome.status, "failed");
             assertStringIncludes(outcome.error || "", "rollback was incomplete");
             assertStringIncludes(outcome.error || "", "work-records/2026-08-03-successor.md");
-            assertEquals((await findWorkRecordById(cwd, SUCCESSOR_ID))?.attrs.recordId, SUCCESSOR_ID);
+            assertEquals((await findWorkRecordById(cwd, successorId))?.attrs.recordId, successorId);
         } finally {
             fs.rename = originalRename;
             await fsRm(cwd, { recursive: true });

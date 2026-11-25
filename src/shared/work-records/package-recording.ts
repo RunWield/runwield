@@ -1,3 +1,4 @@
+import type { HostRecorderState } from "@runwield/plans/controller-state";
 import { workRecords } from "@runwield/plans/work-records";
 import type { RecordingPreparation } from "@runwield/plans/work-record-files";
 import { projects } from "@runwield/projects";
@@ -9,6 +10,7 @@ import {
     generateRecorderSections,
     generateWorkRecordForSource,
     normalizeRecorderOutput,
+    recordingCheckpoint,
     validateRecorderProposals,
 } from "./generation.ts";
 import { approveWorkRecord } from "./lifecycle.ts";
@@ -37,31 +39,35 @@ export async function preparedPackageRecordCopy(attemptId: string): Promise<Deli
     return (await readPreparedPackageRecord(attemptId))?.record;
 }
 
-export async function reservePreparedPackageRecord(attemptId: string): Promise<RecordingPreparation> {
-    return await withWorkRecordMutation(async () => {
-        const retained = await readPreparedPackageRecord(attemptId);
-        if (retained) return retained;
-        const state: RecordingPreparation = {
-            version: 1,
-            attemptId,
-            recordId: crypto.randomUUID(),
-            createdAt: new Date().toISOString(),
-        };
-        await requireOwnedWorkRecordFiles().writePreparation(state);
-        return state;
-    });
+export async function reservePreparedPackageRecord(
+    attemptId: string,
+    checkpoint?: HostRecorderState,
+): Promise<RecordingPreparation> {
+    const files = requireOwnedWorkRecordFiles();
+    const prepared = checkpoint
+        ? await files.restorePreparationCheckpoint(attemptId, checkpoint)
+        : await files.reservePreparation(attemptId);
+    if (prepared.sections !== undefined) normalizeRecorderOutput(prepared.sections);
+    return prepared;
 }
 
 /** Acceptance is retained before canonical persistence; retries keep the identity, date and sections. */
 export async function generatePreparedPackageRecord(cwd: string, source: Source, attemptId: string, options: Options) {
-    const prepared = await reservePreparedPackageRecord(attemptId);
+    const prepared = source.preparation
+        ? await readPreparedPackageRecord(attemptId)
+        : await reservePreparedPackageRecord(attemptId, recordingCheckpoint(source)?.hostRecorder);
+    if (
+        !prepared ||
+        (source.preparation &&
+            (source.preparation.attemptId !== attemptId || source.preparation.recordId !== prepared.recordId))
+    )
+        throw new Error("Retained Work Record preparation does not match this recording attempt.");
     const result = await generateWorkRecordForSource(
         cwd,
-        { ...source, preparedRecordId: prepared.recordId },
+        { ...source, preparation: { attemptId: prepared.attemptId, recordId: prepared.recordId } },
         {
             ...options,
             now: () => new Date(prepared.createdAt),
-            idGenerator: () => prepared.recordId,
             runRecorderStep: async (prompt: string) => {
                 if (prepared.sections) return normalizeRecorderOutput(prepared.sections);
                 const request: { settledSupersedes: string[] } = JSON.parse(prompt);

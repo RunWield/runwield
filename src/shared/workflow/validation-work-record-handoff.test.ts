@@ -8,7 +8,7 @@ import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd
 
 import { HostedSession } from "../session/hosted-session.ts";
 import { getRunWieldSessionDir } from "../session/root-session.ts";
-import { listWorkRecords, writeWorkRecord } from "../work-records/store.ts";
+import { listWorkRecords, restoreWorkRecordDocument } from "../work-records/store.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { attachRecorder, makeUi } from "./validation-test-helpers.ts";
 import { runFeaturePostVerificationHandoffs } from "./validation-helpers.ts";
@@ -23,7 +23,7 @@ async function runWorkRecordHandoff(
     const { projectRoot, setModelResponseFactories } = fixture;
     // This completed legacy owner has no package delivery receipt.
     return await withRetainedPlanFixture(projectRoot, async () => {
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             projectRoot,
             {
                 kind: "work_record",

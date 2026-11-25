@@ -7,7 +7,7 @@ import { archivePlan } from "../../plan-store/index.ts";
 import { loadArchivedPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { setCustomSetting } from "../../shared/settings.ts";
-import { writeWorkRecord } from "../../shared/work-records/store.ts";
+import { restoreWorkRecordDocument } from "../../shared/work-records/store.ts";
 import { workRecords, type WorkRecordFrontMatter } from "@runwield/plans/work-records";
 import { runPlansPruneCommand } from "./prune.ts";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
@@ -49,7 +49,7 @@ function recordAttrs(recordId: string, sourcePlan: string): WorkRecordFrontMatte
 }
 
 async function writeRecord(projectRoot: string, recordId: string, sourcePlan: string): Promise<void> {
-    await writeWorkRecord(
+    await restoreWorkRecordDocument(
         projectRoot,
         recordAttrs(recordId, sourcePlan),
         `# Record ${recordId}\n\n## Summary\n\nCompleted work.`,

@@ -10,7 +10,11 @@ import type {
     ReviseProjectPlan,
 } from "@runwield/plans/store";
 import { type ProjectId } from "@runwield/projects";
-import { listProjectWorkRecords, selectProjectWorkRecord } from "./project-work-records.ts";
+import {
+    createLocalProjectWorkRecord,
+    listProjectWorkRecords,
+    selectProjectWorkRecord,
+} from "./project-work-records.ts";
 import { bindProjectPlanStore, checkoutPlanIdentity, type ProjectPlanStoreOptions } from "./project-binding.ts";
 import { PlanNotFoundError, StalePlanWriteError, type PlanResource } from "../plan-store.ts";
 import {
@@ -26,6 +30,7 @@ import { recordPlanEvent } from "./events.ts";
 import {
     admitManagedPlanCheckout,
     currentManagedRetainedExecution,
+    createManagedProjectWorkRecord,
     managedPlanStoreActive,
     readManagedActivePlanById,
 } from "./managed.ts";
@@ -172,6 +177,12 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
     return {
         projectId,
         workRecords: {
+            create: (input) =>
+                run((cwd) =>
+                    managedPlanStoreActive()
+                        ? createManagedProjectWorkRecord(cwd, input)
+                        : createLocalProjectWorkRecord(cwd, input),
+                ),
             list: listRecords,
             read: async (id) => selectProjectWorkRecord(await listRecords(), id),
         },

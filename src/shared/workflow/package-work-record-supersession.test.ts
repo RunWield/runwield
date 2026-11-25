@@ -7,7 +7,7 @@ import { git } from "../git-test-fixture.ts";
 import { filterWorkRecordsForList } from "../work-records/list.ts";
 import { searchWorkRecords } from "../work-records/search.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { writeWorkRecord, findWorkRecordById } from "../work-records/store.ts";
+import { restoreWorkRecordDocument, findWorkRecordById } from "../work-records/store.ts";
 import { recordAttrs, recordBody } from "../work-records/test-fixtures/package-records.ts";
 import { readWorkRecordLocations } from "../work-records/import.ts";
 
@@ -18,7 +18,7 @@ for (const boundary of ["locations", "supersession", "before_approval", "approva
         try {
             await f.scope(async () => {
                 for (const recordId of predecessors)
-                    await writeWorkRecord(f.root, recordAttrs({ recordId }), recordBody);
+                    await restoreWorkRecordDocument(f.root, recordAttrs({ recordId }), recordBody);
             });
             const stopped = await f.validate({ boundary });
             equal(stopped.code, 86, stopped.text);
@@ -78,17 +78,17 @@ test("interrupted declared supersession preserves a later explicit relationship 
     const f = await recordingFixture(undefined, undefined, false, [predecessorId]);
     try {
         await f.scope(async () => {
-            const { writeWorkRecord } = await import("../work-records/store.ts");
+            const { restoreWorkRecordDocument } = await import("../work-records/store.ts");
             const { recordAttrs, recordBody } = await import("../work-records/test-fixtures/package-records.ts");
-            await writeWorkRecord(f.root, recordAttrs({ recordId: predecessorId }), recordBody);
+            await restoreWorkRecordDocument(f.root, recordAttrs({ recordId: predecessorId }), recordBody);
         });
         const stopped = await f.validate({ boundary: "supersession" });
         equal(stopped.code, 86, stopped.text);
         const head = await git(f.remote, ["rev-parse", "main"]);
         await f.scope(async () => {
-            const { writeWorkRecord, replaceWorkRecord, findWorkRecordById } = await import("../work-records/store.ts");
+            const { restoreWorkRecordDocument, replaceWorkRecord, findWorkRecordById } = await import("../work-records/store.ts");
             const { recordAttrs, recordBody } = await import("../work-records/test-fixtures/package-records.ts");
-            const later = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+            const later = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);
             const predecessor = await findWorkRecordById(f.root, predecessorId);
             ok(predecessor);
             await replaceWorkRecord(

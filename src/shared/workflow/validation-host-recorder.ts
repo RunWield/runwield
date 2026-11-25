@@ -36,9 +36,11 @@ export async function runHostRecorder(
         pendingPublication,
         mnemotecaPort: args.workRecordMnemotecaPort,
         runRecorderStep: async (prompt) => {
+            const source: RecorderPromptReference = JSON.parse(prompt);
             let saved = args.validationCheckpoint!.hostRecorder;
+            if (saved && saved.recordId.toLowerCase() !== source.successorRecordId.toLowerCase())
+                throw new Error("The Recorder checkpoint belongs to a different Work Record identity.");
             if (!saved) {
-                const source: RecorderPromptReference = JSON.parse(prompt);
                 const recordId = source.successorRecordId;
                 const workflow = args.session.getActiveWorkflow();
                 const evidence = await readDeliveryEvidence(

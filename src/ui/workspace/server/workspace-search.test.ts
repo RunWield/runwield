@@ -29,7 +29,7 @@ import { loadPlan } from "../../../shared/testing/plan-query-fixture.ts";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
 import { addEntry, withWorktreeRegistryLock } from "../../../shared/worktree-registry.ts";
-import { replaceWorkRecord, writeWorkRecord } from "../../../shared/work-records/store.ts";
+import { replaceWorkRecord, restoreWorkRecordDocument } from "../../../shared/work-records/store.ts";
 import {
     getWorkspaceSearchRefreshMarker,
     requestWorkspaceSearchRefresh,
@@ -138,7 +138,7 @@ test("Workspace search hydrates current Work Record confidence, summary, links, 
             createdAt: "2026-09-01T00:00:00.000Z",
             provenance: { sourcePlans: ["old-plan"] },
         };
-        const record = await writeWorkRecord(
+        const record = await restoreWorkRecordDocument(
             fixture.root,
             attrs,
             "# Search Record\n\n## Summary\n\nOld searchable summary.\n",
@@ -828,25 +828,25 @@ test("Workspace search reports duplicate Work Record identity diagnostics and ex
             createdAt: "2026-09-01T00:00:00.000Z",
             provenance: { sourcePlans: ["plan-id"] },
         };
-        const original = await writeWorkRecord(
+        const original = await restoreWorkRecordDocument(
             fixture.root,
             { ...base, status: "approved" },
             "# Current Record\n\n## Summary\n\nCurrent record needle.\n",
             { fileName: "current.md" },
         );
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             fixture.root,
             { ...base, recordId: "c3333333-3333-4333-8333-333333333333", status: "draft" },
             "# Draft Record\n\n## Summary\n\nDraft record needle.\n",
             { fileName: "draft.md" },
         );
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             fixture.root,
             { ...base, recordId: "c3333333-3333-4333-8333-333333333334", status: "pending_verification" },
             "# Pending Verification Record\n\n## Summary\n\nPending verification record needle.\n",
             { fileName: "pending-verification.md" },
         );
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             fixture.root,
             {
                 ...base,
@@ -857,7 +857,7 @@ test("Workspace search reports duplicate Work Record identity diagnostics and ex
             "# Archived Record\n\n## Summary\n\nArchived record needle.\n",
             { fileName: "archived.md" },
         );
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             fixture.root,
             {
                 ...base,
@@ -966,7 +966,7 @@ test("owner search uses each registered Project's Plan authority and filters by 
         const unrelated = store.registerProject({ root: other.root });
         let record;
         search = await withPlanAccess(f.root, (await selectPlanAccess(f.root, "plan-one"))!, async () => {
-            record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+            record = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);
             return createWorkspaceSearchService({ store, dbPath: ":memory:" });
         });
         const before = await tree(f.root);

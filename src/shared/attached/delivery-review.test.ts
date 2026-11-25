@@ -8,7 +8,7 @@ import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { toDelivery } from "./delivery-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import { applyAttachedCodeReviewDecision } from "./code-review-decision.ts";
-import { listWorkRecords, writeWorkRecord } from "../work-records/store.js";
+import { listWorkRecords, restoreWorkRecordDocument } from "../work-records/store.js";
 
 for (const answer of ["open", "skip"]) {
     test(`Attached ask code review honors ${answer}`, async () => {
@@ -113,7 +113,7 @@ test("Attached delivery leaves valid supersession proposals for wld wr supersede
     const fixture = await attachedValidationFixture({ attrs: { humanReviewMode: "none" } });
     try {
         const oldId = crypto.randomUUID();
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             fixture.cwd,
             {
                 kind: "work_record",

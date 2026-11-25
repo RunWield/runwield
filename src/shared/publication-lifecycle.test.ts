@@ -1,7 +1,7 @@
 import { workRecords } from "@runwield/plans/work-records";
 import { projects } from "@runwield/projects";
 import { withWorkRecordOwner } from "./work-records/owner.ts";
-import { writeWorkRecord } from "./work-records/store.ts";
+import { restoreWorkRecordDocument } from "./work-records/store.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
@@ -339,7 +339,7 @@ test("publication supersession reads sealed checkout copies without touching the
         await git(root, ["commit", "-m", "Seal successor and predecessor"]);
         const candidate = await git(root, ["rev-parse", "HEAD"]);
         await withWorkRecordOwner(root, admitted.identity, async () => {
-            const personal = await writeWorkRecord(
+            const personal = await restoreWorkRecordDocument(
                 root,
                 priorAttrs,
                 "# Personal predecessor stays unchanged\n\n## Summary\n\nIndependent personal owner.\n",

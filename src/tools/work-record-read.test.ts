@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import { writeWorkRecord } from "../shared/work-records/index.ts";
+import { restoreWorkRecordDocument } from "../shared/work-records/index.ts";
 import type { WorkRecordFrontMatter } from "@runwield/plans/work-records";
 import { createWorkRecordReadTool } from "./work-record-read.ts";
 
@@ -34,7 +34,7 @@ function recordAttrs(archivedAt?: string): WorkRecordFrontMatter {
 test("work_record_read returns canonical fixture Markdown and structured details", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "work-record-read-tool-"));
     try {
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             projectRoot,
             recordAttrs(),
             "# Canonical outcome\n\n## Summary\n\nSummary\n\n## Details\n\nFixture body",
@@ -57,7 +57,7 @@ test("work_record_read returns canonical fixture Markdown and structured details
 test("work_record_read enforces current-only access through the canonical store", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "work-record-read-current-"));
     try {
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             projectRoot,
             recordAttrs("2026-07-15T00:00:00.000Z"),
             "# Archived outcome\n\n## Summary\n\nHistorical.",

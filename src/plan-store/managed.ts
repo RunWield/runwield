@@ -1,3 +1,5 @@
+import type { CreateProjectWorkRecord, ProjectWorkRecord } from "@runwield/plans/store";
+import { workRecords } from "@runwield/plans/work-records";
 import { projects, type ProjectId, type ProjectStoreIdentity } from "@runwield/projects";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
 /** Connection selection and durable requests stay inside the public Plan owner. */
@@ -18,7 +20,7 @@ import type { RemoteSessionControlConnection } from "../shared/remote/session-co
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { writeJsonAtomically, ensurePrivateDir } from "../shared/private-json-file.ts";
 import { operationDigest, operationHash } from "./operation-receipts.ts";
-import type { ProjectStoreBinding, ProjectStoreCommand } from "./project-service.ts";
+import type { ProjectStoreBinding, ProjectStoreCommand, ProjectStoreReply } from "./project-service.ts";
 import type { PlanAuthoringInput } from "./access.ts";
 import type { PlanExecutionReservation } from "./workflows.ts";
 
@@ -254,10 +256,18 @@ interface RetainedManagedCommand {
     command: ProjectStoreCommand;
 }
 /** Retain the exact command identity in execution continuation before sending an owner mutation. */
-export async function mutateManagedPlan(cwd: string, command: ProjectStoreCommand) {
+async function executeManagedMutation<Result>(
+    cwd: string,
+    command: ProjectStoreCommand,
+    readResult: (result: ProjectStoreReply["result"]) => Result,
+): Promise<Result> {
     const owner = await client(cwd, true);
     if (!("operationId" in command)) throw new Error("Managed mutation requires an operation identity.");
+    validateProjectStoreRequest({ binding: owner.binding, command });
     const { operationId: _operationId, ...intent } = command;
+    const repeatableCreation =
+        command.kind === "create-project-work-record" ||
+        (command.kind === "author-plan" && !command.input.expectedRevision);
     // A CLI retry observes today's revision, but a pending restore still owns its original precondition.
     const stableIntent =
         command.kind === "restore-history"
@@ -282,7 +292,7 @@ export async function mutateManagedPlan(cwd: string, command: ProjectStoreComman
         }
         if (
             retained.acknowledged &&
-            ((command.kind === "author-plan" && !command.input.expectedRevision) ||
+            (repeatableCreation ||
                 (command.kind === "restore-history" &&
                     retained.command.kind === "restore-history" &&
                     retained.command.expectedRevision !== command.expectedRevision))
@@ -302,18 +312,20 @@ export async function mutateManagedPlan(cwd: string, command: ProjectStoreComman
                 writeJsonAtomically(path, { ...retained, acknowledged: true });
             throw error;
         });
-        if (!("status" in result.result) || result.result.status !== "completed")
-            throw new Error("Managed Plan operation remains recoverable under its retained identity.");
-        if (
-            (command.kind === "restore-history" ||
-                (command.kind === "author-plan" && !command.input.expectedRevision)) &&
-            !retained.acknowledged
-        )
+        const value = readResult(result.result);
+        if ((command.kind === "restore-history" || repeatableCreation) && !retained.acknowledged)
             writeJsonAtomically(path, { ...retained, acknowledged: true });
-        return result.result;
+        return value;
     } finally {
         lock.close();
     }
+}
+export async function mutateManagedPlan(cwd: string, command: ProjectStoreCommand) {
+    return await executeManagedMutation(cwd, command, (result) => {
+        if (!("status" in result) || result.status !== "completed")
+            throw new Error("Managed Plan operation remains recoverable under its retained identity.");
+        return result;
+    });
 }
 export async function authorManagedPlan(cwd: string, input: PlanAuthoringInput): Promise<void> {
     await authorManagedPlanWithIdentity(cwd, input);
@@ -715,6 +727,22 @@ export async function verifyManagedRecording(
     ).result;
     if (!("manifest" in result)) throw new Error("Recording delivery proof is unavailable.");
     return result.manifest;
+}
+
+export async function createManagedProjectWorkRecord(
+    cwd: string,
+    input: CreateProjectWorkRecord,
+): Promise<ProjectWorkRecord> {
+    return await executeManagedMutation(
+        cwd,
+        { kind: "create-project-work-record", operationId: randomUUID(), input },
+        (result) => {
+            if (!("createdRecord" in result)) throw new Error("Managed owner returned another Work Record result.");
+            const { markdown, relativePath } = result.createdRecord;
+            const { path: _ownerPath, ...record } = workRecords.documents.parse(markdown, { relativePath });
+            return record;
+        },
+    );
 }
 
 export async function listManagedWorkRecords(

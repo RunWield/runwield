@@ -1,4 +1,7 @@
 import { workRecordFiles } from "@runwield/plans/work-record-files";
+import type { RecordingPreparation } from "@runwield/plans/work-record-files";
+import type { ValidationCheckpoint } from "@runwield/plans/controller-state";
+import { createHash } from "node:crypto";
 import { recordPlanWorkRecord, ensureArchivedPlanIdentity } from "../../plan-store/index.ts";
 import { capturePlanAccess } from "../../plan-store/index.ts";
 import { currentWorkRecordOwner } from "./owner.ts";
@@ -37,7 +40,13 @@ import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts"
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "../workflow/validation-session-adapter.ts";
 import { settleWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
-import { deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.ts";
+import {
+    beginWorkRecordCreation,
+    deleteWorkRecord,
+    listWorkRecords,
+    readWorkRecordCreation,
+    resumePreparedWorkRecordCreation,
+} from "./store.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import { applyWorkRecordSupersession, WorkRecordSupersessionRollbackError } from "./supersession.ts";
 
@@ -52,7 +61,8 @@ type GeneratedWorkRecordScope = Extract<WorkRecordScope, "planned_change" | "epi
 
 export interface WorkRecordSource {
     recordingAttemptId?: string;
-    preparedRecordId?: string;
+    preparation?: Pick<RecordingPreparation, "attemptId" | "recordId">;
+    deliveryCheckpoint?: ValidationCheckpoint | null;
     /** Explicit artifact preparation, never ordinary backfill eligibility. */
     pendingPublication?: boolean;
     sourceKind: "active" | "archived";
@@ -79,7 +89,6 @@ export interface WorkRecordSource {
 export interface GenerationOptions {
     /** Cancellation of the recording operation. */
     signal?: AbortSignal;
-    idGenerator?: () => string;
     now?: () => Date;
     runRecorderStep?: (prompt: string) => Promise<GeneratedWorkRecordSections>;
     mnemotecaPort?: WorkRecordMnemotecaPort;
@@ -249,11 +258,37 @@ export function recordsBySourcePlanId(records: WorkRecordResource[]): WorkRecord
     return map;
 }
 
-function findLinkableExistingRecord(source: WorkRecordSource, existingByPlanId: WorkRecordsBySourcePlanId) {
+export function recordingCheckpoint(source: WorkRecordSource): ValidationCheckpoint | undefined {
+    return (
+        (source.deliveryCheckpoint === undefined ? source.attrs.validationCheckpoint : source.deliveryCheckpoint) ??
+        undefined
+    );
+}
+
+function retainedRecordingId(source: WorkRecordSource): string | undefined {
+    return source.preparation?.recordId ?? recordingCheckpoint(source)?.hostRecorder?.recordId;
+}
+
+function recordingAttemptKey(source: WorkRecordSource): string {
+    const checkpoint = recordingCheckpoint(source);
+    const delivery = source.recordingAttemptId ?? source.attrs.publicationReceipt?.publishedCommit;
+    const completion = source.attrs.verifiedAt ?? source.attrs.userVerifiedAt;
+    const operation = delivery ?? (checkpoint ? [checkpoint.attemptId, checkpoint.generation] : completion);
+    return createHash("sha256")
+        .update(JSON.stringify([source.planId, operation]))
+        .digest("hex");
+}
+
+function findLinkableExistingRecord(
+    source: WorkRecordSource,
+    existingByPlanId: WorkRecordsBySourcePlanId,
+    retainedId = retainedRecordingId(source),
+) {
     const candidates = source.planId ? existingByPlanId.get(source.planId) || [] : [];
+    const recordingId = retainedId?.toLowerCase();
     return candidates.find(
         (record) =>
-            (!source.preparedRecordId || record.attrs.recordId === source.preparedRecordId) &&
+            (!recordingId || record.attrs.recordId.toLowerCase() === recordingId) &&
             (record.attrs.status === "approved" ||
                 (source.pendingPublication && record.attrs.status === "pending_verification")) &&
             record.attrs.origin === "internal" &&
@@ -268,7 +303,7 @@ export function evaluateWorkRecordSource(
     source: WorkRecordSource,
     existingByPlanId: WorkRecordsBySourcePlanId = new Map(),
 ): WorkRecordSource {
-    if (!source.preparedRecordId && source.attrs.workRecord && source.attrs.workRecord.status !== "failed") {
+    if (!source.preparation && source.attrs.workRecord && source.attrs.workRecord.status !== "failed") {
         return { ...source, skipReason: "existing_backlink" };
     }
     if (isChildFeaturePlan(source)) return { ...source, skipReason: "child_feature" };
@@ -289,7 +324,7 @@ export function evaluateWorkRecordSource(
             completionMode === "closed_without_verification"
                 ? nonEmptyString(source.attrs.closedWithoutVerificationReason) || DEFAULT_CLOSURE_REASON
                 : undefined,
-        ...(existingRecord ? { existingRecord } : {}),
+        existingRecord,
     };
 }
 
@@ -364,14 +399,10 @@ async function updateSourceFrontMatter(cwd: string, source: WorkRecordSource, up
     await recordPlanWorkRecord(cwd, source, updates.workRecord);
 }
 
-async function ensureSourcePlanId(
-    cwd: string,
-    source: WorkRecordSource,
-    options: WorkRecordGenerationOptions,
-): Promise<WorkRecordSource> {
+async function ensureSourcePlanId(cwd: string, source: WorkRecordSource): Promise<WorkRecordSource> {
     if (source.planId) return source;
     if (source.sourceKind === "active") {
-        const resource = await ensurePlanIdentity(cwd, source.name, { idGenerator: options.idGenerator });
+        const resource = await ensurePlanIdentity(cwd, source.name);
         return {
             ...source,
             planId: resource.planId,
@@ -488,8 +519,8 @@ function buildRecorderPrompt(source: WorkRecordSource, successorRecordId: string
 export async function generateRecorderSections(
     cwd: string,
     source: WorkRecordSource,
-    options: GenerationOptions = {},
-    successorRecordId: string = crypto.randomUUID(),
+    options: GenerationOptions,
+    successorRecordId: string,
     settledSupersedes: string[] = [],
 ): Promise<GeneratedWorkRecordSections> {
     const prompt = buildRecorderPrompt(source, successorRecordId, settledSupersedes);
@@ -672,12 +703,22 @@ export async function generateWorkRecordForSource(
     const now = options.now ? options.now() : new Date();
     let source = inputSource;
     try {
-        source = await ensureSourcePlanId(cwd, source, options);
-        const existingByPlanId = recordsBySourcePlanId(await listWorkRecords(cwd));
-        source = evaluateWorkRecordSource(source, existingByPlanId);
+        source = await ensureSourcePlanId(cwd, source);
+        source = evaluateWorkRecordSource(source);
         if (source.skipReason) {
             throw new Error(`Source is not eligible for Work Record generation: ${source.skipReason}.`);
         }
+        const attemptKey = recordingAttemptKey(source);
+        const retainedId = retainedRecordingId(source);
+        const reservedId = source.preparation ? undefined : await readWorkRecordCreation(cwd, attemptKey);
+        if (retainedId && reservedId && retainedId.toLowerCase() !== reservedId.toLowerCase())
+            throw new Error("The Recorder checkpoint belongs to a different Work Record identity.");
+        const existingByPlanId = recordsBySourcePlanId(await listWorkRecords(cwd));
+        source.existingRecord = findLinkableExistingRecord(
+            source,
+            existingByPlanId,
+            retainedId ?? reservedId ?? undefined,
+        );
         let declaredIds = declaredSupersessionIds(source);
         if (source.existingRecord) {
             let record = source.existingRecord;
@@ -709,9 +750,10 @@ export async function generateWorkRecordForSource(
             };
         }
 
-        const recordId =
-            (options.idGenerator ? options.idGenerator() : source.attrs.validationCheckpoint?.hostRecorder?.recordId) ||
-            crypto.randomUUID();
+        const creation = source.preparation
+            ? await resumePreparedWorkRecordCreation(cwd, source.preparation.attemptId)
+            : await beginWorkRecordCreation(cwd, attemptKey, recordingCheckpoint(source)?.hostRecorder);
+        const { recordId } = creation;
         declaredIds = await validateDeclaredSupersession(cwd, recordId, declaredIds);
         const sections = await generateRecorderSections(cwd, source, options, recordId, declaredIds);
         const declaredIdentities = new Set(declaredIds.map((id) => id.toLowerCase()));
@@ -721,9 +763,8 @@ export async function generateWorkRecordForSource(
         const supersessionProposals = await validateRecorderProposals(cwd, recordId, undeclaredProposals);
 
         // A source without a scope or completion mode was rejected above.
-        const attrs: WorkRecordFrontMatter = {
+        const attrs: Omit<WorkRecordFrontMatter, "recordId"> = {
             kind: "work_record",
-            recordId,
             status: source.pendingPublication ? "pending_verification" : "approved",
             scope: source.scope!,
             workKind: source.attrs.workKind,
@@ -738,9 +779,9 @@ export async function generateWorkRecordForSource(
             },
         };
         const body = buildBody(source, sections);
-        const title = body.match(/^#\s+(.+)$/m)?.[1] || attrs.recordId;
-        const record = await writeWorkRecord(cwd, attrs, body, {
-            fileName: workRecordFiles.fileName(source.preparedRecordId || title, now),
+        const title = body.match(/^#\s+(.+)$/m)?.[1] || recordId;
+        const { record, disposition } = await creation.create(attrs, body, {
+            fileName: workRecordFiles.fileName(source.preparation?.recordId || title, now),
         });
         let settledRecord = record;
         let indexWarning = "";
@@ -756,7 +797,7 @@ export async function generateWorkRecordForSource(
                 settledRecord = applied.records.find((candidate) => candidate.attrs.recordId === recordId) || record;
                 indexWarning = applied.indexWarning || "";
             } catch (error) {
-                if (error instanceof WorkRecordSupersessionRollbackError) throw error;
+                if (error instanceof WorkRecordSupersessionRollbackError || disposition === "existing") throw error;
                 try {
                     await deleteWorkRecord(cwd, record);
                 } catch (cleanupError) {
@@ -776,7 +817,7 @@ export async function generateWorkRecordForSource(
         const pending = pendingSupersessionCandidates(settledRecord);
         return {
             source,
-            status: "generated",
+            status: disposition === "created" ? "generated" : "linked",
             recordId: settledRecord.attrs.recordId,
             path: currentWorkRecordOwner() ? settledRecord.path : settledRecord.relativePath,
             ...(pending.length ? { supersessionProposals: pending } : {}),

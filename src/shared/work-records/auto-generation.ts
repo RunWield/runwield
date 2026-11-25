@@ -138,7 +138,10 @@ export async function resolveTargetedWorkRecordSource(
         ) {
             return { skipReason: "parent_not_terminal", targetPlanName: parent.name };
         }
-        return { source: parentWithChildren, targetPlanName: parentWithChildren.name };
+        return {
+            source: { ...parentWithChildren, deliveryCheckpoint: source.attrs.validationCheckpoint ?? null },
+            targetPlanName: parentWithChildren.name,
+        };
     }
 
     return { source: await withEpicChildren(cwd, source), targetPlanName: source.name };
@@ -254,11 +257,17 @@ async function generateTargetedWorkRecord(
             });
         }
 
+        const executingPlan = frozen ? await loadActiveSource(cwd, planName) : null;
+        const deliveryCheckpoint = frozen
+            ? ((executingPlan?.planId === frozen.delivered.planId ? executingPlan : frozen.delivered)?.attrs
+                  .validationCheckpoint ?? null)
+            : resolved.source.deliveryCheckpoint;
         const sourceRoot = planRecordingSourceRoot(resolved.source.path);
         // Store discovery belongs inside generation's failure-persistence boundary.
         // Eligibility alone does not need existing records; generation reconciles them.
         const evaluated = evaluateWorkRecordSource({
             ...resolved.source,
+            deliveryCheckpoint,
             ...(preparation ? { attrs: { ...resolved.source.attrs, workRecord: undefined } } : {}),
             pendingPublication: Boolean(
                 automatic && pendingPublication && (preparation || resolved.source.attrs.status === "reviewed"),

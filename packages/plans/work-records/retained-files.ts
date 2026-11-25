@@ -1,9 +1,10 @@
 import { projects, type ProjectStoreIdentity } from "@runwield/projects";
 import { ensurePrivateDir, openNativeFileLock, writeJsonAtomically } from "@runwield/resources/fs";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { randomUUID } from "node:crypto";
 import { lstat, readFile, readdir, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import type { GeneratedWorkRecordSections } from "./documents.ts";
+import { isWorkRecordId, type GeneratedWorkRecordSections } from "./documents.ts";
 import { assertWorkRecordContainedPath } from "./paths.ts";
 
 export interface WorkRecordLocation {
@@ -54,6 +55,7 @@ export function retainedFiles(identity: ProjectStoreIdentity, internal: string) 
     const home = identity.executionAccountHome;
     const lockPath = join(internal, "records.lock");
     const preparations = join(internal, "preparations");
+    const recordingCreations = join(internal, "recording-creations");
 
     async function mutate<Result>(run: () => Promise<Result>): Promise<Result> {
         if (mutations.getStore() === lockPath) return await run();
@@ -120,16 +122,16 @@ export function retainedFiles(identity: ProjectStoreIdentity, internal: string) 
         });
     }
 
-    async function preparationPath(attemptId: string) {
+    async function preparationPath(attemptId: string, directory = preparations) {
         if (!/^[a-zA-Z0-9_-]+$/.test(attemptId)) throw new Error("Invalid recording attempt identity.");
-        const path = join(preparations, `${attemptId}.json`);
+        const path = join(directory, `${attemptId}.json`);
         await assertWorkRecordContainedPath(home, path);
         return path;
     }
 
-    async function readPreparation(attemptId: string): Promise<RecordingPreparation | null> {
+    async function readPreparation(attemptId: string, directory = preparations): Promise<RecordingPreparation | null> {
         projects.home.assertStoreIdentity(identity);
-        const text = await readOptionalFile(await preparationPath(attemptId));
+        const text = await readOptionalFile(await preparationPath(attemptId, directory));
         if (text === null) return null;
         if (!text.trim()) throw new Error("Recording preparation is empty.");
         const state: RecordingPreparation = JSON.parse(text);
@@ -145,7 +147,37 @@ export function retainedFiles(identity: ProjectStoreIdentity, internal: string) 
     }
 
     async function writePreparation(state: RecordingPreparation): Promise<void> {
-        await mutate(async () => writeJsonAtomically(await preparationPath(state.attemptId), state));
+        await mutate(async () => {
+            const prior = await readPreparation(state.attemptId);
+            if (!prior || prior.recordId !== state.recordId || prior.createdAt !== state.createdAt)
+                throw new Error("Recording preparation identity changed.");
+            writeJsonAtomically(await preparationPath(state.attemptId), state);
+        });
+    }
+
+    async function reservePreparationIn(
+        directory: string,
+        attemptId: string,
+        checkpointedRecordId?: string,
+    ): Promise<RecordingPreparation> {
+        if (checkpointedRecordId !== undefined && !isWorkRecordId(checkpointedRecordId))
+            throw new Error("Invalid Work Record identity in the Recorder checkpoint.");
+        return await mutate(async () => {
+            const prior = await readPreparation(attemptId, directory);
+            if (prior) {
+                if (checkpointedRecordId && prior.recordId.toLowerCase() !== checkpointedRecordId.toLowerCase())
+                    throw new Error("Recording preparation identity changed.");
+                return prior;
+            }
+            const state: RecordingPreparation = {
+                version: 1,
+                attemptId,
+                recordId: checkpointedRecordId ?? randomUUID(),
+                createdAt: new Date().toISOString(),
+            };
+            writeJsonAtomically(await preparationPath(attemptId, directory), state);
+            return state;
+        });
     }
 
     async function listPreparationAttempts(): Promise<string[]> {
@@ -167,6 +199,11 @@ export function retainedFiles(identity: ProjectStoreIdentity, internal: string) 
         retainLocation,
         forgetLocations,
         readPreparation,
+        reservePreparation: (attemptId: string, checkpointedRecordId?: string) =>
+            reservePreparationIn(preparations, attemptId, checkpointedRecordId),
+        readRecordingCreation: (attemptId: string) => readPreparation(attemptId, recordingCreations),
+        reserveRecordingCreation: (attemptId: string, checkpointedRecordId?: string) =>
+            reservePreparationIn(recordingCreations, attemptId, checkpointedRecordId),
         writePreparation,
         listPreparationAttempts,
     };
