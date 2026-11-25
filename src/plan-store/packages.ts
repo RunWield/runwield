@@ -14,6 +14,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { openNativeFileLock, type NativeFileLock } from "../shared/native-file-lock.ts";
+import { assertContainedPath } from "@runwield/resources/fs";
 import {
     ensurePrivateDir,
     syncParentDirectory,
@@ -21,6 +22,19 @@ import {
     writeTextAtomically,
 } from "../shared/private-json-file.ts";
 import { plans, type PlanId } from "@runwield/plans";
+import {
+    packageResourceRoles as roles,
+    packageResources as resources,
+    PlanPackageError,
+    readRetainedPlanInput,
+    rethrowPackagePathError,
+    stageRetainedPlanInput,
+    type PackageDocument,
+    type PackageInput,
+    type PackageInputReference,
+    type PackageIssueKind,
+    type PackageResource,
+} from "@runwield/plans/file-snapshots";
 import {
     EPIC_ARTIFACT_FILE_NAMES,
     type TicketReference,
@@ -38,8 +52,16 @@ import {
 } from "./import-source.ts";
 import { CONTROLLER_STATE_FIELDS, type WorkflowControllerState } from "@runwield/plans/controller-state";
 
-export type PackageResource = "context.md" | "validation.md" | "manual-qa.md" | "integration-report.md";
-export type PackageResourceRole = "context" | "validation" | "manual-qa" | "integration-report";
+export {
+    PlanPackageError,
+    type PackageDocument,
+    type PackageInput,
+    type PackageInputManifest,
+    type PackageInputReference,
+    type PackageIssueKind,
+    type PackageResource,
+    type PackageResourceRole,
+} from "@runwield/plans/file-snapshots";
 export interface PackageDocuments {
     "context.md": string;
     "validation.md": string;
@@ -277,26 +299,12 @@ export interface PackageMetadataUpdate {
     parentPlanId?: string | null;
     dependencyPlanIds?: string[];
 }
-export interface PackageDocument {
-    name: PackageResource;
-    role: PackageResourceRole;
-    bytes: Uint8Array;
-    hash: string;
-}
 export interface LoadedPlanPackage {
     kind: "loaded";
     path: string;
     metadata: PlanPackageMetadata;
     documents: PackageDocument[];
 }
-export type PackageIssueKind =
-    | "missing"
-    | "malformed_metadata"
-    | "unsupported_metadata"
-    | "missing_document"
-    | "unsafe_path"
-    | "pending_recovery"
-    | "unavailable";
 export interface PackageIssue {
     kind: PackageIssueKind;
     path: string;
@@ -311,32 +319,12 @@ export interface PackageSelector {
     planId?: string;
     name?: string;
 }
-export interface PackageInputReference {
-    projectId: string;
-    planId: string;
-    inputId: string;
-}
-interface InputResource {
-    name: PackageResource;
-    role: PackageResourceRole;
-    hash: string;
-}
-export interface PackageInputManifest extends PackageInputReference {
-    version: 1;
-    metadataRevision: number;
-    documents: InputResource[];
-}
-export interface PackageInput {
-    path: string;
-    manifest: PackageInputManifest;
-    documents: PackageDocument[];
-}
 interface PackageLayout {
+    identity: ProjectIdentity;
     home: string;
     plans: string;
     internal: string;
     stages: string;
-    inputs: string;
     intent: string;
     locks: string;
     imports: string;
@@ -373,25 +361,9 @@ type JsonValue = null | string | number | boolean | JsonValue[] | JsonFields;
 interface JsonFields {
     [key: string]: JsonValue;
 }
-const resources: PackageResource[] = ["context.md", "validation.md", "manual-qa.md", "integration-report.md"];
-const roles: Record<PackageResource, PackageResourceRole> = {
-    "context.md": "context",
-    "validation.md": "validation",
-    "manual-qa.md": "manual-qa",
-    "integration-report.md": "integration-report",
-};
 const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const missing = (error: Error) => "code" in error && error.code === "ENOENT";
 
-export class PlanPackageError extends Error {
-    constructor(
-        public kind: PackageIssueKind | "collision" | "changed_input",
-        message: string,
-    ) {
-        super(message);
-        this.name = "PlanPackageError";
-    }
-}
 function fail(kind: PlanPackageError["kind"], message: string): never {
     throw new PlanPackageError(kind, message);
 }
@@ -427,11 +399,11 @@ function layout(identity: ProjectIdentity): PackageLayout {
     const home = join(identity.executionAccountHome, ".wld", "projects", identity.projectId);
     const internal = join(home, "internal", "plan-packages");
     return {
+        identity,
         home: identity.executionAccountHome,
         plans: join(home, "plans"),
         internal,
         stages: join(internal, "staging"),
-        inputs: join(internal, "inputs"),
         intent: join(internal, "intent.json"),
         locks: join(internal, "locks"),
         imports: join(internal, "imports"),
@@ -448,14 +420,7 @@ async function stat(path: string) {
     }
 }
 async function safe(root: string, path: string): Promise<void> {
-    const rel = relative(root, path);
-    if (isAbsolute(rel) || rel === ".." || rel.startsWith("../") || rel.startsWith("..\\"))
-        fail("unsafe_path", "Path leaves the personal Project store.");
-    for (let cursor = path; ; cursor = dirname(cursor)) {
-        const info = await stat(cursor);
-        if (info?.isSymbolicLink()) fail("unsafe_path", `Symbolic link in package path: ${cursor}`);
-        if (cursor === root) break;
-    }
+    await assertContainedPath(root, path).catch(rethrowPackagePathError);
 }
 async function file(root: string, path: string): Promise<Uint8Array | null> {
     await safe(root, path);
@@ -1682,24 +1647,11 @@ export async function capturePlanPackageInput(
 ): Promise<PackageInputReference> {
     return await mutate(identity, planId, async (paths) => {
         const source = await loaded(paths, planId);
-        const inputId = randomUUID();
-        const stage = join(paths.stages, inputId);
-        await directory(paths, stage);
-        const documents = source.documents.map((doc) => {
-            if (doc.name !== "context.md" || reviewedContext === undefined) return doc;
-            const bytes = new TextEncoder().encode(reviewedContext);
-            return { ...doc, bytes, hash: digest(bytes) };
-        });
-        for (const doc of documents) writeTextAtomically(join(stage, doc.name), doc.bytes);
-        const manifest: PackageInputManifest = {
-            version: 1,
-            projectId: identity.projectId,
-            planId,
-            inputId,
-            metadataRevision: source.metadata.revision,
-            documents: documents.map(({ name, role, hash }) => ({ name, role, hash })),
-        };
-        writeJsonAtomically(join(stage, "input.wld.json"), manifest);
+        const staged = await stageRetainedPlanInput(
+            identity,
+            { planId, metadataRevision: source.metadata.revision, documents: source.documents },
+            reviewedContext,
+        );
         const current = await loaded(paths, planId);
         if (
             current.metadata.revision !== source.metadata.revision ||
@@ -1708,57 +1660,17 @@ export async function capturePlanPackageInput(
                 (doc, index) => doc.name !== source.documents[index].name || doc.hash !== source.documents[index].hash,
             )
         ) {
-            await fs.rm(stage, { recursive: true });
+            await staged.discard();
             fail("changed_input", "Documents changed during capture. Capture the current input again.");
         }
-        await directory(paths, paths.inputs);
-        const destination = join(paths.inputs, inputId);
-        await safe(paths.home, destination);
-        await fs.rename(stage, destination);
-        syncParentDirectory(stage);
-        syncParentDirectory(destination);
-        return { projectId: identity.projectId, planId, inputId };
+        return await staged.commit();
     });
 }
 export async function readPlanPackageInput(
     identity: ProjectIdentity,
     reference: PackageInputReference,
 ): Promise<PackageInput> {
-    const paths = layout(identity);
-    if (reference.projectId !== identity.projectId) fail("unsafe_path", "Invalid retained-input reference.");
-    return await readInputAt(paths, reference);
-}
-async function readInputAt(paths: PackageLayout, reference: PackageInputReference): Promise<PackageInput> {
-    if (!/^[0-9a-f-]{36}$/.test(reference.inputId)) fail("unsafe_path", "Invalid retained-input reference.");
-    const directory = join(paths.inputs, reference.inputId);
-    const bytes = await file(paths.home, join(directory, "input.wld.json"));
-    if (!bytes) fail("missing", "Retained input is missing.");
-    let manifest: PackageInputManifest;
-    try {
-        manifest = JSON.parse(new TextDecoder().decode(bytes));
-    } catch {
-        return fail("malformed_metadata", "Malformed retained input.");
-    }
-    if (
-        manifest.version !== 1 ||
-        manifest.planId !== reference.planId ||
-        manifest.inputId !== reference.inputId ||
-        manifest.projectId !== reference.projectId ||
-        !Number.isSafeInteger(manifest.metadataRevision) ||
-        manifest.metadataRevision < 1 ||
-        !Array.isArray(manifest.documents)
-    )
-        fail("malformed_metadata", "Invalid retained-input identity.");
-    const documents = await readDocuments(paths, directory);
-    if (
-        documents.length !== manifest.documents.length ||
-        documents.some((doc, index) => {
-            const entry = manifest.documents[index];
-            return !entry || entry.name !== doc.name || entry.role !== doc.role || entry.hash !== doc.hash;
-        })
-    )
-        fail("malformed_metadata", "Retained-input bytes or membership do not match the committed manifest.");
-    return { path: directory, manifest, documents };
+    return await readRetainedPlanInput(identity, reference);
 }
 
 function validateImportRecord(record: ImportRecord): ImportRecord {
@@ -1994,7 +1906,7 @@ async function recoverReviewedBatch(
             writeTextAtomically(join(path, "context.md"), after);
         for (const input of review.inputs) {
             const plan = await inspectAt(paths, input.name);
-            const retained = await readInputAt(paths, input.reference);
+            const retained = await readRetainedPlanInput(paths.identity, input.reference);
             if (
                 plan.kind === "loaded" &&
                 plan.metadata.planId === input.reference.planId &&

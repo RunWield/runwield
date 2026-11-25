@@ -1509,7 +1509,7 @@ export class PreparedProjectStore {
                                 const { archivePlan, restoreArchivedPlan, findPlanEvidenceById } =
                                     await import("../plan-store.ts");
                                 if (command.kind === "restore-plan")
-                                    await restoreArchivedPlan(this.cwd, plan.metadata.name);
+                                    await restoreArchivedPlan(this.cwd, command.planId, { byId: true });
                                 else if (
                                     command.kind === "rename-plan" &&
                                     plan.metadata.archive &&
@@ -1528,37 +1528,42 @@ export class PreparedProjectStore {
                                         command.name,
                                     );
                                 } else
-                                    await withLocalPlanWorkflow(this.cwd, plan.metadata.name, async () => {
-                                        if (command.kind === "archive-plan")
-                                            await archivePlan(this.cwd, plan.metadata.name, {
-                                                reason: command.reason,
-                                                force: command.force,
-                                                now: command.now || undefined,
-                                            });
-                                        else
-                                            await (
-                                                await import("./names.ts")
-                                            ).renamePlan(
-                                                this.cwd,
-                                                command.planId,
-                                                command.name,
-                                                command.expectedRevision,
-                                            );
-                                    });
+                                    await withLocalPlanWorkflow(
+                                        this.cwd,
+                                        plan.metadata.name,
+                                        async () => {
+                                            if (command.kind === "archive-plan")
+                                                await archivePlan(this.cwd, plan.metadata.name, {
+                                                    expectedPlanId: command.planId,
+                                                    reason: command.reason,
+                                                    force: command.force,
+                                                    now: command.now || undefined,
+                                                });
+                                            else
+                                                await (
+                                                    await import("./names.ts")
+                                                ).renamePlan(
+                                                    this.cwd,
+                                                    command.planId,
+                                                    command.name,
+                                                    command.expectedRevision,
+                                                );
+                                        },
+                                        command.planId,
+                                    );
                             } else if (command.kind === "lifecycle-decision") {
                                 const { isManagedLifecycleDecision, managedLifecycleDetails } =
                                     await import("./events.ts");
                                 if (!isManagedLifecycleDecision(command.decision.event))
                                     throw new Error("Unsupported managed lifecycle decision.");
-                                await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
-                                    recordPlanEvent({
-                                        cwd: this.cwd,
-                                        planName: plan.metadata.name,
-                                        event: command.decision.event,
-                                        expectedRevision: command.expectedRevision,
-                                        details: managedLifecycleDetails(command.decision.details),
-                                    }),
-                                );
+                                await recordPlanEvent({
+                                    cwd: this.cwd,
+                                    planName: plan.metadata.name,
+                                    expectedPlanId: command.planId,
+                                    event: command.decision.event,
+                                    expectedRevision: command.expectedRevision,
+                                    details: managedLifecycleDetails(command.decision.details),
+                                });
                             } else if (command.kind === "recover-execution") {
                                 if (!this.homeOwner || !this.launch)
                                     throw new Error("Execution recovery requires its trusted launcher.");
@@ -2028,14 +2033,13 @@ export class PreparedProjectStore {
                                     attemptId: snapshot.attemptId,
                                 };
                             } else {
-                                await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
-                                    recordPlanEvent({
-                                        cwd: this.cwd,
-                                        planName: plan.metadata.name,
-                                        event: command.event,
-                                        expectedRevision: command.expectedRevision,
-                                    }),
-                                );
+                                await recordPlanEvent({
+                                    cwd: this.cwd,
+                                    planName: plan.metadata.name,
+                                    expectedPlanId: command.planId,
+                                    event: command.event,
+                                    expectedRevision: command.expectedRevision,
+                                });
                             }
                             return { revision: (await readPlanDocuments(command.planId)).revision };
                         },

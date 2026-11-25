@@ -1,6 +1,6 @@
 import { projects } from "@runwield/projects";
 import { seedPlanController } from "../../shared/testing/plan-state-fixture.ts";
-import { importPlans, loadPlan } from "../../plan-store/index.ts";
+import { authorLocalPlan, importPlans, loadPlan, openProjectPlanStore } from "../../plan-store/index.ts";
 import { withRetainedPlanReadFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { deepStrictEqual, strictEqual, ok, rejects } from "node:assert/strict";
@@ -73,7 +73,7 @@ async function workspace(root: string) {
         app,
         store,
         project,
-        async get(path: string) {
+        async get(path: string, expectedStatus = 200) {
             const response = await app.handler()(
                 new Request(`http://127.0.0.1:8787${path}`, {
                     headers: { cookie: `rw_owner_device=${claimed.credential}; rw_owner_csrf=csrf` },
@@ -81,8 +81,8 @@ async function workspace(root: string) {
             );
             strictEqual(
                 response.status,
-                200,
-                `${path}: ${response.status} ${response.status === 200 ? "" : await response.clone().text()}`,
+                expectedStatus,
+                `${path}: ${response.status} ${response.status === expectedStatus ? "" : await response.clone().text()}`,
             );
             return response;
         },
@@ -93,6 +93,77 @@ async function workspace(root: string) {
         },
     };
 }
+
+interface ProjectBoardColumn {
+    cards: { planId: string }[];
+}
+
+interface ProjectBoardResponse {
+    readOnly: boolean;
+    board: { columns: ProjectBoardColumn[] };
+}
+
+test("the owner Plan Board follows the registered Project ID across checkout moves", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "workspace-project-board-"));
+    const root = join(directory, "original");
+    const moved = join(directory, "moved");
+    const emptyRoot = join(directory, "empty");
+    let owner: Awaited<ReturnType<typeof workspace>> | undefined;
+    try {
+        await mkdir(root);
+        await mkdir(emptyRoot);
+        owner = await workspace(root);
+        const { project, store } = owner;
+        const handle = openProjectPlanStore(project.projectId, { registry: store.projects });
+        const empty = store.registerProject({ root: emptyRoot, displayName: "Empty Project" });
+        const identity = projects.checkout.inspect(emptyRoot);
+        if (identity.kind !== "existing") throw new Error("The empty Project was not registered.");
+        const emptyStore = join(identity.identity.executionAccountHome, ".wld", "projects", empty.projectId);
+        const emptyBefore = await tree(emptyStore);
+        const emptyCheckoutBefore = await snapshot(emptyRoot);
+
+        const emptyRoute = `/api/owner/projects/${empty.projectId}/plans`;
+        const emptyBoard: ProjectBoardResponse = await (await owner.get(emptyRoute)).json();
+        strictEqual(emptyBoard.readOnly, true);
+        deepStrictEqual(
+            emptyBoard.board.columns.flatMap((column) => column.cards),
+            [],
+        );
+        deepStrictEqual(await tree(emptyStore), emptyBefore);
+        deepStrictEqual(await snapshot(emptyRoot), emptyCheckoutBefore);
+
+        await authorLocalPlan(root, { planName: "proposal", contextMarkdown: "# Registered proposal\n" });
+        const planId = (await loadPlan(root, "proposal"))?.attrs.planId;
+        ok(planId);
+        const route = `/api/owner/projects/${project.projectId}/plans`;
+        const before: ProjectBoardResponse = await (await owner.get(route)).json();
+        deepStrictEqual(
+            before.board.columns.flatMap((column) => column.cards.map((card) => card.planId)),
+            [planId],
+        );
+        deepStrictEqual(await (await owner.get(emptyRoute)).json(), emptyBoard);
+
+        await rename(root, moved);
+        await owner.get(route, 403);
+        await rejects(() => handle.list(), /root is not available/i);
+        store.projects.relink({ projectId: project.projectId, newRoot: moved });
+        const after: ProjectBoardResponse = await (await owner.get(route)).json();
+        deepStrictEqual(after, before);
+
+        store.projects.setStatus(project.projectId, "inactive");
+        await owner.get(route, 404);
+        await rejects(() => handle.list(), /inactive/i);
+        store.projects.setStatus(project.projectId, "active");
+        deepStrictEqual(await (await owner.get(route)).json(), before);
+        deepStrictEqual(
+            (await handle.list()).resources.map((entry) => entry.planId),
+            [planId],
+        );
+    } finally {
+        await owner?.close();
+        await rm(directory, { recursive: true, force: true });
+    }
+});
 
 for (const state of ["fresh", "legacy", "interrupted", "adopted", "returning-legacy"]) {
     test(`production Workspace ${state} reads preserve sources after repeated and settled routes`, async () => {

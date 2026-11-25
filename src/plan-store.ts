@@ -24,7 +24,6 @@ export type {
 
 import type { MoveEpicArtifactResult } from "./plan-store/artifacts.ts";
 
-
 import type { ControllerDocumentWorktree, PendingControllerRepair } from "./plan-store/controllers.ts";
 
 import type { FrontMatterValue } from "./shared/front-matter.ts";
@@ -79,7 +78,7 @@ type ArchivePlanResult = {
     artifacts?: Pick<MoveEpicArtifactResult, "fileName" | "relativePath">[];
 };
 
-type RestoreArchivedPlanOptions = { to?: string; now?: string };
+type RestoreArchivedPlanOptions = { to?: string; now?: string; byId?: boolean };
 
 type EnsurePlanIdentityLockedOptions = {
     idGenerator?: () => string;
@@ -259,6 +258,7 @@ export interface ArchivePlanOptions {
     now?: string;
     /** Archive after the user confirmed abandonment in the active recovery flow. */
     abandonedWorktree?: boolean;
+    expectedPlanId?: string;
 }
 
 export interface ArchivedPlanEntry {
@@ -292,6 +292,7 @@ export interface ArchivedPlanDocument {
     markdown: string;
     attrs: PlanFrontMatter;
     body: string;
+    revision: string;
     readAvailability?: PlanReadAvailability;
 }
 
@@ -450,7 +451,6 @@ import {
 
 import { pid, platform } from "node:process";
 
-
 export { isEpicPlan, isProjectPlan, isSequencePlan } from "@runwield/plans/format";
 
 /**
@@ -475,7 +475,6 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { CLI_BIN, normalizeWorkKind, PLANS_DIR_NAME } from "./constants.ts";
-
 
 import { resolveWorkflowPlanLocation } from "./plan-store/location.ts";
 
@@ -529,7 +528,6 @@ import {
 } from "./shared/collaboration/lock.ts";
 
 import { moveEpicArtifactsFromArchive, moveEpicArtifactsToArchive } from "./plan-store/artifacts.ts";
-
 
 export { PLAN_FRONT_MATTER_KEY_ORDER, PLAN_FRONT_MATTER_KEYS } from "@runwield/plans/format";
 
@@ -2453,6 +2451,8 @@ export async function archivePlan(
     if (owner)
         return await packageWorkflowLocks([planNameOrId], async () => {
             const selected = await selectedPackage(planNameOrId);
+            if (options.expectedPlanId !== undefined && selected.metadata.planId !== options.expectedPlanId)
+                throw new Error("Archive source changed Plan ID.");
             const source = await loadPackageWorkflowPlan({ planId: selected.metadata.planId });
             const worktreeStatus = options.abandonedWorktree ? "abandoned" : source.attrs.worktreeStatus;
             if (isRecoverableWorktreeStatus(worktreeStatus))
@@ -2792,6 +2792,7 @@ async function loadArchivedPlanByName(cwd: string, archivedPlanName: string): Pr
             attrs: current.attrs,
             readAvailability: current.readAvailability,
             body,
+            revision: await getPlanRevisionForText(markdown),
         };
     } catch (error) {
         if (error instanceof ProjectRuntimeEntryRefusedError) throw error;
@@ -2808,10 +2809,11 @@ async function loadArchivedPlanByName(cwd: string, archivedPlanName: string): Pr
 export async function loadArchivedPlan(
     cwd: string,
     archivedPlanNameOrId: string,
+    byId = false,
 ): Promise<ArchivedPlanDocument | null> {
     return await readLocalHomeStore(
         cwd,
-        () => loadArchivedPlanInProject(cwd, archivedPlanNameOrId),
+        () => loadArchivedPlanInProject(cwd, archivedPlanNameOrId, byId),
         () => null,
     );
 }
@@ -2820,6 +2822,7 @@ export async function loadArchivedPlan(
 async function loadArchivedPlanInProject(
     cwd: string,
     archivedPlanNameOrId: string,
+    byId: boolean,
 ): Promise<ArchivedPlanDocument | null> {
     const owner = currentPackageProject();
     if (owner) {
@@ -2827,14 +2830,24 @@ async function loadArchivedPlanInProject(
         if (catalog.issues.length) throw new Error(catalog.issues[0].message);
         const selected = catalog.packages.find(
             (p) =>
-                p.metadata.name === archivedPlanNameOrId.replace(/^archived\//, "") ||
-                p.metadata.planId === archivedPlanNameOrId,
+                p.metadata.archive &&
+                !p.metadata.archive.restoredAt &&
+                (p.metadata.planId === archivedPlanNameOrId ||
+                    (!byId && p.metadata.name === archivedPlanNameOrId.replace(/^archived\//, ""))),
         );
-        if (!selected?.metadata.archive || selected.metadata.archive.restoredAt) return null;
+        if (!selected) return null;
         return {
             ...(await loadPackageWorkflowPlan({ planId: selected.metadata.planId })),
             name: selected.metadata.name,
         };
+    }
+    if (byId) {
+        const matches = (await listArchivedPlans(cwd)).filter((plan) => plan.planId === archivedPlanNameOrId);
+        if (matches.length > 1) throw new Error(`Duplicate archived Plan ID: ${archivedPlanNameOrId}`);
+        const result = matches[0]
+            ? await loadArchivedPlanByName(getPlanDocumentRoot(matches[0].path), matches[0].name)
+            : null;
+        return result?.attrs.planId === archivedPlanNameOrId ? result : null;
     }
     const name = getArchivedPlanLocation(cwd, archivedPlanNameOrId).name;
     let attempts;
@@ -2911,25 +2924,28 @@ export async function restoreArchivedPlan(
         return await withLocalProjectAction(cwd, () => restoreArchivedPlan(cwd, archivedPlanNameOrId, options));
     const owner = currentPackageProject();
     if (owner) {
-        const archived = await loadArchivedPlan(cwd, archivedPlanNameOrId);
+        const archived = await loadArchivedPlan(cwd, archivedPlanNameOrId, options.byId);
         if (!archived) throw new Error(`Archived Plan not found: ${archivedPlanNameOrId}`);
-        return await packageWorkflowLocks([archived.name], async () => {
-            let selected = await selectedPackage(archived.name);
-            if (options.to && options.to !== archived.name) {
-                await renamePlanPackage(owner, selected.metadata.planId, selected.metadata.revision, options.to);
-                selected = await selectedPackage({ planId: selected.metadata.planId });
-            }
-            await restorePlanPackage(owner, selected.metadata.planId, selected.metadata.revision);
-            const restored = await loadPackageWorkflowPlan({ planId: selected.metadata.planId });
-            return {
-                name: selected.metadata.name,
-                fromPath: archived.path,
-                toPath: restored.path,
-                relativePath: projectRelativePath(cwd, restored.path),
-                attrs: restored.attrs,
-                artifacts: [],
-            };
-        });
+        return await packageWorkflowLocks(
+            [options.byId ? { planId: archivedPlanNameOrId } : archived.name],
+            async () => {
+                let selected = await selectedPackage(options.byId ? { planId: archivedPlanNameOrId } : archived.name);
+                if (options.to && options.to !== archived.name) {
+                    await renamePlanPackage(owner, selected.metadata.planId, selected.metadata.revision, options.to);
+                    selected = await selectedPackage({ planId: selected.metadata.planId });
+                }
+                await restorePlanPackage(owner, selected.metadata.planId, selected.metadata.revision);
+                const restored = await loadPackageWorkflowPlan({ planId: selected.metadata.planId });
+                return {
+                    name: selected.metadata.name,
+                    fromPath: archived.path,
+                    toPath: restored.path,
+                    relativePath: projectRelativePath(cwd, restored.path),
+                    attrs: restored.attrs,
+                    artifacts: [],
+                };
+            },
+        );
     }
     await prepareWorktreeRegistry(cwd);
     const archived = await resolveArchivedPlanNameOrId(cwd, archivedPlanNameOrId);

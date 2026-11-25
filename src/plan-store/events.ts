@@ -1,5 +1,11 @@
 import { projects } from "@runwield/projects";
-import { managedPlanStoreActive, mutateManagedPlan, readManagedPlan, readManagedExecution } from "./managed.ts";
+import {
+    managedPlanStoreActive,
+    mutateManagedPlan,
+    readManagedActivePlanById,
+    readManagedPlan,
+    readManagedExecution,
+} from "./managed.ts";
 import { packageWorkflowLocks } from "./workflows.ts";
 import { plans } from "@runwield/plans";
 import {
@@ -9,6 +15,7 @@ import {
     type PlanEventDetails,
 } from "@runwield/plans/lifecycle";
 import { selectPlanAccess, withPlanAccess, type PlanAccess } from "./handles.ts";
+import { withLocalPlanWorkflow } from "./access.ts";
 import {
     selectedPackage,
     capturePackageWorkflowInput,
@@ -39,6 +46,7 @@ export interface RecordPlanEventRequest {
     currentStatus?: PlanStatus;
     details?: PlanEventDetails;
     expectedRevision?: string;
+    expectedPlanId?: string;
     packageSelection?: PlanAccess;
 }
 interface ParentCompletion extends Omit<RecordPlanEventRequest, "currentStatus"> {
@@ -329,9 +337,12 @@ export async function recordPlanEvent({
     currentStatus,
     details = {},
     expectedRevision,
+    expectedPlanId,
     packageSelection,
 }: RecordPlanEventRequest): Promise<PlanFrontMatter> {
     if (managedPlanStoreActive()) {
+        const readBefore = () =>
+            expectedPlanId ? readManagedActivePlanById(cwd, expectedPlanId) : readManagedPlan(cwd, planName);
         if (
             [
                 "execution_started",
@@ -345,7 +356,7 @@ export async function recordPlanEvent({
                 "validation_failed",
             ].includes(event)
         ) {
-            const before = await readManagedPlan(cwd, planName);
+            const before = await readBefore();
             if (!before?.attrs.planId) throw new Error("Managed Plan is unavailable.");
             const execution = await readManagedExecution(cwd, before.attrs.planId);
             if (!execution || (details.worktreeId && details.worktreeId !== execution.attemptId))
@@ -384,12 +395,12 @@ export async function recordPlanEvent({
                     },
                 },
             });
-            const after = await readManagedPlan(cwd, before.attrs.planId);
+            const after = await readManagedActivePlanById(cwd, before.attrs.planId);
             if (!after) throw new Error("Managed Plan is unavailable after its checkpoint.");
             return after.attrs;
         }
         if (isManagedLifecycleDecision(event)) {
-            const before = await readManagedPlan(cwd, planName);
+            const before = await readBefore();
             if (!before?.attrs.planId || (currentStatus && currentStatus !== before.attrs.status))
                 throw new Error("Plan status changed.");
             await mutateManagedPlan(cwd, {
@@ -399,7 +410,7 @@ export async function recordPlanEvent({
                 expectedRevision: expectedRevision || before.revision,
                 decision: { event, details: managedLifecycleDetails(details) },
             });
-            const after = await readManagedPlan(cwd, before.attrs.planId);
+            const after = await readManagedActivePlanById(cwd, before.attrs.planId);
             if (!after) throw new Error("Lifecycle decision Plan is unavailable.");
             return after.attrs;
         }
@@ -411,7 +422,7 @@ export async function recordPlanEvent({
             event !== "epic_readiness_passed"
         )
             throw new Error("Managed lifecycle transition requires matched execution evidence.");
-        const before = await readManagedPlan(cwd, planName);
+        const before = await readBefore();
         if (!before?.attrs.planId) throw new Error("Managed Plan is unavailable.");
         if (currentStatus && currentStatus !== before.attrs.status) throw new Error("Plan status changed.");
         await mutateManagedPlan(cwd, {
@@ -421,18 +432,36 @@ export async function recordPlanEvent({
             planId: before.attrs.planId,
             expectedRevision: expectedRevision || before.revision,
         });
-        const after = await readManagedPlan(cwd, before.attrs.planId);
+        const after = await readManagedActivePlanById(cwd, before.attrs.planId);
         if (!after) throw new Error("Managed Plan is unavailable after its event.");
         return after.attrs;
     }
+    if (expectedPlanId && !packageSelection && !currentPackageSelection())
+        return await withLocalPlanWorkflow(
+            cwd,
+            planName,
+            () =>
+                recordPlanEvent({
+                    cwd,
+                    planName,
+                    event,
+                    currentStatus,
+                    details,
+                    expectedRevision,
+                    expectedPlanId,
+                }),
+            expectedPlanId,
+        );
     if (!packageSelection && !currentPackageSelection()) packageSelection = await selectPlanAccess(cwd, planName);
     if (packageSelection)
         return await withPlanAccess(
             cwd,
             packageSelection,
-            () => recordPlanEvent({ cwd, planName, event, currentStatus, details, expectedRevision }),
+            () => recordPlanEvent({ cwd, planName, event, currentStatus, details, expectedRevision, expectedPlanId }),
             planName,
         );
+    if (expectedPlanId !== undefined && currentPackageSelection()?.planId !== expectedPlanId)
+        throw new Error("Lifecycle event source changed Plan ID.");
     if (projects.home.current()) {
         if (
             !isManagedLifecycleDecision(event) &&

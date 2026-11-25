@@ -429,3 +429,5 @@ export { previewPlanRetention, previewRecordRetention, confirmRetention } from "
 export { readExecutionRetention, type RetentionContext } from "./retention.ts";
 
 export { pendingPruneRequest, confirmPruneRequest } from "./prune-requests.ts";
+
+export { openProjectPlanStore, type ProjectPlanStoreOptions } from "./project-plans.ts";

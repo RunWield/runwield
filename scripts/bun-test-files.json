@@ -233,6 +233,7 @@
     "src/plan-store-passive-reads.test.ts",
     "src/plan-store.test.ts",
     "src/plan-store/operations.test.ts",
+    "src/plan-store/project-plans.test.ts",
     "src/plan-store/publication-policy.test.ts",
     "src/plan-store/remote-operations.test.ts",
     "src/shared/agent-browser-session.test.ts",

@@ -133,6 +133,12 @@ export async function loadCanonicalBoard(cwd: string) {
     return await adapter.loadBoard(cwd);
 }
 
+export async function loadCanonicalRegisteredProjectBoard(
+    ...args: Parameters<WorkspaceAdapter["loadRegisteredProjectBoard"]>
+) {
+    return await (await workspaceAdapter()).loadRegisteredProjectBoard(...args);
+}
+
 export async function loadCanonicalWorkspaceDetail(
     cwd: string,
     planId: string,

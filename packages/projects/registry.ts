@@ -34,7 +34,7 @@ import {
     withHomeProjectOwner,
     withProjectLaunchContext,
 } from "./identity.ts";
-import { openProjectRegistry } from "./registration.ts";
+import { openProjectRegistry, requireRegisteredProjectRoot } from "./registration.ts";
 
 export const projects = {
     checkout: {
@@ -81,5 +81,6 @@ export const projects = {
     },
     registrations: {
         open: openProjectRegistry,
+        requireActiveRoot: requireRegisteredProjectRoot,
     },
 } as const;

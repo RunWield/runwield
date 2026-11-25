@@ -11,6 +11,7 @@ const configuration = ts.readConfigFile(resolve(root, "tsconfig.bun.json"), ts.s
 const compilerOptions = ts.parseJsonConfigFileContent(configuration.config, ts.sys, root).options;
 const privateMembers = new Set([
     "src/plan-store.ts",
+    "packages/plans/file-snapshots.ts",
     // Existing retained-copy implementation. Its operations are public only through the owner interface.
     "src/shared/workflow/execution-plan-file.ts",
 ]);
