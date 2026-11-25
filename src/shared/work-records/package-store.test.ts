@@ -1,4 +1,6 @@
+import type { HostRecorderState } from "@runwield/plans/controller-state";
 import { workRecords } from "@runwield/plans/work-records";
+import { workRecordFiles } from "@runwield/plans/work-record-files";
 import { projects } from "@runwield/projects";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { test } from "node:test";
@@ -10,7 +12,13 @@ import { withPlanAccess, selectPlanAccess } from "../../plan-store/index.ts";
 import { runWorkRecordBackfill } from "./generation.ts";
 import { loadArchivedPlan } from "../testing/plan-query-fixture.ts";
 import { withWorkRecordOwner, workRecordOwnerLayout, withWorkRecordMutation } from "./owner.ts";
-import { writeWorkRecord, listWorkRecords, readWorkRecord, replaceWorkRecord, deleteWorkRecord } from "./store.ts";
+import {
+    restoreWorkRecordDocument,
+    listWorkRecords,
+    readWorkRecord,
+    replaceWorkRecord,
+    deleteWorkRecord,
+} from "./store.ts";
 import { recordAttrs, recordBody } from "./test-fixtures/package-records.ts";
 import { applyWorkRecordSupersession } from "./supersession.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
@@ -115,10 +123,12 @@ Untrusted archive prose.
 test("ordinary canonical mutations ignore retained repository copies", async () => {
     const f = await packageFixture();
     try {
-        const legacy = await withRetainedPlanFixture(f.root, () => writeWorkRecord(f.root, recordAttrs(), recordBody));
+        const legacy = await withRetainedPlanFixture(f.root, () =>
+            restoreWorkRecordDocument(f.root, recordAttrs(), recordBody),
+        );
         await withWorkRecordOwner(f.root, f.identity, async () => {
             equal((await listWorkRecords(f.root, { createDir: false })).length, 0);
-            const record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+            const record = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);
             ok(record.path.startsWith(workRecordOwnerLayout()!.records));
             await fs.writeFile(legacy.path, "poisoned repository copy");
             equal((await readWorkRecord(f.root, basename(record.path))).markdown, record.markdown);
@@ -130,7 +140,7 @@ test("ordinary canonical mutations ignore retained repository copies", async () 
             equal(replaced.body, record.body);
             const { formatWorkRecordListEntry } = await import("./list.ts");
             ok(formatWorkRecordListEntry(replaced, replaced.path).includes(`path: ${replaced.path}`));
-            await rejects(() => writeWorkRecord(f.root, record.attrs, recordBody), /identity already exists/);
+            await rejects(() => restoreWorkRecordDocument(f.root, record.attrs, recordBody), /identity already exists/);
             await deleteWorkRecord(f.root, replaced);
             equal((await listWorkRecords(f.root)).length, 0);
         });
@@ -144,7 +154,7 @@ test("admitted edits and deletes reject a stale canonical snapshot", async () =>
     const f = await packageFixture();
     try {
         await withWorkRecordOwner(f.root, f.identity, async () => {
-            const record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+            const record = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);
             const edited = workRecords.documents.format(record.attrs, record.body + "\nEdited in another tab.\n");
             await replaceWorkRecord(f.root, record, edited);
             await rejects(() => replaceWorkRecord(f.root, record, record.markdown), /reload before replacing/);
@@ -155,6 +165,109 @@ test("admitted edits and deletes reject a stale canonical snapshot", async () =>
         await f.cleanup();
     }
 });
+
+test("the owner settles interrupted creation before deletion and replays the original result", async () => {
+    const f = await packageFixture();
+    try {
+        await withWorkRecordOwner(f.root, f.identity, async () => {
+            const files = workRecordFiles.forOwner(f.identity);
+            const { recordId: _id, kind: _kind, ...metadata } = recordAttrs();
+            const input = { ...metadata, body: recordBody };
+            const operation = { operationId: crypto.randomUUID(), digest: "a".repeat(64) };
+            const created = await files.createRecord(input);
+            await fs.writeFile(
+                join(files.layout.internal, "pending-creation.json"),
+                JSON.stringify({
+                    version: 1,
+                    ...operation,
+                    fileName: basename(created.path),
+                    markdown: created.markdown,
+                }),
+            );
+            await files.delete(created);
+            deepEqual(await files.createOperationRecord(input, operation), created);
+            deepEqual(await files.list(), []);
+            await rejects(
+                () => files.createOperationRecord(input, { ...operation, digest: "b".repeat(64) }),
+                /already bound to a different Work Record creation request/,
+            );
+        });
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test("managed creation retains the assigned identity before a failed publication", async () => {
+    const f = await packageFixture();
+    try {
+        await withWorkRecordOwner(f.root, f.identity, async () => {
+            const files = workRecordFiles.forOwner(f.identity);
+            const { recordId: _id, kind: _kind, ...metadata } = recordAttrs();
+            const input = { ...metadata, body: recordBody };
+            const operation = { operationId: crypto.randomUUID(), digest: "a".repeat(64) };
+            const locations = join(files.layout.internal, "locations");
+            await fs.mkdir(files.layout.internal, { recursive: true });
+            await fs.symlink(f.root, locations, "junction");
+            await rejects(() => files.createOperationRecord(input, operation), /symbolic link/);
+            deepEqual(await files.list({ createDir: false }), []);
+            equal(await files.readOperationRecord(operation), null);
+
+            const pending: { markdown: string } = JSON.parse(
+                await fs.readFile(join(files.layout.internal, "pending-creation.json"), "utf8"),
+            );
+            const intended = workRecords.documents.parse(pending.markdown);
+            await fs.unlink(locations);
+            const created = await files.createOperationRecord(input, operation);
+            equal(created.attrs.recordId, intended.attrs.recordId);
+            deepEqual(await files.list({ createDir: false }), [created]);
+            deepEqual(await files.readOperationRecord(operation), created);
+        });
+    } finally {
+        await f.cleanup();
+    }
+});
+
+for (const owner of ["home", "checkout"] as const) {
+    test(`${owner} recording reservation survives a concurrent retry before publication`, async () => {
+        const f = await packageFixture();
+        try {
+            await withWorkRecordOwner(f.root, f.identity, async () => {
+                const adapter = () =>
+                    owner === "home" ? workRecordFiles.forOwner(f.identity) : workRecordFiles.forCheckout(f.root);
+                const [first, retry] = await Promise.all([
+                    adapter().beginRecordingCreation("delivery-attempt"),
+                    adapter().beginRecordingCreation("delivery-attempt"),
+                ]);
+                equal(retry.recordId, first.recordId);
+                equal(await adapter().readRecordingCreation("delivery-attempt"), first.recordId);
+                deepEqual(await adapter().list({ createDir: false }), []);
+
+                const { recordId: _id, ...attrs } = recordAttrs();
+                const [created, replayed] = await Promise.all([
+                    first.create(attrs, recordBody),
+                    retry.create(attrs, recordBody.replace("Canonical evidence.", "Replayed evidence.")),
+                ]);
+                equal(created.record.attrs.recordId, first.recordId);
+                deepEqual([created.disposition, replayed.disposition].sort(), ["created", "existing"]);
+                deepEqual(replayed.record, created.record);
+                deepEqual(await adapter().list({ createDir: false }), [created.record]);
+                const next = await adapter().beginRecordingCreation("later-delivery-attempt");
+                ok(next.recordId !== first.recordId);
+                for (const status of ["draft", "pending_verification"] as const) {
+                    const reservation = await adapter().beginRecordingCreation(`existing-${status}`);
+                    const original = await adapter().restoreRecord(
+                        { ...attrs, recordId: reservation.recordId, status },
+                        recordBody,
+                    );
+                    await rejects(reservation.create(attrs, recordBody), /different recording/);
+                    equal((await adapter().read(basename(original.path))).markdown, original.markdown);
+                }
+            });
+        } finally {
+            await f.cleanup();
+        }
+    });
+}
 
 test("foreign owner and symbolic links cannot redirect admitted writes", async () => {
     const f = await packageFixture();
@@ -171,7 +284,7 @@ test("foreign owner and symbolic links cannot redirect admitted writes", async (
         await withWorkRecordOwner(f.root, f.identity, async () => {
             const dir = workRecordOwnerLayout()!.records;
             await fs.symlink(f.root, dir);
-            await rejects(() => writeWorkRecord(f.root, recordAttrs(), recordBody), /symbolic link/);
+            await rejects(() => restoreWorkRecordDocument(f.root, recordAttrs(), recordBody), /symbolic link/);
             equal(await fs.readFile(join(f.root, "README.md"), "utf8"), "package fixture\n");
         });
     } finally {
@@ -183,10 +296,10 @@ test("concurrent supersession shares canonical record serialization", async () =
     const f = await packageFixture();
     try {
         await withWorkRecordOwner(f.root, f.identity, async () => {
-            const first = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+            const first = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);
             const [second, third] = await Promise.all([
-                writeWorkRecord(f.root, recordAttrs(), recordBody),
-                writeWorkRecord(f.root, recordAttrs(), recordBody),
+                restoreWorkRecordDocument(f.root, recordAttrs(), recordBody),
+                restoreWorkRecordDocument(f.root, recordAttrs(), recordBody),
             ]);
             const outcomes = await Promise.allSettled(
                 [second, third].map((record) =>
@@ -318,7 +431,7 @@ test("retention prunes records exactly at and before the cutoff while preserving
             ];
             for (const [index, recordId] of ids.entries()) {
                 const attrs = recordAttrs({ recordId, createdAt: new Date(cutoff + index - 1).toISOString() });
-                await writeWorkRecord(f.root, attrs, recordBody);
+                await restoreWorkRecordDocument(f.root, attrs, recordBody);
             }
             const clock = t.mock.method(Date, "now", () => now);
             try {
@@ -330,6 +443,44 @@ test("retention prunes records exactly at and before the cutoff while preserving
             } finally {
                 clock.mock.restore();
             }
+        });
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test("the personal store reserves one Work Record identity for each recording attempt", async () => {
+    const f = await packageFixture();
+    try {
+        const { reservePreparedPackageRecord } = await import("./package-recording.ts");
+        await withWorkRecordOwner(f.root, f.identity, async () => {
+            const [first, replay] = await Promise.all([
+                reservePreparedPackageRecord("concurrent-attempt"),
+                reservePreparedPackageRecord("concurrent-attempt"),
+            ]);
+            deepEqual(first, replay);
+            const second = await reservePreparedPackageRecord("other-attempt");
+            ok(first.recordId !== second.recordId);
+            equal((await listWorkRecords(f.root)).length, 0);
+
+            const checkpointedId = "654321ab-1111-4111-8111-111111111111";
+            const checkpoint: HostRecorderState = {
+                recordId: checkpointedId,
+                invalidSubmissions: 0,
+                request: {
+                    kind: "recorder",
+                    identity: { attemptId: "checkpointed-attempt", generation: "one" },
+                    prompt: "Record",
+                    cwd: f.root,
+                },
+            };
+            const recovered = await reservePreparedPackageRecord("checkpointed-attempt", checkpoint);
+            equal(recovered.recordId, checkpointedId);
+            deepEqual(await reservePreparedPackageRecord("checkpointed-attempt"), recovered);
+            await rejects(
+                reservePreparedPackageRecord("checkpointed-attempt", { ...checkpoint, recordId: first.recordId }),
+                /identity changed/,
+            );
         });
     } finally {
         await f.cleanup();
@@ -350,7 +501,7 @@ test("a new Recorder pin survives earlier confirmation and its release restores 
             };
             const path = join(workRecordOwnerLayout()!.internal, "preparations", "recording-fixture.json");
             await fs.unlink(path);
-            await writeWorkRecord(f.root, recordAttrs({ recordId: reserved.recordId }), recordBody);
+            await restoreWorkRecordDocument(f.root, recordAttrs({ recordId: reserved.recordId }), recordBody);
             const [approved] = (await previewRecordRetention(f.root)).due;
             await fs.writeFile(path, "");
             await rejects(previewRecordRetention(f.root), /preparation is empty/);
@@ -459,7 +610,7 @@ test(
                 const markdown = workRecords.documents.format(attrs, recordBody);
                 await fs.writeFile(path, markdown);
                 await importWorkRecords(f.root, path, { mnemotecaPort: port });
-                await writeWorkRecord(f.root, recordAttrs({ createdAt: "2000-01-01T00:00:00Z" }), recordBody);
+                await restoreWorkRecordDocument(f.root, recordAttrs({ createdAt: "2000-01-01T00:00:00Z" }), recordBody);
                 const approved = (await previewRecordRetention(f.root)).due.map(({ recordId, token }) => ({
                     label: recordId,
                     token,
@@ -493,8 +644,12 @@ test("interrupted confirmation resumes its original set and skips unsafe, moved 
         const port = createWorkRecordMnemotecaFixture();
         await setCustomSetting("workRecords", { retentionDays: 0, retentionKeepLast: 0 }, "project", f.root);
         await withWorkRecordOwner(f.root, f.identity, async () => {
-            const first = await writeWorkRecord(f.root, recordAttrs({ createdAt: "2001-01-01T00:00:00Z" }), recordBody);
-            const second = await writeWorkRecord(
+            const first = await restoreWorkRecordDocument(
+                f.root,
+                recordAttrs({ createdAt: "2001-01-01T00:00:00Z" }),
+                recordBody,
+            );
+            const second = await restoreWorkRecordDocument(
                 f.root,
                 recordAttrs({ createdAt: "2000-01-01T00:00:00Z" }),
                 recordBody,
@@ -545,7 +700,7 @@ test("interrupted confirmation resumes its original set and skips unsafe, moved 
             equal((await listWorkRecords(f.root)).length, 1);
             const reserved = await pendingPruneRequest(f.root, "records");
             equal(reserved?.length, 1);
-            const newer = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+            const newer = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);
             await fs.unlink(secondLocation);
             const result = await confirmPruneRequest(f.root, "records", reserved!, port);
             equal(result.deleted[0], second.attrs.recordId);

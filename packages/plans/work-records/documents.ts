@@ -134,6 +134,10 @@ function isFrontMatterRecord(value: FrontMatterValue | undefined): value is Fron
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export function isWorkRecordId(value: string): boolean {
+    return UUID_RE.test(value);
+}
+
 function asTrimmedString(value: FrontMatterValue | undefined): string {
     if (typeof value === "string") return value.trim();
     if (value instanceof Date) return value.toISOString();
@@ -194,7 +198,7 @@ function normalizeSupersessionProposal(
             throw new Error("Invalid Work Record: supersessionProposal candidate contains unknown keys.");
         }
         const recordId = asTrimmedString(candidate instanceof Date ? undefined : candidate.recordId);
-        if (!UUID_RE.test(recordId)) {
+        if (!isWorkRecordId(recordId)) {
             throw new Error(
                 "Invalid Work Record: supersessionProposal candidate recordId must be a plain UUID string.",
             );
@@ -383,7 +387,7 @@ function validateWorkRecord(
 ): asserts attrs is WorkRecordFrontMatter {
     const errors = [];
     if (attrs.kind !== WORK_RECORD_KIND) errors.push('kind must be "work_record".');
-    if (!UUID_RE.test(attrs.recordId || "")) errors.push("recordId must be a plain UUID string.");
+    if (!isWorkRecordId(attrs.recordId)) errors.push("recordId must be a plain UUID string.");
     if (!WORK_RECORD_STATUSES.includes(attrs.status)) errors.push(`status is invalid: ${attrs.status || "missing"}.`);
     if (!WORK_RECORD_SCOPES.includes(attrs.scope)) errors.push(`scope is invalid: ${attrs.scope || "missing"}.`);
     if (!WORK_RECORD_ORIGINS.includes(attrs.origin)) errors.push(`origin is invalid: ${attrs.origin || "missing"}.`);

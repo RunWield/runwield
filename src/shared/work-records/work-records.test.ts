@@ -1,9 +1,12 @@
+import { projects } from "@runwield/projects";
+import { workRecordFiles } from "@runwield/plans/work-record-files";
+import { readdir, readFile } from "node:fs/promises";
 import {
     workRecords,
     type GeneratedWorkRecordSections,
     type WorkRecordFrontMatter,
 } from "@runwield/plans/work-records";
-import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { seedPlan, seedPlanState } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { syncEpicChildPlanDeviations, archivePlan } from "../../plan-store/index.ts";
 import { loadArchivedPlan, loadPlan } from "../testing/plan-query-fixture.ts";
@@ -15,6 +18,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import {
     buildWorkRecordIndexDocument,
+    deleteWorkRecord,
     findWorkRecordById,
     formatHydratedWorkRecord,
     formatWorkRecordList,
@@ -28,7 +32,7 @@ import {
     runWorkRecordBackfill,
     searchWorkRecords,
     syncWorkRecordToIndex,
-    writeWorkRecord,
+    restoreWorkRecordDocument,
 } from "./index.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { type WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
@@ -192,12 +196,14 @@ test("Work Record validation reports malformed provenance evidence entries", () 
 test("Work Record store writes flat files and resolves by recordId", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        const written = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
+        const written = await restoreWorkRecordDocument(cwd, INTERNAL_ATTRS, BODY, {
+            fileName: "2026-07-14-example.md",
+        });
         assertEquals(written.relativePath, "work-records/2026-07-14-example.md");
         const found = await findWorkRecordById(cwd, INTERNAL_ATTRS.recordId.toUpperCase());
         assertEquals(found?.title, "Example Work");
         await assertRejects(
-            () => writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "../escape.md" }),
+            () => restoreWorkRecordDocument(cwd, INTERNAL_ATTRS, BODY, { fileName: "../escape.md" }),
             Error,
             "flat Markdown filename",
         );
@@ -210,14 +216,16 @@ test("Work Record create collision preserves the old record and uses a determini
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const fileName = "2026-07-14-example.md";
-        const oldRecord = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName });
+        const oldRecord = await restoreWorkRecordDocument(cwd, INTERNAL_ATTRS, BODY, { fileName });
         const newAttrs = { ...INTERNAL_ATTRS, recordId: "33333333-3333-4333-8333-333333333333" };
-        const newRecord = await writeWorkRecord(cwd, newAttrs, BODY.replaceAll("Example", "Replacement"), { fileName });
+        const newRecord = await restoreWorkRecordDocument(cwd, newAttrs, BODY.replaceAll("Example", "Replacement"), {
+            fileName,
+        });
 
         assertEquals((await findWorkRecordById(cwd, INTERNAL_ATTRS.recordId))?.markdown, oldRecord.markdown);
         assertEquals(newRecord.relativePath, "work-records/2026-07-14-example-33333333-3333-4333-8333-333333333333.md");
         await assertRejects(
-            () => writeWorkRecord(cwd, newAttrs, BODY.replaceAll("Example", "Third"), { fileName }),
+            () => restoreWorkRecordDocument(cwd, newAttrs, BODY.replaceAll("Example", "Third"), { fileName }),
             Error,
             "No file was overwritten",
         );
@@ -318,7 +326,7 @@ test("Work Record backfill previews eligible sources, child skips, and existing 
             parentPlan: "epic",
             order: 1,
         });
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             cwd,
             {
                 ...INTERNAL_ATTRS,
@@ -359,23 +367,167 @@ test("Work Record generation writes a record and active Plan backlink", async ()
             status: "verified",
         });
         const preview = await previewWorkRecordBackfill(cwd);
+        let requestedId: string | undefined;
         const outcome = await generateWorkRecordForSource(cwd, preview.eligible[0], {
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
-            idGenerator: () => "44444444-4444-4444-8444-444444444444",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
-            runRecorderStep: recorderResponse({
-                title: "Standalone Outcome",
-                summary: "Completed the standalone feature.",
-                futurePlanningNotes: "Reuse this seam.",
-            }),
+            runRecorderStep: (prompt) => {
+                const request: { successorRecordId: string } = JSON.parse(prompt);
+                requestedId = request.successorRecordId;
+                return Promise.resolve({
+                    title: "Standalone Outcome",
+                    summary: "Completed the standalone feature.",
+                    futurePlanningNotes: "Reuse this seam.",
+                });
+            },
         });
 
         assertEquals(outcome.status, "generated");
-        const record = await findWorkRecordById(cwd, "44444444-4444-4444-8444-444444444444");
+        assertEquals(outcome.recordId, requestedId);
+        const record = await findWorkRecordById(cwd, outcome.recordId!);
         assertEquals(record?.attrs.provenance?.sourcePlans, ["plan-standalone"]);
         const plan = await loadPlan(cwd, "standalone");
-        assertEquals(plan?.attrs.workRecord?.recordId, "44444444-4444-4444-8444-444444444444");
+        assertEquals(plan?.attrs.workRecord?.recordId, outcome.recordId);
         assertEquals(plan?.attrs.status, "verified");
+    } finally {
+        await cleanupTempProject(cwd);
+    }
+});
+
+test("backfill reconciles the checkpointed identity when another record cites the same Plan", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    try {
+        const planId = "recording-checkpoint-plan";
+        const planName = "recording-checkpoint";
+        const recordId = "43214321-4321-4321-8321-432143214321";
+        await seedPlan(cwd, planName, "# Recorder checkpoint", {
+            planId,
+            classification: "PLANNED_CHANGE",
+            status: "verified",
+        });
+        const plan = (await loadPlan(cwd, planName))!;
+        await seedPlanState(
+            cwd,
+            planName,
+            {
+                validationCheckpoint: {
+                    version: 1,
+                    attemptId: "attempt",
+                    generation: "generation",
+                    expectedStatus: "verified",
+                    nextPhase: "delivery",
+                    state: "ready",
+                    updatedAt: "2026-07-16T00:00:00.000Z",
+                    hostRecorder: {
+                        recordId,
+                        invalidSubmissions: 0,
+                        request: {
+                            kind: "recorder",
+                            identity: { attemptId: "attempt", generation: "generation" },
+                            prompt: "Record the outcome.",
+                            cwd,
+                        },
+                    },
+                },
+            },
+            plan.attrs,
+            { expectedRevision: plan.revision },
+        );
+        const attrs = { ...INTERNAL_ATTRS, provenance: { sourcePlans: [planId] } };
+        await restoreWorkRecordDocument(cwd, attrs, BODY, { fileName: "a-other.md" });
+        await restoreWorkRecordDocument(cwd, { ...attrs, recordId }, BODY, { fileName: "z-checkpointed.md" });
+
+        assertEquals((await loadPlan(cwd, planName))?.attrs.validationCheckpoint?.hostRecorder?.recordId, recordId);
+        const result = await runWorkRecordBackfill(cwd, {
+            mnemotecaPort: createWorkRecordMnemotecaFixture(),
+            runRecorderStep: () => Promise.reject(new Error("A persisted matching record needs no Recorder turn.")),
+        });
+        assertEquals(result.outcomes[0]?.status, "linked");
+        assertEquals(result.outcomes[0]?.recordId, recordId);
+        assertEquals((await loadPlan(cwd, planName))?.attrs.workRecord?.recordId, recordId);
+    } finally {
+        await cleanupTempProject(cwd);
+    }
+});
+
+test("generation discards a previewed Work Record that was deleted before recording", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    try {
+        const planId = "stale-preview-plan";
+        await seedPlan(cwd, "stale-preview", "# Stale preview", {
+            planId,
+            classification: "PLANNED_CHANGE",
+            status: "verified",
+        });
+        const removed = await restoreWorkRecordDocument(
+            cwd,
+            { ...INTERNAL_ATTRS, provenance: { sourcePlans: [planId] } },
+            BODY,
+        );
+        const source = (await previewWorkRecordBackfill(cwd)).eligible[0];
+        assertEquals(source.existingRecord?.attrs.recordId, removed.attrs.recordId);
+        await deleteWorkRecord(cwd, removed);
+
+        const outcome = await generateWorkRecordForSource(cwd, source, {
+            mnemotecaPort: createWorkRecordMnemotecaFixture(),
+            runRecorderStep: recorderResponse({ title: "New result", summary: "Completed the plan." }),
+        });
+        assertEquals(outcome.status, "generated");
+        assertEquals(outcome.source.existingRecord, undefined);
+        assertEquals(await findWorkRecordById(cwd, removed.attrs.recordId), null);
+        assertEquals((await loadPlan(cwd, source.name))?.attrs.workRecord?.recordId, outcome.recordId);
+    } finally {
+        await cleanupTempProject(cwd);
+    }
+});
+
+test("backfill retries an interrupted Recorder turn with the original store reservation", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    try {
+        const planId = "interrupted-recording-plan";
+        await seedPlan(cwd, "interrupted-recording", "# Interrupted recording", {
+            planId,
+            classification: "PLANNED_CHANGE",
+            status: "verified",
+        });
+        const requestedIds: string[] = [];
+        const mnemotecaPort = createWorkRecordMnemotecaFixture();
+        const admitted = projects.checkout.inspect(cwd);
+        if (admitted.kind !== "existing") throw new Error("Expected an admitted Project.");
+        const internal = workRecordFiles.forOwner(admitted.identity).layout.internal;
+        let persistedId = "";
+        const first = await runWorkRecordBackfill(cwd, {
+            mnemotecaPort,
+            runRecorderStep: async (prompt) => {
+                const request: { successorRecordId: string } = JSON.parse(prompt);
+                requestedIds.push(request.successorRecordId);
+                const files = await readdir(internal, { recursive: true });
+                const receipts = files.filter(
+                    (file) => file.endsWith(".json") && file.split(/[\\/]/).includes("recording-creations"),
+                );
+                assertEquals(receipts.length, 1);
+                const receipt: { recordId: string } = JSON.parse(await readFile(join(internal, receipts[0]), "utf8"));
+                persistedId = receipt.recordId;
+                throw new Error("Recorder stopped before its first write.");
+            },
+        });
+        assertEquals(first.outcomes[0]?.status, "failed");
+        assertEquals(requestedIds.length, 1);
+        assertEquals(await findWorkRecordById(cwd, requestedIds[0]), null);
+        await restoreWorkRecordDocument(cwd, { ...INTERNAL_ATTRS, provenance: { sourcePlans: [planId] } }, BODY);
+
+        const retry = await runWorkRecordBackfill(cwd, {
+            mnemotecaPort,
+            runRecorderStep: (prompt) => {
+                const request: { successorRecordId: string } = JSON.parse(prompt);
+                requestedIds.push(request.successorRecordId);
+                return Promise.resolve({ title: "Recovered result", summary: "Completed the plan." });
+            },
+        });
+        assertEquals(persistedId, requestedIds[0]);
+        assertEquals(requestedIds, [requestedIds[0], requestedIds[0]]);
+        assertEquals(retry.outcomes[0]?.status, "generated");
+        assertEquals(retry.outcomes[0]?.recordId, requestedIds[0]);
     } finally {
         await cleanupTempProject(cwd);
     }
@@ -405,7 +557,6 @@ test("Work Record generation always includes confirmed Plan Deviations", async (
         const preview = await previewWorkRecordBackfill(cwd);
         const outcome = await generateWorkRecordForSource(cwd, preview.eligible[0], {
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
-            idGenerator: () => "45454545-4545-4545-8545-454545454545",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: recorderResponse({
                 title: "Deviated Outcome",
@@ -414,7 +565,7 @@ test("Work Record generation always includes confirmed Plan Deviations", async (
         });
 
         assertEquals(outcome.status, "generated");
-        const record = await findWorkRecordById(cwd, "45454545-4545-4545-8545-454545454545");
+        const record = await findWorkRecordById(cwd, outcome.recordId!);
         assertStringIncludes(record?.body || "", "## Deviations from Plan");
         assertStringIncludes(record?.sections["Deviations from Plan"] || "", "Superseded requirement: Replace nav.");
         assertStringIncludes(
@@ -465,13 +616,12 @@ test("Work Record generation includes confirmed child Plan Deviations in Epic re
 
         const outcome = await generateWorkRecordForSource(cwd, source, {
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
-            idGenerator: () => "46464646-4646-4646-8646-464646464646",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: recorderResponse({ title: "Epic Outcome", summary: "Completed the Epic." }),
         });
 
         assertEquals(outcome.status, "generated");
-        const record = await findWorkRecordById(cwd, "46464646-4646-4646-8646-464646464646");
+        const record = await findWorkRecordById(cwd, outcome.recordId!);
         assertEquals(
             (record?.sections["Deviations from Plan"] || "").split("Replacement requirement: Keep child nav.").length,
             2,
@@ -493,14 +643,11 @@ test("Work Record generation rejects missing and self Recorder proposals before 
     const cases = [
         {
             name: "missing-proposal",
-            successorId: "45454545-4545-4545-8545-454545454545",
             candidateId: "55555555-5555-4555-8555-555555555555",
             error: "was not found",
         },
         {
             name: "self-proposal",
-            successorId: "56565656-5656-4565-8565-565656565656",
-            candidateId: "56565656-5656-4565-8565-565656565656",
             error: "cannot target the successor",
         },
     ];
@@ -517,20 +664,25 @@ test("Work Record generation rejects missing and self Recorder proposals before 
                 status: "verified",
             });
             const source = (await previewWorkRecordBackfill(cwd)).eligible[0];
+            let successorId = "";
             const outcome = await generateWorkRecordForSource(cwd, source, {
                 mnemotecaPort: createWorkRecordMnemotecaFixture(),
-                idGenerator: () => testCase.successorId,
-                runRecorderStep: () =>
-                    Promise.resolve({
+                runRecorderStep: (prompt) => {
+                    const request: { successorRecordId: string } = JSON.parse(prompt);
+                    successorId = request.successorRecordId;
+                    return Promise.resolve({
                         title: "Invalid Proposal Outcome",
                         summary: "Must not be written.",
-                        supersessionProposals: [{ recordId: testCase.candidateId, reason: "Material correction." }],
-                    }),
+                        supersessionProposals: [
+                            { recordId: testCase.candidateId ?? successorId, reason: "Material correction." },
+                        ],
+                    });
+                },
             });
 
             assertEquals(outcome.status, "failed");
             assertStringIncludes(outcome.error || "", testCase.error);
-            assertEquals(await findWorkRecordById(cwd, testCase.successorId), null);
+            assertEquals(await findWorkRecordById(cwd, successorId), null);
         } finally {
             await cleanupTempProject(cwd);
         }
@@ -551,7 +703,6 @@ test("Work Record generation preserves canonical state when the external index i
         });
         const source = (await previewWorkRecordBackfill(cwd)).eligible[0];
         const outcome = await generateWorkRecordForSource(cwd, source, {
-            idGenerator: () => "45454545-4545-4545-8545-454545454545",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: recorderResponse({
                 title: "Index Unavailable Outcome",
@@ -571,14 +722,8 @@ test("Work Record generation preserves canonical state when the external index i
         assertEquals(outcome.status, "generated");
         if (!("indexWarning" in outcome)) throw new Error("Expected an index warning");
         assertStringIncludes(outcome.indexWarning || "", "fixture index unavailable");
-        assertEquals(
-            (await findWorkRecordById(cwd, "45454545-4545-4545-8545-454545454545"))?.attrs.recordId,
-            "45454545-4545-4545-8545-454545454545",
-        );
-        assertEquals(
-            (await loadPlan(cwd, "index-unavailable"))?.attrs.workRecord?.recordId,
-            "45454545-4545-4545-8545-454545454545",
-        );
+        assertEquals((await findWorkRecordById(cwd, outcome.recordId!))?.attrs.recordId, outcome.recordId);
+        assertEquals((await loadPlan(cwd, "index-unavailable"))?.attrs.workRecord?.recordId, outcome.recordId);
     } finally {
         await cleanupTempProject(cwd);
     }
@@ -601,7 +746,6 @@ test("Work Record generation distills the task completion report into the summar
         const preview = await previewWorkRecordBackfill(cwd);
         const outcome = await generateWorkRecordForSource(cwd, preview.eligible[0], {
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
-            idGenerator: () => "77777777-7777-4777-8777-777777777777",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: recorderResponse({
                 title: "Reported Outcome",
@@ -610,7 +754,7 @@ test("Work Record generation distills the task completion report into the summar
         });
 
         assertEquals(outcome.status, "generated");
-        const record = await findWorkRecordById(cwd, "77777777-7777-4777-8777-777777777777");
+        const record = await findWorkRecordById(cwd, outcome.recordId!);
         assertStringIncludes(record?.summary || "", "Completed with evidence");
         assertStringIncludes(record?.summary || "", "Implemented the settings save action.");
         assertStringIncludes(record?.summary || "", "Verification passed: deno task ci.");
@@ -637,13 +781,12 @@ test("Work Record generation includes deterministic Plan record requirements", a
         const preview = await previewWorkRecordBackfill(cwd);
         const outcome = await generateWorkRecordForSource(cwd, preview.eligible[0], {
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
-            idGenerator: () => "88888888-8888-4888-8888-888888888888",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: recorderResponse({ title: "Required Outcome", summary: "Completed." }),
         });
 
         assertEquals(outcome.status, "generated");
-        const record = await findWorkRecordById(cwd, "88888888-8888-4888-8888-888888888888");
+        const record = await findWorkRecordById(cwd, outcome.recordId!);
         assertEquals(record?.sections["Required Record Notes"], required);
         assertStringIncludes(record?.markdown || "", required);
     } finally {
@@ -664,14 +807,13 @@ test("Work Record generation discloses skipped verification reason fallback", as
             status: "closed_without_verification",
         });
         const result = await runWorkRecordBackfill(cwd, {
-            idGenerator: () => "55555555-5555-4555-8555-555555555555",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: recorderResponse({ title: "Closed", summary: "Implemented and accepted manually." }),
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
         });
 
         assertEquals(result.outcomes[0].status, "generated");
-        const record = await findWorkRecordById(cwd, "55555555-5555-4555-8555-555555555555");
+        const record = await findWorkRecordById(cwd, result.outcomes[0].recordId!);
         assertStringIncludes(record?.summary || "", "RunWield Workflow Validation was skipped");
         assertStringIncludes(record?.summary || "", "Reason not specified.");
     } finally {
@@ -694,14 +836,13 @@ test("Work Record generation preserves User Verification attribution and note", 
             userVerificationNote: "Checked in staging with Alice.",
         });
         const result = await runWorkRecordBackfill(cwd, {
-            idGenerator: () => "66666666-6666-4666-8666-666666666666",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: recorderResponse({ title: "User Verified", summary: "Implemented feature." }),
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
         });
 
         assertEquals(result.outcomes[0].status, "generated");
-        const record = await findWorkRecordById(cwd, "66666666-6666-4666-8666-666666666666");
+        const record = await findWorkRecordById(cwd, result.outcomes[0].recordId!);
         assertEquals(record?.attrs.completionMode, "user_verified");
         assertStringIncludes(record?.summary || "", "The user attested verification");
         assertStringIncludes(record?.summary || "", "Checked in staging with Alice.");
@@ -730,7 +871,6 @@ test("Work Record backfill updates archived Plan backlinks", async () => {
         });
         await archivePlan(cwd, "archived-source", { now: "2026-07-15T00:00:00.000Z" });
         const result = await runWorkRecordBackfill(cwd, {
-            idGenerator: () => "66666666-6666-4666-8666-666666666666",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: recorderResponse({ title: "Archived Source", summary: "Archived completed feature." }),
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
@@ -738,7 +878,7 @@ test("Work Record backfill updates archived Plan backlinks", async () => {
 
         assertEquals(result.outcomes[0].status, "generated");
         const archived = await loadArchivedPlan(cwd, "archived-source");
-        assertEquals(archived?.attrs.workRecord?.recordId, "66666666-6666-4666-8666-666666666666");
+        assertEquals(archived?.attrs.workRecord?.recordId, result.outcomes[0].recordId);
         assertEquals(archived?.attrs.archivedAt, "2026-07-15T00:00:00.000Z");
     } finally {
         await cleanupTempProject(cwd);
@@ -769,7 +909,6 @@ test("Work Record backfill retries failed Plan backlinks", async () => {
             ["retry"],
         );
         const result = await runWorkRecordBackfill(cwd, {
-            idGenerator: () => "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: recorderResponse({ title: "Retry Outcome", summary: "Retry succeeded." }),
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
@@ -778,7 +917,7 @@ test("Work Record backfill retries failed Plan backlinks", async () => {
         assertEquals(result.outcomes[0].status, "generated");
         const plan = await loadPlan(cwd, "retry");
         assertEquals(plan?.attrs.workRecord?.status, "generated");
-        assertEquals(plan?.attrs.workRecord?.recordId, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+        assertEquals(plan?.attrs.workRecord?.recordId, result.outcomes[0].recordId);
         assertEquals(plan?.attrs.workRecord?.error, undefined);
     } finally {
         await cleanupTempProject(cwd);
@@ -800,7 +939,6 @@ test("Work Record generation rejects empty structured sections and records failu
         const preview = await previewWorkRecordBackfill(cwd);
         const outcome = await generateWorkRecordForSource(cwd, preview.eligible[0], {
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
-            idGenerator: () => "77777777-7777-4777-8777-777777777777",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: recorderResponse({ title: "", summary: "" }),
         });
@@ -830,7 +968,6 @@ test("Work Record generation records failure backlink without changing terminal 
         const preview = await previewWorkRecordBackfill(cwd);
         const outcome = await generateWorkRecordForSource(cwd, preview.eligible[0], {
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
-            idGenerator: () => "77777777-7777-4777-8777-777777777777",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: () => Promise.reject(new Error("Recorder exploded")),
         });
@@ -879,7 +1016,7 @@ test("Work Record backfill ignores non-linkable existing records and generates a
             createdAt: "2026-07-14T00:00:00.000Z",
             status: "verified",
         });
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             cwd,
             {
                 ...INTERNAL_ATTRS,
@@ -895,7 +1032,6 @@ test("Work Record backfill ignores non-linkable existing records and generates a
         const preview = await previewWorkRecordBackfill(cwd);
         assertEquals(preview.eligible[0].existingRecord, undefined);
         const result = await runWorkRecordBackfill(cwd, {
-            idGenerator: () => "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
             now: () => new Date("2026-07-16T00:00:00.000Z"),
             runRecorderStep: recorderResponse({
                 title: "Approved Internal",
@@ -906,8 +1042,8 @@ test("Work Record backfill ignores non-linkable existing records and generates a
 
         assertEquals(result.outcomes[0].status, "generated");
         const plan = await loadPlan(cwd, "standalone");
-        assertEquals(plan?.attrs.workRecord?.recordId, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-        const generated = await findWorkRecordById(cwd, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        assertEquals(plan?.attrs.workRecord?.recordId, result.outcomes[0].recordId);
+        const generated = await findWorkRecordById(cwd, result.outcomes[0].recordId!);
         assertEquals(generated?.attrs.status, "approved");
         assertEquals(generated?.attrs.origin, "internal");
     } finally {
@@ -1027,7 +1163,7 @@ test("Work Record index sync rejects duplicate locator matches with rebuild guid
 test("Work Record search rejects duplicate indexed locator candidates", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
+        await restoreWorkRecordDocument(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
         await assertRejects(
             () =>
                 searchWorkRecords(cwd, "durable", {
@@ -1065,8 +1201,8 @@ test("Work Record search rejects duplicate indexed locator candidates", async ()
 test("Work Record search hydrates indexed candidates from a single canonical scan", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        const first = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
-        const second = await writeWorkRecord(
+        const first = await restoreWorkRecordDocument(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
+        const second = await restoreWorkRecordDocument(
             cwd,
             {
                 ...INTERNAL_ATTRS,
@@ -1076,7 +1212,7 @@ test("Work Record search hydrates indexed candidates from a single canonical sca
             BODY.replace("Example", "Second"),
             { fileName: "2026-07-15-second.md" },
         );
-        const third = await writeWorkRecord(
+        const third = await restoreWorkRecordDocument(
             cwd,
             {
                 ...INTERNAL_ATTRS,
@@ -1124,13 +1260,15 @@ test("Work Record search hydrates indexed candidates from a single canonical sca
 test("Work Record search bootstraps empty index, filters current records, and omits body from results", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        const currentRecord = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
+        const currentRecord = await restoreWorkRecordDocument(cwd, INTERNAL_ATTRS, BODY, {
+            fileName: "2026-07-14-example.md",
+        });
         const draftAttrs: WorkRecordFrontMatter = {
             ...INTERNAL_ATTRS,
             recordId: "33333333-3333-4333-8333-333333333333",
             status: "draft",
         };
-        const draftRecord = await writeWorkRecord(cwd, draftAttrs, BODY.replace("Example", "Draft"), {
+        const draftRecord = await restoreWorkRecordDocument(cwd, draftAttrs, BODY.replace("Example", "Draft"), {
             fileName: "2026-07-15-draft.md",
         });
         const calls: string[][] = [];
@@ -1184,7 +1322,7 @@ test("Work Record read current-only rejects non-current body while all mode retu
             recordId: "44444444-4444-4444-8444-444444444444",
             status: "draft",
         };
-        const draft = await writeWorkRecord(cwd, draftAttrs, BODY, {
+        const draft = await restoreWorkRecordDocument(cwd, draftAttrs, BODY, {
             fileName: "2026-07-15-draft.md",
         });
         await assertRejects(
@@ -1202,7 +1340,7 @@ test("Work Record read current-only rejects non-current body while all mode retu
 test("Work Record index rebuild forgets only the dedicated collection and reports partial failures", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
+        await restoreWorkRecordDocument(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
         const mnemotecaPort = createWorkRecordMnemotecaFixture();
 
         const result = await rebuildWorkRecordIndex(cwd, { mnemotecaPort });
@@ -1304,15 +1442,13 @@ test("Work Record generation preserves child Ticket References when assigning ac
             assertEquals(source.planId, "");
             assertEquals(source.children?.length, 1);
 
-            const ids = ["11111111-1111-4111-8111-111111111114", "11111111-1111-4111-8111-111111111115"];
             const outcome = await generateWorkRecordForSource(cwd, source, {
-                idGenerator: () => ids.shift() || "11111111-1111-4111-8111-111111111116",
                 runRecorderStep: recorderResponse({ title: "Epic Without Plan ID", summary: "Done." }),
                 mnemotecaPort: createWorkRecordMnemotecaFixture(),
             });
 
             assertEquals(outcome.status, "generated");
-            assertEquals((await findWorkRecordById(cwd, "11111111-1111-4111-8111-111111111115"))?.attrs.tickets, [
+            assertEquals((await findWorkRecordById(cwd, outcome.recordId!))?.attrs.tickets, [
                 { url: "https://example.com/tickets/EPIC-NO-ID" },
                 { url: "https://example.com/tickets/CHILD-NO-ID" },
             ]);
@@ -1335,12 +1471,11 @@ test("Work Record generation snapshots standalone and Epic Ticket References det
         );
         if (!standalone) throw new Error("Expected standalone source");
         const standaloneOutcome = await generateWorkRecordForSource(cwd, standalone, {
-            idGenerator: () => "11111111-1111-4111-8111-111111111112",
             runRecorderStep: recorderResponse({ title: "Standalone", summary: "Done." }),
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
         });
         assertEquals(standaloneOutcome.status, "generated");
-        assertEquals((await findWorkRecordById(cwd, "11111111-1111-4111-8111-111111111112"))?.attrs.tickets, [
+        assertEquals((await findWorkRecordById(cwd, standaloneOutcome.recordId!))?.attrs.tickets, [
             { url: "https://example.com/tickets/STAND-1", label: "standalone" },
         ]);
 
@@ -1368,12 +1503,11 @@ test("Work Record generation snapshots standalone and Epic Ticket References det
         const epic = (await previewWorkRecordBackfill(cwd)).eligible.find((source) => source.name === "epic");
         if (!epic) throw new Error("Expected Epic source");
         const epicOutcome = await generateWorkRecordForSource(cwd, epic, {
-            idGenerator: () => "11111111-1111-4111-8111-111111111113",
             runRecorderStep: recorderResponse({ title: "Epic", summary: "Done." }),
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
         });
         assertEquals(epicOutcome.status, "generated");
-        assertEquals((await findWorkRecordById(cwd, "11111111-1111-4111-8111-111111111113"))?.attrs.tickets, [
+        assertEquals((await findWorkRecordById(cwd, epicOutcome.recordId!))?.attrs.tickets, [
             { url: "https://example.com/tickets/DUP", label: "epic" },
             { url: "https://example.com/tickets/CHILD-2" },
         ]);
@@ -1388,7 +1522,7 @@ test("legacy publication notes remain searchable after index rebuild", async () 
     try {
         const body =
             "# Search cache\n\n## Summary\n\nDelivery metadata has been finalized.\n\n## Historical pre-publication notes\n\n> Search now uses a local cache.";
-        await writeWorkRecord(cwd, INTERNAL_ATTRS, body, { fileName: "cache.md" });
+        await restoreWorkRecordDocument(cwd, INTERNAL_ATTRS, body, { fileName: "cache.md" });
         const mnemotecaPort = createWorkRecordMnemotecaFixture();
         const result = await rebuildWorkRecordIndex(cwd, { mnemotecaPort });
         assertEquals(result.failed, 0);

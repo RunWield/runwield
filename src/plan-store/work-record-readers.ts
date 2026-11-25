@@ -9,7 +9,7 @@ import { validatedRetainedCheckoutSource } from "./retained-source.ts";
 import { listProjectWorkRecords, selectProjectWorkRecord } from "./project-work-records.ts";
 
 /** Resolve passive Work Record evidence at a checkout entry point. */
-export function workRecordsForCheckout(root: string): ProjectWorkRecords {
+export function workRecordsForCheckout(root: string): Pick<ProjectWorkRecords, "list" | "read"> {
     const retained = validatedRetainedCheckoutSource(root);
     if (!retained) {
         const store = openPlanStoreForCheckout(root);

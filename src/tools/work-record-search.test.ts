@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import { writeWorkRecord } from "../shared/work-records/index.ts";
+import { restoreWorkRecordDocument } from "../shared/work-records/index.ts";
 import type { WorkRecordFrontMatter } from "@runwield/plans/work-records";
 import type { WorkRecordMnemotecaPort } from "../shared/work-records/mnemoteca-port.ts";
 import { createWorkRecordMnemotecaFixture } from "../shared/work-records/test-fixtures/mnemoteca-port.ts";
@@ -35,7 +35,7 @@ function recordAttrs(): WorkRecordFrontMatter {
 test("work_record_search indexes and hydrates canonical fixture records", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "work-record-search-tool-"));
     try {
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             projectRoot,
             recordAttrs(),
             "# Useful outcome\n\n## Summary\n\nFull durable summary text.",
@@ -78,7 +78,7 @@ test("work_record_search reports the external Mnemoteca failure as a tool error"
             }),
     };
     try {
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             projectRoot,
             recordAttrs(),
             "# Useful outcome\n\n## Summary\n\nFull durable summary text.",

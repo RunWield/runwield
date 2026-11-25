@@ -1,3 +1,4 @@
+import { validateWorkRecordCreation } from "@runwield/plans/work-record-files";
 import { isProjectId } from "@runwield/projects";
 import type { ProjectStoreBinding, ProjectStoreCommand, ProjectStoreReply } from "../../plan-store/index.ts";
 // Six bytes per UTF-16 code unit covers JSON escaping in the response envelope.
@@ -103,6 +104,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
             "sourceMarkdown",
             "controllerRevision",
         ],
+        "create-project-work-record": ["kind", "operationId", "input"],
         "record-catalog": ["kind"],
         "record-query": ["kind", "query", "limit", "accessMode"],
         read: ["kind", "planId", "resource"],
@@ -192,7 +194,10 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         (!["plans", "records"].includes(command.target) || !/^[a-f0-9]{64}$/.test(command.token))
     )
         throw new Error("Invalid prune confirmation.");
-    if ("operationId" in command && !/^[a-f0-9-]{36}$/.test(command.operationId))
+    if (
+        "operationId" in command &&
+        (typeof command.operationId !== "string" || !/^[a-f0-9-]{36}$/.test(command.operationId))
+    )
         throw new Error("Invalid operation identity.");
     if ("expectedRevision" in command && !/^[a-f0-9]{64}$/.test(command.expectedRevision))
         throw new Error("Expected revision is required.");
@@ -227,6 +232,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
             Array.isArray(command.decision))
     )
         throw new Error("Invalid review decision.");
+    if (command.kind === "create-project-work-record") validateWorkRecordCreation(command.input);
     if (command.kind === "record-query" && !["current", "all"].includes(command.accessMode))
         throw new Error("Invalid record access mode.");
     if ("recordId" in command && !identity(command.recordId)) throw new Error("Invalid record identity.");
@@ -500,6 +506,7 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
     if ("planResource" in result) allowed = ["planResource"];
     if ("presentation" in result) allowed = ["presentation"];
     if ("reviewInput" in result) allowed = ["reviewInput"];
+    if ("createdRecord" in result) allowed = ["operationId", "createdRecord"];
     if ("recordResources" in result) allowed = ["recordResources"];
     if ("recordSearch" in result) allowed = ["recordSearch"];
     if (Object.keys(result).some((key) => !allowed.includes(key))) throw new Error("Unsupported reply result fields.");
@@ -616,6 +623,17 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
             !/^[a-f0-9]{64}$/.test(result.reviewInput.definitionHash)
         )
             throw new Error("Invalid retained review input.");
+    } else if (request.command.kind === "create-project-work-record") {
+        if (
+            !("createdRecord" in result) ||
+            result.operationId !== request.command.operationId ||
+            !result.createdRecord ||
+            Object.keys(result.createdRecord).sort().join(",") !== "markdown,relativePath" ||
+            typeof result.createdRecord.markdown !== "string" ||
+            typeof result.createdRecord.relativePath !== "string" ||
+            !/^work-records\/[^/\\]+\.md$/.test(result.createdRecord.relativePath)
+        )
+            throw new Error("Invalid created Work Record reply.");
     } else if (request.command.kind === "record-catalog") {
         if (
             !("recordResources" in result) ||
@@ -716,7 +734,7 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
         )
             throw new Error("Invalid document reply.");
     } else if (
-        !("operationId" in result) ||
+        !("status" in result) ||
         result.operationId !== request.command.operationId ||
         !["completed", "unstarted", "pending", "unavailable"].includes(result.status) ||
         (result.status === "completed" && !/^[a-f0-9]{64}$/.test(result.revision || ""))

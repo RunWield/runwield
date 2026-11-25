@@ -178,7 +178,6 @@ test("confirmed Pair Plan Deviation survives restart, review, and Work Record ba
             if (!source) throw new Error("Work Record backfill did not discover the verified Plan.");
             const outcome = await generateWorkRecordForSource(executionRoot, source, {
                 mnemotecaPort: createWorkRecordMnemotecaFixture(),
-                idGenerator: () => "99999999-9999-4999-8999-999999999999",
                 now: () => new Date("2026-09-10T00:00:00.000Z"),
                 runRecorderStep: () =>
                     Promise.resolve({
@@ -187,7 +186,7 @@ test("confirmed Pair Plan Deviation survives restart, review, and Work Record ba
                     }),
             });
             assertEquals(outcome.status, "generated");
-            const record = await findWorkRecordById(executionRoot, "99999999-9999-4999-8999-999999999999");
+            const record = await findWorkRecordById(executionRoot, outcome.recordId!);
             assertStringIncludes(
                 record?.sections["Deviations from Plan"] || "",
                 "Superseded requirement: Replace the existing navigation.",

@@ -20,7 +20,9 @@ the canonical owner to author prose. Core workflows read richer execution docume
 Other hosts can open the same store with an identity admitted by Projects.
 The runtime selects the owner and the `@runwield/plans/file-snapshots` driver stores retained workflow inputs.
 
-### Work Record reads
+### Work Records
+
+Use `store.workRecords.create(input)` to persist content and receive its store-assigned ID. The Recorder uses the ID reserved by the store when preparing a record for publication.
 
 Use `store.workRecords.list()` to browse a Project and `store.workRecords.read(recordId)` to open one record. Both return documents with logical relative paths. ID lookup is case-insensitive, returns `null` for a missing record, and rejects an ambiguous ID. Listing is passive and includes all statuses. The [package contract](../../packages/plans/store.ts) is shared by local and managed owners.
 
@@ -108,6 +110,7 @@ require a real execution checkout. The existing cwd registration adapter keeps o
 | `record-event`                                   | `recordPlanEvent`, restricted to review approval/feedback and reset from hold           |
 | `seal-publication`, `read-frozen`                | `sealPackagePublication` and checked immutable publication/input reads                  |
 | `read-collaboration`                             | Owner-side capability lookup and authenticated Shared Space metadata read               |
+| `create-project-work-record`                     | Create with an owner-assigned ID and replay the same result after a lost reply          |
 | `save-record`                                    | Retained delivery source, existing Work Record generation/persistence and Plan backlink |
 | `read-record`, `search-records`                  | Canonical record lookup and confidence-filtered owner index search                      |
 | `reconcile-record-index`                         | Existing canonical record/index reconciliation                                          |

@@ -9,7 +9,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { workRecords, type WorkRecordFrontMatter } from "@runwield/plans/work-records";
-import { findWorkRecordById, listWorkRecords, writeWorkRecord } from "../../shared/work-records/index.ts";
+import { findWorkRecordById, listWorkRecords, restoreWorkRecordDocument } from "../../shared/work-records/index.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runWorkRecordsCommand, type WorkRecordCommandOptions } from "./index.ts";
@@ -32,13 +32,13 @@ function recordAttrs(recordId: string, sourcePlan: string, archivedAt?: string):
 }
 
 async function writeFixtureRecords(projectRoot: string): Promise<void> {
-    await writeWorkRecord(
+    await restoreWorkRecordDocument(
         projectRoot,
         recordAttrs(CURRENT_RECORD_ID, "plan-current"),
         "# Current Record\n\n## Summary\n\nBuilt the durable current machinery.",
         { fileName: "2026-07-14-current.md" },
     );
-    await writeWorkRecord(
+    await restoreWorkRecordDocument(
         projectRoot,
         recordAttrs(ARCHIVED_RECORD_ID, "plan-archived", "2026-07-15T00:00:00.000Z"),
         "# Archived Record\n\n## Summary\n\nPreserved the obsolete zephyr history.",
@@ -47,13 +47,13 @@ async function writeFixtureRecords(projectRoot: string): Promise<void> {
 }
 
 async function writeSupersessionFixture(projectRoot: string): Promise<void> {
-    await writeWorkRecord(
+    await restoreWorkRecordDocument(
         projectRoot,
         recordAttrs(CURRENT_RECORD_ID, "plan-current"),
         "# Current Record\n\n## Summary\n\nOlder implementation.",
         { fileName: "2026-07-14-current.md" },
     );
-    await writeWorkRecord(
+    await restoreWorkRecordDocument(
         projectRoot,
         {
             ...recordAttrs(ARCHIVED_RECORD_ID, "plan-successor"),
@@ -98,7 +98,7 @@ test("wld wr defaults to current Work Records from the project store", async () 
         process.chdir(projectRoot);
         await writeFixtureRecords(projectRoot);
 
-        await writeWorkRecord(
+        await restoreWorkRecordDocument(
             projectRoot,
             {
                 ...recordAttrs("c3333333-3333-4333-8333-333333333333", "plan-old"),
@@ -124,7 +124,7 @@ test("wld wr list displays the canonical path from an admitted owner scope", asy
     await withRuntimeCommandFixture("wr-list-owned-path-", async ({ projectRoot }) => {
         process.chdir(projectRoot);
         await withLocalProjectAction(projectRoot, async () => {
-            const record = await writeWorkRecord(
+            const record = await restoreWorkRecordDocument(
                 projectRoot,
                 recordAttrs(CURRENT_RECORD_ID, "plan-current"),
                 "# Current Record\n\n## Summary\n\nCanonical path evidence.",

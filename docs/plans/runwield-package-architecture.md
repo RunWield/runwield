@@ -214,10 +214,11 @@ PostgreSQL remains a future driver. [Store operations](../../src/plan-store/inde
 
 ### Work Records
 
-Opening the Plan Store binds its `workRecords` collection to the same Project ID and personal owner. Neither method needs a checkout path. Each call rechecks the binding and reads the current documents.
+Opening the Plan Store binds its `workRecords` collection to the same Project ID and personal owner. Each operation rechecks the binding. Callers supply no checkout path.
 
 | Operation | Result |
 | --- | --- |
+| `workRecords.create(input)` | Returns the persisted document with its store-assigned record ID. The store owns the ID and the filename. |
 | `workRecords.list()` | All stored documents, including drafts, archived records and superseded records. A passive read of an empty store returns an empty list. |
 | `workRecords.read(recordId)` | One document by case-insensitive record ID, or `null` if missing. Multiple documents with that ID cause an ambiguity error. |
 

@@ -11,7 +11,7 @@ import { git } from "../git-test-fixture.ts";
 import { addEntry } from "../worktree-registry.ts";
 import { withRuntimeCommandFixture as withBaseRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.ts";
-import { listWorkRecords, writeWorkRecord } from "./store.ts";
+import { listWorkRecords, restoreWorkRecordDocument } from "./store.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import { autoGenerateWorkRecordForCompletedPlan } from "./auto-generation.ts";
 
@@ -35,7 +35,7 @@ async function saveStandalonePlan(projectRoot: string, supersedes: string[] = []
 }
 
 async function savePredecessor(projectRoot: string, recordId: string, title: string): Promise<void> {
-    await writeWorkRecord(
+    await restoreWorkRecordDocument(
         projectRoot,
         {
             kind: "work_record",

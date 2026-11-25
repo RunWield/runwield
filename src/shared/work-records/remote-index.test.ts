@@ -8,7 +8,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { configureRemotePersonalResources } from "../remote/personal-resources.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { writeWorkRecord } from "./store.ts";
+import { restoreWorkRecordDocument } from "./store.ts";
 import { rebuildWorkRecordIndex, runMnemotecaWorkRecordCommand, syncWorkRecordToIndex } from "./index-adapter.ts";
 import { searchWorkRecords } from "./search.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
@@ -39,7 +39,7 @@ test("retained remote Work Record rebuild, search, and sync use only the project
                 personalOwner: { kind: "managed-remote", identity: "test-laptop" },
             });
             await withRetainedPlanFixture(root, async () => {
-                const record = await writeWorkRecord(
+                const record = await restoreWorkRecordDocument(
                     root,
                     {
                         kind: "work_record",

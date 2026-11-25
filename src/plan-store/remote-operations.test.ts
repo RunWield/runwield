@@ -887,6 +887,122 @@ test("managed multi-file edit resumes a dropped successful response and preserve
     });
 });
 
+test("managed Work Record creation recovers a lost reply with the owner's exact record", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        let lost: import("../shared/remote/project-store-protocol.ts").ProjectStoreRequest | undefined;
+        const proxy = Bun.serve({
+            port: 0,
+            hostname: "127.0.0.1",
+            async fetch(request) {
+                const path = new URL(request.url).pathname;
+                const forward = () => fetch(new Request(new URL(path, f.endpoint), request));
+                if (path === "/project-store" && !lost) {
+                    const payload: import("../shared/remote/project-store-protocol.ts").ProjectStoreRequest =
+                        await request.clone().json();
+                    if (payload.command.kind === "create-project-work-record") {
+                        const reply = await forward();
+                        if (reply.status === 200) {
+                            lost = payload;
+                            return new Response(null, { status: 502 });
+                        }
+                        return reply;
+                    }
+                }
+                return await forward();
+            },
+        });
+        try {
+            const send = <Payload>(payload: Payload) =>
+                fetch(f.endpoint + "/project-store", {
+                    method: "POST",
+                    headers: { ...f.headers, "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+            const admission = await fetch(f.endpoint + "/project-store/admit", { method: "POST", headers: f.headers });
+            equal(admission.status, 200);
+            const first = await f.runRaw("managed-create-project-record", proxy.port);
+            equal(first.code, 1, new TextDecoder().decode(first.stderr));
+            if (!lost || lost.command.kind !== "create-project-work-record")
+                throw new Error(
+                    `Expected an owner-confirmed creation with a lost reply. ${new TextDecoder().decode(first.stderr)}`,
+                );
+            const { binding, command } = lost;
+            const read = async () => {
+                const response = await send({ binding, command: { kind: "record-catalog" } });
+                equal(response.status, 200);
+                const { result }: import("./project-service.ts").ProjectStoreReply = await response.json();
+                if (!("recordResources" in result)) throw new Error("Missing canonical Work Record catalog.");
+                return result.recordResources.map((record) => record.attrs.recordId);
+            };
+            const beforeRetry = await read();
+            equal(beforeRetry.length, 1);
+            const createdId = await f.run("managed-create-project-record", proxy.port);
+            equal(createdId, beforeRetry[0]);
+            deepEqual(await read(), beforeRetry);
+            equal(
+                (await send({ binding, command: { ...command, input: { ...command.input, recordId: randomUUID() } } }))
+                    .status,
+                400,
+            );
+            equal(
+                (
+                    await send({
+                        binding,
+                        command: { ...command, input: { ...command.input, body: command.input.body + "\n" } },
+                    })
+                ).status,
+                409,
+            );
+            const { recordAttrs } = await import("../shared/work-records/test-fixtures/package-records.ts");
+            const serialized = workRecords.documents.format(recordAttrs(), command.input.body);
+            equal(
+                (
+                    await send({
+                        binding,
+                        command: {
+                            ...command,
+                            operationId: randomUUID(),
+                            input: { ...command.input, body: serialized },
+                        },
+                    })
+                ).status,
+                400,
+            );
+            equal((await send({ binding: { ...binding, ownerId: "0".repeat(64) }, command })).status, 403);
+            equal(
+                (await send({ binding, command: { kind: "repair-owner", operationId: command.operationId } })).status,
+                409,
+            );
+            const repairId = randomUUID();
+            equal((await send({ binding, command: { kind: "repair-owner", operationId: repairId } })).status, 200);
+            equal((await send({ binding, command: { ...command, operationId: repairId } })).status, 409);
+
+            const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
+            const receiptPath = join(
+                workRecordFiles.forOwner(owner).layout.internal,
+                "creations",
+                `${command.operationId}.json`,
+            );
+            const receipt: { markdown: string } = JSON.parse(await readFile(receiptPath, "utf8"));
+            await unlink(receiptPath);
+            equal((await send({ binding, command })).status, 409);
+            await writeFile(receiptPath, JSON.stringify({ ...receipt, markdown: receipt.markdown + "\nAltered." }));
+            equal((await send({ binding, command })).status, 409);
+            deepEqual(await read(), beforeRetry);
+
+            const second = await f.run("managed-create-project-record", proxy.port);
+            equal(second === createdId, false);
+            deepEqual((await read()).sort(), [createdId, second].sort());
+        } finally {
+            proxy.stop(true);
+            await f.cleanup();
+        }
+    });
+});
+
 test("managed bulk document edits publish one generation only if every Plan still matches", async () => {
     const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
     const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
@@ -913,7 +1029,7 @@ test("managed pruning changes laptop records and bound execution copies while ma
             const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
             const cwd = projects.home.storeLocation(owner);
             const { readLocalHomeStore } = await import("./index.ts");
-            const { writeWorkRecord, listWorkRecords } = await import("../shared/work-records/store.ts");
+            const { restoreWorkRecordDocument, listWorkRecords } = await import("../shared/work-records/store.ts");
             const { recordAttrs, recordBody } = await import("../shared/work-records/test-fixtures/package-records.ts");
             const { retainWorkRecordLocation, workRecordDigest } = await import("../shared/work-records/import.ts");
             const copy = join(f.root, "delivered-record.md");
@@ -921,7 +1037,7 @@ test("managed pruning changes laptop records and bound execution copies while ma
                 readLocalHomeStore(
                     cwd,
                     async () => {
-                        const record = await writeWorkRecord(cwd, recordAttrs(), recordBody);
+                        const record = await restoreWorkRecordDocument(cwd, recordAttrs(), recordBody);
                         await writeFile(copy, record.markdown);
                         await retainWorkRecordLocation(record.attrs.recordId, {
                             kind: "copy",
@@ -995,9 +1111,9 @@ test("a retained publication pins its declared predecessor before the Recorder w
         const { capturePlanPackageInput, retainPlanPackagePublication } = await import("./packages.ts");
         const { localConfirmRetention, localRetentionPreview } = await import("./retention.ts");
         const { recordAttrs, recordBody } = await import("../shared/work-records/test-fixtures/package-records.ts");
-        const { writeWorkRecord } = await import("../shared/work-records/store.ts");
+        const { restoreWorkRecordDocument } = await import("../shared/work-records/store.ts");
         const predecessor = await withWorkRecordOwner(f.root, f.identity, () =>
-            writeWorkRecord(f.root, recordAttrs({ provenance: { sourcePlans: ["other-plan"] } }), recordBody),
+            restoreWorkRecordDocument(f.root, recordAttrs({ provenance: { sourcePlans: ["other-plan"] } }), recordBody),
         );
         const plan = await create(f.identity, {
             definition: {
@@ -1043,7 +1159,7 @@ test(
             const fs = await import("node:fs/promises");
             const { checkedProjectRuntimeLayout } = await import("../shared/project-runtime-layout.ts");
             const { withWorkRecordOwner } = await import("../shared/work-records/owner.ts");
-            const { writeWorkRecord } = await import("../shared/work-records/store.ts");
+            const { restoreWorkRecordDocument } = await import("../shared/work-records/store.ts");
             const { retainWorkRecordLocation } = await import("../shared/work-records/import.ts");
             const { recordAttrs, recordBody } = await import("../shared/work-records/test-fixtures/package-records.ts");
             const { createWorkRecordMnemotecaFixture } =
@@ -1066,7 +1182,7 @@ test(
                 await fs.mkdir(parent);
                 const path = join(f.root, filename);
                 const digest = await withWorkRecordOwner(f.root, f.identity, async () => {
-                    const record = await writeWorkRecord(f.root, recordAttrs(), recordBody);
+                    const record = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);
                     await fs.writeFile(path, record.markdown);
                     const digest = hash(record.markdown);
                     await retainWorkRecordLocation(record.attrs.recordId, {

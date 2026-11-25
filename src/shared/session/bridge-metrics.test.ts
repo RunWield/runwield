@@ -11,6 +11,8 @@ import { CLAUDE_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "./bridged-too
 test("authenticated bridge records admitted results and known-tool rejections in its execution", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot, backend: "claude-cli" });
+        await recorder.recordExecutionStart();
+        const observations: Promise<void>[] = [];
         const tool = defineTool({
             name: "read_fixture",
             label: "Read Fixture",
@@ -24,7 +26,7 @@ test("authenticated bridge records admitted results and known-tool rejections in
             cwd: projectRoot,
             sessionManager: SessionManager.inMemory(projectRoot),
             onMessage: (message) => {
-                void recorder.recordBridgeMessage(message);
+                observations.push(recorder.recordBridgeMessage(message));
             },
             assistantBase: { api: "anthropic-messages", provider: "anthropic", model: "claude-sonnet" },
             provenance: CLAUDE_CLI_MCP_PROVENANCE,
@@ -40,6 +42,7 @@ test("authenticated bridge records admitted results and known-tool rejections in
                 false,
             );
             assertEquals((await client.callTool({ name: "read_fixture", arguments: {} })).isError, true);
+            await Promise.all(observations);
             await recorder.settleExecution();
             // Recorder sequence, rather than asynchronous disk append order, defines execution order.
             const records = (await readMetrics())

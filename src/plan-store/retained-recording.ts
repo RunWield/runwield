@@ -101,6 +101,7 @@ export async function readRetainedRecordingContext(
         ? {
               ...sources.workRecordOwner,
               recordingAttemptId: execution.attempt.id,
+              deliveryCheckpoint: execution.controller.state.validationCheckpoint ?? null,
               pendingPublication,
               attrs: {
                   ...sources.workRecordOwner.attrs,
@@ -149,21 +150,30 @@ export async function prepareRetainedRecord(
         const context = await readRetainedRecordingContext(owner, launch, reference, pendingPublication, signal);
         if (!context?.source || context.execution.attempt.id !== attemptId)
             throw new Error("Retained recording source is unavailable or changed.");
+        const source = context.source;
         if (operationHash(JSON.stringify(context.execution.controller)) !== expectedRevision)
             throw new Error("Retained recording controller changed before preparation.");
         const identityPath = join(directory(owner, context.execution), "record-owner.json");
         await assertManagedRuntimePath(identityPath, owner.executionAccountHome);
-        const sourceIdentity = { planId: context.source.planId, name: context.source.name };
+        const sourceIdentity = { planId: source.planId, name: source.name };
         writeJsonAtomically(identityPath, sourceIdentity);
-        const prepared = await reservePreparedPackageRecord(attemptId);
+        const prepared = await reservePreparedPackageRecord(
+            attemptId,
+            context.execution.controller.state.validationCheckpoint?.hostRecorder,
+        );
         if (sections) {
             const outcome = await recordingOwners.run(
                 { owner, execution: context.execution, source: sourceIdentity },
                 () =>
-                    generatePreparedPackageRecord(owner.executionAccountHome, context.source!, attemptId, {
-                        mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-                        runRecorderStep: () => Promise.resolve(sections),
-                    }),
+                    generatePreparedPackageRecord(
+                        owner.executionAccountHome,
+                        { ...source, preparation: { attemptId: prepared.attemptId, recordId: prepared.recordId } },
+                        attemptId,
+                        {
+                            mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                            runRecorderStep: () => Promise.resolve(sections),
+                        },
+                    ),
             );
             if (outcome.status !== "generated" && outcome.status !== "linked")
                 throw new Error("Retained canonical recording remains pending.");

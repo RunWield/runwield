@@ -66,6 +66,22 @@ try {
                 console.log(JSON.stringify(result));
             }
         }
+    } else if (command === "managed-create-project-record") {
+        const { openPlanStoreForCheckout } = await import("../../plan-store/index.ts");
+        const { recordBody } = await import("../work-records/test-fixtures/package-records.ts");
+        const store = openPlanStoreForCheckout(input.cwd);
+        ok(store);
+        const created = await store.workRecords.create({
+            status: "draft",
+            scope: "planned_change",
+            origin: "external",
+            completionMode: "verified",
+            body: recordBody,
+        });
+        ok(!("path" in created));
+        equal(created.attrs.status, "draft");
+        equal((await store.workRecords.read(created.attrs.recordId))?.markdown, created.markdown);
+        console.log(created.attrs.recordId);
     } else if (command === "managed-edit-documents") {
         const { authorLocalPlan, operatePlanFile, savePlanFileBatch, savePlanProse } =
             await import("../../plan-store/index.ts");
@@ -106,9 +122,9 @@ try {
         const { setExactProjectCustomSetting } = await import("../settings.ts");
         if (!managed) process.env.SSH_CONNECTION = "192.0.2.2 54321 192.0.2.1 22";
         if (command === "manual-prune-seed") {
-            const { writeWorkRecord } = await import("../work-records/store.ts");
+            const { restoreWorkRecordDocument } = await import("../work-records/store.ts");
             const { recordAttrs, recordBody } = await import("../work-records/test-fixtures/package-records.ts");
-            await writeWorkRecord(
+            await restoreWorkRecordDocument(
                 input.cwd,
                 recordAttrs({ recordId: "aaaa1111-1111-4111-8111-111111111111" }),
                 recordBody,
@@ -320,18 +336,38 @@ try {
                 await sealPackagePublication("family/first", execution.worktreeId!, commit, "main", true);
                 const { autoGenerateWorkRecordForCompletedPlan } = await import("../work-records/auto-generation.ts");
                 const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
+                const recordId = managed ? crypto.randomUUID() : undefined;
+                if (recordId) {
+                    const { savePlanValidationCheckpoint } = await import("../../plan-store/index.ts");
+                    const { recorderCheckpoint } = await import("../work-records/test-fixtures/package-records.ts");
+                    const child = await loadPlan(input.cwd, "family/first");
+                    ok(child);
+                    await savePlanValidationCheckpoint(
+                        input.cwd,
+                        "family/first",
+                        recorderCheckpoint(execution.worktreeId!, execution.executionCwd!, recordId),
+                        { expectedRevision: child.revision, expectedControllerRevision: child.controllerRevision },
+                    );
+                }
                 const recorded = await autoGenerateWorkRecordForCompletedPlan({
                     cwd: input.cwd,
                     planName: "family/first",
                     pendingPublication: true,
                     mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-                    runRecorderStep: () =>
-                        Promise.resolve({
+                    runRecorderStep: (prompt) => {
+                        const reference: { successorRecordId: string; source: { planId: string } } = JSON.parse(prompt);
+                        if (recordId) {
+                            equal(reference.successorRecordId, recordId);
+                            equal(reference.source.planId, "family-id");
+                        }
+                        return Promise.resolve({
                             title: managed ? "Laptop composed delivery" : "Manual composed delivery",
                             summary: "Delivered the imported child while preserving its sibling draft.",
-                        }),
+                        });
+                    },
                 });
                 ok(recorded.status === "generated" || recorded.status === "linked", JSON.stringify(recorded));
+                if (recordId) equal(recorded.recordId, recordId);
                 let attempt = await startPublicationAttempt({
                     projectRoot: input.cwd,
                     attemptId: execution.worktreeId!,

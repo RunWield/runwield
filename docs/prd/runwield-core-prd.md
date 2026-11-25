@@ -2312,7 +2312,7 @@ index. Declining leaves both the canonical record and its repository copy intact
 
 **Requirement: Preserve outcomes with truthful completion confidence.** Work Records are concise Markdown accounts of permanent facts: the delivered outcome, recorded Plan Deviations, out-of-scope facts, and durable
 lessons. They keep source Plan and Ticket links, not validation receipts, delivery status, run events, to-dos, or known
-defects. Identity and links survive renaming, and search can be rebuilt from the documents.
+defects. The Project store assigns the ID for each new Work Record. The Recorder uses that ID throughout preparation and recovery. Identity and links survive renaming, and search can be rebuilt from the documents.
 
 - Eligible top-level completed Plans and Epics receive auto-approved records by default. An Epic record summarizes its
   relevant children, including deferred and archived work.

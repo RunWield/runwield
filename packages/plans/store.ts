@@ -2,14 +2,31 @@ import type { ProjectId } from "@runwield/projects";
 import type { PlanFrontMatter } from "./document.ts";
 import type { PlanId } from "./identity.ts";
 import type { PlanEvent, PlanEventDetails } from "./lifecycle.ts";
-import type { WorkRecordResource } from "./work-records.ts";
+import type { WorkRecordFrontMatter, WorkRecordResource } from "./work-records.ts";
 
 export type ProjectWorkRecord = Omit<WorkRecordResource, "path">;
+
+export interface CreateProjectWorkRecord extends Pick<
+    WorkRecordFrontMatter,
+    | "status"
+    | "scope"
+    | "workKind"
+    | "origin"
+    | "completionMode"
+    | "tickets"
+    | "supersedes"
+    | "supersessionProposal"
+    | "provenance"
+> {
+    body: string;
+    createdAt?: string;
+}
 
 export interface ProjectWorkRecords {
     list(): Promise<ProjectWorkRecord[]>;
     /** Return null for a missing ID. Duplicate IDs are ambiguous across all statuses. */
     read(recordId: string): Promise<ProjectWorkRecord | null>;
+    create(input: CreateProjectWorkRecord): Promise<ProjectWorkRecord>;
 }
 
 export interface PlanAuthoringDefinition {

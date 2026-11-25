@@ -105,6 +105,10 @@ export function canonicalFiles(root: string, directory: string, ownerHome?: stri
         }
     }
 
+    async function decode(fileName: string, markdown: string): Promise<WorkRecordResource> {
+        return parse(markdown, await recordPath(fileName));
+    }
+
     async function readDirectory(options: ListWorkRecordsOptions): Promise<WorkRecordResource[]> {
         await assertPath(directory);
         if (options.createDir === false) {
@@ -145,6 +149,8 @@ export function canonicalFiles(root: string, directory: string, ownerHome?: stri
         const record = parse(markdown, requestedPath);
         const recordId = record.attrs.recordId;
         const identity = recordId.toLowerCase();
+        if (identity !== attrs.recordId.trim().toLowerCase())
+            throw new Error("Work Record Markdown recordId must match the requested identity.");
         if (
             ownerHome &&
             (await list({ createDir: false })).some((entry) => entry.attrs.recordId.toLowerCase() === identity)
@@ -152,6 +158,7 @@ export function canonicalFiles(root: string, directory: string, ownerHome?: stri
             throw new Error(`Canonical Work Record identity already exists: ${recordId}. No file was overwritten.`);
         return {
             recordId,
+            record,
             async publish() {
                 await assertPath(requestedPath);
                 try {
@@ -176,7 +183,7 @@ export function canonicalFiles(root: string, directory: string, ownerHome?: stri
         };
     }
 
-    async function create(attrs: WorkRecordFrontMatter, body: string, options?: WriteWorkRecordOptions) {
+    async function restoreRecord(attrs: WorkRecordFrontMatter, body: string, options?: WriteWorkRecordOptions) {
         return await (await prepareCreation(attrs, body, options)).publish();
     }
 
@@ -217,5 +224,5 @@ export function canonicalFiles(root: string, directory: string, ownerHome?: stri
         syncRecordDirectory(path);
     }
 
-    return { read, list, prepareCreation, create, replace, delete: remove };
+    return { read, decode, list, prepareCreation, restoreRecord, replace, delete: remove };
 }

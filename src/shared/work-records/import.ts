@@ -5,7 +5,7 @@ import { projects } from "@runwield/projects";
 import fs from "node:fs/promises";
 import { basename, join, relative, resolve, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
-import { listWorkRecords, writeWorkRecord } from "./store.ts";
+import { listWorkRecords, restoreWorkRecordDocument } from "./store.ts";
 import { requireOwnedWorkRecordFiles, currentWorkRecordOwner, withWorkRecordMutation } from "./owner.ts";
 import { syncWorkRecordToIndex, type WorkRecordIndexOptions } from "./index-adapter.ts";
 
@@ -55,7 +55,7 @@ export async function importWorkRecords(cwd: string, selection: string, options:
                     );
                 const record =
                     existing[0] ||
-                    (await writeWorkRecord(cwd, parsed.attrs, parsed.body, { fileName: basename(path), markdown }));
+                    (await restoreWorkRecordDocument(cwd, parsed.attrs, parsed.body, { fileName: basename(path), markdown }));
                 const repoPath = relative(projects.home.requireCheckout(owner).checkoutRoot, path).replaceAll(
                     "\\",
                     "/",

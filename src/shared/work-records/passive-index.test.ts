@@ -8,7 +8,7 @@ import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { runMnemotecaWorkRecordCommand } from "./index-adapter.ts";
 import { searchWorkRecords } from "./search.ts";
-import { writeWorkRecord } from "./store.ts";
+import { restoreWorkRecordDocument } from "./store.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
 import type { WorkRecordMnemotecaCommandOptions } from "./mnemoteca-port.ts";
 
@@ -31,7 +31,7 @@ for (const canonical of [false, true]) {
         const root = await realpath(await fixture.checkout());
         try {
             if (canonical)
-                await writeWorkRecord(
+                await restoreWorkRecordDocument(
                     root,
                     {
                         kind: "work_record",
