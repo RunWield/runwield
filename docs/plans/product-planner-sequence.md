@@ -219,8 +219,9 @@ the user, not to the file list.
 - `src/ui/review/plan-review.ts`, `PlanReviewSurface.tsx`, feedback types and review handlers — expose retained HTML and
   carry typed revision/state annotations through the existing owner conversation.
 - `third_party/plannotator/packages/ui/components/html-viewer/` — reuse the current HTML viewer and bridge; determine
-  the focused host-facing containment change without adopting its server or live-app mode. The dependency publication
-  choice is recorded for owner decision in the first child.
+  two upstream options (resource restrictions, [PR #3907](https://github.com/backnotprop/plannotator/pull/3907); displayed
+  annotation context, in progress) without adopting its server or live-app mode. **Owner decision:** contribute them
+  upstream from `gandazgul/plannotator`; pin the fork only as a fallback. The first child records the pin rules.
 - `src/shared/workflow/`, `src/cmd/load-plan/`, and `src/tools/plan-written.ts` — keep product acceptance separate from
   technical approval across direct review, Sequence actions, execution, and resume.
 - `src/shared/session/`, `src/constants.ts`, and Agent Definitions — selectable Product Planner, feasibility role,

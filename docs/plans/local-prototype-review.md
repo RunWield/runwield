@@ -107,9 +107,11 @@ Reuse `docs/design-system.md`, `RunWieldPrimitives.tsx`, existing rectangular re
 review shell. Show original comments with their original revision; do not project them onto revised elements.
 
 Generated prototypes declare a small set of named screens/states and update root attributes such as
-`data-runwield-screen` and `data-runwield-state` when interaction changes what is displayed. At annotation time, read
-these values through the frame bridge and bind the response to the pending annotation and current frame load. Validate
-them against the sealed manifest. A label from an earlier load cannot become the context of a later comment.
+`data-runwield-screen` and `data-runwield-state` when interaction changes what is displayed. RunWield passes that mapping
+to the upstream displayed-context option (see the dependency decision below). Plannotator captures the labels when a
+target is selected, or when a global comment's composer opens, and keeps that snapshot through submission. RunWield
+validates the captured labels against the sealed manifest. A label from an earlier load cannot become the context of a
+later comment.
 
 Persist comment/thread identity, review Plan identity, prototype reference, screen/state identity, anchor, relevant
 text/element context, and comment content. Use Plannotator's persisted anchor utilities where suitable. Page-supplied
@@ -122,16 +124,13 @@ Named states and a small initialization hook reopen the declared example; this i
 
 ### Contain the HTML without replacing Plannotator
 
-Add an opt-in, typed host policy to `HtmlViewer`'s `rawHtml` path and `SrcdocInjectionOptions`. Absent that policy, preserve
-existing upstream behavior. In the opted-in path, normalize the document and install host CSP before any author
-content, after removing author CSP tags. Keep the real annotation bridge and force non-live bridge behavior; author
-`window.__plannotatorLiveConfig` cannot opt this surface into live mode.
+Render prototypes with `HtmlViewer resourcePolicy="self-contained"` from upstream PR #3907. That option installs a host
+CSP before all author markup, fixes the sandbox to `allow-scripts`, permits inline scripts/styles and data images/fonts,
+blocks external resources, and locks `window.__plannotatorLiveConfig` to null before author scripts. Conflicting live,
+served-frame, external-bridge, popup, and wider-sandbox props throw. RunWield does not reimplement or patch this policy.
 
-Use `sandbox="allow-scripts"`, without same-origin access, forms, popups, downloads, or top navigation. The starting
-policy is `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';
-frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`. Prototype scripts and styles are inline;
-images are embedded. Do not load remote libraries, frames, fonts, or production data. Keep credentials, private Session
-content, and privileged URLs out of the frame and its bridge messages.
+Prototype scripts and styles are inline; images are embedded. Do not load remote libraries, frames, fonts, or production
+data. Keep credentials, private Session content, and privileged URLs out of the frame and its bridge messages.
 
 This policy blocks resource loads, connections, and privileged frame actions; it is not a universal no-network claim.
 Frame self-navigation is not reliably blocked by CSP. Intercept ordinary links/meta refresh in this prototype mode,
@@ -140,19 +139,28 @@ privileged review operations. Do not claim that message-source checks make proto
 must retain their existing owner authorization and method/origin checks independently of the frame.
 
 A separate Artifact Server or live-app proxy would introduce another serving and trust boundary. The selected approach
-keeps the existing viewer and local review workflow. The submodule gitlink currently resolves to `7d06fcd8…`; the marker
-file instead names `762700fa…`. Reconcile the marker with the actual, fetchable integration revision. Do not downgrade
-working source to match the stale marker or leave an uncommitted submodule patch as the delivered dependency.
+keeps the existing viewer and local review workflow. Today the gitlink is `7d06fcd8…` while the marker file names the
+older `762700fa…`; the pin update below fixes both.
 
-**Open dependency decision:** `.gitmodules` points at `backnotprop/plannotator`. Read-only GitHub permission inspection
-confirms this account can read that repository but cannot push. The selected integration needs a small viewer/bridge
-extension. A RunWield-controlled fork makes the patch reproducible without waiting for upstream acceptance; it adds
-responsibility for maintaining that patch. A RunWield-owned adapter avoids a fork but duplicates more viewer integration
-and must prove the same containment and annotation contract. Do not create a remote repository without owner agreement.
+### Dependency decision: upstream PRs from the owner's fork
 
-```wld-question
-{"id":"plannotator-integration-ownership","type":"multiple_choice","prompt":"Where should the small Plannotator viewer/bridge extension live? We cannot push to the current upstream. I recommend a RunWield-controlled fork with a narrow patch; a local adapter avoids a fork but duplicates more integration code.","choices":[{"value":"fork","label":"Use a RunWield-controlled fork and pin the small extension"},{"value":"adapter","label":"Keep upstream unchanged; use a RunWield-owned viewer adapter"},{"value":"upstream-first","label":"Wait for an upstream contribution before this integration ships"}],"default":"fork"}
-```
+**Owner decision:** the two viewer extensions go upstream as focused PRs from `gandazgul/plannotator`, not as a
+RunWield-owned adapter or an uncommitted submodule patch.
+
+| Extension                        | Branch in `~/web/plannotator`  | Status when recorded (2026-11-12)                                      |
+| -------------------------------- | ------------------------------ | ---------------------------------------------------------------------- |
+| Host resource restrictions       | `feat/host-html-restrictions`  | [PR #3907](https://github.com/backnotprop/plannotator/pull/3907), open |
+| Displayed context on annotations | `feat/html-annotation-context` | In progress, independent of #3907                                      |
+
+This child consumes both public options and does not change Plannotator source. Before execution, pin
+`third_party/plannotator` to a fetchable upstream commit that contains both merged PRs. If upstream has not merged them
+when this child is ready to run, the fork is the fallback: point the submodule at the fork commit that contains both
+branches. The owner chooses when to use that fallback; it requires no new planning.
+
+In either case, update the gitlink, `.gitmodules` only when the source repository changes, and
+`third_party/plannotator-revision.txt` together, so all three name the same commit. Upstream has moved thousands of
+commits past the current pin. Treat the pin update as an integration step: rerun the existing Plannotator-backed review
+tests and browser checks rather than assuming compatibility.
 
 ## Expected Change Surface
 
@@ -167,8 +175,10 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/tools/plan-prototype.ts`, `src/tools/registry.ts` — submit/read retained material without exposing a filesystem server.
 - `src/ui/review/plan-review.ts`, `src/ui/workspace/react/PlanReviewSurface.tsx`, feedback modules and review API handlers —
   display prototypes, persist comments, and send typed context through the existing conversation.
-- `third_party/plannotator/packages/ui/components/html-viewer/`, its exports/tests, gitlink and revision marker — opt-in
-  containment, annotation-time state context, and reproducible dependency integration.
+- `third_party/plannotator` gitlink, `.gitmodules` (fork fallback only), and `third_party/plannotator-revision.txt` —
+  pin one fetchable commit with both upstream extensions. No Plannotator source changes in this child.
+- Existing Plannotator-backed review code (`astro.config.ts` aliases, `PlanReviewSurface.tsx`, `CodeReviewSurface.tsx`) —
+  adapt only where the newer pinned revision changes public interfaces.
 - `src/skills/prototype/` and its synchronized bundled copy — distinguish retained Plan Prototypes from scratch
   experiments; document self-contained submission and the screen/state contract.
 - Existing Plan-store, runtime-layout, review, archive, and browser tests — prove retention and behavior through real boundaries.
@@ -199,11 +209,13 @@ Product acceptance, Router, shared-prototype publication, and the external Plan 
    planning/execution worktrees preserve references and resolve identical retained bytes. Archive/restore preserves
    material locally; deletion/prune removes only unreferenced owned material. Existing Markdown archive safety remains.
    Actual planning/execution/publication staging excludes the payload, feedback, and temporary authoring files.
-3. **Local Plan review renders the selected revision safely.** `PlanReviewSurface` uses the existing viewer with the
-   opt-in host policy, real bridge, and current design primitives. Interaction and annotation modes, revision selection,
+3. **Local Plan review renders the selected revision safely.** `third_party/plannotator`, `.gitmodules`, and
+   `plannotator-revision.txt` name one fetchable commit containing both upstream extensions. Existing Markdown Plan
+   Review and Code Review still work on that pin. `PlanReviewSurface` renders prototypes with
+   `resourcePolicy="self-contained"`, the displayed-context mapping, the real bridge, and current design primitives. Interaction and annotation modes, revision selection,
    keyboard access, and responsive controls work. No live `src` mode, credentials, private transcript, or production
-   mutation authority enters the frame. The integrated submodule revision is committed, fetchable, and accurately pinned.
-4. **Comments preserve exact product context.** Annotation-time state capture validates the current load and manifest;
+   mutation authority enters the frame.
+4. **Comments preserve exact product context.** Plannotator's captured displayed context is validated against the manifest;
    durable feedback includes revision, screen/state, anchor, and original context. Named states can be reopened through
    the prototype's initialization contract. Existing text/pinpoint UI sends this typed data through the review route and
    conversation builder to the current Agent. New revisions never inherit old anchors automatically; old feedback remains
@@ -219,8 +231,9 @@ Product acceptance, Router, shared-prototype publication, and the external Plan 
 
 ## Approval Confirmation
 
-No Work Records are proposed for supersession. Storage naming, archive retention through prune, and the root-attribute
-screen/state protocol are reviewable implementation assumptions; they do not change the owner's local-only scope.
+No Work Records are proposed for supersession. The owner chose upstream Plannotator PRs from the owner's fork, with a
+fork pin as fallback. Storage naming, archive retention through prune, and the root-attribute names are reviewable
+implementation assumptions; they do not change the owner's local-only scope.
 
 ## Verification Plan
 
@@ -240,9 +253,13 @@ Use the Bun version in the checkout’s root `.bun-version`. Run `bun run instal
   A viewer that only renders HTML or turns annotations into unstructured prose must fail these checks. Shared review
   tokens must not read local prototype payloads or mutate their feedback. Existing Plan publication contains no HTML,
   private prototype feedback, or owner credentials; ordinary Markdown sharing remains functional.
-- Extend Plannotator `srcdoc.test.ts`, `HtmlViewer.bridgeAsset.test.tsx`, `bridgeElementContext.test.ts`, and
-  `htmlPinpointProtocol.test.tsx` using its package test commands. Prove policy precedes author scripts, bridge stays
-  non-live, state is captured at annotation time, and callers without the opt-in policy retain existing behavior.
+- **Pin check:** `git submodule status third_party/plannotator`, `cat third_party/plannotator-revision.txt`, and
+  `git -C third_party/plannotator log --oneline` must agree on one commit that contains both extension merges (or both
+  fork branches). `git ls-remote` against the configured submodule URL must show that commit is fetchable. Plannotator's
+  own tests for the two options belong to the upstream PRs; this child proves RunWield's use of them.
+- After the pin update, run `bun run workspace:build` and
+  `bun scripts/run-tests.ts src/ui/workspace/workspace-plan-review-ux.test.tsx src/ui/workspace/workspace-plan-review.integration.test.ts`
+  to show existing Plannotator-backed review still works.
 - **Headed browser:** run `bun run workspace:dev` and open `http://127.0.0.1:5173/dev/plan-review` in an assignment-specific
   `agent-browser --headed --session <name>` session. Extend the fixture with a realistic checkout prototype. Switch to
   empty cart, annotate a button and text, send feedback, revise it, and reopen A. Repeat on the actual owner review route
@@ -263,6 +280,8 @@ Use the Bun version in the checkout’s root `.bun-version`. Run `bun run instal
   child includes exact references in product approval.
 - **Concurrent tabs or writes:** compare expected document/feedback revisions through existing locks. Preserve unsent
   owner input on conflict; do not merge anchors across prototype versions.
+- **Upstream review changes the options:** if merged names or behavior differ from PR #3907 or the context PR as
+  proposed, follow the merged public contract. Return to the owner only if a change removes a capability this child needs.
 - **Invalid or missing state labels:** do not fabricate the latest selected state. Preserve the owner's text and require
   valid capture before recording a state-bound annotation; provide ordinary action error/retry, not portability messaging.
 - **Broken cross-machine references:** accepted scope limit. Do not publish bytes or introduce warnings to hide that limit.
