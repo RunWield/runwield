@@ -3,14 +3,9 @@ import { readPlanPublicationReference } from "../../plan-store/index.ts";
 import { capturePlanReviewInput } from "../../plan-store/index.ts";
 import { withPlanReadScope, readPlanResource } from "../../plan-store/index.ts";
 import { requiresPlanWorkflow } from "../../plan-store/index.ts";
-import { savePlanDefinition } from "../../plan-store/index.ts";
 
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import {
-    admitPlanStoreForCheckout,
-    hasRetainedCheckoutSource,
-    openPlanStoreForCheckout,
-} from "../../plan-store/index.ts";
+import { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "../../plan-store/index.ts";
 
 import type { PackageWorkflowInput } from "../../plan-store/index.ts";
 
@@ -60,7 +55,7 @@ import {
     assertNotReservedEpicArtifactPlanName,
 } from "@runwield/plans/format";
 import { ensurePlanIdentity, planDocumentsForCheckout } from "../../plan-store/index.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { runWieldGitignoreNeedsUpdate } from "../runwield-owned-paths.ts";
 import { VERSION } from "../version.js";
 
@@ -953,59 +948,41 @@ async function submitPlanDocument(
         }
         assertNotReservedEpicArtifactPlanName(planName);
         if (isHiddenPlanName(planName)) throw new Error(`Plan is archived or hidden: ${planName}`);
-        const retained = hasRetainedCheckoutSource(projectRoot);
-        let store = retained ? undefined : openPlanStoreForCheckout(projectRoot);
-        let current = store && (await store.resolveAuthoredPlan(planName, expectedPlan?.planId));
-        if (expectedPlan && !retained && !current)
-            throw new Error("The bound Plan identity changed. Nothing was submitted.");
-        const locatePlanning = (cwd: string) =>
-            resolveWorkflowPlanLocation(cwd, planName, { readOnly: true, loadFromTarget: true });
-        if (store && current) {
-            const planning = await store.withWorkflow(current.planId, planName, locatePlanning);
-            if (planning.planningNotStarted) throw new Error(`Start planning ${planName} first. Nothing was changed.`);
-        } else if (retained && (await planDocumentsForCheckout(projectRoot).load(planName))) {
-            const planning = await locatePlanning(projectRoot);
-            if (planning.planningNotStarted) throw new Error(`Start planning ${planName} first. Nothing was changed.`);
-        }
-        if (payload.contextMarkdown !== undefined) {
-            const policy = resolvePlanExecutionPolicy({
-                ...triage,
-                executionAgent: payload.executionAgent,
-                collaborationRecommendation: payload.collaborationRecommendation,
-            });
-            if (!policy.ok) throw new Error(policy.error);
-            if (retained) throw new Error("Plan authoring requires the canonical Project owner.");
-            store ??= await admitPlanStoreForCheckout(projectRoot);
-            current = await store.author(
-                {
-                    planName,
-                    contextMarkdown: payload.contextMarkdown,
-                    validationMarkdown: payload.validationMarkdown,
-                    expectedRevision: payload.expectedRevision,
-                    definition: {
-                        classification: "PLANNED_CHANGE",
-                        summary: triage.summary,
-                        workKind: triage.workKind,
-                        complexity: triage.complexity,
-                        ...payload.definition,
-                        executionAgent: policy.policy.executionAgent,
-                        collaborationRecommendation: policy.policy.collaborationRecommendation,
-                    },
-                },
-                current?.planId ?? expectedPlan?.planId,
-            );
-        }
-        const missing: PlanSubmission = {
-            ok: false,
-            message: `docs/plans/${planName}.md not found. Write the Plan first, then call plan_written again.`,
+        const contextMarkdown = payload.contextMarkdown;
+        const submission: PlanSubmissionOptions = {
+            expectedPlanId: expectedPlan?.planId,
+            requirePlanningStarted: true,
+            prepareAuthor:
+                contextMarkdown === undefined
+                    ? undefined
+                    : () => {
+                          const policy = resolvePlanExecutionPolicy({
+                              ...triage,
+                              executionAgent: payload.executionAgent,
+                              collaborationRecommendation: payload.collaborationRecommendation,
+                          });
+                          if (!policy.ok) throw new Error(policy.error);
+                          return {
+                              contextMarkdown,
+                              validationMarkdown: payload.validationMarkdown,
+                              expectedRevision: payload.expectedRevision,
+                              definition: {
+                                  classification: "PLANNED_CHANGE",
+                                  summary: triage.summary,
+                                  workKind: triage.workKind,
+                                  complexity: triage.complexity,
+                                  ...payload.definition,
+                                  executionAgent: policy.policy.executionAgent,
+                                  collaborationRecommendation: policy.policy.collaborationRecommendation,
+                              },
+                          };
+                      },
         };
-        const boundPlanId = current?.planId ?? expectedPlan?.planId;
-        const submit = async (cwd: string): Promise<PlanSubmission> => {
-            const { documentRoot, plan } = await resolveWorkflowPlanLocation(cwd, planName);
-            if (!plan) return missing;
-            if (boundPlanId && plan.attrs.planId !== boundPlanId)
-                return { ok: false, message: "The bound Plan identity changed. Nothing was submitted." };
-
+        const submit = async ({
+            documentRoot,
+            plan,
+            saveDefinition,
+        }: PlanSubmissionDocument): Promise<PlanSubmission> => {
             const updates: Partial<PlanFrontMatter> = {
                 classification: triage.classification,
                 complexity: triage.complexity,
@@ -1024,11 +1001,7 @@ async function submitPlanDocument(
                 };
             }
 
-            if (hasRetainedCheckoutSource(documentRoot)) await enterProjectRuntime(projectRoot);
-            await savePlanDefinition(documentRoot, planName, updates, {
-                expectedPlanId: plan.attrs.planId,
-                expectedRevision: plan.revision,
-            });
+            await saveDefinition(updates);
             const planId = plan.attrs.planId ?? (await ensurePlanIdentity(documentRoot, planName)).planId;
             const submittedPlan = await planDocumentsForCheckout(documentRoot).load(planName);
             if (!submittedPlan || submittedPlan.attrs.planId !== planId)
@@ -1040,8 +1013,12 @@ async function submitPlanDocument(
                 controllerRevision: submittedPlan.controllerRevision,
             };
         };
-        if (store && current) return await store.withWorkflow(current.planId, planName, submit);
-        return retained ? await submit(projectRoot) : missing;
+        return (
+            (await withPlanSubmission(projectRoot, planName, submission, submit)) ?? {
+                ok: false,
+                message: `docs/plans/${planName}.md not found. Write the Plan first, then call plan_written again.`,
+            }
+        );
     } catch (error) {
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
     }

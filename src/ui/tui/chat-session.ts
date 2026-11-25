@@ -534,14 +534,19 @@ export async function startInteractiveSession(
         const installAutocompleteProvider = (): void => {
             const autocompleteProvider = new CombinedAutocompleteProvider(
                 [
-                    ...Array.from(chatBuiltinSlashNames).map((name) => ({
-                        name,
-                        description:
-                            name === "init" && !initCommandAvailable
-                                ? "Already initialized for this project"
-                                : commandRegistry[name].description,
-                        getArgumentCompletions: commandRegistry[name].getArgumentCompletions,
-                    })),
+                    ...Array.from(chatBuiltinSlashNames).map((name) => {
+                        const { description, getArgumentCompletions } = commandRegistry[name];
+                        return {
+                            name,
+                            description:
+                                name === "init" && !initCommandAvailable
+                                    ? "Already initialized for this project"
+                                    : description,
+                            getArgumentCompletions: getArgumentCompletions
+                                ? (prefix: string) => getArgumentCompletions(prefix, runtimeSnapshot().cwd)
+                                : undefined,
+                        };
+                    }),
                     ...invokablePromptTemplates.map((template) => ({
                         name: template.name,
                         argumentHint: template.argumentHint,

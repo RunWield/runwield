@@ -406,9 +406,8 @@ export {
     planDocumentsForCheckout,
     listSelectablePlanDocuments,
     openPlanStoreForCheckout,
-    admitPlanStoreForCheckout,
 } from "./project-plans.ts";
-export { hasRetainedCheckoutSource } from "./retained-source.ts";
+export { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "./authoring.ts";
 export type { ProjectPlanStoreOptions } from "./project-binding.ts";
 export { openRegisteredPlanDocuments } from "./registered-documents.ts";
 export { editCheckoutPlanBody, readCheckoutPlanDisplayCatalog } from "./checkout-presentation.ts";

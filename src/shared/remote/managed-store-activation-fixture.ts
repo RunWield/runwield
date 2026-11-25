@@ -3,7 +3,7 @@ import { serveHttp } from "../http-server.ts";
 import { parseWorkRecordMarkdown } from "../work-records/markdown.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { equal, ok, deepEqual, rejects } from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, chmod, readdir, stat, readFile, realpath } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, stat, readFile, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -11,6 +11,7 @@ import { getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { startRemoteControlService } from "./control.ts";
+import { writeManagedStoreSshFixture } from "./managed-store-ssh-fixture.ts";
 import { ProjectStoreClient } from "./project-store-client.ts";
 import type { ProjectStoreBinding } from "../../plan-store/index.ts";
 
@@ -35,26 +36,7 @@ export async function qualifyManagedStoreActivation(
             await git(root, ["config", "branch.main.remote", "origin"]);
             await git(root, ["config", "branch.main.merge", "refs/heads/main"]);
         }
-        // Replace only OpenSSH transport. Its reply comes from the real remote private entry in another process.
-        const configuration = {
-            bun: process.execPath,
-            cli: new URL("../../cli.ts", import.meta.url).pathname,
-            remoteHome,
-        };
-        await writeFile(
-            join(bin, "ssh"),
-            `#!/usr/bin/env python3
-import json, os, subprocess, sys
-config = json.loads(${JSON.stringify(JSON.stringify(configuration))})
-request = json.loads(sys.stdin.readline())
-env = dict(os.environ, HOME=config['remoteHome'], WLD_TEST_SANDBOX_HOME=config['remoteHome'], MNEMOTECA_DB_PATH=os.path.join(config['remoteHome'], 'mnemoteca.db'))
-key = 'transfer' if 'transfer' in request else 'proof' if 'proof' in request else 'admission'
-flag = '--remote-runtime-transfer' if key == 'transfer' else '--remote-publication-proof' if key == 'proof' else '--remote-project-admission'
-result = subprocess.run([config['bun'], config['cli'], flag], input=json.dumps(request[key]) + '\\n', text=True, env=env)
-sys.exit(result.returncode)
-`,
-        );
-        await chmod(join(bin, "ssh"), 0o700);
+        await writeManagedStoreSshFixture(bin, remoteHome);
         const previousPath = process.env.PATH;
         process.env.PATH = `${bin}:${previousPath}`;
         const build = { buildId: "a".repeat(64), protocol: 1 };

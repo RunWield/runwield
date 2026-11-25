@@ -9,10 +9,14 @@ import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 // Seed the checkout contract still owned by the managed remote runtime.
 const savePlan: typeof saveOwnedPlan = (root, ...args) =>
     withRetainedPlanFixture(root, () => saveOwnedPlan(root, ...args));
-import { assertRemoteStorageAbsent, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
+import {
+    assertRemoteStorageAbsent,
+    withRemoteRuntimeFixture,
+    withRetainedRemoteRuntimeFixture,
+} from "./remote-runtime-test-fixture.ts";
 
 test("remote plan_written commits its exact artifact, association and review and a fresh runtime reopens the saved review", async () => {
-    await withRemoteRuntimeFixture(async (f) => {
+    await withRetainedRemoteRuntimeFixture(async (f) => {
         await savePlan(f.remoteProject, "remote-records", "# Remote records\n\nPreserve laptop records.\n", {
             planId: "remote-records-plan",
             classification: "QUICK_FIX",
@@ -25,7 +29,7 @@ test("remote plan_written commits its exact artifact, association and review and
                 ? fauxAssistantMessage(fauxToolCall("plan_written", { planName: "remote-records" }))
                 : fauxAssistantMessage(fauxText("Review saved.")),
         );
-        const client = await f.start("retained-checkout");
+        const client = await f.start();
         await client.read();
         await client.send({ kind: "plan-written" });
         const written = await client.read();
@@ -47,7 +51,7 @@ test("remote plan_written commits its exact artifact, association and review and
         assertEquals(reference?.planningAgentName, "remote-runtime");
         assertEquals(written.canReopen, true);
         await client.close();
-        const resumed = await f.start("retained-checkout");
+        const resumed = await f.start();
         await resumed.read();
         await resumed.send({ kind: "load", sessionId: id });
         const loaded = await resumed.read();
@@ -84,7 +88,7 @@ test("remote plan_written commits its exact artifact, association and review and
         assertEquals(review.reviewKind, "unanswered");
         assertEquals(f.modelRequests.length, turns, "Loading and reopening cannot replay the planning model turn");
         await resumed.close();
-        const fresh = await f.start("retained-checkout");
+        const fresh = await f.start();
         await fresh.read();
         await fresh.send({ kind: "load", sessionId: id });
         const roundtrip = await fresh.read();

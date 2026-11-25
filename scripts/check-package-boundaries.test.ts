@@ -162,3 +162,41 @@ test("applications consume extracted packages through their declared entry point
     assert.match(diagnostics[0].message, /Consumers must import @runwield\/plans directly/);
     assert.deepEqual(lint('export * from "@runwield/plans";', "packages/beta/entry.ts"), []);
 });
+
+test("application re-exports follow imported bindings to their package and report the export line", async (context) => {
+    const { lint } = await makeRepository(context);
+    const source = [
+        "export type { LocalId as PublicId };",
+        'import type { PlanId as LocalId } from "../packages/plans/index.ts";',
+        'import { plans } from "@runwield/plans";',
+        "export { plans as registry };",
+        'import * as domain from "@runwield/plans";',
+        "export default (domain);",
+        'import adapter from "./adapter.ts";',
+        "export { adapter };",
+        "export function read(id: LocalId) { return plans.read(id); }",
+        'import defaultExport from "@runwield/plans";',
+        "export { defaultExport };",
+        'import moduleBinding = require("@runwield/plans");',
+        "export { moduleBinding as planModule };",
+        'export { plans as externalPlans } from "./adapter.ts";',
+        'const { plans: loaded } = require("@runwield/plans");',
+        "export { loaded };",
+        'const loadPlans = (await import("@runwield/plans")).plans;',
+        "export { loadPlans as dynamicPlans };",
+        "const adapted = makeAdapter(plans);",
+        "export { adapted };",
+        "const alias = plans;",
+        "export const planRegistry = alias;",
+        "export const derived = makeAdapter(plans);",
+        "export const namespacePlans = domain.plans;",
+    ].join("\n");
+    const diagnostics = lint(source, "src/example.ts");
+    assert.deepEqual(
+        diagnostics.map(({ line }) => line),
+        [1, 4, 6, 11, 13, 16, 18, 22, 24],
+    );
+    for (const diagnostic of diagnostics)
+        assert.match(diagnostic.message, /Consumers must import @runwield\/plans directly/);
+    assert.deepEqual(lint(source, "packages/beta/entry.ts"), []);
+});

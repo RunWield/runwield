@@ -30,9 +30,9 @@ import {
     type PlanEvent,
     type PlanEventDetails,
     type PlanStatus,
-    ACTIVE_PLAN_STATUSES,
-    CLOSED_PLAN_STATUSES,
-    ON_HOLD_PLAN_STATUSES,
+    ACTIVE_PLAN_STATUSES as ACTIVE_STATUSES,
+    CLOSED_PLAN_STATUSES as CLOSED_STATUSES,
+    ON_HOLD_PLAN_STATUSES as ON_HOLD_STATUSES,
     PLAN_STATUSES,
 } from "@runwield/plans/lifecycle";
 import {
@@ -49,10 +49,6 @@ import { executePlanAction, loadPlanActionEvidence } from "../../../shared/workf
 import { PLAN_LIFECYCLE_ACTIONS } from "../constants.ts";
 
 export type WorkspacePlanDetailOptions = { reviewOnly?: boolean; documentName?: string };
-
-export const ACTIVE_STATUSES = ACTIVE_PLAN_STATUSES;
-export const CLOSED_STATUSES = CLOSED_PLAN_STATUSES;
-export const ON_HOLD_STATUSES = ON_HOLD_PLAN_STATUSES;
 
 interface StatusMetadata {
     status: string;

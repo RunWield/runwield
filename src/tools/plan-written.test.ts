@@ -528,3 +528,45 @@ test("plan_written cannot revise a replacement for the Session's bound Plan", as
         }
     });
 });
+
+test("hosted plan_written refuses a retained Plan from another Session Project before review", async () => {
+    await withRuntimeCommandFixture("retained-session-project-", async ({ projectRoot, alternateRoot }) => {
+        const foreign = await projects.checkout.admit(alternateRoot);
+        if (foreign.kind !== "existing") throw new Error("Expected an admitted second Project.");
+        await withRetainedPlanFixture(projectRoot, async () => {
+            await seedPlan(projectRoot, "proposal", "# Retained\n", {
+                planId: crypto.randomUUID(),
+                status: "draft",
+                classification: "PLANNED_CHANGE",
+            });
+            const previous = (await loadPlan(projectRoot, "proposal"))!;
+            const session = new HostedSession({ id: "retained-session", cwd: projectRoot });
+            session.setManagedMetadata({
+                runwieldSessionId: session.id,
+                projectId: foreign.identity.projectId,
+                piSessionId: session.id,
+                transcriptPath: join(alternateRoot, "session.jsonl"),
+                generation: null,
+                name: null,
+                activeAgent: "planner",
+                workflowContext: null,
+            });
+            try {
+                await rejects(
+                    createPlanWrittenTool({ hostedSession: session }).execute(
+                        "foreign-retained-submission",
+                        { planName: "proposal", executionAgent: "engineer", collaborationRecommendation: "autonomous" },
+                        undefined,
+                        undefined,
+                        EXTENSION_CONTEXT,
+                    ),
+                    /another Session Project/,
+                );
+                assertEquals((await loadPlan(projectRoot, "proposal"))?.revision, previous.revision);
+                assertEquals(await fsReadFile(previous.path, "utf8"), previous.markdown);
+            } finally {
+                await session.dispose();
+            }
+        });
+    });
+});

@@ -135,7 +135,7 @@ export interface CommandDefinition {
     execute: CommandHandler;
     surfaces: CommandSurface[];
     slashSurfaces?: SlashSurface[];
-    getArgumentCompletions?: (argumentPrefix: string) => Promise<CommandCompletionItem[]>;
+    getArgumentCompletions?: (argumentPrefix: string, cwd: string) => Promise<CommandCompletionItem[]>;
 }
 
 export const commandRegistry: Record<string, CommandDefinition> = {
@@ -369,8 +369,8 @@ export const commandRegistry: Record<string, CommandDefinition> = {
             await (await import("./load-plan/index.ts")).runLoadPlanCommand(argv, options),
         surfaces: ["cli", "slash"],
         slashSurfaces: ["tui", "acp"],
-        getArgumentCompletions: async (argumentPrefix) =>
-            await (await import("./load-plan/index.ts")).getLoadPlanCompletions(argumentPrefix),
+        getArgumentCompletions: async (argumentPrefix, cwd) =>
+            await (await import("./load-plan/index.ts")).getLoadPlanCompletions(argumentPrefix, cwd),
     },
     [COMMAND_NAMES.REVIEW]: {
         name: COMMAND_NAMES.REVIEW,

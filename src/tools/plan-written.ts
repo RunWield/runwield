@@ -1,8 +1,5 @@
 import { planSessionArtifactReference } from "../plan-store/index.ts";
-import { savePlanDefinition } from "../plan-store/index.ts";
-
-import { withLocalPlanWorkflow } from "../plan-store/index.ts";
-import { admitPlanStoreForCheckout, hasRetainedCheckoutSource, openPlanStoreForCheckout } from "../plan-store/index.ts";
+import { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "../plan-store/index.ts";
 import { buildPlanConversationRequest } from "../shared/workflow/plan-review-conversation.ts";
 import { reviewSourceStillMatches } from "../plan-store/index.ts";
 import {
@@ -40,7 +37,6 @@ import { CLI_BIN } from "../constants.ts";
 import { ensurePlanIdentity, planDocumentsForCheckout } from "../plan-store/index.ts";
 import { recordPlanEvent } from "../plan-store/index.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
-import { resolveWorkflowPlanLocation } from "../plan-store/index.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";
 import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 import {
@@ -342,56 +338,49 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
             }
 
             hostedSession.getManagedOperationCapability?.()?.assertLive();
-            const sessionProject = hostedSession.getManagedMetadata?.()?.projectId;
-            const retained = hasRetainedCheckoutSource(cwd);
-            let store = retained ? undefined : openPlanStoreForCheckout(cwd);
-            if (!retained && sessionProject && sessionProject !== store?.projectId)
-                throw new Error("Plan authoring belongs to another Session Project.");
             const context = hostedSession.getWorkflowContext?.();
-            const expectedPlanId = context?.planName === planName ? context.planId : undefined;
-            let submittedPlan;
-            if (params.contextMarkdown !== undefined) {
-                if (retained) throw new Error("Plan authoring requires the canonical Project owner.");
-                store ??= await admitPlanStoreForCheckout(cwd);
-                submittedPlan = await store.author(
-                    {
-                        planName: params.planName,
-                        contextMarkdown: params.contextMarkdown,
-                        validationMarkdown: params.validationMarkdown,
-                        expectedRevision: params.expectedRevision,
-                        parentPlan: params.parentPlan,
-                        dependencies: params.dependencies,
-                        definition: {
-                            classification: params.planType
-                                ? "PROJECT"
-                                : params.expectedRevision
-                                  ? undefined
-                                  : triageMeta?.classification === "PROJECT"
-                                    ? "PROJECT"
-                                    : "PLANNED_CHANGE",
-                            type: params.planType,
-                            targetBranch: params.targetBranch,
-                            order: params.order,
-                            summary: params.expectedRevision ? undefined : triageMeta?.summary,
-                            workKind: params.expectedRevision ? undefined : triageMeta?.workKind,
-                            complexity: params.expectedRevision ? undefined : triageMeta?.complexity,
-                            affectedPaths: params.expectedRevision ? undefined : triageMeta?.affectedPaths,
-                            ...params.definition,
-                            executionAgent: params.executionAgent,
-                            collaborationRecommendation: params.collaborationRecommendation,
-                        },
-                    },
-                    expectedPlanId,
-                );
-            }
-            const canonicalPlan =
-                submittedPlan ?? (store && (await store.resolveAuthoredPlan(planName, expectedPlanId)));
-            if (!canonicalPlan && !retained) {
-                return textResult(
-                    `plan_written: Plan ${planName} not found. Create it with plan_written contextMarkdown or import it first.`,
-                );
-            }
-            const runReview = async (cwd: string) => {
+            const contextMarkdown = params.contextMarkdown;
+            const submission: PlanSubmissionOptions = {
+                expectedPlanId: context?.planName === planName ? context.planId : undefined,
+                expectedProjectId: hostedSession.getManagedMetadata?.()?.projectId,
+                prepareAuthor:
+                    contextMarkdown === undefined
+                        ? undefined
+                        : () => ({
+                              contextMarkdown,
+                              validationMarkdown: params.validationMarkdown,
+                              expectedRevision: params.expectedRevision,
+                              parentPlan: params.parentPlan,
+                              dependencies: params.dependencies,
+                              definition: {
+                                  classification: params.planType
+                                      ? "PROJECT"
+                                      : params.expectedRevision
+                                        ? undefined
+                                        : triageMeta?.classification === "PROJECT"
+                                          ? "PROJECT"
+                                          : "PLANNED_CHANGE",
+                                  type: params.planType,
+                                  targetBranch: params.targetBranch,
+                                  order: params.order,
+                                  summary: params.expectedRevision ? undefined : triageMeta?.summary,
+                                  workKind: params.expectedRevision ? undefined : triageMeta?.workKind,
+                                  complexity: params.expectedRevision ? undefined : triageMeta?.complexity,
+                                  affectedPaths: params.expectedRevision ? undefined : triageMeta?.affectedPaths,
+                                  ...params.definition,
+                                  executionAgent: params.executionAgent,
+                                  collaborationRecommendation: params.collaborationRecommendation,
+                              },
+                          }),
+            };
+            const runReview = async ({
+                cwd,
+                documentRoot: reviewCwd,
+                plan,
+                planId: boundPlanId,
+                saveDefinition,
+                reopenReview,
+            }: PlanSubmissionDocument) => {
                 const publishAcceptedPlanOutcome = (details: ToolResultDetails, images: ReviewImage[] = []) => {
                     if (!details.outcome) return;
                     if (details.outcome === "repair_required") return;
@@ -421,19 +410,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                         },
                     });
                 };
-                if (!cwd) throw new Error("plan_written: cwd or hostedSession cwd is required");
-                const location = await resolveWorkflowPlanLocation(cwd, planName);
-                const reviewCwd = location.plan ? location.documentRoot : cwd;
-                if (!location.plan) {
-                    return textResult(
-                        `plan_written: Plan ${planName} not found. Write the Plan first using the write tool, then call plan_written.`,
-                    );
-                }
-                const boundPlanId = canonicalPlan?.planId ?? expectedPlanId;
-                if (boundPlanId && location.plan.attrs.planId !== boundPlanId)
-                    throw new Error("The bound Plan identity changed.");
-                const planPath = location.plan.path;
-                const retainedReview = hasRetainedCheckoutSource(reviewCwd);
+                const planPath = plan.path;
 
                 hostedSession.getManagedOperationCapability?.()?.assertLive();
                 try {
@@ -507,12 +484,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                             false,
                         );
                     }
-                    if (boundPlanId && loadedPlan.attrs.planId !== boundPlanId)
-                        throw new Error("The bound Plan identity changed.");
-                    await savePlanDefinition(reviewCwd, planName, policyOverrides, {
-                        expectedPlanId: loadedPlan.attrs.planId,
-                        expectedRevision: loadedPlan.revision,
-                    });
+                    await saveDefinition(policyOverrides, loadedPlan);
                 }
 
                 let reviewContainerPlanId = "";
@@ -602,17 +574,12 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                         ["approved", "ready_for_work", "ready_for_decomposition"].includes(current.attrs.status) &&
                         !reviewSourceStillMatches(current, base.attrs, base.body)
                     ) {
-                        const reopen = () =>
-                            recordPlanEvent({
-                                cwd: reviewCwd,
-                                planName: name,
-                                expectedPlanId: planId,
-                                event: "review_reopened",
-                                currentStatus: current.attrs.status,
-                                expectedRevision: current.revision,
-                            });
-                        if (retainedReview || name === planName) await reopen();
-                        else await withLocalPlanWorkflow(reviewCwd, name, reopen, planId);
+                        await reopenReview({
+                            planName: name,
+                            expectedPlanId: planId,
+                            currentStatus: current.attrs.status,
+                            expectedRevision: current.revision,
+                        });
                         const updated = await documents.load(name);
                         if (updated?.attrs.planId !== planId) throw new Error(`Plan identity changed: ${name}`);
                         if (name === planName) effectiveMeta = updated.attrs;
@@ -916,7 +883,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     await recordPlanEvent({
                         cwd: reviewCwd,
                         planName,
-                        expectedPlanId: canonicalPlan?.planId,
+                        expectedPlanId: boundPlanId,
                         event: "epic_readiness_passed",
                         currentStatus: "approved",
                         details: { triageMeta: projectMeta },
@@ -1012,7 +979,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 await recordPlanEvent({
                     cwd: reviewCwd,
                     planName,
-                    expectedPlanId: canonicalPlan?.planId,
+                    expectedPlanId: boundPlanId,
                     event: "readiness_passed",
                     currentStatus: "approved",
                     details: { triageMeta: approvedMeta },
@@ -1099,9 +1066,12 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     reviewResult.images,
                 );
             };
-            return store && canonicalPlan
-                ? await store.withWorkflow(canonicalPlan.planId, planName, runReview)
-                : await withLocalPlanWorkflow(cwd, planName, () => runReview(cwd));
+            return (
+                (await withPlanSubmission(cwd, planName, submission, runReview)) ??
+                textResult(
+                    `plan_written: Plan ${planName} not found. Create it with plan_written contextMarkdown or import it first.`,
+                )
+            );
         },
     });
 }

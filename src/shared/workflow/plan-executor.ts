@@ -1,7 +1,7 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
 import { readFrozenPlanExecutionDocuments, planDocumentReference } from "../../plan-store/index.ts";
 import { type PlanAccess } from "../../plan-store/index.ts";
-import { withPlanAccess } from "../../plan-store/index.ts";
+import { capturePlanAccess, selectPlanAccess, withPlanAccess } from "../../plan-store/index.ts";
 import { isEpicPlan, resolvePlanExecutionPolicy, isProjectPlan } from "@runwield/plans/format";
 import { AGENTS, agentRegistry } from "../session/agent-registry.ts";
 import { CLI_BIN } from "../../constants.ts";
@@ -100,13 +100,13 @@ export interface ExecuteSingleEngineerPlanOptions {
 }
 
 export async function executePlan(options: ExecutePlanOptions): Promise<PlanExecutionResult> {
-    if (options.packageSelection)
-        return await withPlanAccess(
-            options.hostedSession.cwd,
-            options.packageSelection,
-            () => executePlanInScope(options),
-            options.planName,
-        );
+    options.hostedSession.getManagedOperationCapability?.()?.assertLive();
+    const cwd = options.hostedSession.cwd;
+    let selection = options.packageSelection;
+    if (!selection && options.approvalEvidence && !capturePlanAccess()) {
+        selection = await selectPlanAccess(cwd, options.planName, options.approvalEvidence.planId);
+    }
+    if (selection) return await withPlanAccess(cwd, selection, () => executePlanInScope(options), options.planName);
     return await executePlanInScope(options);
 }
 async function executePlanInScope({

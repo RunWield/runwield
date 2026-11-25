@@ -124,6 +124,36 @@ test("composition idle waits for a real slash-command interaction to finish", as
     });
 });
 
+test("composed TUI completes /load-plan names from the current Session checkout after a rebind", async () => {
+    await withRuntimeCommandFixture("chat-input-plan-completion-", async ({ alternateRoot, projectRoot }) => {
+        const { composition, terminal } = await startComposition();
+        try {
+            await seedPlan(alternateRoot, "ship-first-checkout", "# First\n", { status: "draft" });
+            await seedPlan(projectRoot, "ship-second-checkout", "# Second\n", { status: "draft" });
+
+            terminal.typeText("/load-plan ship-");
+            await waitFor(() => terminal.getScreenText().includes("ship-first-checkout"), "first checkout completion");
+            assertEquals(terminal.getScreenText().includes("ship-second-checkout"), false);
+
+            const switched = await composition.runtime.switchAgent(composition.sessionId, {
+                agentName: "operator",
+                cwd: projectRoot,
+            });
+            assertEquals(switched.ok, true);
+            assertEquals(composition.runtime.getSessionSnapshot(composition.sessionId)?.cwd, projectRoot);
+            terminal.input("\x7f");
+            terminal.typeText("-s");
+            await waitFor(
+                () => terminal.getScreenText().includes("ship-second-checkout"),
+                "second checkout completion",
+            );
+            assertEquals(terminal.getScreenText().includes("ship-first-checkout"), false);
+        } finally {
+            await composition.dispose();
+        }
+    });
+});
+
 test("composed TUI keeps /plan-review reachable during the original browser review", async () => {
     await withRuntimeCommandFixture(
         "chat-input-live-plan-review-",

@@ -13,6 +13,17 @@ import { git } from "../workflow/validation-test-helpers.ts";
 import { type RuntimeFixture, type RuntimeProcess } from "./remote-runtime-test-fixture.ts";
 import type { RuntimeClientReport } from "./remote-runtime-test-client.ts";
 
+export const deliveryContextMarkdown = `# Remote delivery
+
+## Context
+
+The remote sentinel must say remote delivered.
+
+## Implementation Steps
+
+- Change sentinel.txt to remote delivered.
+`;
+
 export const deliveryPlan = `---
 planId: remote-delivery-plan
 classification: PLANNED_CHANGE
@@ -26,15 +37,7 @@ targetBranch: main
 affectedPaths:
     - sentinel.txt
 ---
-# Remote delivery
-
-## Context
-
-The remote sentinel must say remote delivered.
-
-## Implementation Steps
-
-- Change sentinel.txt to remote delivered.
+${deliveryContextMarkdown.trimEnd()}
 
 ## Verification Plan
 
@@ -42,9 +45,13 @@ The remote sentinel must say remote delivered.
 `;
 
 export async function prepareDelivery(f: RuntimeFixture) {
-    await mkdir(join(f.remoteProject, ".wld"), { recursive: true });
     await mkdir(join(f.remoteProject, "docs/plans"), { recursive: true });
     await writeFile(join(f.remoteProject, "docs/plans/remote-delivery.md"), deliveryPlan);
+    return await prepareDeliveryProject(f);
+}
+
+export async function prepareDeliveryProject(f: RuntimeFixture) {
+    await mkdir(join(f.remoteProject, ".wld"), { recursive: true });
     await writeFile(join(f.remoteProject, ".gitignore"), ".wld/\n");
     await writeFile(
         join(f.remoteProject, ".wld/settings.json"),

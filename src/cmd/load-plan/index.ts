@@ -295,6 +295,9 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
     let unresolvedLifecycleRecords: TransitionRecoveryRecord[] = [];
 
     try {
+        const pickerAccess = selectedPlan?.planId
+            ? await selectPlanAccess(projectRoot, selectedPlan.name, selectedPlan.planId, selectedPlan.projectId)
+            : undefined;
         if (options.slashSurface !== "acp" && !(await admitProjectWithIdentityChoice(projectRoot))) return;
         await prepareWorktreeRegistry(projectRoot);
         const discovered = options.slashSurface === "acp" ? null : await discoverPlanDocumentRoot(projectRoot, planArg);
@@ -305,22 +308,14 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 : confirmProjectDirectory(discovered.path)))
         )
             return;
-        if (selectedPlan?.planId) {
-            const selection = await selectPlanAccess(
+        if (pickerAccess) {
+            skipRouterRestore = true;
+            return await withPlanAccess(
                 projectRoot,
-                selectedPlan.name,
-                selectedPlan.planId,
-                selectedPlan.projectId,
+                pickerAccess,
+                () => runLoadPlanCommand([planArg], options),
+                planArg,
             );
-            if (selection) {
-                skipRouterRestore = true;
-                return await withPlanAccess(
-                    projectRoot,
-                    selection,
-                    () => runLoadPlanCommand([planArg], options),
-                    planArg,
-                );
-            }
         }
         const resolved = await resolvePlanWithPrimaryRecovery(projectRoot, planArg);
         if (!isCurrentPlan(resolved.plan.attrs.planId)) {

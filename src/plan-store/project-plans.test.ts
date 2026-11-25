@@ -3,11 +3,15 @@ import {
     planDocumentsForCheckout,
     readPlanDocuments,
     withLocalPlanWorkflow,
+    withPlanSubmission,
+    type PlanSubmissionDocument,
     selectPlanAccess,
 } from "./index.ts";
 import { equal, notEqual, rejects } from "node:assert/strict";
 import { test } from "node:test";
 import { packageFixture } from "../shared/testing/plan-package-fixture.ts";
+import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
 import { archiveSavedPlan, openProjectPlanStore, restoreSavedPlan, StalePlanWriteError } from "./index.ts";
 
 test("a project-bound store preserves Plan identity and guards each write across independent opens", async () => {
@@ -139,5 +143,60 @@ test("a checkout reader and picker keep the Project that admitted the Plan", asy
         );
     } finally {
         await Promise.all([first.cleanup(), second.cleanup()]);
+    }
+});
+
+test("retained submission checks the Session Project and exact Plan before any write", async () => {
+    const fixture = await packageFixture();
+    const foreign = await packageFixture();
+    try {
+        const store = openProjectPlanStore(fixture.identity.projectId, { admitted: fixture.identity });
+        const canonical = await store.create({ planName: "proposal", contextMarkdown: "# Canonical\n" });
+        await withRetainedPlanFixture(fixture.root, async () => {
+            const retainedId = crypto.randomUUID();
+            await seedPlan(fixture.root, "proposal", "# Retained\n", { planId: retainedId });
+            const save = ({ saveDefinition }: PlanSubmissionDocument) => saveDefinition({ executionAgent: "engineer" });
+            await rejects(
+                () =>
+                    withPlanSubmission(
+                        fixture.root,
+                        "proposal",
+                        { expectedProjectId: foreign.identity.projectId },
+                        save,
+                    ),
+                /another Session Project/,
+            );
+            await rejects(
+                () => withPlanSubmission(fixture.root, "proposal", { expectedPlanId: canonical.planId }, save),
+                /bound Plan identity changed/,
+            );
+            await rejects(
+                () =>
+                    withPlanSubmission(
+                        fixture.root,
+                        "proposal",
+                        { prepareAuthor: () => ({ contextMarkdown: "# Replacement\n" }) },
+                        save,
+                    ),
+                /requires the canonical Project owner/,
+            );
+            const before = await planDocumentsForCheckout(fixture.root).load("proposal");
+            equal(before?.attrs.executionAgent, undefined);
+            equal(before?.body, "# Retained\n");
+            await withPlanSubmission(
+                fixture.root,
+                "proposal",
+                { expectedProjectId: fixture.identity.projectId, expectedPlanId: retainedId },
+                save,
+            );
+            const submitted = await planDocumentsForCheckout(fixture.root).load("proposal");
+            equal(submitted?.attrs.executionAgent, "engineer");
+            equal(submitted?.attrs.planId, retainedId);
+        });
+        const after = await store.read(canonical.planId);
+        equal(after.revision, canonical.revision);
+        equal(after.body, canonical.body);
+    } finally {
+        await Promise.all([fixture.cleanup(), foreign.cleanup()]);
     }
 });

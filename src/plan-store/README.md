@@ -12,8 +12,11 @@ For project-scoped commands, call `openProjectPlanStore(projectId)` from `index.
 [`ProjectPlanStore`](../../packages/plans/store.ts) reads Plans by ID and requires the observed revision for changes.
 Workspace uses its active registration for the Board, sidebar, attention dashboard, search, documents, and review routes.
 The TUI picker carries the selected Project and Plan IDs into the load operation. Hosted and attached
-`plan_written` use the bound store for creation and revision. Core workflows read richer execution documents
-through `planDocumentsForCheckout`, which preserves the selected Plan and its admitted source.
+`plan_written` use `withPlanSubmission` to verify any bound Project and Plan, author through the canonical owner,
+and enter the selected workflow for review or submission. The selected workflow can submit definition changes
+and reopen review in its verified retained checkout. A request already admitted to that checkout requires
+the canonical owner to author prose. Core workflows read richer execution documents through
+`planDocumentsForCheckout`, which preserves the selected Plan and its admitted source.
 Other hosts can open the same store with an identity admitted by Projects.
 The runtime selects the owner and the `@runwield/plans/file-snapshots` driver stores retained workflow inputs.
 

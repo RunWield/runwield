@@ -11,7 +11,8 @@ import { runSleepCommand, SYSTEM_SLEEP_MNEMOTECA_PORT } from "../../cmd/sleep/in
 import { startInteractiveSession } from "../../ui/tui/chat-session.ts";
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
-import { configureRemotePersonalResources } from "./personal-resources.ts";
+import { configureRemotePersonalResources, type RemotePersonalResources } from "./personal-resources.ts";
+import { activateRemoteProjectOwner } from "./entry.ts";
 import { configureRemoteModelConnection } from "../models/model-registry.ts";
 import { configureRemoteMemoryConnection } from "./memory-bridge.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
@@ -51,7 +52,7 @@ export interface RuntimeReviewConfiguration {
 }
 export interface RuntimeClientInput {
     review?: RuntimeReviewConfiguration;
-    planSource?: "retained-checkout";
+    planSource?: "managed-owner" | "retained-checkout";
     connection: RemoteSessionControlConnection;
     resources: string;
     laptopHome: string;
@@ -156,10 +157,13 @@ if (process.argv[2] === "--runtime-identity") {
 }
 const lines = processLines(stdinStream());
 const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
-configureRemotePersonalResources({
+const resources: RemotePersonalResources = {
     globalRoot: input.resources,
     personalOwner: { kind: "managed-remote", identity: input.laptopHome },
-});
+};
+let clearPlanStore: (() => void) | undefined;
+if (input.planSource === "managed-owner") clearPlanStore = await activateRemoteProjectOwner({ ...input, resources });
+else configureRemotePersonalResources(resources);
 configureRemoteSettingsConnection(input.connection);
 const clearMcp = configureRemoteMcpConnection(input.connection);
 const clearMemory = configureRemoteMemoryConnection({ ...input.connection, collection: input.memoryCollection });
@@ -753,6 +757,7 @@ try {
     await runtime.closeAllSessionsWhenIdle();
     clearGuideRunner();
     clearReviewHost();
+    clearPlanStore?.();
     await clearMcp();
     clearModels();
     clearMemory();

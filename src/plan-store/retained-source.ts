@@ -6,9 +6,9 @@ const sources = new AsyncLocalStorage<ProjectIdentity>();
 export function currentRetainedCheckoutSource(): ProjectIdentity | undefined {
     return sources.getStore();
 }
-export function hasRetainedCheckoutSource(cwd: string): boolean {
+export function validatedRetainedCheckoutSource(cwd: string): ProjectIdentity | undefined {
     const source = sources.getStore();
-    if (!source) return false;
+    if (!source) return undefined;
     const inspected = projects.checkout.inspect(cwd);
     if (
         inspected.kind !== "existing" ||
@@ -17,7 +17,10 @@ export function hasRetainedCheckoutSource(cwd: string): boolean {
         inspected.identity.personalOwner.identity !== source.personalOwner.identity
     )
         throw new Error("Retained checkout source belongs to another Project or repository.");
-    return true;
+    return source;
+}
+export function hasRetainedCheckoutSource(cwd: string): boolean {
+    return Boolean(validatedRetainedCheckoutSource(cwd));
 }
 export function withRetainedCheckoutSource<T>(identity: ProjectIdentity, read: () => Promise<T>): Promise<T> {
     return sources.run(identity, read);

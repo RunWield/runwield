@@ -125,9 +125,9 @@ as consumed when the replacement Agent receives it. If replacement setup fails, 
 keeps the pending messages. Canceling the Session clears pending messages and ends the handoff.
 
 **Requirement: Commands are commands.** A leading slash that resolves to an available command runs that command.
-Disabled or unknown commands fail visibly. A fully typed `/load-plan <plan>` opens that exact Plan with one Enter;
-partial names stay discoverable through completion. Background Task results reach the Agent as information: they keep
-the unsent draft and the active specialist unchanged and never run as commands.
+Disabled or unknown commands fail visibly. A fully typed `/load-plan <plan>` opens that exact Plan with one Enter.
+Completion suggests partial names from the active Session's Project. The Agent receives Background Task results as
+information, preserving the unsent draft and the active specialist. These results never run as commands.
 
 **Requirement: Restore complete saved conversation history.** Resuming a Session renders its committed history in
 order through the final saved message, once per event, across any number of replay pages. Replay shows the transcript
@@ -578,6 +578,8 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
   intact.
 - Given `/load-plan` without an argument, the picker lists local Plan documents; Cancel leaves everything as it was.
   Selecting a Plan starts its load and recovery flow.
+- Given a Session that moves to another Project, the next `/load-plan` completion uses the new Project. A picker
+  selection from the previous Project is rejected, even if both Projects have a Plan with the same name and ID.
 - Given a body edit during a metadata transition that fails, the latest body remains.
 - Given malformed lifecycle metadata, recovery repairs RunWield's own state and keeps the user's prose.
 - Given an adopted Plan, loading it again keeps its age, identity, and decisions.

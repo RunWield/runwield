@@ -134,16 +134,104 @@ function moduleSpecifier(node: ts.Node): ts.Node | undefined {
         return node.arguments[0];
 }
 
+/** Find a directly forwarded binding or module load. Calls that construct application values stop the lookup. */
+function forwardedValue(expression: ts.Expression): ts.Expression {
+    while (
+        ts.isAwaitExpression(expression) ||
+        ts.isParenthesizedExpression(expression) ||
+        ts.isPropertyAccessExpression(expression) ||
+        ts.isElementAccessExpression(expression) ||
+        ts.isAsExpression(expression) ||
+        ts.isTypeAssertionExpression(expression) ||
+        ts.isSatisfiesExpression(expression) ||
+        ts.isNonNullExpression(expression)
+    )
+        expression = expression.expression;
+    return expression;
+}
+
+function importBindingNames(binding: ts.BindingName): ts.Identifier[] {
+    if (ts.isIdentifier(binding)) return [binding];
+    return binding.elements.flatMap((item) => (ts.isBindingElement(item) ? importBindingNames(item.name) : []));
+}
+
+/** Pair exports of local import bindings with their original module, regardless of declaration order. */
+function localReexports(
+    statements: ts.NodeArray<ts.Statement>,
+    tree: ts.SourceFile,
+    offset: number,
+): ModuleReference[] {
+    const imports = new Map<string, string>();
+    const aliases = new Map<string, string>();
+    const exported: ts.ModuleExportName[] = [];
+    for (const statement of statements) {
+        if (ts.isImportDeclaration(statement) && ts.isStringLiteralLike(statement.moduleSpecifier)) {
+            const source = statement.moduleSpecifier.text;
+            const clause = statement.importClause;
+            if (clause?.name) imports.set(clause.name.text, source);
+            const bindings = clause?.namedBindings;
+            if (bindings && ts.isNamespaceImport(bindings)) imports.set(bindings.name.text, source);
+            if (bindings && ts.isNamedImports(bindings)) {
+                for (const { name } of bindings.elements) imports.set(name.text, source);
+            }
+        } else if (ts.isVariableStatement(statement)) {
+            const exportedHere = statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+            for (const { name, initializer } of statement.declarationList.declarations) {
+                if (!initializer) continue;
+                const value = forwardedValue(initializer);
+                const source = moduleSpecifier(value);
+                if (source && ts.isStringLiteralLike(source)) {
+                    for (const binding of importBindingNames(name)) {
+                        imports.set(binding.text, source.text);
+                        if (exportedHere) exported.push(binding);
+                    }
+                } else if (statement.declarationList.flags & ts.NodeFlags.Const && ts.isIdentifier(value)) {
+                    for (const binding of importBindingNames(name)) {
+                        aliases.set(binding.text, value.text);
+                        if (exportedHere) exported.push(binding);
+                    }
+                }
+            }
+        } else if (ts.isImportEqualsDeclaration(statement)) {
+            const source = moduleSpecifier(statement);
+            if (source && ts.isStringLiteralLike(source)) imports.set(statement.name.text, source.text);
+        } else if (ts.isExportDeclaration(statement) && !statement.moduleSpecifier && statement.exportClause) {
+            if (ts.isNamedExports(statement.exportClause)) {
+                for (const item of statement.exportClause.elements) exported.push(item.propertyName ?? item.name);
+            }
+        } else if (ts.isExportAssignment(statement)) {
+            const value = forwardedValue(statement.expression);
+            if (ts.isIdentifier(value)) exported.push(value);
+        }
+    }
+    return exported.flatMap((name) => {
+        let binding = name.text;
+        const seen = new Set<string>();
+        while (aliases.has(binding) && !seen.has(binding)) {
+            seen.add(binding);
+            binding = aliases.get(binding)!;
+        }
+        const specifier = imports.get(binding);
+        return specifier ? [{ specifier, offset: offset + name.getStart(tree), reexport: true }] : [];
+    });
+}
+
 function typescriptModuleReferences(file: string, piece: SourcePiece): ModuleReference[] {
     const tree = ts.createSourceFile(file, piece.text, ts.ScriptTarget.Latest, true);
     const references: ModuleReference[] = [];
     function visit(node: ts.Node): void {
+        if (ts.isSourceFile(node) || ts.isModuleBlock(node)) {
+            references.push(...localReexports(node.statements, tree, piece.offset));
+        }
         const specifier = moduleSpecifier(node);
         if (specifier && ts.isStringLiteralLike(specifier))
             references.push({
                 specifier: specifier.text,
                 offset: piece.offset + specifier.getStart(tree),
-                reexport: ts.isExportDeclaration(node),
+                reexport:
+                    ts.isExportDeclaration(node) ||
+                    (ts.isImportEqualsDeclaration(node) &&
+                        (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0),
             });
         ts.forEachChild(node, visit);
         if ("jsDoc" in node) {
