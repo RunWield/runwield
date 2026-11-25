@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import {
@@ -17,7 +18,6 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "../work-records/markdown.ts";
 import { readPublishedRecordMarkdown } from "../../plan-store/index.ts";
 import { syncWorkRecordToIndex } from "../work-records/index-adapter.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
@@ -52,7 +52,7 @@ const repository = defineGitFixture(async (root) => {
         await fsMkdir(join(root, "docs/work-records"), { recursive: true });
         await fsWriteFile(
             join(root, predecessorPath),
-            formatWorkRecordMarkdown(
+            workRecords.documents.format(
                 {
                     ...recordAttrs,
                     recordId: predecessorId,
@@ -83,7 +83,7 @@ test("remote delivery retains verification through index failure and recovers in
             const index = createWorkRecordMnemotecaFixture();
             await syncWorkRecordToIndex(
                 root,
-                parseWorkRecordMarkdown(await fsReadFile(join(root, predecessorPath), "utf8")),
+                workRecords.documents.parse(await fsReadFile(join(root, predecessorPath), "utf8")),
                 {
                     mnemotecaPort: index,
                 },
@@ -109,7 +109,7 @@ test("remote delivery retains verification through index failure and recovers in
             );
             await fsWriteFile(
                 join(entry.path, successorPath),
-                formatWorkRecordMarkdown(
+                workRecords.documents.format(
                     {
                         ...recordAttrs,
                         recordId: successorId,
@@ -187,8 +187,8 @@ test("remote delivery retains verification through index failure and recovers in
             );
             const attached = await readPublishedRecordMarkdown(root, failed.attempt, successorPath);
             assert(attached);
-            const publishedRecord = parseWorkRecordMarkdown(attached);
-            const sealedRecord = parseWorkRecordMarkdown(
+            const publishedRecord = workRecords.documents.parse(attached);
+            const sealedRecord = workRecords.documents.parse(
                 await git(remote, ["show", `${artifactCommit}:${successorPath}`]),
             );
             assertEquals(publishedRecord.body.trimEnd(), sealedRecord.body);
@@ -275,7 +275,7 @@ for (const mode of ["local", "remote"] as const) {
                     );
                     await fsWriteFile(
                         join(entry.path, path),
-                        formatWorkRecordMarkdown(
+                        workRecords.documents.format(
                             {
                                 ...recordAttrs,
                                 recordId,

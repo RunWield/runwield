@@ -1,3 +1,4 @@
+import { workRecordsForCheckout } from "../../plan-store/index.ts";
 import { currentWorkRecordOwner, withWorkRecordMutation } from "./owner.ts";
 import { platform } from "node:process";
 import { clearInterval, setInterval } from "node:timers";
@@ -6,8 +7,7 @@ import { mkdir as fsMkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { type LockFileSnapshot, readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.ts";
-import type { WorkRecordResource } from "@runwield/plans/work-record-schema";
+import { workRecords, type WorkRecordResource } from "@runwield/plans/work-records";
 import { listWorkRecords, replaceWorkRecord } from "./store.ts";
 import { supersedeWorkRecord } from "./lifecycle.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
@@ -265,8 +265,8 @@ function removeProposalCandidates(record: WorkRecordResource, ids: Set<string>) 
 }
 
 function prepareReplacement(current: WorkRecordResource, attrs: WorkRecordResource["attrs"]): PreparedReplacement {
-    const markdown = formatWorkRecordMarkdown(attrs, current.body);
-    const parsed = parseWorkRecordMarkdown(markdown, {
+    const markdown = workRecords.documents.format(attrs, current.body);
+    const parsed = workRecords.documents.parse(markdown, {
         path: current.path,
         relativePath: current.relativePath,
     });
@@ -422,7 +422,7 @@ async function applyWorkRecordSupersessionLocked(cwd: string, options: WorkRecor
 }
 
 export async function listWorkRecordSupersessionProposals(cwd: string): Promise<WorkRecordSupersessionProposalEntry[]> {
-    const records = await listWorkRecords(cwd, { createDir: false });
+    const records = await workRecordsForCheckout(cwd).list();
     return records.flatMap((record) =>
         (record.attrs.supersessionProposal?.candidates || []).map((candidate) => ({
             successorRecordId: record.attrs.recordId,

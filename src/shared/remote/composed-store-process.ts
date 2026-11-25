@@ -19,7 +19,7 @@ try {
         stageValidationPassedInExecutionWorktree,
         preparePackageCopies,
         settlePackagePublication,
-        listOwnedWorkRecords,
+        workRecordsForCheckout,
         readPublishedDeliverySources,
         readPublishedRecordMarkdown,
     } = await import("../../plan-store/index.ts");
@@ -117,7 +117,9 @@ try {
         } else if (managed) {
             await runWorkRecordsCommand(["prune", "--yes"], { mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT });
         } else
-            console.log(JSON.stringify((await listOwnedWorkRecords(input.cwd)).map((record) => record.attrs.recordId)));
+            console.log(
+                JSON.stringify((await workRecordsForCheckout(input.cwd).list()).map((record) => record.attrs.recordId)),
+            );
     } else if (command.startsWith("managed-history-")) {
         const { runPlansCommand } = await import("../../cmd/plans/index.ts");
         const { authorLocalPlan, listPlanHistory } = await import("../../plan-store/index.ts");
@@ -168,7 +170,9 @@ try {
         });
         equal((await loadPlan(input.cwd, "family/first"))?.attrs.status, "verified");
         console.log(
-            JSON.stringify({ records: (await listOwnedWorkRecords(input.cwd)).map((record) => record.attrs.recordId) }),
+            JSON.stringify({
+                records: (await workRecordsForCheckout(input.cwd).list()).map((record) => record.attrs.recordId),
+            }),
         );
     } else if (command.endsWith("read")) {
         const plan = await loadPlan(input.cwd, "family/second");
@@ -385,7 +389,7 @@ try {
                     executionCwd: execution.executionCwd,
                     attemptId: execution.worktreeId,
                     sibling: (await loadPlan(input.cwd, "family/second"))?.markdown,
-                    records: (await listOwnedWorkRecords(input.cwd)).map((record) => record.attrs.recordId),
+                    records: (await workRecordsForCheckout(input.cwd).list()).map((record) => record.attrs.recordId),
                 }),
             );
         }

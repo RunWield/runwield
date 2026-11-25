@@ -1,3 +1,6 @@
+import { recordAttrs, recordBody } from "../../shared/work-records/test-fixtures/package-records.ts";
+import { withWorkRecordOwner } from "../../shared/work-records/owner.ts";
+import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import { projects } from "@runwield/projects";
 import { seedPlanController } from "../../shared/testing/plan-state-fixture.ts";
 import { authorLocalPlan, importPlans, openProjectPlanStore } from "../../plan-store/index.ts";
@@ -144,17 +147,29 @@ test("the owner Plan Board follows the registered Project ID across checkout mov
         );
         deepStrictEqual(await (await owner.get(emptyRoute)).json(), emptyBoard);
 
+        const admitted = projects.checkout.inspect(root);
+        ok(admitted.kind === "existing");
+        const attrs = recordAttrs();
+        const written = await withWorkRecordOwner(root, admitted.identity, () =>
+            writeWorkRecord(root, attrs, recordBody),
+        );
         await rename(root, moved);
         await owner.get(route, 403);
         await rejects(() => handle.list(), /root is not available/i);
+        await rejects(() => handle.workRecords.list(), /root is not available/i);
         store.projects.relink({ projectId: project.projectId, newRoot: moved });
         const after: ProjectBoardResponse = await (await owner.get(route)).json();
         deepStrictEqual(after, before);
+        strictEqual((await handle.workRecords.read(attrs.recordId))?.markdown, written.markdown);
 
         store.projects.setStatus(project.projectId, "inactive");
         await owner.get(route, 404);
         await rejects(() => handle.list(), /inactive/i);
+        await rejects(() => handle.workRecords.read("missing"), /inactive/i);
         store.projects.setStatus(project.projectId, "active");
+        const [record] = await handle.workRecords.list();
+        strictEqual(record?.attrs.recordId, attrs.recordId);
+        strictEqual(record.markdown, written.markdown);
         deepStrictEqual(await (await owner.get(route)).json(), before);
         deepStrictEqual(
             (await handle.list()).resources.map((entry) => entry.planId),

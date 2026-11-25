@@ -1,4 +1,4 @@
-import type { GeneratedWorkRecordSections } from "./work-record-schema.ts";
+import type { GeneratedWorkRecordSections } from "./work-records/documents.ts";
 
 export type ProcessIdentity = {
     key: string;

@@ -1,8 +1,8 @@
+import { workRecords } from "@runwield/plans/work-records";
 /** Approve a prepared record after Core establishes non-Git in-place completion. */
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { findWorkRecordById, replaceWorkRecord } from "./store.js";
 import { approveWorkRecord } from "./lifecycle.ts";
-import { formatWorkRecordMarkdown } from "./markdown.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 
@@ -21,7 +21,7 @@ export async function completeInPlaceWorkRecord(
         record = await replaceWorkRecord(
             cwd,
             record,
-            formatWorkRecordMarkdown(approveWorkRecord(record.attrs), record.body),
+            workRecords.documents.format(approveWorkRecord(record.attrs), record.body),
         );
     }
     await syncWorkRecordToIndex(cwd, record, { mnemotecaPort });

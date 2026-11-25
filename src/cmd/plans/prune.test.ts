@@ -8,7 +8,7 @@ import { loadArchivedPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { setCustomSetting } from "../../shared/settings.ts";
 import { writeWorkRecord } from "../../shared/work-records/store.ts";
-import type { WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
+import { workRecords, type WorkRecordFrontMatter } from "@runwield/plans/work-records";
 import { runPlansPruneCommand } from "./prune.ts";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 
@@ -134,7 +134,6 @@ test("canonical archived families retain records and remove only confirmed, cove
         assertEquals(before.milestones.length, 1);
         const { readLocalHomeStore } = await import("../../plan-store/index.ts");
         const { workRecordOwnerLayout } = await import("../../shared/work-records/owner.ts");
-        const { formatWorkRecordMarkdown } = await import("../../shared/work-records/markdown.ts");
         const { mkdir, writeFile, unlink, stat } = await import("node:fs/promises");
         const { join } = await import("node:path");
         const pinPath = await readLocalHomeStore(
@@ -159,7 +158,7 @@ test("canonical archived families retain records and remove only confirmed, cove
                 record: {
                     kind: "work-record",
                     path: "docs/work-records/member.md",
-                    text: formatWorkRecordMarkdown(attrs, "# Member\n\n## Summary\n\nRetained input."),
+                    text: workRecords.documents.format(attrs, "# Member\n\n## Summary\n\nRetained input."),
                 },
             }),
         );

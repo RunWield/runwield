@@ -409,5 +409,11 @@ export {
 } from "./project-plans.ts";
 export { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "./authoring.ts";
 export type { ProjectPlanStoreOptions } from "./project-binding.ts";
+export {
+    registeredWorkRecords,
+    withWorkRecordReadScope,
+    workRecordDisplayPath,
+    workRecordsForCheckout,
+} from "./work-record-readers.ts";
 export { openRegisteredPlanDocuments } from "./registered-documents.ts";
 export { editCheckoutPlanBody, readCheckoutPlanDisplayCatalog } from "./checkout-presentation.ts";

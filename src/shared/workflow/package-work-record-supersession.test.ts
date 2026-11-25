@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { test } from "node:test";
 import { equal, ok } from "node:assert/strict";
 import { recordingFixture } from "./testing/package-recording-fixture.ts";
@@ -87,14 +88,13 @@ test("interrupted declared supersession preserves a later explicit relationship 
         await f.scope(async () => {
             const { writeWorkRecord, replaceWorkRecord, findWorkRecordById } = await import("../work-records/store.ts");
             const { recordAttrs, recordBody } = await import("../work-records/test-fixtures/package-records.ts");
-            const { formatWorkRecordMarkdown } = await import("../work-records/markdown.ts");
             const later = await writeWorkRecord(f.root, recordAttrs(), recordBody);
             const predecessor = await findWorkRecordById(f.root, predecessorId);
             ok(predecessor);
             await replaceWorkRecord(
                 f.root,
                 predecessor,
-                formatWorkRecordMarkdown(
+                workRecords.documents.format(
                     { ...predecessor.attrs, supersededBy: later.attrs.recordId },
                     predecessor.body + "\nLater editor note.\n",
                 ),

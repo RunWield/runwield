@@ -1,4 +1,4 @@
-import type { WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
+import type { WorkRecordFrontMatter } from "@runwield/plans/work-records";
 export function recordAttrs(overrides: Partial<WorkRecordFrontMatter> = {}): WorkRecordFrontMatter {
     return {
         kind: "work_record",

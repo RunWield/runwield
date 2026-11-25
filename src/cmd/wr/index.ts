@@ -4,7 +4,10 @@ import {
     confirmPruneRequest,
     readLocalHomeStore,
     withLocalProjectAction,
+    workRecordDisplayPath,
+    workRecordsForCheckout,
 } from "../../plan-store/index.ts";
+import { workRecordOwnerLayout } from "../../shared/work-records/owner.ts";
 import { importWorkRecords } from "../../shared/work-records/import.ts";
 /**
  * @module cmd/wr
@@ -20,7 +23,6 @@ import {
     formatWorkRecordBackfillPreview,
     formatWorkRecordList,
     formatWorkRecordSearchResults,
-    listWorkRecords,
     listWorkRecordSupersessionProposals,
     previewWorkRecordBackfill,
     readWorkRecordById,
@@ -28,7 +30,6 @@ import {
     rejectWorkRecordSupersessionProposal,
     runWorkRecordBackfill,
     searchWorkRecords,
-    WorkRecordReadError,
 } from "../../shared/work-records/index.ts";
 import type { WorkRecordMnemotecaPort } from "../../shared/work-records/mnemoteca-port.ts";
 import { NO_OPEN_BROWSER_PORT, SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
@@ -38,7 +39,8 @@ import {
     resolveWorkRecordSupersessionProposals,
     type WorkRecordSupersessionDecision,
 } from "../../shared/workflow/validation-helpers.ts";
-import type { WorkRecordSupersessionCandidate } from "@runwield/plans/work-record-schema";
+import { WorkRecordReadError } from "@runwield/plans/work-record-files";
+import type { WorkRecordSupersessionCandidate } from "@runwield/plans/work-records";
 
 export interface WorkRecordCommandOptions {
     uiAPI?: Pick<import("../../ui/tui/api.ts").UiAPI, "appendSystemMessage" | "promptSelect">;
@@ -402,7 +404,14 @@ async function runWorkRecordsCommandInOwner(argv: string[], options: WorkRecordC
     }
     rejectUnknownFlags(parsed, ["all"]);
     if (parsed._.length) throw new Error("Usage: wld wr list [--all]");
-    console.log(formatWorkRecordList(await listWorkRecords(getCwd()), { includeAll: Boolean(parsed.all) }));
+    const owner = workRecordOwnerLayout();
+    const cwd = getCwd();
+    console.log(
+        formatWorkRecordList(await workRecordsForCheckout(cwd).list(), {
+            includeAll: Boolean(parsed.all),
+            displayPath: owner ? (record) => workRecordDisplayPath(cwd, record) : undefined,
+        }),
+    );
     try {
         const { due } = await previewRecordRetention(getCwd());
         if (due.length) console.log(`[RunWield] ${due.length} Work Record(s) past retention · run \`wld wr prune\``);

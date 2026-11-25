@@ -12,7 +12,7 @@ import {
     recordPlanEvent,
     withLocalPlanWorkflow,
     loadPublishedWorkRecordSource,
-    listOwnedWorkRecords,
+    openPlanStoreForCheckout,
     readPlanRecordingContext,
     readRecordingPublication,
     type ProjectStoreBinding,
@@ -189,9 +189,15 @@ try {
         const source = await loadPublishedWorkRecordSource(input.cwd, "in-place");
         equal(source?.body, "# In-place result\n");
         equal(source?.attrs.status, "verified");
-        const records = await listOwnedWorkRecords(input.cwd);
+        const store = openPlanStoreForCheckout(input.cwd);
+        ok(store);
+        const records = await store.workRecords.list();
         equal(records.length, 1);
         equal(records[0].attrs.status, "approved");
+        const record = await store.workRecords.read(records[0].attrs.recordId.toUpperCase());
+        equal(record?.markdown, records[0].markdown);
+        ok(record && !("path" in record));
+        equal(await store.workRecords.read(crypto.randomUUID()), null);
         const retried = await retryWorkRecordForPlan({
             cwd: input.cwd,
             planName: "in-place",

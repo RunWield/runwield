@@ -1,84 +1,27 @@
+import type { WorkRecordLocation, WorkRecordLocations } from "@runwield/plans/work-record-files";
+import { workRecords } from "@runwield/plans/work-records";
 import { projects } from "@runwield/projects";
 /** Byte-preserving explicit import and durable record locations, independent of the derived index. */
 import fs from "node:fs/promises";
 import { basename, join, relative, resolve, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
-import { writeJsonAtomically } from "../private-json-file.ts";
-import { parseWorkRecordMarkdown } from "./markdown.ts";
 import { listWorkRecords, writeWorkRecord } from "./store.ts";
-import { assertWorkRecordPath, workRecordOwnerLayout, withWorkRecordMutation } from "./owner.ts";
+import { requireOwnedWorkRecordFiles, currentWorkRecordOwner, withWorkRecordMutation } from "./owner.ts";
 import { syncWorkRecordToIndex, type WorkRecordIndexOptions } from "./index-adapter.ts";
 
-export interface WorkRecordLocation {
-    kind: "import" | "copy";
-    sourcePath: string;
-    digest: string;
-    repositoryId?: string;
-    repositoryPath?: string;
-}
-export interface WorkRecordLocations {
-    version: 1;
-    projectId: string;
-    personalOwner: string;
-    recordId: string;
-    locations: WorkRecordLocation[];
-}
 export function workRecordDigest(markdown: string): string {
     return createHash("sha256").update(markdown).digest("hex");
 }
-function locationPath(recordId: string): string {
-    if (!/^[0-9a-f-]{36}$/i.test(recordId)) throw new Error("Invalid Work Record identity.");
-    const owner = workRecordOwnerLayout();
-    if (!owner) throw new Error("Work Record locations require explicit personal-store admission.");
-    const path = join(owner.internal, "locations", `${recordId.toLowerCase()}.json`);
-    assertWorkRecordPath(path);
-    return path;
-}
 export async function readWorkRecordLocations(recordId: string): Promise<WorkRecordLocations | null> {
-    const path = locationPath(recordId);
-    const text = await fs.readFile(path, "utf8").catch((error: NodeJS.ErrnoException) => {
-        if (error.code === "ENOENT") return null;
-        throw error;
-    });
-    if (text === null) return null;
-    const value: WorkRecordLocations = JSON.parse(text);
-    const owner = workRecordOwnerLayout()!;
-    if (
-        value.version !== 1 ||
-        value.recordId.toLowerCase() !== recordId.toLowerCase() ||
-        value.projectId !== owner.identity.projectId ||
-        value.personalOwner !== owner.identity.personalOwner.identity ||
-        !Array.isArray(value.locations)
-    )
-        throw new Error("Work Record location evidence belongs to another identity.");
-    return value;
+    return await requireOwnedWorkRecordFiles().readLocations(recordId);
 }
+
 export async function retainWorkRecordLocation(recordId: string, location: WorkRecordLocation): Promise<void> {
-    await withWorkRecordMutation(async () => {
-        const owner = workRecordOwnerLayout()!;
-        if (
-            location.repositoryPath &&
-            (!location.repositoryId ||
-                isAbsolute(location.repositoryPath) ||
-                location.repositoryPath.split(/[\\/]/).some((part) => !part || part === ".." || part === "."))
-        )
-            throw new Error("Unsafe repository Work Record location.");
-        const value = (await readWorkRecordLocations(recordId)) || {
-            version: 1 as const,
-            projectId: owner.identity.projectId,
-            personalOwner: owner.identity.personalOwner.identity,
-            recordId,
-            locations: [],
-        };
-        if (!value.locations.some((prior) => JSON.stringify(prior) === JSON.stringify(location))) {
-            value.locations.push(location);
-            writeJsonAtomically(locationPath(recordId), value);
-        }
-    });
+    await requireOwnedWorkRecordFiles().retainLocation(recordId, location);
 }
 
 export async function importWorkRecords(cwd: string, selection: string, options: WorkRecordIndexOptions) {
-    const owner = workRecordOwnerLayout();
+    const owner = currentWorkRecordOwner();
     if (!owner) throw new Error("Work Record import requires explicit personal-store admission.");
     const source = resolve(cwd, selection);
     // External inputs are provenance only. Never follow symlinks, including ancestor links.
@@ -101,7 +44,7 @@ export async function importWorkRecords(cwd: string, selection: string, options:
                 throw new Error("Expected a regular Markdown file.");
             const bytes = await fs.readFile(path);
             const markdown = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-            const parsed = parseWorkRecordMarkdown(markdown, { path, relativePath: basename(path) });
+            const parsed = workRecords.documents.parse(markdown, { path, relativePath: basename(path) });
             const record = await withWorkRecordMutation(async () => {
                 const existing = (await listWorkRecords(cwd)).filter(
                     (item) => item.attrs.recordId.toLowerCase() === parsed.attrs.recordId.toLowerCase(),
@@ -113,7 +56,7 @@ export async function importWorkRecords(cwd: string, selection: string, options:
                 const record =
                     existing[0] ||
                     (await writeWorkRecord(cwd, parsed.attrs, parsed.body, { fileName: basename(path), markdown }));
-                const repoPath = relative(projects.home.requireCheckout(owner.identity).checkoutRoot, path).replaceAll(
+                const repoPath = relative(projects.home.requireCheckout(owner).checkoutRoot, path).replaceAll(
                     "\\",
                     "/",
                 );
@@ -122,7 +65,7 @@ export async function importWorkRecords(cwd: string, selection: string, options:
                     kind: "import",
                     sourcePath: path,
                     digest: workRecordDigest(markdown),
-                    ...(contained ? { repositoryId: owner.identity.repositoryId, repositoryPath: repoPath } : {}),
+                    ...(contained ? { repositoryId: owner.repositoryId, repositoryPath: repoPath } : {}),
                 });
                 return record;
             });
@@ -142,5 +85,5 @@ export async function importWorkRecords(cwd: string, selection: string, options:
 
 /** Called under the record mutation lock after pruning the canonical identity. */
 export async function forgetWorkRecordLocations(recordId: string) {
-    await fs.rm(locationPath(recordId), { force: true });
+    await requireOwnedWorkRecordFiles().forgetLocations(recordId);
 }

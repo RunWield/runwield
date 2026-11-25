@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { writeWorkRecord } from "../shared/work-records/index.ts";
-import type { WorkRecordFrontMatter } from "@runwield/plans/work-record-schema";
+import type { WorkRecordFrontMatter } from "@runwield/plans/work-records";
 import { createWorkRecordReadTool } from "./work-record-read.ts";
 
 const RECORD_ID = "11111111-1111-4111-8111-111111111111";

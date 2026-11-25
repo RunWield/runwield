@@ -3,12 +3,12 @@
  * Filtering and CLI formatting for canonical Work Records.
  */
 
-import { currentWorkRecordOwner } from "./owner.ts";
 import { formatPlannedWorkLabel } from "../../constants.ts";
-import type { WorkRecordResource } from "@runwield/plans/work-record-schema";
+import type { ProjectWorkRecord } from "@runwield/plans/store";
 
 interface WorkRecordListOptions {
     includeAll?: boolean;
+    displayPath?: (record: ProjectWorkRecord) => string;
 }
 
 export function formatWorkRecordScopeLabel(scope: string, workKind?: string): string {
@@ -18,21 +18,21 @@ export function formatWorkRecordScopeLabel(scope: string, workKind?: string): st
     return String(scope || "unknown");
 }
 
-export function isCurrentWorkRecord(record: WorkRecordResource): boolean {
+export function isCurrentWorkRecord(record: ProjectWorkRecord): boolean {
     return record.attrs.status === "approved" && !record.attrs.archivedAt && !record.attrs.supersededBy;
 }
 
 export function filterWorkRecordsForList(
-    records: WorkRecordResource[],
+    records: ProjectWorkRecord[],
     options: WorkRecordListOptions = {},
-): WorkRecordResource[] {
+): ProjectWorkRecord[] {
     const filtered = options.includeAll ? records : records.filter(isCurrentWorkRecord);
     return filtered.sort(
         (a, b) => b.attrs.createdAt.localeCompare(a.attrs.createdAt) || a.title.localeCompare(b.title),
     );
 }
 
-export function workRecordNotices(record: WorkRecordResource): string[] {
+export function workRecordNotices(record: ProjectWorkRecord): string[] {
     const notices: string[] = [];
     if (record.attrs.completionMode === "closed_without_verification") {
         notices.push("WARNING: RunWield verification was skipped.");
@@ -58,7 +58,7 @@ export function workRecordNotices(record: WorkRecordResource): string[] {
     return notices;
 }
 
-export function formatWorkRecordListEntry(record: WorkRecordResource): string {
+export function formatWorkRecordListEntry(record: ProjectWorkRecord, displayPath = record.relativePath): string {
     const sourcePlans = record.attrs.provenance?.sourcePlans || [];
     const evidence = record.attrs.provenance?.evidence || [];
     const lines = [
@@ -73,16 +73,20 @@ export function formatWorkRecordListEntry(record: WorkRecordResource): string {
     ];
     if (sourcePlans.length) lines.push(`  sourcePlans: ${sourcePlans.join(", ")}`);
     if (evidence.length) lines.push(`  evidence: ${evidence.map((entry) => entry.path).join(", ")}`);
-    lines.push(`  path: ${currentWorkRecordOwner() ? record.path : record.relativePath}`);
+    lines.push(`  path: ${displayPath}`);
     for (const notice of workRecordNotices(record)) lines.push(`  ${notice}`);
     return lines.join("\n");
 }
 
-export function formatWorkRecordList(records: WorkRecordResource[], options: WorkRecordListOptions = {}): string {
+export function formatWorkRecordList(records: ProjectWorkRecord[], options: WorkRecordListOptions = {}): string {
     const listed = filterWorkRecordsForList(records, options);
     if (!listed.length) {
         return options.includeAll ? "[RunWield] No Work Records found." : "[RunWield] No current Work Records found.";
     }
     const heading = options.includeAll ? "[RunWield] Work Records:" : "[RunWield] Current Work Records:";
-    return [heading, "", ...listed.map(formatWorkRecordListEntry)].join("\n");
+    return [
+        heading,
+        "",
+        ...listed.map((record) => formatWorkRecordListEntry(record, options.displayPath?.(record))),
+    ].join("\n");
 }

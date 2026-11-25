@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { projects } from "@runwield/projects";
 import {
     managedPlanStoreActive,
@@ -389,8 +390,7 @@ async function packageDeliverySources(
         if (manifest.recordingOutcome && metadata.planId === recordingOwnerId)
             source.attrs.workRecord = manifest.recordingOutcome;
         if (manifest.preparedRecord) {
-            const { parseWorkRecordMarkdown } = await import("../shared/work-records/markdown.ts");
-            const record = parseWorkRecordMarkdown(manifest.preparedRecord.text);
+            const record = workRecords.documents.parse(manifest.preparedRecord.text);
             if (record.attrs.provenance?.sourcePlans?.includes(metadata.planId))
                 source.attrs.workRecord = {
                     status: "generated",

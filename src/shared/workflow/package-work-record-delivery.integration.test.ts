@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { test } from "node:test";
 import { equal, ok } from "node:assert/strict";
 import { recordingFixture } from "./testing/package-recording-fixture.ts";
@@ -5,7 +6,6 @@ import { read } from "../testing/plan-package-fixture.ts";
 import { readPlanPackagePublication } from "../../plan-store/packages.ts";
 import { listWorkRecords } from "../work-records/store.ts";
 import { withWorkRecordOwner } from "../work-records/owner.ts";
-import { parseWorkRecordMarkdown } from "../work-records/markdown.ts";
 import { git } from "../git-test-fixture.ts";
 
 for (const policy of [
@@ -34,7 +34,7 @@ for (const policy of [
                 const records = await listWorkRecords(f.root);
                 equal(records.length, 1);
                 equal(records[0].attrs.status, "approved");
-                const frozen = parseWorkRecordMarkdown(manifest.preparedRecord!.text);
+                const frozen = workRecords.documents.parse(manifest.preparedRecord!.text);
                 equal(frozen.attrs.status, "pending_verification");
                 equal(records[0].body, frozen.body);
             });

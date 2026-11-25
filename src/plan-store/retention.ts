@@ -20,7 +20,7 @@ import { selectArchivedPlansForPrune, type ArchiveRetentionPolicy } from "./rete
 import { getPlanArchiveRetentionPolicy, getWorkRecordRetentionPolicy } from "../shared/settings.ts";
 import { deleteWorkRecord, listLocalWorkRecords } from "../shared/work-records/store.ts";
 import { unfinishedRecordingPins } from "../shared/work-records/package-recording.ts";
-import { assertWorkRecordPath, withWorkRecordMutation } from "../shared/work-records/owner.ts";
+import { withWorkRecordMutation } from "../shared/work-records/owner.ts";
 import { forgetWorkRecordLocations, readWorkRecordLocations } from "../shared/work-records/import.ts";
 import { withPlanCatalogLock, deleteArchivedPlanUnit } from "../plan-store.ts";
 import {
@@ -278,7 +278,7 @@ export async function localConfirmRetention(
                 async function finishRecord(recordId: string, copies: PruneCopy[]) {
                     await forgetWorkRecordLocations(recordId);
                     const indexWarning = await pruneWorkRecordIndex(cwd, recordId, { mnemotecaPort });
-                    effect!.write(recordId, copies, true);
+                    await effect!.write(recordId, copies, true);
                     return { deleted: true, copies, indexWarning };
                 }
                 if (retained) {
@@ -290,7 +290,7 @@ export async function localConfirmRetention(
                             : current.catalog.some((p) => p.metadata.planId === retained.identity);
                     if (retained.completed || !live) {
                         if (!live && kind === "records") return await finishRecord(retained.identity, retained.copies);
-                        if (!retained.completed) effect!.write(retained.identity, retained.copies, true);
+                        if (!retained.completed) await effect!.write(retained.identity, retained.copies, true);
                         return { deleted: true, copies: live ? [] : retained.copies };
                     }
                 }
@@ -308,8 +308,7 @@ export async function localConfirmRetention(
                                 digest: item.digest,
                                 sourcePath: item.sourcePath,
                             });
-                    effect!.write(approved.recordId, copies, false);
-                    assertWorkRecordPath(record.path);
+                    await effect!.write(approved.recordId, copies, false);
                     await deleteWorkRecord(cwd, record);
                     return await finishRecord(approved.recordId, copies);
                 }
@@ -324,9 +323,9 @@ export async function localConfirmRetention(
                     current.catalog,
                 );
                 const copies = await planCopies(owner, family);
-                effect!.write(unit.planId!, copies, false);
+                await effect!.write(unit.planId!, copies, false);
                 if (!(await prunePackageFamily(owner, family))) return skipped;
-                effect!.write(unit.planId!, copies, true);
+                await effect!.write(unit.planId!, copies, true);
                 return { deleted: true, copies };
             };
             if (!owner) return await withPlanCatalogLock(cwd, run);

@@ -1,3 +1,4 @@
+import { workRecordFiles } from "@runwield/plans/work-record-files";
 import { recordPlanWorkRecord, ensureArchivedPlanIdentity } from "../../plan-store/index.ts";
 import { capturePlanAccess } from "../../plan-store/index.ts";
 import { currentWorkRecordOwner } from "./owner.ts";
@@ -14,7 +15,7 @@ import type {
     WorkRecordResource,
     WorkRecordScope,
     WorkRecordSupersessionCandidate,
-} from "@runwield/plans/work-record-schema";
+} from "@runwield/plans/work-records";
 import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
 import {
     isPlannedChangeClassification,
@@ -36,7 +37,7 @@ import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts"
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "../workflow/validation-session-adapter.ts";
 import { settleWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
-import { buildWorkRecordFileName, deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.ts";
+import { deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.ts";
 import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import { applyWorkRecordSupersession, WorkRecordSupersessionRollbackError } from "./supersession.ts";
 
@@ -739,7 +740,7 @@ export async function generateWorkRecordForSource(
         const body = buildBody(source, sections);
         const title = body.match(/^#\s+(.+)$/m)?.[1] || attrs.recordId;
         const record = await writeWorkRecord(cwd, attrs, body, {
-            fileName: buildWorkRecordFileName(source.preparedRecordId || title, now),
+            fileName: workRecordFiles.fileName(source.preparedRecordId || title, now),
         });
         let settledRecord = record;
         let indexWarning = "";

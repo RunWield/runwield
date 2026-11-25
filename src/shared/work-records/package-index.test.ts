@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok } from "node:assert/strict";
@@ -7,7 +8,6 @@ import { packageFixture } from "../testing/plan-package-fixture.ts";
 import { withWorkRecordOwner } from "./owner.ts";
 import { writeWorkRecord, replaceWorkRecord } from "./store.ts";
 import { recordAttrs, recordBody } from "./test-fixtures/package-records.ts";
-import { formatWorkRecordMarkdown } from "./markdown.ts";
 import { getWorkRecordIndexCollectionName, rebuildWorkRecordIndex } from "./index-adapter.ts";
 import { searchWorkRecords } from "./search.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
@@ -30,7 +30,7 @@ test("index rebuild and stale candidates hydrate canonical status and absolute p
             await replaceWorkRecord(
                 f.root,
                 record,
-                formatWorkRecordMarkdown({ ...record.attrs, archivedAt: "2026-11-02" }, record.body),
+                workRecords.documents.format({ ...record.attrs, archivedAt: "2026-11-02" }, record.body),
             );
             equal((await searchWorkRecords(f.root, "Canonical", options)).records.length, 0);
         });

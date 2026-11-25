@@ -1,7 +1,8 @@
+import { assertContainedPath } from "@runwield/resources/fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { ensurePrivateDir, writeJsonAtomically } from "../shared/private-json-file.ts";
-import { assertWorkRecordPath, workRecordOwnerLayout } from "../shared/work-records/owner.ts";
+import { workRecordOwnerLayout } from "../shared/work-records/owner.ts";
 import type { RetentionKind, PruneCopy } from "./retention.ts";
 
 interface PruneEffect {
@@ -25,9 +26,9 @@ export function pruneEffect(kind: RetentionKind, token: string) {
         token,
     };
     const path = join(layout.root, "internal", "retention", kind, token + ".json");
-    assertWorkRecordPath(path);
     return {
         async read(): Promise<PruneEffect | undefined> {
+            await assertContainedPath(layout.identity.executionAccountHome, path);
             const bytes = await readFile(path, "utf8").catch((error: NodeJS.ErrnoException) => {
                 if (error.code !== "ENOENT") throw error;
             });
@@ -46,7 +47,8 @@ export function pruneEffect(kind: RetentionKind, token: string) {
                 throw new Error("Prune recovery evidence belongs to another approval.");
             return value;
         },
-        write(identity: string, copies: PruneCopy[], completed: boolean) {
+        async write(identity: string, copies: PruneCopy[], completed: boolean) {
+            await assertContainedPath(layout.identity.executionAccountHome, path);
             ensurePrivateDir(dirname(path));
             writeJsonAtomically(path, { ...binding, identity, copies, completed });
         },

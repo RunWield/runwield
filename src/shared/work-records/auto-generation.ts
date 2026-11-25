@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import {
     readPlanRecordingContext,
     generateRetainedPlanRecord,
@@ -32,7 +33,7 @@ import {
 } from "./generation.ts";
 
 type WorkRecordSource = import("./generation.ts").WorkRecordSource;
-type WorkRecordSupersessionCandidate = import("@runwield/plans/work-record-schema").WorkRecordSupersessionCandidate;
+type WorkRecordSupersessionCandidate = import("@runwield/plans/work-records").WorkRecordSupersessionCandidate;
 
 export interface WorkRecordAutoGenerationResult {
     status: "disabled" | "skipped" | "generated" | "linked" | "failed";
@@ -213,9 +214,7 @@ async function generateTargetedWorkRecord(
             const manifest = await readRecordingPublication(cwd, planName, publishedReference);
             if (manifest.preparedRecord) {
                 const indexWarning = await settlePreparedPackageRecord(cwd, manifest, mnemotecaPort);
-                const record = await import("./markdown.ts").then((module) =>
-                    module.parseWorkRecordMarkdown(manifest.preparedRecord!.text),
-                );
+                const record = workRecords.documents.parse(manifest.preparedRecord.text);
                 return withMessage({
                     status: "linked",
                     planName,

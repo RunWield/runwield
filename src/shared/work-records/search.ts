@@ -1,26 +1,26 @@
 import {
-    readOwnedWorkRecordById as readWorkRecordById,
     searchOwnedWorkRecords as searchWorkRecords,
     readLocalHomeStore,
+    withWorkRecordReadScope,
+    workRecordDisplayPath,
+    workRecordsForCheckout,
 } from "../../plan-store/index.ts";
-import { currentWorkRecordOwner } from "./owner.ts";
 /**
  * @module shared/work-records/search
  * Canonical Work Record retrieval hydrated from Markdown, using Mnemoteca only for candidates.
  */
 
-import { findWorkRecordById, listWorkRecords } from "./store.ts";
 import { formatWorkRecordScopeLabel, isCurrentWorkRecord, workRecordNotices } from "./list.ts";
 import {
     getWorkRecordIndexCollectionName,
     isWorkRecordIndexEmpty,
-    rebuildWorkRecordIndex,
+    rebuildWorkRecordIndexForRecords,
     recordIdFromTags,
     runMnemotecaWorkRecordCommand,
 } from "./index-adapter.ts";
 
 import type { TicketReference } from "@runwield/plans/format";
-import type { WorkRecordResource } from "@runwield/plans/work-record-schema";
+import type { ProjectWorkRecord } from "@runwield/plans/store";
 import type { WorkRecordIndexOptions, WorkRecordIndexRebuildResult } from "./index-adapter.ts";
 
 export type WorkRecordAccessMode = "current" | "all";
@@ -64,6 +64,10 @@ export interface WorkRecordSearchResult {
     rebuild: WorkRecordIndexRebuildResult | null;
 }
 
+interface WorkRecordDocumentSearchResult extends Omit<WorkRecordSearchResult, "records"> {
+    records: ProjectWorkRecord[];
+}
+
 export interface WorkRecordReadResult extends WorkRecordHydratedResult {
     accessMode: WorkRecordAccessMode;
     body: string;
@@ -83,7 +87,10 @@ interface RawSearchMetadata {
     tags?: unknown;
 }
 
-export function formatHydratedWorkRecord(record: WorkRecordResource): WorkRecordHydratedResult {
+export function formatHydratedWorkRecord(
+    record: ProjectWorkRecord,
+    displayPath = record.relativePath,
+): WorkRecordHydratedResult {
     return {
         recordId: record.attrs.recordId,
         title: record.title,
@@ -95,12 +102,12 @@ export function formatHydratedWorkRecord(record: WorkRecordResource): WorkRecord
         completionMode: record.attrs.completionMode,
         sourcePlans: record.attrs.provenance?.sourcePlans || [],
         tickets: record.attrs.tickets || [],
-        path: currentWorkRecordOwner() ? record.path : record.relativePath,
+        path: displayPath,
         notices: workRecordNotices(record),
     };
 }
 
-function canAccessRecord(accessMode: WorkRecordAccessMode, record: WorkRecordResource) {
+function canAccessRecord(accessMode: WorkRecordAccessMode, record: ProjectWorkRecord) {
     return accessMode === "all" || isCurrentWorkRecord(record);
 }
 
@@ -130,10 +137,10 @@ export function parseWorkRecordSearchJson(output: unknown): WorkRecordSearchCand
 }
 
 async function ensureSearchBootstrap(cwd: string, options: WorkRecordIndexOptions) {
-    const canonical = await listWorkRecords(cwd, { createDir: false });
+    const canonical = await workRecordsForCheckout(cwd).list();
     if (!canonical.length) return { bootstrapped: false, rebuild: null, canonical };
     if (!(await isWorkRecordIndexEmpty(cwd, options))) return { bootstrapped: false, rebuild: null, canonical };
-    const rebuild = await rebuildWorkRecordIndex(cwd, options);
+    const rebuild = await rebuildWorkRecordIndexForRecords(cwd, options, canonical);
     return { bootstrapped: true, rebuild, canonical };
 }
 
@@ -145,7 +152,15 @@ export async function searchLocalWorkRecords(
 ): Promise<WorkRecordSearchResult> {
     return await readLocalHomeStore(
         cwd,
-        () => searchWorkRecordsInOwner(cwd, query, options),
+        async () => {
+            const result = await searchWorkRecordDocumentsInOwner(cwd, query, options);
+            return {
+                ...result,
+                records: result.records.map((record) =>
+                    formatHydratedWorkRecord(record, workRecordDisplayPath(cwd, record)),
+                ),
+            };
+        },
         () => ({
             query,
             accessMode: options.includeAll ? "all" : options.accessMode || "current",
@@ -156,11 +171,12 @@ export async function searchLocalWorkRecords(
         }),
     );
 }
-async function searchWorkRecordsInOwner(
+/** Resolve derived index candidates against a single canonical owner catalog. */
+export async function searchWorkRecordDocumentsInOwner(
     cwd: string,
     query: string,
     options: WorkRecordSearchOptions,
-): Promise<WorkRecordSearchResult> {
+): Promise<WorkRecordDocumentSearchResult> {
     const trimmed = String(query || "").trim();
     if (!trimmed) throw new Error("Work Record search query is required.");
     const accessMode = options.includeAll ? "all" : options.accessMode || "current";
@@ -184,8 +200,9 @@ async function searchWorkRecordsInOwner(
     const seen = new Set<string>();
     const duplicates = new Set<string>();
     for (const candidate of candidates) {
-        if (seen.has(candidate.recordId)) duplicates.add(candidate.recordId);
-        seen.add(candidate.recordId);
+        const key = candidate.recordId.toLowerCase();
+        if (seen.has(key)) duplicates.add(candidate.recordId);
+        seen.add(key);
     }
     if (duplicates.size) {
         throw new Error(
@@ -194,17 +211,25 @@ async function searchWorkRecordsInOwner(
             )}. Run wld wr index rebuild to repair the derived Work Record index.`,
         );
     }
-    const recordsById = new Map(bootstrap.canonical.map((record) => [record.attrs.recordId, record]));
-    const records: WorkRecordHydratedResult[] = [];
+    const recordsById = new Map<string, ProjectWorkRecord>();
+    const ambiguousIds = new Set<string>();
+    for (const record of bootstrap.canonical) {
+        const id = record.attrs.recordId.toLowerCase();
+        if (recordsById.has(id)) ambiguousIds.add(id);
+        else recordsById.set(id, record);
+    }
+    const records: ProjectWorkRecord[] = [];
     const stale: string[] = [];
     for (const candidate of candidates) {
-        const record = recordsById.get(candidate.recordId);
+        const id = candidate.recordId.toLowerCase();
+        if (ambiguousIds.has(id)) throw new Error(`Ambiguous Work Record ID: ${candidate.recordId}`);
+        const record = recordsById.get(id);
         if (!record) {
             stale.push(candidate.recordId);
             continue;
         }
         if (!canAccessRecord(accessMode, record)) continue;
-        records.push(formatHydratedWorkRecord(record));
+        records.push(record);
     }
     return {
         query: trimmed,
@@ -216,13 +241,12 @@ async function searchWorkRecordsInOwner(
     };
 }
 
-export { readWorkRecordById };
-export async function readLocalWorkRecordById(
+export async function readWorkRecordById(
     cwd: string,
     recordId: string,
     options: WorkRecordReadOptions = {},
 ): Promise<WorkRecordReadResult> {
-    return await readLocalHomeStore(
+    return await withWorkRecordReadScope(
         cwd,
         () => readWorkRecordByIdInOwner(cwd, recordId, options),
         () => {
@@ -238,12 +262,17 @@ async function readWorkRecordByIdInOwner(
     const trimmed = String(recordId || "").trim();
     if (!trimmed) throw new Error("Work Record recordId is required.");
     const accessMode = options.accessMode || "all";
-    const record = await findWorkRecordById(cwd, trimmed);
+    const record = await workRecordsForCheckout(cwd).read(trimmed);
     if (!record) throw new Error(`Work Record not found: ${trimmed}`);
     if (!canAccessRecord(accessMode, record)) {
         throw new Error(`Work Record ${trimmed} is not current and cannot be read in current-only mode.`);
     }
-    return { accessMode, ...formatHydratedWorkRecord(record), body: record.body, markdown: record.markdown };
+    return {
+        accessMode,
+        ...formatHydratedWorkRecord(record, workRecordDisplayPath(cwd, record)),
+        body: record.body,
+        markdown: record.markdown,
+    };
 }
 
 export function formatWorkRecordSearchResult(result: WorkRecordHydratedResult) {

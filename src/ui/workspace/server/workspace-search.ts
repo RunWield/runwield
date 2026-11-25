@@ -1,6 +1,6 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
 import type { ProjectId, ProjectRegistry } from "@runwield/projects";
-import { capturePlanReadContext } from "../../../plan-store/index.ts";
+import type { ProjectWorkRecord } from "@runwield/plans/store";
 /** @module ui/workspace/server/workspace-search */
 
 import { mkdirSync, renameSync } from "node:fs";
@@ -9,17 +9,15 @@ import { clearInterval, clearTimeout, setInterval, setTimeout } from "node:timer
 import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { dirname, join, relative } from "node:path";
 import { getHomeDir } from "../../../constants.ts";
-import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
-import { getWorkRecordsDir, listWorkRecords } from "../../../shared/work-records/store.ts";
+import {
+    capturePlanReadContext,
+    openRegisteredPlanDocuments,
+    registeredWorkRecords,
+} from "../../../plan-store/index.ts";
 import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-records/list.ts";
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
 import { getWorkspaceSearchRefreshMarker } from "../../../shared/workspace-search-refresh.ts";
-import {
-    assertReadableWorkRecordPath,
-    assertContainedProjectPath,
-    domainLanguagePaths,
-    readSafeProjectMarkdown,
-} from "./project-artifacts.ts";
+import { assertContainedProjectPath, domainLanguagePaths, readSafeProjectMarkdown } from "./project-artifacts.ts";
 
 const SEARCH_SCHEMA_VERSION = 1;
 export const WORKSPACE_SEARCH_SCAN_INTERVAL_MS = 30_000;
@@ -135,6 +133,19 @@ async function readSearchDocuments(reader, read) {
     }
 }
 
+function workRecordSearchCatalog(records: ProjectWorkRecord[]) {
+    const catalog = new Map<string, ProjectWorkRecord>();
+    for (const record of records) {
+        const key = record.attrs.recordId.toLowerCase();
+        if (catalog.has(key))
+            throw new Error(
+                "Work Record reader found duplicate durable identities. Repair the records before indexing.",
+            );
+        catalog.set(key, record);
+    }
+    return catalog;
+}
+
 async function scanProjectDocuments(root: string, projectId: ProjectId, registry: ProjectRegistry) {
     /** @type {SearchDocument[]} */
     const documents = [];
@@ -162,26 +173,9 @@ async function scanProjectDocuments(root: string, projectId: ProjectId, registry
 
     documents.push(
         ...(await readSearchDocuments("Work Record reader", async () => {
-            try {
-                await assertReadableWorkRecordPath(root, getWorkRecordsDir(root));
-            } catch (error) {
-                if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
-                throw error;
-            }
             const found = [];
-            const records = await listWorkRecords(root, { createDir: false });
-            const recordIds = new Map();
-            for (const record of records) {
-                await assertReadableWorkRecordPath(root, record.path);
-                const id = record.attrs.recordId.toLowerCase();
-                recordIds.set(id, (recordIds.get(id) || 0) + 1);
-            }
-            if ([...recordIds.values()].some((count) => count > 1)) {
-                throw new Error(
-                    "Work Record reader found duplicate durable identities. Repair the records before indexing.",
-                );
-            }
-            for (const record of records) {
+            const catalog = workRecordSearchCatalog(await registeredWorkRecords(projectId, registry).list());
+            for (const record of catalog.values()) {
                 if (!isCurrentWorkRecord(record)) continue;
                 const facts = markdownFacts(record.markdown);
                 found.push({
@@ -372,8 +366,8 @@ function matchRank(document, query) {
 
 /** Cache canonical readers for one query, not across queries: every query must see current evidence. */
 async function cachedCatalog(cache, key, read) {
-    if (!cache.has(key)) cache.set(key, await read());
-    return cache.get(key);
+    if (!cache.has(key)) cache.set(key, read());
+    return await cache.get(key);
 }
 
 /** @param {string} root @param {Record<string, string>} row */
@@ -419,20 +413,17 @@ async function hydrateCandidate(root, row, store, catalogs) {
         };
     }
     if (row.content_type === "work-record") {
-        await assertReadableWorkRecordPath(root, getWorkRecordsDir(root));
-        const records = (
-            await cachedCatalog(catalogs, `${row.project_id}:work-record`, () =>
-                listWorkRecords(root, { createDir: false }),
-            )
-        ).filter((record) => record.attrs.recordId.toLowerCase() === row.source_id.toLowerCase());
-        if (records.length !== 1 || !isCurrentWorkRecord(records[0])) {
-            throw new Error("Work Record is not current.");
-        }
-        const record = records[0];
-        await assertReadableWorkRecordPath(root, record.path);
+        const records = await cachedCatalog(catalogs, `${row.project_id}:work-record`, () =>
+            readSearchDocuments("Work Record reader", async () =>
+                workRecordSearchCatalog(await registeredWorkRecords(row.project_id, store.projects).list()),
+            ),
+        );
+        const record = records.get(row.source_id.toLowerCase());
+        if (!record || !isCurrentWorkRecord(record)) throw new Error("Work Record is not current.");
         const facts = markdownFacts(record.markdown);
         return {
             ...row,
+            relative_path: record.relativePath,
             title: record.title,
             headings: facts.headings,
             body: record.markdown,

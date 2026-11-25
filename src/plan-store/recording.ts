@@ -24,7 +24,7 @@ export interface PlanRecordingContext {
     preparation?: PackagePublicationReference;
     autoGenerateRecords?: boolean;
     publishedReference?: PackagePublicationReference;
-    preparedRecord?: import("../shared/work-records/package-recording.ts").RecordingPreparation;
+    preparedRecord?: import("@runwield/plans/work-record-files").RecordingPreparation;
 }
 export async function readPlanRecordingContext(
     planName: string,
@@ -174,7 +174,7 @@ export async function settlePlanPreparedRecord(
 /** Canonical record retrieval uses the same personal owner as Plans. */
 export async function listOwnedWorkRecords(
     cwd: string,
-    options: import("../shared/work-records/store.ts").ListWorkRecordsOptions = {},
+    options: import("@runwield/plans/work-record-files").ListWorkRecordsOptions = {},
 ) {
     const { listManagedWorkRecords } = await import("./managed.ts");
     const { listLocalWorkRecords } = await import("../shared/work-records/store.ts");
@@ -195,7 +195,7 @@ export async function searchOwnedWorkRecords(
 export async function readOwnedWorkRecord(
     cwd: string,
     fileName: string,
-): Promise<import("@runwield/plans/work-record-schema").WorkRecordResource> {
+): Promise<import("@runwield/plans/work-records").WorkRecordResource> {
     const { readLocalWorkRecord } = await import("../shared/work-records/store.ts");
     if (!managedPlanStoreActive()) return await readLocalWorkRecord(cwd, fileName);
     const { basename } = await import("node:path");
@@ -205,25 +205,4 @@ export async function readOwnedWorkRecord(
     if (!record) throw new Error(`Work Record not found: ${fileName}`);
     return record;
 }
-export async function readOwnedWorkRecordById(
-    cwd: string,
-    recordId: string,
-    options: import("../shared/work-records/search.ts").WorkRecordReadOptions = {},
-): Promise<import("../shared/work-records/search.ts").WorkRecordReadResult> {
-    const { readLocalWorkRecordById, formatHydratedWorkRecord } = await import("../shared/work-records/search.ts");
-    if (!managedPlanStoreActive()) return await readLocalWorkRecordById(cwd, recordId, options);
-    const { findWorkRecordById } = await import("../shared/work-records/store.ts");
-    const { isCurrentWorkRecord } = await import("../shared/work-records/list.ts");
-    const record = await findWorkRecordById(cwd, recordId.trim());
-    if (!record) throw new Error(`Work Record not found: ${recordId}`);
-    const accessMode = options.accessMode || "all";
-    if (accessMode === "current" && !isCurrentWorkRecord(record))
-        throw new Error(`Work Record ${recordId} is not current and cannot be read in current-only mode.`);
-    return {
-        accessMode,
-        ...formatHydratedWorkRecord(record),
-        path: record.path,
-        body: record.body,
-        markdown: record.markdown,
-    };
-}
+export { readWorkRecordById as readOwnedWorkRecordById } from "../shared/work-records/search.ts";

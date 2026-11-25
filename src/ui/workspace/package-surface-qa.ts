@@ -7,9 +7,13 @@ import { packageFixture, create } from "../../shared/testing/plan-package-fixtur
 import { readPlanPackage } from "../../plan-store/packages.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { writeWorkRecord, listWorkRecords } from "../../shared/work-records/store.ts";
+import { writeWorkRecord } from "../../shared/work-records/store.ts";
 import { recordAttrs, recordBody } from "../../shared/work-records/test-fixtures/package-records.ts";
-import { prepareSequenceReview, validateSequenceReviewDecision } from "../../plan-store/index.ts";
+import {
+    prepareSequenceReview,
+    registeredWorkRecords,
+    validateSequenceReviewDecision,
+} from "../../plan-store/index.ts";
 import { startPlanReviewSurface } from "../review/review-launcher.ts";
 import { submitPlanForReview } from "../review/plan-review.ts";
 import { startWorkspaceServer } from "./server.ts";
@@ -103,7 +107,7 @@ await withPackageWorkflow(
         expectedRevision: plan.metadata.revision,
     },
     async () => {
-        if (!(await listWorkRecords(root, { createDir: false })).length)
+        if (!(await registeredWorkRecords(project.projectId, store.projects).list()).length)
             await writeWorkRecord(root, recordAttrs(), recordBody);
         startWorkspaceServer({ mode: "owner", host: "127.0.0.1", port, store });
         if (sequence) {

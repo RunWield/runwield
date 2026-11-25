@@ -1,10 +1,7 @@
 import { hasPlanDeliveryEvidence } from "../../plan-store/index.ts";
 
-import { opendir as fsOpendir } from "node:fs/promises";
-import { readFile as fsReadFile } from "node:fs/promises";
-import { join } from "node:path";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
-import { listWorkRecords } from "../../shared/work-records/store.ts";
+import { workRecordsForCheckout } from "../../plan-store/index.ts";
 import { isPlanExecutionRuntimeAgent } from "../../shared/workflow/execution-agent.ts";
 import { type PlanResource as LoadedPlan, planDocumentsForCheckout } from "../../plan-store/index.ts";
 
@@ -156,20 +153,9 @@ async function buildRecap(
     const lines: string[] = [];
     lines.push(`Plan: ${verifiedPlan.plan.path}`);
     try {
-        const records = await listWorkRecords(projectRoot, { createDir: false });
+        const records = await workRecordsForCheckout(projectRoot).list();
         const workRecord = records.find((record) => record.attrs.provenance?.sourcePlans?.includes(planId));
         if (workRecord) lines.push(`Work Record: ${workRecord.relativePath}`);
-        else {
-            const directory = join(projectRoot, "docs", "work-records");
-            for await (const entry of await fsOpendir(directory)) {
-                if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
-                const text = await fsReadFile(join(directory, entry.name), "utf8");
-                if (text.includes(planId)) {
-                    lines.push(`Work Record: docs/work-records/${entry.name}`);
-                    break;
-                }
-            }
-        }
     } catch {
         // Missing optional artifacts do not change verified workflow truth.
     }

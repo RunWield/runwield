@@ -20,6 +20,10 @@ the canonical owner to author prose. Core workflows read richer execution docume
 Other hosts can open the same store with an identity admitted by Projects.
 The runtime selects the owner and the `@runwield/plans/file-snapshots` driver stores retained workflow inputs.
 
+### Work Record reads
+
+Use `store.workRecords.list()` to browse a Project and `store.workRecords.read(recordId)` to open one record. Both return documents with logical relative paths. ID lookup is case-insensitive, returns `null` for a missing record, and rejects an ambiguous ID. Listing is passive and includes all statuses. The [package contract](../../packages/plans/store.ts) is shared by local and managed owners.
+
 ## Supported operations
 
 | Intent                      | Interface examples                                                                            | Invariants owned here                                                                       |

@@ -1,3 +1,4 @@
+import { workRecords } from "@runwield/plans/work-records";
 import { parseProjectId } from "@runwield/projects";
 import type { WorkRecordMnemotecaPort } from "../../shared/work-records/mnemoteca-port.ts";
 import type { OwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
@@ -16,12 +17,12 @@ import { readPlanDocumentLink } from "../../plan-store/index.ts";
 import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
 import { serveHttp } from "../../shared/http-server.ts";
 import { env, versions } from "node:process";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
+import { readContainedTextFile } from "../../shared/contained-text-file.ts";
 import { readWorkspaceStyles } from "./workspace-styles.ts";
 import { sessionArtifactKindLabel } from "../../shared/session/session-sidebar.ts";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { pathToFileURL as toFileUrl } from "node:url";
-import { parseWorkRecordMarkdown } from "../../shared/work-records/markdown.ts";
 import { workRecordNotices } from "../../shared/work-records/list.ts";
 import { isEpicArtifactPlanName } from "@runwield/plans/format";
 import { RUNWIELD_ROOT, RUNWIELD_SOURCE_ROOT } from "../../../runtime-root.ts";
@@ -626,12 +627,13 @@ export function createDocumentReadWorkspaceApp({ cwd, token }: DocumentReadWorks
                     if (!file || extname(file.absolutePath).toLowerCase() !== ".md") {
                         return new Response("Document not found.", { status: 404, headers });
                     }
-                    const markdown = await readFile(file.absolutePath, "utf8");
+                    const markdown = await readContainedTextFile(await realpath(cwd), file.absolutePath);
+                    if (markdown === null) return new Response("Document not found.", { status: 404, headers });
                     const artifactKind = linkedDocumentKind(file.path);
                     let notices: string[] = [];
                     if (artifactKind === "work-record" && dirname(file.path) === "docs/work-records") {
                         try {
-                            const record = parseWorkRecordMarkdown(markdown, { relativePath: file.path });
+                            const record = workRecords.documents.parse(markdown, { relativePath: file.path });
                             notices = workRecordNotices(record);
                         } catch {
                             notices = ["WARNING: Work Record metadata could not be read."];

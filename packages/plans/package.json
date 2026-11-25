@@ -10,7 +10,8 @@
         "./file-snapshots": "./file-snapshots.ts",
         "./lifecycle": "./lifecycle.ts",
         "./controller-state": "./controller-state.ts",
-        "./work-record-schema": "./work-record-schema.ts"
+        "./work-records": "./work-records.ts",
+        "./work-record-files": "./work-record-files.ts"
     },
     "dependencies": {
         "@runwield/parsing": "workspace:*",
