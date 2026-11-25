@@ -202,7 +202,7 @@ The managed runtime uses its configured owner connection. The store checks the b
 | `list` | No arguments | Catalog entries and document diagnostics, including the existing passive display of legacy Plans. |
 | `create` | A Plan name, Markdown prose, and optional typed definition and validation instructions | A saved draft with an assigned Plan ID and revision. |
 | `read`, `readArchived` | The Plan ID | The saved Plan in the requested collection. |
-| `edit` | Plan ID, new body, observed revision | Updated prose and revision. |
+| `editBody` | Plan ID, new body, observed revision | Updated prose and revision. |
 | `revise` | Plan ID, observed revision, authored prose, validation instructions, and definition fields | An authored revision of the same Plan. The store checks identity, revision, and review locks. |
 | `applyEvent` | Plan ID, named lifecycle event, observed revision, and any required event evidence | The persisted lifecycle result. |
 | `archive`, `restore` | Plan ID and observed revision | An archived or restored Plan with its original ID. |

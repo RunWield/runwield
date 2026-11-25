@@ -32,7 +32,7 @@ test("a project-bound store preserves Plan identity and guards each write across
 
         const attempts = await Promise.allSettled(
             [first, second].map((store, i) =>
-                store.edit(id, { body: `# Revision ${i}\n`, expectedRevision: created.revision }),
+                store.editBody(id, { body: `# Revision ${i}\n`, expectedRevision: created.revision }),
             ),
         );
         equal(attempts.filter((result) => result.status === "fulfilled").length, 1);

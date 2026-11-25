@@ -40,7 +40,7 @@ try {
     const alias = await store.create({ planName: created.planId, contextMarkdown: created.body });
     equal(alias.revision, created.revision);
     equal((await store.read(created.planId)).name, created.name);
-    const edited = await store.edit(created.planId, { body: "# Reviewed\n", expectedRevision: created.revision });
+    const edited = await store.editBody(created.planId, { body: "# Reviewed\n", expectedRevision: created.revision });
     equal(edited.body, "# Reviewed\n");
     equal((await store.read(alias.planId)).body, created.body);
     const approved = await store.applyEvent(created.planId, {

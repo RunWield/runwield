@@ -24,7 +24,7 @@ The runtime selects the owner and the `@runwield/plans/file-snapshots` driver st
 
 | Intent                      | Interface examples                                                                            | Invariants owned here                                                                       |
 | --------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Author and edit             | `store.create`, `store.revise`, `store.edit`, `operatePlanFile`                   | Complete authoring generations, protected fields, identity and stale-write refusal          |
+| Author and edit             | `store.create`, `store.revise`, `store.editBody`, `operatePlanFile`                   | Complete authoring generations, protected fields, identity and stale-write refusal          |
 | Browse                      | `store.list`, `store.read`, `store.readArchived`, `planDocumentsForCheckout`                           | Admitted live source, passive reads, authorized resource resolution                         |
 | Review                      | `applySharedPlanReviewDecision`, `applyPlanReviewForExecution`, `applySequenceReviewDecision` | Required input capture, complete Sequence membership, one guarded decision                  |
 | Execute                     | `reservePlanExecution`, `capturePlanExecutionContext`, `readFrozenPlanExecutionDocuments`     | Target binding and reservation under the same lock; exact recorded input and attempt        |

@@ -186,15 +186,15 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
                 await reviseSavedPlan(cwd, planId, { ...input, planName: current.name });
                 return await readActive(cwd, planId);
             }),
-        edit: (id, edit) =>
+        editBody: (id, { body, expectedRevision }) =>
             run(async (cwd) => {
                 const planId = requirePlanId(id);
-                requireRevision(edit.expectedRevision);
+                requireRevision(expectedRevision);
                 await readActive(cwd, planId);
                 const current = await loadPlanBodyById(cwd, planId);
-                checkRevision(edit.expectedRevision, current.revision);
-                const saved = await savePlanBodyById(cwd, planId, edit.body, current.bodyHash, {
-                    expectedRevision: edit.expectedRevision,
+                checkRevision(expectedRevision, current.revision);
+                const saved = await savePlanBodyById(cwd, planId, body, current.bodyHash, {
+                    expectedRevision,
                 });
                 return document(saved, planId);
             }),

@@ -38,7 +38,7 @@ export async function editCheckoutPlanBody(cwd: string, planId: string, edit: Ch
     if (current.revision !== expectedRevision) throw new StalePlanWriteError(expectedRevision, current.revision);
     const currentBodyHash = await hashPlanBody(current.body);
     if (currentBodyHash !== expectedBodyHash) throw new StalePlanBodyError(expectedBodyHash, currentBodyHash);
-    const saved = await store.edit(planId, { body, expectedRevision });
+    const saved = await store.editBody(planId, { body, expectedRevision });
     const { resources } = await store.list();
     return {
         resource: { ...saved, markdown: saved.body, bodyHash: await hashPlanBody(saved.body) },
