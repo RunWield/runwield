@@ -256,8 +256,7 @@ function forCheckout(cwd: string) {
 
     function checkoutRetainedFiles() {
         const inspected = projects.checkout.inspect(cwd);
-        if (inspected.kind !== "existing" || inspected.identity.personalOwner.kind !== "execution-account")
-            throw new Error("Work Record creation requires an admitted local checkout.");
+        if (inspected.kind !== "existing") throw new Error("Work Record creation requires an admitted checkout.");
         const identity = inspected.identity;
         const internal = join(
             identity.executionAccountHome,
