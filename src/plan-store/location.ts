@@ -10,7 +10,7 @@ import {
     loadPackageWorkflowPlan,
     type PackageWorkflowSelection,
 } from "./workflows.ts";
-import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
+import { effectiveDeliveryBranch, isPublicationCleanupPending } from "@runwield/workflow/publication";
 /** Locate the editable document independently from the shared controller files. */
 import { canonicalizeStoredPlanName, isCompletedPlanStatus, isSequencePlan } from "@runwield/plans/format";
 import { loadPlan } from "./queries.ts";
@@ -23,7 +23,6 @@ import {
     listControllerDocumentWorktrees,
 } from "./controllers.ts";
 import { findTargetBranchPlan } from "../shared/workflow/planning-worktree.ts";
-import { isPublicationCleanupPending } from "../shared/workflow/publication-attempt.ts";
 import {
     executionWorktreePathExists,
     readMissingExecutionPlan,

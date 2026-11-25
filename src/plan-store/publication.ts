@@ -45,7 +45,7 @@ import {
     packageWorkflowLocks,
     updatePackageWorkflowMetadata,
 } from "./workflows.ts";
-import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 import {
     samePackagePublicationReference,
     type DeliveryCopy,

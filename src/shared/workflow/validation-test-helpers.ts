@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { injectFrontMatter, parsePlanFrontMatter } from "@runwield/plans/format";
 import { join } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -209,22 +210,14 @@ export async function makeValidationProjectRoot(
         const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
         const { rememberNonGitExecutionConsent } = await import("../non-git-execution-consent.ts");
         const { recordPlanEvent } = await import("../../plan-store/index.ts");
-        const { startActiveExecutionWorkflow, createExecutionStartPorts } = await import("./execution-start.ts");
-        const { finalizePlanImplementation } = await import("./implementation-checkpoint.ts");
         await rememberNonGitExecutionConsent("featurePlan", root);
         await withLocalPlanWorkflow(root, planName, async () => {
             await recordPlanEvent({ cwd: root, planName, event: "review_approved", currentStatus: "draft" });
             await recordPlanEvent({ cwd: root, planName, event: "readiness_passed", currentStatus: "approved" });
             const ready = await loadPlan(root, planName);
             if (!ready) throw new Error("Validation fixture Plan was not saved.");
-            const execution = await startActiveExecutionWorkflow({
-                cwd: root,
-                planName,
-                currentStatus: "ready_for_work",
-                triageMeta: ready.attrs,
-                ports: createExecutionStartPorts(),
-            });
-            await finalizePlanImplementation({ projectRoot: root, planName, executionContext: execution });
+            const attempt = await openWorkflow({ cwd: root, planName, planId: ready.attrs.planId }).startOrResume();
+            await attempt.acceptCompletion({});
         });
     }
     const plan = await loadPlan(root, planName);

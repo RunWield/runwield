@@ -7,7 +7,7 @@
  */
 
 import type { TriageOutcome } from "@runwield/tools";
-import type { HostedSession } from "../session/hosted-session.ts";
+import type { HostedSession } from "../../src/shared/session/hosted-session.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 export const WORKFLOW_TOOL_EVENT_CUSTOM_TYPE = "runwield.workflow_tool_event" as const;
@@ -35,7 +35,7 @@ export interface PlanWrittenEventPayload {
         | "repair_required"
         | "no_call";
     planName?: string;
-    triageMeta?: import("../../tools/plan-written.ts").TriageMeta;
+    triageMeta?: import("./state.ts").TriageMeta;
     feedback?: string;
     images?: { base64: string; mimeType: string }[];
 }
@@ -56,10 +56,10 @@ export interface ReviewCompleteEventPayload {
     outcome: "approved" | "feedback";
     approved: boolean;
     feedback: string;
-    findings: import("../../tools/review-complete.ts").ReviewFinding[];
-    advisories: import("../../tools/review-complete.ts").ReviewAdvisory[];
+    findings: import("../../src/shared/workflow/review-outcome.ts").ReviewFinding[];
+    advisories: import("../../src/shared/workflow/review-outcome.ts").ReviewAdvisory[];
     /** Epic children only; absent from older recorded events. */
-    integrationNotes?: import("../../tools/review-complete.ts").ReviewIntegrationNote[];
+    integrationNotes?: import("../../src/shared/workflow/review-outcome.ts").ReviewIntegrationNote[];
 }
 
 export interface QaChecklistGeneratedEventPayload {
@@ -82,10 +82,20 @@ export type WorkflowToolEventPayloadByKind = {
 export type WorkflowToolEventPayload<K extends WorkflowToolEventKind = WorkflowToolEventKind> =
     WorkflowToolEventPayloadByKind[K];
 
-type ActiveExecutionWorkflow = import("../session/hosted-session.ts").ActiveExecutionWorkflow;
-type OwningSession = ReturnType<HostedSession["getRootAgentSession"]>;
+type ActiveExecutionWorkflow = import("./state.ts").ActiveExecutionWorkflow;
+
+export type WorkflowEventHost = Pick<
+    HostedSession,
+    | "getRootAgentSession"
+    | "getRootSessionManager"
+    | "getActiveSteeringTargetSession"
+    | "getActiveExecutionWorkflow"
+    | "getWorkflowContext"
+    | "getActiveTurnId"
+>;
+type OwningSession = ReturnType<WorkflowEventHost["getRootAgentSession"]>;
 type EventSourceSession = { sessionManager?: { getSessionId(): string } };
-type ToolEventSource = { hostedSession: HostedSession; owningSession: OwningSession };
+type ToolEventSource = { hostedSession: WorkflowEventHost; owningSession: OwningSession };
 const toolEventSources = new AsyncLocalStorage<ToolEventSource>();
 
 /** Internal shutdown after accepted completion, distinct from user cancellation or failure. */
@@ -97,15 +107,15 @@ export class WorkflowStepCompleted extends Error {
 }
 
 /** Concurrent isolated Agents must not borrow whichever Agent last updated the footer. */
-export function withWorkflowToolEventSource<T>(
-    hostedSession: HostedSession,
+function withWorkflowToolEventSource<T>(
+    hostedSession: WorkflowEventHost,
     owningSession: OwningSession,
     run: () => Promise<T>,
 ): Promise<T> {
     return toolEventSources.run({ hostedSession, owningSession }, run);
 }
 
-export interface WorkflowToolEvent<K extends WorkflowToolEventKind = WorkflowToolEventKind> {
+interface StoredWorkflowToolEvent<K extends WorkflowToolEventKind = WorkflowToolEventKind> {
     version: 1;
     eventId: string;
     toolCallId: string;
@@ -122,6 +132,10 @@ export interface WorkflowToolEvent<K extends WorkflowToolEventKind = WorkflowToo
     claimed: boolean;
     settled: boolean;
 }
+
+export type WorkflowToolEvent<K extends WorkflowToolEventKind = WorkflowToolEventKind> = Readonly<
+    StoredWorkflowToolEvent<K>
+>;
 
 type DurableAcceptedEvent = {
     version: 1;
@@ -160,7 +174,7 @@ type WorkflowToolEventSessionManager = {
 };
 
 interface EventState {
-    events: WorkflowToolEvent[];
+    events: StoredWorkflowToolEvent[];
     waiters: EventWaiter[];
 }
 
@@ -175,7 +189,6 @@ interface EventWaiter {
 }
 
 export interface PublishWorkflowToolEventOptions<K extends WorkflowToolEventKind> {
-    hostedSession: HostedSession;
     toolCallId: string;
     kind: K;
     payload: WorkflowToolEventPayload<K>;
@@ -193,9 +206,10 @@ export interface ClaimWorkflowToolEventOptions {
     sourceSessionId?: string;
 }
 
-const states = new WeakMap<HostedSession, EventState>();
+const states = new WeakMap<WorkflowEventHost, EventState>();
+const pendingSnapshots = new WeakMap<WorkflowToolEvent, StoredWorkflowToolEvent>();
 
-function stateFor(hostedSession: HostedSession): EventState {
+function stateFor(hostedSession: WorkflowEventHost): EventState {
     let state = states.get(hostedSession);
     if (!state) {
         state = { events: [], waiters: [] };
@@ -204,7 +218,7 @@ function stateFor(hostedSession: HostedSession): EventState {
     return state;
 }
 
-function getEventSessionManager(hostedSession: HostedSession): WorkflowToolEventSessionManager | null {
+function getEventSessionManager(hostedSession: WorkflowEventHost): WorkflowToolEventSessionManager | null {
     return hostedSession.getRootSessionManager?.() as WorkflowToolEventSessionManager | null;
 }
 
@@ -214,7 +228,7 @@ function getEntries(sessionManager: WorkflowToolEventSessionManager | null): Wor
     return Array.isArray(entries) ? entries : [];
 }
 
-export function workflowAttemptKey(workflow: ActiveExecutionWorkflow | null): string {
+export function legacyWorkflowAttemptKey(workflow: ActiveExecutionWorkflow | null): string {
     if (!workflow) return "";
     if (typeof workflow.worktreeId === "string" && workflow.worktreeId) return `worktree:${workflow.worktreeId}`;
     if (typeof workflow.baselineTree === "string" && workflow.baselineTree) return `tree:${workflow.baselineTree}`;
@@ -222,6 +236,29 @@ export function workflowAttemptKey(workflow: ActiveExecutionWorkflow | null): st
         return `started:${workflow.executionAttemptStartedAtMs}`;
     }
     return "";
+}
+
+export function workflowAttemptKey(workflow: ActiveExecutionWorkflow | null): string {
+    return (
+        legacyWorkflowAttemptKey(workflow) || (workflow?.packageAttemptId ? `package:${workflow.packageAttemptId}` : "")
+    );
+}
+
+/** Use canonical IDs when available and preserve the journal's older comparison otherwise. */
+export function compareWorkflowAttempts(
+    recorded: ActiveExecutionWorkflow,
+    active: ActiveExecutionWorkflow,
+    recordedKey = legacyWorkflowAttemptKey(recorded),
+): "match" | "mismatch" | "unidentified" {
+    if (recorded.packageAttemptId && active.packageAttemptId)
+        return recorded.packageAttemptId === active.packageAttemptId ? "match" : "mismatch";
+    const recordedLegacyKey =
+        typeof recordedKey === "string" && !recordedKey.startsWith("package:")
+            ? recordedKey
+            : legacyWorkflowAttemptKey(recorded);
+    const activeLegacyKey = legacyWorkflowAttemptKey(active);
+    if (recordedLegacyKey === activeLegacyKey) return "match";
+    return recordedLegacyKey && activeLegacyKey ? "mismatch" : "unidentified";
 }
 
 function isRootOwnedSession(owningSession: OwningSession, rootSession: OwningSession): boolean {
@@ -267,7 +304,7 @@ function isDurableSettled(event: DurableEvent | null | undefined): event is Dura
     return event?.version === 1 && event.state === "settled" && typeof event.eventId === "string";
 }
 
-function readUnsettledDurableEvents(hostedSession: HostedSession): WorkflowToolEvent[] {
+function readUnsettledDurableEvents(hostedSession: WorkflowEventHost): WorkflowToolEvent[] {
     const sessionManager = getEventSessionManager(hostedSession);
     const accepted: DurableAcceptedEvent[] = [];
     const settled = new Set<string>();
@@ -287,7 +324,7 @@ function readUnsettledDurableEvents(hostedSession: HostedSession): WorkflowToolE
         }));
 }
 
-function refreshDurableState(hostedSession: HostedSession): void {
+function refreshDurableState(hostedSession: WorkflowEventHost): void {
     const state = stateFor(hostedSession);
     const known = new Set(state.events.map((event) => event.eventId));
     for (const event of readUnsettledDurableEvents(hostedSession)) {
@@ -299,7 +336,7 @@ function workflowToolCallKey(turnId: string | null, toolCallId: string): string 
     return `${turnId || ""}:${toolCallId}`;
 }
 
-function readDurableToolCallKeys(hostedSession: HostedSession): Set<string> {
+function readDurableToolCallKeys(hostedSession: WorkflowEventHost): Set<string> {
     const toolCallKeys = new Set<string>();
     for (const entry of getEntries(getEventSessionManager(hostedSession))) {
         if (entry.type !== "custom" || entry.customType !== WORKFLOW_TOOL_EVENT_CUSTOM_TYPE) continue;
@@ -310,7 +347,7 @@ function readDurableToolCallKeys(hostedSession: HostedSession): Set<string> {
     return toolCallKeys;
 }
 
-function wakeWaiters(hostedSession: HostedSession): void {
+function wakeWaiters(hostedSession: WorkflowEventHost): void {
     const state = stateFor(hostedSession);
     for (const waiter of [...state.waiters]) {
         const event = claimWorkflowToolEvent(hostedSession, {
@@ -327,10 +364,11 @@ function wakeWaiters(hostedSession: HostedSession): void {
     }
 }
 
-export function publishWorkflowToolEvent<K extends WorkflowToolEventKind>(
+function publishWorkflowToolEvent<K extends WorkflowToolEventKind>(
+    hostedSession: WorkflowEventHost,
     options: PublishWorkflowToolEventOptions<K>,
 ): WorkflowToolEvent<K> {
-    const { hostedSession, toolCallId, kind, payload } = options;
+    const { toolCallId, kind, payload } = options;
     const source = toolEventSources.getStore();
     const owningSession =
         source?.hostedSession === hostedSession ? source.owningSession : hostedSession.getActiveSteeringTargetSession();
@@ -386,8 +424,8 @@ export function publishWorkflowToolEvent<K extends WorkflowToolEventKind>(
     return event;
 }
 
-export function claimWorkflowToolEvent(
-    hostedSession: HostedSession,
+function claimWorkflowToolEvent(
+    hostedSession: WorkflowEventHost,
     options: ClaimWorkflowToolEventOptions,
 ): WorkflowToolEvent | null {
     refreshDurableState(hostedSession);
@@ -404,9 +442,10 @@ export function claimWorkflowToolEvent(
             ) {
                 return false;
             }
-            const candidateAttempt = candidate.workflowAttemptKey;
-            const activeAttempt = workflowAttemptKey(activeWorkflow);
-            if (candidateAttempt && activeAttempt && candidateAttempt !== activeAttempt) return false;
+            if (
+                compareWorkflowAttempts(candidate.workflow, activeWorkflow, candidate.workflowAttemptKey) === "mismatch"
+            )
+                return false;
         } else if (!activeWorkflow && workflowPlanName) {
             const candidatePlanName =
                 candidate.workflow?.planName ||
@@ -422,8 +461,8 @@ export function claimWorkflowToolEvent(
     return event;
 }
 
-export function waitForWorkflowToolEvent(
-    hostedSession: HostedSession,
+function waitForWorkflowToolEvent(
+    hostedSession: WorkflowEventHost,
     options: ClaimWorkflowToolEventOptions,
 ): Promise<WorkflowToolEvent> {
     const claimed = claimWorkflowToolEvent(hostedSession, options);
@@ -457,26 +496,55 @@ export function waitForWorkflowToolEvent(
     });
 }
 
-export function settleWorkflowToolEvent(
-    hostedSession: HostedSession,
+function settleWorkflowToolEvent(
+    hostedSession: WorkflowEventHost,
     event: WorkflowToolEvent,
     settledAtMs = Date.now(),
 ): void {
-    event.settled = true;
+    const record = pendingSnapshots.get(event) ?? event;
+    const stored = stateFor(hostedSession).events.find((candidate) => candidate === record);
+    if (!stored) throw new Error("The workflow event belongs to a different Session.");
+    if (stored.settled) return;
     const sessionManager = getEventSessionManager(hostedSession);
-    if (event.owner === "root" && sessionManager?.appendCustomEntry) {
+    if (stored.owner === "root" && sessionManager?.appendCustomEntry) {
         sessionManager.appendCustomEntry(WORKFLOW_TOOL_EVENT_CUSTOM_TYPE, {
             version: 1,
             state: "settled",
-            eventId: event.eventId,
+            eventId: stored.eventId,
             settledAtMs,
         });
     }
+    stored.settled = true;
 }
 
-export function listPendingWorkflowToolEvents(hostedSession: HostedSession): WorkflowToolEvent[] {
+function listPendingWorkflowToolEvents(hostedSession: WorkflowEventHost): WorkflowToolEvent[] {
     refreshDurableState(hostedSession);
     return stateFor(hostedSession)
         .events.filter((event) => !event.settled)
-        .map((event) => ({ ...event }));
+        .map((event) => {
+            const snapshot = { ...event };
+            pendingSnapshots.set(snapshot, event);
+            return snapshot;
+        });
+}
+
+/** Session-bound handoff between tools and the workflow that accepts their reports. */
+export interface WorkflowEvents {
+    publish<K extends WorkflowToolEventKind>(report: PublishWorkflowToolEventOptions<K>): WorkflowToolEvent<K>;
+    claim(options: ClaimWorkflowToolEventOptions): WorkflowToolEvent | null;
+    wait(options: ClaimWorkflowToolEventOptions): Promise<WorkflowToolEvent>;
+    settle(event: WorkflowToolEvent, settledAtMs?: number): void;
+    pending(): WorkflowToolEvent[];
+    withSource<T>(source: OwningSession, run: () => Promise<T>): Promise<T>;
+}
+
+export function workflowEvents(session: WorkflowEventHost): WorkflowEvents {
+    return {
+        publish: (report) => publishWorkflowToolEvent(session, report),
+        claim: (options) => claimWorkflowToolEvent(session, options),
+        wait: (options) => waitForWorkflowToolEvent(session, options),
+        settle: (event, settledAtMs) => settleWorkflowToolEvent(session, event, settledAtMs),
+        pending: () => listPendingWorkflowToolEvents(session),
+        withSource: (source, run) => withWorkflowToolEventSource(session, source, run),
+    };
 }

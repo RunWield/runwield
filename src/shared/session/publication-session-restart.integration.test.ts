@@ -21,12 +21,7 @@ import { makeManagedSessionFixture } from "../../testing/managed-session-fixture
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
-import {
-    advanceStoredPublication,
-    cleanupStoredPublication,
-    reconcileStoredPublication,
-    startPublicationAttempt,
-} from "../workflow/publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 
 const planId = "11111111-1111-4111-8111-111111111111";
 const repository = defineGitFixture((root) =>
@@ -81,9 +76,7 @@ test("published Session restart restores project cwd while retaining removed rep
                 await git(entry.path, ["add", "."]);
                 await git(entry.path, ["commit", "-m", "Seal implementation"]);
                 const commit = await git(entry.path, ["rev-parse", "HEAD"]);
-                let attempt = await startPublicationAttempt({
-                    projectRoot: root,
-                    attemptId: entry.id,
+                let attempt = await openPublication(root).attempt(entry.id).start({
                     planName: "delivery",
                     targetBranch: "main",
                     executionBranch: entry.branch,
@@ -91,10 +84,12 @@ test("published Session restart restores project cwd while retaining removed rep
                     validatedCommit: commit,
                     targetHeadAtSeal: primaryHead,
                 });
-                attempt = await advanceStoredPublication(root, attempt, "artifacts_committed", {
-                    artifactCommit: commit,
-                    planPaths: ["docs/plans/delivery.md"],
-                });
+                attempt = await openPublication(root)
+                    .resume(attempt)
+                    .advance("artifacts_committed", {
+                        artifactCommit: commit,
+                        planPaths: ["docs/plans/delivery.md"],
+                    });
                 await publishExecutionWorktreeIsolated({
                     projectRoot: root,
                     executionCwd: entry.path,
@@ -105,14 +100,14 @@ test("published Session restart restores project cwd while retaining removed rep
                     allowedPlanPaths: ["docs/plans/delivery.md"],
                     publicationRoot: attempt.publicationRoot,
                     onIntegrated: async (evidence) => {
-                        attempt = await advanceStoredPublication(root, attempt, "target_integrated", evidence);
+                        attempt = await openPublication(root).resume(attempt).advance("target_integrated", evidence);
                     },
                     onPublished: async (evidence) => {
-                        attempt = await advanceStoredPublication(root, attempt, "target_published", evidence);
+                        attempt = await openPublication(root).resume(attempt).advance("target_published", evidence);
                     },
                 });
-                attempt = await reconcileStoredPublication(root, attempt);
-                const cleanup = await cleanupStoredPublication(root, attempt);
+                attempt = await openPublication(root).resume(attempt).reconcile();
+                const cleanup = await openPublication(root).resume(attempt).cleanup();
                 assert(cleanup.complete);
                 assertEquals(await fsStat(origin).catch(() => null), null);
                 assertEquals(await git(root, ["rev-parse", "HEAD"]), primaryHead);

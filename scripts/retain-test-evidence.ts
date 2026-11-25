@@ -7,7 +7,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import type { JsonRecord, JsonValue } from "../src/shared/jsonc.ts";
-import type { PublicationPhase } from "../src/shared/workflow/publication-attempt.ts";
+import type { PublicationPhase } from "@runwield/workflow/publication";
 
 const evidenceDirectory = /^runwield-golden-tui-(?:timeout|child-failure|failure)-[a-z0-9]+$/i;
 const safeLabel = /^[a-z0-9_-]{1,120}$/i;
@@ -88,7 +88,9 @@ function completionTraces(value: JsonValue | undefined, secondaryLanes: string[]
                 kind,
             ) ||
             /^fixture-route:(?:unassigned|actor-rejected|reviewer-matched)$/.test(kind) ||
-            /^completion:(?:tool-accepted|tool-rejected|tool-other|engineer-unfinished|checkpoint-failed)$/.test(kind) ||
+            /^completion:(?:tool-accepted|tool-rejected|tool-other|engineer-unfinished|checkpoint-failed)$/.test(
+                kind,
+            ) ||
             kind === "validation-ci:started"
         ) {
             trace.push(kind);

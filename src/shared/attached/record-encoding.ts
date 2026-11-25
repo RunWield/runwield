@@ -1,7 +1,7 @@
 import { closeSync, openSync, readSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { JSONParser, type JsonTypes } from "@streamparser/json";
-import type { ValidationHostRequest } from "../workflow/validation-host-contract.ts";
+import type { ValidationHostRequest } from "@runwield/workflow/host-contract";
 import type { AttachedNextAction, AttachedOperationResult, AttachedWorkflowView } from "./operations.ts";
 import type { AcceptedOperation, AttachedValidationCheckpoint, AttachedWorkflowRecord } from "./record-store.ts";
 

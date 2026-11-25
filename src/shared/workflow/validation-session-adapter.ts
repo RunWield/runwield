@@ -28,7 +28,7 @@ import { createReviewDiffTool } from "./review-diff-tool.ts";
 import { type ReviewInspection } from "./review-inspection.ts";
 import { createReviewCompletedTool } from "../../tools/review-complete.ts";
 import { createQaChecklistGeneratedTool } from "../../tools/qa-checklist-generated.ts";
-import { settleWorkflowToolEvent } from "./workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import { releaseActiveAgent, switchActiveAgent } from "../session/agent-switching.ts";
 import {
     type AgentTurnOutcome,
@@ -299,20 +299,20 @@ async function runIsolatedRequest(
         const { event: reviewEvent, diffEvent, messages } = result;
         const reviewOutcome =
             reviewEvent?.kind === "review_complete"
-                ? (reviewEvent.payload as import("./workflow-tool-events.ts").ReviewCompleteEventPayload)
+                ? (reviewEvent.payload as import("@runwield/workflow/events").ReviewCompleteEventPayload)
                 : null;
         if (reviewOutcome && key) pendingReviewSessions.delete(hostedSession);
         const providerFailure = reviewOutcome ? undefined : readReviewerProviderFailure(messages);
         if (providerFailure) {
-            if (diffEvent) settleWorkflowToolEvent(hostedSession, diffEvent);
+            if (diffEvent) workflowEvents(hostedSession).settle(diffEvent);
             return {
                 kind: "reviewer",
                 outcome: "operational_failure",
                 failure: providerFailure,
             };
         }
-        if (reviewEvent) settleWorkflowToolEvent(hostedSession, reviewEvent);
-        if (diffEvent) settleWorkflowToolEvent(hostedSession, diffEvent);
+        if (reviewEvent) workflowEvents(hostedSession).settle(reviewEvent);
+        if (diffEvent) workflowEvents(hostedSession).settle(diffEvent);
         return {
             kind: "reviewer",
             outcome: "completed",
@@ -348,8 +348,8 @@ async function runIsolatedRequest(
                 warning: "Manual QA Agent did not call qa_checklist_generated.",
             };
         }
-        settleWorkflowToolEvent(hostedSession, qaEvent);
-        const payload = qaEvent.payload as import("./workflow-tool-events.ts").QaChecklistGeneratedEventPayload;
+        workflowEvents(hostedSession).settle(qaEvent);
+        const payload = qaEvent.payload as import("@runwield/workflow/events").QaChecklistGeneratedEventPayload;
         return {
             kind: "manual_qa",
             outcome: payload.outcome,
@@ -386,8 +386,8 @@ async function runIsolatedRequest(
             return { kind: "feedback_engineer", outcome: "operational_failure", failure: providerFailure };
         }
         if (event?.kind === "task_completed") {
-            settleWorkflowToolEvent(hostedSession, event);
-            const payload = event.payload as import("./workflow-tool-events.ts").TaskCompletedEventPayload;
+            workflowEvents(hostedSession).settle(event);
+            const payload = event.payload as import("@runwield/workflow/events").TaskCompletedEventPayload;
             report = { completed: true, report: payload.message };
         } else {
             const text = messages
@@ -419,7 +419,7 @@ async function runIsolatedRequest(
 /** Returned messages are presentation only; only an accepted tool can complete repair. */
 async function acceptedRepairOutcome(
     hostedSession: HostedSession,
-    event: import("./workflow-tool-events.ts").WorkflowToolEvent | null,
+    event: import("@runwield/workflow/events").WorkflowToolEvent | null,
     kind: IndependentRepairTurnRequest["kind"] = "validation",
 ): Promise<AgentTurnOutcome> {
     if (event?.kind !== "task_completed") {
@@ -429,7 +429,7 @@ async function acceptedRepairOutcome(
             blockerText: "The Engineer has not reported completion. Continue the repair to finish it.",
         };
     }
-    const payload = event.payload as import("./workflow-tool-events.ts").TaskCompletedEventPayload;
+    const payload = event.payload as import("@runwield/workflow/events").TaskCompletedEventPayload;
     const workflow = event.workflow;
     if (kind === "validation" && workflow?.validationRepairGeneration && workflow.executionCwd) {
         hostedSession.getManagedOperationCapability?.()?.assertLive();
@@ -442,7 +442,7 @@ async function acceptedRepairOutcome(
             owner: { pid: process.pid, hostname: getLockHostname() },
         });
     }
-    settleWorkflowToolEvent(hostedSession, event);
+    workflowEvents(hostedSession).settle(event);
     return { completed: true, report: payload.message };
 }
 

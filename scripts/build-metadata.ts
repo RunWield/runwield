@@ -23,6 +23,7 @@ const INPUTS = [
     "packages/resources",
     "packages/session-files",
     "packages/tools",
+    "packages/workflow",
     "third_party/plannotator/packages",
     "brand",
     "packaging/remote/tested-dependencies.json",

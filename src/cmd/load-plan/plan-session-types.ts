@@ -7,13 +7,11 @@
  */
 
 import type { PlanFrontMatter } from "@runwield/plans";
-import type { ActiveExecutionWorkflow } from "../../shared/session/execution-workflow-session.ts";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import type { PlanActionRequest, PlanActionResult } from "../../shared/workflow/plan-actions.ts";
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../../plan-store/index.ts";
 import type { EpicIntegrationGateResult } from "../../shared/workflow/epic-integration.ts";
-
-export type { ActiveExecutionWorkflow };
 
 /** An image attached to a review decision. */
 export interface ReviewImage {

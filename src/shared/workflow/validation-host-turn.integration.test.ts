@@ -20,7 +20,7 @@ import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { createLedger } from "./review-ledger.ts";
 import { complete, coverage, hostFixture, hostRequest } from "./testing/validation-host-fixture.ts";
-import { type ValidationHostResume } from "./validation-host-contract.ts";
+import { type ValidationHostResume } from "@runwield/workflow/host-contract";
 
 async function canonicalPath(path: string): Promise<string> {
     try {

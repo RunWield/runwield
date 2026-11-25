@@ -1,8 +1,10 @@
-import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { TriageMeta } from "@runwield/workflow/state";
 import type { PlanOutcome } from "./workflow.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { decidePostExecution, decidePostPlanning } from "./decisions.ts";
+import { decidePostExecution, decidePostPlanning } from "@runwield/workflow/decisions";
+import { routeAttachedTriage, routeInteractiveTriage } from "@runwield/workflow/routing";
+import { toolRegistry } from "@runwield/tools";
 
 const fallbackTriageMeta: TriageMeta = {
     classification: "PLANNED_CHANGE",
@@ -214,4 +216,37 @@ test("decidePostPlanning keeps a conversation separate from Plan feedback", () =
             payload: { agentName: "architect", planName: "target", reason: "plan_conversation" },
         },
     );
+});
+
+test("routes the same JSON report for interactive sessions and Connect", () => {
+    const routes = [
+        ["INQUIRY", "conversation", "guide", "role_handoff"],
+        ["IDEATION", "conversation", "ideator", "role_handoff"],
+        ["OPERATION", "operation", "operator", "unsupported_in_preview"],
+        ["QUICK_FIX", "quick_fix", "engineer", "unsupported_in_preview"],
+        ["PLANNED_CHANGE", "planning", "planner", "planning"],
+        ["PROJECT", "planning", "architect", "unsupported_in_preview"],
+    ] as const;
+
+    for (const [routingIntent, kind, agentName, attachedKind] of routes) {
+        const report = toolRegistry.get("triage_report").report({
+            routingIntent,
+            complexity: "LOW",
+            summary: "Route the request.",
+            ...(routingIntent === "PLANNED_CHANGE" && { workKind: "FEATURE" }),
+        });
+        assertEquals(routeInteractiveTriage(report), { kind, agentName, report });
+        const attached = routeAttachedTriage(report);
+        assertEquals(attached?.kind, attachedKind);
+        assertEquals(attached?.report, report);
+        if (attached?.kind === "role_handoff" || attached?.kind === "planning") {
+            assertEquals(attached.agentName, agentName);
+        }
+    }
+});
+
+test("rejects retired routing intents from both workflow entry points", () => {
+    const report = { routingIntent: "QUICK_FIX", classification: "FEATURE", complexity: "LOW", summary: "Repair" };
+    assertEquals(routeInteractiveTriage(report), null);
+    assertEquals(routeAttachedTriage(report), null);
 });

@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { equal, ok, rejects } from "node:assert/strict";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -9,7 +10,8 @@ const input: ComposedRemoteInput = JSON.parse(json);
 const managed = command.startsWith("managed");
 const clear = managed ? await activateRemoteProjectOwner(input) : () => {};
 try {
-    const { preparePublicationCopies } = await import("../workflow/publication-copy-commit.ts");
+    const { openPublication } = await import("@runwield/workflow/publication-runtime");
+    const publication = openPublication(input.cwd);
     const {
         publicationCopiesForCheckout,
         selectedPublicationCopies,
@@ -229,12 +231,11 @@ try {
         equal(await readFile(selected, "utf8"), original);
         console.log(JSON.stringify({ planId: repeated.plan.attrs.planId }));
     } else if (command === "managed-resume") {
-        const { loadPublicationAttempt, cleanupStoredPublication } = await import("../workflow/publication-machine.ts");
         ok(input.attemptId);
         await withLocalPlanWorkflow(input.cwd, "family/first", async () => {
-            const attempt = await loadPublicationAttempt(input.cwd, input.attemptId!);
+            const attempt = await publication.attempt(input.attemptId!).load();
             ok(attempt);
-            ok((await cleanupStoredPublication(input.cwd, attempt)).complete);
+            ok((await publication.resume(attempt).cleanup()).complete);
         });
         equal((await loadPlan(input.cwd, "family/first"))?.attrs.status, "verified");
         console.log(
@@ -284,13 +285,8 @@ try {
                 JSON.stringify({ path: sibling.path, markdown: sibling.markdown, planId: sibling.attrs.planId }),
             );
         } else {
-            const { startActiveExecutionWorkflow, createExecutionStartPorts } =
-                await import("../workflow/execution-start.ts");
-            const { finalizePlanImplementation } = await import("../workflow/implementation-checkpoint.ts");
             const { prepareSessionPlanningWorktree } = await import("../workflow/session-planning-worktree.ts");
             const { git } = await import("../git-test-fixture.ts");
-            const { startPublicationAttempt, advanceStoredPublication, cleanupStoredPublication } =
-                await import("../workflow/publication-machine.ts");
             const { publishExecutionWorktreeIsolated } = await import("../isolated-publication.ts");
             const { setExactProjectCustomSetting } = await import("../settings.ts");
             setExactProjectCustomSetting("plans", { deliveryCopies: false }, input.cwd);
@@ -310,23 +306,18 @@ try {
                 });
                 const plan = await loadPlan(input.cwd, "family/first");
                 ok(plan);
-                const execution = await startActiveExecutionWorkflow({
+                const attempt = await openWorkflow({
                     cwd: input.cwd,
                     planName: "family/first",
-                    currentStatus: "ready_for_work",
-                    triageMeta: plan.attrs,
-                    ports: createExecutionStartPorts(),
-                });
+                    planId: plan.attrs.planId,
+                }).startOrResume();
+                const execution = attempt.state;
                 ok(execution.executionCwd && execution.worktreeId);
                 await writeFile(
                     join(execution.executionCwd, managed ? "managed-sentinel" : "manual-sentinel"),
                     "Delivered sentinel\n",
                 );
-                await finalizePlanImplementation({
-                    projectRoot: input.cwd,
-                    planName: "family/first",
-                    executionContext: execution,
-                });
+                await attempt.acceptCompletion({});
                 for (const event of ["mechanical_validation_passed", "semantic_review_passed"] as const)
                     await recordPlanEvent({
                         cwd: input.cwd,
@@ -420,9 +411,7 @@ try {
                 });
                 ok(recorded.status === "generated" || recorded.status === "linked", JSON.stringify(recorded));
                 if (recordId) equal(recorded.recordId, recordId);
-                let attempt = await startPublicationAttempt({
-                    projectRoot: input.cwd,
-                    attemptId: execution.worktreeId!,
+                let attempt = await publication.attempt(execution.worktreeId!).start({
                     planName: "family/first",
                     targetBranch: "main",
                     executionBranch: execution.worktreeBranch!,
@@ -430,12 +419,7 @@ try {
                     validatedCommit: commit,
                     targetHeadAtSeal: await git(input.cwd, ["rev-parse", "main"]),
                 });
-                attempt = await advanceStoredPublication(
-                    input.cwd,
-                    attempt,
-                    "artifacts_committed",
-                    await preparePublicationCopies(input.cwd, attempt),
-                );
+                attempt = await publication.resume(attempt).commitCopies();
                 await publishExecutionWorktreeIsolated({
                     projectRoot: input.cwd,
                     executionCwd: attempt.executionCwd,
@@ -447,20 +431,18 @@ try {
                     packageInput: attempt.packageInput,
                     publicationRoot: attempt.publicationRoot,
                     onIntegrated: async (proof) => {
-                        attempt = await advanceStoredPublication(input.cwd, attempt, "target_integrated", proof);
+                        attempt = await publication.resume(attempt).advance("target_integrated", proof);
                     },
                     onPublished: async (proof) => {
-                        attempt = await advanceStoredPublication(input.cwd, attempt, "target_published", proof);
+                        attempt = await publication.resume(attempt).advance("target_published", proof);
                     },
                     onVerified: async () => {
-                        attempt = await advanceStoredPublication(input.cwd, attempt, "publication_verified", {
-                            verifiedAt: new Date().toISOString(),
-                        });
+                        attempt = await publication.resume(attempt).verify();
                     },
                 });
                 await settlePackagePublication(input.cwd, attempt);
                 equal((await loadPlan(input.cwd, "family/first"))?.attrs.status, "verified");
-                const cleanup = await cleanupStoredPublication(input.cwd, attempt);
+                const cleanup = await publication.resume(attempt).cleanup();
                 ok(cleanup.complete, JSON.stringify(cleanup));
                 const delivered = await readPublishedDeliverySources(input.cwd, cleanup.attempt);
                 const recordPath = delivered.workRecordOwner?.attrs.workRecord?.path;

@@ -14,7 +14,7 @@ import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixtu
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.ts";
-import { cleanupStoredPublication } from "./publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 import { runLocalCI } from "./validation-local-ci.ts";
 import { attachRecorder, makeUi, runValidationPhase } from "./validation-test-helpers.ts";
 import { makePublicationOutcomeFixture } from "./testing/publication-outcome-fixture.ts";
@@ -109,7 +109,7 @@ for (const completeRepair of [true, false]) {
                     if (completeRepair) {
                         assertEquals(validations[1].outcome, "succeeded");
                         const attempt = await fixture.confirm();
-                        assert((await cleanupStoredPublication(runtime.projectRoot, attempt)).complete);
+                        assert((await openPublication(runtime.projectRoot).resume(attempt).cleanup()).complete);
                         const delivered = (await readRows(runtime.projectRoot)).filter(
                             (row) => row.event === "publication_confirmed",
                         );

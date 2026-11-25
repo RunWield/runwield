@@ -1,10 +1,89 @@
 import { test } from "node:test";
 import { deepEqual, equal, ok, rejects, throws } from "node:assert/strict";
 import fs from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { create, read } from "../testing/plan-package-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import { openProjectPlanStore } from "../../plan-store/index.ts";
+import { addEntry, findById, pruneEntry } from "../worktree-registry.ts";
+
+test("pruned publication can resume only with a matching retained delivery receipt", async () => {
+    const { publicationFixture } = await import("./testing/package-publication-fixture.ts");
+    const { openPublication } = await import("@runwield/workflow/publication-runtime");
+    const f = await publicationFixture(true);
+    try {
+        const stopped = await f.drive("candidate_receipt");
+        equal(stopped.code, 86, stopped.text);
+        const entry = await findById(f.root, f.config.attemptId);
+        const candidate = entry?.publication;
+        ok(candidate?.packageInput);
+        const publication = openPublication(f.root);
+        const reference = publication.attempt(candidate.attemptId);
+        const now = new Date().toISOString();
+        const claimedCleanup = {
+            ...candidate,
+            phase: "cleanup_complete" as const,
+            copiesPrepared: true,
+            planPaths: [],
+            targetBaseCommit: candidate.targetHeadAtSeal,
+            integrationCommit: candidate.validatedCommit,
+            publicationMode: "local" as const,
+            publishedCommit: candidate.validatedCommit,
+            verifiedAt: now,
+            cleanedAt: now,
+        };
+        await pruneEntry(f.root, candidate.attemptId);
+        equal(await reference.load(), null);
+        await f.scope(async () => {
+            await rejects(publication.resume(claimedCleanup).verify(), /no matching delivery receipt/);
+        });
+        equal((await read(f.identity)).metadata.workflow?.delivery, undefined);
+        ok((await fs.stat(candidate.executionCwd)).isDirectory());
+
+        ok(entry);
+        await addEntry(f.root, entry);
+        const settled = await f.drive("package_settlement");
+        equal(settled.code, 86, settled.text);
+        const verified = await reference.load();
+        ok(verified);
+        await f.scope(async () => {
+            const cleanup = await publication.resume(verified).cleanup();
+            equal(cleanup.complete, true);
+            equal(await reference.load(), null);
+            deepEqual(await publication.resume(cleanup.attempt).verify(), cleanup.attempt);
+            await rejects(
+                publication.resume({ ...cleanup.attempt, publishedCommit: candidate.targetHeadAtSeal }).verify(),
+                /Package publication no longer owns this execution/,
+            );
+        });
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test("copy preparation refuses foreign or stale publication records before changing the checkout", async () => {
+    const { publicationFixture } = await import("./testing/package-publication-fixture.ts");
+    const { openPublication } = await import("@runwield/workflow/publication-runtime");
+    const otherRoot = await fs.mkdtemp(join(tmpdir(), "foreign-publication-"));
+    const f = await publicationFixture(true);
+    try {
+        equal((await f.drive("candidate_receipt")).code, 86);
+        const publication = openPublication(f.root);
+        const attempt = await publication.attempt(f.workflow.worktreeId!).load();
+        ok(attempt?.packageInput);
+        await rejects(openPublication(otherRoot).resume(attempt).commitCopies(), /different project/);
+        await rejects(publication.resume({ ...attempt, executionCwd: f.root }).commitCopies(), /different project/);
+        const current = await publication.resume(attempt).recordFailure({ kind: "interrupted", message: "Resume me." });
+        await rejects(publication.resume(attempt).commitCopies(), /changed before its copies/);
+        equal(await git(attempt.executionCwd, ["status", "--porcelain"]), "");
+        equal(await git(attempt.executionCwd, ["rev-parse", "HEAD"]), attempt.validatedCommit);
+        deepEqual(await publication.attempt(attempt.attemptId).load(), current);
+    } finally {
+        await f.cleanup();
+        await fs.rm(otherRoot, { recursive: true });
+    }
+});
 
 for (const plans of [false, true]) {
     test(`one copies commit composes prepared Work Record and Plan copies ${plans}`, async () => {
@@ -121,13 +200,13 @@ for (const issue of ["escape", "duplicate", "target-collision"] as const) {
 
 test("publication input variants reject mixed formats, malformed references and inexact payloads", async () => {
     const { publicationFixture } = await import("./testing/package-publication-fixture.ts");
-    const { assertPublicationAttempt } = await import("./publication-attempt.ts");
-    const { loadPublicationAttempt } = await import("./publication-machine.ts");
+    const { assertPublicationAttempt } = await import("@runwield/workflow/publication");
+    const { openPublication } = await import("@runwield/workflow/publication-runtime");
     const { publicationCopiesForCheckout } = await import("../../plan-store/index.ts");
     const f = await publicationFixture(true);
     try {
         equal((await f.drive("artifact_receipt")).code, 86);
-        const attempt = await loadPublicationAttempt(f.root, f.workflow.worktreeId!);
+        const attempt = await openPublication(f.root).attempt(f.workflow.worktreeId!).load();
         ok(attempt?.packageInput);
         throws(() => assertPublicationAttempt({ ...attempt, deliveryMetadataVersion: 1 }), /Mixed/);
         throws(() => assertPublicationAttempt(JSON.parse(JSON.stringify({ ...attempt, packageInput: null }))));

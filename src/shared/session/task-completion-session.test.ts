@@ -24,7 +24,7 @@ function hostedSessionManager(sessionManager: SessionManager): HostedSessionMana
     return sessionManager as HostedSessionManager;
 }
 
-function executionWorkflow(planName: string): import("./execution-workflow-session.ts").ActiveExecutionWorkflow {
+function executionWorkflow(planName: string): import("@runwield/workflow/state").ActiveExecutionWorkflow {
     return {
         planName,
         triageMeta: { classification: "PLANNED_CHANGE" },

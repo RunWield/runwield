@@ -1,3 +1,4 @@
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 import type { CreateProjectWorkRecord, ManualQaSection, ProjectWorkRecord } from "@runwield/plans/store";
 import { workRecords } from "@runwield/plans/work-records";
 import { projects, type ProjectId, type ProjectStoreIdentity } from "@runwield/projects";
@@ -1085,10 +1086,7 @@ export async function writeManagedRetainedController(
 }
 
 /** No-op for ordinary local execution; managed retained cleanup settles with its personal owner before registry pruning. */
-export async function settleRetainedExecutionCleanup(
-    cwd: string,
-    attempt: import("../shared/workflow/publication-attempt.ts").PublicationAttempt,
-): Promise<void> {
+export async function settleRetainedExecutionCleanup(cwd: string, attempt: PublicationAttempt): Promise<void> {
     const selected = currentManagedRetainedExecution();
     if (!selected) return;
     if (selected.planId !== attempt.planId || selected.attempt.id !== attempt.attemptId)
@@ -1205,10 +1203,7 @@ export async function generateManagedRetainedRecord(
     }
 }
 
-export async function settleRetainedExecutionRecording(
-    cwd: string,
-    attempt: import("../shared/workflow/publication-attempt.ts").PublicationAttempt,
-): Promise<boolean> {
+export async function settleRetainedExecutionRecording(cwd: string, attempt: PublicationAttempt): Promise<boolean> {
     const selected = currentManagedRetainedExecution();
     if (!selected) return false;
     if (selected.planId !== attempt.planId || selected.attempt.id !== attempt.attemptId)
@@ -1307,10 +1302,9 @@ export async function applyManagedSequenceDecision(
     if (options.hostedSession && options.toolCallId && result.workflowOutcome) {
         if (result.workflowOutcome.outcome === "approved_execute" && result.workflowOutcome.planName)
             options.hostedSession.setWorkflowPlanName(result.workflowOutcome.planName);
-        const { publishWorkflowToolEvent } = await import("../shared/workflow/workflow-tool-events.ts");
+        const { workflowEvents } = await import("@runwield/workflow/events");
         try {
-            publishWorkflowToolEvent({
-                hostedSession: options.hostedSession,
+            workflowEvents(options.hostedSession).publish({
                 toolCallId: options.toolCallId,
                 kind: "plan_written",
                 payload: result.workflowOutcome,

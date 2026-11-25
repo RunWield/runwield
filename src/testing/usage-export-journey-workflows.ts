@@ -16,7 +16,7 @@ import { ensureRootAgentSession } from "../shared/session/session.ts";
 import type { SessionRuntime } from "../shared/session/session-runtime.ts";
 import { findById } from "../shared/worktree-registry.ts";
 import { createTestWorktreeAttempt } from "../shared/worktree-test-helpers.ts";
-import { cleanupStoredPublication } from "../shared/workflow/publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 import { buildPlanEventUpdates, type PlanEvent, type PlanEventDetails } from "@runwield/plans/lifecycle";
 import { runPlanLifecycleEventTransition } from "../plan-store/transitions.ts";
 import { makePublicationOutcomeFixture } from "../shared/workflow/testing/publication-outcome-fixture.ts";
@@ -66,9 +66,11 @@ export async function runJourneyPublication(
         });
         assertEquals(result.kind, "paused");
         assert("continueValidation" in result && result.continueValidation);
-        const cleanup = await cleanupStoredPublication(root, await publication.confirm());
+        const cleanup = await openPublication(root)
+            .resume(await publication.confirm())
+            .cleanup();
         assert(cleanup.complete);
-        assert((await cleanupStoredPublication(root, cleanup.attempt)).complete);
+        assert((await openPublication(root).resume(cleanup.attempt).cleanup()).complete);
     } finally {
         session.dispose();
     }

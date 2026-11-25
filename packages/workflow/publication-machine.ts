@@ -1,59 +1,57 @@
-import type { PackagePublicationManifest } from "../../plan-store/index.ts";
-import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.ts";
-import {
-    retainPublicationCompletion,
-    recordPublicationObservation,
-    type RetainedPublicationCompletion,
-} from "../../plan-store/index.ts";
-import { settlePlanPublicationRecording } from "../../plan-store/index.ts";
+/**
+ * The worktree registry entry is the only mutable publication authority. Plan
+ * front matter remains validation truth, and Git refs and commits prove each
+ * transition.
+ */
+import { mkdtemp, realpath, rm as fsRm, stat as fsStat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { canonicalizeStoredPlanName, isChildFeaturePlan, parsePlanFrontMatter } from "@runwield/plans/format";
+import { samePackagePublicationReference } from "@runwield/plans/publication-copies";
 import {
     hasCanonicalPlanAccess,
+    hasRetainedPublicationReceipt,
+    type PackagePublicationManifest,
+    publicationCopiesForCheckout,
+    readPublishedDeliverySources,
+    recordPublicationObservation,
+    retainPublicationCompletion,
+    type RetainedPublicationCompletion,
+    retainedPublicationCopiesForCheckout,
+    selectedPublicationCopies,
+    settlePackagePublication,
+    settlePlanPublicationRecording,
     settleRetainedExecutionCleanup,
     settleRetainedExecutionRecording,
-} from "../../plan-store/index.ts";
+} from "../../src/plan-store/index.ts";
+import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../../src/shared/settings.ts";
+import { resolvePublicationUpstream as resolveRemoteTarget } from "../../src/shared/publication-target.ts";
 import {
-    publicationCopiesForCheckout,
-    selectedPublicationCopies,
-    retainedPublicationCopiesForCheckout,
-    settlePackagePublication,
-} from "../../plan-store/index.ts";
-import { resolvePublicationUpstream as resolveRemoteTarget } from "../publication-target.ts";
-import { tmpdir } from "node:os";
-import { mkdtemp } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
-import { rm as fsRm, stat as fsStat } from "node:fs/promises";
-/**
- * Storage boundary for the durable publication state machine.
- *
- * The worktree registry entry is the only mutable publication authority. Plan
- * front matter remains validation truth, and Git refs/commits are the evidence
- * used to prove each transition.
- */
-
-import { join } from "node:path";
-import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT, type WorkRecordMnemotecaPort } from "../work-records/mnemoteca-port.ts";
-import { indexPublishedWorkRecords } from "../publication-lifecycle.ts";
-import { canonicalizeStoredPlanName, isChildFeaturePlan, parsePlanFrontMatter } from "@runwield/plans/format";
-import { isTerminalWorkRecordParent } from "../work-records/auto-generation.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { resolveProjectRoot } from "../project-checkout.ts";
-import { findById, pruneEntry, updatePublication } from "../worktree-registry.ts";
+    SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+    type WorkRecordMnemotecaPort,
+} from "../../src/shared/work-records/mnemoteca-port.ts";
+import { indexPublishedWorkRecords } from "../../src/shared/publication-lifecycle.ts";
+import { isTerminalWorkRecordParent } from "../../src/shared/work-records/auto-generation.ts";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../../src/shared/project-runtime-layout.ts";
+import { resolveProjectRoot } from "../../src/shared/project-checkout.ts";
+import { findById, pruneEntry, updatePublication } from "../../src/shared/worktree-registry.ts";
 import { existingPublicationSavedFiles, preserveUnregisteredPublicationFiles } from "./publication-leftover-files.ts";
 import {
     deleteMergedWorktreeBranch,
     deleteRemotelyPublishedWorktreeBranch,
     removeWorktreeGitArtifacts,
-} from "../worktree.ts";
+} from "../../src/shared/worktree.ts";
 
-import { type JournalResult } from "./metrics-journal.ts";
-import { recordWorkflowOutcome } from "./outcome-observations.ts";
+import type { JournalResult } from "../../src/shared/workflow/metrics-journal.ts";
+import { recordWorkflowOutcome } from "../../src/shared/workflow/outcome-observations.ts";
 
 import {
     advancePublicationAttempt,
     assertPublicationAttempt,
     createPublicationAttempt,
     type PublicationAttempt,
-    type PublicationFailure,
+    type PublicationFailureInput,
     type PublicationPhase,
     publicationPhaseAtLeast,
     type PublicationPhaseEvidence,
@@ -331,7 +329,7 @@ async function retainedCandidateEvidence(
 /** A legacy continuation retains its original registry identity while Git proves its published candidate. */
 export async function proveRetainedManagedPublication(
     projectRoot: string,
-    retained: import("../../plan-store/index.ts").RetainedManagedExecution,
+    retained: import("../../src/plan-store/index.ts").RetainedManagedExecution,
     confirmed?: PublicationAttempt,
     candidateOnly = false,
     requireCleanup = false,
@@ -428,7 +426,78 @@ export async function loadPublicationAttempt(
     return entry.publication;
 }
 
-export async function startPublicationAttempt(args: {
+async function sameCheckout(path: string, recordedPath: string): Promise<boolean> {
+    if (path === recordedPath) return true;
+    const [actual, expected] = await Promise.all([realpath(path), realpath(recordedPath)]).catch(() => []);
+    return actual !== undefined && actual === expected;
+}
+
+type PublicationResume = { record: PublicationAttempt; registered: boolean };
+
+/** Select the authoritative revision before evaluating any evidence from a caller's snapshot. */
+export async function readPublicationForResume(
+    projectRoot: string,
+    snapshot: PublicationAttempt,
+    allowRetained = false,
+): Promise<PublicationResume> {
+    assertPublicationAttempt(snapshot);
+    const entry = await findById(projectRoot, snapshot.attemptId);
+    const current = entry?.publication;
+    if (!entry && allowRetained && snapshot.phase === "cleanup_complete") {
+        if (snapshot.packageInput) {
+            // An active owner can still read its frozen input before delivery.
+            // Reopening a pruned attempt requires the owner's settled receipt.
+            await readPublishedDeliverySources(projectRoot, snapshot);
+            await selectedPublicationCopies.assertOwner(snapshot);
+        } else if (!(await hasRetainedPublicationReceipt(projectRoot, snapshot))) {
+            throw new Error("Publication has no retained receipt in this project.");
+        }
+        return { record: snapshot, registered: false };
+    }
+    if (
+        !entry ||
+        !current ||
+        entry.planId !== current.planId ||
+        entry.planName !== current.planName ||
+        entry.branch !== current.executionBranch ||
+        !(await sameCheckout(entry.path, current.executionCwd)) ||
+        current.planId !== snapshot.planId ||
+        current.planName !== snapshot.planName ||
+        current.targetBranch !== snapshot.targetBranch ||
+        current.executionBranch !== snapshot.executionBranch ||
+        current.executionCwd !== snapshot.executionCwd ||
+        current.publicationRoot !== snapshot.publicationRoot ||
+        current.validatedCommit !== snapshot.validatedCommit ||
+        current.targetHeadAtSeal !== snapshot.targetHeadAtSeal ||
+        current.createdAt !== snapshot.createdAt ||
+        (current.packageInput
+            ? !samePackagePublicationReference(snapshot.packageInput, current.packageInput)
+            : Boolean(snapshot.packageInput))
+    ) {
+        throw new Error("Publication record belongs to a different project, worktree, or sealed candidate.");
+    }
+    return { record: current, registered: true };
+}
+
+/** A recycled checkout path or a different checked-out branch cannot receive the frozen copies. */
+export async function assertPublicationSourceCheckout(projectRoot: string, record: PublicationAttempt): Promise<void> {
+    const [owner, checkout, branch] = await Promise.all([
+        git(projectRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+        git(record.executionCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+        git(record.executionCwd, ["symbolic-ref", "--quiet", "HEAD"]),
+    ]);
+    if (
+        owner.code !== 0 ||
+        checkout.code !== 0 ||
+        branch.code !== 0 ||
+        branch.stdout !== `refs/heads/${record.executionBranch}` ||
+        !(await sameCheckout(owner.stdout, checkout.stdout))
+    ) {
+        throw new Error("Publication source checkout no longer belongs to its recorded project and branch.");
+    }
+}
+
+export type StartPublicationAttemptInput = {
     projectRoot: string;
     attemptId: string;
     planName: string;
@@ -437,7 +506,9 @@ export async function startPublicationAttempt(args: {
     executionCwd: string;
     validatedCommit: string;
     targetHeadAtSeal: string;
-}): Promise<PublicationAttempt> {
+};
+
+export async function startPublicationAttempt(args: StartPublicationAttemptInput): Promise<PublicationAttempt> {
     const entry = await findById(args.projectRoot, args.attemptId);
     if (!entry) throw new Error(`Worktree registry entry not found: ${args.attemptId}`);
     if (!entry.planId) throw new Error(`Worktree registry entry ${args.attemptId} has no Plan identity.`);
@@ -457,6 +528,13 @@ export async function startPublicationAttempt(args: {
             );
         }
         return current;
+    }
+    if (
+        entry.planName !== args.planName ||
+        entry.branch !== args.executionBranch ||
+        !(await sameCheckout(entry.path, args.executionCwd))
+    ) {
+        throw new Error("Publication source does not match its registered worktree.");
     }
     const publication = createPublicationAttempt({
         attemptId: args.attemptId,
@@ -496,6 +574,7 @@ export async function advanceStoredPublication(
     current: PublicationAttempt,
     phase: PublicationPhase,
     evidence: PublicationPhaseEvidence,
+    expectedRevision = current.revision,
 ): Promise<PublicationAttempt> {
     if (current.revalidation) throw new Error("Publication is waiting for validation of the current source.");
     const mismatch = Object.entries(evidence).find(([field, expected]) => {
@@ -511,7 +590,11 @@ export async function advanceStoredPublication(
         // a fresh safety check; advancing writes validate in updatePublication.
         await enterProjectRuntime(projectRoot);
         if (!mismatch) return current;
-        if (current.phase !== "target_integrated" || phase !== "target_integrated") {
+        if (
+            current.revision !== expectedRevision ||
+            current.phase !== "target_integrated" ||
+            phase !== "target_integrated"
+        ) {
             const [field, expected] = mismatch;
             const actual = current[field as keyof PublicationAttempt];
             throw new Error(
@@ -519,32 +602,37 @@ export async function advanceStoredPublication(
             );
         }
     }
+    if (current.revision !== expectedRevision) {
+        throw new Error(`Publication ${current.attemptId} changed before recording ${phase}.`);
+    }
     const next = advancePublicationAttempt(current, phase, evidence);
     try {
-        await updatePublication(projectRoot, current.attemptId, current.revision, next);
+        await updatePublication(projectRoot, current.attemptId, current, next);
         return next;
     } catch (error) {
-        const refreshed = await loadPublicationAttempt(projectRoot, current.attemptId);
-        if (!refreshed || refreshed.revision === current.revision) throw error;
-        return await advanceStoredPublication(projectRoot, refreshed, phase, evidence);
+        const { record: refreshed } = await readPublicationForResume(projectRoot, current);
+        if (refreshed.revision === current.revision) throw error;
+        return await advanceStoredPublication(projectRoot, refreshed, phase, evidence, expectedRevision);
     }
 }
 
 export async function failStoredPublication(
     projectRoot: string,
     current: PublicationAttempt,
-    failure: Omit<PublicationFailure, "phase" | "recordedAt"> & { phase?: PublicationPhase },
+    failure: Omit<PublicationFailureInput, "recordedAt">,
 ): Promise<PublicationAttempt> {
     const next = recordPublicationFailure(current, failure);
     try {
-        await updatePublication(projectRoot, current.attemptId, current.revision, next);
+        await updatePublication(projectRoot, current.attemptId, current, next);
         return next;
     } catch (error) {
-        const refreshed = await loadPublicationAttempt(projectRoot, current.attemptId);
-        if (!refreshed || refreshed.revision === current.revision) throw error;
+        const { record: refreshed } = await readPublicationForResume(projectRoot, current);
+        if (refreshed.revision === current.revision) throw error;
         return refreshed;
     }
 }
+
+export type PublicationReconcileOptions = { apply?: boolean };
 
 /**
  * Advance a restarted publication only when current Git facts prove an external
@@ -554,7 +642,7 @@ export async function failStoredPublication(
 export async function reconcileStoredPublication(
     projectRoot: string,
     initial: PublicationAttempt,
-    options: { apply?: boolean } = {},
+    options: PublicationReconcileOptions = {},
 ): Promise<PublicationAttempt> {
     if (options.apply !== false) await enterProjectRuntime(projectRoot);
     const advance = async (current: PublicationAttempt, phase: PublicationPhase, evidence: PublicationPhaseEvidence) =>
@@ -583,7 +671,10 @@ export async function reconcileStoredPublication(
     }
     if (current.phase === "target_published") {
         const evidence = await publishedEvidence(projectRoot, current);
-        if (evidence) {
+        if (
+            evidence?.publishedCommit === current.publishedCommit &&
+            evidence?.publicationMode === current.publicationMode
+        ) {
             current = await advance(current, "publication_verified", {
                 verifiedAt: new Date().toISOString(),
             });
@@ -751,10 +842,11 @@ export async function cleanupStoredPublication(
     projectRoot: string,
     initial: PublicationAttempt,
     workRecordMnemotecaPort: WorkRecordMnemotecaPort = SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+    registered = true,
 ): Promise<PublicationCleanupResult> {
     // Reconciliation validates before inspecting Git or changing any receipt.
     let attempt = await reconcileStoredPublication(projectRoot, initial);
-    let preservedFiles = await existingPublicationSavedFiles(attempt.executionCwd);
+    let preservedFiles = registered ? await existingPublicationSavedFiles(attempt.executionCwd) : undefined;
     let completion: RetainedPublicationCompletion | null = null;
     if (attempt.packageInput && ["publication_verified", "cleanup_complete"].includes(attempt.phase)) {
         if (!(await publishedEvidence(projectRoot, attempt)))
@@ -795,7 +887,7 @@ export async function cleanupStoredPublication(
     if (attempt.phase === "cleanup_complete") {
         await observeConfirmedPublication(projectRoot, attempt, completion, planKinds.get(attempt.planId));
         await settleRetainedExecutionCleanup(projectRoot, attempt);
-        await pruneEntry(projectRoot, attempt.attemptId);
+        if (registered) await pruneEntry(projectRoot, attempt.attemptId);
         return { complete: true, attempt, worktreeKept: false, branchKept: false, details: [], preservedFiles };
     }
     if (attempt.phase !== "publication_verified") {

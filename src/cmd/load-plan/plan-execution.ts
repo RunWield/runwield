@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 /**
  * @module cmd/load-plan/plan-execution
  * Driving a Plan from approved through execution to validation.
@@ -12,8 +13,7 @@ import { AGENTS } from "../../shared/session/agent-registry.ts";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { isGitRepositoryRequiredError } from "../../shared/git.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
-import { decidePostExecution } from "../../shared/workflow/decisions.ts";
-import { finalizePlanImplementation } from "../../shared/workflow/workflow.ts";
+import { decidePostExecution } from "@runwield/workflow/decisions";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";
 import {
     type ExecutionContextCandidate,
@@ -29,7 +29,7 @@ import {
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanSessionSurface, RecoveryWorktreeContext, ReviewImage } from "./plan-session-types.ts";
-import type { WorkflowDecision } from "../../shared/workflow/decisions.ts";
+import type { WorkflowDecision } from "@runwield/workflow/decisions";
 import type { WorkflowValidationResult } from "../../shared/workflow/validation-types.ts";
 
 export type ValidationStartResult = false | WorkflowValidationResult | true;
@@ -276,11 +276,12 @@ export async function validateCompletedExecution(
         await session.activateForPlan(planName);
         await session.setActiveExecutionWorkflow(initialWorkflow);
         try {
-            await finalizePlanImplementation({
-                projectRoot,
+            const attempt = await openWorkflow({
+                cwd: projectRoot,
                 planName,
-                triageMeta: effectiveMeta,
-                executionContext: initialWorkflow,
+                planId: effectiveMeta.planId,
+            }).resumeAttempt({ attemptId: initialWorkflow.worktreeId });
+            await attempt.acceptCompletion({
                 executionReport: typeof completionReport === "string" ? completionReport : undefined,
             });
         } catch (error) {
@@ -343,7 +344,7 @@ export async function validateCompletedExecution(
 
 /**
  * @param {Object} opts
- * @param {import('../../shared/workflow/decisions.ts').WorkflowDecision} opts.executionDecision
+ * @param {import('@runwield/workflow/decisions').WorkflowDecision} opts.executionDecision
  * @param {unknown} opts.executionResult
  * @param {string} opts.fallbackPlanContent
  * @param {PlanSessionSurface["runValidation"]} opts.continueWorkflowValidation
@@ -381,7 +382,7 @@ export async function validatePostExecutionDecision({
  * completes. Returns true when the decision was handled as execution.
  *
  * @param {Object} opts
- * @param {import('../../shared/workflow/decisions.ts').WorkflowDecision} opts.decision
+ * @param {import('@runwield/workflow/decisions').WorkflowDecision} opts.decision
  * @param {string} opts.fallbackPlanContent
  * @param {import('../../ui/tui/api.ts').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface["executePlan"]} opts.executePlan
@@ -448,7 +449,7 @@ export async function executePostPlanningDecision({
 }
 
 /**
- * @param {import('../../shared/workflow/decisions.ts').WorkflowDecision} decision
+ * @param {import('@runwield/workflow/decisions').WorkflowDecision} decision
  * @returns {boolean}
  */
 export function shouldKeepPlanningAgentActive(decision: WorkflowDecision): boolean {
@@ -557,7 +558,7 @@ export async function executeReadyPlanWithRepair({
     const executionOwner = policy.ok ? policy.policy.executionAgent : agentName;
     const executionDecision = decidePostExecution(execRes, {
         planName: plan.planName,
-        triageMeta: /** @type {import('../../tools/plan-written.ts').TriageMeta} */ plan.attrs,
+        triageMeta: /** @type {import("@runwield/workflow/state").TriageMeta} */ plan.attrs,
         executionAgentName: executionOwner,
     });
     return await validatePostExecutionDecision({

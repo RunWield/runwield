@@ -20,7 +20,7 @@ import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switchin
 import { buildSlicerRequest } from "./workflow-prompts.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { TriageMeta } from "@runwield/workflow/state";
 import type { HostedSession } from "../session/hosted-session.ts";
 
 const definition = toolRegistry.get("slicer_finalize_decomposition").definition;
@@ -255,7 +255,7 @@ function createSlicerCustomTools(planName, cwd) {
  *
  * @param {Object} opts
  * @param {string} opts.planName
- * @param {import('../../tools/plan-written.ts').TriageMeta} [opts.triageMeta]
+ * @param {import("@runwield/workflow/state").TriageMeta} [opts.triageMeta]
  * @param {string} [opts.reviewFeedback]
  * @param {Array<{base64: string, mimeType: string}>} [opts.reviewImages]
  * @param {import('../session/hosted-session.ts').HostedSession} opts.hostedSession
@@ -335,7 +335,7 @@ export async function runSlicerAgent({
  * @param {Object} opts
  * @param {string} opts.planName
  * @param {string} opts.planPath - Absolute path to the plan markdown file.
- * @param {import('../../tools/plan-written.ts').TriageMeta} [opts.triageMeta]
+ * @param {import("@runwield/workflow/state").TriageMeta} [opts.triageMeta]
  * @param {import('../session/hosted-session.ts').HostedSession} opts.hostedSession
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} [opts.sessionManager]
  * @returns {Promise<{ ok: true, slicerInvoked: boolean } | { ok: false, error: string, stage: "slicer" | "validation" }>}
@@ -350,7 +350,7 @@ export async function openSlicerDecomposition({
     if (!hostedSession) throw new Error("openSlicerDecomposition: hostedSession is required");
 
     /**
-     * @param {import('../../tools/plan-written.ts').TriageMeta | undefined} meta
+     * @param {import("@runwield/workflow/state").TriageMeta | undefined} meta
      * @returns {Promise<{ ok: true } | { ok: false, error: string }>}
      */
     async function invokeSlicer(meta): Promise<{ ok: true } | { ok: false; error: string }> {

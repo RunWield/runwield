@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { seedPlanState } from "../testing/plan-state-fixture.ts";
 import { writeFile as fsWriteFile, readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
@@ -85,6 +86,17 @@ test("round-limit continue is durable and accepts the next reviewer without anot
             "reviewer",
         );
         assertEquals(reviewer.reviewMode, "verify");
+        const progress = await openWorkflow({
+            cwd: fixture.root,
+            planName: "p",
+            planId: (await fixture.plan()).attrs.planId,
+        }).readProgress();
+        assertEquals(progress?.pendingAction, {
+            kind: "reviewer",
+            identity: { attemptId: reviewer.identity.attemptId, generation: reviewer.identity.generation },
+            semanticRound: reviewer.identity.semanticRound,
+            correctionCount: reviewer.identity.correctionCount,
+        });
         const reread = hostRequest(await fixture.processTurn(), "reviewer");
         assertEquals(reread.identity, reviewer.identity);
         const result = await fixture.processTurn({

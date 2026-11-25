@@ -38,6 +38,11 @@ export type PublicationFailure = {
     repairRoot?: string;
 };
 
+export type PublicationFailureInput = Omit<PublicationFailure, "phase" | "recordedAt"> & {
+    phase?: PublicationPhase;
+    recordedAt?: string;
+};
+
 export type PublicationAttempt = {
     deliveryMetadataVersion?: 1;
     retainedPublicationPolicy?: ExecutionPublicationPolicy;
@@ -102,7 +107,7 @@ export function isPublicationAttemptCleanupComplete(attempt: PublicationAttempt)
     return attempt.phase === "cleanup_complete" && !attempt.failure?.repairRoot;
 }
 
-export function createPublicationAttempt(args: {
+export type CreatePublicationAttemptInput = {
     attemptId: string;
     planId: string;
     planName: string;
@@ -113,7 +118,9 @@ export function createPublicationAttempt(args: {
     validatedCommit: string;
     targetHeadAtSeal: string;
     now?: string;
-}): PublicationAttempt {
+};
+
+export function createPublicationAttempt(args: CreatePublicationAttemptInput): PublicationAttempt {
     const now = args.now || new Date().toISOString();
     for (const [name, value] of Object.entries(args)) {
         if (name === "now") continue;
@@ -191,7 +198,7 @@ export function advancePublicationAttempt(
 
 export function recordPublicationFailure(
     current: PublicationAttempt,
-    failure: Omit<PublicationFailure, "phase" | "recordedAt"> & { phase?: PublicationPhase; recordedAt?: string },
+    failure: PublicationFailureInput,
     now = new Date().toISOString(),
 ): PublicationAttempt {
     return {

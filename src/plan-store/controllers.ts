@@ -47,7 +47,7 @@ import {
 } from "../shared/worktree-registry.ts";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-import { isPublicationCleanupPending } from "../shared/workflow/publication-attempt.ts";
+import { isPublicationCleanupPending } from "@runwield/workflow/publication";
 import {
     CONTROLLER_STATE_FIELDS,
     pickControllerState,

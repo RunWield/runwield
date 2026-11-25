@@ -17,7 +17,7 @@ import { type LoadedPlan, planDocumentsForCheckout } from "../../plan-store/inde
 import { AGENTS } from "../session/agent-registry.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { executePlan, runPlanningAgent } from "./workflow.ts";
-import { decidePostExecution, decidePostPlanning } from "./decisions.ts";
+import { decidePostExecution, decidePostPlanning } from "@runwield/workflow/decisions";
 import { buildTriageReport } from "./workflow-prompts.ts";
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "./validation.ts";
 import { continueWorkflowValidation } from "./validation.ts";

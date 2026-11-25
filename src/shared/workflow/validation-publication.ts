@@ -1,4 +1,4 @@
-import { preparePublicationCopies } from "./publication-copy-commit.ts";
+import { openPublication, PUBLICATION_REVALIDATION_MESSAGE } from "@runwield/workflow/publication-runtime";
 import { preparePlanInPlacePublication } from "../../plan-store/index.ts";
 import { preparePlanGeneratedArtifacts } from "../../plan-store/index.ts";
 import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
@@ -11,10 +11,10 @@ import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
-import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
+import { ValidationHostRejected, ValidationHostWait } from "@runwield/workflow/host-contract";
 import { runHostRecorder } from "./validation-host-recorder.ts";
 import { syncEpicChildPlanDeviations } from "../../plan-store/index.ts";
-import { effectiveDeliveryBranch } from "./plan-branch.ts";
+import { effectiveDeliveryBranch, type PublicationAttempt } from "@runwield/workflow/publication";
 import {
     readDeliveryEvidence,
     saveDeliveredPlanEvidence,
@@ -76,7 +76,7 @@ import {
 } from "./validation-merge-repair.ts";
 import { recordLifecycleEvent } from "./validation-context.ts";
 import { completeProgressRecord, emitProgress, emitStatus, updateProgressRecord } from "./validation-emit.ts";
-import { pauseForUserAction } from "./validation-interactions.ts";
+import { pauseForUserAction } from "@runwield/workflow/interactions";
 import { buildValidationUserMessage, validationUserMessage } from "./validation-user-messages.ts";
 import {
     classifyValidationOperationalError,
@@ -89,17 +89,6 @@ import {
     recordOperationalRecoveryMetric,
     waitForValidationRetryWithSessionCancellation,
 } from "./validation-recovery.ts";
-import {
-    advanceStoredPublication,
-    cleanupStoredPublication,
-    failStoredPublication,
-    loadPublicationAttempt,
-    publishedWorkRecordFailed,
-    reconcileStoredPublication,
-    startPublicationAttempt,
-} from "./publication-machine.ts";
-import type { PublicationAttempt } from "./publication-attempt.ts";
-import { preparePublicationRevalidation, PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
 
 type DeliveryEvidence = import("@runwield/plans").DeliveryEvidence;
 type WorktreeDeliveryEvidence = import("@runwield/plans").WorktreeDeliveryEvidence;
@@ -293,7 +282,7 @@ export async function runPublicationPhase(
                 { lockEpicFamily: true },
             );
             args.session.assertLive();
-            if (!outcome.recorded && (await preparePublicationRevalidation(context.projectRoot, args.planName))) {
+            if (!outcome.recorded && (await openPublication(context.projectRoot).revalidate(args.planName))) {
                 emitStatus(args, PUBLICATION_REVALIDATION_MESSAGE);
                 return {
                     recorded: false,
@@ -418,11 +407,12 @@ async function runLockedPublicationPhase(
         throw new Error(`Worktree publication for ${args.planName} requires an execution attempt id.`);
     }
     const worktreeId = context.worktreeId;
+    const publication = openPublication(context.projectRoot);
+    const attemptReference = publication.attempt(worktreeId);
     const storedAttempt = worktreeId
         ? await findWorktreeRegistryEntryById(context.projectRoot, context.worktreeId).catch(() => null)
         : null;
-    let publicationAttempt: PublicationAttempt | null =
-        storedAttempt?.publication || (await loadPublicationAttempt(context.projectRoot, worktreeId));
+    let publicationAttempt: PublicationAttempt | null = storedAttempt?.publication || (await attemptReference.load());
     if (publicationAttempt && publicationAttempt.targetBranch !== targetBranch) {
         const message = buildValidationUserMessage({
             kind: "publication_target_changed",
@@ -631,7 +621,7 @@ async function runLockedPublicationPhase(
             const failure = normalizePublicationFailure(error);
             // A source can change after this invocation sealed it. Recover in
             // the same validation loop, just as a fresh-process resume would.
-            if (await preparePublicationRevalidation(context.projectRoot, args.planName)) {
+            if (await publication.revalidate(args.planName)) {
                 emitStatus(args, PUBLICATION_REVALIDATION_MESSAGE);
                 return {
                     kind: "published",
@@ -649,11 +639,14 @@ async function runLockedPublicationPhase(
             }
             if (publicationAttempt) {
                 args.session.assertLive();
-                publicationAttempt = await failStoredPublication(context.projectRoot, publicationAttempt, {
-                    kind: getMergeFailureKind(failure) || "publication_failed",
-                    message: failure.reason,
-                    ...(getMergeWorktreePath(failure) ? { repairRoot: getMergeWorktreePath(failure) } : {}),
-                }).catch(() => publicationAttempt);
+                publicationAttempt = await publication
+                    .resume(publicationAttempt)
+                    .recordFailure({
+                        kind: getMergeFailureKind(failure) || "publication_failed",
+                        message: failure.reason,
+                        ...(getMergeWorktreePath(failure) ? { repairRoot: getMergeWorktreePath(failure) } : {}),
+                    })
+                    .catch(() => publicationAttempt);
             }
             return { kind: "failed", failure };
         }
@@ -673,16 +666,12 @@ async function runLockedPublicationPhase(
         if (publicationAttempt) {
             publicationAttempt = await atStage(
                 "git_publication",
-                async () => await reconcileStoredPublication(context.projectRoot, publicationAttempt!),
+                async () => await publication.resume(publicationAttempt!).reconcile(),
             );
             if (publicationAttempt.phase === "cleanup_complete") {
                 args.session.assertLive();
                 await args.session.handoffVerifiedPublication(context.projectRoot);
-                const cleanup = await cleanupStoredPublication(
-                    context.projectRoot,
-                    publicationAttempt,
-                    args.workRecordMnemotecaPort,
-                );
+                const cleanup = await publication.resume(publicationAttempt).cleanup(args.workRecordMnemotecaPort);
                 if (cleanup.preservedFiles) {
                     emitStatus(
                         args,
@@ -757,9 +746,7 @@ async function runLockedPublicationPhase(
                 );
                 await runPostVerificationHandoffs(args, context.executionCwd, true);
             }
-            publicationAttempt = await startPublicationAttempt({
-                projectRoot: context.projectRoot,
-                attemptId: worktreeId,
+            publicationAttempt = await attemptReference.start({
                 planName: args.planName,
                 targetBranch,
                 executionBranch,
@@ -770,13 +757,7 @@ async function runLockedPublicationPhase(
         }
 
         if (publicationAttempt.phase === "candidate_sealed" && publicationAttempt.packageInput) {
-            const evidence = await preparePublicationCopies(context.projectRoot, publicationAttempt);
-            publicationAttempt = await advanceStoredPublication(
-                context.projectRoot,
-                publicationAttempt,
-                "artifacts_committed",
-                evidence,
-            );
+            publicationAttempt = await publication.resume(publicationAttempt).commitCopies();
         }
         if (publicationAttempt.phase === "candidate_sealed") {
             const manualQa = await atStage(
@@ -829,15 +810,10 @@ async function runLockedPublicationPhase(
                     }),
             );
             args.session.assertLive();
-            publicationAttempt = await advanceStoredPublication(
-                context.projectRoot,
-                publicationAttempt,
-                "artifacts_committed",
-                {
-                    artifactCommit: artifactCandidate.executionCommit,
-                    planPaths: staging.planPaths.length > 0 ? staging.planPaths : [planPath],
-                },
-            );
+            publicationAttempt = await publication.resume(publicationAttempt).advance("artifacts_committed", {
+                artifactCommit: artifactCandidate.executionCommit,
+                planPaths: staging.planPaths.length > 0 ? staging.planPaths : [planPath],
+            });
         }
 
         const artifactCommit =
@@ -875,35 +851,24 @@ async function runLockedPublicationPhase(
                             if (!publicationAttempt)
                                 throw new Error("Publication attempt disappeared before integration.");
                             args.session.assertLive();
-                            publicationAttempt = await advanceStoredPublication(
-                                context.projectRoot,
-                                publicationAttempt,
-                                "target_integrated",
-                                evidence,
-                            );
+                            publicationAttempt = await publication
+                                .resume(publicationAttempt)
+                                .advance("target_integrated", evidence);
                         },
                         onPublished: async (evidence) => {
                             if (!publicationAttempt)
                                 throw new Error("Publication attempt disappeared before publication.");
                             args.session.assertLive();
-                            publicationAttempt = await advanceStoredPublication(
-                                context.projectRoot,
-                                publicationAttempt,
-                                "target_published",
-                                evidence,
-                            );
+                            publicationAttempt = await publication
+                                .resume(publicationAttempt)
+                                .advance("target_published", evidence);
                         },
                         onVerified: async () => {
                             if (!publicationAttempt) {
                                 throw new Error("Publication attempt disappeared before verification.");
                             }
                             args.session.assertLive();
-                            publicationAttempt = await advanceStoredPublication(
-                                context.projectRoot,
-                                publicationAttempt,
-                                "publication_verified",
-                                { verifiedAt: new Date().toISOString() },
-                            );
+                            publicationAttempt = await publication.resume(publicationAttempt).verify();
                         },
                         onProgress: (phase) => {
                             args.session.assertLive();
@@ -930,11 +895,7 @@ async function runLockedPublicationPhase(
         emitStatus(args, buildValidationUserMessage({ kind: "publication_progress", phase: "cleanup", targetBranch }));
         await args.session.handoffVerifiedPublication(context.projectRoot);
         args.session.assertLive();
-        const cleanup = await cleanupStoredPublication(
-            context.projectRoot,
-            publicationAttempt,
-            args.workRecordMnemotecaPort,
-        );
+        const cleanup = await publication.resume(publicationAttempt).cleanup(args.workRecordMnemotecaPort);
         publicationAttempt = cleanup.attempt;
         if (cleanup.preservedFiles) {
             emitStatus(
@@ -1002,7 +963,7 @@ export async function buildVerifiedResult(
     publication?: PublicationAttempt,
 ): Promise<ValidationPhaseResult> {
     const workRecordFailed = publication
-        ? await publishedWorkRecordFailed(projectRoot, publication)
+        ? await openPublication(projectRoot).resume(publication).workRecordFailed()
         : (await resolveTargetedWorkRecordSource(projectRoot, args.planName)).source?.attrs.workRecord?.status ===
           "failed";
     if (workRecordFailed && publication) await retainPublishedWorkRecordSource(projectRoot, publication);

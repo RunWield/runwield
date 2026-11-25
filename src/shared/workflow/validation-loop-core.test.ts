@@ -1,6 +1,6 @@
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
-import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { TriageMeta } from "@runwield/workflow/state";
 import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import { hostname } from "node:os";
 import { test } from "node:test";
@@ -36,15 +36,13 @@ import { createEngineValidationArgs } from "./validation.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { runPublicationPhase } from "./validation-publication.ts";
 import { continueWorkflowValidation } from "./validation.ts";
-import { loadPublicationAttempt, startPublicationAttempt } from "./publication-machine.ts";
-import { PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
+import { openPublication, PUBLICATION_REVALIDATION_MESSAGE } from "@runwield/workflow/publication-runtime";
 import {
     createValidationProgress,
     getCurrentValidationProgress,
     setCurrentValidationProgress,
 } from "./validation-progress.ts";
-import { createExecutionStartPorts } from "./execution-start.ts";
-import { startActiveExecutionWorkflow } from "./workflow.ts";
+import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import {
     attachRecorder,
     makeRecordedSession,
@@ -271,7 +269,9 @@ for (const interruption of ["abandoned catalog lock", "Git commit hook"]) {
                             "verified",
                             JSON.stringify({
                                 result,
-                                publication: await loadPublicationAttempt(fixture.projectRoot, fixture.worktree.id),
+                                publication: await openPublication(fixture.projectRoot)
+                                    .attempt(fixture.worktree.id)
+                                    .load(),
                             }),
                         );
                         assertEquals(
@@ -461,9 +461,7 @@ for (const sealed of [false, true]) {
                 if (phase.kind !== "ok") throw new Error("Missing phase context");
                 assertEquals(phase.context.worktreeBaseBranch, "main");
                 if (sealed) {
-                    await startPublicationAttempt({
-                        projectRoot,
-                        attemptId: worktree.id,
+                    await openPublication(projectRoot).attempt(worktree.id).start({
                         planName: "p",
                         targetBranch: "main",
                         executionBranch: worktree.branch,
@@ -497,7 +495,7 @@ for (const sealed of [false, true]) {
                     assertEquals(result.result.reason, PUBLICATION_REVALIDATION_MESSAGE);
                     assertEquals(result.result.continueValidation, true);
                     assertEquals(await git(projectRoot, ["rev-parse", "release/next"]), mainBefore);
-                    assertEquals(await loadPublicationAttempt(projectRoot, worktree.id), null);
+                    assertEquals(await openPublication(projectRoot).attempt(worktree.id).load(), null);
                     const currentPlan = await loadPlan(worktree.path, "p");
                     assertEquals(currentPlan?.attrs.status, "implemented");
                     assertEquals(currentPlan?.attrs.targetBranch, "release/next");
@@ -566,7 +564,7 @@ for (const targetBranch of ["release/next", " origin/release/next ", undefined])
                     merge: "passed",
                 });
                 assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.outcome, "verified");
-                assertEquals(await loadPublicationAttempt(fixture.projectRoot, fixture.worktree.id), null);
+                assertEquals(await openPublication(fixture.projectRoot).attempt(fixture.worktree.id).load(), null);
                 assertEquals(fixture.uiAPI.messages.join("\n").includes("could not finish adding"), false);
                 const expectedTarget = targetBranch ? "release/next" : "main";
                 assertEquals(

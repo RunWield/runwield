@@ -1,5 +1,5 @@
 import { readControllerRecord, writeControllerState } from "./controllers.ts";
-import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 import type { WorkflowControllerState } from "@runwield/plans/controller-state";
 import { resolveCollectionEpoch, type JournalResult } from "../shared/workflow/metrics-journal.ts";
 import { getWorkflowMetricsCapturePath } from "../shared/workflow/metrics.ts";
@@ -8,6 +8,24 @@ export type RetainedPublicationCompletion = {
     observation: WorkflowControllerState["publicationObservation"];
     shouldObserve: boolean;
 };
+
+/** Read the receipt for an attempt whose registry entry has already been pruned. */
+export async function hasRetainedPublicationReceipt(
+    projectRoot: string,
+    attempt: PublicationAttempt,
+): Promise<boolean> {
+    const state = (await readControllerRecord(projectRoot, { planId: attempt.planId, planName: attempt.planName }))
+        ?.state;
+    const receipt = state?.publicationReceipt;
+    return Boolean(
+        receipt &&
+        receipt.validatedCommit === attempt.validatedCommit &&
+        receipt.publishedCommit === attempt.publishedCommit &&
+        receipt.targetBranch === attempt.targetBranch &&
+        state?.verifiedAt === attempt.verifiedAt &&
+        (!state?.publicationObservation || state.publicationObservation.attemptId === attempt.attemptId),
+    );
+}
 
 export async function retainPublicationCompletion(
     projectRoot: string,

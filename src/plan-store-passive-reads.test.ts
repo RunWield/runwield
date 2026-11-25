@@ -509,7 +509,7 @@ for (const proof of ["matching", "candidate", "published", "target"] as const) {
         try {
             await withRetainedPlanFixture(root, async () => {
                 const { addEntry } = await import("./shared/worktree-registry.ts");
-                const { createPublicationAttempt } = await import("./shared/workflow/publication-attempt.ts");
+                const { createPublicationAttempt } = await import("@runwield/workflow/publication");
                 const path = join(root, "execution");
                 await git(root, ["worktree", "add", "-b", "execution", path]);
                 const publication = {

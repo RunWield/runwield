@@ -21,7 +21,8 @@ import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import type { SequenceReviewDecision } from "../../plan-store/index.ts";
-import type { ActiveExecutionWorkflow, PlanSessionSurface } from "./plan-session-types.ts";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
+import type { PlanSessionSurface } from "./plan-session-types.ts";
 
 /**
  * The review payload as it arrives from the runtime: unvalidated, so every

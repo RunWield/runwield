@@ -1,6 +1,6 @@
 import { AGENTS } from "../../shared/session/agent-registry.ts";
 import { resolvePlanExecutionPolicy } from "@runwield/plans/format";
-import { decidePostExecution } from "../../shared/workflow/decisions.ts";
+import { decidePostExecution } from "@runwield/workflow/decisions";
 import { validatePostExecutionDecision } from "./plan-execution.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";

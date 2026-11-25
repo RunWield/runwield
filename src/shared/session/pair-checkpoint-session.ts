@@ -1,7 +1,7 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "./hosted-session.ts";
 import { readRequestAttemptEntries, type RequestAttemptEntry } from "./request-dispatch.ts";
-import { workflowAttemptKey } from "./task-completion-session.ts";
+import { compareWorkflowAttempts, workflowAttemptKey } from "@runwield/workflow/events";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { readPersistedActiveAgentName } from "./active-agent-session.ts";
 
@@ -36,7 +36,7 @@ type PairReportedEvent = {
     checkpointNumber: number;
     timestampMs: number;
     workflowAttemptKey: string;
-    workflow: import("./hosted-session.ts").ActiveExecutionWorkflow;
+    workflow: import("@runwield/workflow/state").ActiveExecutionWorkflow;
     report: PairCheckpointReport;
     source: PairRequestProvenance;
 };
@@ -47,7 +47,7 @@ type PairResolvedEvent = {
     checkpointId: string;
     timestampMs: number;
     workflowAttemptKey: string;
-    workflow: import("./hosted-session.ts").ActiveExecutionWorkflow;
+    workflow: import("@runwield/workflow/state").ActiveExecutionWorkflow;
     decision: PairCheckpointDecision;
     revisionDirection?: string;
     userTurn: PairRequestProvenance;
@@ -91,7 +91,7 @@ type ResolvePairCheckpointArgs = {
     hostedSession: HostedSession;
     checkpointId: string;
     decision: PairCheckpointDecision;
-    workflow: import("./hosted-session.ts").ActiveExecutionWorkflow;
+    workflow: import("@runwield/workflow/state").ActiveExecutionWorkflow;
     revisionDirection?: string;
     timestampMs?: number;
 };
@@ -241,11 +241,7 @@ export function resolvePairCheckpoint(args: ResolvePairCheckpointArgs): ResolveP
     const current = readCurrentPairCheckpoint(sessionManager);
     if (!current) return { ok: false, reason: "checkpoint_missing" };
     if (current.report.checkpointId !== args.checkpointId) return { ok: false, reason: "checkpoint_stale" };
-    const activeAttempt = workflowAttemptKey(args.workflow);
-    if (
-        current.report.workflow.planName !== args.workflow.planName ||
-        current.report.workflowAttemptKey !== activeAttempt
-    ) {
+    if (!pairCheckpointMatchesWorkflow(current, args.workflow)) {
         return { ok: false, reason: "workflow_mismatch" };
     }
     const userTurn = currentRequestProvenance(hostedSession);
@@ -269,7 +265,7 @@ export function resolvePairCheckpoint(args: ResolvePairCheckpointArgs): ResolveP
         state: "resolved",
         checkpointId: current.report.checkpointId,
         timestampMs: args.timestampMs ?? Date.now(),
-        workflowAttemptKey: activeAttempt,
+        workflowAttemptKey: workflowAttemptKey(args.workflow),
         workflow: { ...args.workflow },
         decision: args.decision,
         ...(args.revisionDirection ? { revisionDirection: args.revisionDirection } : {}),
@@ -307,11 +303,11 @@ export function clearPairCheckpoint(
 
 export function pairCheckpointMatchesWorkflow(
     checkpoint: CurrentPairCheckpoint,
-    workflow: import("./hosted-session.ts").ActiveExecutionWorkflow,
+    workflow: import("@runwield/workflow/state").ActiveExecutionWorkflow,
 ): boolean {
     return (
         checkpoint.report.workflow.planName === workflow.planName &&
-        checkpoint.report.workflowAttemptKey === workflowAttemptKey(workflow)
+        compareWorkflowAttempts(checkpoint.report.workflow, workflow, checkpoint.report.workflowAttemptKey) === "match"
     );
 }
 
@@ -348,7 +344,7 @@ export function restorePairExecutionState(hostedSession: HostedSession): Current
 
 export function hasFinalPairAssent(
     hostedSession: HostedSession,
-    workflow: import("./hosted-session.ts").ActiveExecutionWorkflow,
+    workflow: import("@runwield/workflow/state").ActiveExecutionWorkflow,
 ): boolean {
     const current = readCurrentPairCheckpoint(hostedSession);
     return Boolean(

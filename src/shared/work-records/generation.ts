@@ -19,7 +19,7 @@ import type {
     WorkRecordScope,
     WorkRecordSupersessionCandidate,
 } from "@runwield/plans/work-records";
-import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
+import { ValidationHostRejected, ValidationHostWait } from "@runwield/workflow/host-contract";
 import {
     isPlannedChangeClassification,
     type PlanFrontMatter,
@@ -38,7 +38,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../session/hosted-session.ts";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "../workflow/validation-session-adapter.ts";
-import { settleWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
 import {
     beginWorkRecordCreation,
@@ -549,7 +549,7 @@ export async function generateRecorderSections(
             );
             if (event) {
                 const sections = normalizeRecorderOutput(event.payload);
-                settleWorkflowToolEvent(hostedSession, event);
+                workflowEvents(hostedSession).settle(event);
                 return sections;
             }
             const lastAssistant = messages.findLast((message) => message.role === "assistant");

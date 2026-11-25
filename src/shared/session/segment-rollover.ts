@@ -23,7 +23,7 @@ type RuntimeSessionManager = import("./hosted-session.ts").MinimalSessionManager
 type HostedManagedSession = {
     cwd: string;
     getManagedMetadata: () => ManagedSessionMetadata | null;
-    getActiveExecutionWorkflow: () => import("./execution-workflow-session.ts").ActiveExecutionWorkflow | null;
+    getActiveExecutionWorkflow: () => import("@runwield/workflow/state").ActiveExecutionWorkflow | null;
     getTutorialContext: () => import("./tutorial-context-session.ts").TutorialContext | null;
     getRootSessionManager: () => RuntimeSessionManager | null;
     dehydrateManagedSession: () => void;

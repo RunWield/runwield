@@ -29,8 +29,8 @@ import {
     settleWorktreeAttempt,
 } from "../worktree.ts";
 import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.ts";
-import { executePlan, startActiveExecutionWorkflow } from "./workflow.ts";
-import { createExecutionStartPorts } from "./execution-start.ts";
+import { executePlan } from "./workflow.ts";
+import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { captureWorktreeTree } from "./git-snapshot.ts";
 import { runInitCommand } from "../../cmd/init/index.ts";
 import { createSessionRuntime } from "../session/session-runtime.ts";

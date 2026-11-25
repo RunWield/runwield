@@ -1,10 +1,11 @@
 import type { ProjectRegistry, RegisteredProject } from "@runwield/projects";
+import { publicationPhaseAtLeast } from "@runwield/workflow/publication";
 import type { PlanReadAvailability } from "../../../plan-store/index.ts";
 import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
 /** @module ui/workspace/server/owner-dashboard */
 
 import { compareChildPlansByOrder, isSequencePlan } from "@runwield/plans/format";
-import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
+import { readWorkflowActivity, type WorkflowActivity } from "@runwield/workflow";
 import { loadRegisteredPlanSummaryCatalog } from "./plan-adapter.ts";
 import type { OwnerProjectView } from "./owner-projects.ts";
 import { requireOwnerProjectRoot, serializeOwnerProject } from "./owner-projects.ts";
@@ -109,7 +110,7 @@ type SidebarProject = Omit<OwnerProjectView, "healthStatus"> & {
     dashboardPlans?: OwnerPlan[];
     dashboardSessions?: DashboardItem[];
     activeEvidenceByPlan?: Map<string, ClassificationEvidence>;
-    registryByPlan?: Map<string, WorktreeRegistryEntry | null>;
+    activityByPlan?: Map<string, WorkflowActivity | null>;
     root?: string;
 };
 
@@ -190,15 +191,6 @@ const STATUS_PRIORITY: Record<DashboardCategory, number> = {
     "in-progress": 2,
     "recently-finished": 3,
 };
-const PUBLICATION_PHASE_ORDER = [
-    "candidate_sealed",
-    "artifacts_committed",
-    "target_integrated",
-    "target_published",
-    "publication_verified",
-    "cleanup_complete",
-];
-
 function safeText(value?: string | null): string {
     return String(value || "");
 }
@@ -255,20 +247,7 @@ function isDashboardEligible(plan: OwnerPlan): boolean {
     return true;
 }
 
-function publicationPhaseAtLeast(entry: WorktreeRegistryEntry | null, phase: string): boolean {
-    const current = safeText(entry?.publication?.phase);
-    return PUBLICATION_PHASE_ORDER.indexOf(current) >= PUBLICATION_PHASE_ORDER.indexOf(phase);
-}
-
-function registryMatchesPlan(plan: OwnerPlan, registry: WorktreeRegistryEntry | null): boolean {
-    return Boolean(
-        registry?.publication &&
-        registry.publication.planId === plan.planId &&
-        registry.publication.attemptId === registry.id,
-    );
-}
-
-function completionTime(plan: OwnerPlan, registry: WorktreeRegistryEntry | null = null): string {
+function completionTime(plan: OwnerPlan, activity: WorkflowActivity | null = null): string {
     const attrs = plan.attrs || {};
     const status = planStatus(plan);
     if (status === "user_verified") return safeText(attrs.userVerifiedAt);
@@ -277,7 +256,7 @@ function completionTime(plan: OwnerPlan, registry: WorktreeRegistryEntry | null 
         return safeText(attrs.epicDoneEnoughAt || attrs.validatedAt);
     }
     if (status === "verified") {
-        return safeText(registryMatchesPlan(plan, registry) ? registry?.publication?.verifiedAt : attrs.verifiedAt);
+        return safeText(activity?.publication ? activity.publication.verifiedAt : attrs.verifiedAt);
     }
     if (status === "validated" && attrs.verifiedAt) return safeText(attrs.verifiedAt);
     if (status === "validated" && attrs.deliveryEvidence?.mode === "non_git_in_place") {
@@ -285,10 +264,10 @@ function completionTime(plan: OwnerPlan, registry: WorktreeRegistryEntry | null 
     }
     if (
         status === "validated" &&
-        registryMatchesPlan(plan, registry) &&
-        publicationPhaseAtLeast(registry, "publication_verified")
+        activity?.publication &&
+        publicationPhaseAtLeast(activity.publication.phase, "publication_verified")
     ) {
-        return safeText(registry?.publication?.verifiedAt || attrs.verifiedAt || attrs.validatedAt);
+        return safeText(activity?.publication?.verifiedAt || attrs.verifiedAt || attrs.validatedAt);
     }
     return "";
 }
@@ -305,13 +284,13 @@ type ClassificationEvidence = {
 
 function classifyPlan(
     plan: OwnerPlan,
-    registry: WorktreeRegistryEntry | null = null,
+    activity: WorkflowActivity | null = null,
     evidence: ClassificationEvidence = {},
 ): DashboardCategory | null {
     if (!isDashboardEligible(plan)) return null;
     const status = planStatus(plan);
     if (evidence.liveQuestion) return "needs-you";
-    if (completionTime(plan, registry)) return "recently-finished";
+    if (completionTime(plan, activity)) return "recently-finished";
     if (READY.has(status) && evidence.ready) return "ready";
     if (evidence.activeSession) return "in-progress";
     if (evidence.stopped && UNFINISHED_EXECUTION.has(status)) return "needs-you";
@@ -322,7 +301,7 @@ function dashboardItem(
     project: Pick<RegisteredProject, "projectId" | "displayName">,
     plan: OwnerPlan,
     category: DashboardCategory,
-    registry: WorktreeRegistryEntry | null = null,
+    activity: WorkflowActivity | null = null,
     evidence: ClassificationEvidence = {},
 ): DashboardItem {
     return {
@@ -351,12 +330,12 @@ function dashboardItem(
             category === "needs-you" && evidence.attentionHref
                 ? evidence.attentionHref
                 : planHref(project.projectId, plan.planId),
-        recentAt: completionTime(plan, registry),
+        recentAt: completionTime(plan, activity),
         updatedAt: latestTimestamp(
             planUpdatedAt(plan),
             evidence.updatedAt,
-            registry?.updatedAt,
-            completionTime(plan, registry),
+            activity?.updatedAt,
+            completionTime(plan, activity),
         ),
     };
 }
@@ -505,16 +484,16 @@ function operationPlanId(store: OwnerStore, projectId: string, operation: Worksp
     return safeText(associations.filter((association) => association.committedGeneration !== null).at(-1)?.planId);
 }
 
-async function registryFor(
+async function activityFor(
     root: string,
     plan: OwnerPlan,
     diagnostics: Diagnostic[],
     projectId: string,
     onFailure: () => void,
-): Promise<WorktreeRegistryEntry | null> {
+): Promise<WorkflowActivity | null> {
     if (!safeText(plan.planId)) return null;
     try {
-        return await findByPlanId(root, plan.planId);
+        return (await readWorkflowActivity(root, [plan.planId])).get(plan.planId) ?? null;
     } catch (error) {
         onFailure();
         diagnostics.push({
@@ -780,9 +759,9 @@ async function projectPayload(
     // A resolved live socket can publish its standalone Session without waiting for other sockets.
     for (const task of liveBySession.values()) task.then(publishStandalone);
     publishStandalone();
-    const registries = new Map<string, WorktreeRegistryEntry | null>();
-    const registryBatch = root
-        ? findByPlanIds(
+    const activities = new Map<string, WorkflowActivity | null>();
+    const activityBatch = root
+        ? readWorkflowActivity(
               root,
               plans.map((plan) => plan.planId),
           ).catch(() => null)
@@ -820,7 +799,7 @@ async function projectPayload(
         Array.from({ length: Math.min(6, plans.length) }, async () => {
             while (nextPlan < plans.length) {
                 const plan = plans[nextPlan++];
-                const [, batch] = await Promise.all([liveForPlan(plan), registryBatch]);
+                const [, batch] = await Promise.all([liveForPlan(plan), activityBatch]);
                 let ready = false;
                 if (root && READY.has(planStatus(plan))) {
                     try {
@@ -848,14 +827,14 @@ async function projectPayload(
                         reportFailure(["ready"]);
                     }
                 }
-                const registry = batch
+                const activity = batch
                     ? batch.get(plan.planId) || null
                     : root
-                      ? await registryFor(root, plan, diagnostics, project.projectId, () =>
+                      ? await activityFor(root, plan, diagnostics, project.projectId, () =>
                             reportFailure(categoriesFor(plan)),
                         )
                       : null;
-                registries.set(plan.planId, registry);
+                activities.set(plan.planId, activity);
                 const evidence = activeEvidenceByPlan.get(plan.planId) || {};
                 for (const [operationId, operation] of currentOperations) {
                     if (operation.projectId !== project.projectId || operation.status !== "running") continue;
@@ -879,24 +858,24 @@ async function projectPayload(
                 }
                 if (ready) evidence.ready = true;
                 activeEvidenceByPlan.set(plan.planId, evidence);
-                const category = classifyPlan(plan, registry, evidence);
-                if (category) publish(dashboardItem(project, plan, category, registry, evidence));
+                const category = classifyPlan(plan, activity, evidence);
+                if (category) publish(dashboardItem(project, plan, category, activity, evidence));
                 finish(categoriesFor(plan));
             }
         }),
     );
-    // Empty Projects have no Plan worker to await their registry read.
+    // Empty Projects have no Plan worker to await their activity read.
     // Drain it before reporting completion or releasing the Project's files.
-    await Promise.all([allLive, registryBatch]);
+    await Promise.all([allLive, activityBatch]);
     plansForSidebar.sort((left, right) => {
         const leftHold = planStatus(left) === "on_hold" ? 1 : 0;
         const rightHold = planStatus(right) === "on_hold" ? 1 : 0;
         if (leftHold !== rightHold) return leftHold - rightHold;
         const leftCategory =
-            classifyPlan(left, registries.get(left.planId) || null, activeEvidenceByPlan.get(left.planId) || {}) ||
+            classifyPlan(left, activities.get(left.planId) || null, activeEvidenceByPlan.get(left.planId) || {}) ||
             "recently-finished";
         const rightCategory =
-            classifyPlan(right, registries.get(right.planId) || null, activeEvidenceByPlan.get(right.planId) || {}) ||
+            classifyPlan(right, activities.get(right.planId) || null, activeEvidenceByPlan.get(right.planId) || {}) ||
             "recently-finished";
         return (
             STATUS_PRIORITY[leftCategory] - STATUS_PRIORITY[rightCategory] ||
@@ -917,7 +896,7 @@ async function projectPayload(
         dashboardPlans: plans,
         dashboardSessions,
         activeEvidenceByPlan,
-        registryByPlan: registries,
+        activityByPlan: activities,
     };
 }
 
@@ -1265,7 +1244,7 @@ async function readOwnerDashboard(
                     delete project.dashboardPlans;
                     delete project.dashboardSessions;
                     delete project.activeEvidenceByPlan;
-                    delete project.registryByPlan;
+                    delete project.activityByPlan;
                     delete project.root;
                     projects[index] = project;
                 } catch (error) {

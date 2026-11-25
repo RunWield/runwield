@@ -26,7 +26,7 @@ import { HostedSession } from "../session/hosted-session.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
-import { createPublicationAttempt } from "./publication-attempt.ts";
+import { createPublicationAttempt } from "@runwield/workflow/publication";
 import { findCompletionSiblings, prepareCompletionSiblings } from "../../plan-store/index.ts";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// app\n" });

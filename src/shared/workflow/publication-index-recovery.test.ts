@@ -22,12 +22,7 @@ import { publicationCopiesForCheckout } from "../../plan-store/index.ts";
 import { syncWorkRecordToIndex } from "../work-records/index-adapter.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
-import {
-    advanceStoredPublication,
-    cleanupStoredPublication,
-    loadPublicationAttempt,
-    startPublicationAttempt,
-} from "./publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 
 const planId = "11111111-1111-4111-8111-111111111111";
 const predecessorId = "22222222-2222-4222-8222-222222222222";
@@ -124,9 +119,7 @@ test("remote delivery retains verification through index failure and recovers in
             await git(entry.path, ["add", "."]);
             await git(entry.path, ["commit", "-m", "Seal candidate and pending record"]);
             const artifactCommit = await git(entry.path, ["rev-parse", "HEAD"]);
-            let attempt = await startPublicationAttempt({
-                projectRoot: root,
-                attemptId: entry.id,
+            let attempt = await openPublication(root).attempt(entry.id).start({
                 planName: "demo",
                 targetBranch: "main",
                 executionBranch: entry.branch,
@@ -134,10 +127,12 @@ test("remote delivery retains verification through index failure and recovers in
                 validatedCommit: artifactCommit,
                 targetHeadAtSeal: primaryHead,
             });
-            attempt = await advanceStoredPublication(root, attempt, "artifacts_committed", {
-                artifactCommit,
-                planPaths: [planPath],
-            });
+            attempt = await openPublication(root)
+                .resume(attempt)
+                .advance("artifacts_committed", {
+                    artifactCommit,
+                    planPaths: [planPath],
+                });
             const delivered = await publishExecutionWorktreeIsolated({
                 projectRoot: root,
                 executionCwd: entry.path,
@@ -148,10 +143,10 @@ test("remote delivery retains verification through index failure and recovers in
                 allowedPlanPaths: [planPath],
                 publicationRoot: attempt.publicationRoot,
                 onIntegrated: async (evidence) => {
-                    attempt = await advanceStoredPublication(root, attempt, "target_integrated", evidence);
+                    attempt = await openPublication(root).resume(attempt).advance("target_integrated", evidence);
                 },
                 onPublished: async (evidence) => {
-                    attempt = await advanceStoredPublication(root, attempt, "target_published", evidence);
+                    attempt = await openPublication(root).resume(attempt).advance("target_published", evidence);
                 },
                 // A stopped process did not persist onVerified or index the delivery.
             });
@@ -165,9 +160,11 @@ test("remote delivery retains verification through index failure and recovers in
             );
             assertEquals(index.snapshot().length, 1);
             await assertRejects(() => git(root, ["cat-file", "-e", `${delivered.publicationCommit}^{commit}`]));
-            const failed = await cleanupStoredPublication(root, attempt, {
-                run: () => Promise.reject(new Error("Index service unavailable")),
-            });
+            const failed = await openPublication(root)
+                .resume(attempt)
+                .cleanup({
+                    run: () => Promise.reject(new Error("Index service unavailable")),
+                });
             assertEquals(failed.complete, false);
             assertEquals(failed.attempt.phase, "publication_verified");
             assertStringIncludes(failed.details.join("\n"), "Index service unavailable");
@@ -199,13 +196,13 @@ test("remote delivery retains verification through index failure and recovers in
             await git(root, ["remote", "add", "decoy", decoy]);
             await git(root, ["config", "branch.main.remote", "decoy"]);
             await git(root, ["config", "branch.main.merge", "refs/heads/unrelated"]);
-            const restarted = await loadPublicationAttempt(root, entry.id);
+            const restarted = await openPublication(root).attempt(entry.id).load();
             assert(restarted);
             assertEquals(restarted.upstreamRemote, "origin");
             assertEquals(restarted.upstreamBranch, "main");
-            const recovered = await cleanupStoredPublication(root, restarted, index);
+            const recovered = await openPublication(root).resume(restarted).cleanup(index);
             assertEquals(recovered.complete, true, recovered.details.join("\n"));
-            assertEquals(await loadPublicationAttempt(root, entry.id), null);
+            assertEquals(await openPublication(root).attempt(entry.id).load(), null);
             const documents = index.snapshot();
             assertEquals(documents.length, 2);
             assert(
@@ -222,7 +219,7 @@ test("remote delivery retains verification through index failure and recovers in
             assertEquals(await fsReadFile(join(root, planPath), "utf8"), primaryPlan);
             assertEquals(await git(root, ["rev-parse", "HEAD"]), primaryHead);
             // A repeated cleanup retries the derived index without duplicating records.
-            const repeated = await cleanupStoredPublication(root, recovered.attempt, index);
+            const repeated = await openPublication(root).resume(recovered.attempt).cleanup(index);
             assertEquals(repeated.complete, true);
             assertEquals(index.snapshot().length, 2);
             assertEquals(
@@ -297,9 +294,7 @@ for (const mode of ["local", "remote"] as const) {
                     await git(entry.path, ["add", "."]);
                     await git(entry.path, ["commit", "-m", `Prepare ${name}`]);
                     const commit = await git(entry.path, ["rev-parse", "HEAD"]);
-                    let attempt = await startPublicationAttempt({
-                        projectRoot: root,
-                        attemptId: entry.id,
+                    let attempt = await openPublication(root).attempt(entry.id).start({
                         planName: name,
                         targetBranch: "main",
                         executionBranch: entry.branch,
@@ -308,7 +303,7 @@ for (const mode of ["local", "remote"] as const) {
                         targetHeadAtSeal: entry.baseCommit,
                     });
                     const paths = [`docs/plans/${name}.md`];
-                    attempt = await advanceStoredPublication(root, attempt, "artifacts_committed", {
+                    attempt = await openPublication(root).resume(attempt).advance("artifacts_committed", {
                         artifactCommit: commit,
                         planPaths: paths,
                     });
@@ -322,30 +317,34 @@ for (const mode of ["local", "remote"] as const) {
                         allowedPlanPaths: paths,
                         publicationRoot: attempt.publicationRoot,
                         onIntegrated: async (evidence) => {
-                            attempt = await advanceStoredPublication(root, attempt, "target_integrated", evidence);
+                            attempt = await openPublication(root)
+                                .resume(attempt)
+                                .advance("target_integrated", evidence);
                         },
                         onPublished: async (evidence) => {
-                            attempt = await advanceStoredPublication(root, attempt, "target_published", evidence);
+                            attempt = await openPublication(root).resume(attempt).advance("target_published", evidence);
                         },
                     });
                     return attempt;
                 };
 
                 const first = await publish("demo", successorId, [predecessorId]);
-                const delayed = await cleanupStoredPublication(root, first, {
-                    run: () => Promise.reject(new Error("First index attempt failed")),
-                });
+                const delayed = await openPublication(root)
+                    .resume(first)
+                    .cleanup({
+                        run: () => Promise.reject(new Error("First index attempt failed")),
+                    });
                 assertEquals(delayed.complete, false);
                 const second = await publish("later", laterId, [successorId], true);
-                const settled = await cleanupStoredPublication(root, second, index);
+                const settled = await openPublication(root).resume(second).cleanup(index);
                 assertEquals(settled.complete, true, settled.details.join("\n"));
                 const earlierDocument = () =>
                     index.snapshot().find((item) => item.tags.includes(`work-record:${successorId}`));
                 assert(earlierDocument()?.tags.includes("status:superseded"));
                 const beforeRetry = earlierDocument();
-                const restarted = await loadPublicationAttempt(root, first.attemptId);
+                const restarted = await openPublication(root).attempt(first.attemptId).load();
                 assert(restarted);
-                const retried = await cleanupStoredPublication(root, restarted, index);
+                const retried = await openPublication(root).resume(restarted).cleanup(index);
                 assertEquals(retried.complete, true, retried.details.join("\n"));
                 assertEquals(earlierDocument(), beforeRetry);
                 assert(

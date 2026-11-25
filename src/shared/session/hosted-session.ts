@@ -3,7 +3,7 @@
  * Per-conversation runtime state owned by a SessionHost entry.
  */
 
-import type { ActiveExecutionWorkflow } from "./execution-workflow-session.ts";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import type { ThinkingLevel } from "./named-invocation.ts";
 import type { ContextUsageState } from "./session-context-report.ts";
 import type { RuntimeContextModel, RuntimeContextSettingsManager } from "./runtime/types.ts";
@@ -58,7 +58,7 @@ import { BackgroundTasks } from "./background-tasks.ts";
 import { clearBackgroundSteeringForCompletion } from "./runtime/turns.ts";
 import { PlanReviewConversationOwner } from "./plan-review-conversation.ts";
 
-export type { ActiveExecutionWorkflow, ThinkingLevel };
+export type { ThinkingLevel };
 
 export interface AgentInfo {
     displayName: string;

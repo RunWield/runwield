@@ -27,7 +27,7 @@ import type {
     RuntimeQueuedMessageEvent,
     RuntimeAttentionRequestedEvent,
 } from "./session-runtime-events.ts";
-import type { ActiveExecutionWorkflow } from "./execution-workflow-session.ts";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import type { LastPlanReviewReference } from "./file-session-store-types.ts";
 import { getRuntimeRootAgentSession } from "./runtime/support.ts";
 import { seedPlan } from "../testing/plan-state-fixture.ts";
@@ -83,7 +83,7 @@ import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts"
 import { McpIntegration } from "../mcp/integration.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import { buildSemanticRepairSegmentContinuation } from "../workflow/execution-segment-handoff.ts";
-import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "../workflow/workflow-tool-events.ts";
+import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "@runwield/workflow/events";
 import { SUBAGENTS } from "./agent-registry.ts";
 import { getHomeDir } from "../../constants.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";

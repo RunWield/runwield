@@ -324,7 +324,7 @@ export class RuntimeAgentSettings {
 
     async setActiveExecutionWorkflow(
         sessionId: string,
-        workflow: import("../hosted-session.ts").ActiveExecutionWorkflow,
+        workflow: import("@runwield/workflow/state").ActiveExecutionWorkflow,
     ) {
         return await this.managedOperations.runManagedStandaloneMutation(
             sessionId,

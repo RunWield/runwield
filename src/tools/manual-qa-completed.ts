@@ -3,7 +3,7 @@ import { defineTool, type SessionManager } from "@earendil-works/pi-coding-agent
 import type { HostedSession } from "../shared/session/hosted-session.ts";
 import { recordManualQaChecklistMessage } from "../shared/session/workflow-messages.ts";
 import { emitAssistantMessage } from "../shared/session/session-runtime-events.ts";
-import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 
 const definition = toolRegistry.get("manual_qa_completed").definition;
 
@@ -37,8 +37,7 @@ export function createManualQaCompletedTool(options: ManualQaOptions) {
                 workflowMessage: "manual_qa_completed",
                 toolCallId,
             });
-            publishWorkflowToolEvent({
-                hostedSession: options.hostedSession,
+            workflowEvents(options.hostedSession).publish({
                 toolCallId,
                 kind: "manual_qa_completed",
                 payload: { checklistMarkdown: text },

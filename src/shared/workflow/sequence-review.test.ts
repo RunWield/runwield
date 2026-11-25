@@ -19,12 +19,8 @@ import { resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { applySequenceReviewDecision, prepareSequenceReview } from "../../plan-store/index.ts";
-import {
-    claimWorkflowToolEvent,
-    listPendingWorkflowToolEvents,
-    waitForWorkflowToolEvent,
-} from "./workflow-tool-events.ts";
-import type { PlanWrittenEventPayload } from "./workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
+import type { PlanWrittenEventPayload } from "@runwield/workflow/events";
 import { normalizePlanApprovalAction, primaryPlanApprovalActionForClassification } from "./plan-approval.ts";
 import { isEpicPlan, isProjectPlan, isSequencePlan, projectPlanType } from "@runwield/plans/format";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
@@ -98,12 +94,12 @@ for (const approvalAction of ["run", "later"] as const) {
             for (const doc of documents) {
                 assertEquals((await loadPlan(cwd, doc.planName))?.attrs.status, "ready_for_work");
             }
-            const events = listPendingWorkflowToolEvents(hostedSession);
+            const events = workflowEvents(hostedSession).pending();
             assertEquals(events.length, 1);
             const expectedPlanName = approvalAction === "run" ? "sequence/index" : "sequence";
             assertEquals(result.workflowOutcome?.planName, expectedPlanName);
             assertEquals(result.workflowOutcome?.outcome, approvalAction === "run" ? "approved_execute" : "saved");
-            const event = claimWorkflowToolEvent(hostedSession, { kinds: ["plan_written"], owningSession: null });
+            const event = workflowEvents(hostedSession).claim({ kinds: ["plan_written"], owningSession: null });
             assertEquals(event?.kind, "plan_written");
             const payload = event?.payload as PlanWrittenEventPayload | undefined;
             assertEquals(payload?.planName, expectedPlanName);
@@ -166,7 +162,7 @@ test("Sequence rejects stale child content before approving any member", async (
         assertEquals(result.approved, false);
         assertStringIncludes(result.feedback || "", "changed");
         assertEquals((await loadPlan(cwd, "sequence/index"))?.attrs.status, "draft");
-        assertEquals(listPendingWorkflowToolEvents(hostedSession).length, 0);
+        assertEquals(workflowEvents(hostedSession).pending().length, 0);
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -278,7 +274,7 @@ test("plan_written reviews all Sequence tabs and dispatches the first child with
         );
         assertEquals((result.details as ToolOutcome).outcome, "approved_execute");
         assertEquals((result.details as ToolOutcome).planName, "sequence/index");
-        assertEquals(listPendingWorkflowToolEvents(hostedSession).length, 1);
+        assertEquals(workflowEvents(hostedSession).pending().length, 1);
     } finally {
         await fsRm(cwd, { recursive: true });
     }
@@ -456,14 +452,16 @@ for (const failurePoint of ["acceptance", "commit"] as const) {
             const { cwd, hostedSession } = await setup();
             const originalRename = fs.rename;
             const abort = new AbortController();
-            const waiting = waitForWorkflowToolEvent(hostedSession, {
-                kinds: ["plan_written"],
-                owningSession: null,
-                signal: abort.signal,
-            }).catch((error) => {
-                if (!abort.signal.aborted) throw error;
-                return null;
-            });
+            const waiting = workflowEvents(hostedSession)
+                .wait({
+                    kinds: ["plan_written"],
+                    owningSession: null,
+                    signal: abort.signal,
+                })
+                .catch((error) => {
+                    if (!abort.signal.aborted) throw error;
+                    return null;
+                });
             try {
                 const documents = await prepareSequenceReview(cwd, "sequence");
                 const journalDir = dirname(planFixtureJournalPath(cwd, "unused"));
@@ -504,17 +502,13 @@ for (const failurePoint of ["acceptance", "commit"] as const) {
                 assertStringIncludes(result.feedback || "", `injected ${failurePoint}`);
                 abort.abort();
                 assertEquals(await waiting, null, "a failed decision must not wake the execution consumer");
-                assertEquals(listPendingWorkflowToolEvents(hostedSession), []);
+                assertEquals(workflowEvents(hostedSession).pending(), []);
                 const reopened = new HostedSession({
                     id: "reopened",
                     cwd,
                     sessionManager: hostedSession.getRootSessionManager(),
                 });
-                assertEquals(
-                    listPendingWorkflowToolEvents(reopened),
-                    [],
-                    "no failed approval may replay from the Session",
-                );
+                assertEquals(workflowEvents(reopened).pending(), [], "no failed approval may replay from the Session");
                 for (const doc of documents) {
                     const restored = await loadPlan(cwd, doc.planName);
                     assertEquals(restored?.markdown, doc.plan);
@@ -533,7 +527,7 @@ for (const failurePoint of ["acceptance", "commit"] as const) {
                     },
                 });
                 assertEquals(retry.approved, true, retry.feedback);
-                assertEquals(listPendingWorkflowToolEvents(hostedSession).length, 1);
+                assertEquals(workflowEvents(hostedSession).pending().length, 1);
                 assertEquals(retry.workflowOutcome?.planName, "sequence/index");
             } finally {
                 fs.rename = originalRename;
@@ -548,11 +542,12 @@ for (const failurePoint of ["acceptance", "commit"] as const) {
 test("Sequence live consumer sees committed approval before receiving the child handoff", async () => {
     const { cwd, hostedSession } = await setup();
     const abort = new AbortController();
-    const waiting = waitForWorkflowToolEvent(hostedSession, {
-        kinds: ["plan_written"],
-        owningSession: null,
-        signal: abort.signal,
-    })
+    const waiting = workflowEvents(hostedSession)
+        .wait({
+            kinds: ["plan_written"],
+            owningSession: null,
+            signal: abort.signal,
+        })
         .then((event) => {
             const dir = dirname(planFixtureJournalPath(cwd, "unused"));
             const journals = [...fsReaddirSync(dir, { withFileTypes: true })].filter((entry) =>
@@ -621,7 +616,7 @@ test("Sequence preserves committed approval when Session publication fails and c
         });
         assertEquals(result.cancellationReason, "sequence_handoff_failed");
         assertStringIncludes(result.feedback || "", "decision was saved");
-        assertEquals(listPendingWorkflowToolEvents(hostedSession), []);
+        assertEquals(workflowEvents(hostedSession).pending(), []);
         for (const doc of documents) {
             assertEquals((await loadPlan(cwd, doc.planName))?.attrs.status, "ready_for_work");
         }
@@ -636,7 +631,7 @@ test("Sequence preserves committed approval when Session publication fails and c
         });
         assertEquals(retry.approved, true, retry.feedback);
         assertEquals(retry.cancellationReason, undefined);
-        assertEquals(listPendingWorkflowToolEvents(hostedSession).length, 1);
+        assertEquals(workflowEvents(hostedSession).pending().length, 1);
     } finally {
         manager.appendCustomEntry = append;
         await fsRm(cwd, { recursive: true });

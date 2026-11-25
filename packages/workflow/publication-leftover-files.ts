@@ -1,5 +1,5 @@
 import { rename } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
 import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
@@ -30,7 +30,7 @@ export async function preserveUnregisteredPublicationFiles(
     executionCwd: string,
 ): Promise<string | undefined> {
     const source = await fsRealpath(executionCwd);
-    if (source === await fsRealpath(projectRoot)) return undefined;
+    if (source === (await fsRealpath(projectRoot))) return undefined;
     if (!(await fsLstat(executionCwd)).isDirectory()) return undefined;
     const registered = await git(projectRoot, ["worktree", "list", "--porcelain"]);
     for (const line of registered.split("\n")) {

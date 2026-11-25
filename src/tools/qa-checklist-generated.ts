@@ -1,7 +1,7 @@
 import { toolRegistry } from "@runwield/tools";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { workflowEpicArtifacts } from "../plan-store/index.ts";
-import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
 
 const definition = toolRegistry.get("qa_checklist_generated").definition;
@@ -35,8 +35,7 @@ export function createQaChecklistGeneratedTool(options: QaChecklistGeneratedTool
                 });
                 const details = { outcome: result.status, relativePath: result.relativePath };
                 if (options.hostedSession) {
-                    publishWorkflowToolEvent({
-                        hostedSession: options.hostedSession,
+                    workflowEvents(options.hostedSession).publish({
                         toolCallId,
                         kind: "qa_checklist_generated",
                         payload: {

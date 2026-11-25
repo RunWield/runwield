@@ -1,7 +1,7 @@
 export type HostDeliveryMode = "publication" | "in_place";
 /** Typed process-independent waits. Outcomes are claims; the engine checks them. */
-import type { ReviewCompletePayload } from "./review-outcome.ts";
-import type { ReviewDiffScope, ReviewDiffSpan } from "./review-inspection.ts";
+import type { ReviewCompletePayload } from "../../src/shared/workflow/review-outcome.ts";
+import type { ReviewDiffScope, ReviewDiffSpan } from "../../src/shared/workflow/review-inspection.ts";
 import type {
     PendingHostDecision,
     PendingHostRecorder,
@@ -11,7 +11,7 @@ import type {
     ValidationInteractionResponse,
     ValidationRepairIdentity,
 } from "@runwield/plans/controller-state";
-import type { ValidationRecoveryResult } from "./validation-recovery.ts";
+import type { ValidationRecoveryResult } from "../../src/shared/workflow/validation-recovery.ts";
 
 export type ValidationReviewerIdentity = ValidationHostIdentity & {
     semanticRound: number;
@@ -39,7 +39,7 @@ export type ValidationHostResume =
           identity: ValidationReviewerIdentity;
           outcome: ReviewCompletePayload | null;
           coverage: ReviewDiffSpan[];
-          failure?: import("./validation-operational-errors.ts").ValidationOperationalFailure;
+          failure?: import("../../src/shared/workflow/validation-operational-errors.ts").ValidationOperationalFailure;
       }
     | { kind: "decision"; identity: ValidationDecisionIdentity; answer: ValidationInteractionResponse }
     | { kind: "task_completed"; identity: ValidationRepairIdentity; report: string }

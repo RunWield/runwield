@@ -1,0 +1,22 @@
+{
+    "name": "@runwield/workflow",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./index.ts",
+        "./decisions": "./decisions.ts",
+        "./events": "./events.ts",
+        "./host-contract": "./host-contract.ts",
+        "./interactions": "./interactions.ts",
+        "./publication": "./publication.ts",
+        "./publication-runtime": "./publication-runtime.ts",
+        "./routing": "./routing.ts",
+        "./state": "./state.ts"
+    },
+    "dependencies": {
+        "@runwield/agents": "workspace:*",
+        "@runwield/plans": "workspace:*",
+        "@runwield/projects": "workspace:*",
+        "@runwield/tools": "workspace:*"
+    }
+}

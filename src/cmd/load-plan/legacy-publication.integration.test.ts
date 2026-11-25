@@ -25,7 +25,7 @@ import {
     advancePublicationAttempt,
     createPublicationAttempt,
     recordPublicationFailure,
-} from "../../shared/workflow/publication-attempt.ts";
+} from "@runwield/workflow/publication";
 import { findById } from "../../shared/worktree-registry.ts";
 import type { EditorAPI, UiAPI } from "../../ui/tui/api.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";

@@ -11,7 +11,6 @@ import {
     resolvePlanExecutionPolicy,
     assertNotReservedEpicArtifactPlanName,
     canonicalizeStoredPlanName,
-    type PlanClassification,
 } from "@runwield/plans/format";
 import { applySequenceReviewDecision, prepareSequenceReview } from "../plan-store/index.ts";
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../plan-store/index.ts";
@@ -33,7 +32,7 @@ import { rememberPlannedVerificationCommand } from "../shared/workflow/planned-v
 
 import { pathToFileURL as toFileUrl } from "node:url";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
-import { toolRegistry, type WorkKind } from "@runwield/tools";
+import { toolRegistry } from "@runwield/tools";
 import { CLI_BIN } from "../constants.ts";
 import { ensurePlanIdentity, planDocumentsForCheckout } from "../plan-store/index.ts";
 import { recordPlanEvent } from "../plan-store/index.ts";
@@ -56,18 +55,12 @@ import {
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
 } from "../shared/workflow/plan-review-recovery.ts";
-import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
-import type { PlanFrontMatter } from "@runwield/plans";
+import type { TriageMeta } from "@runwield/workflow/state";
 
 const planWritten = toolRegistry.get("plan_written");
 const triageReport = toolRegistry.get("triage_report");
-
-export interface TriageMeta extends Partial<PlanFrontMatter> {
-    classification?: PlanClassification;
-    workKind?: WorkKind;
-    complexity?: "LOW" | "MEDIUM" | "HIGH";
-}
 
 interface ReviewImage {
     base64: string;
@@ -390,8 +383,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                         .replace(/^docs\/plans\//i, "")
                         .replace(/\.md$/i, "")
                         .trim();
-                    publishWorkflowToolEvent({
-                        hostedSession,
+                    workflowEvents(hostedSession).publish({
                         toolCallId,
                         kind: "plan_written",
                         payload: {

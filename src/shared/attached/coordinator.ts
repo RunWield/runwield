@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { PlanAccessMismatchError } from "../../plan-store/index.ts";
 import { readPlanPublicationReference } from "../../plan-store/index.ts";
 import { capturePlanReviewInput } from "../../plan-store/index.ts";
@@ -35,15 +36,9 @@ import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 import { parseRecorderSections } from "../work-records/generation.ts";
 import { stat as fsStat } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
-import {
-    createExecutionStartPorts,
-    reconcileExecutionPreparationLocation,
-    startActiveExecutionWorkflow,
-} from "../workflow/execution-start.ts";
-import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
-import { findActiveByPlanName, findById, listEntries } from "../worktree-registry.ts";
+import { findActiveByPlanName, findById } from "../worktree-registry.ts";
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative } from "node:path";
 import { type PlanFrontMatter } from "@runwield/plans";
@@ -65,7 +60,8 @@ import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.ts";
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
 import { type ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { toolRegistry, type TriageOutcome } from "@runwield/tools";
+import type { TriageOutcome } from "@runwield/tools";
+import { routeAttachedTriage } from "@runwield/workflow/routing";
 import {
     type AttachedActionReadEnvelope,
     type AttachedReadOperationName,
@@ -129,13 +125,7 @@ import {
     writeAttachedWorkflowRecord,
 } from "./record-store.ts";
 import { getLockHostname, isLockHolderGone } from "../process-liveness.ts";
-import { assertHostReviewerCandidate } from "../workflow/validation-host-state.ts";
-import { continueHostTurnValidation, reconcileConsumedHostResume } from "../workflow/validation-host-turn.ts";
-import {
-    sameHostIdentity,
-    ValidationHostRejected,
-    type ValidationHostResume,
-} from "../workflow/validation-host-contract.ts";
+import { sameHostIdentity, ValidationHostRejected, type ValidationHostResume } from "@runwield/workflow/host-contract";
 import { readReviewDiff, type ReviewDiffTexts } from "../workflow/review-diff.ts";
 import { getWorktreeReviewDiff } from "../workflow/git-snapshot.ts";
 import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
@@ -195,23 +185,22 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     const pending = record.pendingAction;
     if (record.state === "validating") {
         if (await validationOperationIsActive(record)) {
-            const source = record.plan
-                ? await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
-                      readOnly: true,
-                  })
-                : null;
-            const checkpoint = source?.plan?.attrs.validationCheckpoint;
+            const progress = record.plan
+                ? (
+                      await openWorkflow({
+                          cwd: currentAttachedProjectRoot(record),
+                          planName: record.plan.planName,
+                          planId: record.plan.planId,
+                      }).readProgress()
+                  )?.validation
+                : undefined;
             return {
                 kind: "validation_running",
                 operationId: record.validation?.operationId,
                 operation: record.validation?.operation,
                 startedAt: record.validation?.holder?.startedAt,
-                ...(checkpoint && {
-                    progress: {
-                        phase: checkpoint.nextPhase,
-                        checkpointState: checkpoint.state,
-                        updatedAt: checkpoint.updatedAt,
-                    },
+                ...(progress && {
+                    progress: { phase: progress.phase, checkpointState: progress.state, updatedAt: progress.updatedAt },
                 }),
                 guidance: "Core validation is active. Wait for the current call; inspect status for progress.",
             };
@@ -811,8 +800,8 @@ export async function triageReport(envelope: TriageReportEnvelope): Promise<Atta
     const decide = async (current: AttachedWorkflowRecord): Promise<Decision> => {
         const checked = await checkWorkflowOperation("triage_report", envelope, current, "triaging");
         if (checked) return checked;
-        const outcome = toolRegistry.get("triage_report").normalizeOutcome(envelope.payload.outcome);
-        if (!outcome) {
+        const route = routeAttachedTriage(envelope.payload.outcome);
+        if (!route) {
             return {
                 result: await rejected(
                     "triage_report",
@@ -824,19 +813,20 @@ export async function triageReport(envelope: TriageReportEnvelope): Promise<Atta
                 ),
             };
         }
-        if (outcome.routingIntent === "IDEATION" || outcome.routingIntent === "INQUIRY") {
+        const { report: outcome } = route;
+        if (route.kind === "role_handoff") {
             return await accept("triage_report", envelope, current, {
                 state: "closed",
                 pendingAction: null,
                 triageOutcome: outcome,
                 closure: {
                     reason: "role_handoff",
-                    routingIntent: outcome.routingIntent,
-                    role: outcome.routingIntent === "IDEATION" ? "ideator" : "guide",
+                    routingIntent: route.routingIntent,
+                    role: route.agentName,
                 },
             });
         }
-        if (outcome.routingIntent !== "PLANNED_CHANGE") {
+        if (route.kind === "unsupported_in_preview") {
             return await accept("triage_report", envelope, current, {
                 state: "closed",
                 pendingAction: null,
@@ -848,7 +838,7 @@ export async function triageReport(envelope: TriageReportEnvelope): Promise<Atta
             state: "awaiting_planning",
             pendingAction: {
                 actionId: crypto.randomUUID(),
-                role: "planner",
+                role: route.agentName,
                 contractVersion: ATTACHED_PLANNER_CONTRACT_VERSION,
             },
             triageOutcome: outcome,
@@ -1119,16 +1109,17 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
                     ),
                 };
             }
-            let preparationSource: Awaited<ReturnType<typeof reconcileExecutionPreparationLocation>> | undefined;
+            const workflow =
+                current.plan &&
+                openWorkflow({
+                    cwd: location.projectRoot,
+                    planName: current.plan.planName,
+                    planId: current.plan.planId,
+                });
+            let preparationSource;
             try {
-                if (current.plan) {
-                    preparationSource = await reconcileExecutionPreparationLocation(
-                        location.projectRoot,
-                        current.plan.planName,
-                        { readOnly: true },
-                    );
-                }
-                if (preparationSource?.plan?.attrs.status !== "ready_for_work") {
+                preparationSource = await workflow?.reconcilePreparation();
+                if (preparationSource?.status !== "ready_for_work") {
                     current = await reconcilePlanPosition(current);
                 }
             } catch (error) {
@@ -1182,29 +1173,13 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
                 if (!current.plan) throw new Error("This workflow has no Plan.");
                 const source =
                     preparationSource ||
-                    (await reconcileExecutionPreparationLocation(location.projectRoot, current.plan.planName, {
-                        readOnly: true,
-                    }));
-                if (!source.plan || source.plan.attrs.planId !== current.plan.planId) {
-                    throw new Error("The Plan identity no longer matches this workflow.");
-                }
-                const status = source.plan.attrs.status;
-                // If preparation committed before the Attached write, Core can adopt its existing live attempt.
-                const recoveredAttempt =
-                    status === "in_progress" &&
-                    (await listEntries(location.projectRoot)).some(
-                        (entry) =>
-                            entry.planId === current.plan?.planId &&
-                            ("packageSelection" in source && source.packageSelection
-                                ? entry.id === source.plan?.attrs.worktreeId
-                                : entry.path === source.documentRoot) &&
-                            entry.status === "active",
-                    );
-                const recoveredInPlace =
-                    status === "in_progress" &&
-                    source.plan.attrs.executionMode === "non_git_in_place" &&
-                    hasNonGitExecutionConsent("featurePlan", location.projectRoot);
-                if (status !== "approved" && status !== "ready_for_work" && !recoveredAttempt && !recoveredInPlace) {
+                    (await openWorkflow({
+                        cwd: location.projectRoot,
+                        planName: current.plan.planName,
+                        planId: current.plan.planId,
+                    }).reconcilePreparation());
+                if (!source.status) throw new Error("The Plan identity no longer matches this workflow.");
+                if (source.admission === "unavailable") {
                     throw new Error("Execution requires ready_for_work approval/readiness.");
                 }
                 const git = await probeGitRepository(location.projectRoot);
@@ -1226,15 +1201,13 @@ export async function startExecution(envelope: StartExecutionEnvelope): Promise<
                         });
                     }
                 }
-                const ports = createExecutionStartPorts();
-                const prepared = await startActiveExecutionWorkflow({
-                    cwd: location.projectRoot,
-                    planName: current.plan.planName,
-                    triageMeta: source.plan.attrs,
-                    currentStatus: status,
-                    existingExecution: current.execution,
-                    ports,
-                });
+                const prepared = (
+                    await openWorkflow({
+                        cwd: location.projectRoot,
+                        planName: current.plan.planName,
+                        planId: current.plan.planId,
+                    }).startOrResume()
+                ).state;
                 const issuedPlan = await planDocumentsForCheckout(prepared.executionCwd || location.projectRoot).load(
                     current.plan.planName,
                 );
@@ -1336,11 +1309,12 @@ export async function taskCompleted(
                     if (!branch.success || new TextDecoder().decode(branch.stdout).trim() !== execution.worktreeBranch)
                         throw new Error("The live execution branch no longer matches the issued worktree.");
                 }
-                await finalizePlanImplementation({
-                    projectRoot: location.projectRoot,
+                const attempt = await openWorkflow({
+                    cwd: location.projectRoot,
                     planName: current.plan.planName,
-                    triageMeta: { ...execution.triageMeta, planId: current.plan.planId },
-                    executionContext: execution,
+                    planId: current.plan.planId,
+                }).resumeAttempt({ attemptId: execution.packageAttemptId || execution.worktreeId });
+                await attempt.acceptCompletion({
                     executionReport: envelope.payload.message,
                     expectedPlanRevision: execution.planRevision,
                     expectedPlanBodyRevision: execution.planBodyRevision,
@@ -2540,7 +2514,11 @@ export async function runValidationOperation(
         }
     }
     if (operation === "start_validation" && resume) {
-        resume = await reconcileConsumedHostResume(currentAttachedProjectRoot(current), current.plan.planName, resume);
+        resume = await openWorkflow({
+            cwd: currentAttachedProjectRoot(current),
+            planName: current.plan.planName,
+            planId: current.plan.planId,
+        }).reconcileHostResume(resume);
     }
     if (resume?.kind === "reviewer") {
         try {
@@ -2588,12 +2566,18 @@ export async function runValidationOperation(
         );
     }
     try {
-        const result = await continueHostTurnValidation({
-            projectRoot: currentAttachedProjectRoot(claimed),
+        const workflow = openWorkflow({
+            cwd: currentAttachedProjectRoot(claimed),
             planName: current.plan.planName,
-            resume,
-            signal: options.signal,
+            planId: current.plan.planId,
         });
+        const validationOptions = { signal: options.signal };
+        const result =
+            resume?.kind === "decision"
+                ? await workflow.answerInteraction(resume, validationOptions)
+                : resume
+                  ? await workflow.continueHostValidation(resume, validationOptions)
+                  : await workflow.advanceHostValidation(validationOptions);
         if (result.kind === "failed") {
             const recovered: AttachedWorkflowRecord = {
                 ...claimed,
@@ -2712,7 +2696,7 @@ export async function runValidationOperation(
 
 async function readAttachedRepairDiff(
     record: AttachedWorkflowRecord,
-    request: Extract<import("../workflow/validation-host-contract.ts").ValidationHostRequest, { kind: "repair" }>,
+    request: Extract<import("@runwield/workflow/host-contract").ValidationHostRequest, { kind: "repair" }>,
 ): Promise<string> {
     if (!record.plan) throw new Error("The Plan is missing.");
     const source = await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
@@ -2729,24 +2713,13 @@ async function readAttachedRepairDiff(
 
 async function validateAttachedReviewerCandidate(
     record: AttachedWorkflowRecord,
-    resume: Extract<import("../workflow/validation-host-contract.ts").ValidationHostResume, { kind: "reviewer" }>,
+    resume: Extract<import("@runwield/workflow/host-contract").ValidationHostResume, { kind: "reviewer" }>,
 ): Promise<void> {
     if (!record.plan) throw new Error("The Plan is missing.");
-    if (requiresPlanWorkflow(currentAttachedProjectRoot(record)))
-        return await withLocalPlanWorkflow(currentAttachedProjectRoot(record), record.plan.planName, () =>
-            validateAttachedReviewerCandidate(record, resume),
-        );
-    const source = await resolveWorkflowPlanLocation(currentAttachedProjectRoot(record), record.plan.planName, {
-        readOnly: true,
-    });
-    if (!source.plan?.attrs.validationCheckpoint) throw new Error("The validation checkpoint is missing.");
-    const entry = await findActiveByPlanName(currentAttachedProjectRoot(record), record.plan.planName);
-    await assertHostReviewerCandidate({
-        cwd: source.plan.attrs.worktreePath || source.documentRoot,
-        baseBranch: source.plan.attrs.worktreeBaseBranch || "",
-        baseRef: entry?.baseRef,
-        checkpoint: source.plan.attrs.validationCheckpoint,
-        triageMeta: source.plan.attrs,
-        resume,
-    });
+    const { planId, planName } = record.plan;
+    await openWorkflow({
+        cwd: currentAttachedProjectRoot(record),
+        planName,
+        planId,
+    }).checkHostReviewerCandidate(resume);
 }

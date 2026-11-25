@@ -1,7 +1,7 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
 import { switchActiveAgent } from "../session/agent-switching.ts";
 import { runRootTurnUntilRootWorkflowEvent } from "../session/root-workflow-turn.ts";
-import { claimWorkflowToolEvent, settleWorkflowToolEvent } from "./workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../session/hosted-session.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
@@ -15,12 +15,12 @@ import type { AssociationPurpose } from "../session/plan-association.ts";
  * @typedef {Object} PlanOutcomeResult
  * @property {PlanOutcome} outcome
  * @property {string} [planName]
- * @property {import('../../tools/plan-written.ts').TriageMeta} [triageMeta]
+ * @property {import("@runwield/workflow/state").TriageMeta} [triageMeta]
  * @property {string} [feedback]
  * @property {Array<{base64: string, mimeType: string}>} [images]
  */
 
-type PlanOutcomeResult = import("./workflow-tool-events.ts").PlanWrittenEventPayload;
+type PlanOutcomeResult = import("@runwield/workflow/events").PlanWrittenEventPayload;
 
 export interface RunPlanningAgentOptions {
     agentName: string;
@@ -84,12 +84,12 @@ export async function runPlanningAgent({
     const event =
         terminalEvent?.kind === "plan_written"
             ? terminalEvent
-            : claimWorkflowToolEvent(hostedSession, {
+            : workflowEvents(hostedSession).claim({
                   kinds: ["plan_written"],
                   owningSession: null,
                   ...(turnId ? { turnId } : {}),
               });
     if (event?.kind !== "plan_written") return { outcome: "no_call" as const };
-    settleWorkflowToolEvent(hostedSession, event);
+    workflowEvents(hostedSession).settle(event);
     return event.payload as PlanOutcomeResult;
 }

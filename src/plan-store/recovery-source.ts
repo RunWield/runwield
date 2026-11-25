@@ -1,3 +1,4 @@
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { findExistingProjectPath } from "../shared/project-checkout.ts";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
 import { type PlanFrontMatter } from "@runwield/plans";
@@ -23,7 +24,7 @@ export interface RecoveryWorktreeContext {
     baseCommit?: string;
     baseTree?: string;
     executionBaselineTree?: string;
-    publication?: import("../shared/workflow/publication-attempt.ts").PublicationAttempt;
+    publication?: PublicationAttempt;
 }
 interface AttachedWorktreeRecord {
     path: string;

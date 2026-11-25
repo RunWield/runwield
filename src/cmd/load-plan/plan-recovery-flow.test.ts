@@ -1505,10 +1505,8 @@ test("implemented recovery places follow-up second and restores the execution Ag
     const frontendProject = await makeRealRecoveryProject({ status: "implemented" });
     return await withRetainedPlanFixture(frontendProject.projectRoot, async () => {
         const frontendWorktree = await prepareImplementedWorktree(frontendProject, "frontend-engineer");
-        const activeWorkflows: import("../../shared/session/execution-workflow-session.ts").ActiveExecutionWorkflow[] =
-            [];
-        const replacementWorkflows: import("../../shared/session/execution-workflow-session.ts").ActiveExecutionWorkflow[] =
-            [];
+        const activeWorkflows: import("@runwield/workflow/state").ActiveExecutionWorkflow[] = [];
+        const replacementWorkflows: import("@runwield/workflow/state").ActiveExecutionWorkflow[] = [];
         let executeCalls = 0;
         let validationCalls = 0;
         const frontendUi = makeUi([]);

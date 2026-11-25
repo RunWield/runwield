@@ -21,7 +21,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HostedSession, ThinkingLevel } from "./hosted-session.ts";
 import type { ImageAttachment } from "./image-attachments.ts";
-import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { TriageMeta } from "@runwield/workflow/state";
 import type { McpIntegration } from "../mcp/integration.ts";
 import type { McpServerDefinition } from "../mcp/config.ts";
 import type { ManagedOperationCapability } from "./managed-operation.ts";

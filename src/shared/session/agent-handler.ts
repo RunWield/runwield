@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 /**
  * @module shared/session/agent-handler
  * Workflow-aware handler for the active Agent. It runs one Agent turn, then
@@ -5,17 +6,12 @@
  */
 
 import { runRootTurnUntilRootWorkflowEvent } from "./root-workflow-turn.ts";
-import {
-    executePlan,
-    finalizePlanImplementation,
-    resolveExecutionOwner,
-    runSlicerAgent,
-} from "../workflow/workflow.ts";
+import { executePlan, resolveExecutionOwner, runSlicerAgent } from "../workflow/workflow.ts";
 import { dispatchPostTriage } from "../workflow/orchestrator.ts";
 import { systemLocalCIPort } from "../workflow/validation-local-ci.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
-import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "../workflow/decisions.ts";
+import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "@runwield/workflow/decisions";
 import { recordWorkflowMetric } from "../workflow/metrics.ts";
 import {
     runMechanicalValidation,
@@ -33,11 +29,7 @@ import {
     claimPendingTaskCompletion,
     type PendingTaskCompletionClaim,
 } from "./task-completion-session.ts";
-import {
-    type PlanWrittenEventPayload,
-    settleWorkflowToolEvent,
-    type WorkflowToolEvent,
-} from "../workflow/workflow-tool-events.ts";
+import { type PlanWrittenEventPayload, workflowEvents, type WorkflowToolEvent } from "@runwield/workflow/events";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
@@ -48,10 +40,10 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { TriageOutcome } from "@runwield/tools";
 import type { ImageAttachment } from "./image-attachments.ts";
 
-type ActiveExecutionWorkflow = import("./hosted-session.ts").ActiveExecutionWorkflow;
+type ActiveExecutionWorkflow = import("@runwield/workflow/state").ActiveExecutionWorkflow;
 type HostedSession = import("./hosted-session.ts").HostedSession;
 type SessionManager = import("@earendil-works/pi-coding-agent").SessionManager;
-type TriageMeta = import("../../tools/plan-written.ts").TriageMeta;
+type TriageMeta = import("@runwield/workflow/state").TriageMeta;
 type PlanExecutionResult = import("../workflow/workflow.ts").PlanExecutionResult;
 type WorkflowMetric = Parameters<typeof recordWorkflowMetric>[0];
 
@@ -127,7 +119,7 @@ export type AgentHandler = (
 
 /**
  * @param {string} agentName
- * @param {import('./hosted-session.ts').ActiveExecutionWorkflow} workflow
+ * @param {import("@runwield/workflow/state").ActiveExecutionWorkflow} workflow
  * @returns {boolean}
  */
 function canCompleteActiveExecutionWorkflow(agentName: string, workflow: ActiveExecutionWorkflow): boolean {
@@ -320,7 +312,7 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                 return { kind: "complete" };
             } finally {
                 try {
-                    settleWorkflowToolEvent(hostedSession, triageEvent);
+                    workflowEvents(hostedSession).settle(triageEvent);
                 } finally {
                     completeWorkflowTransition();
                 }
@@ -349,7 +341,7 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
         );
         if (planEvent) {
             try {
-                settleWorkflowToolEvent(hostedSession, planEvent);
+                workflowEvents(hostedSession).settle(planEvent);
             } catch (error) {
                 completeWorkflowTransition();
                 throw error;
@@ -663,14 +655,15 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                     if (!workflow.validationContinuation) {
                         while (true) {
                             try {
-                                await finalizePlanImplementation({
-                                    projectRoot,
+                                const attempt = await openWorkflow({
+                                    cwd: projectRoot,
                                     planName: workflow.planName,
-                                    triageMeta: workflow.triageMeta,
-                                    executionContext: workflow,
+                                    planId: workflow.triageMeta.planId,
+                                }).resumeAttempt({
+                                    attemptId: workflow.packageAttemptId || workflow.worktreeId,
                                     hostedSession,
-                                    executionReport: acceptedCompletion.report,
                                 });
+                                await attempt.acceptCompletion({ executionReport: acceptedCompletion.report });
                                 break;
                             } catch (error) {
                                 const failure = error instanceof Error ? error : String(error);

@@ -1,7 +1,7 @@
 import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
-import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 
 const definition = toolRegistry.get("work_record_completed").definition;
 
@@ -17,7 +17,7 @@ export function createWorkRecordCompletedTool(hostedSession: HostedSession) {
                     terminate: false,
                 });
             }
-            publishWorkflowToolEvent({ hostedSession, toolCallId, kind: "work_record_completed", payload: sections });
+            workflowEvents(hostedSession).publish({ toolCallId, kind: "work_record_completed", payload: sections });
             return Promise.resolve({
                 content: [{ type: "text", text: "Work Record sections accepted." }],
                 details: { accepted: true, ...sections },

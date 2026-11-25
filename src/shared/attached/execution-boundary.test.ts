@@ -35,11 +35,10 @@ async function sources(root: string): Promise<string[]> {
 
 test("Attached invokes the shared preparation and completion authorities, not worktree or lifecycle primitives", async () => {
     const coordinator = await fsReadFile(join(attachedDir, "coordinator.ts"), "utf8");
-    assertStringIncludes(coordinator, 'from "../workflow/execution-start.ts"');
-    assertStringIncludes(coordinator, 'from "../workflow/implementation-checkpoint.ts"');
-    assert(/createExecutionStartPorts\(\)/.test(coordinator));
-    assert(/await startActiveExecutionWorkflow\(/.test(coordinator));
-    assert(/await finalizePlanImplementation\(/.test(coordinator));
+    assertStringIncludes(coordinator, 'from "@runwield/workflow"');
+    assertStringIncludes(coordinator, ".startOrResume(");
+    assertStringIncludes(coordinator, ".resumeAttempt(");
+    assertStringIncludes(coordinator, ".acceptCompletion(");
     for (const text of await sources(attachedDir)) {
         assertEquals(/from\s+["'][^"']*\/worktree\.js["']/.test(text), false);
         assertEquals(/\bupdateEntry\b/.test(text), false);

@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import type { ReviewerSubAgentMode } from "@runwield/agents";
 import type { HostValidationMetric } from "./testing/validation-host-fixture.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
@@ -41,7 +42,7 @@ import { type AssistantMessage, type TextContent, type ToolResultMessage } from 
 import { type SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { type RuntimeInteractionRequest } from "../session/session-runtime-interactions.ts";
 import { type WorkflowContext } from "../session/workflow-context-session.ts";
-import { type TriageMeta } from "../../tools/plan-written.ts";
+import type { TriageMeta } from "@runwield/workflow/state";
 import { type ReviewAdvisoryInput, type ReviewCompletePayload, type ReviewFindingInput } from "./review-outcome.ts";
 import { type ValidationLoopArgs } from "./validation-types.ts";
 
@@ -113,7 +114,6 @@ async function makeValidatedCiRun(
     const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
     const { recordPlanEvent } = await import("../../plan-store/index.ts");
     const { startActiveExecutionWorkflow, createExecutionStartPorts } = await import("./execution-start.ts");
-    const { finalizePlanImplementation } = await import("./implementation-checkpoint.ts");
     const root = await makeRepo();
     await savePlan(root, "p", "# p\n\nvalidation fixture\n", {
         classification: "QUICK_FIX",
@@ -139,7 +139,11 @@ async function makeValidatedCiRun(
         assertExists(active.executionCwd);
         for (const [path, text] of Object.entries(implementationFiles))
             await fsWriteFile(`${active.executionCwd}/${path}`, text);
-        await finalizePlanImplementation({ projectRoot: root, planName: "p", executionContext: active });
+        await (
+            await openWorkflow({ cwd: root, planName: "p" }).resumeAttempt({
+                attemptId: active.packageAttemptId || active.worktreeId,
+            })
+        ).acceptCompletion({});
         await recordPlanEvent({
             cwd: root,
             planName: "p",

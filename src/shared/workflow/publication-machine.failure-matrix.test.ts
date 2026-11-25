@@ -26,8 +26,8 @@ import { getRunWieldRuntimeDir, PLAN_STAGING_DIR_NAME } from "../../constants.ts
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { addEntry, findById, updatePublication } from "../worktree-registry.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
-import { createPublicationAttempt } from "./publication-attempt.ts";
-import { loadPublicationAttempt, publicationRootForAttempt } from "./publication-machine.ts";
+import { createPublicationAttempt } from "@runwield/workflow/publication";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 
 const DRIVER = join(dirname(fromFileUrl(import.meta.url)), "testing/publication-process-driver.ts");
 
@@ -115,7 +115,7 @@ async function dispose(fixture: Fixture): Promise<void> {
 }
 
 async function assertRecoverable(fixture: Fixture, kind: string): Promise<void> {
-    const attempt = await loadPublicationAttempt(fixture.projectRoot, "attempt-1");
+    const attempt = await openPublication(fixture.projectRoot).attempt("attempt-1").load();
     assertExists(attempt);
     assertEquals(attempt.failure?.kind, kind);
     assert((await fsStat(fixture.worktree.path)).isDirectory());
@@ -169,7 +169,7 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
 
             const interrupted = await runDriver(fixture.configPath, "verification_receipt");
             assertEquals(interrupted.code, 86, `${interrupted.stdout}\n${interrupted.stderr}`);
-            const publicationRoot = publicationRootForAttempt(fixture.projectRoot, "attempt-1");
+            const publicationRoot = openPublication(fixture.projectRoot).attempt("attempt-1").stagingRoot();
             assert((await fsLstat(`${publicationRoot}/CLAUDE.md`)).isSymbolicLink());
 
             assertEquals((await runDriver(fixture.configPath)).code, 0);
@@ -225,7 +225,7 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
         const fixture = await makeFixture("target-advance-after-integration");
         try {
             assertEquals((await runDriver(fixture.configPath, "integration_receipt")).code, 86);
-            const firstIntegration = await loadPublicationAttempt(fixture.projectRoot, "attempt-1");
+            const firstIntegration = await openPublication(fixture.projectRoot).attempt("attempt-1").load();
             assertEquals(firstIntegration?.phase, "target_integrated");
 
             await fsWriteFile(`${fixture.projectRoot}/arrived-after-integration.txt`, "preserved\n");
@@ -269,7 +269,7 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
 
             assertEquals((await runDriver(fixture.configPath)).code, 1);
             await assertRecoverable(fixture, "isolated_publication_conflict");
-            const repairRoot = publicationRootForAttempt(fixture.projectRoot, "attempt-1");
+            const repairRoot = openPublication(fixture.projectRoot).attempt("attempt-1").stagingRoot();
             assert((await fsStat(repairRoot)).isDirectory());
             await fsWriteFile(`${repairRoot}/conflict.txt`, "resolved\n");
             await git(repairRoot, ["add", "conflict.txt"]);
@@ -283,7 +283,7 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
 
             assertEquals((await runDriver(fixture.configPath, "integration_effect")).code, 86);
             assertEquals(
-                (await loadPublicationAttempt(fixture.projectRoot, "attempt-1"))?.phase,
+                (await openPublication(fixture.projectRoot).attempt("attempt-1").load())?.phase,
                 "artifacts_committed",
             );
             assertEquals((await runDriver(fixture.configPath)).code, 0);
@@ -329,7 +329,7 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
             const targetHeadAtSeal = await git(fixture.projectRoot, ["rev-parse", "HEAD"]);
             const primaryRoot = await fsRealpath(fixture.projectRoot);
             const legacyRoot = join(getRunWieldRuntimeDir(primaryRoot), PLAN_STAGING_DIR_NAME, "attempt-1");
-            const internalRoot = publicationRootForAttempt(fixture.projectRoot, "attempt-1");
+            const internalRoot = openPublication(fixture.projectRoot).attempt("attempt-1").stagingRoot();
             await updatePublication(
                 fixture.projectRoot,
                 "attempt-1",
@@ -419,7 +419,7 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
                 const fixture = await makeFixture(`${mode}-rewrite`, mode === "remote");
                 try {
                     assertEquals((await runDriver(fixture.configPath, "verification_receipt")).code, 86);
-                    const attempt = await loadPublicationAttempt(fixture.projectRoot, "attempt-1");
+                    const attempt = await openPublication(fixture.projectRoot).attempt("attempt-1").load();
                     assertExists(attempt?.publishedCommit);
                     if (mode === "remote") {
                         await git(fixture.projectRoot, ["fetch", "origin", "main"]);
@@ -484,7 +484,7 @@ test("publication failure and recovery matrix uses real Git and fresh processes"
             await Promise.all([command(), command()]);
             const settle = await runDriver(fixture.configPath);
             if (settle.code !== 0) {
-                const attempt = await loadPublicationAttempt(fixture.projectRoot, "attempt-1");
+                const attempt = await openPublication(fixture.projectRoot).attempt("attempt-1").load();
                 const branchHead = await git(fixture.projectRoot, ["rev-parse", fixture.worktree.branch]).catch(
                     (error) => String(error),
                 );

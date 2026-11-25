@@ -83,7 +83,7 @@ export type ValidationProgressRecord = {
  */
 export type ValidationWorkflowState = {
     planName: string;
-    triageMeta: import("../../tools/plan-written.ts").TriageMeta;
+    triageMeta: import("@runwield/workflow/state").TriageMeta;
     executionAgent: "engineer" | "frontend-engineer";
     executionStarted?: boolean;
     executionMode?: "worktree" | "non_git_in_place";

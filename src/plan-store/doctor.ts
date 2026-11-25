@@ -10,12 +10,11 @@ import { listPlanPackages, recoverPlanPackages } from "./packages.ts";
 import { listArchivedPlans } from "./queries.ts";
 
 import { inspectControllerDocumentWorktrees } from "./controllers.ts";
-import { hasApplicablePublicationReceipt } from "../shared/workflow/publication-receipt.ts";
+import { hasApplicablePublicationReceipt, effectiveDeliveryBranch } from "@runwield/workflow/publication";
 import { platform } from "node:process";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
 import { opendir as fsOpendir } from "node:fs/promises";
 import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
-import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
 
 /**
  * @module cmd/plans/doctor

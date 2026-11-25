@@ -16,7 +16,7 @@
  */
 
 import { AGENTS } from "../session/agent-registry.ts";
-import type { ActiveExecutionWorkflow } from "../session/execution-workflow-session.ts";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 
 /** The owner a Plan may name. This is what gets written down. */
 export type PlanExecutionPolicyAgent = "engineer" | "frontend-engineer";

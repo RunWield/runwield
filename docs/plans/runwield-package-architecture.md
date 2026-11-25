@@ -27,7 +27,7 @@ Retire the root `src/` directory in three passes. Preserve behavior for users, i
 
 ## Packages and extraction order
 
-Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. [Plan milestone history](https://github.com/RunWield/runwield/pull/650) has merged. This extraction covers Plan artifacts and publication copies. Workflow is the next domain in the interface pass. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
+Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. [Plan milestone history](https://github.com/RunWield/runwield/pull/650) has merged. [Plan artifacts and publication copies](https://github.com/RunWield/runwield/pull/651) have merged. This extraction covers Workflow. The Pi-AI wrapper follows it in the interface pass. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
 
 | Order and package | Public interface and responsibilities | Evidence that the move preserved behavior |
 | --- | --- | --- |
@@ -260,6 +260,19 @@ Use `store.publicationCopies.read(reference)` with the retained reference from a
 The Tools registry owns schemas and pure results. The Agent registry owns role IDs and definitions. The host constructs the registry using the bundled assets. Projects owns checkout identity and registration. Plan types, document formats, and lifecycle rules come directly from Plans. The package import check also rejects application re-exports of those domains.
 
 The factory router prototype lives outside this branch. Its old Agent loader and triage normalizer imports must move to the Agent registry and the registered `triage_report` tool when it is integrated. Factory admission must bind the canonical Project ID before handing work to the worker. The worker's scratch directory is an execution location.
+
+## Workflow
+
+A client opens a Workflow for the selected Plan in its Project. Starting or resuming execution binds an attempt to the existing worktree or in-place execution. The client can inspect its state and report implementation completion. Workflow checks the attempt and the Plan before recording the checkpoint. Reading progress combines the current attempt, its compatible validation checkpoint, and saved publication evidence. Workspace uses those facts for Plan details and reads active attempts in one batch for the attention dashboard. [Workflow contract](../../packages/workflow/index.ts)
+
+| Caller | Responsibility |
+| --- | --- |
+| Interactive Session, TUI and ACP | The Session presents agent handoffs and prompts. Workflow interprets accepted triage, planning and implementation outcomes. The Tools registry still returns a structured triage report independently. |
+| Attached coordinator | The host executes agent turns. Workflow advances validation, accepts the host’s review or repair report, and checks an interaction answer against its saved request. |
+| Tool adapters and Session runners | Publish, claim, wait for and settle typed reports through a Session-bound queue. An accepted root report stays in the existing Session outbox until settled. Isolated agent reports keep their invocation scope. |
+| Publication and recovery | Open the publication attempt in its Project to prepare copies, advance with evidence, reconcile or finish cleanup. Plans supplies the frozen documents. Workflow owns the transition and its receipt. |
+
+The interface pass retains the existing file-backed Plan checkpoints, Session outbox and publication receipts. New worktree completion receipts can also record the implementation commit. A retry of an older completed worktree with no recorded commit leaves later edits alone and returns no commit ID. Worktree and Git operations, Plan Store binding, the validation engine and Session execution still use runtime code under `src/`. The next pass moves those implementations to their owners. [Workflow events](../../packages/workflow/events.ts) · [Routing](../../packages/workflow/routing.ts) · [Publication](../../packages/workflow/publication-runtime.ts)
 
 ## MCP and app boundaries
 

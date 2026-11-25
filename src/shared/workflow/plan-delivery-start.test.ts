@@ -10,9 +10,8 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { setCustomSetting } from "../settings.ts";
-import { createExecutionStartPorts } from "./execution-start.ts";
-import { startActiveExecutionWorkflow } from "./workflow.ts";
-import { effectiveDeliveryBranch } from "./plan-branch.ts";
+import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
+import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 
 const repo = defineCommittedGitFixture();
 

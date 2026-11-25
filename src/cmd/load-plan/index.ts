@@ -31,7 +31,7 @@ import {
     planDocumentsForCheckout,
 } from "../../plan-store/index.ts";
 import { isPlanArchivePending, startBackgroundArchive } from "./archive-background.ts";
-import { decidePostPlanning } from "../../shared/workflow/decisions.ts";
+import { decidePostPlanning } from "@runwield/workflow/decisions";
 import { buildPlanningReReviewRequest, buildResumeRequest } from "./plan-presentation.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { handlePlanRecovery, SYSTEM_RECOVERY_FLOW_PORTS } from "./plan-recovery-flow.ts";
@@ -86,7 +86,7 @@ import {
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { findPlanAssociatedSessions, verifyPlanAssociatedSession } from "../../shared/session/plan-session-lookup.ts";
 import { prepareSessionPlanningWorktree } from "../../shared/workflow/session-planning-worktree.ts";
-import { isPublicationCleanupPending } from "../../shared/workflow/publication-attempt.ts";
+import { isPublicationCleanupPending } from "@runwield/workflow/publication";
 
 export { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
 

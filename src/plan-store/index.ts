@@ -102,7 +102,7 @@ export {
     type ValidationPassedStagingResult,
 } from "./events.ts";
 
-export { capturePlanExecutionContext, type PlanExecutionContext } from "./workflows.ts";
+export { capturePlanExecutionContext, readPlanExecutionAttemptId, type PlanExecutionContext } from "./workflows.ts";
 
 export { assertAuthorizedPlanPath, assertReadablePlanResource, readPlanReviewPresentation } from "./resources.ts";
 
@@ -177,6 +177,7 @@ export { PlanLockTimeoutError } from "../plan-store.ts";
 export { StaleControllerWriteError, RegisteredPlanDocumentUnavailableError } from "./controllers.ts";
 
 export {
+    hasRetainedPublicationReceipt,
     retainPublicationCompletion,
     recordPublicationObservation,
     type RetainedPublicationCompletion,

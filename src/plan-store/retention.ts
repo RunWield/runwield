@@ -66,7 +66,7 @@ export async function readExecutionRetention(cwd: string) {
     const registry = await (await import("../shared/worktree-registry.ts")).inspectWorktreeRegistry(cwd);
     if (registry.readError || registry.integrityIssues.length)
         throw new Error("Cannot verify retention while the execution registry needs repair.");
-    const { isPublicationAttemptCleanupComplete } = await import("../shared/workflow/publication-attempt.ts");
+    const { isPublicationAttemptCleanupComplete } = await import("@runwield/workflow/publication");
     const pending = registry.entries.flatMap((entry) =>
         entry.publication && !isPublicationAttemptCleanupComplete(entry.publication)
             ? [

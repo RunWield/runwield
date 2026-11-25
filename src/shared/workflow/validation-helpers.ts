@@ -26,7 +26,7 @@ import {
 } from "./validation-progress.ts";
 
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
-import { settleWorkflowToolEvent } from "./workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import { createManualQaCompletedTool } from "../../tools/manual-qa-completed.ts";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -202,7 +202,7 @@ export async function runManualQaChecklistPrompt({
         "manual_qa_completed",
     );
     if (!event) throw new Error("Manual QA has not submitted a checklist.");
-    settleWorkflowToolEvent(hostedSession, event);
+    workflowEvents(hostedSession).settle(event);
     return [];
 }
 
@@ -386,7 +386,7 @@ async function runCompletionGatedRepair({
         "task_completed",
     );
     if (!event) return false;
-    settleWorkflowToolEvent(hostedSession, event);
+    workflowEvents(hostedSession).settle(event);
     return true;
 }
 
@@ -405,18 +405,18 @@ async function runCompletionGatedRepair({
 export { unaccountedOpenItems } from "./review-ledger.ts";
 
 /**
- * @param {import('../../tools/plan-written.ts').TriageMeta} triageMeta
+ * @param {import("@runwield/workflow/state").TriageMeta} triageMeta
  * @returns {boolean}
  */
-export function shouldRunWorkflowValidation(triageMeta: import("../../tools/plan-written.ts").TriageMeta) {
+export function shouldRunWorkflowValidation(triageMeta: import("@runwield/workflow/state").TriageMeta) {
     return isPlannedChangeClassification(triageMeta?.classification) || triageMeta?.classification === "PROJECT";
 }
 
 /**
- * @param {import('../../tools/plan-written.ts').TriageMeta} triageMeta
+ * @param {import("@runwield/workflow/state").TriageMeta} triageMeta
  * @returns {boolean}
  */
-export function shouldContinueParentEpicAfterValidation(triageMeta: import("../../tools/plan-written.ts").TriageMeta) {
+export function shouldContinueParentEpicAfterValidation(triageMeta: import("@runwield/workflow/state").TriageMeta) {
     const parentPlan = triageMeta?.parentPlan;
     return (
         isPlannedChangeClassification(triageMeta?.classification) &&

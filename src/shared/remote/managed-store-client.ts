@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 /** Separate execution process exercising production bootstrap and the public Plan owner. */
 import { projects } from "@runwield/projects";
 import { plans } from "@runwield/plans";
@@ -217,8 +218,9 @@ async function executeManagedFixture() {
                 if (checkpointed?.attrs.humanReviewDecision !== "skipped")
                     throw new Error("Retained checkpoint did not reach its laptop controller.");
                 const { retainPublicationCompletion } = await import("../../plan-store/index.ts");
-                const { createPublicationAttempt } = await import("../workflow/publication-attempt.ts");
-                const { publicationRootForAttempt } = await import("../workflow/publication-machine.ts");
+                const { createPublicationAttempt } = await import("@runwield/workflow/publication");
+                const { openPublication } = await import("@runwield/workflow/publication-runtime");
+                const deliveries = openPublication(input.cwd);
                 const unproved = createPublicationAttempt({
                     attemptId: retainedAttempt.id,
                     planId: retainedPlanId,
@@ -226,7 +228,7 @@ async function executeManagedFixture() {
                     targetBranch: "main",
                     executionBranch: retainedAttempt.branch,
                     executionCwd: retainedAttempt.path,
-                    publicationRoot: publicationRootForAttempt(input.cwd, retainedAttempt.id),
+                    publicationRoot: deliveries.attempt(retainedAttempt.id).stagingRoot(),
                     validatedCommit: retainedAttempt.baseCommit,
                     targetHeadAtSeal: retainedAttempt.baseCommit,
                 });
@@ -246,8 +248,7 @@ async function executeManagedFixture() {
                 await seedFile(seedPath(retainedAttempt.path, "resumed-sentinel.txt"), "Original execution resumed.\n");
                 const { checkpointExecutionWorktree } = await import("../worktree.ts");
                 const { stageValidationPassedInExecutionWorktree } = await import("../../plan-store/index.ts");
-                const { startPublicationAttempt, advanceStoredPublication, cleanupStoredPublication } =
-                    await import("../workflow/publication-machine.ts");
+
                 const { publishExecutionWorktreeIsolated } = await import("../isolated-publication.ts");
                 await recordPlanEvent({
                     cwd: retainedAttempt.path,
@@ -272,9 +273,7 @@ async function executeManagedFixture() {
                     branch: retainedAttempt.branch,
                     planName: "retained",
                 });
-                let publication = await startPublicationAttempt({
-                    projectRoot: input.cwd,
-                    attemptId: retainedAttempt.id,
+                let publication = await deliveries.attempt(retainedAttempt.id).start({
                     planName: "retained",
                     targetBranch: "main",
                     executionBranch: retainedAttempt.branch,
@@ -345,7 +344,7 @@ async function executeManagedFixture() {
                     publicationAttemptId: publication.attemptId,
                     publicationPlanPaths: staging.planPaths,
                 });
-                publication = await advanceStoredPublication(input.cwd, publication, "artifacts_committed", {
+                publication = await deliveries.resume(publication).advance("artifacts_committed", {
                     artifactCommit: artifact.executionCommit,
                     planPaths: staging.planPaths,
                 });
@@ -359,23 +358,16 @@ async function executeManagedFixture() {
                     allowedPlanPaths: publication.planPaths!,
                     publicationRoot: publication.publicationRoot,
                     onIntegrated: async (proof) => {
-                        publication = await advanceStoredPublication(
-                            input.cwd,
-                            publication,
-                            "target_integrated",
-                            proof,
-                        );
+                        publication = await deliveries.resume(publication).advance("target_integrated", proof);
                     },
                     onPublished: async (proof) => {
-                        publication = await advanceStoredPublication(input.cwd, publication, "target_published", proof);
+                        publication = await deliveries.resume(publication).advance("target_published", proof);
                     },
                     onVerified: async () => {
-                        publication = await advanceStoredPublication(input.cwd, publication, "publication_verified", {
-                            verifiedAt: new Date().toISOString(),
-                        });
+                        publication = await deliveries.resume(publication).verify();
                     },
                 });
-                const cleaned = await cleanupStoredPublication(input.cwd, publication);
+                const cleaned = await deliveries.resume(publication).cleanup();
                 if (!cleaned.complete) throw new Error(`Retained cleanup failed: ${cleaned.details.join("; ")}`);
             },
             "retained",
@@ -482,27 +474,19 @@ async function executeManagedFixture() {
         const attemptId = await withLocalPlanWorkflow(input.cwd, "public-tool", () =>
             reservePlanExecution("public-tool", { targetBranch: "main" }),
         );
-        const { createExecutionStartPorts, startActiveExecutionWorkflow } =
-            await import("../workflow/execution-start.ts");
         const ready = await loadPlan(input.cwd, "public-tool");
         if (!ready || !ready.markdown.includes("Accepted browser edit.") || ready.attrs.status !== "ready_for_work")
             throw new Error("Approved browser edits and readiness must share the canonical Plan.");
-        const execution = await startActiveExecutionWorkflow({
+        const attempt = await openWorkflow({
             cwd: input.cwd,
             planName: "public-tool",
-            currentStatus: ready.attrs.status,
-            triageMeta: ready.attrs,
-            ports: createExecutionStartPorts(),
-        });
+            planId: ready.attrs.planId,
+        }).startOrResume();
+        const execution = attempt.state;
         const { writeFile } = await import("node:fs/promises");
         const { join } = await import("node:path");
-        const { finalizePlanImplementation } = await import("../workflow/implementation-checkpoint.ts");
         await writeFile(join(execution.executionCwd!, "managed-code.txt"), "delivered code\n");
-        await finalizePlanImplementation({
-            projectRoot: input.cwd,
-            planName: "public-tool",
-            executionContext: execution,
-        });
+        await attempt.acceptCompletion({});
         await recordPlanEvent({
             cwd: input.cwd,
             planName: "public-tool",
@@ -533,10 +517,9 @@ async function executeManagedFixture() {
         if (!nonGitCompletionRejected || (await loadPlan(input.cwd, "public-tool"))?.attrs.status !== "reviewed")
             throw new Error("Git execution completed without matching publication proof.");
         await withLocalPlanWorkflow(input.cwd, "public-tool", async () => {
-            const { startPublicationAttempt, advanceStoredPublication, cleanupStoredPublication } =
-                await import("../workflow/publication-machine.ts");
+            const { openPublication } = await import("@runwield/workflow/publication-runtime");
+            const deliveries = openPublication(input.cwd);
             const { selectedPublicationCopies, settlePackagePublication } = await import("../../plan-store/index.ts");
-            const { preparePublicationCopies } = await import("../workflow/publication-copy-commit.ts");
             const { publishExecutionWorktreeIsolated } = await import("../isolated-publication.ts");
             const { captureForegroundProcess } = await import("../captured-process.ts");
             const commit = async (cwd: string, ref: string) => {
@@ -571,9 +554,7 @@ async function executeManagedFixture() {
             });
             if (recorded.status !== "generated" && recorded.status !== "linked")
                 throw new Error(`Managed Recorder failed: ${JSON.stringify(recorded)}`);
-            let attempt = await startPublicationAttempt({
-                projectRoot: input.cwd,
-                attemptId,
+            let attempt = await deliveries.attempt(attemptId).start({
                 planName: "public-tool",
                 targetBranch: "main",
                 executionBranch: execution.worktreeBranch!,
@@ -600,8 +581,7 @@ async function executeManagedFixture() {
             }
             if (!refusedUnpublished || (await loadPlan(input.cwd, "public-tool"))?.attrs.status !== "reviewed")
                 throw new Error("Unpublished Git was incorrectly accepted as delivery.");
-            const artifacts = await preparePublicationCopies(input.cwd, attempt);
-            attempt = await advanceStoredPublication(input.cwd, attempt, "artifacts_committed", artifacts);
+            attempt = await deliveries.resume(attempt).commitCopies();
             await publishExecutionWorktreeIsolated({
                 projectRoot: input.cwd,
                 executionCwd: attempt.executionCwd,
@@ -613,19 +593,17 @@ async function executeManagedFixture() {
                 packageInput: attempt.packageInput,
                 publicationRoot: attempt.publicationRoot,
                 onIntegrated: async (proof) => {
-                    attempt = await advanceStoredPublication(input.cwd, attempt, "target_integrated", proof);
+                    attempt = await deliveries.resume(attempt).advance("target_integrated", proof);
                 },
                 onPublished: async (proof) => {
-                    attempt = await advanceStoredPublication(input.cwd, attempt, "target_published", proof);
+                    attempt = await deliveries.resume(attempt).advance("target_published", proof);
                 },
                 onVerified: async () => {
-                    attempt = await advanceStoredPublication(input.cwd, attempt, "publication_verified", {
-                        verifiedAt: new Date().toISOString(),
-                    });
+                    attempt = await deliveries.resume(attempt).verify();
                 },
             });
             await settlePackagePublication(input.cwd, attempt);
-            const cleanup = await cleanupStoredPublication(input.cwd, attempt);
+            const cleanup = await deliveries.resume(attempt).cleanup();
             if (!cleanup.complete) throw new Error(`Managed cleanup did not finish: ${cleanup.details.join("; ")}`);
             if ((await loadPlan(input.cwd, "public-tool"))?.attrs.status !== "verified")
                 throw new Error("Laptop Plan did not receive confirmed remote Git publication.");
@@ -1028,13 +1006,7 @@ async function executeManagedFixture() {
         const recoveryAttempt = await withLocalPlanWorkflow(input.cwd, "recovery", () =>
             reservePlanExecution("recovery", { targetBranch: "main" }),
         );
-        await startActiveExecutionWorkflow({
-            cwd: input.cwd,
-            planName: "recovery",
-            currentStatus: "ready_for_work",
-            triageMeta: {},
-            ports: createExecutionStartPorts(),
-        });
+        await openWorkflow({ cwd: input.cwd, planName: "recovery" }).startOrResume();
         const {
             reconcilePlanExecutionBinding,
             restoreRecreatedPlanExecution,
@@ -1072,13 +1044,7 @@ async function executeManagedFixture() {
             (await loadPlan(input.cwd, "recovery"))?.attrs.status !== "ready_for_work"
         )
             throw new Error(`Managed recreation failed: ${JSON.stringify(recreated)}`);
-        await startActiveExecutionWorkflow({
-            cwd: input.cwd,
-            planName: "recovery",
-            currentStatus: "ready_for_work",
-            triageMeta: {},
-            ports: createExecutionStartPorts(),
-        });
+        await openWorkflow({ cwd: input.cwd, planName: "recovery" }).startOrResume();
         const recoveryBefore = await loadPlan(input.cwd, "recovery");
         if (!recoveryBefore) throw new Error("Recovery Plan is unavailable.");
         const { reopenPlanReview, capturePlanExecutionContext, detachPlanExecution } =
@@ -1138,13 +1104,7 @@ async function executeManagedFixture() {
         );
         if (replacement === recoveryAttempt)
             throw new Error("Proven abandonment did not release the original attempt.");
-        await startActiveExecutionWorkflow({
-            cwd: input.cwd,
-            planName: "recovery",
-            currentStatus: "ready_for_work",
-            triageMeta: {},
-            ports: createExecutionStartPorts(),
-        });
+        await openWorkflow({ cwd: input.cwd, planName: "recovery" }).startOrResume();
         await updateEntry(input.cwd, replacement, { status: "abandoned" });
         const beforeReset = await loadPlan(input.cwd, "recovery");
         await resetPlanExecutionMetadata(input.cwd, "recovery", "stop", beforeReset!.revision);
@@ -1155,13 +1115,7 @@ async function executeManagedFixture() {
             reservePlanExecution("recovery", { targetBranch: "main" }),
         );
         if (replacement === resetAttempt) throw new Error("Managed reset retained the abandoned reservation.");
-        await startActiveExecutionWorkflow({
-            cwd: input.cwd,
-            planName: "recovery",
-            currentStatus: "ready_for_work",
-            triageMeta: {},
-            ports: createExecutionStartPorts(),
-        });
+        await openWorkflow({ cwd: input.cwd, planName: "recovery" }).startOrResume();
         await recordPlanEvent({
             cwd: input.cwd,
             planName: "recovery",

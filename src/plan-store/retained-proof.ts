@@ -10,7 +10,7 @@ import {
     type ManagedProjectStoreLaunch,
 } from "../shared/remote/project-store-launch.ts";
 import { readPlanPackagePublication } from "./packages.ts";
-import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 
 export async function confirmManagedPublication(
     owner: HomeProjectOwner,

@@ -19,7 +19,7 @@ import {
     settlePreparedRecord,
 } from "../shared/work-records/package-recording.ts";
 import type { WorkRecordSource } from "../shared/work-records/generation.ts";
-import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 interface RetainedRecordingIdentity {
     planId: string;

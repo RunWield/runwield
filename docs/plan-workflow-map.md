@@ -38,7 +38,7 @@ the producer's turn to return before claiming its accepted event. That timing di
 
 Sources: [Plan location](../src/plan-store/location.ts),
 [controller storage](../src/plan-store/controllers.ts),
-[event storage](../src/shared/workflow/workflow-tool-events.ts),
+[event storage](../packages/workflow/events.ts),
 [task completion receipts](../src/shared/session/task-completion-session.ts),
 [mutation boundary](../src/plan-store/transitions.ts).
 
@@ -140,7 +140,7 @@ The queue, isolated question sends, and approval warning follow
 Sources: [plan_written](../src/tools/plan-written.ts),
 [shared review decision](../src/plan-store/review.ts),
 [planning runner](../src/shared/workflow/planning-agent.ts),
-[decision interpreter](../src/shared/workflow/decisions.ts), [root handler](../src/shared/session/agent-handler.ts).
+[decision interpreter](../packages/workflow/decisions.ts), [root handler](../src/shared/session/agent-handler.ts).
 
 ## E — Execution preparation, implementation, and Pair checkpoints
 
@@ -219,7 +219,7 @@ Some also acknowledge before the next durable checkpoint. See audit A2 and A4; d
 Sources: [Plan executor](../src/shared/workflow/plan-executor.ts),
 [execution start](../src/shared/workflow/execution-start.ts),
 [execution runner](../src/shared/workflow/engineer-runner.ts),
-[implementation checkpoint](../src/shared/workflow/implementation-checkpoint.ts),
+[implementation checkpoint](../packages/workflow/implementation-checkpoint.ts),
 [task_completed](../src/tools/task-completed.ts), [Pair tool](../src/tools/pair-checkpoint.ts),
 [Plan Deviation tool](../src/tools/plan-deviation.ts),
 [runtime collaboration](../src/shared/workflow/execution-collaboration.ts).
@@ -515,8 +515,8 @@ proves which history the integration contains. Neither proves that conflict reso
 ancestry: a legitimate later target commit does not invalidate confirmed publication.
 
 Sources: [publication loop](../src/shared/workflow/validation-publication.ts),
-[phase model](../src/shared/workflow/publication-attempt.ts),
-[stored publication and reconciliation](../src/shared/workflow/publication-machine.ts),
+[phase model](../packages/workflow/publication-attempt.ts),
+[stored publication and reconciliation](../packages/workflow/publication-machine.ts),
 [remote/local Git publication](../src/shared/isolated-publication.ts),
 [repair dispatch/finalization](../src/shared/workflow/validation-merge-repair.ts),
 [Git worktree operations](../src/shared/worktree.ts),
@@ -594,7 +594,7 @@ different limits stated in V1/V2/H/D; do not treat these counters as interchange
 
 Sources: [error classification](../src/shared/workflow/validation-operational-errors.ts),
 [recovery decisions and delay](../src/shared/workflow/validation-recovery.ts),
-[user choice](../src/shared/workflow/validation-interactions.ts).
+[user choice](../packages/workflow/interactions.ts).
 
 ## R — Loading, recovery, hold, and explicit exits
 
@@ -667,7 +667,7 @@ Sources: [routing and initial completion](../src/shared/workflow/orchestrator.ts
 | TUI / Workspace / ACP    | UI decisions and SessionRuntime/shared workflow calls                      | Presentation is not validation authority; Pair requires host support. No separate transcript-based success decoder was found here.          |
 | Attached / AGY proposals | Not an implemented planner-to-merge path in this inspected code            | Design Plans and backend spikes do not establish operational coverage. Re-audit when wired into production.                                 |
 
-Sources: [tool events](../src/shared/workflow/workflow-tool-events.ts),
+Sources: [tool events](../packages/workflow/events.ts),
 [Claude MCP bridge](../src/shared/session/backends/claude-cli/mcp-bridge.ts),
 [Claude execution](../src/shared/session/backends/claude-cli/execution-session.ts),
 [delegation](../src/tools/delegate-agent.ts), [interview](../src/tools/user-interview.ts),

@@ -24,7 +24,7 @@ import {
     writeControllerState,
 } from "./controllers.ts";
 import { verifyRecordedPublication } from "../shared/workflow/validation-merge-verification.ts";
-import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
+import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 import { findTargetBranchPlan } from "../shared/workflow/planning-worktree.ts";
 import { executionWorktreePathExists } from "../shared/workflow/execution-worktree-rescue.ts";
 import { needsSessionPlanningWorktree, resolveWorkflowPlanLocation } from "./location.ts";

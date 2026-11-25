@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { projects } from "@runwield/projects";
 import { updatePlanPackageMetadata } from "../../plan-store/packages.ts";
 import { getWorktreeRegistryPath } from "../worktree-registry.ts";
@@ -11,7 +12,6 @@ import { HostedSession } from "../session/hosted-session.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { executePlan } from "./plan-executor.ts";
-import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { runValidationAttempt } from "./validation-supervisor.ts";
 import { test } from "node:test";
 import { equal, ok, rejects, deepEqual } from "node:assert/strict";
@@ -271,11 +271,12 @@ test("package dispatch supplies frozen complete context and checkpoints real imp
                     await fs.writeFile(join(p.path, "context.md"), "# Later editor change\n");
                     deepEqual((await read(identity)).metadata.workflow!.attempt!.input, input);
                     await rejects(
-                        finalizePlanImplementation({
-                            projectRoot,
-                            planName: "one",
-                            executionContext: result.executionContext,
-                        }),
+                        (
+                            await openWorkflow({ cwd: projectRoot, planName: "one" }).resumeAttempt({
+                                attemptId:
+                                    result.executionContext?.packageAttemptId || result.executionContext?.worktreeId,
+                            })
+                        ).acceptCompletion({}),
                         /changed/,
                     );
                     await rejects(
@@ -444,11 +445,11 @@ for (const scenario of ["default-target", "reset-abandoned"] as const) {
                         );
                     }
                     await fs.writeFile(join(workflow.executionCwd!, "result.txt"), "implemented\n");
-                    await finalizePlanImplementation({
-                        projectRoot: f.root,
-                        planName: "one",
-                        executionContext: workflow,
-                    });
+                    await (
+                        await openWorkflow({ cwd: f.root, planName: "one" }).resumeAttempt({
+                            attemptId: workflow?.packageAttemptId || workflow?.worktreeId,
+                        })
+                    ).acceptCompletion({});
                     equal((await read(f.identity)).metadata.definition.status, "implemented");
                 },
             );

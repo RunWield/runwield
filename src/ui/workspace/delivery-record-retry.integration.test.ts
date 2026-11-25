@@ -11,7 +11,7 @@ import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
-import { createPublicationAttempt } from "../../shared/workflow/publication-attempt.ts";
+import { createPublicationAttempt } from "@runwield/workflow/publication";
 import { retainPublishedWorkRecordSource } from "../../plan-store/index.ts";
 
 const repository = defineCommittedGitFixture({ ".gitignore": ".wld/internal/\n" });

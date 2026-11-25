@@ -37,7 +37,7 @@ export async function rearmPlanReviewConversation(
     session: import("./hosted-session.ts").HostedSession,
     planName: string,
     planningAgentName: string,
-): Promise<import("../workflow/workflow-tool-events.ts").PlanWrittenEventPayload> {
+): Promise<import("@runwield/workflow/events").PlanWrittenEventPayload> {
     if (session.planReviewConversations.canceled) return { outcome: "canceled", planName };
     try {
         const runtime = planReviewRuntimeOwners.get(session);

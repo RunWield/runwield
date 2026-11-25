@@ -1,8 +1,8 @@
+import { openWorkflow } from "@runwield/workflow";
 import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
-import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 
@@ -258,7 +258,11 @@ for (const revise of [false, true]) {
                 });
                 assertExists(active.executionCwd);
                 await writeFile(join(active.executionCwd, "label.ts"), "export const label = 'first';\n");
-                await finalizePlanImplementation({ projectRoot, planName: "p", executionContext: active });
+                await (
+                    await openWorkflow({ cwd: projectRoot, planName: "p" }).resumeAttempt({
+                        attemptId: active.packageAttemptId || active.worktreeId,
+                    })
+                ).acceptCompletion({});
                 await recordPlanEvent({
                     cwd: projectRoot,
                     planName: "p",

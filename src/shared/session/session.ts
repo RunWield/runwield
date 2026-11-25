@@ -20,7 +20,7 @@ import type {
 import type { HostedSession } from "./hosted-session.ts";
 import type { BashAllowedCommands } from "../bash-command-policy.ts";
 import type { McpIntegration } from "../mcp/integration.ts";
-import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { TriageMeta } from "@runwield/workflow/state";
 import type { ManagedOperationCapability } from "./managed-operation.ts";
 import type { ExecutionSession } from "./execution-backend.ts";
 import type { AgentMessageHandler } from "./agent-handler.ts";
@@ -71,7 +71,7 @@ import { projectProviderSystemPrompt } from "./provider-system-prompt.ts";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { getRemoteSessionSaveBridge } from "./root-session.ts";
 import { createRunWieldCodemodeExtension } from "./codemode.ts";
-import { WorkflowStepCompleted } from "../workflow/workflow-tool-events.ts";
+import { WorkflowStepCompleted } from "@runwield/workflow/events";
 import { createSingleEditToolDefinition } from "../../tools/edit.ts";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../../tools/docs-file-tools.ts";
 import { wrapPlanSafeFileTool } from "../../tools/plan-safe-file-tools.ts";
@@ -4741,7 +4741,7 @@ export async function runNonInteractiveAgentPrompt({
  * activated through switchActiveAgent/runActiveAgentTurn instead.
  */
 export async function runIsolatedAgentSession(opts: RunIsolatedAgentSessionOptions): Promise<AgentMessage[]> {
-    const { withWorkflowToolEventSource, WorkflowStepCompleted } = await import("../workflow/workflow-tool-events.ts");
+    const { workflowEvents, WorkflowStepCompleted } = await import("@runwield/workflow/events");
     const hostedSession = requireHostedSession(opts.hostedSession, "runIsolatedAgentSession");
     const managedOperationCapability = opts.background
         ? null
@@ -4842,7 +4842,7 @@ export async function runIsolatedAgentSession(opts: RunIsolatedAgentSessionOptio
                         resolvedModel,
                     );
                 }
-                messages = await withWorkflowToolEventSource(hostedSession, steeringTarget, () =>
+                messages = await workflowEvents(hostedSession).withSource(steeringTarget, () =>
                     executionSession.session.runTurn({
                         userRequest: dispatch.userRequest,
                         images: opts.images,
@@ -4894,7 +4894,7 @@ export async function runIsolatedAgentSession(opts: RunIsolatedAgentSessionOptio
                 let piOutcome: ExecutionOutcome = "succeeded";
                 let piReason = "completed";
                 try {
-                    messages = await withWorkflowToolEventSource(hostedSession, steeringTarget, () =>
+                    messages = await workflowEvents(hostedSession).withSource(steeringTarget, () =>
                         runPrompt({
                             session: session as AgentSession,
                             agentDef,

@@ -7,7 +7,7 @@ import {
     isPublicationAttemptCleanupComplete,
     publicationPhaseAtLeast,
     recordPublicationFailure,
-} from "./publication-attempt.ts";
+} from "@runwield/workflow/publication";
 
 function candidate() {
     return createPublicationAttempt({
@@ -57,25 +57,13 @@ test("publication phases advance only with the Git evidence required by that pha
 
 test("publication phases reject missing evidence, skipped phases, and backward movement", () => {
     const sealed = candidate();
-    assertThrows(
-        () => advancePublicationAttempt(sealed, "artifacts_committed", {}),
-        Error,
-        "requires artifactCommit",
-    );
-    assertThrows(
-        () => advancePublicationAttempt(sealed, "target_integrated", {}),
-        Error,
-        "cannot skip",
-    );
+    assertThrows(() => advancePublicationAttempt(sealed, "artifacts_committed", {}), Error, "requires artifactCommit");
+    assertThrows(() => advancePublicationAttempt(sealed, "target_integrated", {}), Error, "cannot skip");
     const artifacts = advancePublicationAttempt(sealed, "artifacts_committed", {
         artifactCommit: "b".repeat(40),
         planPaths: ["docs/plans/demo.md"],
     });
-    assertThrows(
-        () => advancePublicationAttempt(artifacts, "candidate_sealed", {}),
-        Error,
-        "cannot move backward",
-    );
+    assertThrows(() => advancePublicationAttempt(artifacts, "candidate_sealed", {}), Error, "cannot move backward");
 });
 
 test("only cleanup-complete publication attempts are safe for runtime migration", () => {
@@ -112,11 +100,15 @@ test("only cleanup-complete publication attempts are safe for runtime migration"
 
 test("publication failures annotate the current phase without changing proven progress", () => {
     const sealed = candidate();
-    const failed = recordPublicationFailure(sealed, {
-        kind: "remote_unavailable",
-        message: "offline",
-        repairRoot: "/tmp/publication",
-    }, "2026-01-01T00:01:00.000Z");
+    const failed = recordPublicationFailure(
+        sealed,
+        {
+            kind: "remote_unavailable",
+            message: "offline",
+            repairRoot: "/tmp/publication",
+        },
+        "2026-01-01T00:01:00.000Z",
+    );
     assertEquals(failed.phase, "candidate_sealed");
     assertEquals(failed.failure, {
         phase: "candidate_sealed",

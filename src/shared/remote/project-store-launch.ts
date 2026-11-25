@@ -1,3 +1,4 @@
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { projects, type HomeProjectOwner, type ProjectIdentity } from "@runwield/projects";
 import { validateManagedRuntimeTransfer, type ManagedRuntimeTransfer } from "../project-runtime-managed.ts";
 import { basename } from "node:path";
@@ -97,7 +98,7 @@ sys.exit(result.returncode)
 export async function proveManagedProjectPublication(
     launch: ManagedProjectStoreLaunch,
     manifest: import("../../plan-store/index.ts").PackagePublicationManifest,
-    retained?: import("../workflow/publication-attempt.ts").PublicationAttempt,
+    retained?: PublicationAttempt,
     signal?: AbortSignal,
 ) {
     const result = await captureForegroundProcess("ssh", {
@@ -112,9 +113,7 @@ export async function proveManagedProjectPublication(
     });
     if (!result.success || result.stdout.byteLength > 1024 * 1024)
         throw new Error("Remote Git proof is unavailable; retain the publication attempt.");
-    const attempt: import("../workflow/publication-attempt.ts").PublicationAttempt = JSON.parse(
-        new TextDecoder("utf-8", { fatal: true }).decode(result.stdout),
-    );
+    const attempt: PublicationAttempt = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(result.stdout));
     if (
         attempt.attemptId !== manifest.attemptId ||
         attempt.planId !== manifest.planId ||
@@ -183,7 +182,7 @@ async function transferManagedRuntime(
 export async function proveManagedRetainedPublication(
     launch: ManagedProjectStoreLaunch,
     execution: import("../../plan-store/index.ts").RetainedManagedExecution,
-    retained?: import("../workflow/publication-attempt.ts").PublicationAttempt,
+    retained?: PublicationAttempt,
     signal?: AbortSignal,
     candidateOnly = false,
     requireCleanup = false,
@@ -207,9 +206,7 @@ export async function proveManagedRetainedPublication(
     });
     if (!result.success || result.stdout.byteLength > 1024 * 1024)
         throw new Error("Retained execution Git proof is unavailable.");
-    const proof: import("../workflow/publication-attempt.ts").PublicationAttempt = JSON.parse(
-        new TextDecoder("utf-8", { fatal: true }).decode(result.stdout),
-    );
+    const proof: PublicationAttempt = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(result.stdout));
     if (
         proof.planId !== execution.planId ||
         proof.attemptId !== execution.attempt.id ||
@@ -222,7 +219,7 @@ export async function proveManagedRetainedPublication(
 }
 
 export interface RetainedRecordingProof {
-    proof: import("../workflow/publication-attempt.ts").PublicationAttempt;
+    proof: PublicationAttempt;
     sources: import("../../plan-store/index.ts").PublishedDeliverySources;
     recordCopy: import("@runwield/plans/publication-copies").DeliveryCopy | null;
 }
@@ -230,7 +227,7 @@ export interface RetainedRecordingProof {
 export async function readManagedRetainedRecordingProof(
     launch: ManagedProjectStoreLaunch,
     execution: import("../../plan-store/index.ts").RetainedManagedExecution,
-    retained: import("../workflow/publication-attempt.ts").PublicationAttempt | undefined,
+    retained: PublicationAttempt | undefined,
     pendingPublication: boolean,
     signal?: AbortSignal,
 ): Promise<RetainedRecordingProof> {

@@ -26,7 +26,7 @@ export async function reconcileRemoteWorkflow(
     return await withProjectRuntimeReadScope(async () => {
         const { healSettledTransitionRecords } = await import("../workflow/transition-recovery.ts");
         const { listEntries } = await import("../worktree-registry.ts");
-        const { reconcileStoredPublication } = await import("../workflow/publication-machine.ts");
+        const { openPublication } = await import("@runwield/workflow/publication-runtime");
         let verified = false;
         let status = context.status;
         try {
@@ -38,7 +38,7 @@ export async function reconcileRemoteWorkflow(
             const attempts = (await listEntries(cwd)).filter((entry) => entry.planId === context.planId);
             const publication =
                 attempts.length === 1 && attempts[0].publication
-                    ? await reconcileStoredPublication(cwd, attempts[0].publication, { apply: false })
+                    ? await openPublication(cwd).resume(attempts[0].publication).reconcile({ apply: false })
                     : null;
             if (plan.kind === "success") status = plan.evidence.status;
             verified =

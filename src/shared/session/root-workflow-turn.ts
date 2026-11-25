@@ -1,16 +1,12 @@
 import { emitSystemStatus } from "./session-runtime-events.ts";
 import { clearAgentSessionQueueForTransition, runRootTurn } from "./session.ts";
 import {
-    claimWorkflowToolEvent,
-    publishWorkflowToolEvent,
-    listPendingWorkflowToolEvents,
+    workflowEvents,
     type PlanWrittenEventPayload,
-    settleWorkflowToolEvent,
-    waitForWorkflowToolEvent,
     WorkflowStepCompleted,
     type WorkflowToolEvent,
     type WorkflowToolEventKind,
-} from "../workflow/workflow-tool-events.ts";
+} from "@runwield/workflow/events";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "./hosted-session.ts";
@@ -52,9 +48,11 @@ export async function runRootTurnUntilRootWorkflowEvent(args: {
     } = {
         kinds: ["triage_report", "plan_written"],
         owningSession: args.rootAgentSession,
-        excludeEventIds: listPendingWorkflowToolEvents(args.hostedSession).map((event) => event.eventId),
+        excludeEventIds: workflowEvents(args.hostedSession)
+            .pending()
+            .map((event) => event.eventId),
     };
-    const eventPromise = waitForWorkflowToolEvent(args.hostedSession, {
+    const eventPromise = workflowEvents(args.hostedSession).wait({
         ...claimOptions,
         signal: waitController.signal,
     });
@@ -96,7 +94,7 @@ export async function runRootTurnUntilRootWorkflowEvent(args: {
                 const excludedEventIds = [...claimOptions.excludeEventIds, feedbackEvent.eventId];
                 while (true) {
                     const feedbackWaitController = new AbortController();
-                    const nextEventPromise = waitForWorkflowToolEvent(args.hostedSession, {
+                    const nextEventPromise = workflowEvents(args.hostedSession).wait({
                         ...claimOptions,
                         excludeEventIds: excludedEventIds,
                         signal: feedbackWaitController.signal,
@@ -118,15 +116,14 @@ export async function runRootTurnUntilRootWorkflowEvent(args: {
                         if (next.kind === "turn") {
                             const payload = feedbackEvent.payload as PlanWrittenEventPayload;
                             if (payload.outcome === "conversation" && payload.planName) {
-                                settleWorkflowToolEvent(args.hostedSession, feedbackEvent);
+                                workflowEvents(args.hostedSession).settle(feedbackEvent);
                                 const { rearmPlanReviewConversation } = await import("./session-runtime.ts");
                                 const outcome = await rearmPlanReviewConversation(
                                     args.hostedSession,
                                     payload.planName,
                                     args.agentName,
                                 );
-                                const accepted = publishWorkflowToolEvent({
-                                    hostedSession: args.hostedSession,
+                                const accepted = workflowEvents(args.hostedSession).publish({
                                     toolCallId: `rearmed-review-${crypto.randomUUID()}`,
                                     kind: "plan_written",
                                     payload: outcome,
@@ -142,11 +139,11 @@ export async function runRootTurnUntilRootWorkflowEvent(args: {
                                 (next.event.payload as PlanWrittenEventPayload).outcome,
                             )
                         ) {
-                            settleWorkflowToolEvent(args.hostedSession, feedbackEvent);
+                            workflowEvents(args.hostedSession).settle(feedbackEvent);
                             feedbackEvent = next.event;
                             continue;
                         }
-                        settleWorkflowToolEvent(args.hostedSession, feedbackEvent);
+                        workflowEvents(args.hostedSession).settle(feedbackEvent);
                         return await stopForTerminalEvent(next.event);
                     } finally {
                         feedbackWaitController.abort();
@@ -160,7 +157,7 @@ export async function runRootTurnUntilRootWorkflowEvent(args: {
         const waitedEvent = await eventPromise.catch(() => null);
         return {
             messages: first.messages,
-            event: waitedEvent || claimWorkflowToolEvent(args.hostedSession, claimOptions),
+            event: waitedEvent || workflowEvents(args.hostedSession).claim(claimOptions),
         };
     } finally {
         waitController.abort();

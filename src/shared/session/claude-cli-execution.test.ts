@@ -33,7 +33,7 @@ import { readLatestTaskCompletedOutcome } from "../workflow/workflow-results.ts"
 import { readLatestTriageOutcome } from "../workflow/orchestrator.ts";
 import { startMcpIntegration } from "../mcp/integration.ts";
 import { runValidationAgentUntilEvent } from "./agent-workflow-step.ts";
-import { settleWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import { readRequestAttemptEntries } from "./request-dispatch.ts";
 
 interface ToolResultDetails {
@@ -452,7 +452,7 @@ test("Claude CLI accepted workflow completion shuts down without recording a bac
                 .filter((entry) => entry.type === "custom" && entry.customType === "runwield.backend_status"),
             [],
         );
-        if (result.event) settleWorkflowToolEvent(hostedSession, result.event);
+        if (result.event) workflowEvents(hostedSession).settle(result.event);
         hostedSession.dispose();
     });
 });

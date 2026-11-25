@@ -13,7 +13,7 @@ import { createTaskCompletedTool } from "../task-completed.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
 import type { TextContent } from "@earendil-works/pi-ai";
-import type { ActiveExecutionWorkflow } from "../../shared/session/hosted-session.ts";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import type { RequestDispatchKind } from "../../shared/session/request-dispatch.ts";
 import type {
     RuntimeAssistantTextDeltaEvent,

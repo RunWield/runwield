@@ -5,14 +5,14 @@ import { readFileSync } from "node:fs";
 import { mock } from "bun:test";
 
 import { getWorkflowMetricsFilePath } from "../metrics.ts";
-import type { PublicationAttempt } from "../publication-attempt.ts";
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 import process from "node:process";
-import { cleanupStoredPublication, loadPublicationAttempt } from "../publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 
 const [projectRoot, boundary, supplied] = process.argv.slice(2);
 const attempt: PublicationAttempt | null = supplied
     ? JSON.parse(supplied)
-    : await loadPublicationAttempt(projectRoot, "attempt-demo");
+    : await openPublication(projectRoot).attempt("attempt-demo").load();
 if (!attempt) throw new Error("Publication fixture is missing");
 
 // Interrupt at the real Git subprocess boundary, without replacing publication
@@ -83,7 +83,7 @@ const readFileWithFault = async (...args: Parameters<typeof nativeReadFile>) => 
 if (boundary.startsWith("coverage-"))
     mock.module("node:fs/promises", () => ({ ...fsPromises, readFile: readFileWithFault }));
 const started = Date.now();
-const result = await cleanupStoredPublication(projectRoot, attempt);
+const result = await openPublication(projectRoot).resume(attempt).cleanup();
 console.log(
     JSON.stringify({
         complete: result.complete,

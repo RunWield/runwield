@@ -21,9 +21,9 @@ import { prepareEditedSiblingPlans } from "../../plan-store/index.ts";
 import { CLI_BIN } from "../../constants.ts";
 import { getPlanFrontMatterRevisionForText } from "@runwield/plans/format";
 import { ensurePlanIdentity, planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 import {
     defaultPlanBranchName,
-    effectiveDeliveryBranch,
     ensurePlanBranch,
     isStandalonePlannedChange,
     shouldAdoptPlanBranch,
@@ -223,6 +223,7 @@ async function materializeEpicPlanFamily(projectRoot, executionCwd, planName, pl
 
 interface ExecutionPreparationLocationOptions {
     readOnly?: boolean;
+    expectedPlanId?: string;
 }
 
 /** Reconcile the source authority before the registry can select an incomplete worktree. */
@@ -237,6 +238,9 @@ export async function reconcileExecutionPreparationLocation(
     const source = await planDocumentsForCheckout(cwd)
         .load(planName)
         .catch(() => null);
+    if (options.expectedPlanId && source && source.attrs.planId !== options.expectedPlanId) {
+        throw new Error("Workflow belongs to a different Plan.");
+    }
     const entries = await listWorktreeRegistryEntries(projectRoot);
     // Only an interrupted first preparation can use the approved source when its
     // selected worktree has no document yet. A worker's later deletion cannot.
@@ -291,10 +295,11 @@ export async function reconcileExecutionPreparationLocation(
 interface ExecutionStartOptions {
     packageSelection?: PlanAccess;
     planName: string;
-    triageMeta: Partial<import("@runwield/plans").PlanFrontMatter>;
-    currentStatus: import("@runwield/plans/lifecycle").PlanStatus;
+    expectedPlanId?: string;
+    triageMeta?: Partial<import("@runwield/plans").PlanFrontMatter>;
+    currentStatus?: import("@runwield/plans/lifecycle").PlanStatus;
     cwd?: string;
-    existingExecution?: import("../session/hosted-session.ts").ActiveExecutionWorkflow | null;
+    existingExecution?: import("@runwield/workflow/state").ActiveExecutionWorkflow | null;
     hostedSession?: import("../session/hosted-session.ts").HostedSession;
     collaborationStyle?: "autonomous" | "pair";
     collaborationRecommendation?: "autonomous" | "pair";
@@ -303,16 +308,16 @@ interface ExecutionStartOptions {
 
 /** Prepare execution through the shared policy with either a Session or durable carrier inputs.
  * @param {ExecutionStartOptions} opts
- * @returns {Promise<import('../session/hosted-session.ts').ActiveExecutionWorkflow>}
+ * @returns {Promise<import("@runwield/workflow/state").ActiveExecutionWorkflow>}
  */
 export async function startActiveExecutionWorkflow(
     options: ExecutionStartOptions,
-): Promise<import("../session/hosted-session.ts").ActiveExecutionWorkflow> {
+): Promise<import("@runwield/workflow/state").ActiveExecutionWorkflow> {
     options.hostedSession?.getManagedOperationCapability?.()?.assertLive();
     const cwd = options.cwd || options.hostedSession?.cwd;
     if (!cwd) throw new Error("Execution requires its launch directory.");
     if (!options.packageSelection && !capturePlanAccess()) {
-        const selection = await selectPlanAccess(cwd, options.planName);
+        const selection = await selectPlanAccess(cwd, options.planName, options.expectedPlanId);
         if (selection) return await startActiveExecutionWorkflow({ ...options, packageSelection: selection });
     }
     if (options.packageSelection)
@@ -326,7 +331,8 @@ export async function startActiveExecutionWorkflow(
 }
 async function startActiveExecutionWorkflowInScope({
     planName,
-    triageMeta,
+    expectedPlanId,
+    triageMeta = {},
     currentStatus,
     hostedSession,
     cwd = hostedSession?.cwd,
@@ -334,7 +340,7 @@ async function startActiveExecutionWorkflowInScope({
     collaborationStyle = CollaborationStyles.AUTONOMOUS,
     collaborationRecommendation = CollaborationStyles.AUTONOMOUS,
     ports,
-}: ExecutionStartOptions): Promise<import("../session/hosted-session.ts").ActiveExecutionWorkflow> {
+}: ExecutionStartOptions): Promise<import("@runwield/workflow/state").ActiveExecutionWorkflow> {
     hostedSession?.getManagedOperationCapability?.()?.assertLive();
     if (!cwd) throw new Error("startActiveExecutionWorkflow: cwd is required");
     const projectRoot = projects.checkout.primaryRoot(cwd);
@@ -346,9 +352,14 @@ async function startActiveExecutionWorkflowInScope({
     if (sourceLocation.archived) {
         throw new Error(`This Plan is archived. Run wld plans archive restore ${planName} before executing it.`);
     }
+    if (expectedPlanId && (sourceLocation.plan?.attrs.planId || triageMeta.planId) !== expectedPlanId) {
+        throw new Error("Workflow belongs to a different Plan.");
+    }
     if (sourceLocation.plan) {
         triageMeta = sourceLocation.plan.attrs;
         currentStatus = sourceLocation.plan.attrs.status;
+    } else if (!currentStatus) {
+        throw new Error(`Plan not found: ${planName}`);
     }
     if (currentStatus === "approved") {
         triageMeta = await recordPlanEvent({
@@ -484,7 +495,7 @@ async function startActiveExecutionWorkflowInScope({
             throw new Error(transition.message || `Non-Git execution preparation did not commit for ${planName}.`);
         }
         const activeWorkflow =
-            /** @type {import('../session/hosted-session.ts').ActiveExecutionWorkflow} */ transition.value;
+            /** @type {import("@runwield/workflow/state").ActiveExecutionWorkflow} */ transition.value;
         await completeExecutionSetup(activeWorkflow.executionCwd);
         hostedSession?.setActiveExecutionWorkflow(activeWorkflow);
         return activeWorkflow;
@@ -1049,8 +1060,7 @@ async function startActiveExecutionWorkflowInScope({
     if (transition.status !== "committed") {
         throw new Error(transition.message || `Execution preparation did not commit for ${planName}.`);
     }
-    const activeWorkflow =
-        /** @type {import('../session/hosted-session.ts').ActiveExecutionWorkflow} */ transition.value;
+    const activeWorkflow = /** @type {import("@runwield/workflow/state").ActiveExecutionWorkflow} */ transition.value;
     await completeExecutionSetup(activeWorkflow.executionCwd);
     hostedSession?.setActiveExecutionWorkflow(activeWorkflow);
     return activeWorkflow;

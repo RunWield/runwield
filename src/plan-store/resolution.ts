@@ -24,8 +24,8 @@ import { type MissingExecutionWorktreeRecovery } from "./location.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import { listEntries, prepareWorktreeRegistry } from "../shared/worktree-registry.ts";
-import { cleanupStoredPublication, loadPublicationAttempt } from "../shared/workflow/publication-machine.ts";
-import { isPublicationCleanupPending } from "../shared/workflow/publication-attempt.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
+import { isPublicationCleanupPending } from "@runwield/workflow/publication";
 
 type ResolvedPlan = Awaited<ReturnType<typeof resolvePlan>>;
 
@@ -117,12 +117,13 @@ export async function resumePlanPublicationCleanup(
             "More than one execution attempt owns this Plan. Inspect the saved worktree records before cleanup.",
         );
     }
+    const publications = openPublication(registryRoot);
     const notices: PublicationCleanupNotice[] = [];
     for (const entry of entries) {
         if (!isPublicationCleanupPending(entry.publication)) continue;
-        const publication = await loadPublicationAttempt(registryRoot, entry.id);
+        const publication = await publications.attempt(entry.id).load();
         if (!publication) continue;
-        const cleanup = await cleanupStoredPublication(registryRoot, publication);
+        const cleanup = await publications.resume(publication).cleanup();
         notices.push({
             planName: publication.planName,
             targetBranch: publication.targetBranch,

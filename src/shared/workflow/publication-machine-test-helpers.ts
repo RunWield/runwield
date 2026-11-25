@@ -17,7 +17,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { addEntry, findById } from "../worktree-registry.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
-import { publicationRootForAttempt } from "./publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 
 const DRIVER = join(dirname(fromFileUrl(import.meta.url)), "testing/publication-process-driver.ts");
 export const CRASH_BOUNDARIES = [
@@ -149,7 +149,7 @@ export async function runCrashCase(mode: PublicationMode, crashAfter: string, ad
             false,
         );
         assertEquals(
-            await fsStat(publicationRootForAttempt(projectRoot, "attempt-1"))
+            await fsStat(openPublication(projectRoot).attempt("attempt-1").stagingRoot())
                 .then(() => true)
                 .catch(() => false),
             false,

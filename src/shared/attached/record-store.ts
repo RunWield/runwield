@@ -501,9 +501,9 @@ export async function transactAttachedWorkflowRecord<Result>(
 export interface AttachedValidationCheckpoint {
     chat?: AttachedReviewChat;
     actionId?: string;
-    request?: import("../workflow/validation-host-contract.ts").ValidationHostRequest;
+    request?: import("@runwield/workflow/host-contract").ValidationHostRequest;
     coverage: import("../workflow/review-inspection.ts").ReviewDiffSpan[];
-    resume?: import("../workflow/validation-host-contract.ts").ValidationHostResume;
+    resume?: import("@runwield/workflow/host-contract").ValidationHostResume;
     operationId?: string;
     operation?: AttachedOperationName;
     evidence?: RecordedEvidence;

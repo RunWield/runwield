@@ -4,7 +4,7 @@
  */
 
 import type { PlanFrontMatter } from "@runwield/plans";
-import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { TriageMeta } from "@runwield/workflow/state";
 import type { TicketReference } from "@runwield/plans/format";
 
 import { AGENTS } from "../session/agent-registry.ts";

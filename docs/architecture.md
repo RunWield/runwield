@@ -91,18 +91,17 @@ flowchart TB
 ```
 
 The session runtime is the application boundary for interactive conversations. Plan persistence and lifecycle form a
-second core boundary used both by session workflows and by the Workspace. The workflow layer joins the two: it consumes
-structured agent outcomes, calls Plan and execution services, and decides which agent owns the next step.
+second core boundary used by Session workflows and Workspace. Workflow binds a Plan attempt, accepts structured reports, and uses recorded evidence to decide the next action. [Workflow interface](../packages/workflow/index.ts)
 
 ## Core boundary
 
 | Area                        | Responsibilities                                                                                                     | Primary implementation                                                                                                                                   |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Session application runtime | Create/load/close sessions, serialize turns, switch agents, cancel work, emit semantic events, broker interactions   | `src/shared/session/session-runtime.ts`                                                                                                                  |
-| Per-session ownership       | Project root, root and sub-agent sessions, active agent/model/thinking state, workflow state, active interactions    | `src/shared/session/hosted-session.ts`                                                                                                                   |
+| Per-session ownership       | Project root, root and sub-agent sessions, active agent/model/thinking state, active workflow reference, interactions    | `src/shared/session/hosted-session.ts`                                                                                                                   |
 | Multi-session registry      | Adopt, find, list, and dispose hosted sessions                                                                       | `src/shared/session/session-host.ts`                                                                                                                     |
 | Pi integration              | Build configured `AgentSession` objects, assemble prompts, wire tools, translate Pi events, run prompts, reuse roots | `src/shared/session/session.ts`                                                                                                                          |
-| Workflow application logic  | Interpret tool outcomes, route requests, choose post-planning and post-execution actions                             | `src/shared/session/agent-handler.ts`, `src/shared/workflow/orchestrator.ts`, `src/shared/workflow/decisions.ts`                                         |
+| Workflow application logic  | Bind execution attempts, interpret tool outcomes, route requests, and advance validation and publication                             | `packages/workflow/`, `src/shared/session/agent-handler.ts`, `src/shared/workflow/orchestrator.ts`                                         |
 | Plan domain                 | Canonical Markdown persistence, identities, hierarchy, lifecycle state machine, collaboration write lock             | `src/plan-store.ts`, `packages/plans/lifecycle.ts`                                                                                             |
 | Execution domain            | Worktree preparation, Engineer completion gate, local validation, repair, merge-back, recovery metadata              | `src/shared/workflow/workflow.ts`, `src/shared/workflow/validation.ts`, `src/shared/worktree.ts`                                                         |
 | Configuration and policy    | Layered agent definitions, settings, model resolution, protected tools, skills/prompts/extensions                    | `packages/agents/registry.ts`, `src/shared/settings.ts`, `src/shared/models/`, `src/tools/registry.ts`                                                  |
@@ -1096,8 +1095,8 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Agent switching                           | `src/shared/session/agent-switching.ts`                                       |
 | Workflow-aware turn handling              | `src/shared/session/agent-handler.ts`                                         |
 | Routing orchestration                     | `src/shared/workflow/orchestrator.ts`                                         |
-| Workflow decisions and outcome parsing    | `src/shared/workflow/decisions.ts`, `src/shared/workflow/workflow-results.ts` |
-| Plan execution facade                     | `src/shared/workflow/workflow.ts`                                             |
+| Workflow decisions and outcome parsing    | `packages/workflow/decisions.ts`, `src/shared/workflow/workflow-results.ts` |
+| Plan execution attempt                    | `packages/workflow/index.ts`                                             |
 | Validation and repair                     | `src/shared/workflow/validation.ts`                                           |
 | Plan lifecycle                            | `packages/plans/lifecycle.ts`                                       |
 | Plan persistence                          | `src/plan-store.ts`, `src/plan-front-matter.ts`                               |

@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { listFixturePlanHistory, readFixtureMilestone } from "../testing/plan-query-fixture.ts";
 import { projects } from "@runwield/projects";
 import { test } from "node:test";
@@ -9,13 +10,12 @@ import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
-import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { runValidationAttempt } from "./validation-supervisor.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
 import { git } from "../git-test-fixture.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { coverage } from "./testing/validation-host-fixture.ts";
-import type { ValidationHostResume } from "./validation-host-contract.ts";
+import type { ValidationHostResume } from "@runwield/workflow/host-contract";
 import { readPlanPackage, readPlanPackagePublication } from "../../plan-store/packages.ts";
 import { loadPublishedWorkRecordSource } from "../../plan-store/index.ts";
 
@@ -70,11 +70,11 @@ for (const remote of [false, true])
                         });
                         execution = workflow.executionCwd!;
                         await fs.writeFile(join(execution, "result.txt"), "delivered implementation\n");
-                        await finalizePlanImplementation({
-                            projectRoot: f.root,
-                            planName: "one",
-                            executionContext: workflow,
-                        });
+                        await (
+                            await openWorkflow({ cwd: f.root, planName: "one" }).resumeAttempt({
+                                attemptId: workflow?.packageAttemptId || workflow?.worktreeId,
+                            })
+                        ).acceptCompletion({});
                         await rejects(fs.access(join(execution, "docs/plans")));
                         let resume: ValidationHostResume | undefined;
                         let reviews = 0;
@@ -196,7 +196,11 @@ for (const child of [false, true]) {
                 });
                 equal(workflow.executionMode, "non_git_in_place");
                 await fs.writeFile(join(root, "result.txt"), "in-place work\n");
-                await finalizePlanImplementation({ projectRoot: root, planName: "one", executionContext: workflow });
+                await (
+                    await openWorkflow({ cwd: root, planName: "one" }).resumeAttempt({
+                        attemptId: workflow.packageAttemptId || workflow.worktreeId,
+                    })
+                ).acceptCompletion({});
                 let result = await runValidationAttempt({
                     projectRoot: root,
                     planName: "one",

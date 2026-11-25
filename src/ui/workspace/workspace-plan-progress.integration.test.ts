@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.ts";
-import { createPublicationAttempt, recordPublicationFailure } from "../../shared/workflow/publication-attempt.ts";
+import { createPublicationAttempt, recordPublicationFailure } from "@runwield/workflow/publication";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
 import { loadOwnerPlanProgress } from "./server/owner-plan-progress.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";

@@ -16,7 +16,7 @@ import { listWorkRecords } from "../work-records/index.ts";
 import { recordPlanEvent, stageValidationPassedInExecutionWorktree } from "../../plan-store/index.ts";
 import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
-import { advancePublicationAttempt, createPublicationAttempt } from "./publication-attempt.ts";
+import { advancePublicationAttempt, createPublicationAttempt } from "@runwield/workflow/publication";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
 import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";

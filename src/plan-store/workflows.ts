@@ -804,6 +804,20 @@ export async function reservePlanExecution(planName: string, request: PlanExecut
     });
 }
 
+/** Read the reservation without entering the workflow, creating locks, or recovering attempts. */
+export async function readPlanExecutionAttemptId(cwd: string, planId: string): Promise<string | undefined> {
+    if (managedPlanStoreActive()) {
+        const { readManagedExecution } = await import("./managed.ts");
+        return (await readManagedExecution(cwd, planId))?.attemptId;
+    }
+    const { inspectLocalHomeStore } = await import("./access.ts");
+    const store = inspectLocalHomeStore(cwd);
+    if (store.kind !== "local") return undefined;
+    const plan = await readPlanPackage(store.identity, { planId });
+    if (plan.kind !== "loaded") throw new Error(plan.message);
+    return plan.metadata.workflow?.attempt?.attemptId;
+}
+
 export interface PlanExecutionContext {
     packageSelection: PlanAccess;
     packageAttemptId: string;

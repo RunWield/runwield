@@ -23,7 +23,7 @@ import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
 import { dispatchPostTriage, type DispatchPostTriageArgs, readLatestTriageOutcome } from "./orchestrator.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.ts";
-import { publishWorkflowToolEvent } from "./workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 
 interface SessionFixture {
@@ -80,8 +80,7 @@ function publishPlanOutcome(
     outcome: "approved_execute" | "approved_decompose",
     planName: string,
 ): void {
-    publishWorkflowToolEvent({
-        hostedSession,
+    workflowEvents(hostedSession).publish({
         toolCallId: `plan-${crypto.randomUUID()}`,
         kind: "plan_written",
         payload: { outcome, planName },

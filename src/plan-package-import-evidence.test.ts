@@ -18,10 +18,9 @@ import { git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
 import { addEntry, getWorktreeRegistryPath, updateEntry } from "./shared/worktree-registry.ts";
 
-import { createPublicationAttempt } from "./shared/workflow/publication-attempt.ts";
+import { createPublicationAttempt, hasApplicablePublicationReceipt } from "@runwield/workflow/publication";
 import { type ValidationCheckpoint } from "@runwield/plans/controller-state";
 import { validationCheckpointCanResume } from "./shared/workflow/validation-checkpoint.ts";
-import { hasApplicablePublicationReceipt } from "./shared/workflow/publication-receipt.ts";
 
 const markdown = (body: string, fields = "") =>
     `---\nplanId: active-plan\nclassification: PLANNED_CHANGE\nstatus: implemented\ncreatedAt: '2020-01-01'\n${fields}---\n${body}`;

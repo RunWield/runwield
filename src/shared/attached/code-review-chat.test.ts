@@ -10,7 +10,7 @@ import { EVIDENCE, readRecordBytes, spawnAttachedCli } from "./attached-test-fix
 import { conversation, pendingChat, reply, reviewApi, sendChat } from "./review-chat-test-fixture.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { toDelivery } from "./delivery-test-fixture.ts";
-import { continueHostTurnValidation } from "../workflow/validation-host-turn.ts";
+import { openWorkflow } from "@runwield/workflow";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 test("Code page chat queues and replies without a decision, survives a fresh process, and permits later approval", async () => {
@@ -203,14 +203,10 @@ test("an external Core decision closes the saved code chat without retaining tex
                 })
             ).ok,
         );
-        const advanced = await continueHostTurnValidation({
-            projectRoot: fixture.root,
-            planName: "p",
-            resume: {
-                kind: "decision",
-                identity: started.workflow.nextAction.request.identity,
-                answer: { outcome: "approved" },
-            },
+        const advanced = await openWorkflow({ cwd: fixture.root, planName: "p" }).answerInteraction({
+            kind: "decision",
+            identity: started.workflow.nextAction.request.identity,
+            answer: { outcome: "approved" },
         });
         assert(advanced.kind === "host_request" && advanced.request.kind === "recorder");
         const reconciled = await fixture.status();

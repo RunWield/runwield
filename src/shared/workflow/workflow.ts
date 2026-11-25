@@ -9,16 +9,10 @@ import {
     supportsPairExecution as supportsPairExecutionImpl,
 } from "./execution-collaboration.ts";
 import { runPlanningAgent as runPlanningAgentImpl } from "./planning-agent.ts";
-import { finalizePlanImplementation as finalizePlanImplementationImpl } from "./implementation-checkpoint.ts";
 import {
     executePlan as executePlanImpl,
     executePreparedPlanSegmentHandoff as executePreparedPlanSegmentHandoffImpl,
 } from "./plan-executor.ts";
-import {
-    assertReusableWorktreeTargetMatches as assertReusableWorktreeTargetMatchesImpl,
-    normalizeExecutionTargetBranch as normalizeExecutionTargetBranchImpl,
-    startActiveExecutionWorkflow as startActiveExecutionWorkflowImpl,
-} from "./execution-start.ts";
 
 // Slicer-facing helpers are re-exported from the workflow facade for callers that should not import submodules.
 export {
@@ -40,8 +34,8 @@ export { CollaborationStyles, PairCheckpointDecisions, PairPauseReasons } from "
 
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { PlanExecutionPolicy } from "@runwield/plans/format";
-import type { HostedSession, ActiveExecutionWorkflow } from "../session/hosted-session.ts";
-import type { PlanWrittenEventPayload } from "./workflow-tool-events.ts";
+import type { HostedSession } from "../session/hosted-session.ts";
+import type { PlanWrittenEventPayload } from "@runwield/workflow/events";
 import type { PlanExecutionResult, ExecutePlanOptions } from "./plan-executor.ts";
 import type { RunPlanningAgentOptions } from "./planning-agent.ts";
 import type { RuntimeTriageInput } from "../session/session-runtime.ts";
@@ -50,9 +44,7 @@ export type { PlanExecutionResult, ExecutePlanOptions } from "./plan-executor.ts
 export type { RunPlanningAgentOptions } from "./planning-agent.ts";
 export type PlanOutcomeResult = PlanWrittenEventPayload;
 export type PlanOutcome = PlanOutcomeResult["outcome"];
-export type FinalizePlanImplementationOptions = Parameters<typeof finalizePlanImplementationImpl>[0];
 export type PreparedPlanSegmentHandoffOptions = Parameters<typeof executePreparedPlanSegmentHandoffImpl>[0];
-export type StartActiveExecutionWorkflowOptions = Parameters<typeof startActiveExecutionWorkflowImpl>[0];
 
 export type ExecutionOwner = PlanExecutionPolicy["executionAgent"];
 
@@ -65,10 +57,6 @@ export interface WorkflowPlanningOptions extends Omit<Partial<RunPlanningAgentOp
 export interface WorkflowExecutionOptions extends Omit<Partial<ExecutePlanOptions>, "triageMeta"> {
     hostedSession: HostedSession;
     triageMeta?: RuntimeTriageInput;
-}
-
-export interface PlanImplementationResult {
-    implementationCommit?: string;
 }
 
 export function resolveExecutionOwner(meta: Partial<PlanFrontMatter>): ExecutionOwner {
@@ -91,12 +79,6 @@ export function runPlanningAgent(options: WorkflowPlanningOptions): Promise<Plan
     return runPlanningAgentImpl(options as RunPlanningAgentOptions);
 }
 
-export function finalizePlanImplementation(
-    options: FinalizePlanImplementationOptions,
-): Promise<PlanImplementationResult> {
-    return finalizePlanImplementationImpl(options);
-}
-
 export function executePlan(options: WorkflowExecutionOptions): Promise<PlanExecutionResult> {
     return executePlanImpl(options as ExecutePlanOptions);
 }
@@ -105,27 +87,6 @@ export function executePreparedPlanSegmentHandoff(
     options: PreparedPlanSegmentHandoffOptions,
 ): Promise<PlanExecutionResult> {
     return executePreparedPlanSegmentHandoffImpl(options);
-}
-
-export function normalizeExecutionTargetBranch(value: unknown): string | undefined {
-    return normalizeExecutionTargetBranchImpl(value);
-}
-
-export function assertReusableWorktreeTargetMatches(
-    reusableBaseBranch: string | undefined,
-    targetBranch: string | undefined,
-) {
-    return assertReusableWorktreeTargetMatchesImpl(reusableBaseBranch, targetBranch);
-}
-
-export function startActiveExecutionWorkflow(
-    options: StartActiveExecutionWorkflowOptions,
-): Promise<ActiveExecutionWorkflow> {
-    return startActiveExecutionWorkflowImpl({
-        ...options,
-        cwd: options.cwd ?? options.hostedSession?.cwd,
-        existingExecution: options.existingExecution ?? options.hostedSession?.getActiveExecutionWorkflow?.(),
-    });
 }
 
 export type {

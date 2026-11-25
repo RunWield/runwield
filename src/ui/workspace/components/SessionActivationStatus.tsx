@@ -1,4 +1,4 @@
-import type { ActiveExecutionWorkflow } from "../../../shared/session/execution-workflow-session.ts";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import type { WorkflowContext } from "../../../shared/session/workflow-context-session.ts";
 
 export interface SessionAvailabilitySnapshot {

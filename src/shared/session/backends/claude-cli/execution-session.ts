@@ -10,7 +10,7 @@ import {
     RuntimeEventTypes,
 } from "../../session-runtime-events.ts";
 import type { ImageAttachment } from "../../image-attachments.ts";
-import { WorkflowStepCompleted } from "../../../workflow/workflow-tool-events.ts";
+import { WorkflowStepCompleted } from "@runwield/workflow/events";
 import {
     prepareClaudeCliCommand,
     type PreparedClaudeCliCommand,

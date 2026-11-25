@@ -1,5 +1,5 @@
 /**
- * @module shared/workflow/validation-interactions
+ * @module workflow/interactions
  * User interactions for the session-independent engine.
  *
  * `requestInteraction` is the engine's thin window onto the port's interaction
@@ -7,15 +7,22 @@
  * runs out of moves.
  */
 
-import { type ValidationInteractionRequest, ValidationInteractionTypes } from "./validation-ports.ts";
-import type { ValidationInteractionResponse } from "./validation-ports.ts";
+import {
+    type ValidationInteractionRequest,
+    ValidationInteractionTypes,
+} from "../../src/shared/workflow/validation-ports.ts";
+import type { ValidationInteractionResponse } from "../../src/shared/workflow/validation-ports.ts";
 import type { PendingHostDecision } from "@runwield/plans/controller-state";
-import type { UserActionChoice, UserActionPause, ValidationLoopArgs } from "./validation-types.ts";
-import { emitStatus } from "./validation-emit.ts";
-import { buildValidationUserMessage } from "./validation-user-messages.ts";
+import type {
+    UserActionChoice,
+    UserActionPause,
+    ValidationLoopArgs,
+} from "../../src/shared/workflow/validation-types.ts";
+import { emitStatus } from "../../src/shared/workflow/validation-emit.ts";
+import { buildValidationUserMessage } from "../../src/shared/workflow/validation-user-messages.ts";
 
-import { sameHostIdentity, ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
-import { saveHostCheckpoint } from "./validation-host-state.ts";
+import { sameHostIdentity, ValidationHostRejected, ValidationHostWait } from "./host-contract.ts";
+import { saveHostCheckpoint } from "../../src/shared/workflow/validation-host-state.ts";
 
 function isPauseDecision(answer: ValidationInteractionResponse | undefined): boolean {
     return answer?.outcome === "selected" && ["stop", "close"].includes(String(answer.value));

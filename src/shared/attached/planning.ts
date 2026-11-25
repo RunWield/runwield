@@ -3,7 +3,7 @@ import {
     isHiddenPlanName,
     assertNotReservedEpicArtifactPlanName,
 } from "@runwield/plans/format";
-import { effectiveDeliveryBranch } from "../workflow/plan-branch.ts";
+import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 import { resolveWorkflowPlanLocation, withLocalPlanWorkflow } from "../../plan-store/index.ts";
 import { preparePlanningWorktreeForPlan } from "../workflow/planning-worktree.ts";
 import { prepareSessionPlanningWorktree } from "../workflow/session-planning-worktree.ts";

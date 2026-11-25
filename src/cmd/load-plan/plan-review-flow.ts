@@ -15,7 +15,7 @@ import { AGENTS } from "../../shared/session/agent-registry.ts";
 import { CLI_BIN } from "../../constants.ts";
 import { type PlanFrontMatter } from "@runwield/plans";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
-import { decidePostExecution, decidePostPlanning } from "../../shared/workflow/decisions.ts";
+import { decidePostExecution, decidePostPlanning } from "@runwield/workflow/decisions";
 import { isPlanReviewableWithoutReopen } from "@runwield/plans/lifecycle";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";

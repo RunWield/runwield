@@ -1,6 +1,10 @@
 /** A saved receipt is historical evidence, not proof for a different execution or target. */
 import type { PlanFrontMatter } from "@runwield/plans";
-import { effectiveDeliveryBranch } from "./plan-branch.ts";
+
+/** One owner for landing selection. Legacy Plans still honor target edits. */
+export function effectiveDeliveryBranch(attrs: Partial<PlanFrontMatter>): string | undefined {
+    return attrs.deliveryBranch?.trim() || attrs.targetBranch?.trim() || undefined;
+}
 
 type ReceiptPlan = Pick<
     PlanFrontMatter,

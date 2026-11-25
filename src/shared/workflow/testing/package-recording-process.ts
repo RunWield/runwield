@@ -5,7 +5,7 @@ import promises from "node:fs/promises";
 import { mock } from "bun:test";
 import { createWorkRecordMnemotecaFixture } from "../../work-records/test-fixtures/mnemoteca-port.ts";
 import type { PackageWorkflowSelection } from "../../../plan-store/workflows.ts";
-import type { ValidationHostResume } from "../validation-host-contract.ts";
+import type { ValidationHostResume } from "@runwield/workflow/host-contract";
 interface Config {
     selection: PackageWorkflowSelection;
     boundary?: string;
@@ -81,7 +81,7 @@ const operations = {
 mock.module("node:fs/promises", () => ({ ...operations, default: operations }));
 const { readPlanPackage } = await import("../../../plan-store/packages.ts");
 const { withPackageWorkflow } = await import("../../../plan-store/workflows.ts");
-const { continueHostTurnValidation } = await import("../validation-host-turn.ts");
+const { runHostValidation } = await import("./run-host-validation.ts");
 const current = await readPlanPackage(config.selection.identity, { planId: config.selection.planId });
 if (current.kind !== "loaded") throw new Error(current.message);
 await withPackageWorkflow(
@@ -90,7 +90,7 @@ await withPackageWorkflow(
     async () => {
         let resume = config.resume;
         for (let step = 0; step < 5; step++) {
-            const result = await continueHostTurnValidation({
+            const result = await runHostValidation({
                 projectRoot: projects.home.requireCheckout(config.selection.identity).checkoutRoot,
                 planName: current.metadata.name,
                 resume,
