@@ -12,7 +12,7 @@ requireSupportedBun();
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const ciFiles = await listCiFiles(root);
 const files = ciFiles.filter((file) => PACKAGE_SOURCE_PATTERN.test(file) && !file.split("/").includes(".astro"));
-const [runtimeDiagnostics, lintPackageBoundary] = await Promise.all([
+const [runtimeDiagnostics, packageBoundaries] = await Promise.all([
     checkOwnedRuntime(root),
     createPackageBoundaryLint(root, ciFiles),
 ]);
@@ -21,7 +21,7 @@ for (const diagnostic of runtimeDiagnostics)
 let failures = runtimeDiagnostics.length;
 for (const file of files) {
     const source = await readFile(join(root, file), "utf8");
-    for (const diagnostic of lintPackageBoundary(source, file)) {
+    for (const diagnostic of packageBoundaries.lint(source, file)) {
         console.error(`${file}:${diagnostic.line}: ${diagnostic.message}`);
         failures += 1;
     }
@@ -31,6 +31,10 @@ for (const file of files) {
         console.error(`${file}:${message.line}:${message.column}: ${message.ruleId ?? "parser"}: ${message.message}`);
         failures += 1;
     }
+}
+for (const diagnostic of packageBoundaries.checkIndependence()) {
+    console.error(`${diagnostic.file}:${diagnostic.line}: ${diagnostic.message}`);
+    failures += 1;
 }
 console.log(`Checked ${files.length} files; ${failures} lint diagnostics.`);
 process.exitCode = failures ? 1 : 0;

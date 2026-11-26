@@ -3,16 +3,17 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "@runwield/session-runtime/host";
 import { workflowEvents } from "@runwield/workflow/events";
 
-const definition = toolRegistry.get("work_record_completed").definition;
+const workRecordCompleted = toolRegistry.get("work_record_completed");
 
 export function createWorkRecordCompletedTool(hostedSession: HostedSession) {
     return defineTool({
-        ...definition,
+        ...workRecordCompleted.definition,
 
         execute(toolCallId, sections) {
-            if (!sections.title.trim() || !sections.summary.trim()) {
+            const problem = workRecordCompleted.validateSections(sections);
+            if (problem) {
                 return Promise.resolve({
-                    content: [{ type: "text", text: "Provide a non-empty title and summary." }],
+                    content: [{ type: "text", text: problem }],
                     details: { accepted: false },
                     terminate: false,
                 });

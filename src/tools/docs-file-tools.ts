@@ -11,8 +11,8 @@ import { createSingleEditToolDefinition } from "./edit.ts";
 import type { TextContent } from "@earendil-works/pi-ai";
 import { toolRegistry } from "@runwield/tools";
 
-const writeDocs = toolRegistry.get("write_docs").definition;
-const editDocs = toolRegistry.get("edit_docs").definition;
+const writeDocs = toolRegistry.get("write_docs");
+const editDocs = toolRegistry.get("edit_docs");
 
 type NativeWriteToolDefinition = ReturnType<typeof createWriteToolDefinition>;
 type NativeEditToolDefinition = ReturnType<typeof createSingleEditToolDefinition>;
@@ -25,23 +25,15 @@ interface BlockedDocsResult {
     isError: true;
 }
 
-export type WriteDocsToolDefinition = ToolDefinition<typeof writeDocs.parameters, NativeWriteResult["details"] | null>;
+export type WriteDocsToolDefinition = ToolDefinition<
+    typeof writeDocs.definition.parameters,
+    NativeWriteResult["details"] | null
+>;
 
-export type EditDocsToolDefinition = ToolDefinition<typeof editDocs.parameters, NativeEditResult["details"] | null>;
-
-function validateMarkdownPath(path: unknown, toolName: string): string | null {
-    if (typeof path !== "string" || !path.trim()) {
-        return `${toolName}: path is required and must end with .md.`;
-    }
-
-    const normalized = path.replace(/\\/g, "/");
-    const fileName = normalized.split("/").pop() || "";
-    if (!fileName.toLowerCase().endsWith(".md")) {
-        return `${toolName}: only Markdown .md files can be modified. Received: ${path}`;
-    }
-
-    return null;
-}
+export type EditDocsToolDefinition = ToolDefinition<
+    typeof editDocs.definition.parameters,
+    NativeEditResult["details"] | null
+>;
 
 function blockedResult(message: string): BlockedDocsResult {
     return {
@@ -58,10 +50,10 @@ export function createWriteDocsToolDefinition(cwd: string): WriteDocsToolDefinit
 
     return {
         ...tool,
-        ...writeDocs,
-        promptGuidelines: [...writeDocs.promptGuidelines],
+        ...writeDocs.definition,
+        promptGuidelines: [...writeDocs.definition.promptGuidelines],
         async execute(toolCallId, params, signal, onUpdate, ctx) {
-            const validationError = validateMarkdownPath(params.path, writeDocs.name);
+            const validationError = writeDocs.validatePath(params.path);
             if (validationError) return blockedResult(validationError);
             return await original.execute(toolCallId, params, signal, onUpdate, ctx);
         },
@@ -75,10 +67,10 @@ export function createEditDocsToolDefinition(cwd: string): EditDocsToolDefinitio
 
     return {
         ...tool,
-        ...editDocs,
-        promptGuidelines: [...editDocs.promptGuidelines],
+        ...editDocs.definition,
+        promptGuidelines: [...editDocs.definition.promptGuidelines],
         async execute(toolCallId, params, signal, onUpdate, ctx) {
-            const validationError = validateMarkdownPath(params.path, editDocs.name);
+            const validationError = editDocs.validatePath(params.path);
             if (validationError) return blockedResult(validationError);
             return await original.execute(toolCallId, params, signal, onUpdate, ctx);
         },

@@ -13,7 +13,7 @@
  * scratch, so anything held in a loop local is lost on every nudge.
  */
 
-import type { ReviewFinding } from "./review-outcome.ts";
+import type { ReviewFinding } from "@runwield/tools";
 
 import type { LedgerItem, ReviewLedger } from "@runwield/plans/controller-state";
 

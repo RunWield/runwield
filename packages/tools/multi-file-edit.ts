@@ -123,6 +123,78 @@ export function applyExactTextEdits(original: string, edits: readonly TextReplac
     return bom + restoreLineEndings(newContent, detectLineEnding(text));
 }
 
+/** Compare the original and edited text using the tool’s numbered diff format. */
 export function diffEditedText(original: string, replacement: string): EditedTextDiff {
     return generateDiffString(normalizeToLF(stripBom(original).text), normalizeToLF(stripBom(replacement).text));
+}
+
+/** A model argument before schema validation. Unsupported field types can pass through unchanged. */
+export type MultiFileEditInput =
+    string | number | boolean | null | undefined | readonly MultiFileEditInput[] | MultiFileEditInputRecord;
+
+interface MultiFileEditInputRecord {
+    readonly [key: string]: MultiFileEditInput;
+}
+
+/** An argument record with normalized paths and edit fields still awaiting schema validation. */
+export interface MultiFileEditCandidate {
+    root?: string;
+    edits: readonly MultiFileEditInput[];
+}
+
+function isInputRecord(input: MultiFileEditInput): input is MultiFileEditInputRecord {
+    return input !== null && typeof input === "object" && !Array.isArray(input);
+}
+
+/** Accept legacy single edits and path aliases before the caller validates the current schema. */
+export function prepareMultiFileEditArguments<Input extends MultiFileEditInput>(
+    input: Input,
+): Input | MultiFileEditCandidate {
+    if (!isInputRecord(input)) return input;
+
+    const args = input;
+    const topLevelPath =
+        typeof args.path === "string" ? args.path : typeof args.file_path === "string" ? args.file_path : undefined;
+
+    if (Array.isArray(args.edits)) {
+        const rawEdits: readonly MultiFileEditInput[] = args.edits;
+        const edits = rawEdits.map((rawEdit) => {
+            if (!isInputRecord(rawEdit)) return rawEdit;
+            const editPath =
+                typeof rawEdit.path === "string"
+                    ? rawEdit.path
+                    : typeof rawEdit.file_path === "string"
+                      ? rawEdit.file_path
+                      : topLevelPath;
+            return {
+                path: editPath,
+                oldText: rawEdit.oldText,
+                newText: rawEdit.newText,
+            };
+        });
+        return {
+            ...(typeof args.root === "string" ? { root: args.root } : {}),
+            edits,
+        };
+    }
+
+    if (topLevelPath && typeof args.oldText === "string" && typeof args.newText === "string") {
+        return {
+            ...(typeof args.root === "string" ? { root: args.root } : {}),
+            edits: [{ path: topLevelPath, oldText: args.oldText, newText: args.newText }],
+        };
+    }
+
+    return input;
+}
+
+/** Group edits by the supplied path in submission order. Path resolution is the caller’s responsibility. */
+export function groupEditsByPath(edits: readonly MultiFileEdit[]): Map<string, MultiFileEdit[]> {
+    const grouped = new Map<string, MultiFileEdit[]>();
+    for (const edit of edits) {
+        const existing = grouped.get(edit.path) || [];
+        existing.push(edit);
+        grouped.set(edit.path, existing);
+    }
+    return grouped;
 }

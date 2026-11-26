@@ -2,8 +2,11 @@ import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import { createCymbalTools, type CymbalToolHost, MAX_CODE_BATCH_OUTPUT_CHARS } from "./tools.ts";
+import { toolRegistry } from "@runwield/tools";
+import { createCymbalTools, type CymbalToolHost } from "./tools.ts";
 import type { HelperBinaryExecResult } from "../helper-binary-exec.ts";
+
+const { maxOutputChars } = toolRegistry.get("code_batch");
 
 interface RecordedCall {
     command: string;
@@ -113,7 +116,7 @@ test("code_batch validates operations and limits batch size", async () => {
 });
 
 test("code_batch limits a large first result without hiding later results", async () => {
-    const longText = "x".repeat(MAX_CODE_BATCH_OUTPUT_CHARS + 10);
+    const longText = "x".repeat(maxOutputChars + 10);
     const { getTool } = setup((_command, args) => ({
         code: 0,
         stdout: args.includes("big") ? longText : "small",
@@ -128,7 +131,7 @@ test("code_batch limits a large first result without hiding later results", asyn
     assert(text.startsWith("## 1. show big"));
     assertMatch(text, /Result truncated/);
     assertMatch(text, /## 2\. outline small.ts\nStatus: success\n\nsmall/);
-    assert(text.length <= MAX_CODE_BATCH_OUTPUT_CHARS);
+    assert(text.length <= maxOutputChars);
     assertEquals(result.details, {
         operationCount: 2,
         truncated: true,
@@ -298,7 +301,7 @@ test("code_batch bounds every result including large errors and preserves the fi
         operations: [{ op: "show", target: "Large" }, { op: "show", target: "Bad" }, { op: "show", target: "Last" }],
     });
     const text = firstText(result);
-    assert(text.length <= MAX_CODE_BATCH_OUTPUT_CHARS);
+    assert(text.length <= maxOutputChars);
     const sections = text.split("\n\n---\n\n");
     assertEquals(sections.length, 3);
     assertMatch(sections[0], /Status: success[\s\S]*Result truncated/);

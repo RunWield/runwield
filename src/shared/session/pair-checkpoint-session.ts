@@ -1,3 +1,8 @@
+import type {
+    BrowserPreflightOutcome,
+    PairCheckpointResolutionDecision,
+    PreparedPairCheckpointReport,
+} from "@runwield/tools";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "@runwield/session-runtime/host";
 import { readRequestAttemptEntries, type RequestAttemptEntry } from "./request-dispatch.ts";
@@ -7,19 +12,9 @@ import { readPersistedActiveAgentName } from "./active-agent-session.ts";
 
 export const PAIR_CHECKPOINT_CUSTOM_TYPE = "runwield.pair_checkpoint";
 
-export type PairCheckpointDecision = "continue" | "revise" | "switch_to_autonomous" | "stop";
-
-export type PairCheckpointReport = {
-    summary: string;
-    route?: string;
-    state?: string;
-    viewport?: string;
-    evidence?: string[];
-    diagnostics?: string;
-    nextIncrement?: string;
-    final: boolean;
-    browserPreflightOutcome?: "succeeded" | "failed" | "externally_blocked";
-};
+export interface PairCheckpointReport extends PreparedPairCheckpointReport {
+    browserPreflightOutcome?: BrowserPreflightOutcome;
+}
 
 type PairRequestProvenance = {
     runtimeTurnId: string;
@@ -48,7 +43,7 @@ type PairResolvedEvent = {
     timestampMs: number;
     workflowAttemptKey: string;
     workflow: import("@runwield/workflow/state").ActiveExecutionWorkflow;
-    decision: PairCheckpointDecision;
+    decision: PairCheckpointResolutionDecision;
     revisionDirection?: string;
     userTurn: PairRequestProvenance;
 };
@@ -90,7 +85,7 @@ type RecordPairCheckpointReportArgs = {
 type ResolvePairCheckpointArgs = {
     hostedSession: HostedSession;
     checkpointId: string;
-    decision: PairCheckpointDecision;
+    decision: PairCheckpointResolutionDecision;
     workflow: import("@runwield/workflow/state").ActiveExecutionWorkflow;
     revisionDirection?: string;
     timestampMs?: number;

@@ -4,9 +4,13 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { pathToFileURL } from "node:url";
-import { createPackageBoundaryLint } from "./check-package-boundaries.ts";
+import { createPackageBoundaryLint, PACKAGE_SOURCE_PATTERN } from "./check-package-boundaries.ts";
 
-async function makeRepository(context: TestContext) {
+interface RepositoryFiles {
+    [file: string]: string;
+}
+
+async function makeRepository(context: TestContext, extraFiles: RepositoryFiles = {}) {
     const root = await mkdtemp(join(tmpdir(), "package-boundaries-"));
     context.after(() => rm(root, { recursive: true, force: true }));
     const alpha = "packages/alpha";
@@ -43,13 +47,21 @@ async function makeRepository(context: TestContext) {
             files: ["exporter.ts"],
             wld: { metricsExporter: { entry: "./exporter.ts" } },
         }),
+        ...extraFiles,
     };
     for (const [file, content] of Object.entries(files)) {
         await mkdir(dirname(join(root, file)), { recursive: true });
         await writeFile(join(root, file), content);
     }
     await symlink(join(root, alpha), join(root, "alpha-link"), "junction");
-    return { root, lint: await createPackageBoundaryLint(root, Object.keys(files)) };
+    const { lint, checkIndependence } = await createPackageBoundaryLint(root, Object.keys(files));
+    const lintRepository = () => {
+        const fileDiagnostics = Object.entries(files).flatMap(([file, source]) =>
+            PACKAGE_SOURCE_PATTERN.test(file) ? lint(source, file) : [],
+        );
+        return [...fileDiagnostics, ...checkIndependence()];
+    };
+    return { root, lint, lintRepository };
 }
 
 test("checks private package specifiers and paths in runtime, type, and reexport syntax", async (context) => {
@@ -199,4 +211,123 @@ test("application re-exports follow imported bindings to their package and repor
     for (const diagnostic of diagnostics)
         assert.match(diagnostic.message, /Consumers must import @runwield\/plans directly/);
     assert.deepEqual(lint(source, "packages/beta/entry.ts"), []);
+});
+
+test("independent packages cannot reach root src through aliases, public exports, or other repo files", async (context) => {
+    const { lintRepository } = await makeRepository(context, {
+        "tsconfig.json": JSON.stringify({
+            compilerOptions: {
+                module: "Preserve",
+                moduleResolution: "Bundler",
+                paths: { "beta-alias": ["./packages/beta/entry.ts"], "app-alias": ["./src/app.ts"] },
+            },
+            files: ["packages/tools/index.ts"],
+        }),
+        "packages/tools/package.json": JSON.stringify({ name: "@runwield/tools", exports: "./index.ts" }),
+        "packages/tools/index.ts": 'import "beta-alias";\nimport "./worker.ts";',
+        "packages/tools/worker.ts": '/// <reference path="../../src/legacy.d.ts" />\nexport {};',
+        "packages/beta/entry.ts": 'export type { Result } from "../../helpers/result.ts";',
+        "helpers/result.ts": 'export type { Result } from "app-alias";',
+        "src/app.ts": "export type Result = string;",
+        "src/legacy.d.ts": "export {};",
+        "packages/plans/index.ts": 'export type { Result } from "../../src/app.ts";',
+    });
+    assert.deepEqual(lintRepository(), [
+        {
+            file: "packages/tools/worker.ts",
+            line: 1,
+            message: "@runwield/tools depends on root src/: packages/tools/worker.ts -> src/legacy.d.ts.",
+        },
+        {
+            file: "helpers/result.ts",
+            line: 1,
+            message:
+                "@runwield/tools depends on root src/: packages/tools/index.ts -> packages/beta/entry.ts -> helpers/result.ts -> src/app.ts.",
+        },
+    ]);
+});
+
+test("reports type-only package cycles downstream of an independent package", async (context) => {
+    const { lintRepository } = await makeRepository(context, {
+        "packages/tools/package.json": JSON.stringify({ name: "@runwield/tools", exports: "./index.ts" }),
+        "packages/tools/index.ts": 'export type { Value } from "beta";',
+        "packages/beta/entry.ts": 'export type { Value } from "@runwield/plans";',
+        "packages/plans/index.ts": 'export type Value = import("../../helpers/value.ts").Value;',
+        "helpers/value.ts": 'export type Value = import("../packages/beta/entry.ts").Value;',
+    });
+    assert.deepEqual(lintRepository(), [
+        {
+            file: "helpers/value.ts",
+            line: 1,
+            message:
+                "Package dependency cycle from @runwield/tools: @runwield/tools -> beta -> @runwield/plans -> beta.",
+        },
+    ]);
+});
+
+test("permits unrelated legacy dependencies and dependencies used only by another package's tests", async (context) => {
+    const { lintRepository } = await makeRepository(context, {
+        "packages/tools/package.json": JSON.stringify({ name: "@runwield/tools", exports: "./index.ts" }),
+        "packages/tools/index.ts": 'export { result } from "beta";',
+        "packages/beta/entry.ts": "export const result = 1;",
+        "packages/beta/entry.test.ts": 'import "./test-fixture.ts";',
+        "packages/beta/test-fixture.ts": 'import "@runwield/tools";\nimport "../../src/app.ts";',
+        "packages/plans/index.ts": 'import "../../src/app.ts";\nimport "@sample/alpha";',
+        "packages/alpha/src/index.ts": 'import "@runwield/plans";',
+        "src/app.ts": "export {};",
+    });
+    assert.deepEqual(lintRepository(), []);
+});
+
+test("resolves triple-slash type directives through typeRoots instead of module aliases", async (context) => {
+    const { lintRepository } = await makeRepository(context, {
+        "tsconfig.json": JSON.stringify({
+            compilerOptions: {
+                module: "Preserve",
+                moduleResolution: "Bundler",
+                typeRoots: ["./src/types", "./node_modules/@types"],
+                paths: { ambient: ["./src/module.ts"] },
+            },
+            files: ["packages/tools/index.ts"],
+        }),
+        "packages/tools/package.json": JSON.stringify({ name: "@runwield/tools", exports: "./index.ts" }),
+        "packages/tools/index.ts": [
+            '/// <reference types="legacy" />',
+            '/// <reference types="ambient" />',
+            'import "legacy";',
+        ].join("\n"),
+        "src/types/legacy/index.d.ts": "export {};",
+        "node_modules/legacy/index.d.ts": "export {};",
+        "node_modules/@types/ambient/index.d.ts": "export {};",
+        "src/module.ts": "export {};",
+    });
+    assert.deepEqual(lintRepository(), [
+        {
+            file: "packages/tools/index.ts",
+            line: 1,
+            message: "@runwield/tools depends on root src/: packages/tools/index.ts -> src/types/legacy/index.d.ts.",
+        },
+    ]);
+});
+
+test("follows a triple-slash type directive through a package symlink", async (context) => {
+    const { lintRepository, root } = await makeRepository(context, {
+        "tsconfig.json": JSON.stringify({
+            compilerOptions: { module: "Preserve", moduleResolution: "Bundler", preserveSymlinks: true },
+            files: ["packages/tools/index.ts"],
+        }),
+        "packages/tools/package.json": JSON.stringify({ name: "@runwield/tools", exports: "./index.ts" }),
+        "packages/tools/index.ts": '/// <reference types="legacy" />\nexport {};',
+        "src/types/legacy/index.d.ts": "export {};",
+        "node_modules/legacy/index.d.ts": "export {};",
+    });
+    await mkdir(join(root, "node_modules/@types"));
+    await symlink(join(root, "src/types/legacy"), join(root, "node_modules/@types/legacy"), "junction");
+    assert.deepEqual(lintRepository(), [
+        {
+            file: "packages/tools/index.ts",
+            line: 1,
+            message: "@runwield/tools depends on root src/: packages/tools/index.ts -> src/types/legacy/index.d.ts.",
+        },
+    ]);
 });

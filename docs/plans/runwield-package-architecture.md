@@ -27,7 +27,7 @@ Retire the root `src/` directory in three passes. Preserve behavior for users, i
 
 ## Packages and extraction order
 
-Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. [Plan milestone history](https://github.com/RunWield/runwield/pull/650) has merged. [Plan artifacts and publication copies](https://github.com/RunWield/runwield/pull/651) have merged. [Workflow](https://github.com/RunWield/runwield/pull/652) has merged. [Pi-AI](https://github.com/RunWield/runwield/pull/653) has merged. The Session Runtime contract is in [PR #654](https://github.com/RunWield/runwield/pull/654). ACP is the final domain in the interface pass. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
+Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. [Plan milestone history](https://github.com/RunWield/runwield/pull/650) has merged. [Plan artifacts and publication copies](https://github.com/RunWield/runwield/pull/651) have merged. [Workflow](https://github.com/RunWield/runwield/pull/652) has merged. [Pi-AI](https://github.com/RunWield/runwield/pull/653) has merged. [Session Runtime](https://github.com/RunWield/runwield/pull/654) and [ACP](https://github.com/RunWield/runwield/pull/655) complete the interface pass. The independence pass starts with Tools and continues with Agents. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
 
 | Order and package | Public interface and responsibilities | Evidence that the move preserved behavior |
 | --- | --- | --- |
@@ -81,6 +81,14 @@ For the same report, check all three boundaries:
    feeds the saved result to the existing publisher and returns its receipt. A retry reuses that receipt. Agent
    switching and comment publication are consumer decisions. Current Connect callers also retain the same
    normalization for reports supplied by external hosts.
+
+### Tools independence
+
+A consumer can import the registry and use a tool's input checks and result preparation without opening a Session. For example, a caller can validate a `code_batch` request, run the reads using its own adapter, and ask the same registry entry to assemble the ordered report. The `memory` entry prepares scoped requests. Its adapter resolves the project collection and contacts the memory service.
+
+The host still authorizes delegation, opens files, runs commands, and persists workflow decisions. Workflow checks review findings against its ledger. TUI and Workspace share the list of tool calls to expand in Session history. That presentation list includes the historical `slicer_finalize` name so older transcripts keep their appearance.
+
+The package boundary check starts with Tools. It follows imports, re-exports and type references across workspace packages and reports the path when a dependency reaches root `src/` or forms a package cycle. Each later independence change adds its package to the same check. [Boundary check](../../scripts/check-package-boundaries.ts) · [Registry](../../packages/tools/registry.ts) · [Session history presentation](../../src/ui/workflow-tool-presentation.ts)
 
 ## Agents registry
 

@@ -9,10 +9,11 @@ import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "
 import { isAbsolute, relative, resolve, sep as SEPARATOR } from "node:path";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { requestHostedSessionInteraction, type HostedSession } from "@runwield/session-runtime/host";
-import type { SessionArtifactKind, SessionArtifactReference } from "../shared/session/file-session-store-types.ts";
+import type { SessionArtifactReference } from "../shared/session/file-session-store-types.ts";
 import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 
-const definition = toolRegistry.get("artifact_written").definition;
+const artifactWritten = toolRegistry.get("artifact_written");
+const { definition } = artifactWritten;
 
 interface ArtifactWrittenDetails {
     outcome: "registered" | "reviewed" | "feedback" | "rejected";
@@ -28,24 +29,8 @@ interface ArtifactWrittenOptions {
 
 type ArtifactWrittenResult = AgentToolResult<ArtifactWrittenDetails>;
 
-const REQUIRED_PARENT_BY_KIND: Partial<Record<SessionArtifactKind, string>> = {
-    plan: "docs/plans/",
-    prd: "docs/prd/",
-    adr: "docs/adr/",
-    "work-record": "docs/work-records/",
-};
-
 function portablePath(path: string): string {
     return path.split(SEPARATOR).join("/");
-}
-
-function inferTitle(markdown: string, artifactPath: string): string {
-    const heading = markdown
-        .split(/\r?\n/)
-        .map((line) => line.match(/^#\s+(.+?)\s*$/)?.[1]?.trim())
-        .find(Boolean);
-    if (heading) return heading;
-    return artifactPath.split("/").at(-1)?.replace(/\.md$/i, "").replaceAll("-", " ") || "Artifact";
 }
 
 async function resolveArtifact(
@@ -65,13 +50,6 @@ async function resolveArtifact(
     return { relativePath, sessionPath: relativePath, markdown: await fsReadFile(absolutePath, "utf8") };
 }
 
-function assertKindPath(kind: SessionArtifactKind, path: string): void {
-    const requiredParent = REQUIRED_PARENT_BY_KIND[kind];
-    if (requiredParent && !path.startsWith(requiredParent)) {
-        throw new Error(`${kind} artifacts must be stored under ${requiredParent}`);
-    }
-}
-
 export function createArtifactWrittenTool(options: ArtifactWrittenOptions = {}) {
     return defineTool<typeof definition.parameters, ArtifactWrittenDetails>({
         ...definition,
@@ -83,13 +61,13 @@ export function createArtifactWrittenTool(options: ArtifactWrittenOptions = {}) 
                 const capability = hostedSession.getManagedOperationCapability?.() || null;
                 if (!capability) throw new Error("Artifact registration requires an active managed Session turn");
                 capability.assertLive();
-                const kind = params.kind as SessionArtifactKind;
+                const kind = params.kind;
                 const resolved =
                     kind === "plan" || kind === "epic-artifact"
                         ? await readPlanSessionArtifact(hostedSession.cwd, params.path, kind)
                         : await resolveArtifact(hostedSession.cwd, params.path);
-                assertKindPath(kind, resolved.relativePath);
-                const title = params.title?.trim() || inferTitle(resolved.markdown, resolved.relativePath);
+                artifactWritten.assertKindPath(kind, resolved.relativePath);
+                const title = artifactWritten.resolveTitle(resolved.relativePath, resolved.markdown, params.title);
                 const artifact = capability.registerArtifact({
                     kind,
                     path: resolved.sessionPath,

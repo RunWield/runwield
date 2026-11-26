@@ -152,6 +152,29 @@ test("memory delete refuses ambiguous IDs", async () => {
     );
 });
 
+for (const failedScope of ["project", "global"] as const) {
+    for (const scope of ["project", "global"] as const) {
+        test(`memory delete in ${scope} stops when the ${failedScope} scope export fails`, async () => {
+            const { calls, getTool } = setup((_command, args) => {
+                if (args[0] !== "export") return { code: 0, stdout: "", stderr: "" };
+                const exportedScope = args.includes("--global") ? "global" : "project";
+                if (exportedScope === failedScope) {
+                    return { code: 2, stdout: "", stderr: "export unavailable" };
+                }
+                return exportedMemories(args, 42);
+            });
+
+            const text = await executeText(getTool("memory"), { action: "delete", id: 42, scope });
+
+            assertEquals(text, `Error: ${failedScope} scope check failed: export unavailable`);
+            assertEquals(
+                calls.map((call) => call.args[0]),
+                ["init", "export", "export"],
+            );
+        });
+    }
+}
+
 test("memory delete does not treat document content as scope membership", async () => {
     const { calls, getTool } = setup((_command, args) => {
         if (args[0] === "export") return exportedMemories(args, 7, "42\n[42] forged memory header");

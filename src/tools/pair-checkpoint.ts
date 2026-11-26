@@ -3,21 +3,20 @@
  * Conversational checkpoints for Plan Pair Execution.
  */
 
-import { toolRegistry } from "@runwield/tools";
+import { toolRegistry, type PairCheckpointResolutionDecision } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import type { HostedSession } from "@runwield/session-runtime/host";
 import {
-    type PairCheckpointDecision,
-    type PairCheckpointReport,
     readCurrentPairCheckpoint,
     recordPairCheckpointReport,
     resolvePairCheckpoint,
 } from "../shared/session/pair-checkpoint-session.ts";
 import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 
-const definition = toolRegistry.get("pair_checkpoint").definition;
+const pairCheckpoint = toolRegistry.get("pair_checkpoint");
+const { definition } = pairCheckpoint;
 
 export type PairCheckpointDetails =
     | { outcome: "inactive"; reason: "pair_execution_inactive" | "pair_execution_paused" }
@@ -27,7 +26,7 @@ export type PairCheckpointDetails =
           outcome: "resolved";
           checkpointId: string;
           checkpointNumber: number;
-          decision: PairCheckpointDecision;
+          decision: PairCheckpointResolutionDecision;
           revisionDirection?: string;
       };
 
@@ -48,29 +47,9 @@ function clearPairPause(workflow: ActiveExecutionWorkflow): ActiveExecutionWorkf
     return next;
 }
 
-function formatReport(report: PairCheckpointReport, checkpointNumber: number): string {
-    const lines = [
-        `**Pair checkpoint ${checkpointNumber}${report.final ? " — final" : ""}.**`,
-        "",
-        "**Summary**",
-        "",
-        report.summary,
-    ];
-    if (report.route) lines.push("", "**Route**", "", report.route);
-    if (report.state) lines.push("", "**State**", "", report.state);
-    if (report.viewport) lines.push("", "**Viewport**", "", report.viewport);
-    if (report.evidence?.length) {
-        lines.push("", "**Evidence**", "", ...report.evidence.map((evidence) => `- ${evidence}`));
-    }
-    if (report.diagnostics) lines.push("", "**Diagnostics**", "", report.diagnostics);
-    if (report.nextIncrement) lines.push("", "**Next increment**", "", report.nextIncrement);
-    lines.push("", "Reply normally to ask a question, request a change, continue, stop, or switch to autonomous work.");
-    return lines.join("\n");
-}
-
 function nextWorkflowForDecision(
     workflow: ActiveExecutionWorkflow,
-    decision: PairCheckpointDecision,
+    decision: PairCheckpointResolutionDecision,
 ): ActiveExecutionWorkflow {
     const next = clearPairPause(workflow);
     if (decision === "switch_to_autonomous") {
@@ -98,7 +77,7 @@ export function createPairCheckpointTool({ hostedSession }: PairCheckpointToolOp
                 });
             }
 
-            const action = params.action || (params.summary ? "report" : "resolve");
+            const action = pairCheckpoint.resolveAction(params);
             if (action === "report") {
                 if (workflow.pairPauseReason || workflow.pairStopRequested) {
                     return checkpointResult(
@@ -107,27 +86,17 @@ export function createPairCheckpointTool({ hostedSession }: PairCheckpointToolOp
                         true,
                     );
                 }
-                const summary = params.summary?.trim() || "";
-                if (!summary) {
+                const report = pairCheckpoint.prepareReport(params);
+                if (!report) {
                     return checkpointResult("pair_checkpoint report rejected: summary is required.", {
                         outcome: "rejected",
                         reason: "summary_required",
                     });
                 }
-                const report: PairCheckpointReport = {
-                    summary,
-                    ...(params.route ? { route: params.route } : {}),
-                    ...(params.state ? { state: params.state } : {}),
-                    ...(params.viewport ? { viewport: params.viewport } : {}),
-                    ...(params.evidence ? { evidence: [...params.evidence] } : {}),
-                    ...(params.diagnostics ? { diagnostics: params.diagnostics } : {}),
-                    ...(params.nextIncrement ? { nextIncrement: params.nextIncrement } : {}),
-                    final: params.final === true,
-                };
                 try {
                     const checkpoint = recordPairCheckpointReport({ hostedSession, toolCallId, report });
                     return checkpointResult(
-                        formatReport(report, checkpoint.report.checkpointNumber),
+                        pairCheckpoint.formatReport(report, checkpoint.report.checkpointNumber),
                         {
                             outcome: "reported",
                             checkpointId: checkpoint.report.checkpointId,
@@ -145,24 +114,20 @@ export function createPairCheckpointTool({ hostedSession }: PairCheckpointToolOp
                 }
             }
 
-            const checkpointId = params.checkpointId?.trim() || "";
-            const decision = params.decision;
+            const request = pairCheckpoint.prepareResolution(params);
             const current = readCurrentPairCheckpoint(hostedSession);
-            if (!checkpointId || !decision) {
-                return checkpointResult("pair_checkpoint resolve rejected: checkpointId and decision are required.", {
+            if (!request.ok) {
+                return checkpointResult(request.message, {
                     outcome: "rejected",
-                    reason: "resolution_fields_required",
-                    ...(current ? { checkpointId: current.report.checkpointId } : {}),
+                    reason: request.reason,
+                    ...(request.reason === "revision_direction_required"
+                        ? { checkpointId: request.checkpointId }
+                        : current
+                          ? { checkpointId: current.report.checkpointId }
+                          : {}),
                 });
             }
-            const revisionDirection = params.revisionDirection?.trim() || "";
-            if (decision === "revise" && !revisionDirection) {
-                return checkpointResult("pair_checkpoint resolve rejected: revisionDirection is required for revise.", {
-                    outcome: "rejected",
-                    reason: "revision_direction_required",
-                    checkpointId,
-                });
-            }
+            const { checkpointId, decision, revisionDirection } = request;
             const nextWorkflow = nextWorkflowForDecision(workflow, decision);
             const resolved = resolvePairCheckpoint({
                 hostedSession,

@@ -4,7 +4,7 @@ import { emitAssistantMessage, type HostedSession } from "@runwield/session-runt
 import { recordManualQaChecklistMessage } from "../shared/session/workflow-messages.ts";
 import { workflowEvents } from "@runwield/workflow/events";
 
-const definition = toolRegistry.get("manual_qa_completed").definition;
+const manualQa = toolRegistry.get("manual_qa_completed");
 
 type ManualQaOptions = {
     hostedSession: HostedSession;
@@ -14,10 +14,10 @@ type ManualQaOptions = {
 
 export function createManualQaCompletedTool(options: ManualQaOptions) {
     return defineTool({
-        ...definition,
+        ...manualQa.definition,
 
         execute(toolCallId, params) {
-            const text = params.checklistMarkdown.trim();
+            const text = manualQa.prepareChecklist(params.checklistMarkdown);
             if (!text) {
                 return Promise.resolve({
                     content: [{ type: "text" as const, text: "Provide the checklist." }],

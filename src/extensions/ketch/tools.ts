@@ -1,4 +1,4 @@
-import { toolRegistry } from "@runwield/tools";
+import { toolRegistry, type WebTextResult } from "@runwield/tools";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HelperBinaryExec } from "../helper-binary-exec.ts";
 
@@ -7,7 +7,8 @@ export interface KetchToolHost {
     exec: HelperBinaryExec;
 }
 
-export const MAX_WEB_FETCH_CHARS = 50_000;
+const webSearch = toolRegistry.get("web_search");
+const webFetch = toolRegistry.get("web_fetch");
 
 const DEFAULT_WEB_SEARCH_BACKEND = "keenable";
 const DEFAULT_WEB_CODE_SEARCH_BACKEND = "grepapp";
@@ -58,23 +59,13 @@ function asArrayJson(value: JsonValue | null): JsonValue[] | null {
     return Array.isArray(results) ? results : null;
 }
 
-function truncateText(value: string, maxChars: number, toolName: string): { text: string; truncated: boolean } {
-    if (value.length <= maxChars) return { text: value, truncated: false };
-    const marker = `\n\n[${toolName} output truncated at ${maxChars} characters. Use maxChars or a narrower request for remaining content.]`;
-    return { text: value.slice(0, maxChars) + marker, truncated: true };
-}
-
 function formatFailure(exitCode: number, message: string, alternates: string[]): string {
     const alternatesText =
         alternates.length > 0 ? ` Alternate backends accepted by backend: ${alternates.join(", ")}.` : "";
     return `Error (exit ${exitCode}): ${message || "ketch returned no error text."}${alternatesText}`;
 }
 
-function formatWebSearch(
-    raw: string,
-    scrape: boolean,
-    maxChars: number | undefined,
-): { text: string; truncated: boolean } {
+function formatWebSearch(raw: string, scrape: boolean, maxChars: number | undefined): WebTextResult {
     const parsed = asArrayJson(parseJson(raw));
     if (!parsed) return { text: text(raw), truncated: false };
     const lines = parsed
@@ -94,14 +85,14 @@ function formatWebSearch(
         .filter((line) => line.trim().length > 0);
     const formatted = text(lines.join("\n"));
     if (!scrape) return { text: formatted, truncated: false };
-    return truncateText(formatted, maxChars ?? MAX_WEB_FETCH_CHARS, "web_search");
+    return webSearch.limitText(formatted, maxChars);
 }
 
-function formatWebFetch(raw: string, maxChars: number | undefined): { text: string; truncated: boolean } {
+function formatWebFetch(raw: string, maxChars: number | undefined): WebTextResult {
     const parsed = parseJson(raw);
     const record = parsed ? readRecord(parsed) : null;
     const markdown = record ? readString(record, "markdown") : "";
-    return truncateText(text(markdown || raw), maxChars ?? MAX_WEB_FETCH_CHARS, "web_fetch");
+    return webFetch.limitText(text(markdown || raw), maxChars);
 }
 
 function formatWebCodeSearch(raw: string): string {
@@ -154,7 +145,7 @@ export function createKetchTools(host: KetchToolHost): ToolDefinition[] {
 
     return [
         defineTool({
-            ...toolRegistry.get("web_search").definition,
+            ...webSearch.definition,
             async execute(_id, params, signal) {
                 const args = ["search", "-b", params.backend || DEFAULT_WEB_SEARCH_BACKEND, "--json"];
                 const limit = numberArg(params.limit);
@@ -189,7 +180,7 @@ export function createKetchTools(host: KetchToolHost): ToolDefinition[] {
             },
         }),
         defineTool({
-            ...toolRegistry.get("web_fetch").definition,
+            ...webFetch.definition,
             async execute(_id, params, signal) {
                 const result = await runKetch(["scrape", params.url, "--json"], signal);
                 if (result.code !== 0) {

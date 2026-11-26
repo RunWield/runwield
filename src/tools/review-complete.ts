@@ -5,7 +5,7 @@
  * plan_written for planners.
  */
 
-import { toolRegistry } from "@runwield/tools";
+import { toolRegistry, type ReviewOutcomeDetails } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "@runwield/session-runtime/host";
@@ -15,8 +15,7 @@ import { workflowEvents } from "@runwield/workflow/events";
 import type { ReviewLedger } from "@runwield/plans/controller-state";
 import type { ReviewInspection } from "../shared/workflow/review-inspection.ts";
 
-export type { ReviewAdvisory, ReviewFinding, ReviewIntegrationNote } from "../shared/workflow/review-outcome.ts";
-import { normalizeReviewOutcome, type ReviewOutcomeDetails } from "../shared/workflow/review-outcome.ts";
+import { normalizeReviewOutcome } from "../shared/workflow/review-outcome.ts";
 
 const definition = toolRegistry.get("review_complete").definition;
 

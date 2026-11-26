@@ -43,7 +43,7 @@ import { type SessionManager, type ToolDefinition } from "@earendil-works/pi-cod
 import { type RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 import { type WorkflowContext } from "@runwield/session-runtime/events";
 import type { TriageMeta } from "@runwield/workflow/state";
-import { type ReviewAdvisoryInput, type ReviewCompletePayload, type ReviewFindingInput } from "./review-outcome.ts";
+import { type ReviewAdvisoryInput, type ReviewCompleteParams, type ReviewFindingInput } from "@runwield/tools";
 import { type ValidationLoopArgs } from "./validation-types.ts";
 
 type ValidatedCiRunAttrs = Record<string, string | number> & Pick<TriageMeta, "executionAgent">;
@@ -69,7 +69,7 @@ type ScriptedFinding = Pick<ReviewFindingInput, keyof ReviewFindingInput>;
 
 type ScriptedAdvisory = Pick<ReviewAdvisoryInput, keyof ReviewAdvisoryInput>;
 
-type ReviewVerdict = Partial<Pick<ReviewCompletePayload, "approved" | "feedback">> & {
+type ReviewVerdict = Partial<Pick<ReviewCompleteParams, "approved" | "feedback">> & {
     findings?: ScriptedFinding[];
     advisories?: ScriptedAdvisory[];
 };

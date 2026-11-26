@@ -17,7 +17,8 @@ import { syncEpicChildPlanDeviations } from "../plan-store/index.ts";
 import { formatPlanDeviationForPrompt, type PlanDeviation } from "@runwield/plans/format";
 import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 
-const definition = toolRegistry.get("record_plan_deviation").definition;
+const planDeviation = toolRegistry.get("record_plan_deviation");
+const { definition } = planDeviation;
 
 export type PlanDeviationDetails =
     | { decision: "inactive"; reason: "plan_execution_inactive" | "missing_execution_context" }
@@ -126,9 +127,7 @@ export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOpti
                 );
             }
 
-            const supersededRequirement = params.supersededRequirement.trim();
-            const replacementRequirement = params.replacementRequirement.trim();
-            const reason = params.reason?.trim();
+            const { supersededRequirement, replacementRequirement, reason } = planDeviation.prepare(params);
             const response = await requestHostedSessionInteraction(
                 hostedSession,
                 {

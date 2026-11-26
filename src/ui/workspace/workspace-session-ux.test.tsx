@@ -728,11 +728,25 @@ test("review_diff stays collapsed while review_complete is an expanded workflow 
 });
 
 test("all workflow tools remain expanded outside routine activity, with accepted reports preserved", async () => {
-    const { WORKFLOW_TOOL_NAMES } = await import("../../tools/registry.ts");
+    const workflowToolsInSavedSessions = [
+        "triage_report",
+        "plan_written",
+        "task_completed",
+        "review_complete",
+        "qa_checklist_generated",
+        "pair_checkpoint",
+        "record_plan_deviation",
+        "slicer_finalize",
+        "slicer_finalize_decomposition",
+        "artifact_written",
+        "user_interview",
+        "work_record_completed",
+        "manual_qa_completed",
+    ];
     const { workflowToolMarkdown, SessionTimeline } = await import("./components/SessionTimeline.tsx");
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
-    for (const name of WORKFLOW_TOOL_NAMES) {
+    for (const name of workflowToolsInSavedSessions) {
         const items = reduceSessionEvents([
             { type: "tool_start", toolCallId: "read-1", toolName: "read" },
             { type: "tool_end", toolCallId: "read-1", toolName: "read", output: "file" },

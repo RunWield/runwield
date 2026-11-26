@@ -4,7 +4,7 @@ import type { HostedSession } from "@runwield/session-runtime/host";
 import { checkBashCommand, describeBashAllowedCommands } from "../shared/bash-command-policy.ts";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
 
-const definition = toolRegistry.get("background_task").definition;
+const backgroundTask = toolRegistry.get("background_task");
 
 /** Shell start requires the caller's effective bash authority. Controls do not. */
 export function createBackgroundTaskTool(options: {
@@ -14,39 +14,29 @@ export function createBackgroundTaskTool(options: {
     allowedCommands?: BashAllowedCommands;
 }) {
     return defineTool({
-        ...definition,
+        ...backgroundTask.definition,
 
-        description: definition.description + describeBashAllowedCommands(options.allowedCommands),
+        description: backgroundTask.definition.description + describeBashAllowedCommands(options.allowedCommands),
 
         async execute(_toolCallId, params) {
             try {
-                const { action, task_id, command, timeout } = params;
-                if (action === "start") {
-                    if (!options.allowShellStart) throw new Error("Shell start requires effective bash authority.");
-                    if (!command?.trim() || task_id !== undefined) {
-                        throw new Error("Start requires command and no task_id.");
-                    }
-                    if (
-                        timeout !== undefined &&
-                        (!Number.isFinite(timeout) || timeout <= 0 || timeout * 1000 > 2_147_483_647)
-                    ) {
-                        throw new Error("Timeout must be a positive finite number of seconds.");
-                    }
-                    checkBashCommand(command, options.allowedCommands);
+                if (params.action === "start" && !options.allowShellStart) {
+                    throw new Error("Shell start requires effective bash authority.");
+                }
+                const request = backgroundTask.prepare(params);
+                if (request.action === "start") {
+                    checkBashCommand(request.command, options.allowedCommands);
                     const status = options.hostedSession.backgroundTasks.startShell({
-                        command,
+                        command: request.command,
                         cwd: options.cwd,
-                        ...(timeout === undefined ? {} : { timeoutMs: timeout * 1000 }),
+                        ...(request.timeoutMs === undefined ? {} : { timeoutMs: request.timeoutMs }),
                     });
                     return { content: [{ type: "text" as const, text: JSON.stringify(status) }], details: status };
                 }
-                if (!task_id || command !== undefined || timeout !== undefined) {
-                    throw new Error(`${action} requires task_id and no command or timeout.`);
-                }
                 const status =
-                    action === "cancel"
-                        ? await options.hostedSession.backgroundTasks.cancel(task_id)
-                        : options.hostedSession.backgroundTasks.status(task_id);
+                    request.action === "cancel"
+                        ? await options.hostedSession.backgroundTasks.cancel(request.taskId)
+                        : options.hostedSession.backgroundTasks.status(request.taskId);
                 return { content: [{ type: "text" as const, text: JSON.stringify(status) }], details: status };
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);

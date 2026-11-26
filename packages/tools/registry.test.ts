@@ -95,3 +95,75 @@ test("registered context-dependent tools build definitions from the caller's aut
     equal("browserPreflightOutcome" in complete.define("summary").parameters.properties, false);
     equal("browserPreflightOutcome" in complete.define("frontend-implementation").parameters.properties, true);
 });
+
+test("code_batch validates requests and builds bounded results in read order", () => {
+    const batch = toolRegistry.get("code_batch");
+    const ceiling = 50_000;
+    equal(batch.maxOutputChars, ceiling);
+    equal(batch.validate({ operations: [] }), "code_batch requires at least one operation.");
+    throws(() => batch.report([]), RangeError);
+    equal(
+        batch.validate({ operations: [{ op: "outline", file: " " }] }),
+        "operations[0].file must be a non-empty string for outline.",
+    );
+
+    const show = { op: "show", target: "One" } as const;
+    const outline = { op: "outline", file: "two.ts" } as const;
+    equal(batch.validate({ operations: [show, outline, show] }), null);
+    const result = batch.report([
+        { operation: show, text: "x".repeat(ceiling + 1), isError: true },
+        { operation: outline, text: "function Two", isError: false },
+        { operation: show, text: "function One", isError: false },
+    ]);
+
+    equal(result.text.length <= ceiling, true);
+    const single = batch.report([{ operation: show, text: "x".repeat(ceiling + 1), isError: false }]);
+    equal(single.text.length, ceiling);
+    equal(single.details.truncated, true);
+    equal(result.text.endsWith("## 3. show One\nStatus: success\n\nfunction One"), true);
+    equal(result.isError, false);
+    deepStrictEqual(result.details, {
+        operationCount: 3,
+        truncated: true,
+        results: [
+            { operation: show, status: "error", truncated: true },
+            { operation: outline, status: "success", truncated: false },
+            { operation: show, status: "success", truncated: false },
+        ],
+    });
+});
+
+test("memory prepares action-specific inputs and checks the requested delete scope", () => {
+    const memory = toolRegistry.get("memory");
+    deepStrictEqual(memory.prepare({ action: "recall" }), { ok: false, error: "query is required for recall." });
+    deepStrictEqual(memory.prepare({ action: "store", content: "Use the isolated runner." }), {
+        ok: true,
+        request: { action: "store", content: "Use the isolated runner.", scope: "project", core: false },
+    });
+    deepStrictEqual(memory.prepare({ action: "delete", id: 42 }), {
+        ok: false,
+        error: "scope is required for delete.",
+    });
+
+    const deletion = { action: "delete", id: 42, scope: "global" } as const;
+    deepStrictEqual(memory.prepare(deletion), { ok: true, request: deletion });
+    const present = { status: "success", present: true } as const;
+    const absent = { status: "success", present: false } as const;
+    equal(memory.checkDeleteScope(deletion, absent, present), null);
+    equal(memory.checkDeleteScope(deletion, present, absent), "id 42 was not found in global memory.");
+    equal(
+        memory.checkDeleteScope(deletion, present, present),
+        "id 42 is ambiguous across project and global memory. Refusing delete.",
+    );
+});
+
+test("web_search and web_fetch bound returned text using the tool character limit", () => {
+    const search = toolRegistry.get("web_search");
+    const fetch = toolRegistry.get("web_fetch");
+    deepStrictEqual(fetch.limitText("abc", 3), { text: "abc", truncated: false });
+    deepStrictEqual(search.limitText("abcdef", 3), {
+        text: "abc\n\n[web_search output truncated at 3 characters. Use maxChars or a narrower request for remaining content.]",
+        truncated: true,
+    });
+    equal(fetch.limitText("x".repeat(fetch.maxOutputChars + 1)).truncated, true);
+});

@@ -1325,7 +1325,7 @@ export async function projectManagedEpic(
     parentName: string,
     childName: string,
     projection: "notes" | "deviations",
-    notes: import("../tools/review-complete.ts").ReviewIntegrationNote[] = [],
+    notes: import("@runwield/tools").ReviewIntegrationNote[] = [],
 ): Promise<string | null> {
     const parent = await selectManagedPlan(cwd, parentName);
     const child = await selectManagedPlan(cwd, childName);

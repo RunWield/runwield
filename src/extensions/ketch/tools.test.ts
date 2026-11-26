@@ -2,7 +2,8 @@ import { test } from "node:test";
 import { match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import { createKetchTools, type KetchToolHost, MAX_WEB_FETCH_CHARS } from "./tools.ts";
+import { toolRegistry } from "@runwield/tools";
+import { createKetchTools, type KetchToolHost } from "./tools.ts";
 import type { HelperBinaryExecResult } from "../helper-binary-exec.ts";
 
 interface RecordedCall {
@@ -213,7 +214,7 @@ test("non-key failures include exit code, cleaned ketch message, and alternate b
 test("web_fetch default ceiling uses explicit truncation marker", async () => {
     const { getTool } = setup(() => ({
         code: 0,
-        stdout: JSON.stringify({ markdown: "x".repeat(MAX_WEB_FETCH_CHARS + 1) }),
+        stdout: JSON.stringify({ markdown: "x".repeat(toolRegistry.get("web_fetch").maxOutputChars + 1) }),
         stderr: "",
     }));
 

@@ -9,16 +9,15 @@ import { HostedSession } from "@runwield/session-runtime/host";
 import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { createPairCheckpointTool } from "../pair-checkpoint.ts";
 import { readCurrentPairCheckpoint } from "../../shared/session/pair-checkpoint-session.ts";
-import { createTaskCompletedTool } from "../task-completed.ts";
+import { createTaskCompletedTool, type TaskCompletedDetails } from "../task-completed.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
 import type { TextContent } from "@earendil-works/pi-ai";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import type { RequestDispatchKind } from "../../shared/session/request-dispatch.ts";
 import type { RuntimeAssistantTextDeltaEvent, SessionRuntimeEvent } from "@runwield/session-runtime/events";
-import type { PairCheckpointDecision } from "../../shared/session/pair-checkpoint-session.ts";
 import type { PairCheckpointDetails } from "../pair-checkpoint.ts";
-import type { BrowserPreflightOutcome, TaskCompletedDetails } from "@runwield/tools";
+import type { BrowserPreflightOutcome, PairCheckpointResolutionDecision } from "@runwield/tools";
 
 interface ObservedCompletionEvent extends Partial<Omit<RuntimeAssistantTextDeltaEvent, "type">> {
     type: SessionRuntimeEvent["type"];
@@ -32,7 +31,7 @@ interface CompletionTestDetails {
     reason?: string;
     checkpointId?: string;
     checkpointNumber?: number;
-    decision?: PairCheckpointDecision | "pending";
+    decision?: PairCheckpointResolutionDecision | "pending";
     message?: string;
     browserPreflightOutcome?: BrowserPreflightOutcome;
 }

@@ -8,7 +8,7 @@ import type { RuntimeInteractionOption, RuntimeInteractionRequest } from "@runwi
 import type { RuntimeUsage, RuntimeValidationProgress } from "@runwield/session-runtime/events";
 import { DeliveryReportCard } from "./DeliveryReportCard.tsx";
 import { useEffect, useRef, useState } from "react";
-import { WORKFLOW_TOOL_NAMES } from "../../../tools/registry.ts";
+import { WORKFLOW_TOOL_NAMES } from "../../workflow-tool-presentation.ts";
 import {
     isApprovalAcceptedValue,
     RuntimeInteractionOutcomes,

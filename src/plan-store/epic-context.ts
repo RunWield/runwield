@@ -25,7 +25,7 @@ import type { PlanFrontMatter } from "@runwield/plans";
 import { isGitRepository } from "../shared/git.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
 import { prepareTargetBranchPlansByParent } from "../shared/workflow/planning-worktree.ts";
-import type { ReviewIntegrationNote } from "../tools/review-complete.ts";
+import type { ReviewIntegrationNote } from "@runwield/tools";
 import { SharedPlanLockError } from "../shared/collaboration/lock.ts";
 
 /** The Epic a child belongs to, and the request section that describes it. */

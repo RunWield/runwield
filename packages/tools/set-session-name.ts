@@ -2,6 +2,7 @@ import { Type } from "typebox";
 
 const SESSION_NAME_MAX_LENGTH = 40;
 
+/** Sanitize and bound the requested Session name before the caller saves it. */
 export function sanitizeSessionName(value: string | null | undefined): string {
     return Array.from(String(value ?? ""), (char) => {
         const code = char.charCodeAt(0);
@@ -12,10 +13,6 @@ export function sanitizeSessionName(value: string | null | undefined): string {
         .trim()
         .slice(0, SESSION_NAME_MAX_LENGTH)
         .trim();
-}
-
-export interface SetSessionNameDetails {
-    name: string;
 }
 
 export const SET_SESSION_NAME_TOOL = {

@@ -9,50 +9,12 @@
  */
 
 import { createEditToolDefinition, type EditToolDetails, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { toolRegistry } from "@runwield/tools";
-import type { Static } from "typebox";
+import { toolRegistry, type ToolParameters } from "@runwield/tools";
 
-const singleEditSchema = toolRegistry.get("edit_docs").definition.parameters;
+const editDocs = toolRegistry.get("edit_docs");
+const singleEditSchema = editDocs.definition.parameters;
 
-type SingleEditArguments = Static<typeof singleEditSchema>;
 export type SingleEditToolDefinition = ToolDefinition<typeof singleEditSchema, EditToolDetails | undefined>;
-
-interface LegacyEditChange {
-    oldText?: unknown;
-    newText?: unknown;
-}
-
-interface LegacyEditArguments {
-    path?: unknown;
-    file_path?: unknown;
-    oldText?: unknown;
-    newText?: unknown;
-    edits?: LegacyEditChange[];
-}
-
-/** Accept stale/legacy argument shapes while advertising a single-edit schema. */
-function prepareSingleEditArguments(input: unknown): SingleEditArguments {
-    if (!input || typeof input !== "object") {
-        return input as SingleEditArguments;
-    }
-
-    const args = input as LegacyEditArguments;
-    const path =
-        typeof args.path === "string" ? args.path : typeof args.file_path === "string" ? args.file_path : undefined;
-
-    if (typeof path === "string" && typeof args.oldText === "string" && typeof args.newText === "string") {
-        return { path, oldText: args.oldText, newText: args.newText };
-    }
-
-    if (typeof path === "string" && Array.isArray(args.edits) && args.edits.length === 1) {
-        const edit = args.edits[0];
-        if (typeof edit?.oldText === "string" && typeof edit?.newText === "string") {
-            return { path, oldText: edit.oldText, newText: edit.newText };
-        }
-    }
-
-    return input as SingleEditArguments;
-}
 
 /** Create a single-replacement edit tool that preserves upstream errors. */
 export function createSingleEditToolDefinition(cwd: string): SingleEditToolDefinition {
@@ -69,7 +31,8 @@ export function createSingleEditToolDefinition(cwd: string): SingleEditToolDefin
         "oldText must match exactly one location, including whitespace and newlines",
     ];
     tool.parameters = singleEditSchema;
-    tool.prepareArguments = prepareSingleEditArguments;
+    // Pi validates the prepared arguments against the model-facing schema before execute.
+    tool.prepareArguments = (input) => editDocs.prepareArguments(input) as ToolParameters<"edit_docs">;
     tool.execute = async (toolCallId, params, signal, onUpdate, ctx) => {
         const singleEditParams = params;
         const editParams = {

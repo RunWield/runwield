@@ -32,7 +32,7 @@ import { rememberPlannedVerificationCommand } from "../shared/workflow/planned-v
 
 import { pathToFileURL as toFileUrl } from "node:url";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
-import { toolRegistry } from "@runwield/tools";
+import { toolRegistry, type PlanWrittenExecutionPolicy } from "@runwield/tools";
 import { CLI_BIN } from "../constants.ts";
 import { ensurePlanIdentity, planDocumentsForCheckout } from "../plan-store/index.ts";
 import { recordPlanEvent } from "../plan-store/index.ts";
@@ -69,16 +69,7 @@ interface PlanReviewVersion {
     timestamp: string;
 }
 
-type ExecutionAgent = "engineer" | "frontend-engineer";
-type CollaborationRecommendation = "autonomous" | "pair";
-
-/** Execution policy the planning agent declares through the tool rather than hand-writing into Front Matter. */
-interface ExecutionPolicyInput {
-    executionAgent?: ExecutionAgent;
-    collaborationRecommendation?: CollaborationRecommendation;
-}
-
-interface ToolResultDetails extends ExecutionPolicyInput {
+interface ToolResultDetails extends PlanWrittenExecutionPolicy {
     planName?: string;
     outcome?: string;
     reason?: string;
@@ -228,20 +219,6 @@ function toToolImageContent(image: ReviewImage) {
     return { type: "image" as const, data: image.base64, mimeType: image.mimeType };
 }
 
-/**
- * Collect the execution policy the agent declared on this call. Omitted fields are
- * absent rather than null so an existing Front Matter value is preserved, matching
- * how the Slicer's child descriptors treat omitted policy.
- */
-function collectExecutionPolicyOverrides(params: ExecutionPolicyInput): ExecutionPolicyInput {
-    const overrides: ExecutionPolicyInput = {};
-    if (params.executionAgent !== undefined) overrides.executionAgent = params.executionAgent;
-    if (params.collaborationRecommendation !== undefined) {
-        overrides.collaborationRecommendation = params.collaborationRecommendation;
-    }
-    return overrides;
-}
-
 /** @param {{ feedback?: string, images?: Array<{ base64: string, mimeType: string }> }} reviewResult */
 function reviewContextDetails(reviewResult: Pick<PlanReviewMeta, "feedback" | "images">) {
     return {
@@ -300,11 +277,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
         ...planWritten.definition,
 
         async execute(toolCallId, params, _signal, onUpdate, _ctx) {
-            let planName = String(params.planName || "")
-                .trim()
-                .replace(/^docs\/plans\//i, "")
-                .replace(/\.md$/i, "")
-                .trim();
+            let planName = planWritten.normalizeName(params.planName);
 
             if (!planName) {
                 return textResult(
@@ -375,11 +348,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 const publishAcceptedPlanOutcome = (details: ToolResultDetails, images: ReviewImage[] = []) => {
                     if (!details.outcome) return;
                     if (details.outcome === "repair_required") return;
-                    const eventPlanName = String(details.planName || "")
-                        .trim()
-                        .replace(/^docs\/plans\//i, "")
-                        .replace(/\.md$/i, "")
-                        .trim();
+                    const eventPlanName = planWritten.normalizeName(details.planName);
                     workflowEvents(hostedSession).publish({
                         toolCallId,
                         kind: "plan_written",
@@ -428,7 +397,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                         reason: "invalid_sequence",
                     });
                 }
-                const policyOverrides = collectExecutionPolicyOverrides(params);
+                const policyOverrides = planWritten.executionPolicyOverrides(params);
                 effectiveMeta = { ...effectiveMeta, ...policyOverrides };
                 try {
                     hostedSession?.setWorkflowExecutionContext?.({ planName, triageMeta: effectiveMeta });
