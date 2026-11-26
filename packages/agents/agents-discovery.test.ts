@@ -3,11 +3,12 @@ import { mkdtemp as fsMkdtemp, mkdir as fsMkdir, rm as fsRm, writeFile as fsWrit
 import { join } from "node:path";
 import { test } from "node:test";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { agentRegistry } from "./agent-registry.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-
+import { assertEquals, assertRejects, assertStringIncludes } from "../../test-support/assertions.ts";
+import { createAgentRegistry } from "@runwield/agents";
+import { withProcessGlobalTestLock } from "../../test-support/process-global-lock.ts";
 import process from "node:process";
+
+const agentRegistry = createAgentRegistry();
 
 function definition(name: string, practices: string[]): string {
     return `---\nname: ${name}\nsharedPractice: ${JSON.stringify(practices)}\n---\n\nPERSONA_${name}\n`;

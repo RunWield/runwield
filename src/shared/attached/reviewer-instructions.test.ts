@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { getHomeDir } from "../../constants.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { inspectSemantic } from "./delivery-test-fixture.ts";
-import { loadReviewerPrompt } from "../workflow/validation-prompts.ts";
+import { SUBAGENTS, agentRegistry } from "../session/agent-registry.ts";
 import { readAttachedAction } from "./coordinator.ts";
 import { ATTACHED_OPERATIONS } from "./operations.ts";
 
@@ -56,7 +56,10 @@ for (const scope of ["home", "project"])
                 const action = result.workflow.nextAction;
                 assert(action.request.kind === "reviewer");
                 equal(action.request.reviewMode, round === 3 ? "verify" : "discovery");
-                const policy = await loadReviewerPrompt(action.request.reviewMode, fixture.cwd);
+                const policy = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER, {
+                    reviewerMode: action.request.reviewMode,
+                    projectRoot: fixture.cwd,
+                });
                 assert(result.instructions);
                 assert(result.instructions.text.startsWith(policy.systemPrompt));
                 const schema = ATTACHED_OPERATIONS.find((operation) => operation.name === "review_complete")!

@@ -130,7 +130,7 @@ import { readReviewDiff, type ReviewDiffTexts } from "../workflow/review-diff.ts
 import { getWorktreeReviewDiff } from "../workflow/git-snapshot.ts";
 import { resolveAttachedRoleInstructions } from "./role-instructions.ts";
 import { attachedHost, type AttachedHostId } from "./hosts.ts";
-import { loadReviewerPrompt } from "../workflow/validation-prompts.ts";
+import { SUBAGENTS, agentRegistry } from "../session/agent-registry.ts";
 import { assessCompatibility, isBlockingCompatibility } from "./compatibility.ts";
 import { parseHostEvidence } from "./operations.ts";
 
@@ -1969,10 +1969,21 @@ async function withRoleInstructions(
     if ((action?.kind === "validation" || action?.kind === "recorder") && action.request.kind !== "decision") {
         const cwd = action.request.cwd;
         const roleInstructions = await resolveAttachedRoleInstructions(cwd, role, hostId);
-        const text =
-            action.request.kind === "reviewer"
-                ? `${(await loadReviewerPrompt(action.request.reviewMode, cwd)).systemPrompt}\n\n${roleInstructions}\n\n## review_complete payload schema\n\n${JSON.stringify(ATTACHED_OPERATIONS.find((operation) => operation.name === "review_complete")!.inputSchema.properties.payload, null, 2)}`
-                : roleInstructions;
+        let text = roleInstructions;
+        if (action.request.kind === "reviewer") {
+            const policy = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER, {
+                reviewerMode: action.request.reviewMode,
+                projectRoot: cwd,
+            });
+            const schema = ATTACHED_OPERATIONS.find((operation) => operation.name === "review_complete")!
+                .inputSchema.properties.payload;
+            text = [
+                policy.systemPrompt,
+                roleInstructions,
+                "## review_complete payload schema",
+                JSON.stringify(schema, null, 2),
+            ].join("\n\n");
+        }
         return {
             ...result,
             instructions: {

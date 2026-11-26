@@ -63,7 +63,7 @@ interface ModuleDependency {
 }
 
 // Add each package here once its implementation has moved out of the application.
-const INDEPENDENT_PACKAGES = new Set(["@runwield/tools"]);
+const INDEPENDENT_PACKAGES = new Set(["@runwield/tools", "@runwield/agents"]);
 
 // Keep the lookup path so the boundary check can inspect it as well as the real path.
 const TYPE_REFERENCE_HOST: ts.ModuleResolutionHost = { ...ts.sys, realpath: undefined };

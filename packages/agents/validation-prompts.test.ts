@@ -1,0 +1,242 @@
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../test-support/assertions.ts";
+
+import { createAgentRegistry } from "@runwield/agents";
+
+const agentRegistry = createAgentRegistry();
+const { isolated: SUBAGENTS } = agentRegistry.ids;
+
+test("Manual QA loads a bare prompt with the checklist completion tool", async () => {
+    const promptDef = await agentRegistry.isolated.load(SUBAGENTS.MANUAL_QA);
+    assertEquals(promptDef.name, "operator");
+    assertEquals(promptDef.displayName, "Manual QA");
+    assertEquals(promptDef.tools, ["qa_checklist_generated"]);
+    assertStringIncludes(promptDef.systemPrompt, "Manual verification steps for <plan name>");
+});
+
+test("the Discovery Reviewer loads a bare prompt with canonical review tools", async () => {
+    const reviewerDef = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER, { reviewerMode: "discovery" });
+    assertEquals(reviewerDef.name, "reviewer");
+    assertEquals(reviewerDef.displayName, "Reviewer");
+    assertEquals(reviewerDef.tools, ["read", "grep", "find", "ls", "review_diff", "review_complete", "delegate_agent"]);
+    assertStringIncludes(reviewerDef.systemPrompt, "Your Default Is Approval");
+    assertEquals(reviewerDef.systemPrompt.includes("{{SKILLS}}"), false);
+    assertEquals(reviewerDef.systemPrompt.includes("Available tools"), false);
+});
+
+test("the Verification Reviewer loads the verification prompt", async () => {
+    const reviewerDef = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER, { reviewerMode: "verify" });
+    assertStringIncludes(reviewerDef.systemPrompt, "Do Not Re-Derive the Plan");
+});
+
+/**
+ * The prompt an Agent actually receives. Reviewer prompts compose the shared
+ * review practice; repair roles also use their composed definition. These checks
+ * protect delivered instructions, not whether an external model follows them.
+ */
+async function readBundledPrompt(
+    name: "reviewer-prompt.md" | "reviewer-verify-prompt.md" | "reviewer-feedback-engineer.md",
+) {
+    if (name === "reviewer-prompt.md" || name === "reviewer-verify-prompt.md") {
+        const definition = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER, {
+            reviewerMode: name === "reviewer-verify-prompt.md" ? "verify" : "discovery",
+        });
+        return definition.systemPrompt;
+    }
+    const definition = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
+    return definition.systemPrompt;
+}
+
+test("bundled discovery reviewer prompt states an approval default", async () => {
+    const prompt = await readBundledPrompt("reviewer-prompt.md");
+
+    // Without an explicit default, the prompt's exhaustiveness pressure resolves
+    // toward rejection: producing a finding is a concrete action, judging
+    // "good enough" is not.
+    assertStringIncludes(prompt, "Your Default Is Approval");
+    assertStringIncludes(
+        prompt.replace(/\s+/g, " "),
+        "Approve unless you can name the specific requirement or concrete correctness, regression, or security defect, and the changed code responsible for it.",
+    );
+    assertStringIncludes(prompt.replace(/\s+/g, " "), "are not reasons to reject");
+    assertStringIncludes(prompt, "This does not lower the bar for adherence");
+});
+
+test("bundled discovery reviewer prompt keeps code smells non-blocking", async () => {
+    const prompt = await readBundledPrompt("reviewer-prompt.md");
+
+    // Smells scale with diff size, which grows with every repair — leaving them
+    // blocking is what let the review loop ratchet forever.
+    assertStringIncludes(prompt, "**Review Advisories never block.**");
+    assertStringIncludes(prompt, "speculative generality, duplicated logic, repeated conditionals");
+    assertStringIncludes(prompt, "Report advisories alongside an approving decision");
+    assertStringIncludes(
+        prompt.replace(/\s+/g, " "),
+        "Never convert an advisory into a rejection because several of them accumulated",
+    );
+});
+
+test("bundled discovery reviewer blocks new seams over product-owned machinery", async () => {
+    const prompt = (await readBundledPrompt("reviewer-prompt.md")).replace(/\s+/g, " ");
+
+    assertStringIncludes(prompt, "A new injection seam that lets tests or callers replace product-owned machinery");
+    assertStringIncludes(prompt, "Required ports are legitimate only for genuine external capabilities");
+    assertStringIncludes(prompt, "renaming an override bag or making an internal collaborator required");
+    assertStringIncludes(prompt, "Scan production changes for new injection seams");
+});
+
+test("bundled discovery reviewer prompt requires reading the diff before deciding", async () => {
+    const prompt = await readBundledPrompt("reviewer-prompt.md");
+
+    // The diff is never inlined, so a verdict without a review_diff call is a
+    // decision made without reading the code.
+    assertStringIncludes(prompt, 'Call `review_diff(command: "list")` first');
+    assertStringIncludes(prompt, "You cannot review what you have not read");
+});
+
+test("bundled reviewer prompts exclude verification-completion auditing", async () => {
+    for (const name of ["reviewer-prompt.md", "reviewer-verify-prompt.md"] as const) {
+        // Collapse wrapping so these assert on wording, not on where the
+        // formatter happened to break the line.
+        const prompt = (await readBundledPrompt(name)).replace(/\s+/g, " ");
+
+        assertStringIncludes(prompt, "your only concern, approve.", `${name} must approve on evidence-only concerns`);
+        assertStringIncludes(prompt, "workflow context, not requirements", name);
+        assertStringIncludes(prompt, "Formatter-only churn", name);
+        assertStringIncludes(prompt, "a command", name);
+        assertStringIncludes(prompt, "report to be filed so that you can approve", name);
+    }
+});
+
+test("bundled reviewer prompts treat work in progress as normal, not as a finding", async () => {
+    for (const name of ["reviewer-prompt.md", "reviewer-verify-prompt.md"] as const) {
+        const prompt = (await readBundledPrompt(name)).replace(/\s+/g, " ");
+
+        // General "this is unfinished/unsafe" commentary is noise inside an Epic; real defects stay findings.
+        assertStringIncludes(prompt, "Work in Progress Is Not a Defect", name);
+        assertStringIncludes(prompt, "Do not write general warnings that the work is unfinished", name);
+        assertStringIncludes(prompt, "A real defect is still a finding", name);
+    }
+});
+
+test("bundled discovery reviewer prompt scopes Epic children to their own correctness", async () => {
+    const prompt = (await readBundledPrompt("reviewer-prompt.md")).replace(/\s+/g, " ");
+
+    assertStringIncludes(prompt, "### Epic Context");
+    assertStringIncludes(prompt, "a missing piece that a sibling owns is not a finding");
+    assertStringIncludes(prompt, "Notes never block this child");
+    assertStringIncludes(prompt, "when there is nothing to note, leave `integrationNotes` out");
+});
+
+test("bundled discovery reviewer prompt attacks tests with a plausible wrong implementation", async () => {
+    const prompt = (await readBundledPrompt("reviewer-prompt.md")).replace(/\s+/g, " ");
+
+    // A test that passes on a counterfeit implementation is a defect the Plan-adherence
+    // checks never see, so the prompt must ask the question directly and keep the
+    // judgment static — execution proof stays with mechanical validation.
+    assertStringIncludes(prompt, "what plausible wrong implementation would still pass this test");
+    assertStringIncludes(prompt, "Check the assertions, the boundaries, and fakes that bypass real behavior");
+    assertStringIncludes(prompt, "never require execution proof");
+    assertStringIncludes(prompt, "a test that green-lights a fake is misleading");
+    assertStringIncludes(prompt, "Observations about strengthening an honest test beyond that gate are advisories");
+});
+
+test("bundled discovery reviewer prompt requires all findings in one pass", async () => {
+    const prompt = (await readBundledPrompt("reviewer-prompt.md")).replace(/\s+/g, " ");
+
+    // Later rounds are narrower and will not rediscover what a discovery round
+    // misses, so holding findings back loses them.
+    assertStringIncludes(prompt, "Finding one issue does not finish the round");
+    assertStringIncludes(prompt, "do not hold findings back for a later round");
+    assertStringIncludes(prompt, "Report the complete set now, not one representative issue");
+});
+
+test("bundled verification reviewer prompt refuses to re-derive the Plan", async () => {
+    const prompt = (await readBundledPrompt("reviewer-verify-prompt.md")).replace(/\s+/g, " ");
+
+    assertStringIncludes(prompt, "Do Not Re-Derive the Plan");
+    assertStringIncludes(prompt, "open code-smell findings at all");
+    assertStringIncludes(prompt, "Is each open ledger item actually fixed?");
+    assertStringIncludes(prompt, "Did the repair introduce a new Plan divergence or regression?");
+    assertStringIncludes(prompt, "A new injection seam in a touched production hunk");
+    assertStringIncludes(prompt, "only required ports for genuine external capabilities are legitimate");
+    // A repair that makes the test pass by gutting it is a regression, not a fix.
+    assertStringIncludes(prompt, "resolves a finding by weakening a test");
+    assertStringIncludes(prompt, "loosening or deleting assertions, dropping a boundary case");
+    assertStringIncludes(prompt, "substituting a fake for the real behavior so the test passes");
+});
+
+test("bundled verification reviewer prompt treats repair claims as evidence, not resolution", async () => {
+    const prompt = await readBundledPrompt("reviewer-verify-prompt.md");
+
+    assertStringIncludes(prompt, "never proof");
+    assertStringIncludes(prompt, "only after you confirm the code fix or effective Plan supersession");
+    assertStringIncludes(prompt, "Omitting an item does not resolve it");
+    assertStringIncludes(prompt, "Never renumber, reuse, or invent identities");
+    // An empty diff is neither proof of a fix nor proof an already-satisfied item is broken.
+    assertStringIncludes(
+        prompt.replace(/\s+/g, " "),
+        "An empty repair diff is not proof of a fix or proof that an already-satisfied item is broken",
+    );
+    assertStringIncludes(prompt.replace(/\s+/g, " "), "full proposed branch patch");
+    assertStringIncludes(prompt.replace(/\s+/g, " "), "otherwise reject the fix with a reason");
+});
+
+test("bundled validation repair engineer prompt is repair-scoped without Plan content or general Engineer context", async () => {
+    const prompt = await readBundledPrompt("reviewer-feedback-engineer.md");
+    const compact = prompt.replace(/\s+/g, " ");
+
+    assertStringIncludes(prompt, "repair the validation problem you were given and report what you did");
+    assertStringIncludes(compact, "the general Engineer prompt");
+    assertStringIncludes(prompt, "one bounded repair packet");
+    assertStringIncludes(prompt, "supplied full review diff");
+    assertStringIncludes(prompt, "`already satisfied`");
+    assertStringIncludes(prompt, "CI diagnostics");
+    assertStringIncludes(compact, "semantic review findings");
+    // The prompt may describe how to record an authorized Plan change, but it must not receive Plan content.
+    assertEquals(prompt.includes("### Approved Plan"), false);
+    assertStringIncludes(prompt, "**Your claims are evidence, not resolution.**");
+});
+
+test("validation repair engineer keeps working-tree safety and engineering practice, but not user authority", async () => {
+    // These rules arrive through `sharedPractice`, so the assertion follows them to
+    // the composed prompt — this agent cannot rely on a skill being loaded at the
+    // model's discretion, and a fragment that stops composing would be invisible.
+    // User authority is deliberately absent: this prompt states "You have no user
+    // turn", so a policy built on the user confirming and repeating an instruction
+    // describes a dialogue that can never happen here.
+    const { systemPrompt } = await agentRegistry.isolated.load(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
+
+    assertEquals(systemPrompt.includes("After one concern, the discussion is complete. The user decides."), false);
+    assertStringIncludes(systemPrompt, "You have no user turn");
+    assertStringIncludes(systemPrompt, "`git stash` is the last resort");
+    assertStringIncludes(systemPrompt, "The Zero-Trust Implementation Protocol");
+    assertStringIncludes(systemPrompt, "No Rogue Commits");
+    assertStringIncludes(systemPrompt.replace(/\s+/g, " "), "RunWield handles delivery after validation");
+    assertStringIncludes(systemPrompt, "bundled `write-tests` skill");
+    assertStringIncludes(systemPrompt, 'Do **NOT** dismiss errors as "pre-existing"');
+    // Reached the repair agent for the first time via the shared layer.
+    assertStringIncludes(systemPrompt, "report the test-count delta");
+});
+
+test("bundled reviewer-feedback engineer stops in prose on an unreachable finding", async () => {
+    const prompt = (await readBundledPrompt("reviewer-feedback-engineer.md")).replace(/\s+/g, " ");
+
+    assertStringIncludes(prompt, "do not route around them");
+    assertStringIncludes(prompt, "Do not call `task_completed`");
+    assertStringIncludes(prompt, "end your turn in plain text");
+    assertStringIncludes(prompt, "When every supplied item is settled, get one accepted `task_completed` call");
+});
+
+test("Epic verification loads the integration prompt with shared review practice and a read-only ceiling", async () => {
+    const discovery = await agentRegistry.isolated.load(SUBAGENTS.INTEGRATION_REVIEWER);
+    const verify = await agentRegistry.isolated.load(SUBAGENTS.INTEGRATION_REVIEWER, { reviewerMode: "verify" });
+    assertStringIncludes(discovery.systemPrompt, "one full review");
+    assertStringIncludes(verify.systemPrompt, "Do not sweep the Epic again");
+    assertStringIncludes(verify.systemPrompt, 'scope: "repair"');
+    assertStringIncludes(verify.systemPrompt, 'origin: "repair_regression"');
+    assertStringIncludes(verify.systemPrompt, "Every open ID must");
+    assertStringIncludes(verify.systemPrompt, "Your Default Is Approval");
+    assertEquals(verify.tools, discovery.tools);
+    assertEquals(verify.tools, ["read", "grep", "find", "ls", "review_diff", "review_complete", "delegate_agent"]);
+});

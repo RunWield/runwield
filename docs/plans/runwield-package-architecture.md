@@ -27,7 +27,7 @@ Retire the root `src/` directory in three passes. Preserve behavior for users, i
 
 ## Packages and extraction order
 
-Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. [Plan milestone history](https://github.com/RunWield/runwield/pull/650) has merged. [Plan artifacts and publication copies](https://github.com/RunWield/runwield/pull/651) have merged. [Workflow](https://github.com/RunWield/runwield/pull/652) has merged. [Pi-AI](https://github.com/RunWield/runwield/pull/653) has merged. [Session Runtime](https://github.com/RunWield/runwield/pull/654) and [ACP](https://github.com/RunWield/runwield/pull/655) complete the interface pass. The independence pass starts with Tools and continues with Agents. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
+Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. [Plan milestone history](https://github.com/RunWield/runwield/pull/650) has merged. [Plan artifacts and publication copies](https://github.com/RunWield/runwield/pull/651) have merged. [Workflow](https://github.com/RunWield/runwield/pull/652) has merged. [Pi-AI](https://github.com/RunWield/runwield/pull/653) has merged. [Session Runtime](https://github.com/RunWield/runwield/pull/654) and [ACP](https://github.com/RunWield/runwield/pull/655) complete the interface pass. [Tools independence](https://github.com/RunWield/runwield/pull/656) has merged. Agents is the second package in the independence pass. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
 
 | Order and package | Public interface and responsibilities | Evidence that the move preserved behavior |
 | --- | --- | --- |
@@ -133,6 +133,10 @@ registry shares with existing Plan and Bash code. The private `@runwield/bundled
 materialization and repair used by Agents and bundled skills. Agents chooses the local cache
 `~/.wld/bundled-agent-definitions` when a consumer requests a readable copy. `@runwield/resources` owns the
 shared home lookup and the active personal mount's access checks.
+
+### Agents independence
+
+The registry loads bundled definitions, personal and project overrides, prompt templates, and isolated roles through its package entry point. The Session host shares one registry instance so prompt lookups and display metadata use the same cache. CI follows the Agents package's imports and type references and checks its dependencies for cycles. The packaged CLI qualification reads the bundled Router and applies both personal and project overrides after the executable has been moved. [Public entry point](../../packages/agents/index.ts) · [Package qualification](../../scripts/check-bun-package.ts)
 
 ## Projects registry
 

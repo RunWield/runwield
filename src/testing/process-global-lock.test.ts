@@ -23,7 +23,7 @@ test("a lock module initialized during a cwd change still waits for the existing
             try {
                 chdir(root);
                 const freshModule = join(root, "process-global-lock.ts");
-                await copyFile(new URL("./process-global-lock.ts", import.meta.url), freshModule);
+                await copyFile(new URL("../../test-support/process-global-lock.ts", import.meta.url), freshModule);
                 const isolated = await import(pathToFileURL(freshModule).href);
                 waiter = isolated.withProcessGlobalTestLock(() => {
                     entered = true;
