@@ -18,6 +18,7 @@ import type { WorkflowLocation } from "./index.ts";
 import { projectWorkflowActivity } from "./activity.ts";
 import { hasApplicablePublicationReceipt } from "./publication-receipt.ts";
 
+/** Identifies the review round and correction the host still needs to handle. */
 interface PendingHostReview {
     kind: "reviewer";
     identity: ValidationHostIdentity;
@@ -25,6 +26,7 @@ interface PendingHostReview {
     correctionCount: number;
 }
 
+/** Describes the validation checkpoint that this attempt can resume. */
 export interface WorkflowValidationProgress {
     attemptId: string;
     generation: string;
@@ -33,6 +35,7 @@ export interface WorkflowValidationProgress {
     updatedAt: string;
 }
 
+/** Summarizes a Plan's attempt, outstanding host work, and evidence of publication. */
 export interface WorkflowProgress {
     planId?: string;
     status: PlanStatus;

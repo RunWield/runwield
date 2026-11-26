@@ -55,42 +55,63 @@ const EFFECT_FIELDS: Record<PublicationEffectPhase, ReadonlySet<string>> = {
     ]),
 };
 
+/** Locates a publication by execution attempt ID, including before its first record exists. */
 export interface PublicationAttemptReference {
+    /** Read the attempt's publication record, or return null if none exists. */
     load(): Promise<PublicationAttempt | null>;
+    /** Seal the validated candidate for delivery or reopen its matching publication record. */
     start(input: PublicationStart): Promise<PublicationAttempt>;
+    /** Return the path reserved for this attempt's publication checkout. */
     stagingRoot(): string;
 }
 
 /** Actions on a recorded revision. Mutations return the recorded attempt for the next action. */
 export interface RecordedPublicationAttempt {
+    /** Record the Git evidence for a publication phase against this revision. */
     advance(phase: PublicationEffectPhase, evidence: PublicationEffectEvidence): Promise<PublicationAttempt>;
+    /** Check the recorded delivery against its Git target and return the verified attempt, or throw. */
     verify(): Promise<PublicationAttempt>;
+    /** Recover missed phase updates from Git evidence. Pass `apply: false` to preview them. */
     reconcile(options?: PublicationReconcileOptions): Promise<PublicationAttempt>;
+    /** Save failure details for this revision, or return the newer record if the attempt has advanced. */
     recordFailure(failure: Omit<PublicationFailureInput, "recordedAt">): Promise<PublicationAttempt>;
+    /** Materialize and verify the frozen repository copies, reusing their commit when available. */
     prepareCopies(): Promise<PublicationCopyEvidence>;
+    /** Prepare the frozen copies and record their evidence in the artifacts-committed phase. */
     commitCopies(): Promise<PublicationAttempt>;
+    /** Clean up a verified delivery and report any worktree, branch, or files that were kept. */
     cleanup(workRecordMnemotecaPort?: WorkRecordMnemotecaPort): Promise<PublicationCleanupResult>;
+    /** Read the sealed delivery to check whether Work Record generation failed. */
     workRecordFailed(): Promise<boolean>;
 }
 
+/** Selects the evidence to check for a retained execution and any prior confirmation to use after pruning. */
 export interface RetainedPublicationProofOptions {
     confirmed?: PublicationAttempt;
     candidateOnly?: boolean;
     requireCleanup?: boolean;
 }
 
+/** Manages delivery attempts and checks their Git evidence within one project. */
 export interface Publication {
+    /** Look up a publication by execution attempt ID to load or start it. */
     attempt(attemptId: string): PublicationAttemptReference;
+    /** Bind publication operations to the revision in a previously read attempt. */
     resume(record: PublicationAttempt): RecordedPublicationAttempt;
+    /** Restart validation for a changed candidate before integration. Return its archive path, or null if no reset ran. */
     revalidate(planName: string): Promise<string | null>;
+    /** Restart validation if the reviewed candidate changed before publication. Return true when validation restarts. */
     revalidateReviewedCandidate(planName: string): Promise<boolean>;
+    /** Verify Git delivery against the managed execution's frozen publication manifest. */
     verifyManaged(manifest: PackagePublicationManifest, retained?: PublicationAttempt): Promise<PublicationAttempt>;
+    /** Check a retained execution's candidate or published target, with optional cleanup verification. */
     verifyRetained(
         execution: RetainedManagedExecution,
         options: RetainedPublicationProofOptions,
     ): Promise<PublicationAttempt>;
 }
 
+/** Open publication operations for a project's checkout. */
 export function openPublication(projectRoot: string): Publication {
     return {
         attempt(attemptId) {

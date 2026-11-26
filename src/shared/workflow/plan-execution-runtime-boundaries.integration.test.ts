@@ -1,4 +1,5 @@
 import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { openWorkflow } from "@runwield/workflow";
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
@@ -191,7 +192,8 @@ test("a legacy segment handoff announces Plan Engineer before resuming", async (
             await initializeGitProject(projectRoot);
             await saveExecutablePlan(projectRoot, "legacy-handoff");
             const savedPlan = await loadPlan(projectRoot, "legacy-handoff");
-            const planId = savedPlan?.attrs.planId || "plan-legacy-handoff";
+            const planId = savedPlan?.attrs.planId;
+            assert(savedPlan && planId);
             const fixture = createExecutionFixture(projectRoot);
             setModelResponseFactories(
                 IMPLEMENT_AND_COMPLETE.map((message) => (context: TranscriptContext) => {
@@ -199,40 +201,30 @@ test("a legacy segment handoff announces Plan Engineer before resuming", async (
                     return message;
                 }),
             );
-            const continuation = {
-                ...buildExecutionSegmentContinuation({
-                    runwieldSessionId: fixture.hostedSession.id,
-                    planId,
+            try {
+                const attempt = await openWorkflow({
+                    cwd: projectRoot,
                     planName: "legacy-handoff",
-                    approvedRevision: "legacy-revision",
-                    approvedStatus: "ready_for_work",
-                    approvedMarkdown: "# legacy-handoff",
-                    preparedEvidence: {
+                    planId,
+                }).startOrResume();
+                const prepared = await loadPlanActionEvidence(projectRoot, planId);
+                if (prepared.kind !== "success") throw new Error(prepared.message);
+                const continuation = {
+                    ...buildExecutionSegmentContinuation({
+                        runwieldSessionId: fixture.hostedSession.id,
                         planId,
                         planName: "legacy-handoff",
-                        revision: "legacy-revision",
-                        status: "ready_for_work",
-                        worktree: { kind: "none" },
-                    },
-                    activeWorkflow: {
-                        planName: "legacy-handoff",
-                        triageMeta: { classification: "PLANNED_CHANGE" },
-                        executionAgent: "engineer",
-                        collaborationRecommendation: "autonomous",
+                        approvedRevision: savedPlan.revision,
+                        approvedStatus: savedPlan.attrs.status,
+                        approvedMarkdown: savedPlan.markdown,
+                        preparedEvidence: prepared.evidence,
+                        activeWorkflow: attempt.state,
+                        executionOwner: "plan-engineer",
                         collaborationStyle: "autonomous",
-                        executionCwd: projectRoot,
-                        executionMode: "non_git_in_place",
-                        nonGitInPlace: true,
-                        projectRoot,
-                    },
-                    executionOwner: "plan-engineer",
-                    collaborationStyle: "autonomous",
-                    collaborationRecommendation: "autonomous",
-                }),
-                executionOwner: "engineer" as const,
-            };
-
-            try {
+                        collaborationRecommendation: "autonomous",
+                    }),
+                    executionOwner: "engineer" as const,
+                };
                 const result = await executePreparedPlanSegmentHandoff({
                     continuation,
                     sessionManager: fixture.sessionManager,
@@ -243,7 +235,7 @@ test("a legacy segment handoff announces Plan Engineer before resuming", async (
                 assertEquals(fixture.statusMessages.includes("launching Engineer to execute..."), false);
                 assertEquals(fixture.turns[0]?.agentName, "plan-engineer");
                 assertEquals(fixture.turns[0]?.toolNames.includes("record_plan_deviation"), true);
-                assertEquals(result.executionComplete, true);
+                assertEquals(result.executionComplete, true, result.error);
             } finally {
                 fixture.hostedSession.dispose();
             }

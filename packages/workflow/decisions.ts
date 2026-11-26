@@ -6,6 +6,7 @@
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { PlanWrittenEventPayload } from "./events.ts";
 
+/** Describes how an execution turn ended so the caller can choose its next action. */
 export interface PostExecutionReport {
     executionComplete: boolean;
     repairRequired: boolean;
@@ -33,6 +34,7 @@ export type WorkflowDecisionReason =
     | "missing_execution_result"
     | "unknown_plan_outcome";
 
+/** Carries the Plan, agent, feedback, or pause details needed for the chosen action. */
 export interface WorkflowDecisionPayload {
     planName?: string;
     triageMeta?: Partial<PlanFrontMatter>;
@@ -46,16 +48,19 @@ export interface WorkflowDecisionPayload {
     checkpointId?: string;
 }
 
+/** Names the next action and the information the caller needs to take it. */
 export interface WorkflowDecision {
     kind: WorkflowDecisionKind;
     payload: WorkflowDecisionPayload;
 }
 
+/** Identifies the planning agent and supplies triage metadata when the Plan report omits it. */
 export interface PostPlanningOptions {
     planningAgentName: string;
     fallbackTriageMeta?: Partial<PlanFrontMatter>;
 }
 
+/** Identifies the Plan and agent to carry forward after an execution turn. */
 export interface PostExecutionOptions {
     planName: string;
     triageMeta: Partial<PlanFrontMatter>;

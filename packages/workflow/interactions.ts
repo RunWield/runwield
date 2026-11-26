@@ -28,6 +28,7 @@ function isPauseDecision(answer: ValidationInteractionResponse | undefined): boo
     return answer?.outcome === "selected" && ["stop", "close"].includes(String(answer.value));
 }
 
+/** Ask the session for a decision or checkpoint a host request and resume with its matching answer. */
 export async function requestInteraction(
     args: ValidationLoopArgs,
     request: ValidationInteractionRequest,

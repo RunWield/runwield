@@ -14,19 +14,24 @@ import { finalizePlanImplementation, type PlanImplementationResult } from "./imp
 import type { ActiveExecutionWorkflow } from "./state.ts";
 import type { WorkflowLocation } from "./index.ts";
 
+/** Carries the implementation report and optional revision checks for the Plan and its body. */
 export interface ImplementationCompletion {
     executionReport?: string;
     expectedPlanRevision?: string;
     expectedPlanBodyRevision?: string;
 }
 
+/** Identifies the attempt to reopen and the host session to acknowledge on completion. */
 export interface ResumeAttemptOptions {
     attemptId?: string;
     hostedSession?: HostedSession;
 }
 
+/** Binds completion to the execution context captured when this attempt started or resumed. */
 export interface WorkflowAttempt {
+    /** Read a detached snapshot of the bound execution context. */
     readonly state: Readonly<ActiveExecutionWorkflow>;
+    /** Checkpoint implementation for this attempt. Replaying a settled completion returns its recorded result. */
     acceptCompletion(report: ImplementationCompletion): Promise<PlanImplementationResult>;
 }
 

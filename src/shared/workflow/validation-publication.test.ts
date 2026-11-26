@@ -16,9 +16,10 @@ import { listWorkRecords } from "../work-records/index.ts";
 import { recordPlanEvent, stageValidationPassedInExecutionWorktree } from "../../plan-store/index.ts";
 import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
-import { advancePublicationAttempt, createPublicationAttempt } from "@runwield/workflow/publication";
+import type { PublicationAttempt } from "@runwield/workflow/publication";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
-import { removeWorktreeGitArtifacts } from "../worktree.ts";
+import { checkpointExecutionWorktree, removeWorktreeGitArtifacts } from "../worktree.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import type { RuntimeSystemStatusEvent, SessionRuntimeEvent } from "../session/session-runtime-events.ts";
@@ -277,27 +278,29 @@ for (const primaryCopy of ["stale", "missing"] as const) {
                                     await fsReadFile(`${sourceRoot}/docs/work-records/invalid.md`, "utf8"),
                                     invalidRecord,
                                 );
-                                let publication;
-                                if (worktree) {
-                                    await git(worktree.path, ["add", ".gitignore", "docs"]);
-                                    await git(worktree.path, ["commit", "-m", "Seal failed recording outcome"]);
-                                    const commit = await git(worktree.path, ["rev-parse", "HEAD"]);
-                                    publication = advancePublicationAttempt(
-                                        createPublicationAttempt({
-                                            attemptId: worktree.id,
-                                            planId: "completed-plan",
-                                            planName,
-                                            targetBranch: "main",
-                                            executionBranch: worktree.branch,
-                                            executionCwd: worktree.path,
-                                            publicationRoot: worktree.path,
-                                            validatedCommit: commit,
-                                            targetHeadAtSeal: await git(projectRoot, ["rev-parse", "HEAD"]),
-                                        }),
-                                        "artifacts_committed",
-                                        { artifactCommit: commit, planPaths },
-                                    );
-                                    if (!remoteRoot) throw new Error("Remote fixture missing");
+                                let publication: PublicationAttempt | undefined;
+                                if (worktree && remoteRoot) {
+                                    const delivery = openPublication(projectRoot);
+                                    let attempt = await delivery.attempt(worktree.id).start({
+                                        planName,
+                                        targetBranch: "main",
+                                        executionBranch: worktree.branch,
+                                        executionCwd: worktree.path,
+                                        validatedCommit: await git(worktree.path, ["rev-parse", "HEAD"]),
+                                        targetHeadAtSeal: await git(projectRoot, ["rev-parse", "HEAD"]),
+                                    });
+                                    const { executionCommit } = await checkpointExecutionWorktree({
+                                        worktreePath: worktree.path,
+                                        branch: worktree.branch,
+                                        planName,
+                                        mergeTargetRef: attempt.targetHeadAtSeal,
+                                        publicationAttemptId: attempt.attemptId,
+                                        publicationPlanPaths: planPaths,
+                                    });
+                                    attempt = await delivery.resume(attempt).advance("artifacts_committed", {
+                                        artifactCommit: executionCommit,
+                                        planPaths,
+                                    });
                                     await git(remoteRoot, ["init", "--bare"]);
                                     await git(projectRoot, ["remote", "add", "origin", remoteRoot]);
                                     await git(projectRoot, ["push", "-u", "origin", "main"]);
@@ -307,27 +310,26 @@ for (const primaryCopy of ["stale", "missing"] as const) {
                                         executionBranch: worktree.branch,
                                         targetBranch: "main",
                                         planName,
-                                        sealedExecutionCommit: commit,
+                                        sealedExecutionCommit: executionCommit,
                                         allowedPlanPaths: planPaths,
+                                        publicationRoot: attempt.publicationRoot,
+                                        onIntegrated: async (evidence) => {
+                                            attempt = await delivery
+                                                .resume(attempt)
+                                                .advance("target_integrated", evidence);
+                                        },
+                                        onPublished: async (evidence) => {
+                                            attempt = await delivery
+                                                .resume(attempt)
+                                                .advance("target_published", evidence);
+                                        },
                                     });
                                     assert(delivered.publicationMode === "remote");
-                                    publication = advancePublicationAttempt(publication, "target_integrated", {
-                                        targetBaseCommit: delivered.targetHeadBeforeMerge,
-                                        integrationCommit: delivered.publicationCommit,
-                                    });
-                                    publication = advancePublicationAttempt(publication, "target_published", {
-                                        publicationMode: delivered.publicationMode,
-                                        publishedCommit: delivered.publicationCommit,
-                                        upstreamRemote: delivered.upstreamRemote,
-                                        upstreamBranch: delivered.upstreamBranch,
-                                    });
+                                    publication = await delivery.resume(attempt).verify();
                                     assertEquals(
                                         await git(remoteRoot, ["rev-parse", "main"]),
                                         delivered.publicationCommit,
                                     );
-                                    publication = advancePublicationAttempt(publication, "publication_verified", {
-                                        verifiedAt: new Date().toISOString(),
-                                    });
                                     assertStringIncludes(
                                         await git(remoteRoot, ["show", `main:docs/plans/${ownerName}.md`]),
                                         "invalid.md",

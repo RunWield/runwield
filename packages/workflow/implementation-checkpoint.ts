@@ -20,6 +20,7 @@ import { restoreExecutionPlanFromBaseline } from "../../src/plan-store/index.ts"
 import { recordWorkflowOutcome } from "../../src/shared/workflow/outcome-observations.ts";
 import { listTransitionRecoveryRecords, runImplementationCheckpointTransition } from "../../src/plan-store/index.ts";
 
+/** Supplies the captured execution context and revision checks used to checkpoint a completion report. */
 export interface FinalizePlanImplementationOptions {
     projectRoot: string;
     planName: string;
@@ -32,6 +33,7 @@ export interface FinalizePlanImplementationOptions {
     hostedSession?: HostedSession;
 }
 
+/** Reports the implementation commit when the completed attempt has one on record. */
 export interface PlanImplementationResult {
     implementationCommit?: string;
 }

@@ -24,6 +24,7 @@ export type WorkflowToolEventKind =
 
 export type WorkflowToolEventOwnerKind = "root" | "isolated";
 
+/** Reports the planning outcome and any review feedback needed to continue. */
 export interface PlanWrittenEventPayload {
     outcome:
         | "approved_execute"
@@ -40,6 +41,7 @@ export interface PlanWrittenEventPayload {
     images?: { base64: string; mimeType: string }[];
 }
 
+/** Identifies the agent that finished its task and carries its completion message. */
 export interface TaskCompletedEventPayload {
     outcome: "task_completed";
     agentName: string;
@@ -47,11 +49,13 @@ export interface TaskCompletedEventPayload {
     browserPreflightOutcome?: "pass" | "fail" | "not_applicable";
 }
 
+/** Reports whether the requested review round has a diff to inspect. */
 export interface ReviewDiffEventPayload {
     reviewRoundId?: string;
     hasDiff: boolean;
 }
 
+/** Carries the review verdict, findings, and feedback for the next workflow step. */
 export interface ReviewCompleteEventPayload {
     outcome: "approved" | "feedback";
     approved: boolean;
@@ -62,6 +66,7 @@ export interface ReviewCompleteEventPayload {
     integrationNotes?: import("../../src/shared/workflow/review-outcome.ts").ReviewIntegrationNote[];
 }
 
+/** Reports whether the QA checklist was newly recorded or already existed. */
 export interface QaChecklistGeneratedEventPayload {
     outcome: "recorded" | "already_present";
     qaName?: string;
@@ -115,6 +120,7 @@ function withWorkflowToolEventSource<T>(
     return toolEventSources.run({ hostedSession, owningSession }, run);
 }
 
+/** Tracks an accepted tool report, its owning session and attempt, and whether it was claimed or settled. */
 interface StoredWorkflowToolEvent<K extends WorkflowToolEventKind = WorkflowToolEventKind> {
     version: 1;
     eventId: string;
@@ -173,11 +179,13 @@ type WorkflowToolEventSessionManager = {
     getEntries?: () => WorkflowToolEventSessionEntry[];
 };
 
+/** Holds a host's events and the consumers waiting for matching reports. */
 interface EventState {
     events: StoredWorkflowToolEvent[];
     waiters: EventWaiter[];
 }
 
+/** Describes the reports a waiting consumer can claim and how to wake it. */
 interface EventWaiter {
     kinds: Set<WorkflowToolEventKind>;
     owningSession: OwningSession;
@@ -185,9 +193,11 @@ interface EventWaiter {
     validationGeneration?: string;
     excludeEventIds?: string[];
     sourceSessionId?: string;
+    /** Wake the waiting consumer with the event it claimed. */
     resolve: (event: WorkflowToolEvent) => void;
 }
 
+/** Identifies the accepted tool call and carries the payload for its event kind. */
 export interface PublishWorkflowToolEventOptions<K extends WorkflowToolEventKind> {
     toolCallId: string;
     kind: K;
@@ -195,6 +205,7 @@ export interface PublishWorkflowToolEventOptions<K extends WorkflowToolEventKind
     acceptedAtMs?: number;
 }
 
+/** Selects matching events by owner, kind, and optional turn or validation context. */
 export interface ClaimWorkflowToolEventOptions {
     kinds: WorkflowToolEventKind[];
     owningSession: OwningSession;
@@ -228,6 +239,7 @@ function getEntries(sessionManager: WorkflowToolEventSessionManager | null): Wor
     return Array.isArray(entries) ? entries : [];
 }
 
+/** Reconstruct the attempt key used by older session records. */
 export function legacyWorkflowAttemptKey(workflow: ActiveExecutionWorkflow | null): string {
     if (!workflow) return "";
     if (typeof workflow.worktreeId === "string" && workflow.worktreeId) return `worktree:${workflow.worktreeId}`;
@@ -238,6 +250,7 @@ export function legacyWorkflowAttemptKey(workflow: ActiveExecutionWorkflow | nul
     return "";
 }
 
+/** Build an event key from the recorded execution context, or return an empty string if it has no identifier. */
 export function workflowAttemptKey(workflow: ActiveExecutionWorkflow | null): string {
     return (
         legacyWorkflowAttemptKey(workflow) || (workflow?.packageAttemptId ? `package:${workflow.packageAttemptId}` : "")
@@ -530,14 +543,21 @@ function listPendingWorkflowToolEvents(hostedSession: WorkflowEventHost): Workfl
 
 /** Session-bound handoff between tools and the workflow that accepts their reports. */
 export interface WorkflowEvents {
+    /** Record an accepted tool report and wake matching waiters. Duplicate calls in the same turn are rejected. */
     publish<K extends WorkflowToolEventKind>(report: PublishWorkflowToolEventOptions<K>): WorkflowToolEvent<K>;
+    /** Claim the newest matching available report, or return null if none is ready. */
     claim(options: ClaimWorkflowToolEventOptions): WorkflowToolEvent | null;
+    /** Claim a matching report now or wait until one arrives or the signal aborts. */
     wait(options: ClaimWorkflowToolEventOptions): Promise<WorkflowToolEvent>;
+    /** Mark a handled report as settled so it stays out of the pending list. */
     settle(event: WorkflowToolEvent, settledAtMs?: number): void;
+    /** List snapshots of unsettled reports, including reports already claimed. */
     pending(): WorkflowToolEvent[];
+    /** Attribute tool reports emitted during the callback to the supplied agent session. */
     withSource<T>(source: OwningSession, run: () => Promise<T>): Promise<T>;
 }
 
+/** Open the tool report queue for one host session. */
 export function workflowEvents(session: WorkflowEventHost): WorkflowEvents {
     return {
         publish: (report) => publishWorkflowToolEvent(session, report),

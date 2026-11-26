@@ -11,6 +11,7 @@ type ReceiptPlan = Pick<
     "publicationReceipt" | "validatedCommit" | "deliveryEvidence" | "targetBranch" | "deliveryBranch" | "worktreeId"
 >;
 
+/** Check whether a saved receipt still matches the Plan's execution and delivery target. */
 export function hasApplicablePublicationReceipt(attrs: ReceiptPlan): boolean {
     const receipt = attrs.publicationReceipt;
     if (!receipt || attrs.worktreeId) return false;

@@ -19,6 +19,7 @@ export type ValidationReviewerIdentity = ValidationHostIdentity & {
     correctionCount: number;
     diffHash: string;
 };
+/** Describes the review, repair, decision, or recording work validation needs from the host. */
 export type ValidationHostRequest =
     | {
           kind: "reviewer";
@@ -33,6 +34,7 @@ export type ValidationHostRequest =
     | PendingHostRepair
     | PendingHostDecision
     | PendingHostRecorder;
+/** Pairs a host response with the request identity that validation must check before continuing. */
 export type ValidationHostResume =
     | {
           kind: "reviewer";
@@ -44,6 +46,7 @@ export type ValidationHostResume =
     | { kind: "decision"; identity: ValidationDecisionIdentity; answer: ValidationInteractionResponse }
     | { kind: "task_completed"; identity: ValidationRepairIdentity; report: string }
     | { kind: "recorder"; identity: ValidationHostIdentity; sections: string };
+/** Reports the next host request or the outcome of this validation turn. */
 export type HostTurnValidationResult =
     | { kind: "host_request"; request: ValidationHostRequest }
     | {
@@ -55,6 +58,7 @@ export type HostTurnValidationResult =
     | { kind: "paused" | "failed"; reason: string; recovery?: ValidationRecoveryResult };
 export type ValidationHostTurn = { resume?: ValidationHostResume; consumed?: boolean; signal?: AbortSignal };
 
+/** Check that both host requests carry the same identity fields and values. */
 export function sameHostIdentity(
     left: ValidationHostIdentity | ValidationReviewerIdentity | ValidationDecisionIdentity | ValidationRepairIdentity,
     right: ValidationHostIdentity | ValidationReviewerIdentity | ValidationDecisionIdentity | ValidationRepairIdentity,

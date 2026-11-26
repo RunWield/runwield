@@ -8,12 +8,14 @@ export type { ActiveExecutionWorkflow } from "./state.ts";
 export type { ImplementationCompletion, WorkflowAttempt, ResumeAttemptOptions } from "./attempt.ts";
 export type { PlanImplementationResult } from "./implementation-checkpoint.ts";
 
+/** Selects a Plan in its launch checkout. Supplying its stable ID guards against reopening a different Plan. */
 export interface WorkflowLocation {
     cwd: string;
     planName: string;
     planId?: string;
 }
 
+/** Carries the host session and collaboration preferences into execution. */
 export interface StartWorkflowOptions {
     hostedSession?: import("../../src/shared/session/hosted-session.ts").HostedSession;
     collaborationStyle?: "autonomous" | "pair";
@@ -25,26 +27,37 @@ type HostValidationReport = Exclude<ValidationHostResume, HostInteractionAnswer>
 
 export type { WorkflowProgress, WorkflowValidationProgress } from "./progress.ts";
 
+/** Reports the Plan status, when available, and whether execution can start or resume. */
 export interface WorkflowPreparation {
     status?: PlanStatus;
     admission: "ready" | "resume" | "unavailable";
 }
 
+/** Controls execution and host-driven validation for one selected Plan. */
 export interface Workflow {
+    /** Check whether the Plan can start or resume without starting an attempt. */
     reconcilePreparation(): Promise<WorkflowPreparation>;
+    /** Start execution or rejoin the active attempt and return a handle bound to it. */
     startOrResume(options?: StartWorkflowOptions): Promise<WorkflowAttempt>;
+    /** Reopen a recorded attempt from storage. A supplied attempt ID must match. */
     resumeAttempt(options?: ResumeAttemptOptions): Promise<WorkflowAttempt>;
+    /** Read the current attempt, pending host action, and publication status. Returns undefined if the Plan is missing. */
     readProgress(): Promise<WorkflowProgress | undefined>;
+    /** Run validation from its checkpoint until it needs host input, finishes, pauses, or fails. */
     advanceHostValidation(options?: { signal?: AbortSignal }): Promise<HostTurnValidationResult>;
+    /** Apply a reviewer, repair, or recorder report to its matching request and continue validation. */
     continueHostValidation(
         report: HostValidationReport,
         options?: { signal?: AbortSignal },
     ): Promise<HostTurnValidationResult>;
+    /** Apply the user's answer to the matching pending decision and continue validation. */
     answerInteraction(
         answer: HostInteractionAnswer,
         options?: { signal?: AbortSignal },
     ): Promise<HostTurnValidationResult>;
+    /** Throw if the reviewer report no longer matches the candidate under review. */
     checkHostReviewerCandidate(report: Extract<ValidationHostResume, { kind: "reviewer" }>): Promise<void>;
+    /** After a restart, return the saved response to replay, or undefined if the checkpoint has moved past it. */
     reconcileHostResume(resume: ValidationHostResume): Promise<ValidationHostResume | undefined>;
 }
 
@@ -87,6 +100,8 @@ export function openWorkflow({ cwd, planName, planId: requestedPlanId }: Workflo
             return { status, admission: inPlace ? "resume" : "unavailable" };
         },
         async startOrResume(options = {}) {
+            // A failed save can tear down the session while the import is pending.
+            options.hostedSession?.getManagedOperationCapability()?.assertLive();
             const { createExecutionStartPorts, startActiveExecutionWorkflow } =
                 await import("../../src/shared/workflow/execution-start.ts");
             const state = await startActiveExecutionWorkflow({

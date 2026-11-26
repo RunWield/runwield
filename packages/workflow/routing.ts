@@ -13,6 +13,7 @@ const interactiveRoutes = {
     PROJECT: { kind: "planning", agentName: agents.ARCHITECT },
 } as const satisfies Record<RoutingIntent, TriageRoute>;
 
+/** Pairs an interactive routing action with the agent that handles it. */
 interface TriageRoute {
     kind: "conversation" | "operation" | "quick_fix" | "planning";
     agentName: string;
@@ -30,11 +31,13 @@ export type AttachedTriageDecision = { report: TriageOutcome } & (
     | { kind: "unsupported_in_preview" }
 );
 
+/** Choose the interactive agent and action from a valid triage report, or return null for invalid input. */
 export function routeInteractiveTriage(input: TriageOutcomeInput): InteractiveTriageDecision | null {
     const report = normalizeTriageOutcome(input);
     return report ? { ...interactiveRoutes[report.routingIntent], report } : null;
 }
 
+/** Choose the Attached session handoff, flag unsupported intents, or return null for invalid input. */
 export function routeAttachedTriage(input: TriageOutcomeInput): AttachedTriageDecision | null {
     const report = normalizeTriageOutcome(input);
     if (!report) return null;

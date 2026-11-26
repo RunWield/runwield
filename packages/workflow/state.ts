@@ -4,12 +4,14 @@ import type { PlanFrontMatter } from "@runwield/plans";
 import type { PlanClassification } from "@runwield/plans/format";
 import type { WorkKind } from "@runwield/tools";
 
+/** Carries the Plan metadata and triage choices used to select and guide execution. */
 export interface TriageMeta extends Partial<PlanFrontMatter> {
     classification?: PlanClassification;
     workKind?: WorkKind;
     complexity?: "LOW" | "MEDIUM" | "HIGH";
 }
 
+/** Tracks the execution location, agent, collaboration choices, and validation state for one attempt. */
 export interface ActiveExecutionWorkflow {
     planName: string;
     packageSelection?: PlanAccess;
