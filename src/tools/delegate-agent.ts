@@ -10,15 +10,10 @@ import { toolRegistry, type DelegationMode } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { AGENTS, SUBAGENTS, agentRegistry } from "../shared/session/agent-registry.ts";
+import { AGENTS, agentRegistry } from "../shared/session/agent-registry.ts";
 import { formatProviderModelReference } from "@runwield/pi-ai";
 import type { HostedSession } from "@runwield/session-runtime/host";
-import type {
-    AgentDefinition,
-    DelegatedAuthority,
-    DelegatedRoleId,
-    DelegatedSubAgentDefinitionId,
-} from "@runwield/agents";
+import type { DelegatedAuthority, DelegatedRoleId, DelegatedSubAgentDefinitionId } from "@runwield/agents";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
 import { extractAssistantOutput } from "../shared/workflow/workflow-results.ts";
 
@@ -104,18 +99,6 @@ function errorMessage(value: null | undefined | string | number | boolean | Erro
 export function resolveDelegatedToolNames(parentTools: string[], id: DelegatedSubAgentDefinitionId): string[] {
     const allowed = new Set(agentRegistry.isolated.toolCeiling(id));
     return [...new Set(parentTools)].filter((toolName) => allowed.has(toolName));
-}
-
-/**
- * Load a particular delegated prompt for inspection.
- */
-export async function loadDelegatedAgentPrompt(
-    role: DelegatedRoleId = "general",
-    mode: DelegationMode = "write",
-): Promise<AgentDefinition> {
-    return await agentRegistry.isolated.load(mode === "read" ? SUBAGENTS.DELEGATED_READ : SUBAGENTS.DELEGATED, {
-        delegatedRole: role,
-    });
 }
 
 /**

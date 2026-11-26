@@ -17,7 +17,6 @@ import { runIsolatedAgentSession } from "../session/session.ts";
 import { type LocalCIPort, runLocalCI } from "./validation-local-ci.ts";
 import { verifyPostMergeCandidatePublished } from "./validation-merge-verification.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
-import { loadManualQaPrompt, loadReviewerFeedbackEngineerDef, loadReviewerPrompt } from "./validation-prompts.ts";
 import {
     completeValidationProgress,
     createValidationProgress,
@@ -740,7 +739,5 @@ export async function runMechanicalValidation(
 }
 
 export { verifyPostMergeCandidatePublished };
-
-export { loadManualQaPrompt, loadReviewerFeedbackEngineerDef, loadReviewerPrompt };
 
 export { runLocalCI };

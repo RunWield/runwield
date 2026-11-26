@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { env } from "node:process";
 import { test } from "node:test";
 import * as agents from "@runwield/agents";
-import { withProcessGlobalTestLock } from "../../src/testing/process-global-lock.ts";
+import { withProcessGlobalTestLock } from "../../test-support/process-global-lock.ts";
 
 const { createAgentRegistry } = agents;
 

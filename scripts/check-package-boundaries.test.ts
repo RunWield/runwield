@@ -247,6 +247,22 @@ test("independent packages cannot reach root src through aliases, public exports
     ]);
 });
 
+test("agent package tests must use portable fixtures", async (context) => {
+    const { lintRepository } = await makeRepository(context, {
+        "packages/agents/package.json": JSON.stringify({ name: "@runwield/agents", exports: "./index.ts" }),
+        "packages/agents/index.ts": "export {};",
+        "packages/agents/registry.test.ts": 'import "../../src/testing/lock.ts";',
+        "src/testing/lock.ts": "export {};",
+    });
+    assert.deepEqual(lintRepository(), [
+        {
+            file: "packages/agents/registry.test.ts",
+            line: 1,
+            message: "@runwield/agents depends on root src/: packages/agents/registry.test.ts -> src/testing/lock.ts.",
+        },
+    ]);
+});
+
 test("reports type-only package cycles downstream of an independent package", async (context) => {
     const { lintRepository } = await makeRepository(context, {
         "packages/tools/package.json": JSON.stringify({ name: "@runwield/tools", exports: "./index.ts" }),

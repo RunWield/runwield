@@ -78,7 +78,7 @@ Two rules keep tests safe:
   `src/constants.ts`. Never read `Deno.env.get("HOME")` or `Deno.cwd()` directly
   in `src/`, and never cache either in a module-level `const`.
 - Wrap any test that mutates `HOME` or the working directory in
-  `withProcessGlobalTestLock` (`src/testing/process-global-lock.ts`).
+  `withProcessGlobalTestLock` (`test-support/process-global-lock.ts`).
 
 ## Product and Architecture Documents
 

@@ -32,9 +32,6 @@ import type { LocalCIPort } from "./validation-local-ci.ts";
 import type { ValidationCheckpoint, ValidationCheckpointPhase } from "@runwield/plans/controller-state";
 
 export {
-    loadManualQaPrompt,
-    loadReviewerFeedbackEngineerDef,
-    loadReviewerPrompt,
     runLocalCI,
     runManualQaChecklistPrompt,
     shouldContinueParentEpicAfterValidation,

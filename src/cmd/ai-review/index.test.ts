@@ -4,7 +4,6 @@ import { fauxAssistantMessage, fauxText, getSystemMessageText } from "@earendil-
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { parseGuidedReviewMetadataLine, parseGuidedReviewUsageEventLine } from "../guided-review/protocol.ts";
-import { AGENTS, agentRegistry } from "../../shared/session/agent-registry.ts";
 import { getCliCommandDefinitions, requiresProjectDirectoryConsent } from "../registry.ts";
 import { runAiReviewCommand } from "./index.ts";
 
@@ -69,26 +68,7 @@ test("ai-review rejects an empty prompt without starting a Session", async () =>
     assertStringIncludes(stderr, "requires a prompt on stdin");
 });
 
-test("AI Reviewer is workflow-only with read tools and read-only git commands", async () => {
-    const definition = await agentRegistry.get(AGENTS.AI_REVIEWER);
-    assertEquals(definition.displayName, "AI Reviewer");
-    assertEquals(definition.workflowOnly, true);
-    assertEquals(
-        (await agentRegistry.list()).some((agent) => agent.name === AGENTS.AI_REVIEWER),
-        false,
-    );
-    for (const tool of definition.tools) {
-        assertEquals(
-            ["codemode", "read", "grep", "find", "ls", "bash", "web_fetch", "set_session_name"].includes(tool) ||
-                tool.startsWith("code_"),
-            true,
-            tool,
-        );
-    }
-    assertEquals(definition.bashAllowedCommands?.includes("git show"), true);
-    for (const command of definition.bashAllowedCommands || []) {
-        assertEquals(command.startsWith("git "), true, command);
-    }
+test("ai-review requires project consent and stays out of the public CLI commands", () => {
     assertEquals(requiresProjectDirectoryConsent("ai-review"), true);
     assertEquals(
         getCliCommandDefinitions().some((command) => command.name === "ai-review"),

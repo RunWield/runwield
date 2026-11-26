@@ -12,10 +12,12 @@ import { tmpdir } from "node:os";
  * between those contracts. The declaration is metadata for diagnostics and
  * regression tests. Runtime workflow state still decides which Agent runs.
  */
-import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../test-support/assertions.ts";
 import { join } from "node:path";
-import { SUBAGENTS, agentRegistry } from "./agent-registry.ts";
+import { createAgentRegistry } from "@runwield/agents";
 
+const agentRegistry = createAgentRegistry();
+const { isolated: SUBAGENTS } = agentRegistry.ids;
 const EXECUTION_CONTRACTS: ReadonlyArray<{
     agentName: string;
     displayName: string;
@@ -112,8 +114,8 @@ async function loadContractDef(agentName: string, loader: "agent" | "subagent") 
 async function readBundledFrontMatter(agentName: string, loader: "agent" | "subagent"): Promise<Map<string, string[]>> {
     const filePath =
         loader === "subagent"
-            ? join("packages", "agents", "definitions", "subagent-definitions", `${agentName}.md`)
-            : join("packages", "agents", "definitions", `${agentName}.md`);
+            ? new URL(`./definitions/subagent-definitions/${agentName}.md`, import.meta.url)
+            : new URL(`./definitions/${agentName}.md`, import.meta.url);
     const contents = await fsReadFile(filePath, "utf8");
     const result = new Map<string, string[]>();
     const scalarMatches = contents.match(/^---\n([\s\S]*?)\n---/m)?.[1] || "";

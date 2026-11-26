@@ -8,11 +8,14 @@ import {
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { match as assertMatch } from "node:assert/strict";
-import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../test-support/assertions.ts";
 import { join } from "node:path";
-import { agentRegistry } from "./agent-registry.ts";
+import { fileURLToPath } from "node:url";
+import { createAgentRegistry } from "@runwield/agents";
 
-const BUNDLED_AGENT_DEFS = join("packages", "agents", "definitions");
+const agentRegistry = createAgentRegistry();
+
+const BUNDLED_AGENT_DEFS = fileURLToPath(new URL("./definitions", import.meta.url));
 const SHARED_PRACTICE_DIR = join(BUNDLED_AGENT_DEFS, "shared-practice");
 
 test("managed engineering assigns full validation to RunWield and keeps standalone verification", async () => {
@@ -403,8 +406,7 @@ test("Plan and Epic authors share one architecture vocabulary", async () => {
 test("the Slicer receives the show-the-work practice through the subagent registry", async () => {
     // Slicer is a workflow-only subagent, so it never appears in the agent listing.
     // It shapes the child Plans a person reads, so the practice must reach it too.
-    const { SUBAGENTS } = await import("./agent-registry.ts");
-    const slicer = await agentRegistry.isolated.load(SUBAGENTS.SLICER);
+    const slicer = await agentRegistry.isolated.load(agentRegistry.ids.isolated.SLICER);
 
     assertStringIncludes(slicer.systemPrompt, SHOW_THE_WORK_MARKER);
 });
