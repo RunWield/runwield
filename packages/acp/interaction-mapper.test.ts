@@ -1,5 +1,7 @@
-import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { assertEquals } from "../testing/assertions.ts";
+import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command-fixture.ts";
+import { startBrowserQuestionServer } from "../../src/shared/session/browser-question.ts";
+import { requestLocalReviewInteraction } from "../../src/shared/session/local-review-interactions.ts";
+import { deepStrictEqual as assertEquals } from "node:assert/strict";
 import { test } from "node:test";
 /**
  * @module acp/interaction-mapper.test
@@ -136,6 +138,7 @@ test("ACP Artifact Review feedback rejects cross-origin submissions and cancels"
         const adapter = createAcpInteractionAdapter({
             acpSessionId: "acp-session-1",
             clientCapabilities: {},
+            review: { startBrowserQuestionServer, requestLocalReviewInteraction },
             context: {
                 notify: (_method: string, params: QuestionNotification) => {
                     if (params.update._meta.runwield.questionUrl)

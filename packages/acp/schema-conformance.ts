@@ -2,17 +2,12 @@
  * @module acp/schema-conformance
  * Validates ACP frames against the JSON Schema published by @agentclientprotocol/sdk.
  *
- * The SDK keeps its generated zod schemas private, but ships `schema/v1/schema.unstable.json`
- * as a public export. That file is the authority here, so a protocol change shows
- * up as a test failure instead of silently passing.
- *
- * Test support only. The ACP schema declares no `additionalProperties: false`,
- * so this checker covers the keywords the schema actually uses and nothing more.
+ * The SDK publishes `schema/v1/schema.unstable.json` for the v1 profile used
+ * by the RunWield bindings. The checker covers the keywords used in that schema.
  */
 
 import acpSchemaDocument from "@agentclientprotocol/sdk/schema/v1/schema.unstable.json" with { type: "json" };
-
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+import type { JsonValue } from "@runwield/parsing/jsonc";
 
 /**
  * The keywords the ACP schema actually uses. Values are optional because the
@@ -50,6 +45,12 @@ const schema = acpSchemaDocument as AcpSchemaDocument;
 
 const DEF_REF_PREFIX = "#/$defs/";
 
+function getDefinition(name: string): JsonSchemaNode {
+    const definition = Object.hasOwn(schema.$defs, name) ? schema.$defs[name] : undefined;
+    if (!definition) throw new Error(`Unknown ACP schema definition: ${name}`);
+    return definition;
+}
+
 /**
  * Resolve a local `#/$defs/Name` reference.
  *
@@ -57,10 +58,7 @@ const DEF_REF_PREFIX = "#/$defs/";
  */
 function resolveRef(ref: string): JsonSchemaNode {
     if (!ref.startsWith(DEF_REF_PREFIX)) throw new Error(`Unsupported ACP schema reference: ${ref}`);
-    const name = ref.slice(DEF_REF_PREFIX.length);
-    const definition = schema.$defs[name];
-    if (!definition) throw new Error(`Unknown ACP schema definition: ${name}`);
-    return definition;
+    return getDefinition(ref.slice(DEF_REF_PREFIX.length));
 }
 
 /**
@@ -233,51 +231,5 @@ function collectViolations(node: JsonSchemaNode, value: JsonValue, path: string)
  * @param value value under test
  */
 export function findAcpSchemaViolations(definitionName: string, value: JsonValue): string[] {
-    const definition = schema.$defs[definitionName];
-    if (!definition) throw new Error(`Unknown ACP schema definition: ${definitionName}`);
-    return collectViolations(definition, value, definitionName);
-}
-
-/**
- * Throw unless a value matches one named ACP schema definition.
- *
- * @param definitionName key under the schema's `$defs`
- * @param value value under test
- */
-export function assertAcpSchema(definitionName: string, value: JsonValue): void {
-    const violations = findAcpSchemaViolations(definitionName, value);
-    if (violations.length > 0) {
-        throw new Error(`ACP ${definitionName} schema violations:\n  ${violations.join("\n  ")}`);
-    }
-}
-
-/**
- * Parse one serialized NDJSON frame and assert its payload matches an ACP definition.
- *
- * Validating the serialized text keeps the assertion honest about what a strict
- * Client actually receives, not just what the adapter built in memory.
- *
- * @param definitionName key under the schema's `$defs`
- * @param frame a single NDJSON line holding a JSON-RPC message
- * @param select picks the validated payload out of the parsed frame
- */
-export function assertAcpFrameSchema(
-    definitionName: string,
-    frame: string,
-    select: (message: { [key: string]: JsonValue }) => JsonValue,
-): void {
-    let parsed: JsonValue;
-    try {
-        parsed = JSON.parse(frame);
-    } catch (error) {
-        const details = error instanceof Error ? error.message : String(error);
-        throw new Error(`ACP ${definitionName} frame is not valid JSON: ${details}\n  Frame: ${frame}`, {
-            cause: error,
-        });
-    }
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        const actualType = Array.isArray(parsed) ? "array" : parsed === null ? "null" : typeof parsed;
-        throw new Error(`ACP ${definitionName} frame must be a JSON object, got ${actualType}\n  Frame: ${frame}`);
-    }
-    assertAcpSchema(definitionName, select(parsed));
+    return collectViolations(getDefinition(definitionName), value, definitionName);
 }

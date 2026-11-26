@@ -179,6 +179,9 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
                 });
             };
             const promptTemplatePath = join(home, "prompt.md");
+            await run("canArchiveSavedSessions", () => {
+                assertEquals(runtime.canArchiveSavedSessions(), true);
+            });
             await fsWriteFile(promptTemplatePath, "Hello {{instructions}}");
             await run("expandSessionPromptTemplate", async () => {
                 await runtime.expandSessionPromptTemplate(promptTemplatePath, "read");

@@ -118,8 +118,8 @@ without importing the runtime implementation.
   invariants. Cancellation does not release the turn or permit disposal until
   the underlying Agent Session prompt settles; different Hosted Sessions remain
   independently promptable.
-- Production modules under `src/shared` and `src/tools` cannot import `src/ui`
-  or `src/acp`; automated boundary tests enforce the dependency direction.
+- Production modules under `src/shared` and `src/tools` keep their dependencies
+  independent of `src/ui`, `@runwield/acp`, and the CLI's ACP adapter in `src/cmd/acp`.
 - TUI composition, terminal integration helpers, and their tests live under
   `src/ui/tui`. The `src/shared` tree is reserved for reusable runtime, session,
   model, workflow, Plan, tool-support, and platform policy.

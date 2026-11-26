@@ -61,7 +61,7 @@ The boundaries this change is expected to touch. This list is guidance, not an a
 
 ## Reuse Opportunities
 
-- `src/acp/server.ts`, `event-mapper.ts`, `interaction-mapper.js`, and `session-map.ts` — existing Session protocol behavior.
+- `packages/acp/server.ts`, `event-mapper.ts`, `interaction-mapper.js`, and `session-map.ts` — existing Session protocol behavior.
 - Existing Session/question components and `src/ui/design-system/` — no parallel desktop component library.
 - Real Git and managed-Session fixtures; provider and subprocess boundaries are valid controlled environments.
 

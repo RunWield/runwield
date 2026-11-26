@@ -9,6 +9,8 @@ export type SessionRuntimeMethodPolicy =
 export const SESSION_RUNTIME_METHOD_POLICY = {
     adoptManagedSession: "initializer_adopter",
     answerInteraction: "projection_adapter_local",
+    archiveSavedSession: "cancellation_cleanup",
+    canArchiveSavedSessions: "read_only",
     cancelSession: "cancellation_cleanup",
     clearActiveExecutionWorkflow: "fenced_standalone_mutation",
     clearQueuedMessages: "fenced_standalone_mutation",

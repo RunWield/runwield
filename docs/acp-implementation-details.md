@@ -1,5 +1,7 @@
 # ACP Implementation Details and Gaps
 
+The reusable [ACP package](../packages/acp/index.ts) owns the protocol bindings. The [CLI adapter](../src/cmd/acp/index.ts) runs the local server on stdin and stdout. File names and SDK versions in the September audit below describe that checkout.
+
 ## Current compatibility — 2026-10-06
 
 The owner confirmed working ACP integration with JetBrains AI Chat and the Air plugin, and end-to-end OpenAB workflows

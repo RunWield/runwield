@@ -13,7 +13,7 @@ import {
 } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getModelRegistry } from "@runwield/pi-ai";
 import { getSettingsManager } from "../../shared/settings.ts";
-import { startRunWieldAcpServer } from "../../acp/server.ts";
+import { startRunWieldAcpServer } from "../../cmd/acp/server.ts";
 import { initTUIWithPair, stopTUI } from "./tui.ts";
 import { runTerminalAuthSetup } from "./terminal-auth-setup.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
@@ -64,7 +64,10 @@ function installVirtualTui(): VirtualTerminal {
 function startAcpServer(): AcpHandle {
     const input = new TransformStream<Uint8Array, Uint8Array>();
     const output = new TransformStream<Uint8Array, Uint8Array>();
-    const connection = startRunWieldAcpServer(input.readable, output.writable, { diagnostic: () => {} });
+    const connection = startRunWieldAcpServer(
+        { readable: input.readable, writable: output.writable },
+        { diagnostic: () => {} },
+    );
     return {
         inputWriter: input.writable.getWriter(),
         outputReader: output.readable.getReader(),

@@ -50,9 +50,8 @@ import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.ts
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "../shared/session/root-session.ts";
 import { VERSION } from "../shared/version.js";
-import { mapRuntimeEventToAcpUpdate } from "./event-mapper.ts";
-import { assertAcpFrameSchema, assertAcpSchema } from "./schema-conformance.ts";
-import { startRunWieldAcpServer } from "./server.ts";
+import { assertAcpFrameSchema, assertAcpSchema } from "../testing/acp-schema.ts";
+import { startRunWieldAcpServer } from "../cmd/acp/server.ts";
 
 interface TestServerHandle {
     inputWriter: WritableStreamDefaultWriter<Uint8Array>;
@@ -378,11 +377,14 @@ function startTestServer(options: StartTestServerOptions = {}): TestServerHandle
         outputWritable = output.writable;
     }
     const diagnostics: string[] = [];
-    const connection = startRunWieldAcpServer(input.readable, outputWritable, {
-        diagnostic: (message) => {
-            diagnostics.push(message);
+    const connection = startRunWieldAcpServer(
+        { readable: input.readable, writable: outputWritable },
+        {
+            diagnostic: (message) => {
+                diagnostics.push(message);
+            },
         },
-    });
+    );
     return {
         inputWriter: input.writable.getWriter(),
         outputReader: outputReadable.getReader(),
@@ -706,6 +708,11 @@ test("CLI --mode acp routes to ACP stdio without stdout diagnostics", async () =
     assertEquals(code, 0);
     assertEquals(response.result!.agentInfo!.name, "RunWield");
     assertEquals(response.result!.authMethods, [TERMINAL_AUTH_METHOD]);
+    assert(
+        response.result!.agentCapabilities!.sessionCapabilities!._meta!.runwield!.implementedMethods!.includes(
+            "session/set_config_option",
+        ),
+    );
     assert(!stdoutText.includes("RunWield ACP"), "stdout should contain protocol JSON only");
     assertStringIncludes(decoder.decode(stderr), "RunWield ACP");
 });
@@ -2616,31 +2623,6 @@ test("ACP session/load maps a persisted Session with no configured model to auth
         },
         { providerState: "none" },
     );
-});
-
-test("ACP event mapper forwards structured validation progress", () => {
-    const progress = {
-        kind: "workflow",
-        outcome: "paused",
-        stage: "engineer_repair",
-        cycle: 1,
-        maxCycles: 3,
-        totalCycle: 1,
-        repairAttempt: 1,
-        maxRepairAttempts: 3,
-        checks: { ci: "failed", semanticReview: "pending", humanReview: "pending", merge: "pending" },
-        message: "Awaiting Engineer continuation.",
-    } as RuntimeValidationProgress;
-    const update = mapRuntimeEventToAcpUpdate({
-        type: "system_status",
-        sessionId: "session-1",
-        timestamp: "now",
-        messageId: "status-1",
-        message: "Validation paused.",
-        level: "warning",
-        validationProgress: progress,
-    });
-    assertEquals((update as AcpTestUpdate)._meta?.runwield?.validationProgress, progress);
 });
 
 for (const [reply, expectedValue, expectedOther] of [
