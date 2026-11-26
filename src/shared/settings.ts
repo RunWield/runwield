@@ -2,7 +2,7 @@ import { projects } from "@runwield/projects";
 import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
-import { parse as parseJsonc, type JsonRecord, type JsonValue } from "./jsonc.ts";
+import { parse as parseJsonc, type JsonRecord, type JsonValue } from "@runwield/parsing/jsonc";
 import lockfile from "proper-lockfile";
 import { normalizePlanServerUrl } from "@runwield/plans/format";
 import { getCwd, getHomeDir } from "../constants.ts";

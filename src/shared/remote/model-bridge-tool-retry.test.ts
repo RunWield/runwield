@@ -22,7 +22,7 @@ import {
     type ProviderStreams,
 } from "@earendil-works/pi-ai";
 import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";
-import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
+import { handleModelRequest, LocalModelBridge } from "@runwield/pi-ai/remote-models";
 import type { RemoteMount } from "./sftp-mount.ts";
 
 test("remote Pi retries a laptop EOF after a committed project tool without replaying the tool", async () => {

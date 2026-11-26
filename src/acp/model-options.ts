@@ -1,21 +1,25 @@
+import { formatProviderModelReference, type ActiveModelState } from "@runwield/pi-ai";
 import { listUserModelOptions } from "../shared/session/user-selection.ts";
-import type { SessionRuntime } from "../shared/session/session-runtime.ts";
 import type { SessionConfigOption } from "@agentclientprotocol/sdk/unstable";
+
+/** The session's current model and reasoning choice. */
+export interface AcpModelSelection {
+    activeModel?: ActiveModelState;
+    thinkingLevel?: string;
+}
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
 /**
  * Expose the same selectable models, reasoning levels, and active choices as the other Session surfaces.
  */
-export async function buildAcpModelOptions(runtime: SessionRuntime, sessionId: string): Promise<SessionConfigOption[]> {
-    const models = await listUserModelOptions();
-    const snapshot = runtime.getSessionSnapshot(sessionId);
-    const active = snapshot?.activeModel;
+export async function buildAcpModelOptions(
+    selection: AcpModelSelection | null | undefined,
+): Promise<SessionConfigOption[]> {
+    const active = selection?.activeModel;
     if (!active?.model) return [];
-    const currentValue =
-        active.provider && !active.model.startsWith(`${active.provider}/`)
-            ? `${active.provider}/${active.model}`
-            : active.model;
+    const models = await listUserModelOptions();
+    const currentValue = formatProviderModelReference(active);
     const options = models.map((model) => ({
         value: `${model.provider}/${model.id}`,
         name: `${model.name} (${model.provider})`,
@@ -35,7 +39,7 @@ export async function buildAcpModelOptions(runtime: SessionRuntime, sessionId: s
             name: "Reasoning",
             category: "thought_level",
             type: "select",
-            currentValue: snapshot?.thinkingLevel || "off",
+            currentValue: selection?.thinkingLevel || "off",
             options: THINKING_LEVELS.map((value) => ({
                 value,
                 name: value === "xhigh" ? "Extra High" : `${value[0].toUpperCase()}${value.slice(1)}`,

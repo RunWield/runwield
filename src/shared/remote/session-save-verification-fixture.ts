@@ -35,7 +35,7 @@ export interface VerificationResult {
 export interface VerificationOptions {
     mode: "turn" | "agent-fault" | "attachment" | "oversized" | "allocation-fault";
     faultPoint?: "before-prompt" | "before-tool" | "after-tool" | "tool-hook";
-    modelConnection?: import("./model-bridge.ts").RemoteModelConnection;
+    modelConnection?: import("@runwield/pi-ai/remote-models").RemoteModelConnection;
 }
 export function verificationClient(f: SaveControlFixture, baseUrl: string, options: VerificationOptions) {
     const child = spawnNativeProcess(process.execPath, {

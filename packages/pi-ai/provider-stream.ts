@@ -46,17 +46,21 @@ export function normalizeProviderStream(
                 if (event.type === "error") {
                     const aborted = event.reason === "aborted" || options?.signal?.aborted;
                     const error = event.error;
-                    const saved = partial && error.content.length === 0 && partial.content.length
-                        ? {
-                            ...error,
-                            content: partial.content,
-                            usage: error.usage.input || error.usage.output || error.usage.cacheRead ||
-                                    error.usage.cacheWrite ||
-                                    Object.values(error.usage.cost).some((value) => value !== 0)
-                                ? error.usage
-                                : partial.usage,
-                        }
-                        : error;
+                    const saved =
+                        partial && error.content.length === 0 && partial.content.length
+                            ? {
+                                  ...error,
+                                  content: partial.content,
+                                  usage:
+                                      error.usage.input ||
+                                      error.usage.output ||
+                                      error.usage.cacheRead ||
+                                      error.usage.cacheWrite ||
+                                      Object.values(error.usage.cost).some((value) => value !== 0)
+                                          ? error.usage
+                                          : partial.usage,
+                              }
+                            : error;
                     output.push({
                         ...event,
                         reason: aborted ? "aborted" : event.reason,
@@ -100,37 +104,4 @@ export function normalizeProviderStream(
         }
     })();
     return output;
-}
-
-export function formatProviderRetryExhaustion(diagnostic: string | undefined, retries: number) {
-    const message = formatProviderError(diagnostic);
-    const retryCount = `${retries} ${retries === 1 ? "retry was" : "retries were"} completed.`;
-    const temporary = /stopped responding|temporarily unavailable|too many requests/.test(message);
-    return `${message} ${retryCount}${temporary ? " You can try again." : ""}`;
-}
-
-export function formatProviderError(diagnostic: string | undefined) {
-    const text = diagnostic || "";
-    if (/insufficient_quota|quota|billing|out of budget|usage limit|session limit|available balance/i.test(text)) {
-        return "The model service reports a usage or billing limit. Check your account.";
-    }
-    if (/\b401\b|\b403\b|unauthori[sz]ed|authentication|invalid.api.key|credential/i.test(text)) {
-        return "The model service could not verify your access. Check your sign-in or API credentials.";
-    }
-    if (
-        /unexpected eof|stream ended without|stream ended before|socket hang up|connection (?:error|lost)|network error|fetch failed/i
-            .test(text)
-    ) {
-        return "The model service stopped responding before the reply was complete.";
-    }
-    if (/\b429\b|rate.?limit|too many requests/i.test(text)) {
-        return "The model service is receiving too many requests.";
-    }
-    if (/\b50[0234]\b|\b52[04]\b|overloaded|service unavailable|server error|timeout|timed out/i.test(text)) {
-        return "The model service is temporarily unavailable.";
-    }
-    if (/\b40[04]\b|invalid.request|bad request|model not found|endpoint|context (?:length|overflow)/i.test(text)) {
-        return "The model service rejected this request. Check the selected model and provider settings.";
-    }
-    return "The model service could not complete this request.";
 }

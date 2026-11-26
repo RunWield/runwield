@@ -30,7 +30,8 @@ for (const outcome of ["registered", "feedback", "rejected"] as const) {
                 runtime.subscribeSessionEvents(sessionId, (event) => {
                     if (event.type === "tool_end" && event.toolName === "artifact_written") {
                         output = event.output;
-                        observedOutcome = String(event.details?.outcome || "");
+                        const details = event.details;
+                        observedOutcome = details && "outcome" in details ? String(details.outcome) : "";
                     }
                 });
                 runtime.setInteractionAdapter(sessionId, {

@@ -8,7 +8,7 @@ import { type RemoteSessionRequest } from "./session-protocol.ts";
 import { deferred, makeControlFixture, within } from "./session-save-test-fixture.ts";
 import { verificationClient } from "./session-save-verification-fixture.ts";
 import { makeSaveModelRuntime } from "./session-save-agent-fixture.ts";
-import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
+import { handleModelRequest, LocalModelBridge } from "@runwield/pi-ai/remote-models";
 
 for (const barrier of ["user", "toolCall", "toolResult"] as const) {
     test(`real Pi ${barrier} save acknowledgement blocks dependent model or remote tool progress`, async () => {

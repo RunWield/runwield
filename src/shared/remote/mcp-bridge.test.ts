@@ -10,9 +10,15 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import type { McpServerDefinition } from "../mcp/config.ts";
-import { startMcpIntegration } from "../mcp/integration.ts";
+import { startMcpIntegration } from "@runwield/pi-ai/mcp";
+import { mcpFixtureHost } from "../mcp/integration-fixture.ts";
 import { startRemoteControlService } from "./control.ts";
-import { configureRemoteMcpConnection, LaptopMcpBridge, RemoteMcpTransport } from "./mcp-bridge.ts";
+import {
+    configureRemoteMcpConnection,
+    LaptopMcpBridge,
+    remoteMcpTransportFor,
+    RemoteMcpTransport,
+} from "./mcp-bridge.ts";
 
 const fixtureServer = fileURLToPath(new URL("../mcp/fixture-server.ts", import.meta.url));
 const identity = { buildId: "a".repeat(64), protocol: 1 };
@@ -104,9 +110,14 @@ test("one Pi extension preserves native personal results, shared resources, root
     await withBridge(
         async (f) => {
             await f.ready();
+            const servers: McpServerDefinition[] = [
+                personal,
+                { ...f.definition, name: "project", source: "project", location: "remote" },
+            ];
             const { integration } = await startMcpIntegration({
-                cwd: f.projectRoot,
-                servers: [personal, { ...f.definition, name: "project", source: "project", location: "remote" }],
+                ...mcpFixtureHost(f.projectRoot),
+                servers,
+                createTransport: remoteMcpTransportFor(servers),
             });
             try {
                 const tools = integration.getTools();
@@ -174,8 +185,9 @@ test("pre-aborted personal calls are never dispatched to the laptop", async () =
     await withBridge(async (f) => {
         await f.ready();
         const { integration } = await startMcpIntegration({
-            cwd: f.projectRoot,
+            ...mcpFixtureHost(f.projectRoot),
             servers: [personal],
+            createTransport: remoteMcpTransportFor([personal]),
         });
         try {
             const before = new AbortController();
@@ -297,8 +309,9 @@ test("Pi reconnect recovers a failed personal inventory without a model request"
             JSON.stringify({ mcpServers: { personal: { command: "missing-secret" } } }),
         );
         const { integration } = await startMcpIntegration({
-            cwd: f.projectRoot,
+            ...mcpFixtureHost(f.projectRoot),
             servers: [personal],
+            createTransport: remoteMcpTransportFor([personal]),
         });
         try {
             assertEquals(integration.getTools(), []);
@@ -484,12 +497,15 @@ test("Pi owns normalized-name collisions across personal and project origins", a
             join(f.homeDir, ".wld/mcp.json"),
             JSON.stringify({ mcpServers: { "same-name": f.definition } }),
         );
+        const relocated = { ...personal, name: "same-name" };
+        const servers: McpServerDefinition[] = [
+            relocated,
+            { ...f.definition, name: "same_name", source: "project", location: "remote" },
+        ];
         const { integration } = await startMcpIntegration({
-            cwd: f.projectRoot,
-            servers: [
-                { ...personal, name: "same-name" },
-                { ...f.definition, name: "same_name", source: "project", location: "remote" },
-            ],
+            ...mcpFixtureHost(f.projectRoot),
+            servers,
+            createTransport: remoteMcpTransportFor(servers),
         });
         try {
             const tools = integration.getTools();

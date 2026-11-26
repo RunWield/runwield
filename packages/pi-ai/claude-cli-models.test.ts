@@ -1,11 +1,10 @@
-import { assertEquals } from "../../testing/assertions.ts";
+import { assertEquals } from "../../src/testing/assertions.ts";
 import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { ok as assert, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
 import { join } from "node:path";
-import { RunWieldCredentialStore, RunWieldModelRegistry } from "./model-registry.ts";
-import { resolveTemplateModel } from "./model-validation.ts";
+import { RunWieldModelRegistry } from "./model-registry.ts";
 
 async function makeRegistry(): Promise<{ registry: RunWieldModelRegistry; tempDir: string }> {
     const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-claude-cli-models-"));
@@ -13,7 +12,6 @@ async function makeRegistry(): Promise<{ registry: RunWieldModelRegistry; tempDi
         tempDir,
         registry: new RunWieldModelRegistry({
             configDir: tempDir,
-            credentialStore: new RunWieldCredentialStore(join(tempDir, "auth.json")),
         }),
     };
 }
@@ -119,13 +117,13 @@ test("Claude CLI remains outside API auth even when files contain a misleading p
 test("strict template resolution accepts selectable Claude CLI references without weakening unknown provider failures", async () => {
     const { registry, tempDir } = await makeRegistry();
     try {
-        assertEquals(resolveTemplateModel("claude-cli/future-alias", registry), {
+        assertEquals(registry.catalog.resolveTemplateModel("claude-cli/future-alias"), {
             ok: true,
             provider: "claude-cli",
             id: "future-alias",
         });
-        assertEquals(resolveTemplateModel("missing-provider/model", registry), { ok: false });
-        assertEquals(resolveTemplateModel("claude-cli/", registry), { ok: false });
+        assertEquals(registry.catalog.resolveTemplateModel("missing-provider/model"), { ok: false });
+        assertEquals(registry.catalog.resolveTemplateModel("claude-cli/"), { ok: false });
     } finally {
         await fsRm(tempDir, { recursive: true });
     }

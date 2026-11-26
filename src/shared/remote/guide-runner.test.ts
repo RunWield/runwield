@@ -88,7 +88,7 @@ test("remote guide uses the laptop model bridge with remote files and no remote 
             import { configureRemoteSettingsConnection } from ${moduleUrl("./settings-bridge.ts")};
             import { configureRemoteMcpConnection } from ${moduleUrl("./mcp-bridge.ts")};
             import { configureRemoteMemoryConnection } from ${moduleUrl("./memory-bridge.ts")};
-            import { configureRemoteModelConnection } from ${moduleUrl("../models/model-registry.ts")};
+            import { configureRemoteModelConnection } from ${JSON.stringify(import.meta.resolve("@runwield/pi-ai/models"))};
             import { runRemoteGuideCommand } from ${moduleUrl("./guide-runner.ts")};
             const input = JSON.parse(await Bun.stdin.text());
             configureRemotePersonalResources({ globalRoot: input.resources });

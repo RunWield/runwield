@@ -5,7 +5,7 @@ import type {
     CatalogedSession,
     SessionListResult,
 } from "../../../shared/session/file-session-store.ts";
-import type { JsonValue } from "../../../shared/jsonc.ts";
+import type { JsonValue } from "@runwield/parsing/jsonc";
 
 export interface SessionListRow
     extends Pick<CatalogedSession, "runwieldSessionId">, Partial<Pick<CatalogedSession, "displayName" | "archivedAt">> {

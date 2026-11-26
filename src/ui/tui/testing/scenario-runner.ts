@@ -5,7 +5,7 @@ import type { ValidationPhaseName } from "../../../shared/workflow/validation-po
 
 import type { PlanApprovalAction } from "../../../shared/workflow/plan-approval.ts";
 
-import type { JsonRecord } from "../../../shared/jsonc.ts";
+import type { JsonRecord } from "@runwield/parsing/jsonc";
 
 import type { SessionRuntimeEvent } from "../../../shared/session/session-runtime-events.ts";
 
@@ -923,7 +923,7 @@ function inferGoldenPhase(agentName: string) {
 /** Classify lifecycle milestones without retaining the raw tool result or error text. */
 function completionMilestone(event: SessionRuntimeEvent) {
     if (event.type === "tool_end" && event.toolName === "task_completed") {
-        const outcome = event.details?.outcome;
+        const outcome = Array.isArray(event.details) ? undefined : event.details?.outcome;
         if (outcome === "task_completed") return "tool-accepted";
         if (outcome === "rejected") return "tool-rejected";
         return "tool-other";

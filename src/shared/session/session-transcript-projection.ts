@@ -11,9 +11,9 @@ import { ACTIVE_AGENT_CUSTOM_TYPE, readActiveAgentFromEntry } from "./active-age
 import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
 import { readPlanAssociations } from "./plan-association.ts";
-import { normalizeRuntimeToolResult, normalizeRuntimeUsage, RuntimeEventTypes } from "./session-runtime-events.ts";
+import { normalizeRuntimeUsage, RuntimeEventTypes } from "./session-runtime-events.ts";
 import { describeRuntimeTool } from "./tool-event-title.ts";
-import { formatProviderError } from "./provider-errors.ts";
+import { normalizeToolResult, formatProviderError, type ToolResult } from "@runwield/pi-ai/turn";
 import { formatTaskCompletedMarkdown, readManualQaChecklistMessage } from "./workflow-messages.ts";
 import { isPathInside, readCatalogSafeRootSessionLocator } from "./root-session.ts";
 import {
@@ -26,7 +26,7 @@ import { RuntimeUsageTotals } from "./runtime-usage-totals.ts";
 import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "@runwield/workflow/events";
 
 import type { SessionEntry, SessionHeader } from "@earendil-works/pi-coding-agent";
-import type { JsonRecord } from "../jsonc.ts";
+import type { JsonRecord, JsonValue } from "@runwield/parsing/jsonc";
 import type { TranscriptEvidence } from "./file-session-store-types.ts";
 import type { ImageReference } from "./named-invocation.ts";
 import type {
@@ -52,9 +52,9 @@ type NamedInvocationEntry = Parameters<typeof namedInvocationDisplayText>[0];
 
 interface ReplayContentBlock {
     type?: string;
-    text?: unknown;
+    text?: JsonValue;
     thinking?: unknown;
-    content?: unknown;
+    content?: JsonValue;
     data?: string;
     base64?: string;
     mimeType?: string;
@@ -71,6 +71,7 @@ interface ReplayContentBlock {
 interface ReplayTranscriptMessage {
     role?: string;
     content?: string | ReplayContentBlock[] | null;
+    details?: ToolResult["details"];
     toolCallId?: string;
     tool_call_id?: string;
     toolName?: string;
@@ -408,7 +409,7 @@ export function createReplayEvents(
                 eventId: makeEventId(value, RuntimeEventTypes.TOOL_END, 0, segmentId),
                 toolCallId,
                 ...(replayTools.get(toolCallId) || describeRuntimeTool(completion.kind!, undefined)),
-                ...normalizeRuntimeToolResult({
+                ...normalizeToolResult({
                     content: [{ type: "text", text: message }],
                     details: completion.payload,
                 }),
@@ -440,7 +441,7 @@ export function createReplayEvents(
                 // Accepted completion is recorded before the tool can stop its own agent turn.
                 // Use that record once, whether or not the provider also persisted a tool result.
                 if (toolName === "task_completed" && acceptedCompletions.has(toolCallId)) continue;
-                const toolResult = normalizeRuntimeToolResult(value.message);
+                const toolResult = normalizeToolResult(value.message);
                 events.push({
                     ...common,
                     type: RuntimeEventTypes.TOOL_END,
@@ -452,11 +453,12 @@ export function createReplayEvents(
                     isError: Boolean(value.message?.isError || value.message?.is_error),
                     durationMs: finishReplayTool(toolCallId, common.timestamp),
                 });
+                const toolDetails = Array.isArray(toolResult.details) ? null : toolResult.details;
                 const taskCompletedMessage =
                     toolName === "task_completed" &&
-                    toolResult.details?.outcome === "task_completed" &&
-                    typeof toolResult.details?.message === "string"
-                        ? toolResult.details.message
+                    toolDetails?.outcome === "task_completed" &&
+                    typeof toolDetails.message === "string"
+                        ? toolDetails.message
                         : "";
                 if (taskCompletedMessage.trim()) {
                     events.push({
@@ -577,7 +579,7 @@ export function createReplayEvents(
                         messageId,
                         toolCallId,
                         ...(replayTools.get(toolCallId) || describeRuntimeTool("tool", undefined)),
-                        ...normalizeRuntimeToolResult(typed.content),
+                        ...normalizeToolResult(typed.content),
                         isError: Boolean(typed.is_error || typed.isError),
                         durationMs: finishReplayTool(toolCallId, common.timestamp),
                     });

@@ -1,0 +1,21 @@
+{
+    "name": "@runwield/pi-ai",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./index.ts",
+        "./coding-agent": "./coding-agent.ts",
+        "./mcp": "./mcp.ts",
+        "./models": "./models.ts",
+        "./remote-models": "./remote-models.ts",
+        "./turn": "./turn.ts"
+    },
+    "dependencies": {
+        "@earendil-works/pi-ai": "1.6.0",
+        "@earendil-works/pi-coding-agent": "1.6.0",
+        "@earendil-works/pi-mcp": "1.6.0",
+        "@modelcontextprotocol/sdk": "1.32.0",
+        "@runwield/parsing": "workspace:*",
+        "@runwield/resources": "workspace:*"
+    }
+}

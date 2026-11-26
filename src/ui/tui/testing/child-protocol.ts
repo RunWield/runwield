@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { createGoldenIsolatedEnvironment, type GoldenIsolatedEnvironment } from "./isolated-environment.ts";
 import { GOLDEN_CHILD_READY_MARKER, runGoldenChild, type GoldenChildResult } from "./subprocess-runner.ts";
 import type { GoldenScenario, GoldenScenarioResult } from "./scenario-runner.ts";
-import type { JsonRecord } from "../../../shared/jsonc.ts";
+import type { JsonRecord } from "@runwield/parsing/jsonc";
 import { releaseProcessGlobalTestLockSync } from "../../../testing/process-global-lock.ts";
 
 const CHILD_FLAG = "--golden-tui-child";

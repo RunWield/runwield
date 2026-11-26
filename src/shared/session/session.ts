@@ -1,7 +1,7 @@
-import { isRemovedAgyProvider, removedAgyModelError } from "../models/removed-providers.ts";
+import { isRemovedAgyProvider, removedAgyModelError } from "@runwield/pi-ai/models";
 /** Shared helpers for loading agent definitions and running agent invocations. */
 
-import type { JsonValue } from "../jsonc.ts";
+import type { JsonValue } from "@runwield/parsing/jsonc";
 import type { FrontMatterRecord } from "../front-matter.ts";
 import type { ModelPresetsMap, ModelPresetAgentOverride } from "../model-presets.ts";
 import type { DisposableLike } from "./hosted-session.ts";
@@ -19,25 +19,16 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "./hosted-session.ts";
 import type { BashAllowedCommands } from "../bash-command-policy.ts";
-import type { McpIntegration } from "../mcp/integration.ts";
+import type { McpIntegration } from "@runwield/pi-ai/mcp";
 import type { TriageMeta } from "@runwield/workflow/state";
 import type { ManagedOperationCapability } from "./managed-operation.ts";
 import type { ExecutionSession } from "./execution-backend.ts";
 import type { AgentMessageHandler } from "./agent-handler.ts";
 import type { RequestDispatchKind } from "./request-dispatch.ts";
-import type { RunWieldModel } from "../models/model-registry.ts";
+import type { RunWieldModel } from "@runwield/pi-ai/models";
 import type { SkillRecord } from "./skill-catalog.ts";
 import type { ImageAttachment } from "./image-attachments.ts";
-import type {
-    Model,
-    Api,
-    AssistantMessageEventStream,
-    AssistantMessageEvent,
-    TranscriptContext,
-    SimpleStreamOptions,
-    UserMessage,
-    AssistantMessage,
-} from "@earendil-works/pi-ai";
+import type { UserMessage, AssistantMessage } from "@earendil-works/pi-ai";
 import type { ThinkingLevel, AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionRuntimeEvent, RuntimeQueuedMessage } from "./session-runtime-events.ts";
 import type { AgentSwitchOptions } from "./agent-switching.ts";
@@ -52,7 +43,6 @@ import { requestRemoteMemory } from "../remote/memory-bridge.ts";
 import { inspectMemoryCollection } from "../memory-collection.ts";
 
 import {
-    createAgentSession,
     createBashToolDefinition,
     createEditToolDefinition,
     createFindToolDefinition,
@@ -60,15 +50,18 @@ import {
     createLsToolDefinition,
     createReadToolDefinition,
     createWriteToolDefinition,
-    DefaultResourceLoader,
     estimateTokens,
     SessionManager,
     shouldCompact,
 } from "@earendil-works/pi-coding-agent";
-import { createAssistantMessageEventStream, getCurrentSystemMessage } from "@earendil-works/pi-ai";
-import { formatProviderError, formatProviderRetryExhaustion, normalizeProviderStream } from "./provider-errors.ts";
-import { projectProviderSystemPrompt } from "./provider-system-prompt.ts";
-import { completeSimple } from "@earendil-works/pi-ai/compat";
+import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import { codingAgent, withModelExecutionCompatibility } from "@runwield/pi-ai/coding-agent";
+import {
+    normalizeToolResult,
+    formatProviderError,
+    formatProviderRetryExhaustion,
+    type TurnImage,
+} from "@runwield/pi-ai/turn";
 import { getRemoteSessionSaveBridge } from "./root-session.ts";
 import { createRunWieldCodemodeExtension } from "./codemode.ts";
 import { WorkflowStepCompleted } from "@runwield/workflow/events";
@@ -86,7 +79,6 @@ import { getCwd, getHomeDir, PROMPT_TEMPLATES_DIR } from "../../constants.ts";
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
-    normalizeRuntimeToolResult,
     normalizeRuntimeUsage,
     RuntimeEventTypes,
 } from "./session-runtime-events.ts";
@@ -100,13 +92,8 @@ import { createUserInterviewTool } from "../../tools/user-interview.ts";
 import { createSeeImageTool } from "../../tools/see-image.ts";
 import { createImageTool } from "../../tools/create-image.ts";
 import { resolveImageGenerationSettings } from "../image-generation-settings.ts";
-import {
-    discoverProviderModel,
-    getModelRegistry,
-    getModelRuntime,
-    SYSTEM_MODEL_DISCOVERY_NETWORK,
-} from "../models/model-registry.ts";
-import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
+import { discoverProviderModel, getNativeModelRegistry, getModelRuntime } from "@runwield/pi-ai/models";
+import { assertModelExecutionBackendSupported } from "@runwield/pi-ai";
 import {
     createClaudeExecutionSession,
     createPiExecutionSession,
@@ -123,7 +110,7 @@ import {
     readRequestAttemptEntries,
     recordRequestAttemptSnapshot,
 } from "./request-dispatch.ts";
-import { formatProviderModelReference, parseProviderModel } from "../models/model-validation.ts";
+import { formatProviderModelReference, parseProviderModel } from "@runwield/pi-ai";
 import { readCurrentPairCheckpoint, recordPairCheckpointSnapshot } from "./pair-checkpoint-session.ts";
 import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { directoryExists, fileExists } from "../helpers.ts";
@@ -155,19 +142,13 @@ import { formatGitPromptState, readGitPromptState } from "../git.ts";
 import { toolRegistry } from "@runwield/tools";
 import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
-import type { AgentSessionEvent, PromptOptions } from "@earendil-works/pi-coding-agent";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 
 const triageReport = toolRegistry.get("triage_report");
 const setSessionName = toolRegistry.get("set_session_name");
 
 export type SessionRoot = AgentSession | ExecutionSession;
-type ModelCompatibility = NonNullable<RunWieldModel["compat"]> & SamplingCompatibility;
-interface SamplingCompatibility {
-    supportsDeveloperRole?: boolean;
-    supportsTemperature?: boolean;
-}
-type ResolvedSessionModel = RunWieldModel & { compat?: ModelCompatibility };
-type ProviderStreamAgent = AgentSession["agent"] & { streamFn: AgentSession["agent"]["streamFunction"] };
+type ResolvedSessionModel = ReturnType<typeof withModelExecutionCompatibility<RunWieldModel>>;
 type ThinkingModel = Partial<Pick<RunWieldModel, "provider" | "id" | "reasoning" | "executionBackend">>;
 type SteeringSession = Pick<RuntimeAgentSession, "model" | "isStreaming" | "clearQueue"> &
     SessionModelContext &
@@ -177,8 +158,8 @@ interface SessionManagerCarrier {
 }
 interface SessionModelContext {
     runWieldProjectRoot?: string;
-    runWieldModelRegistry?: ReturnType<typeof getModelRegistry>;
-    modelRegistry?: ReturnType<typeof getModelRegistry>;
+    runWieldModelRegistry?: ReturnType<typeof getNativeModelRegistry>;
+    modelRegistry?: ReturnType<typeof getNativeModelRegistry>;
 }
 type ToolArguments = Extract<AgentSessionEvent, { type: "tool_execution_start" }>["args"];
 interface LegacyCompactionOutcome {
@@ -484,28 +465,6 @@ function homePromptsDir(): string {
     return join(personalGlobalRoot(), "prompts");
 }
 
-/** Pi provider hooks cannot execute across the remote model transport. */
-const REMOTE_PROVIDER_EXTENSION_OPTIONS = new Map([
-    ["before_provider_request", "onPayload"],
-    ["before_provider_headers", "transformHeaders"],
-    ["after_provider_response", "onResponse"],
-    ["provider_stream_event", "onProviderStreamEvent"],
-]);
-
-function assertRemoteProviderExtensionsSupported(session: AgentSession) {
-    if (!remotePersonalResourcesActive()) return;
-    for (const [event, option] of REMOTE_PROVIDER_EXTENSION_OPTIONS) {
-        if (session.hasExtensionHandlers(event)) {
-            throw new Error(`Unsupported remote model option: ${option} (extension event: ${event})`);
-        }
-    }
-}
-
-const UNSUPPORTED_TEMPERATURE_RE =
-    /\bunsupported (?:parameter|field|argument)\b[^.:\n]*(?::|\b)\s*["']?temperature["']?|\btemperature\b[^.:\n]*\b(?:unsupported|not supported|not allowed|not accepted|invalid temperature)\b|\binvalid temperature\b.*\bonly\b.*\ballowed\b/i;
-
-const modelsWithoutTemperature: Set<string> = new Set();
-
 const modelSelectionSourceByModel: WeakMap<RunWieldModel, string> = new WeakMap();
 
 function requireHostedSession(hostedSession: HostedSession | string | null | undefined, caller: string): HostedSession {
@@ -634,11 +593,7 @@ export function resolveExecutionThinkingLevel(options: ResolveExecutionThinkingL
 
 export type PromptTemplateSource = "local" | "home" | "bundled" | "package";
 
-export interface PreparedSteeringImage {
-    type: "image";
-    data: string;
-    mimeType: string;
-}
+export type PreparedSteeringImage = TurnImage;
 
 const promptTemplateModelByName: Map<string, string | undefined> = new Map();
 
@@ -919,8 +874,7 @@ export async function steerAgentSessionWithTarget(
     const fallback =
         images && images.length > 0 && session.model && !modelSupportsImageInput(session.model)
             ? await resolveVisionFallbackModel(
-                  session.runWieldModelRegistry || session.modelRegistry || getModelRegistry(),
-                  SYSTEM_MODEL_DISCOVERY_NETWORK,
+                  session.runWieldModelRegistry || session.modelRegistry || getNativeModelRegistry(),
                   projectRoot!,
               )
             : undefined;
@@ -940,9 +894,7 @@ export async function steerAgentSessionWithPreparedInput(
     text: string,
     images?: PreparedSteeringImage[],
 ): Promise<AgentSession | null> {
-    if (!session?.isStreaming || typeof session.steer !== "function") return null;
-    await session.steer(text, images && images.length > 0 ? images : undefined);
-    return session as AgentSession;
+    return (await codingAgent.steer(session, { text, images })) ? (session as AgentSession) : null;
 }
 
 /**
@@ -1052,177 +1004,6 @@ export function normalizeAgentTemperature(value: JsonValue | undefined): number 
     return value;
 }
 
-function getErrorMessage(value: unknown): string {
-    if (value instanceof Error) return value.message;
-    if (value && typeof value === "object" && "errorMessage" in value) {
-        return String(value.errorMessage ?? "");
-    }
-    return String(value ?? "");
-}
-
-function isUnsupportedTemperatureError(error: unknown): boolean {
-    return UNSUPPORTED_TEMPERATURE_RE.test(getErrorMessage(error));
-}
-
-function getTemperatureCapabilityModelKey(model: Model<Api>): string {
-    return [model.provider, model.api, model.id].filter(Boolean).join(":");
-}
-
-function isKnownNoSamplingModelFamily(model: Model<Api>): boolean {
-    const provider = String(model.provider || "").toLowerCase();
-    const api = String(model.api || "").toLowerCase();
-    const id = String(model.id || "").toLowerCase();
-    return (
-        provider === "openai-codex" ||
-        api === "openai-codex-responses" ||
-        provider.includes("kimi") ||
-        id.includes("kimi-code") ||
-        id.includes("kimi-coding")
-    );
-}
-
-function isKimiModelFamily(model: Model<Api>): boolean {
-    const provider = String(model.provider || "").toLowerCase();
-    const id = String(model.id || "").toLowerCase();
-    return provider.includes("kimi") || id.includes("kimi-code") || id.includes("kimi-coding");
-}
-
-function withModelCompatibility(model: RunWieldModel): ResolvedSessionModel {
-    if (!isKimiModelFamily(model)) return model;
-    const compatibleModel = {
-        ...model,
-        compat: {
-            ...model.compat,
-            supportsDeveloperRole: false,
-            supportsTemperature: false,
-        },
-    };
-    const source = modelSelectionSourceByModel.get(model);
-    if (source) modelSelectionSourceByModel.set(compatibleModel, source);
-    return compatibleModel;
-}
-
-/**
- * The ChatGPT Codex Responses endpoint and some coding-model families reject
- * sampling temperature. Detect known capability signals up front and remember
- * runtime rejections so later calls avoid repeating the failed request.
- */
-function modelSupportsTemperature(model: Model<Api>): boolean {
-    const compat = model.compat as ModelCompatibility | undefined;
-    if (compat?.supportsTemperature === false) return false;
-    if (isKnownNoSamplingModelFamily(model)) return false;
-    return !modelsWithoutTemperature.has(getTemperatureCapabilityModelKey(model));
-}
-
-/**
- * Some provider/model APIs reject `temperature` even though pi-ai exposes it as
- * a generic stream option. Retry once without temperature when the provider
- * reports that exact incompatibility before emitting assistant content.
- */
-function createTemperatureFallbackStream(
-    firstSource: AssistantMessageEventStream | Promise<AssistantMessageEventStream>,
-    retryWithoutTemperature: () => AssistantMessageEventStream | Promise<AssistantMessageEventStream>,
-    onUnsupportedTemperature: (() => void) | undefined,
-    model: Model<Api>,
-): AssistantMessageEventStream {
-    const output = createAssistantMessageEventStream();
-
-    function finishWithError(error: Error | DOMException) {
-        const aborted = error.name === "AbortError";
-        output.push({
-            type: "error",
-            reason: aborted ? "aborted" : "error",
-            error: {
-                role: "assistant",
-                content: [],
-                api: model.api,
-                provider: model.provider,
-                model: model.id,
-                usage: {
-                    input: 0,
-                    output: 0,
-                    cacheRead: 0,
-                    cacheWrite: 0,
-                    totalTokens: 0,
-                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-                },
-                stopReason: aborted ? "aborted" : "error",
-                errorMessage: error.message,
-                timestamp: Date.now(),
-            },
-        });
-    }
-
-    async function forward(
-        sourcePromise: AssistantMessageEventStream | Promise<AssistantMessageEventStream>,
-        canRetry: boolean,
-    ): Promise<"retry" | "done"> {
-        let source;
-        try {
-            source = await sourcePromise;
-        } catch (error) {
-            if (canRetry && isUnsupportedTemperatureError(error)) {
-                onUnsupportedTemperature?.();
-                return "retry";
-            }
-            throw error;
-        }
-        let emittedAssistantContent = false;
-        const pendingLifecycleEvents: AssistantMessageEvent[] = [];
-        for await (const event of source) {
-            if (
-                event.type === "error" &&
-                !emittedAssistantContent &&
-                canRetry &&
-                isUnsupportedTemperatureError(event.error)
-            ) {
-                onUnsupportedTemperature?.();
-                return "retry";
-            }
-
-            // Providers may emit `start` before reporting request validation
-            // errors. Hold it until the first substantive event so a fallback
-            // can discard the failed attempt without duplicating lifecycle
-            // events in the replacement stream.
-            if (event.type === "start") {
-                pendingLifecycleEvents.push(event);
-                continue;
-            }
-            for (const pendingEvent of pendingLifecycleEvents.splice(0)) {
-                output.push(pendingEvent);
-            }
-            if (event.type !== "error" && event.type !== "done") {
-                emittedAssistantContent = true;
-            }
-            output.push(event);
-        }
-        for (const pendingEvent of pendingLifecycleEvents) {
-            output.push(pendingEvent);
-        }
-        return "done";
-    }
-
-    (async () => {
-        try {
-            const result = await forward(firstSource, true);
-            if (result === "retry") {
-                await forward(retryWithoutTemperature(), false);
-            }
-            output.end();
-        } catch (error) {
-            finishWithError(error instanceof Error ? error : new Error(String(error)));
-        }
-    })();
-
-    return output;
-}
-
-function omitTemperatureOption(options: SimpleStreamOptions | undefined): SimpleStreamOptions | undefined {
-    if (!options) return undefined;
-    const { temperature: _temperature, ...withoutTemperature } = options;
-    return withoutTemperature;
-}
-
 /**
  * Get the configured temperature override for an agent from merged (global + project) settings.
  *
@@ -1247,36 +1028,11 @@ export function getConfiguredAgentTemperature(agentName: string, projectRoot: st
     return normalizeAgentTemperature(agents?.[agentName]?.temperature);
 }
 
-/** Apply an agent-level temperature as the default for provider requests in a session. */
-export function applySessionTemperature(session: AgentSession, temperature: number | undefined) {
-    if (temperature === undefined) return;
-    const agent = session.agent as ProviderStreamAgent;
-    const streamKey = typeof agent.streamFunction === "function" ? "streamFunction" : "streamFn";
-    const originalStreamFunction = agent[streamKey];
-    agent[streamKey] = (model: Model<Api>, context: TranscriptContext, options: SimpleStreamOptions | undefined) => {
-        if (!modelSupportsTemperature(model)) {
-            return originalStreamFunction(model, context, omitTemperatureOption(options));
-        }
-        const optionsWithTemperature = {
-            ...options,
-            temperature,
-        };
-        try {
-            const firstSource = originalStreamFunction(model, context, optionsWithTemperature);
-            return createTemperatureFallbackStream(
-                firstSource,
-                () => originalStreamFunction(model, context, omitTemperatureOption(options)),
-                () => modelsWithoutTemperature.add(getTemperatureCapabilityModelKey(model)),
-                model,
-            );
-        } catch (error) {
-            if (isUnsupportedTemperatureError(error)) {
-                modelsWithoutTemperature.add(getTemperatureCapabilityModelKey(model));
-                return originalStreamFunction(model, context, omitTemperatureOption(options));
-            }
-            throw error;
-        }
-    };
+function withModelCompatibility(model: RunWieldModel): ResolvedSessionModel {
+    const compatibleModel = withModelExecutionCompatibility(model);
+    const source = modelSelectionSourceByModel.get(model);
+    if (source) modelSelectionSourceByModel.set(compatibleModel, source);
+    return compatibleModel;
 }
 
 const emittedAgentModelFallbacks: WeakMap<HostedSession, Set<string>> = new WeakMap();
@@ -1316,7 +1072,7 @@ export async function resolveModel(
     modelOverride: string | undefined,
     agentDef: AgentDefinition,
     agentName?: string,
-    modelRegistry: ReturnType<typeof getModelRegistry> = getModelRegistry(),
+    modelRegistry: ReturnType<typeof getNativeModelRegistry> = getNativeModelRegistry(),
     hostedSession: HostedSession | undefined = undefined,
     projectRoot: string | undefined = hostedSession?.cwd,
     options: ResolveModelOptions = {},
@@ -1450,12 +1206,7 @@ export async function resolveModel(
         let discovered = false;
         if (!found) {
             try {
-                found = await discoverProviderModel(
-                    modelRegistry,
-                    parsed.provider,
-                    parsed.id,
-                    SYSTEM_MODEL_DISCOVERY_NETWORK,
-                );
+                found = await discoverProviderModel(modelRegistry, parsed.provider, parsed.id);
                 discovered = Boolean(found);
             } catch (error) {
                 await recordModelMetric({
@@ -2114,7 +1865,7 @@ export async function buildAgentSession({
         : await agentRegistry.get(agentName, sessionCwd);
 
     const modelRuntime = await getModelRuntime();
-    const modelRegistry = getModelRegistry();
+    const modelRegistry = getNativeModelRegistry();
     const resolvedModel = withModelCompatibility(
         await resolveModel(
             modelOverride,
@@ -2343,16 +2094,17 @@ export async function buildAgentSession({
         !finalCustomTools.find((t) => t.name === "see_image")
     ) {
         const remoteFallback = remotePersonalResourcesActive()
-            ? await resolveVisionFallbackModel(modelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK, sessionCwd)
+            ? await resolveVisionFallbackModel(modelRegistry, sessionCwd)
             : undefined;
         finalCustomTools.push(
             createSeeImageTool({
                 cwd: sessionCwd,
                 sessionManager: effectiveSessionManager,
                 remoteModel: remoteFallback?.model,
-                completeSimpleFn: remoteFallback
-                    ? (model, context, options) => modelRuntime.streamSimple(model, context, options).result()
-                    : completeSimple,
+                completeTurn: remoteFallback
+                    ? (model, input, options) =>
+                          codingAgent.complete(model, input, { ...options, runtime: modelRuntime })
+                    : codingAgent.complete,
                 onModelStart: async () => {
                     const activeRecorder = executionMetricsForSession.get(session);
                     const recorder =
@@ -2415,9 +2167,7 @@ export async function buildAgentSession({
         // Pi persists prompt deltas across Agent switches. Replace the provider's
         // leading instructions each run so a previous Agent's role cannot remain
         // authoritative. Pi keeps the durable history and current tools intact.
-        (pi: ExtensionAPI) => {
-            pi.on("before_agent_start", (event) => ({ systemPrompt: event.systemPrompt }));
-        },
+        codingAgent.systemPromptExtension,
         // Re-anchoring is per-agent-session: the agent identity is fixed here, and
         // the Plan pointer is read from live session state at compaction time.
         (pi: ExtensionAPI) => reAnchorExtension(pi, { agentName, hostedSession: targetHostedSession }),
@@ -2428,7 +2178,7 @@ export async function buildAgentSession({
         extensionFactories.push((pi) => snipExtension(pi));
     }
 
-    const loader = new DefaultResourceLoader({
+    const loader = await codingAgent.loadResources({
         cwd: sessionCwd,
         agentDir: getSettingsDir("global"),
         systemPromptOverride: () => promptState.text,
@@ -2444,7 +2194,6 @@ export async function buildAgentSession({
         noSkills: true,
         skillsOverride: () => ({ skills: [], diagnostics: [] }),
     });
-    await loader.reload();
 
     if (!sessionManager && shouldWriteDebugLog(debugLogPath)) {
         const debugMsg = `[RunWield] buildAgentSession("${agentName}"): no sessionManager — using in-memory. Messages will NOT persist.`;
@@ -2472,7 +2221,7 @@ export async function buildAgentSession({
               ]),
           ].filter((name) => !tools.includes(name))
         : [];
-    const { session, extensionsResult } = await createAgentSession({
+    const { session, extensionsResult } = await codingAgent.create({
         cwd: sessionCwd,
         agentDir: getSettingsDir("global"),
         modelRuntime,
@@ -2483,10 +2232,8 @@ export async function buildAgentSession({
         sessionManager: effectiveSessionManager,
         ...(resolvedModel ? { model: resolvedModel } : {}),
     });
-    // noExtensions only disables discovery: explicit factories and package paths still load.
-    // Keep core/tool lifecycle extensions, but reject provider callbacks before Pi can discard them.
     try {
-        assertRemoteProviderExtensionsSupported(session);
+        codingAgent.validateProviderTransport(session);
     } catch (error) {
         session.dispose();
         mcpRootBinding?.dispose();
@@ -2506,21 +2253,6 @@ export async function buildAgentSession({
     installTaskCompletedAutoCompactionExclusion(session);
     installPairCheckpointAutoCompactionPreservation(session, targetHostedSession);
 
-    const agent = session.agent;
-    const convertToLlm = agent.convertToLlm.bind(agent);
-    agent.convertToLlm = async (messages) => {
-        // Enforce the active prompt after context extensions and before provider
-        // normalization. Compaction calls streamFunction directly with its own
-        // summarization prompt and must not receive the Agent's task instructions.
-        return projectProviderSystemPrompt(await convertToLlm(messages), session.systemPrompt);
-    };
-    const providerStream = agent.streamFunction;
-    agent.streamFunction = (model, context, options) => {
-        // Extensions can register new handlers during lifecycle events after construction.
-        assertRemoteProviderExtensionsSupported(session);
-        return normalizeProviderStream(providerStream, model, context, options);
-    };
-
     const configuredTemperature = agentName ? getConfiguredAgentTemperature(agentName, sessionCwd) : undefined;
     const temperatureSource =
         temperatureOverride !== undefined
@@ -2531,7 +2263,10 @@ export async function buildAgentSession({
                 ? "agent definition temperature"
                 : undefined;
     const resolvedTemperature = temperatureOverride ?? configuredTemperature ?? agentDef.temperature;
-    applySessionTemperature(session, resolvedTemperature);
+    codingAgent.configureProvider(session, {
+        temperature: resolvedTemperature,
+        projectSystemPrompt: true,
+    });
 
     if (extensionsResult?.errors?.length) {
         for (const err of extensionsResult.errors) {
@@ -2744,7 +2479,7 @@ export async function buildExecutionSession(
     const agentDef = opts.subAgentDefinition
         ? await agentRegistry.isolated.load(opts.subAgentDefinition.id, opts.subAgentDefinition.options)
         : await agentRegistry.get(opts.agentName, sessionCwd);
-    const modelRegistry = getModelRegistry();
+    const modelRegistry = getNativeModelRegistry();
     const resolvedModel = withModelCompatibility(
         await resolveModel(
             opts.modelOverride,
@@ -3730,7 +3465,7 @@ export function attachSessionEventSubscribers(
                     toolCallId: event.toolCallId,
                     ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                     ...(runtimeTools.get(event.toolCallId) || describeRuntimeTool(event.toolName, event.args)),
-                    ...normalizeRuntimeToolResult(event.partialResult),
+                    ...normalizeToolResult(event.partialResult),
                 });
                 break;
             }
@@ -3769,7 +3504,7 @@ export function attachSessionEventSubscribers(
                     ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
                     ...(runtimeTools.get(event.toolCallId) || describeRuntimeTool(event.toolName, undefined)),
                     isError: Boolean(event.isError),
-                    ...normalizeRuntimeToolResult(event.result),
+                    ...normalizeToolResult(event.result),
                     durationMs,
                 });
                 toolStartedAt.delete(event.toolCallId);
@@ -3919,8 +3654,7 @@ export async function runPrompt({
             ? await resolveVisionFallbackModel(
                   (session as SessionModelContext).runWieldModelRegistry ||
                       (session as SessionModelContext).modelRegistry ||
-                      getModelRegistry(),
-                  SYSTEM_MODEL_DISCOVERY_NETWORK,
+                      getNativeModelRegistry(),
                   projectRoot!,
               )
             : undefined;
@@ -3931,11 +3665,6 @@ export async function runPrompt({
         fallbackModelRef: fallback?.modelRef,
     });
     if (!preparedImages.ok) throw new Error(preparedImages.message);
-
-    const requestOptions: PromptOptions = {};
-    if (preparedImages.images && preparedImages.images.length > 0) {
-        requestOptions.images = preparedImages.images;
-    }
 
     const debugEnabled = shouldWriteDebugLog(debugLogPath);
     if (debugEnabled) {
@@ -3989,8 +3718,7 @@ export async function runPrompt({
                     fallback = await resolveVisionFallbackModel(
                         (session as SessionModelContext).runWieldModelRegistry ||
                             (session as SessionModelContext).modelRegistry ||
-                            getModelRegistry(),
-                        SYSTEM_MODEL_DISCOVERY_NETWORK,
+                            getNativeModelRegistry(),
                         projectRoot!,
                     );
                 }
@@ -4001,8 +3729,6 @@ export async function runPrompt({
                     fallbackModelRef: fallback?.modelRef,
                 });
                 if (!preparedImages.ok) throw new Error(preparedImages.message);
-                requestOptions.images =
-                    preparedImages.images && preparedImages.images.length > 0 ? preparedImages.images : undefined;
             }
 
             if (!disableAutoCompaction) {
@@ -4051,7 +3777,7 @@ export async function runPrompt({
             throw new Error("background_result_cancelled");
         }
         loopGuard.throwIfStopped();
-        await session.prompt(preparedImages.text, requestOptions);
+        await codingAgent.prompt(session, preparedImages);
         loopGuard.throwIfStopped();
         signal?.throwIfAborted();
         await session.agent.waitForIdle();
@@ -4724,7 +4450,7 @@ export async function runNonInteractiveAgentPrompt({
         includeEditFallback: false,
     });
     try {
-        await session.prompt(userRequest);
+        await codingAgent.prompt(session, { text: userRequest });
         await session.agent.waitForIdle();
         return session.agent.state.messages;
     } finally {

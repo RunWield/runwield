@@ -2,8 +2,7 @@ import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals } from "../testing/assertions.ts";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
-import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
+import type { CompletedTurn } from "@runwield/pi-ai/turn";
 import { withWorkflowMetricsFixture } from "../testing/workflow-metrics-fixture.ts";
 import { ExecutionMetricsRecorder, type ModelUsageObservation } from "../shared/workflow/execution-metrics.ts";
 import { setCustomSetting } from "../shared/settings.ts";
@@ -11,12 +10,11 @@ import { UsageReporter } from "../shared/workflow/usage-reporting.ts";
 import { createSeeImageTool } from "./see-image.ts";
 
 const measuredUsage = {
-    input: 17,
-    output: 9,
-    cacheRead: 0,
-    cacheWrite: 3,
-    totalTokens: 29,
-    cost: { input: 0.01, output: 0.02, cacheRead: 0, cacheWrite: 0.03, total: 0.06 },
+    inputTokens: 17,
+    outputTokens: 9,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 3,
+    costAmount: 0.06,
 };
 
 interface VisionParameters {
@@ -30,7 +28,7 @@ type DirectVisionExecution = (
 ) => ReturnType<ReturnType<typeof createSeeImageTool>["execute"]>;
 
 interface VisionCase {
-    response?: AssistantMessage;
+    response?: CompletedTurn;
     rejects?: boolean;
     disabled?: boolean;
 }
@@ -63,7 +61,7 @@ async function observeVision(testCase: VisionCase) {
         const observations: ModelUsageObservation[] = [];
         const tool = createSeeImageTool({
             cwd: fixture.projectRoot,
-            completeSimpleFn: async () => {
+            completeTurn: async () => {
                 const starts = (await fixture.readMetrics()).filter((row) => row.event === "execution_started");
                 assertEquals(starts.length, testCase.disabled ? 0 : 1);
                 if (testCase.rejects) throw new Error("Network unavailable with private payload");
@@ -83,7 +81,7 @@ async function observeVision(testCase: VisionCase) {
         const execute = tool.execute as DirectVisionExecution;
         const result = await execute("vision-call", { imageRef: "shot.png" });
         const records = (await fixture.readMetrics()).filter((record) => record.event === "model_usage");
-        const failed = testCase.rejects || ["error", "aborted"].includes(testCase.response?.stopReason ?? "");
+        const failed = testCase.rejects || ["failed", "canceled"].includes(testCase.response?.status ?? "");
         assertEquals(result.details.ok, !failed);
         assertEquals(observations.length, 1);
         assertEquals(records.length, testCase.disabled ? 0 : 1);
@@ -125,12 +123,12 @@ async function observeVision(testCase: VisionCase) {
         assertEquals(record.provider, "vision");
         assertEquals(record.model, "model");
         const usage = testCase.response?.usage;
-        assertEquals(record.inputTokens, usage?.input ?? null);
-        assertEquals(record.outputTokens, usage?.output ?? null);
-        assertEquals(record.cacheReadTokens, usage?.cacheRead ?? null);
-        assertEquals(record.cacheWriteTokens, usage?.cacheWrite ?? null);
-        assertEquals(record.costAmount, usage?.cost?.total ?? null);
-        assertEquals(record.costSource, usage?.cost?.total != null ? "calculated" : "unavailable");
+        assertEquals(record.inputTokens, usage?.inputTokens ?? null);
+        assertEquals(record.outputTokens, usage?.outputTokens ?? null);
+        assertEquals(record.cacheReadTokens, usage?.cacheReadTokens ?? null);
+        assertEquals(record.cacheWriteTokens, usage?.cacheWriteTokens ?? null);
+        assertEquals(record.costAmount, usage?.costAmount ?? null);
+        assertEquals(record.costSource, usage?.costAmount != null ? "calculated" : "unavailable");
         assertEquals(record.unavailableReason, failed ? "source_unavailable" : usage ? null : "not_reported");
         assertEquals(
             record.measurementAvailability,
@@ -138,17 +136,18 @@ async function observeVision(testCase: VisionCase) {
                 ? "unavailable"
                 : failed
                   ? "partial"
-                  : usage.input == null || usage.output == null || usage.cacheRead == null || usage.cacheWrite == null
+                  : usage.inputTokens == null ||
+                      usage.outputTokens == null ||
+                      usage.cacheReadTokens == null ||
+                      usage.cacheWriteTokens == null
                     ? "partial"
                     : "complete",
         );
     });
 }
 
-function completion() {
-    const response = fauxAssistantMessage(fauxText("Vision description"));
-    response.usage = structuredClone(measuredUsage);
-    return response;
+function completion(): CompletedTurn {
+    return { text: "Vision description", usage: { ...measuredUsage }, status: "succeeded" };
 }
 
 test("see_image records measured vision usage once, including measured zero", () =>
@@ -156,28 +155,28 @@ test("see_image records measured vision usage once, including measured zero", ()
 
 test("see_image records unavailable usage for a completed response without measurements", () => {
     const response = completion();
-    Reflect.deleteProperty(response, "usage");
+    delete response.usage;
     return observeVision({ response });
 });
 
 test("see_image keeps absent vision categories and cost unavailable", () => {
     const response = completion();
-    Reflect.deleteProperty(response.usage, "cacheWrite");
-    Reflect.deleteProperty(response.usage, "cost");
+    delete response.usage!.cacheWriteTokens;
+    delete response.usage!.costAmount;
     return observeVision({ response });
 });
 
 test("see_image retains partial usage for an errored vision response", () => {
     const response = completion();
-    response.stopReason = "error";
+    response.status = "failed";
     response.errorMessage = "Provider failed with private payload";
     return observeVision({ response });
 });
 
 test("see_image records unavailable usage for a cancelled vision response", () => {
     const response = completion();
-    response.stopReason = "aborted";
-    Reflect.deleteProperty(response, "usage");
+    response.status = "canceled";
+    delete response.usage;
     return observeVision({ response });
 });
 
@@ -187,13 +186,13 @@ test("see_image respects disabled workflow metrics", () => observeVision({ respo
 
 test("see_image preserves cache-only usage as partial rather than unavailable", () => {
     const response = completion();
-    Reflect.deleteProperty(response.usage, "input");
-    Reflect.deleteProperty(response.usage, "output");
+    delete response.usage!.inputTokens;
+    delete response.usage!.outputTokens;
     return observeVision({ response });
 });
 
 test("see_image retains partial usage from an aborted vision response", () => {
     const response = completion();
-    response.stopReason = "aborted";
+    response.status = "canceled";
     return observeVision({ response });
 });

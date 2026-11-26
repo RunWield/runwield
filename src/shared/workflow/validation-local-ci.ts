@@ -1,3 +1,4 @@
+import { normalizeToolResult } from "@runwield/pi-ai/turn";
 /**
  * @module shared/workflow/validation-local-ci
  *
@@ -21,7 +22,6 @@ import { openValidationLog, formatValidationOutput, VALIDATION_OUTPUT_LIMIT_BYTE
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
-    normalizeRuntimeToolResult,
     RuntimeEventTypes,
 } from "../session/session-runtime-events.ts";
 import { describeRuntimeTool } from "../session/tool-event-title.ts";
@@ -249,7 +249,7 @@ export async function runLocalCI({
                 type: RuntimeEventTypes.TOOL_END,
                 toolCallId,
                 ...runtimeTool,
-                ...normalizeRuntimeToolResult(output),
+                ...normalizeToolResult(output),
                 isError: result.kind !== "completed" || result.exitCode !== 0,
                 durationMs: Date.now() - startTime,
             });

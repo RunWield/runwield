@@ -1,5 +1,5 @@
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { isExternalCliProvider } from "../models/model-registry.ts";
+import { isExternalCliProvider } from "./model-execution.ts";
 import {
     type Api,
     type AssistantMessage,
@@ -22,6 +22,7 @@ export type RemoteModel = Pick<
     "id" | "name" | "api" | "provider" | "reasoning" | "input" | "cost" | "contextWindow" | "maxTokens"
 > &
     Pick<Model<Api>, "thinkingLevelMap" | "inputLimits" | "promptCache">;
+/** A laptop provider and its availability without credential values. */
 export interface RemoteProvider {
     id: string;
     name: string;
@@ -29,11 +30,13 @@ export interface RemoteProvider {
     oauth: boolean;
     subscription: boolean;
 }
+/** The laptop catalog and the model IDs that may execute through it. */
 export interface RemoteCatalog {
     providers: RemoteProvider[];
     models: RemoteModel[];
     available: Array<{ provider: string; id: string }>;
 }
+/** Authenticated connection to the laptop model service. */
 export interface RemoteModelConnection {
     port: number;
     credential: string;
@@ -360,8 +363,10 @@ export class LocalModelBridge {
     private readonly completed = new Set<string>();
     private readonly providerSessions = new Set<string>();
     private closed = false;
+    /** Use the laptop runtime to look up models and submit requests. */
     constructor(private readonly runtime: ModelRuntime) {}
 
+    /** Return the models and availability the remote host may see. */
     async catalog(): Promise<RemoteCatalog> {
         if (this.closed) throw new Error("Model bridge closed");
         const available = await this.runtime.getAvailable();
@@ -389,11 +394,13 @@ export class LocalModelBridge {
         };
     }
 
+    /** Cancel the request and reject later reuse of its ID. */
     cancel(id: string): void {
         if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) return;
         this.completed.add(id); // Also reject a start that arrives after its cancellation.
         this.active.get(id)?.abort();
     }
+    /** Abort active streams and release provider session resources. */
     close(): void {
         this.closed = true;
         for (const controller of this.active.values()) controller.abort();
@@ -402,6 +409,7 @@ export class LocalModelBridge {
         this.providerSessions.clear();
     }
 
+    /** Submit a request and stream provider events over the control connection. */
     stream(request: StreamRequest): Response {
         if (
             this.closed ||
@@ -553,6 +561,7 @@ function call(connection: RemoteModelConnection, path: string, init?: RequestIni
     });
 }
 
+/** Read the credential-free catalog from the authenticated laptop connection. */
 export async function fetchRemoteModelCatalog(connection: RemoteModelConnection): Promise<RemoteCatalog> {
     const response = await call(connection, "catalog");
     if (!response.ok) throw new Error(`Remote model catalog unavailable (${response.status})`);

@@ -3,6 +3,7 @@
  * Routes built-in slash commands, prompt templates, and skill macros.
  */
 
+import type { ProviderModelParseResult } from "@runwield/pi-ai";
 import type { EditorAPI, TuiAPI, UiAPI } from "./api.ts";
 import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -48,16 +49,6 @@ interface NotificationOptions {
 
 type NotificationEventName = "agentStopped" | "planWritten" | "userInterview" | "compactionFinished";
 
-interface ResolvedTemplateModel {
-    ok: true;
-    provider: string;
-    id: string;
-}
-
-interface UnresolvedTemplateModel {
-    ok: false;
-}
-
 export interface SlashContext {
     userRequest: string;
     savedImages: ImageAttachment[];
@@ -72,7 +63,7 @@ export interface SlashContext {
     promptTemplateByName: Map<string, PromptTemplateMeta>;
     skills: SkillMeta[];
     chatPromptAgentName: string;
-    resolveTemplateModel(templateModel: string): ResolvedTemplateModel | UnresolvedTemplateModel;
+    resolveTemplateModel(templateModel: string): ProviderModelParseResult;
     replaceRuntimeSession?(nextSessionId: string): void;
     notifyRunWieldEvent?(eventName: string, options?: NotificationOptions): Promise<void> | void;
     dispatchExpandedUserRequest?(text: string, images: ImageAttachment[]): Promise<void>;

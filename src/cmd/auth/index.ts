@@ -4,11 +4,7 @@
  */
 
 import { AGENTS } from "../../shared/session/agent-registry.ts";
-import {
-    getModelRegistry,
-    isExternalCliProvider,
-    type RunWieldModelRegistry,
-} from "../../shared/models/model-registry.ts";
+import { getModelRegistry, isExternalCliProvider, type ModelRegistry } from "@runwield/pi-ai";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 
@@ -42,11 +38,11 @@ const LOGIN_SUBSCRIPTION_LABEL = "Use a subscription";
 const LOGIN_API_KEY_LABEL = "Use an API key";
 const LOGIN_BACK_VALUE = "__runwield_login_back__";
 
-async function hydrateModelRegistry(registry: RunWieldModelRegistry): Promise<void> {
-    await registry.getRuntime();
+async function hydrateModelRegistry(registry: ModelRegistry): Promise<void> {
+    await registry.ready();
 }
 
-function getProviderDisplayName(registry: RunWieldModelRegistry, providerId: string): string {
+function getProviderDisplayName(registry: ModelRegistry, providerId: string): string {
     try {
         return registry.getProviderDisplayName(providerId) || providerId;
     } catch {
@@ -54,31 +50,31 @@ function getProviderDisplayName(registry: RunWieldModelRegistry, providerId: str
     }
 }
 
-function getOAuthProviders(registry: RunWieldModelRegistry): Array<{ id: string; name: string }> {
+function getOAuthProviders(registry: ModelRegistry): Array<{ id: string; name: string }> {
     return registry.getOAuthProviders();
 }
 
-async function listStoredCredentialProviders(registry: RunWieldModelRegistry): Promise<AuthProviderOption[]> {
+async function listStoredCredentialProviders(registry: ModelRegistry): Promise<AuthProviderOption[]> {
     return await registry.listStoredCredentialProviders();
 }
 
 async function getStoredCredentialType(
-    registry: RunWieldModelRegistry,
+    registry: ModelRegistry,
     providerId: string,
 ): Promise<"oauth" | "api_key" | undefined> {
     return await registry.getStoredCredentialType(providerId);
 }
 
-async function setProviderApiKey(registry: RunWieldModelRegistry, providerId: string, apiKey: string): Promise<void> {
+async function setProviderApiKey(registry: ModelRegistry, providerId: string, apiKey: string): Promise<void> {
     await registry.setProviderApiKey(providerId, apiKey);
 }
 
-async function logoutProvider(registry: RunWieldModelRegistry, providerId: string): Promise<void> {
+async function logoutProvider(registry: ModelRegistry, providerId: string): Promise<void> {
     await registry.logoutProvider(providerId);
 }
 
 export function getLoginProviderOptions(
-    registry: RunWieldModelRegistry,
+    registry: ModelRegistry,
     authType: "oauth" | "api_key",
 ): AuthProviderOption[] {
     const oauthProviders = getOAuthProviders(registry);
@@ -95,7 +91,7 @@ export function getLoginProviderOptions(
         .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-async function getLogoutProviderOptions(registry: RunWieldModelRegistry): Promise<AuthProviderOption[]> {
+async function getLogoutProviderOptions(registry: ModelRegistry): Promise<AuthProviderOption[]> {
     return (await listStoredCredentialProviders(registry)).sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -151,11 +147,11 @@ async function promptForProvider(
 async function loginWithSubscription(
     uiAPI: AuthUiPort,
     provider: Pick<AuthProviderOption, "id" | "name">,
-    registry: RunWieldModelRegistry,
+    registry: ModelRegistry,
 ): Promise<void> {
     try {
         await registry.loginProvider(provider.id, "oauth", {
-            notify: (event: import("@earendil-works/pi-ai").AuthEvent) => {
+            notify: (event) => {
                 if (event.type === "auth_url") {
                     uiAPI.appendSystemMessage(
                         [
@@ -174,7 +170,7 @@ async function loginWithSubscription(
                     );
                 }
             },
-            prompt: async (prompt: import("@earendil-works/pi-ai").AuthPrompt) => {
+            prompt: async (prompt) => {
                 if (prompt.type === "select") {
                     const selected = await uiAPI.promptSelect(
                         prompt.message,
@@ -211,7 +207,7 @@ async function loginWithSubscription(
 async function loginWithApiKey(
     uiAPI: AuthUiPort,
     provider: Pick<AuthProviderOption, "id" | "name">,
-    registry: RunWieldModelRegistry,
+    registry: ModelRegistry,
 ): Promise<void> {
     const apiKey = await uiAPI.promptText(`Enter API key for ${provider.name}:`, {
         allowEmpty: false,
@@ -225,7 +221,7 @@ async function loginWithApiKey(
 
 async function configureInteractiveSessionAfterLogin(
     options: AuthCommandOptions,
-    registry: RunWieldModelRegistry,
+    registry: ModelRegistry,
     providerId: string,
 ): Promise<void> {
     const availableModels = registry.getAvailable();
@@ -321,7 +317,7 @@ export async function runLogoutCommand(argv: string[], options: AuthCommandOptio
     }
 }
 
-function formatProviderAuthStatus(registry: RunWieldModelRegistry, providerId: string): string {
+function formatProviderAuthStatus(registry: ModelRegistry, providerId: string): string {
     const status = registry.getProviderAuthStatus(providerId);
     switch (status.source) {
         case "environment":
@@ -342,14 +338,14 @@ function formatProviderAuthStatus(registry: RunWieldModelRegistry, providerId: s
     }
 }
 
-async function formatProviderStatusAsync(registry: RunWieldModelRegistry, providerId: string): Promise<string> {
+async function formatProviderStatusAsync(registry: ModelRegistry, providerId: string): Promise<string> {
     const credentialType = await getStoredCredentialType(registry, providerId);
     if (credentialType === "oauth") return "subscription stored";
     if (credentialType === "api_key") return "API key stored";
     return formatProviderAuthStatus(registry, providerId);
 }
 
-async function formatAuthStatusForRuntime(registry: RunWieldModelRegistry): Promise<string> {
+async function formatAuthStatusForRuntime(registry: ModelRegistry): Promise<string> {
     const oauthProviderIds = getOAuthProviders(registry).map((provider) => provider.id);
     const storedProviders = await listStoredCredentialProviders(registry);
     const providerIds = new Set([...oauthProviderIds, ...storedProviders.map((provider) => provider.id)]);
@@ -360,7 +356,7 @@ async function formatAuthStatusForRuntime(registry: RunWieldModelRegistry): Prom
     return await formatAuthStatusLinesAsync(registry, providerIds);
 }
 
-async function formatAuthStatusLinesAsync(registry: RunWieldModelRegistry, providerIds: Set<string>): Promise<string> {
+async function formatAuthStatusLinesAsync(registry: ModelRegistry, providerIds: Set<string>): Promise<string> {
     const lines = [`Available models: ${registry.getAvailable().length}`, "Providers:"];
     if (providerIds.size === 0) {
         lines.push("- none configured");

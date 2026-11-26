@@ -1,6 +1,6 @@
 /** Owner Workspace backend Plan action service. */
 
-import type { JsonRecord } from "../../../shared/jsonc.ts";
+import type { JsonRecord } from "@runwield/parsing/jsonc";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import {
     executePlanAction,

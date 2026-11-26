@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
-import { getModelRegistry } from "../../../models/model-registry.ts";
+import { getNativeModelRegistry } from "@runwield/pi-ai/models";
 import { createTaskCompletedTool } from "../../../../tools/task-completed.ts";
 import { HostedSession } from "../../hosted-session.ts";
 import { setCustomSetting } from "../../../settings.ts";
@@ -427,7 +427,7 @@ test("Claude CLI execution session appends RunWield transcript entries and sends
             message: { content: [{ type: "text", text: "reply" }] },
             result: "reply",
         });
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const manager = SessionManager.inMemory(root);
         manager.appendMessage({ role: "user", timestamp: Date.now(), content: [{ type: "text", text: "prior" }] });
@@ -461,7 +461,7 @@ test("Claude CLI execution session appends RunWield transcript entries and sends
 test("Claude CLI delivers steering during a turn without a lifecycle tool", async () => {
     await withClaudeFixture(async (root, logPath) => {
         process.env["RUNWIELD_CLAUDE_FIXTURE_SLEEP_MS"] = "500";
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const session = new ClaudeCliExecutionSession({
             cwd: root,
@@ -492,7 +492,7 @@ test("Claude CLI delivers steering during a turn without a lifecycle tool", asyn
 
 test("Claude CLI preserves duplicate steering queued before subprocess startup", async () => {
     await withClaudeFixture(async (root) => {
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const session = new ClaudeCliExecutionSession({
             cwd: root,
@@ -520,7 +520,7 @@ test("Claude CLI preserves duplicate steering queued before subprocess startup",
 test("Claude CLI recalls pending steering without stopping the turn or replaying it", async () => {
     await withClaudeFixture(async (root, logPath) => {
         process.env["RUNWIELD_CLAUDE_FIXTURE_SLEEP_MS"] = "500";
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const session = new ClaudeCliExecutionSession({
             cwd: root,
@@ -548,7 +548,7 @@ test("captured Claude Code 2.1.284 Read stream reaches the execution owner's JSO
         process.env["RUNWIELD_CLAUDE_FIXTURE_STREAM_FILE"] = fileURLToPath(
             new URL("./fixtures/claude-2.1.284-read-tool-stream.jsonl", import.meta.url),
         );
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const manager = SessionManager.inMemory(root);
         const session = new ClaudeCliExecutionSession({
@@ -600,7 +600,7 @@ test("truncated Claude stream preserves observed assistant usage on failure", as
             }) + "\n{bad json}\n",
         );
         process.env["RUNWIELD_CLAUDE_FIXTURE_STREAM_FILE"] = streamPath;
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const session = new ClaudeCliExecutionSession({
             cwd: root,
@@ -630,7 +630,7 @@ test("Claude CLI execution session streams thinking and text runtime events live
         });
         process.env["RUNWIELD_CLAUDE_FIXTURE_PARTIAL_STREAM"] = "1";
         process.env["RUNWIELD_CLAUDE_FIXTURE_PARTIAL_CHARS"] = "1";
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const manager = SessionManager.inMemory(root);
         const hostedSession = new HostedSession({
@@ -678,7 +678,7 @@ test("Claude CLI execution metadata is sanitized", async () => {
             message: { content: [{ type: "text", text: "safe" }] },
             result: "safe",
         });
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const manager = SessionManager.inMemory(root);
         const session = new ClaudeCliExecutionSession({
@@ -702,7 +702,7 @@ test("Claude CLI execution metadata is sanitized", async () => {
 test("^Claude CLI MCP config is additive authenticated and ephemeral$", async () => {
     await withClaudeFixture(async (root, logPath) => {
         await setCustomSetting("workflowMetrics", true, "project", root);
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const manager = SessionManager.inMemory(root);
         const hostedSession = new HostedSession({
@@ -790,7 +790,7 @@ test("^Claude CLI missing executable fails before workflow mutation$", async () 
             await fsMkdir(emptyBin);
             process.env["PATH"] = emptyBin;
             try {
-                const model = getModelRegistry().find("claude-cli", "sonnet");
+                const model = getNativeModelRegistry().find("claude-cli", "sonnet");
                 if (!model) throw new Error("missing claude model");
                 const manager = SessionManager.inMemory(root);
                 const hostedSession = new HostedSession({
@@ -846,7 +846,7 @@ test("^Claude CLI auth failure is a sanitized visible non-zero exit$", async () 
         process.env["RUNWIELD_CLAUDE_FIXTURE_EXIT_CODE"] = "1";
         process.env["RUNWIELD_CLAUDE_FIXTURE_STDERR"] =
             "not signed in\nAuthorization: Bearer secret-token\nSee https://secret.example/login\n";
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const manager = SessionManager.inMemory(root);
         const hostedSession = new HostedSession({
@@ -892,7 +892,7 @@ test("^Claude CLI structured limit failure shows Claude's message$", async () =>
     await withClaudeFixture(async (root) => {
         const limitMessage = "You've hit your monthly spend limit · raise it at claude.ai/settings/usage";
         process.env["RUNWIELD_CLAUDE_FIXTURE_OUTPUT"] = JSON.stringify({ result: limitMessage, isError: true });
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const manager = SessionManager.inMemory(root);
         const hostedSession = new HostedSession({
@@ -933,7 +933,7 @@ test("^Claude CLI structured limit failure shows Claude's message$", async () =>
 test("^Claude CLI malformed stream is a typed failure with cleanup$", async () => {
     await withClaudeFixture(async (root) => {
         process.env["RUNWIELD_CLAUDE_FIXTURE_MALFORMED"] = "1";
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const manager = SessionManager.inMemory(root);
         const hostedSession = new HostedSession({
@@ -1105,7 +1105,7 @@ test("Claude owner counts an MCP bridge call once when its alias also appears in
                 .join("\n") + "\n",
         );
         process.env["RUNWIELD_CLAUDE_FIXTURE_STREAM_FILE"] = streamPath;
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         if (!model) throw new Error("missing claude model");
         const tool = defineTool({
             name: "read_fixture",

@@ -11,7 +11,7 @@ import type { AuthInteraction, OAuthCredential } from "@earendil-works/pi-ai";
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { join } from "node:path";
 import { __resetSettingsForTests, ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY } from "../../shared/settings.ts";
-import { getModelRegistry } from "../../shared/models/model-registry.ts";
+import { getModelRuntime } from "@runwield/pi-ai/models";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { writeUpdateCheckCache } from "../../shared/update-check.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.ts";
@@ -155,7 +155,7 @@ export async function registerScriptedOAuthProvider(): Promise<ScriptedOAuthProv
         },
     });
 
-    const runtime = await getModelRegistry().getRuntime();
+    const runtime = await getModelRuntime();
     runtime.registerNativeProvider(provider);
 
     const handle: ScriptedOAuthProviderHandle = {

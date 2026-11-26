@@ -1,7 +1,7 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
 import { AGENTS, agentRegistry } from "./agent-registry.ts";
-import { getModelRegistry } from "../models/model-registry.ts";
-import { parseProviderModel } from "../models/model-validation.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
+import { parseProviderModel } from "@runwield/pi-ai";
 import { getSettingsManager } from "../settings.ts";
 import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session-runtime.ts";
 import { setActiveSessionModel } from "./model-selection.ts";
@@ -110,7 +110,7 @@ export async function applyUserAgentSelection(runtime, sessionId, agentName) {
 /** @returns {Promise<UserModelOption[]>} */
 export async function listUserModelOptions() {
     const registry = getModelRegistry();
-    await registry.getRuntime();
+    await registry.ready();
     return registry.getSelectable().map((model) => ({
         id: model.id,
         name: model.name || model.id,

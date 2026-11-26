@@ -29,7 +29,7 @@ import type {
 import type { TutorialContext, TutorialContextUpdate } from "./tutorial-context-session.ts";
 import type { ManagedOperationCapability } from "./managed-operation.ts";
 import type { McpServerDefinition } from "../mcp/config.ts";
-import type { McpIntegration } from "../mcp/integration.ts";
+import type { McpIntegration } from "@runwield/pi-ai/mcp";
 import type { ManifestPlanAssociation, PlanAssociation } from "./plan-association.ts";
 import type { AgentHandler } from "./agent-handler.ts";
 import type { ProjectedSessionSnapshot } from "./session-transcript-manifest.ts";

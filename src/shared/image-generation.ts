@@ -13,12 +13,11 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path
 import { getImageDimensions } from "@earendil-works/pi-tui";
 import { resizeImage } from "@earendil-works/pi-coding-agent";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { ImageContent, ImagesInputContent, ImagesOptions, Usage } from "@earendil-works/pi-ai";
-import { getModelRuntime } from "./models/model-registry.ts";
-import { parseProviderModel } from "./models/model-validation.ts";
-import { isRemovedAgyProvider, removedAgyModelError } from "./models/removed-providers.ts";
+import { codingAgent, type GeneratedImage } from "@runwield/pi-ai/coding-agent";
+import type { TurnImage } from "@runwield/pi-ai/turn";
+import { parseProviderModel } from "@runwield/pi-ai";
+import { isRemovedAgyProvider, removedAgyModelError } from "@runwield/pi-ai/models";
 import { resolveImageGenerationSettings } from "./image-generation-settings.ts";
-import type { ImageGenerationSettings } from "./image-generation-settings.ts";
 import { getSessionImageDir, mimeTypeForImagePath, resolveImageRef } from "./session/image-attachments.ts";
 import { generateCodexImage } from "./image-generation/codex.ts";
 import { generateOpenCodeImage } from "./image-generation/opencode.ts";
@@ -39,45 +38,8 @@ export interface CreatedImage {
     mimeType: string;
     width: number;
     height: number;
-    preview?: ImageContent;
-    usage?: Usage;
-}
-
-interface OpenRouterImagePayload {
-    temperature?: number;
-    reasoning?: { effort: string };
-    provider?: { require_parameters: boolean };
-}
-
-/** Verified mappings, not a claim that all image models accept chat options. */
-function piOptions(provider: string, id: string, settings: ImageGenerationSettings): ImagesOptions {
-    const gemini =
-        provider === "openrouter" && ["google/gemini-2.5-flash-image", "google/gemini-3.1-flash-image"].includes(id);
-    if (settings.temperature !== undefined && !gemini) {
-        throw new Error(`temperature is not supported by create_image for ${provider}/${id}. Remove it.`);
-    }
-    if (
-        settings.thinkingLevel !== undefined &&
-        !(gemini && id === "google/gemini-3.1-flash-image" && ["minimal", "high"].includes(settings.thinkingLevel))
-    ) {
-        throw new Error(
-            `thinkingLevel is not supported for ${provider}/${id}. Gemini 3.1 Flash Image supports minimal or high.`,
-        );
-    }
-    return {
-        // An ambiguous retry may generate and charge for another image.
-        maxRetries: 0,
-        timeoutMs: 300_000,
-        onPayload: (payload) => {
-            const request = payload as OpenRouterImagePayload;
-            if (settings.temperature !== undefined) request.temperature = settings.temperature;
-            if (settings.thinkingLevel !== undefined) request.reasoning = { effort: settings.thinkingLevel };
-            if (settings.temperature !== undefined || settings.thinkingLevel !== undefined) {
-                request.provider = { require_parameters: true };
-            }
-            return request;
-        },
-    };
+    preview?: TurnImage;
+    usage?: GeneratedImage["usage"];
 }
 
 /** Refuse escaping or symlinked destinations before spending image quota. */
@@ -116,7 +78,7 @@ async function outputDestination(cwd: string, outputPath: string): Promise<strin
 }
 
 /** Decode real raster bytes and encode the exact format requested by the path. */
-export function encodeCreatedImage(image: ImageContent, mimeType: string) {
+export function encodeCreatedImage(image: TurnImage, mimeType: string) {
     if (image.data.length > 45 * 1024 * 1024) throw new Error("Generated image exceeds the 32 MiB limit.");
     const bytes = Uint8Array.from(atob(image.data), (char) => char.charCodeAt(0));
     const signature = Buffer.from(bytes.subarray(0, 12));
@@ -174,7 +136,7 @@ export async function createImage(request: CreateImageRequest): Promise<CreatedI
     if (!request.prompt.trim()) throw new Error("An image prompt is required.");
     request.signal?.throwIfAborted();
     const outputPath = await outputDestination(request.cwd, request.outputPath);
-    const input: ImagesInputContent[] = [{ type: "text", text: request.prompt }];
+    const images: TurnImage[] = [];
     const references: string[] = [];
     for (const ref of request.imageRefs || []) {
         const resolved = await resolveImageRef(ref, request);
@@ -193,10 +155,10 @@ export async function createImage(request: CreateImageRequest): Promise<CreatedI
         const bytes = await fsReadFile(path);
         if (bytes.length > 32 * 1024 * 1024) throw new Error("Reference image exceeds 32 MiB.");
         references.push(path);
-        input.push({ type: "image", data: Buffer.from(bytes).toString("base64"), mimeType: resolved.mimeType });
+        images.push({ type: "image", data: Buffer.from(bytes).toString("base64"), mimeType: resolved.mimeType });
     }
-    let image: ImageContent;
-    let usage: Usage | undefined;
+    let image: TurnImage;
+    let usage: GeneratedImage["usage"];
     if (["codex-cli", "openai-codex"].includes(selected.provider)) {
         image = await generateCodexImage({
             model: selected.id,
@@ -206,29 +168,26 @@ export async function createImage(request: CreateImageRequest): Promise<CreatedI
             signal: request.signal,
         });
     } else if (selected.provider === "opencode") {
-        image = await generateOpenCodeImage({ model: selected.id, settings, input, signal: request.signal });
+        image = await generateOpenCodeImage({
+            model: selected.id,
+            settings,
+            input: { text: request.prompt, images },
+            signal: request.signal,
+        });
     } else {
-        const options = piOptions(selected.provider, selected.id, settings);
-        const runtime = await getModelRuntime();
-        const model = runtime.getModelOfType("image", selected.provider, selected.id);
-        if (!model) {
-            throw new Error(
-                `Not a configured Pi image-output model: ${settings.model}. A vision/chat model is not an image generator.`,
-            );
-        }
-        if (references.length && !model.input.includes("image")) {
-            throw new Error(`${settings.model} does not accept reference images.`);
-        }
-        const result = await runtime.generateImages(model, { input }, { ...options, signal: request.signal });
-        if (result.stopReason !== "stop") {
-            throw new Error(result.errorMessage || `Image generation ${result.stopReason}.`);
-        }
-        const images = result.output.filter((block): block is ImageContent => block.type === "image");
-        if (images.length !== 1) {
-            throw new Error(`Expected one generated image; provider returned ${images.length}. No file was written.`);
-        }
-        image = images[0];
-        usage = result.usage;
+        const generated = await codingAgent.generateImage(
+            { text: request.prompt, images },
+            {
+                provider: selected.provider,
+                modelId: selected.id,
+                modelRef: settings.model,
+                temperature: settings.temperature,
+                thinkingLevel: settings.thinkingLevel,
+                signal: request.signal,
+            },
+        );
+        image = generated.image;
+        usage = generated.usage;
     }
     request.signal?.throwIfAborted();
     const mimeType = mimeTypeForImagePath(outputPath);

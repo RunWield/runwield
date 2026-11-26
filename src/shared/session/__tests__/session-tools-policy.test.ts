@@ -1,7 +1,7 @@
 import type { TextContent } from "@earendil-works/pi-ai/compat";
 import type { createSetSessionNameTool } from "../../../tools/set-session-name.ts";
 import type { createBackgroundTaskTool } from "../../../tools/background-task.ts";
-import type { McpIntegration } from "../../mcp/integration.ts";
+import type { McpIntegration } from "@runwield/pi-ai/mcp";
 import type { AgentSession, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { DelegatedSubAgentDefinitionId } from "@runwield/agents";
 import type { SessionRuntimeEvent } from "../session-runtime-events.ts";
@@ -42,7 +42,8 @@ import {
     resolveEffectiveSessionToolNames,
 } from "../session.ts";
 import { createReviewDiffTool } from "../../workflow/review-diff-tool.ts";
-import { startMcpIntegration } from "../../mcp/integration.ts";
+import { startMcpIntegration } from "@runwield/pi-ai/mcp";
+import { mcpFixtureHost } from "../../mcp/integration-fixture.ts";
 
 import type { WorkRecordAccessMode } from "../../work-records/search.ts";
 
@@ -109,7 +110,7 @@ const MCP_FIXTURE_SERVER = fromFileUrl(new URL("../../mcp/fixture-server.ts", im
 async function startRealMcpFixtureTools(cwd: string): Promise<RealMcpFixtureTools> {
     const logPath = await makeTempFile({ prefix: "runwield-real-mcp-policy-" });
     const result = await startMcpIntegration({
-        cwd,
+        ...mcpFixtureHost(cwd),
         servers: [
             {
                 name: "fixture",

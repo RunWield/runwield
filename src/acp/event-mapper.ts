@@ -13,7 +13,8 @@ import type {
     UsageUpdate,
 } from "@agentclientprotocol/sdk/unstable";
 import type { ContextUsage } from "@earendil-works/pi-coding-agent";
-import type { RuntimeToolContentBlock, SessionRuntimeEvent } from "../shared/session/session-runtime-events.ts";
+import type { ToolContentBlock } from "@runwield/pi-ai/turn";
+import type { SessionRuntimeEvent } from "../shared/session/session-runtime-events.ts";
 
 export type { SessionNotification, SessionUpdate } from "@agentclientprotocol/sdk/unstable";
 export type AcpContextUsage = Pick<ContextUsage, "tokens" | "contextWindow">;
@@ -41,7 +42,7 @@ function runtimeMeta(event: SessionRuntimeEvent, extra: RuntimeAcpMetadata = {})
 }
 
 /** ACP uses the same content-block shapes inside one protocol wrapper. */
-function mapToolContent(content: RuntimeToolContentBlock[]): ToolCallContent[] {
+function mapToolContent(content: ToolContentBlock[]): ToolCallContent[] {
     return content.map((block): ToolCallContent => ({ type: "content", content: block }));
 }
 

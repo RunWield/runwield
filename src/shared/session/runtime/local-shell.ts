@@ -1,5 +1,6 @@
+import { normalizeToolResult } from "@runwield/pi-ai/turn";
 import { AGENTS } from "../agent-registry.ts";
-import { normalizeRuntimeToolResult, RuntimeEventTypes } from ".././session-runtime-events.ts";
+import { RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { describeRuntimeTool } from ".././tool-event-title.ts";
 import { spawnForegroundShell } from "../../foreground-process.ts";
 
@@ -159,7 +160,7 @@ export class RuntimeLocalShell {
                             type: RuntimeEventTypes.TOOL_UPDATE,
                             toolCallId,
                             ...runtimeTool,
-                            ...normalizeRuntimeToolResult(output),
+                            ...normalizeToolResult(output),
                         });
                     }
                 } finally {
@@ -188,7 +189,7 @@ export class RuntimeLocalShell {
             type: RuntimeEventTypes.TOOL_END,
             toolCallId,
             ...runtimeTool,
-            ...normalizeRuntimeToolResult(finalText),
+            ...normalizeToolResult(finalText),
             isError: canceled || exitCode !== 0,
             durationMs: Date.now() - startedAt,
         });

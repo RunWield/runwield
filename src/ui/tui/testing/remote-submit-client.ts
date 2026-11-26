@@ -2,7 +2,7 @@ import { stdinStream } from "../../../testing/stdin-stream.ts";
 import { processLines } from "../../../shared/remote/remote-runtime-lines.ts";
 import { configureRemotePersonalResources } from "../../../shared/remote/personal-resources.ts";
 import { configureRemoteSettingsConnection } from "../../../shared/remote/settings-bridge.ts";
-import { configureRemoteModelConnection } from "../../../shared/models/model-registry.ts";
+import { configureRemoteModelConnection } from "@runwield/pi-ai/models";
 import { configureRemoteClipboardConnection } from "../clipboard.ts";
 import {
     RemoteSessionControl,

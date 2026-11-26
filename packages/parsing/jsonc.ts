@@ -1,6 +1,8 @@
 import { parseTree, getNodeValue, printParseErrorCode, type ParseError } from "jsonc-parser";
 
+/** A value representable in a JSON or JSONC document. */
 export type JsonValue = null | boolean | number | string | JsonValue[] | JsonRecord;
+/** A JSON object with string keys and JSON values. */
 export interface JsonRecord {
     [key: string]: JsonValue;
 }

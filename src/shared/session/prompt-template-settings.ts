@@ -6,8 +6,8 @@ import {
     resolveExecutionThinkingLevel,
     resolveModel,
 } from "./session.ts";
-import { getModelRegistry } from "../models/model-registry.ts";
-import { formatProviderModelReference } from "../models/model-validation.ts";
+import { getNativeModelRegistry } from "@runwield/pi-ai/models";
+import { formatProviderModelReference } from "@runwield/pi-ai";
 import { resolveActiveWorkflowRuntimeAgent } from "../workflow/execution-agent.ts";
 import type { HostedSession } from "./hosted-session.ts";
 import type { PromptTemplateInvocation, ThinkingLevel } from "./named-invocation.ts";
@@ -44,7 +44,7 @@ export async function resolvePromptTemplateSettings(
     const modelOverride =
         invocation.model || (inheritedModel?.model ? formatProviderModelReference(inheritedModel) : undefined);
     const agentDef = await agentRegistry.get(agentName, session.cwd);
-    const model = await resolveModel(modelOverride, agentDef, agentName, getModelRegistry(), session, session.cwd, {
+    const model = await resolveModel(modelOverride, agentDef, agentName, getNativeModelRegistry(), session, session.cwd, {
         ignoreManualModelOverride: true,
     });
     const thinkingOverride =

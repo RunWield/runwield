@@ -1,3 +1,4 @@
+import { normalizeToolResult } from "@runwield/pi-ai/turn";
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import type { RuntimeAgentChangedEvent } from "./session-runtime-events.ts";
@@ -6,13 +7,12 @@ import { HostedSession } from "./hosted-session.ts";
 import {
     createSessionRuntimeEvent,
     emitHostedSessionRuntimeEvent,
-    normalizeRuntimeToolResult,
     RuntimeEventTypes,
 } from "./session-runtime-events.ts";
 
 test("Runtime normalizes one complete structured tool result for every consumer", () => {
     assertEquals(
-        normalizeRuntimeToolResult({
+        normalizeToolResult({
             content: [
                 { type: "text", text: "hello" },
                 { type: "image", data: "aW1hZ2U=", mimeType: "image/png" },
@@ -30,7 +30,7 @@ test("Runtime normalizes one complete structured tool result for every consumer"
             details: { truncation: { truncated: true }, fullOutputPath: "/tmp/full.log" },
         },
     );
-    assertEquals(normalizeRuntimeToolResult({ internal: true }), {
+    assertEquals(normalizeToolResult({ internal: true }), {
         content: [],
         output: "",
         details: null,
@@ -38,7 +38,7 @@ test("Runtime normalizes one complete structured tool result for every consumer"
 });
 
 test("Runtime suppresses binary read output for display without dropping content", () => {
-    const normalized = normalizeRuntimeToolResult({
+    const normalized = normalizeToolResult({
         content: [{ type: "text", text: "DIRC\u0000\u0007binary" }],
         details: { runwieldDisplay: "binary_display_suppressed" },
     });
@@ -54,7 +54,7 @@ test("Runtime hides model-only image omission notes when TUI display image exist
         "[Image omitted: could not be resized below the inline image size limit.]",
         "[Current model does not support images. The image will be omitted from this request.]",
     ].join("\n");
-    const normalized = normalizeRuntimeToolResult({
+    const normalized = normalizeToolResult({
         content: [{ type: "text", text }],
         details: { runwieldDisplayImages: [{ base64: "abc", mimeType: "image/png" }] },
     });

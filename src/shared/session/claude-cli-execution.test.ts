@@ -31,7 +31,8 @@ import { ClaudeCliBackendError } from "./backends/claude-cli/failure.ts";
 import { CLAUDE_CLI_MCP_PROVENANCE } from "./backends/claude-cli/mcp-bridge.ts";
 import { readLatestTaskCompletedOutcome } from "../workflow/workflow-results.ts";
 import { readLatestTriageOutcome } from "../workflow/orchestrator.ts";
-import { startMcpIntegration } from "../mcp/integration.ts";
+import { startMcpIntegration } from "@runwield/pi-ai/mcp";
+import { mcpFixtureHost } from "../mcp/integration-fixture.ts";
 import { runValidationAgentUntilEvent } from "./agent-workflow-step.ts";
 import { workflowEvents } from "@runwield/workflow/events";
 import { readRequestAttemptEntries } from "./request-dispatch.ts";
@@ -261,7 +262,7 @@ test("Claude CLI roots discover initially empty MCP tools and refresh them betwe
         await fsWriteFile(toolsPath, "");
         const fixtureServer = fileURLToPath(new URL("../mcp/fixture-server.ts", import.meta.url));
         const poolResult = await startMcpIntegration({
-            cwd,
+            ...mcpFixtureHost(cwd),
             servers: [
                 {
                     name: "fixture",

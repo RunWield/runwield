@@ -11,7 +11,7 @@ import {
     SCRIPTED_OAUTH_PROVIDER_ID,
     withRuntimeCommandFixture,
 } from "../../cmd/testing/runtime-command-fixture.ts";
-import { getModelRegistry } from "../../shared/models/model-registry.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
 import { getSettingsManager } from "../../shared/settings.ts";
 import { startRunWieldAcpServer } from "../../acp/server.ts";
 import { initTUIWithPair, stopTUI } from "./tui.ts";

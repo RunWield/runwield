@@ -1,32 +1,32 @@
 import { Container, fuzzyFilter, getKeybindings, Input, matchesKey, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Focusable, TUI } from "@earendil-works/pi-tui";
-import type { RunWieldModel, RunWieldModelRegistry } from "../../shared/models/model-registry.ts";
+import type { ModelDescriptor, ModelRegistry } from "@runwield/pi-ai";
 import { theme } from "../theme/theme.ts";
 
 interface ModelItem {
     provider: string;
     id: string;
-    model: RunWieldModel;
+    model: ModelDescriptor;
 }
 
 export interface RunWieldModelSelectorOptions {
     tui: TUI;
-    currentModel?: RunWieldModel;
-    modelRegistry: RunWieldModelRegistry;
-    onSelect(model: RunWieldModel): Promise<void> | void;
+    currentModel?: ModelDescriptor;
+    modelRegistry: ModelRegistry;
+    onSelect(model: ModelDescriptor): Promise<void> | void;
     onCancel(): void;
     initialSearchInput?: string;
 }
 
-function modelsAreEqual(left: RunWieldModel | undefined, right: RunWieldModel | undefined): boolean {
+function modelsAreEqual(left: ModelDescriptor | undefined, right: ModelDescriptor | undefined): boolean {
     return Boolean(left && right && left.provider === right.provider && left.id === right.id);
 }
 
-function modelReference(model: RunWieldModel): string {
+function modelReference(model: ModelDescriptor): string {
     return `${model.provider}/${model.id}`;
 }
 
-function backendLabel(model: RunWieldModel): string {
+function backendLabel(model: ModelDescriptor): string {
     if (model.executionBackend === "claude-cli" || model.provider === "claude-cli") return "Claude CLI";
     return model.provider;
 }
@@ -35,7 +35,7 @@ function modelSearchText(item: ModelItem): string {
     return `${item.provider}/${item.id} ${item.model.name || ""} ${backendLabel(item.model)}`;
 }
 
-function sortModels(currentModel: RunWieldModel | undefined, models: ModelItem[]): ModelItem[] {
+function sortModels(currentModel: ModelDescriptor | undefined, models: ModelItem[]): ModelItem[] {
     return [...models].sort((left, right) => {
         const leftCurrent = modelsAreEqual(currentModel, left.model);
         const rightCurrent = modelsAreEqual(currentModel, right.model);
@@ -49,9 +49,9 @@ function sortModels(currentModel: RunWieldModel | undefined, models: ModelItem[]
 
 export class RunWieldModelSelectorComponent extends Container implements Focusable {
     private readonly tui: TUI;
-    private readonly currentModel?: RunWieldModel;
-    private readonly modelRegistry: RunWieldModelRegistry;
-    private readonly onSelectCallback: (model: RunWieldModel) => Promise<void> | void;
+    private readonly currentModel?: ModelDescriptor;
+    private readonly modelRegistry: ModelRegistry;
+    private readonly onSelectCallback: (model: ModelDescriptor) => Promise<void> | void;
     private readonly onCancelCallback: () => void;
     private readonly searchInput: Input;
     private readonly listContainer = new Container();

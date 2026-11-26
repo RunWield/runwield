@@ -11,7 +11,7 @@ import { SessionRuntime } from "../session/session-runtime.ts";
 import { SessionHost } from "../session/session-host.ts";
 import { summarizeProjectedEntries } from "../session/session-transcript-projection.ts";
 import { configureRemotePersonalResources } from "./personal-resources.ts";
-import { configureRemoteModelConnection } from "../models/model-registry.ts";
+import { configureRemoteModelConnection } from "@runwield/pi-ai/models";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
 import { configureRemoteMemoryConnection } from "./memory-bridge.ts";
 import { RemoteSessionControl } from "./session-control-client.ts";

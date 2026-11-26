@@ -34,7 +34,7 @@ import {
     type ReviewWidgetStore,
 } from "./review-widget-handlers.ts";
 
-import type { JsonValue } from "../../../../shared/jsonc.ts";
+import type { JsonValue } from "@runwield/parsing/jsonc";
 import type { StandaloneReviewPayload } from "../../../review/review-launcher.ts";
 
 export type { GuideUsageTotals };

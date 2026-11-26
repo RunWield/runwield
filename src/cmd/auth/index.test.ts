@@ -1,3 +1,6 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { personalGlobalRoot } from "@runwield/resources/personal";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -6,7 +9,7 @@ import {
     SCRIPTED_OAUTH_PROVIDER_ID,
     withRuntimeCommandFixture,
 } from "../testing/runtime-command-fixture.ts";
-import { getModelRegistry, type RunWieldModelRegistry } from "../../shared/models/model-registry.ts";
+import { getModelRegistry, type ModelRegistry } from "@runwield/pi-ai";
 import { getLoginProviderOptions, runLoginCommand } from "./index.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
@@ -21,7 +24,7 @@ const MODEL_SELECTOR_MARKER = "Only showing models from configured providers";
 
 interface AuthTestContext {
     harness: InteractiveCompositionHarness;
-    registry: RunWieldModelRegistry;
+    registry: ModelRegistry;
     runtime: SessionRuntime;
     sessionId: string;
 }
@@ -38,7 +41,7 @@ async function withAuthTest(
         try {
             const composition = await harness.waitForComposition(30_000);
             const registry = getModelRegistry();
-            await registry.getRuntime();
+            await registry.ready();
             assert(
                 !registry.getOAuthProviders().some((provider) => provider.id === SCRIPTED_OAUTH_PROVIDER_ID),
                 "a scripted provider from another fixture must not leak into this registry",
@@ -103,8 +106,14 @@ test("API-key login persists through the fixture credential store and status com
 
 test("external CLI credentials stay out of API auth login, status, and logout choices", async () => {
     await withAuthTest("auth-external-cli-exclusion-", async ({ harness, registry }) => {
-        await registry.credentialStore.modify("claude-cli", () => Promise.resolve({ type: "api_key", key: "fake" }));
-        await registry.credentialStore.modify("agy-cli", () => Promise.resolve({ type: "api_key", key: "fake" }));
+        await writeFile(
+            join(personalGlobalRoot(), "auth.json"),
+            JSON.stringify({
+                [FIXTURE_PROVIDER]: { type: "api_key", key: "fixture-secret" },
+                "claude-cli": { type: "api_key", key: "fake" },
+                "agy-cli": { type: "api_key", key: "fake" },
+            }),
+        );
         assertEquals(
             (await registry.listStoredCredentialProviders()).map((provider) => provider.id),
             [FIXTURE_PROVIDER],

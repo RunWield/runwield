@@ -44,7 +44,7 @@ async function main() {
     const { createHash } = await import("node:crypto");
     const { makeControlFixture, deferred, within } = await import("./session-save-test-fixture.ts");
     const { makeSaveModelRuntime } = await import("./session-save-agent-fixture.ts");
-    const { LocalModelBridge, handleModelRequest } = await import("./model-bridge.ts");
+    const { LocalModelBridge, handleModelRequest } = await import("@runwield/pi-ai/remote-models");
     const { parseRemoteSessionTranscript } = await import("./session-protocol.ts");
 
     interface LiveReply {

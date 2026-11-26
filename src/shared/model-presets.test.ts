@@ -13,7 +13,7 @@ import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { getBundledModelPresets, type ModelPresetsMap } from "./model-presets.ts";
-import { RunWieldCredentialStore, RunWieldModelRegistry } from "./models/model-registry.ts";
+import { RunWieldModelRegistry } from "@runwield/pi-ai/models";
 import { getCustomSetting, getMergedCustomSetting, setCustomSetting } from "./settings.ts";
 import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel, resolveModel } from "./session/session.ts";
 
@@ -152,7 +152,6 @@ test("bundled presets cover shipped roles using registered models from their adv
     const directory = await fsMkdtemp(join(tmpdir(), "preset-model-registry-"));
     const registry = new RunWieldModelRegistry({
         configDir: directory,
-        credentialStore: new RunWieldCredentialStore(join(directory, "auth.json")),
     });
     try {
         for (const [name, preset] of Object.entries(getBundledModelPresets())) {

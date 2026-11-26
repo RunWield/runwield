@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command-fixture.ts";
-import { getModelRegistry } from "../../src/shared/models/model-registry.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
 import { setExactProjectCustomSetting } from "../../src/shared/settings.ts";
 import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.ts";
 import { parseDiffFiles } from "../../src/shared/workflow/review-diff-tool.ts";

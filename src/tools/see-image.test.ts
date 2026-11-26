@@ -1,7 +1,7 @@
 import { assertEquals } from "../testing/assertions.ts";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { env } from "node:process";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getHomeDir } from "../constants.ts";
@@ -9,40 +9,21 @@ import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { persistImageAttachment } from "../shared/session/image-attachments.ts";
 import { createSeeImageTool, DEFAULT_SEE_IMAGE_PROMPT } from "./see-image.ts";
 
-import type { Context, ImageContent, TextContent } from "@earendil-works/pi-ai/compat";
+import { fauxAssistantMessage, fauxText, fauxThinking } from "@earendil-works/pi-ai";
+import { registerBuiltInApiProviders, registerFauxProvider } from "@earendil-works/pi-ai/compat";
+import { codingAgent } from "@runwield/pi-ai/coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 type SeeImageTool = ReturnType<typeof createSeeImageTool>;
 type SeeImageToolContext = Parameters<SeeImageTool["execute"]>[4];
-type CompleteSimpleFunction = NonNullable<Parameters<typeof createSeeImageTool>[0]["completeSimpleFn"]>;
-type VisionModel = Parameters<CompleteSimpleFunction>[0];
-type CompletionOptions = Parameters<CompleteSimpleFunction>[2];
-
-interface ImageRequestMessage {
-    role: "user";
-    content: [TextContent, ImageContent];
-    timestamp: number;
+function registerVisionProvider(t: TestContext) {
+    const provider = registerFauxProvider({ api: "openai-completions", provider: "vision", models: [{ id: "model" }] });
+    t.after(() => {
+        provider.unregister();
+        registerBuiltInApiProviders();
+    });
+    return provider;
 }
-
-interface ImageRequestContext extends Context {
-    messages: [ImageRequestMessage];
-}
-
-interface CompletionCall {
-    model: VisionModel;
-    context: ImageRequestContext;
-    options: CompletionOptions;
-}
-
-const TEST_COST = Object.freeze({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 });
-const TEST_USAGE = Object.freeze({
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: TEST_COST,
-});
 
 async function writeVisionFallbackSetting(cwd: string) {
     await fsMkdir(join(cwd, ".wld"), { recursive: true });
@@ -87,7 +68,8 @@ async function removeTempDir(path: string) {
     throw lastError;
 }
 
-test("see_image invokes fallback model with local image and default prompt", async () => {
+test("see_image maps a native vision response and forwards cancellation", async (t) => {
+    const provider = registerVisionProvider(t);
     await withProcessGlobalTestLock(async () => {
         const originalHome = getHomeDir();
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-see-image-home-"));
@@ -97,25 +79,38 @@ test("see_image invokes fallback model with local image and default prompt", asy
             await writeVisionModelConfig(tempHome);
             await writeVisionFallbackSetting(cwd);
             await fsWriteFile(join(cwd, "shot.png"), new Uint8Array([1, 2, 3]));
-            const calls: CompletionCall[] = [];
+            const controller = new AbortController();
+            provider.setResponses([
+                (context, options, _state, model) => {
+                    const message = context.messages[0];
+                    assertEquals(context.messages.length, 1);
+                    assertEquals(message.role, "user");
+                    assertEquals(message.content, [
+                        { type: "text", text: DEFAULT_SEE_IMAGE_PROMPT },
+                        { type: "image", data: "AQID", mimeType: "image/png" },
+                    ]);
+                    assertEquals(model.provider, "vision");
+                    assertEquals(model.id, "model");
+                    assertEquals(options?.apiKey, "key");
+                    assertEquals(options?.headers?.a, "b");
+                    assertEquals(options?.maxTokens, 2048);
+                    return fauxAssistantMessage([fauxText("one"), fauxThinking("internal"), fauxText("two")]);
+                },
+                (_context, options) => {
+                    assertEquals(options?.signal, controller.signal);
+                    controller.abort();
+                    return fauxAssistantMessage(fauxText("canceled text"));
+                },
+            ]);
+            const outcomes: string[] = [];
             const tool = createSeeImageTool({
                 cwd,
-                completeSimpleFn: (model, context, options) => {
-                    calls.push({ model, context: context as ImageRequestContext, options });
-                    return Promise.resolve({
-                        role: "assistant",
-                        api: "openai-completions",
-                        provider: "vision",
-                        model: "model",
-                        content: [
-                            { type: "text", text: "one" },
-                            { type: "text", text: "two" },
-                        ],
-                        stopReason: "stop",
-                        usage: TEST_USAGE,
-                        timestamp: Date.now(),
-                    });
-                },
+                completeTurn: codingAgent.complete,
+                onModelStart: () => ({
+                    finish(_usage, outcome) {
+                        outcomes.push(outcome);
+                    },
+                }),
             });
 
             const result = await tool.execute(
@@ -127,10 +122,17 @@ test("see_image invokes fallback model with local image and default prompt", asy
             );
 
             assertEquals(result.content, [{ type: "text", text: "one\ntwo" }]);
-            assertEquals(calls.length, 1);
-            assertEquals(calls[0].context.messages[0].content[0].text, DEFAULT_SEE_IMAGE_PROMPT);
-            assertEquals(calls[0].context.messages[0].content[1].mimeType, "image/png");
-            assertEquals(calls[0].options!.apiKey, "key");
+            const canceled = await tool.execute(
+                "2",
+                { imageRef: "shot.png" },
+                controller.signal,
+                undefined,
+                {} as SeeImageToolContext,
+            );
+            assertEquals(canceled.isError, true);
+            assertEquals(controller.signal.aborted, true);
+            assertEquals(outcomes, ["succeeded", "canceled"]);
+            assertEquals(provider.state.callCount, 2);
         } finally {
             env.HOME = originalHome;
             await removeTempDir(tempHome);
@@ -139,7 +141,8 @@ test("see_image invokes fallback model with local image and default prompt", asy
     });
 });
 
-test("see_image returns tool error on auth failure", async () => {
+test("see_image returns tool error on auth failure", async (t) => {
+    const provider = registerVisionProvider(t);
     await withProcessGlobalTestLock(async () => {
         const originalHome = getHomeDir();
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-see-image-home-"));
@@ -169,7 +172,7 @@ test("see_image returns tool error on auth failure", async () => {
             await fsWriteFile(join(cwd, "shot.png"), new Uint8Array([1]));
             const tool = createSeeImageTool({
                 cwd,
-                completeSimpleFn: () => Promise.reject(new Error("should not call")),
+                completeTurn: codingAgent.complete,
             });
             const result = await tool.execute(
                 "1",
@@ -179,10 +182,11 @@ test("see_image returns tool error on auth failure", async () => {
                 {} as SeeImageToolContext,
             );
             assertEquals(result.isError, true);
-            assertEquals(
-                (result.content[0] as TextContent).text,
-                "No API key configured for visionFallback.model: missing-vision/model",
-            );
+            assertEquals(provider.state.callCount, 0);
+            assertEquals(result.content[0], {
+                type: "text",
+                text: "No API key configured for visionFallback.model: missing-vision/model",
+            });
         } finally {
             env.HOME = originalHome;
             await removeTempDir(tempHome);
@@ -191,7 +195,8 @@ test("see_image returns tool error on auth failure", async () => {
     });
 });
 
-test("see_image resolves attachment refs from the session image directory", async () => {
+test("see_image resolves attachment refs from the session image directory", async (t) => {
+    const provider = registerVisionProvider(t);
     await withProcessGlobalTestLock(async () => {
         const originalHome = getHomeDir();
         const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-see-image-home-"));
@@ -206,24 +211,16 @@ test("see_image resolves attachment refs from the session image directory", asyn
                 sessionManager,
                 cwd,
             );
-            const calls: ImageContent[] = [];
-            const tool = createSeeImageTool({
-                cwd,
-                sessionManager,
-                completeSimpleFn: (_model, context) => {
-                    calls.push((context as ImageRequestContext).messages[0].content[1]);
-                    return Promise.resolve({
-                        role: "assistant",
-                        api: "openai-completions",
-                        provider: "vision",
-                        model: "model",
-                        content: [{ type: "text", text: "attachment description" }],
-                        stopReason: "stop",
-                        usage: TEST_USAGE,
-                        timestamp: Date.now(),
-                    });
+            provider.setResponses([
+                (context) => {
+                    assertEquals(context.messages[0].content, [
+                        { type: "text", text: DEFAULT_SEE_IMAGE_PROMPT },
+                        { type: "image", data: btoa("img"), mimeType: "image/png" },
+                    ]);
+                    return fauxAssistantMessage(fauxText("attachment description"));
                 },
-            });
+            ]);
+            const tool = createSeeImageTool({ cwd, sessionManager, completeTurn: codingAgent.complete });
 
             const result = await tool.execute(
                 "1",
@@ -233,9 +230,8 @@ test("see_image resolves attachment refs from the session image directory", asyn
                 {} as SeeImageToolContext,
             );
 
-            assertEquals((result.content[0] as TextContent).text, "attachment description");
-            assertEquals(calls[0].mimeType, "image/png");
-            assertEquals(calls[0].data, btoa("img"));
+            assertEquals(result.content[0], { type: "text", text: "attachment description" });
+            assertEquals(provider.state.callCount, 1);
         } finally {
             env.HOME = originalHome;
             await removeTempDir(tempHome);

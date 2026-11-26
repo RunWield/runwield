@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { parse as parseJsonc, type JsonValue } from "../jsonc.ts";
+import { parse as parseJsonc, type JsonValue } from "@runwield/parsing/jsonc";
 import { join } from "node:path";
 import { personalGlobalRoot } from "./personal-resources.ts";
 

@@ -6,7 +6,7 @@
 import { projects } from "@runwield/projects";
 import { sessionStoragePath, sessionTranscriptStoragePath } from "@runwield/session-files";
 import type { SessionEntry, SessionHeader, SessionInfo, SessionManager } from "@earendil-works/pi-coding-agent";
-import type { JsonValue } from "../jsonc.ts";
+import type { JsonValue } from "@runwield/parsing/jsonc";
 import type { RemoteSessionConnection } from "../remote/session-protocol.ts";
 import type { RemoteSessionSaveBridge } from "../remote/session-save-bridge.ts";
 import type {

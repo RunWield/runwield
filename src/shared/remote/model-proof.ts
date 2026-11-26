@@ -1,7 +1,8 @@
+import { codingAgent } from "@runwield/pi-ai/coding-agent";
 import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 /* Explicit, one-turn LIVE proof. This is not an interactive remote Session. */
 import { isAbsolute, join, relative } from "node:path";
-import type { RemoteModelConnection } from "./model-bridge.ts";
+import type { RemoteModelConnection } from "@runwield/pi-ai/remote-models";
 import type { RemotePersonalResources } from "./personal-resources.ts";
 import type { RemoteMount } from "./sftp-mount.ts";
 import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";
@@ -31,10 +32,10 @@ export async function runRemoteModelProof(options: {
         options.mount.globalRoot,
         options.mount.agentsRoot,
         ...Object.values(options.mount.packageRoots ?? {}),
-    ]
-        .filter((root): root is string => typeof root === "string");
+    ].filter((root): root is string => typeof root === "string");
     if (
-        !inside(project, path) || path === project ||
+        !inside(project, path) ||
+        path === project ||
         mountedRoots.some((root) => inside(root, path) || inside(root, project))
     ) {
         throw new Error("Remote model proof sentinel must be inside the remote project");
@@ -54,25 +55,29 @@ export async function runRemoteModelProof(options: {
         cwd: project,
         provider: proof.provider,
         modelId: proof.modelId,
-        customTools: [{
-            name: "read_remote_sentinel",
-            label: "Read remote sentinel",
-            description: "Read the approved remote project sentinel",
-            parameters: { type: "object", properties: {}, additionalProperties: false },
-            execute: async () => {
-                // Recheck before each read so a changed symlink cannot redirect the tool to laptop files.
-                const current = await fsRealpath(join(project, proof.sentinelFile));
-                if (
-                    current !== path || !inside(project, current) || mountedRoots.some((root) => inside(root, current))
-                ) {
-                    throw new Error("Remote model proof sentinel changed");
-                }
-                const value = (await fsReadFile(current, "utf8")).trim();
-                if (value !== sentinel) throw new Error("Remote model proof sentinel changed");
-                toolResult = value;
-                return { content: [{ type: "text" as const, text: value }], details: null };
+        customTools: [
+            {
+                name: "read_remote_sentinel",
+                label: "Read remote sentinel",
+                description: "Read the approved remote project sentinel",
+                parameters: { type: "object", properties: {}, additionalProperties: false },
+                execute: async () => {
+                    // Recheck before each read so a changed symlink cannot redirect the tool to laptop files.
+                    const current = await fsRealpath(join(project, proof.sentinelFile));
+                    if (
+                        current !== path ||
+                        !inside(project, current) ||
+                        mountedRoots.some((root) => inside(root, current))
+                    ) {
+                        throw new Error("Remote model proof sentinel changed");
+                    }
+                    const value = (await fsReadFile(current, "utf8")).trim();
+                    if (value !== sentinel) throw new Error("Remote model proof sentinel changed");
+                    toolResult = value;
+                    return { content: [{ type: "text" as const, text: value }], details: null };
+                },
             },
-        }],
+        ],
     });
     try {
         signal?.throwIfAborted();
@@ -91,9 +96,13 @@ export async function runRemoteModelProof(options: {
         }, 60_000);
         try {
             signal?.throwIfAborted();
-            await session.prompt("Call read_remote_sentinel once. Then repeat its exact text in your final response.", {
-                expandPromptTemplates: false,
-            });
+            await codingAgent.prompt(
+                session,
+                { text: "Call read_remote_sentinel once. Then repeat its exact text in your final response." },
+                {
+                    expandPromptTemplates: false,
+                },
+            );
             signal?.throwIfAborted();
             if (timedOut) throw new Error("Remote model proof timed out");
         } finally {
@@ -101,16 +110,22 @@ export async function runRemoteModelProof(options: {
             signal?.removeEventListener("abort", abortPrompt);
         }
         const messages = session.messages;
-        const resultIndex = messages.findIndex((message) =>
-            message.role === "toolResult" && message.toolName === "read_remote_sentinel" &&
-            !message.isError && message.content.some((part) => part.type === "text" && part.text === sentinel)
+        const resultIndex = messages.findIndex(
+            (message) =>
+                message.role === "toolResult" &&
+                message.toolName === "read_remote_sentinel" &&
+                !message.isError &&
+                message.content.some((part) => part.type === "text" && part.text === sentinel),
         );
         const reply = messages.slice(resultIndex + 1).find((message) => message.role === "assistant");
         if (
-            toolResult !== sentinel || resultIndex < 0 || reply?.role !== "assistant" ||
+            toolResult !== sentinel ||
+            resultIndex < 0 ||
+            reply?.role !== "assistant" ||
             reply.stopReason !== "stop" ||
             !reply.content.some((part) => part.type === "text" && part.text.includes(sentinel))
-        ) throw new Error("Remote model proof did not confirm the remote tool result and response");
+        )
+            throw new Error("Remote model proof did not confirm the remote tool result and response");
     } finally {
         session.dispose();
     }

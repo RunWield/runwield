@@ -1,11 +1,11 @@
-import { RemovedAgyModelError } from "../../shared/models/removed-providers.ts";
+import { RemovedAgyModelError } from "@runwield/pi-ai/models";
 import { admitProjectWithIdentityChoice } from "./project-identity-entry.ts";
 import { handleBashCommand } from "./bash-interceptor.ts";
 import { endBlink } from "./boot-logo.ts";
 import { disposeKeybindings, installKeybindings } from "./keybindings.ts";
 import { handleSlashCommand, isImmediateBuiltinSlashCommandWhileStreaming, type SkillMeta } from "./slash-dispatch.ts";
 import { readClipboardImage } from "./clipboard.ts";
-import { resolveTemplateModel } from "../../shared/models/model-validation.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
 import { persistThinkingLevel, recordUserInputHistory, type SessionRuntime } from "./chat-session.ts";
 import { createGenerationGuard } from "./generation-guard.ts";
 import { type ChatView, createPastedImagePreview } from "./chat-view.ts";
@@ -342,7 +342,7 @@ export function createChatInputController(options: ChatInputControllerOptions): 
                   promptTemplateByName: options.getPromptTemplateByName(),
                   skills: options.getSkills(),
                   chatPromptAgentName: options.chatPromptAgentName,
-                  resolveTemplateModel,
+                  resolveTemplateModel: (reference) => getModelRegistry().resolveTemplateModel(reference),
                   dispatchExpandedUserRequest: (request, images) =>
                       submitToActiveRoot(request, images, preparedModelOverride),
                   beginOnboarding: options.beginOnboarding,

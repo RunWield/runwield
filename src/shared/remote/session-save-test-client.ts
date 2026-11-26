@@ -1,3 +1,4 @@
+import { codingAgent } from "@runwield/pi-ai/coding-agent";
 import { appendFileSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import process from "node:process";
@@ -15,7 +16,7 @@ import { recordManualModelSelection } from "../session/active-agent-session.ts";
 import { configureRemotePersonalResources } from "./personal-resources.ts";
 import { workflowEvents } from "@runwield/workflow/events";
 import { MAX_SESSION_BYTES, type RemoteSessionConnection, type SessionWorkerRequest } from "./session-protocol.ts";
-import type { RemoteModelConnection } from "./model-bridge.ts";
+import type { RemoteModelConnection } from "@runwield/pi-ai/remote-models";
 import { makeSaveAgent } from "./session-save-agent-fixture.ts";
 import { persistImageAttachment } from "../session/image-attachments.ts";
 
@@ -236,13 +237,17 @@ try {
                 }
                 let stopped = false;
                 try {
-                    await session.prompt("Use remote_effect once.", { expandPromptTemplates: false });
+                    await codingAgent.prompt(
+                        session,
+                        { text: "Use remote_effect once." },
+                        { expandPromptTemplates: false },
+                    );
                 } catch {
                     stopped = true;
                 }
                 let nextPromptStopped = false;
                 try {
-                    await session.prompt("Do not continue.", { expandPromptTemplates: false });
+                    await codingAgent.prompt(session, { text: "Do not continue." }, { expandPromptTemplates: false });
                 } catch {
                     nextPromptStopped = true;
                 }
@@ -258,9 +263,13 @@ try {
                     }),
                 );
             } else {
-                await session.prompt("Use remote_effect once. " + "Owned verification context. ".repeat(200), {
-                    expandPromptTemplates: false,
-                });
+                await codingAgent.prompt(
+                    session,
+                    { text: "Use remote_effect once. " + "Owned verification context. ".repeat(200) },
+                    {
+                        expandPromptTemplates: false,
+                    },
+                );
                 manager.appendCustomEntry("runwield.verification", { effect: "finished" });
                 const compaction = await session.compact("Summarize this owned verification turn.");
                 const entries = manager.getEntries();

@@ -16,7 +16,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { parseRemoteModelProof } from "./model-proof-config.ts";
 import { runRemoteModelProof } from "./model-proof.ts";
-import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
+import { handleModelRequest, LocalModelBridge } from "@runwield/pi-ai/remote-models";
 
 export async function exerciseProof(validReply: boolean): Promise<void> {
     const root = await mkdtemp(join(tmpdir(), "remote-proof-"));

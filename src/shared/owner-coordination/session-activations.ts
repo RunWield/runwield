@@ -4,7 +4,7 @@
  */
 
 import type { SQLOutputValue } from "node:sqlite";
-import type { JsonRecord } from "../jsonc.ts";
+import type { JsonRecord } from "@runwield/parsing/jsonc";
 import type { ProcessKind } from "../session/file-session-store-types.ts";
 import type { OwnerCoordinationDatabase } from "./database.ts";
 import { insertSessionTranscriptSegmentRow, sealSessionTranscriptSegmentRow } from "./sessions.ts";

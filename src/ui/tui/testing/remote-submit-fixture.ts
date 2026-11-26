@@ -4,7 +4,7 @@ import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promis
 import { spawnNativeProcess } from "../../../shared/foreground-process.ts";
 import { assertEquals } from "../../../testing/assertions.ts";
 import { join } from "node:path";
-import { getModelRegistry } from "../../../shared/models/model-registry.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
 import { __resetSettingsForTests } from "../../../shared/settings.ts";
 import { processLines } from "../../../shared/remote/remote-runtime-lines.ts";
 import {

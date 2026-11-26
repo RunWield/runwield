@@ -19,7 +19,7 @@ import {
 } from "node:fs/promises";
 /* Connection-owned laptop SFTP transport and remote SSHFS mounts. No HOME substitution. */
 import { join } from "node:path";
-import { parse as parseJsonc } from "../jsonc.ts";
+import { parse as parseJsonc } from "@runwield/parsing/jsonc";
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getCwd, getHomeDir } from "../../constants.ts";
 import { assertRemoteMountPrerequisites, parseOsRelease, REMOTE_PYTHON_REQUIRED } from "./host-prerequisites.ts";

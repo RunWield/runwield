@@ -1,4 +1,4 @@
-import { isRemovedAgyProvider } from "../../models/removed-providers.ts";
+import { isRemovedAgyProvider } from "@runwield/pi-ai/models";
 import {
     readPersistedManualModelState,
     readPersistedModelState,

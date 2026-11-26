@@ -4,9 +4,11 @@
     "type": "module",
     "exports": {
         "./front-matter": "./front-matter.ts",
-        "./shell-selectors": "./shell-selectors.ts"
+        "./shell-selectors": "./shell-selectors.ts",
+        "./jsonc": "./jsonc.ts"
     },
     "dependencies": {
-        "js-yaml": "4.3.2"
+        "js-yaml": "4.3.2",
+        "jsonc-parser": "3.3.1"
     }
 }

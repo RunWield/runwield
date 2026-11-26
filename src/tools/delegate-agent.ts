@@ -11,7 +11,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { AGENTS, SUBAGENTS, agentRegistry } from "../shared/session/agent-registry.ts";
-import { formatProviderModelReference } from "../shared/models/model-validation.ts";
+import { formatProviderModelReference } from "@runwield/pi-ai";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
 import type {
     AgentDefinition,

@@ -1,9 +1,5 @@
-import {
-    createAgentSession,
-    DefaultResourceLoader,
-    ModelRuntime,
-    SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { codingAgent } from "@runwield/pi-ai/coding-agent";
+import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
     createAssistantMessageEventStream,
@@ -14,8 +10,8 @@ import {
     InMemoryCredentialStore,
     type ProviderStreams,
 } from "@earendil-works/pi-ai";
-import { createRemoteModelRuntime, fetchRemoteModelCatalog } from "./model-bridge.ts";
-import type { RemoteModelConnection } from "./model-bridge.ts";
+import { createRemoteModelRuntime, fetchRemoteModelCatalog } from "@runwield/pi-ai/remote-models";
+import type { RemoteModelConnection } from "@runwield/pi-ai/remote-models";
 
 /** Synthetic provider only. Pi, persistence, tools and compaction all run normally. */
 export async function makeSaveModelRuntime(contexts: string[] = []) {
@@ -94,7 +90,7 @@ export async function makeSaveAgent(options: SaveAgentOptions) {
     const settingsManager = SettingsManager.inMemory({
         compaction: { enabled: false, reserveTokens: 100, keepRecentTokens: 1 },
     });
-    const loader = new DefaultResourceLoader({
+    const loader = await codingAgent.loadResources({
         cwd: options.cwd,
         agentDir: options.home,
         settingsManager,
@@ -105,8 +101,7 @@ export async function makeSaveAgent(options: SaveAgentOptions) {
         noThemes: true,
         systemPromptOverride: () => "Use remote_effect exactly once, then finish.",
     });
-    await loader.reload();
-    const { session } = await createAgentSession({
+    const { session } = await codingAgent.create({
         cwd: options.cwd,
         agentDir: options.home,
         modelRuntime: runtime,

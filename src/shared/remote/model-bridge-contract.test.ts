@@ -17,7 +17,7 @@ import {
     fetchRemoteModelCatalog,
     handleModelRequest,
     LocalModelBridge,
-} from "./model-bridge.ts";
+} from "@runwield/pi-ai/remote-models";
 
 const model: Model<"openai-completions"> = {
     id: "local",

@@ -9,7 +9,7 @@ import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { configureRemotePersonalResources } from "./personal-resources.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
-import { configureRemoteModelConnection } from "../models/model-registry.ts";
+import { configureRemoteModelConnection } from "@runwield/pi-ai/models";
 import { RemoteSessionControl, type RemoteSessionControlConnection } from "./session-control-client.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { SessionHost } from "../session/session-host.ts";

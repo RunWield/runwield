@@ -7,7 +7,7 @@ import {
     getCurrentTools,
     normalizeContext,
 } from "@earendil-works/pi-ai";
-import { applySessionTemperature } from "./session.ts";
+import { codingAgent } from "@runwield/pi-ai/coding-agent";
 import type {
     Api,
     AssistantMessage,
@@ -118,7 +118,7 @@ test("applySessionTemperature omits temperature for known no-sampling model fami
 
     for (const model of noSamplingModels) {
         const { session, calls } = fakeSession((model) => completedStream(model));
-        applySessionTemperature(session, 0.4);
+        codingAgent.configureProvider(session, { temperature: 0.4 });
 
         const events = [];
         const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), {
@@ -136,7 +136,7 @@ test("applySessionTemperature omits temperature for known no-sampling model fami
 
 test("applySessionTemperature still configures providers that accept it", async () => {
     const { session, calls } = fakeSession((model) => completedStream(model));
-    applySessionTemperature(session, 0.4);
+    codingAgent.configureProvider(session, { temperature: 0.4 });
 
     const model = testModel({ id: "temperature-model" });
     const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), { maxTokens: 100 });
@@ -155,7 +155,7 @@ test("applySessionTemperature retries exact unsupported parameter errors without
         }
         return completedStream(model);
     });
-    applySessionTemperature(session, 0.4);
+    codingAgent.configureProvider(session, { temperature: 0.4 });
 
     const model = testModel({ id: "future-reasoning-model" });
     const transcript = normalizeContext({
@@ -214,7 +214,7 @@ test("applySessionTemperature retries temperature capability errors", async () =
             }
             return completedStream(model);
         });
-        applySessionTemperature(session, 0.4);
+        codingAgent.configureProvider(session, { temperature: 0.4 });
 
         const model = testModel({ id: `fixed-temperature-model-${index}` });
         const events = [];
@@ -241,7 +241,7 @@ test("applySessionTemperature remembers discovered temperature capability failur
         }
         return completedStream(model);
     });
-    applySessionTemperature(session, 0.4);
+    codingAgent.configureProvider(session, { temperature: 0.4 });
 
     for (let i = 0; i < 2; i += 1) {
         const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), {
@@ -270,7 +270,7 @@ test("applySessionTemperature retries rejected temperature capability requests",
         }
         return completedStream(model);
     });
-    applySessionTemperature(session, 0.4);
+    codingAgent.configureProvider(session, { temperature: 0.4 });
 
     const events = [];
     const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), { maxTokens: 100 });
@@ -294,7 +294,7 @@ test("applySessionTemperature terminates wrapped streams on rejected provider er
     for (const [index, testCase] of cases.entries()) {
         const model = testModel({ id: `rejected-provider-${index}` });
         const { session, calls } = fakeSession(() => Promise.reject(testCase.error));
-        applySessionTemperature(session, 0.4);
+        codingAgent.configureProvider(session, { temperature: 0.4 });
 
         const events = [];
         const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), {
@@ -328,7 +328,7 @@ test("applySessionTemperature does not retry unsupported temperature after conte
         stream.push({ type: "error", reason: "error", error });
         return stream;
     });
-    applySessionTemperature(session, 0.4);
+    codingAgent.configureProvider(session, { temperature: 0.4 });
 
     const events = [];
     const source = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), { maxTokens: 100 });

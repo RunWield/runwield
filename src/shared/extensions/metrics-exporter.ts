@@ -5,7 +5,7 @@ import { DefaultPackageManager, SettingsManager, type PackageSource } from "@ear
 import { isAbsolute, join, relative } from "node:path";
 import { withExportConfigurationLock } from "../workflow/metrics-export-storage.ts";
 import { getCwd } from "../../constants.ts";
-import type { JsonValue } from "../jsonc.ts";
+import type { JsonValue } from "@runwield/parsing/jsonc";
 import type { PackagePromptResourceOptions } from "../package-resources.ts";
 import { getCustomSetting, getSettingsDir, getSettingsManager, setCustomSetting } from "../settings.ts";
 import {

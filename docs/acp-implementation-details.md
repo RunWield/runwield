@@ -566,7 +566,7 @@ Implementation evidence: `src/acp/server.ts` capability declarations and unsuppo
 [tool calls](https://agentclientprotocol.com/protocol/v1/tool-calls), and
 [config options](https://agentclientprotocol.com/protocol/v1/session-config-options).
 
-MCP prompts remain outside the current integration (`src/shared/mcp/integration.ts`). MCP server resources are available
+MCP prompts remain outside the current integration (`packages/pi-ai/mcp.ts`). MCP server resources are available
 on request through Pi resource tools. These are MCP features, not separate mandatory ACP v1 agent methods. Provider
 management, Session fork, and NES are not counted as missing stable v1 requirements here.
 

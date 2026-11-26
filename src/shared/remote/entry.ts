@@ -139,7 +139,7 @@ export async function runRemoteView(): Promise<void> {
     const lifetime = new Promise<void>((resolve) => (end = resolve));
     const signals = ["SIGTERM", "SIGHUP"] as const;
     try {
-        const { configureRemoteModelConnection } = await import("../models/model-registry.ts");
+        const { configureRemoteModelConnection } = await import("@runwield/pi-ai/models");
         clearModels = await configureRemoteModelConnection(config.connection);
         const { configureGuideRunner } = await import("../../ui/workspace/routes/api/review-agent-handlers.ts");
         const { runRemoteGuideCommand } = await import("./guide-runner.ts");

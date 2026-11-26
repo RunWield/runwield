@@ -6,7 +6,7 @@ import type {
     RuntimeAssistantThinkingDeltaEvent,
     RuntimeAssistantThinkingEndEvent,
 } from "./session-runtime-events.ts";
-import type { RunWieldModel } from "../models/model-registry.ts";
+import type { RunWieldModel } from "@runwield/pi-ai/models";
 import type { ExecutionSession } from "./execution-backend.ts";
 import type { DisposableLike } from "./hosted-session.ts";
 interface QueueFixtureEvent {
@@ -61,7 +61,7 @@ import {
     getCurrentTools,
 } from "@earendil-works/pi-ai";
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { ExtensionRunner, SessionManager } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../settings.ts";
@@ -71,7 +71,7 @@ import { switchActiveAgent } from "./agent-switching.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import { RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
 import { createSessionRuntime, SessionRuntime, SessionTurnInProgressError } from "./session-runtime.ts";
-import { buildAgentSession, getRootSessionRebuildOptions } from "./session.ts";
+import { getRootSessionRebuildOptions } from "./session.ts";
 import { createRootSessionManager, getRunWieldSessionDir, resolveCreatedRootSessionPath } from "./root-session.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { sessionDirForRoot } from "./file-session-storage.ts";
@@ -80,7 +80,8 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 import { getPlanRevisionForText } from "@runwield/plans/format";
 
 import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
-import { McpIntegration } from "../mcp/integration.ts";
+import { startMcpIntegration } from "@runwield/pi-ai/mcp";
+import { mcpFixtureHost, mcpFixtureServer } from "../mcp/integration-fixture.ts";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import { buildSemanticRepairSegmentContinuation } from "../workflow/execution-segment-handoff.ts";
 import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "@runwield/workflow/events";
@@ -4121,7 +4122,7 @@ test("SessionRuntime close operations dispose sessions by id", async () => {
     assertEquals(runtime.listSessions(), []);
 });
 
-test("SessionRuntime close settles cleanup when MCP pool close fails", async () => {
+test("SessionRuntime close settles cleanup when MCP pool close fails", async (t) => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
@@ -4130,16 +4131,29 @@ test("SessionRuntime close settles cleanup when MCP pool close fails", async () 
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event.type);
     });
-    const pool = new McpIntegration();
+    const { integration: pool } = await startMcpIntegration({
+        ...mcpFixtureHost(runtimeProjectRoot()),
+        servers: [mcpFixtureServer()],
+    });
     // Failure comes from the external Pi SDK; retain the real integration close path.
-    const { session: sdk } = await buildAgentSession({ cwd: runtimeProjectRoot(), agentName: "guide" });
-    const runner = sdk.extensionRunner;
-    if (!runner) throw new Error("Real Pi extension runner was not initialized");
-    runner.emit = () => Promise.reject(new Error("fixture SDK shutdown failed"));
-    pool.setSession(sdk);
+    const emit = ExtensionRunner.prototype.emit;
+    let mcpShutdownFailed = false;
+    t.mock.method(
+        ExtensionRunner.prototype,
+        "emit",
+        async function (this: ExtensionRunner, event: Parameters<typeof emit>[0]) {
+            const result = await emit.call(this, event);
+            if (event.type === "session_shutdown" && this.getCommand("mcp")) {
+                mcpShutdownFailed = true;
+                throw new Error("fixture SDK shutdown failed");
+            }
+            return result;
+        },
+    );
     await hostedSession.setMcpIntegration(pool);
 
     assertEquals(await runtime.closeSession(sessionId), { ok: true, closed: true });
+    assertEquals(mcpShutdownFailed, true);
 
     assertEquals(runtime.getSessionSnapshot(sessionId), null);
     assertEquals(runtime.listSessions(), []);

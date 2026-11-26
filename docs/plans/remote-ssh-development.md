@@ -6,7 +6,7 @@ affectedPaths:
     - "src/cli.ts"
     - "src/cmd/registry.js"
     - "src/shared/settings.ts"
-    - "src/shared/models/model-registry.ts"
+    - "packages/pi-ai/model-registry.ts"
     - "src/shared/session/"
     - "src/extensions/"
     - "src/shared/mcp/"
@@ -441,7 +441,7 @@ platform scope, trust, persistence ownership, or dependency strategy returns for
 - `src/cli.ts`, `src/cmd/registry.js` — remote entry, arguments, launch context, visible host/directory.
 - `src/shared/settings.ts`, `src/shared/session/agents.ts`, `agent-assets.js`, `named-invocation.ts`, and `session.js` —
   local personal authority, remote project precedence, mounted resource paths, both skill loaders, child context.
-- `src/shared/models/model-registry.ts`, `src/shared/session/backends/` — local model runtime, remote catalog/stream
+- `packages/pi-ai/model-registry.ts`, `src/shared/session/backends/` — local model runtime, remote catalog/stream
   contract, supported-backend checks, refresh and cancellation.
 - `src/shared/session/root-session.ts`, `file-session-*.ts`, `session-runtime.js`, `segment-rollover.ts`,
   `session-resume-list.ts`, and `image-attachments.ts` — explicit remote identity, mounted Pi files, local

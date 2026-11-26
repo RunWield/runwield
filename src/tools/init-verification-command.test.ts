@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import { join } from "node:path";
-import { parse as parseJsonc } from "../shared/jsonc.ts";
+import { parse as parseJsonc } from "@runwield/parsing/jsonc";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import {
     createInitVerificationCommandOperation,

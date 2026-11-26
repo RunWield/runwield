@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
-import type { JsonRecord } from "../../../shared/jsonc.ts";
+import type { JsonRecord } from "@runwield/parsing/jsonc";
 import {
     resumeCorruptSessionScenario,
     resumeInterruptedSessionScenario,

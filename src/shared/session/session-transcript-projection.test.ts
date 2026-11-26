@@ -737,7 +737,8 @@ test("accepted workflow transitions replay their result even when the tool stopp
     ]);
     assertEquals(triage[0].type, "tool_end");
     assertEquals(triage[0].toolName, "triage_report");
-    assertEquals(triage[0].details!.summary, "Fix the broken image send.");
+    const details = triage[0].details;
+    assertEquals(details && "summary" in details ? details.summary : undefined, "Fix the broken image send.");
 });
 
 test("Session replay preserves images and every text block as one user message", () => {

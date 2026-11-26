@@ -1,5 +1,5 @@
 import { getCwd } from "../constants.ts";
-import type { JsonRecord } from "./jsonc.ts";
+import type { JsonRecord } from "@runwield/parsing/jsonc";
 import { getCustomSetting, setCustomSetting } from "./settings.ts";
 
 // Consent uses settings; ordinary Git operations must not load the agent runtime

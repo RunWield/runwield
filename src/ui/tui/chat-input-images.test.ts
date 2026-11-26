@@ -220,7 +220,7 @@ test("rejected image steering restores the draft and preview without queuing ano
                 // the real registry and Session model setting, then retry the same draft.
                 models.providers["runtime-command-fixture"].models[0].input = ["text", "image"];
                 await writeFile(modelsPath, JSON.stringify(models));
-                const { getModelRegistry } = await import("../../shared/models/model-registry.ts");
+                const { getModelRegistry } = await import("@runwield/pi-ai");
                 await getModelRegistry().refresh();
                 await runtime.setSessionModel(sessionId, "fixture-model", "runtime-command-fixture");
                 terminal.pressEnter();

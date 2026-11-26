@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { createProvider, InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";
-import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
+import { handleModelRequest, LocalModelBridge } from "@runwield/pi-ai/remote-models";
 
 test("bounded Pi loader rejects a personal prompt link into a server file", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));

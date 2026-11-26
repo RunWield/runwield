@@ -2,7 +2,7 @@ import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { JsonRecord } from "../jsonc.ts";
+import type { JsonRecord } from "@runwield/parsing/jsonc";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.ts";
 import type { OwnerCoordinationDatabase } from "./database.ts";

@@ -1,10 +1,5 @@
-import {
-    createAgentSession,
-    createCodemodeExtension,
-    DefaultResourceLoader,
-    SessionManager,
-    SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { codingAgent } from "@runwield/pi-ai/coding-agent";
+import { createCodemodeExtension, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,21 +8,20 @@ import { join } from "node:path";
 /** Execute real local reads through Pi's tool pipeline in the packaged QuickJS worker. */
 export async function checkPackagedCodemode(): Promise<void> {
     const cwd = await mkdtemp(join(tmpdir(), "runwield-codemode-package-"));
-    const loader = new DefaultResourceLoader({
-        cwd,
-        agentDir: cwd,
-        noExtensions: true,
-        noSkills: true,
-        noPromptTemplates: true,
-        noContextFiles: true,
-        extensionFactories: [createCodemodeExtension()],
-    });
     let session;
     try {
         await writeFile(join(cwd, "left.txt"), "20");
         await writeFile(join(cwd, "right.txt"), "22");
-        await loader.reload();
-        ({ session } = await createAgentSession({
+        const loader = await codingAgent.loadResources({
+            cwd,
+            agentDir: cwd,
+            noExtensions: true,
+            noSkills: true,
+            noPromptTemplates: true,
+            noContextFiles: true,
+            extensionFactories: [createCodemodeExtension()],
+        });
+        ({ session } = await codingAgent.create({
             cwd,
             agentDir: cwd,
             settingsManager: SettingsManager.inMemory(),

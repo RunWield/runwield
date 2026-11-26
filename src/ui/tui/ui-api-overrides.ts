@@ -1,13 +1,8 @@
 /** Chat-session-specific input and model-selection behavior. */
 
 import { type Component, type Container, type Editor, Key, matchesKey, type TUI } from "@earendil-works/pi-tui";
-import { getModelRegistry } from "../../shared/models/model-registry.ts";
+import { getModelRegistry, type ActiveModelState } from "@runwield/pi-ai";
 import { RunWieldModelSelectorComponent } from "./model-selector.ts";
-
-interface ActiveModelState {
-    model: string;
-    provider?: string;
-}
 
 interface ModelActivationResult {
     status?: "active" | "deferred";

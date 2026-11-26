@@ -19,7 +19,7 @@ import { EMPTY_PROJECT_DIRECTORY_INIT_NOOP_BODY, isEmptyProjectDirectory } from 
 import { bundledSkills } from "../../shared/session/skill-assets.ts";
 import { extractBundledModelPresets } from "../../shared/model-presets.ts";
 import { createSessionRuntime, SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getModelRegistry } from "../../shared/models/model-registry.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
 import { getCustomSetting, getSettingsManager } from "../../shared/settings.ts";
 import { printCommandHelp } from "../help/index.ts";
 import { recordInitDone, recordInitOffered } from "./init-state.ts";

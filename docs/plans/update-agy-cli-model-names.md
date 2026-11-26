@@ -4,7 +4,7 @@ classification: "PLANNED_CHANGE"
 workKind: "MAINTENANCE"
 complexity: "MEDIUM"
 affectedPaths:
-    - "src/shared/models/model-registry.ts"
+    - "packages/pi-ai/model-registry.ts"
     - "src/shared/session/backends/agy-cli"
     - "src/shared/session/session-transcript-projection.ts"
     - "src/model-presets/agy.json"
@@ -102,7 +102,7 @@ during implementation and change whatever the Implementation Steps need, includi
 only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
-- `src/shared/models/model-registry.ts` — current selectable family IDs and display names; preserve exact-price lookup.
+- `packages/pi-ai/model-registry.ts` — current selectable family IDs and display names; preserve exact-price lookup.
 - `src/shared/session/backends/agy-cli/model-options.ts`, `command.ts`, and `execution-session.ts` — valid family-specific effort mapping, command types, and verified returned model identity.
 - `src/shared/session/backends/agy-cli/image-generation.ts` — shared mapping must still produce a valid concrete supervising-model ID.
 - `src/shared/session/session-transcript-projection.ts` — accept new verified evidence and preserve valid historical Pro facts.

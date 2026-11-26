@@ -1,3 +1,4 @@
+import type { ToolResult } from "@runwield/pi-ai/turn";
 import type { ComponentProps, ToggleEvent } from "react";
 import type { ImageReference } from "../../../shared/session/named-invocation.ts";
 import type { DeliveryReport, DeliveryReportArtifact } from "../../../shared/workflow/delivery-report.ts";
@@ -7,11 +8,7 @@ import type {
     RuntimeInteractionOption,
     RuntimeInteractionRequest,
 } from "../../../shared/session/session-runtime-interactions.ts";
-import type {
-    RuntimeToolResult,
-    RuntimeUsage,
-    RuntimeValidationProgress,
-} from "../../../shared/session/session-runtime-events.ts";
+import type { RuntimeUsage, RuntimeValidationProgress } from "../../../shared/session/session-runtime-events.ts";
 import { DeliveryReportCard } from "./DeliveryReportCard.tsx";
 import { useEffect, useRef, useState } from "react";
 import { WORKFLOW_TOOL_NAMES } from "../../../tools/registry.ts";
@@ -89,7 +86,7 @@ export interface TimelineEvent {
     delta?: string;
     toolName?: string;
     title?: string;
-    details?: RuntimeToolResult["details"];
+    details?: ToolResult["details"];
     output?: string;
     isError?: boolean;
     interactionType?: string;
