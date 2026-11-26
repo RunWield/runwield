@@ -54,7 +54,7 @@ async function searchFixture(name: string, searchOptions: { scanIntervalMs?: num
     const root = join(dir, "project");
     await fsMkdir(root, { recursive: true });
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
-    const project = store.registerProject({ root, displayName: "Search Project" });
+    const project = store.projects.register({ root, displayName: "Search Project" });
     const search = createWorkspaceSearchService({ store, dbPath: join(dir, "search.sqlite3"), ...searchOptions });
     await search.refresh();
     return {
@@ -106,7 +106,7 @@ test("Workspace search keeps deterministic order across Projects and applies the
         await fsMkdir(join(secondRoot, "docs", "prd"), { recursive: true });
         await fsWriteFile(join(fixture.root, "docs", "prd", "one.md"), "# Shared exact\n\nMulti Project needle.\n");
         await fsWriteFile(join(secondRoot, "docs", "prd", "two.md"), "# Shared exact\n\nMulti Project needle.\n");
-        const second = fixture.store.registerProject({ root: secondRoot, displayName: "Second Project" });
+        const second = fixture.store.projects.register({ root: secondRoot, displayName: "Second Project" });
         await fixture.search.refresh();
         const all = await fixture.search.search({ query: "Shared exact" });
         const repeated = await fixture.search.search({ query: "Shared exact" });
@@ -272,7 +272,7 @@ test("Workspace search quarantines a newer database and rebuilds recoverable res
     newer.close();
     const ownerDbPath = join(dir, "owner.sqlite3");
     const store = openOwnerCoordinationStore({ dbPath: ownerDbPath });
-    store.registerProject({ root });
+    store.projects.register({ root });
     let search = createWorkspaceSearchService({ store, dbPath });
     try {
         await search.refresh();
@@ -310,7 +310,7 @@ test("Workspace search quarantines a corrupt database and rebuilds recoverable r
     await fsWriteFile(join(root, "docs", "prd", "recovered.md"), "# Recovered\n\nCorrupt recovery needle.\n");
     await fsWriteFile(dbPath, "not a sqlite database");
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
-    store.registerProject({ root });
+    store.projects.register({ root });
     const search = createWorkspaceSearchService({ store, dbPath });
     try {
         await search.refresh();
@@ -334,7 +334,7 @@ test("owner Workspace app closes and reopens durable Search state", async () => 
     await fsMkdir(join(root, "docs", "prd"), { recursive: true });
     await fsWriteFile(join(root, "docs", "prd", "restart.md"), "# App Restart\n\nApp restart needle.\n");
     let store = openOwnerCoordinationStore({ dbPath: ownerDbPath });
-    store.registerProject({ root });
+    store.projects.register({ root });
     let app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
     try {
         await app.workspaceSearch.refresh();
@@ -363,7 +363,7 @@ test("production Workspace HTTP server closes and restarts Search", async () => 
     await reservation.shutdown();
     const origin = `http://127.0.0.1:${port}`;
     let store = openOwnerCoordinationStore({ dbPath: ownerDbPath });
-    store.registerProject({ root });
+    store.projects.register({ root });
     const pairing = store.createPairingRequest({ codeFactory: () => "SEA123", proofFactory: () => "proof" });
     store.approvePairingRequest(pairing.code);
     const claimed = store.claimPairingRequest(pairing.proof, {
@@ -639,7 +639,7 @@ test(
             await fsMkdir(join(fixture.root, "docs", "prd"), { recursive: true });
             await fsMkdir(join(secondRoot, "docs"), { recursive: true });
             execFileSync("mkfifo", [pipePath]);
-            fixture.store.registerProject({ root: secondRoot, displayName: "ZZ Second Project" });
+            fixture.store.projects.register({ root: secondRoot, displayName: "ZZ Second Project" });
 
             firstScan = fixture.search.refresh();
             // A nonblocking writer can connect only once the real reader has opened
@@ -688,7 +688,7 @@ test("Workspace refresh reads through registry writer locks and sees new files o
     const secondPath = join(fixture.dir, "locked-project");
     await fsMkdir(secondPath);
     const secondRoot = await fsRealpath(secondPath);
-    fixture.store.registerProject({ root: secondRoot, displayName: "ZZ Locked Project" });
+    fixture.store.projects.register({ root: secondRoot, displayName: "ZZ Locked Project" });
     await fsMkdir(join(fixture.root, "docs", "prd"), { recursive: true });
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -962,8 +962,8 @@ test("owner search uses each registered Project's Plan authority and filters by 
         await create(other.identity, {
             documents: { "context.md": "# Other private home Plan\n", "validation.md": "# Validation\n" },
         });
-        const project = store.registerProject({ root: f.root });
-        const unrelated = store.registerProject({ root: other.root });
+        const project = store.projects.register({ root: f.root });
+        const unrelated = store.projects.register({ root: other.root });
         let record;
         search = await withPlanAccess(f.root, (await selectPlanAccess(f.root, "plan-one"))!, async () => {
             record = await restoreWorkRecordDocument(f.root, recordAttrs(), recordBody);

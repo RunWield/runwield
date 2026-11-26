@@ -91,15 +91,7 @@ export interface OwnerCoordinationStore extends Pick<
     sessionStorageDirectory: string;
     close: () => void;
     projects: ProjectRegistry;
-    registerProject: ProjectRegistry["register"];
-    listProjects: ProjectRegistry["list"];
-    getProjectById: ProjectRegistry["get"];
-    getProjectHealth: ProjectRegistry["getHealth"];
     listProjectRootEvidence: FileSessionStore["listProjectRootEvidence"];
-    setProjectStatus: ProjectRegistry["setStatus"];
-    removeProject: ProjectRegistry["remove"];
-    relinkProject: ProjectRegistry["relink"];
-    requireActiveProjectRoot: ProjectRegistry["requireActiveRoot"];
     requireSessionProjectRoot: (projectId: string) => string;
     createPairingRequest: (
         options?: Parameters<typeof createPairingRequest>[1],
@@ -178,14 +170,6 @@ export function openOwnerCoordinationStore(options: OpenOwnerCoordinationStoreOp
             }
         },
         projects,
-        registerProject: projects.register,
-        listProjects: projects.list,
-        getProjectById: projects.get,
-        getProjectHealth: projects.getHealth,
-        setProjectStatus: projects.setStatus,
-        removeProject: projects.remove,
-        relinkProject: projects.relink,
-        requireActiveProjectRoot: projects.requireActiveRoot,
         ensureRuntimeProject: (projectOptions) => sessionStore.ensureRuntimeProject(projectOptions),
         listSessionProjects: () => sessionStore.listSessionProjects(),
         getSessionProjectById: (projectId) => sessionStore.getSessionProjectById(projectId),

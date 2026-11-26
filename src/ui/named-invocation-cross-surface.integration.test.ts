@@ -401,7 +401,7 @@ async function runWorkspaceSurface(projectRoot: string): Promise<SurfaceSummary>
     const store = openOwnerCoordinationStore();
     const service = new WorkspaceSessionContinuationService({ store });
     try {
-        const project = store.registerProject({ root: projectRoot });
+        const project = store.projects.register({ root: projectRoot });
         const created = await service.createSession({
             projectId: project.projectId,
             requestId: "workspace-cross-surface",
@@ -563,7 +563,7 @@ test("Workspace follows a conflicting template into its new Session and keeps pl
                 throw new Error("Workspace operation did not reach the expected state");
             };
             try {
-                const project = store.registerProject({ root: projectRoot });
+                const project = store.projects.register({ root: projectRoot });
                 const started = await service.createSession({
                     projectId: project.projectId,
                     requestId: "plan",

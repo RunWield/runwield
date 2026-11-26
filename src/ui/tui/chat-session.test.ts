@@ -183,7 +183,7 @@ test("chat session starts in a Project registered by Workspace", async () => {
         const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
         const readySessions: string[] = [];
         try {
-            store.registerProject({ root: projectRoot, now: () => "2026-01-01T00:00:01.000Z" });
+            store.projects.register({ root: projectRoot, now: () => "2026-01-01T00:00:01.000Z" });
             process.chdir(projectRoot);
             const composition = await createInteractiveTuiComposition(null, {
                 browser: NO_OPEN_BROWSER_PORT,

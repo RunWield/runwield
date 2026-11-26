@@ -138,16 +138,16 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Verification Plan
 
-Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Existing focused regression command:
+Use the Bun version in the checkout’s root `.bun-version` and run `./scripts/with-bun.sh run install:locked` before checks. Existing focused regression command:
 
 ```sh
-bun scripts/run-tests.js src/shared/project-directory.test.ts src/shared/owner-coordination/projects.test.ts src/shared/remote/personal-resources.test.ts
+./scripts/with-bun.sh scripts/run-tests.ts packages/projects/directory.test.ts packages/projects/registration.test.ts src/shared/owner-coordination/projects.test.ts src/shared/remote/personal-resources.test.ts
 ```
 
 Add and run these focused behavior tests (new files, not an existing passing inventory):
 
 ```sh
-bun scripts/run-tests.js src/shared/project-identity.test.ts src/shared/project-identity.integration.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/project-runtime-passive-access.test.ts
+./scripts/with-bun.sh scripts/run-tests.ts packages/projects/identity.test.ts packages/projects/identity.integration.test.ts src/shared/project-identity.integration.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/project-runtime-passive-access.test.ts
 ```
 
 Use `defineGitFixture`, real stores/repositories, disposable homes, and child processes for concurrent admission.

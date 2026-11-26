@@ -26,7 +26,7 @@ for (const withSession of [false, true]) {
         await withRuntimeCommandFixture("workspace-held-", async () => {
             const root = await repository.checkout();
             const store = openOwnerCoordinationStore();
-            const project = store.registerProject({ root });
+            const project = store.projects.register({ root });
             const runtime = createSessionRuntime({ sessionStore: store });
             const service = new WorkspaceSessionContinuationService({ store });
             try {
@@ -120,7 +120,7 @@ test("Workspace opens saved Plan review without a Session, deduplicates concurre
     await withRuntimeCommandFixture("workspace-unassociated-", async ({ setModelResponseFactory }) => {
         const root = await repository.checkout();
         const store = openOwnerCoordinationStore();
-        const project = store.registerProject({ root });
+        const project = store.projects.register({ root });
         const service = new WorkspaceSessionContinuationService({ store });
         const restarted = new WorkspaceSessionContinuationService({ store });
         try {

@@ -39,7 +39,7 @@ test("owner dashboard stream authenticates and completes with verified rows", as
             status: "user_verified",
             userVerifiedAt: new Date().toISOString(),
         });
-        store.registerProject({ root, displayName: "Test Project" });
+        store.projects.register({ root, displayName: "Test Project" });
         const app = appObject.handler();
         const url = "http://127.0.0.1:8787/api/owner/dashboard/stream";
         assertEquals((await app(new Request(url))).status, 401);
@@ -95,7 +95,7 @@ test("dashboard reads an empty Project without waiting for its registry writer l
         const registryPath = getWorktreeRegistryPath(root);
         await fsMkdir(dirname(registryPath), { recursive: true });
         await fsWriteFile(registryPath, JSON.stringify({ version: 2, entries: [] }));
-        store.registerProject({ root, displayName: "Empty" });
+        store.projects.register({ root, displayName: "Empty" });
         // Passive reads use the saved registry and do not acquire the writer lock.
         await withWorktreeRegistryLock(root, async () => {
             dashboardRead = loadOwnerDashboard(store, continuation);
@@ -342,8 +342,8 @@ test("unreadable publication registry fails the finished card before unrelated P
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const gate = Promise.withResolvers<void>();
     try {
-        store.registerProject({ root: first, displayName: "Publication" });
-        const other = store.registerProject({ root: second, displayName: "Other" });
+        store.projects.register({ root: first, displayName: "Publication" });
+        const other = store.projects.register({ root: second, displayName: "Other" });
         await seedPlan(first, "validated", "# Validated\n", {
             planId: "validated-plan",
             classification: "PLANNED_CHANGE",
@@ -412,7 +412,7 @@ test("standalone Sessions linked to one on-hold Plan remain distinct", async () 
     await fsMkdir(root);
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     try {
-        const project = store.registerProject({ root, displayName: "Test" });
+        const project = store.projects.register({ root, displayName: "Test" });
         await seedPlan(root, "held", "# Held\n", { planId: "held-plan", classification: "PLANNED_CHANGE", status: "on_hold" });
         const operation = (sessionId: string) => ({
             projectId: project.projectId,
@@ -640,7 +640,7 @@ test("top-level sidebar priority stays ahead of explicit Plan order in both read
     await fsMkdir(root);
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
     try {
-        store.registerProject({ root, displayName: "Priority" });
+        store.projects.register({ root, displayName: "Priority" });
         await seedPlan(root, "held", "# Held", { planId: "held-id", status: "on_hold", order: 1 });
         await seedPlan(root, "ready", "# Ready", { planId: "ready-id", status: "ready_for_work", order: 10 });
         const continuation = {
@@ -671,7 +671,7 @@ for (const reader of [loadOwnerDashboard, loadOwnerSidebar]) {
         await fsMkdir(root);
         const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
         try {
-            store.registerProject({ root, displayName: "Children" });
+            store.projects.register({ root, displayName: "Children" });
             await seedPlan(root, "epic", "# Epic", { planId: "epic-id", classification: "PROJECT" });
             for (const child of [
                 { name: "z-first", order: 1, status: "on_hold" },
@@ -721,8 +721,8 @@ test("dashboard keeps Promise identity and publishes later Project while first w
         release = resolve;
     });
     try {
-        const firstProject = store.registerProject({ root: first, displayName: "Blocked" });
-        store.registerProject({ root: second, displayName: "Available" });
+        const firstProject = store.projects.register({ root: first, displayName: "Blocked" });
+        store.projects.register({ root: second, displayName: "Available" });
         await seedPlan(second, "finished", "# Finished\n", {
             planId: "available-plan",
             classification: "PLANNED_CHANGE",

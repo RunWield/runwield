@@ -66,7 +66,7 @@ for (const resumeStatus of ["in_progress", "failed"]) {
             async ({ setModelResponseFactory, setModelResponseFactories }) => {
                 const root = await repository.checkout();
                 const store = openOwnerCoordinationStore();
-                const project = store.registerProject({ root });
+                const project = store.projects.register({ root });
                 const runtime = createSessionRuntime({ sessionStore: store });
                 const service = new WorkspaceSessionContinuationService({ store });
                 try {

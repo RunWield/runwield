@@ -41,7 +41,7 @@ test("managed deferred messages deliver once and canceled messages stay cleared 
                 ownerInstanceId: "managed-queue-lifecycle-owner",
             });
             try {
-                store.registerProject({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
+                store.projects.register({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
                 const created = await runtime.createSession({ cwd });
                 await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
                 const managed = runtime.getSessionSnapshot(created.sessionId)?.managed;

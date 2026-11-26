@@ -28,7 +28,7 @@ async function createManagedFixture(tutorialContext: TutorialContext | null = nu
     const root = join(dir, "repo");
     await fsMkdir(root);
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
-    const project = store.registerProject({ root, now: () => "t0" });
+    const project = store.projects.register({ root, now: () => "t0" });
     const manager = await createRootSessionManager("new", root);
     manager.appendMessage({ role: "user", timestamp: Date.now(), content: [{ type: "text", text: "before" }] });
     const piSessionId = manager.getSessionId();

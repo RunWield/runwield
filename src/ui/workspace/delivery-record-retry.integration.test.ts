@@ -21,7 +21,7 @@ for (const missing of [false, true]) {
             const root = await repository.checkout();
             return await withRetainedPlanFixture(root, async () => {
                 const store = openOwnerCoordinationStore();
-                const project = store.registerProject({ root });
+                const project = store.projects.register({ root });
                 const runtime = createSessionRuntime({ sessionStore: store });
                 const service = new WorkspaceSessionContinuationService({ store });
                 let turns = 0;

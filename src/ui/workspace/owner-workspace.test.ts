@@ -183,8 +183,8 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             credentialFactory: () => "credential-secret",
             csrfFactory: () => "csrf-secret",
         });
-        const project = store.registerProject({ root: projectRoot, displayName: "Owner Project" });
-        const otherProject = store.registerProject({ root: otherProjectRoot, displayName: "Other Project" });
+        const project = store.projects.register({ root: projectRoot, displayName: "Owner Project" });
+        const otherProject = store.projects.register({ root: otherProjectRoot, displayName: "Other Project" });
         let closedConnections = 0;
         appObject = /** @type {any} */ createOwnerWorkspaceApp({
             mode: "owner",
@@ -628,7 +628,7 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         assertEquals(rescanText.includes("sessionPath"), false);
         assertEquals(rescanText.includes('"cwd"'), false);
 
-        store.setProjectStatus(project.projectId, "inactive");
+        store.projects.setStatus(project.projectId, "inactive");
         let inactiveCatalogCalled = false;
         store.catalogProjectSessions = () => {
             inactiveCatalogCalled = true;
@@ -648,8 +648,8 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         );
         assertEquals(inactiveRescan.status, 400);
         assertEquals(inactiveCatalogCalled, false);
-        store.setProjectStatus(project.projectId, "active");
-        store.removeProject(project.projectId);
+        store.projects.setStatus(project.projectId, "active");
+        store.projects.remove(project.projectId);
         let removedCatalogCalled = false;
         store.catalogProjectSessions = () => {
             removedCatalogCalled = true;
@@ -669,7 +669,7 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         );
         assertEquals(removedRescan.status, 400);
         assertEquals(removedCatalogCalled, false);
-        assertEquals(store.getProjectById(project.projectId), null);
+        assertEquals(store.projects.get(project.projectId), null);
 
         const badUpgradeOrigin = await app(
             new Request("http://127.0.0.1:8787/api/owner/future-socket", {
@@ -755,7 +755,7 @@ test("owner Workspace keeps read-only Project Plan progress API and removes prog
             credentialFactory: () => "credential-secret",
             csrfFactory: () => "csrf-secret",
         });
-        const project = store.registerProject({ root: projectRoot, displayName: "Owner Project" });
+        const project = store.projects.register({ root: projectRoot, displayName: "Owner Project" });
         const app = ownerApp.handler();
         const api = await app(
             new Request(
@@ -819,7 +819,7 @@ test("owner add and relink expose redacted confirmation before writes and keep a
         const warning: OwnerDirectoryConfirmationResponse = await refusal.json();
         assertEquals(warning.code, "directory_confirmation_required");
         assertEquals(JSON.stringify(warning).includes(root), false);
-        assertEquals(store.listProjects(), []);
+        assertEquals(store.projects.list(), []);
         const alias = `${dir}/root-alias`;
         await fsSymlink(root, alias);
         assertEquals(
@@ -836,7 +836,7 @@ test("owner add and relink expose redacted confirmation before writes and keep a
                 .status,
             409,
         );
-        assertEquals(store.listProjects(), []);
+        assertEquals(store.projects.list(), []);
         const ordinary = await request("/api/owner/projects", { root: dir });
         assertEquals(ordinary.status, 201);
         const projectId = (await ordinary.json()).project.projectId;
@@ -881,7 +881,7 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     let appObject;
     try {
-        const project = store.registerProject({ root: projectRoot, displayName: "Owner Project" });
+        const project = store.projects.register({ root: projectRoot, displayName: "Owner Project" });
         appObject = /** @type {any} */ createOwnerWorkspaceApp({
             mode: "owner",
             publicOrigin: "http://127.0.0.1:8787",
@@ -981,7 +981,7 @@ test("owner Workspace reviews a complete Sequence and rejects stale sibling evid
                 order: index + 1,
             });
         }
-        const project = store.registerProject({ root, displayName: "Sequence project" });
+        const project = store.projects.register({ root, displayName: "Sequence project" });
         const service = new WorkspaceSessionContinuationService({ store });
         const documents = await withLocalPlanWorkflow(root, "sequence", () => prepareSequenceReview(root, "sequence"));
         const packageInput = await withLocalPlanWorkflow(root, "sequence", () =>

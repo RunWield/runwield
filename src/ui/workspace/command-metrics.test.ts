@@ -29,8 +29,8 @@ test("Owner command observations require authentication, catalog names, and a re
                 credentialFactory: () => "credential-secret",
                 csrfFactory: () => "csrf-secret",
             });
-            const project = store.registerProject({ root: projectRoot, displayName: "Metrics fixture" });
-            const canonicalRoot = store.requireActiveProjectRoot(project.projectId);
+            const project = store.projects.register({ root: projectRoot, displayName: "Metrics fixture" });
+            const canonicalRoot = store.projects.requireActiveRoot(project.projectId);
             await setCustomSetting("workflowMetrics", true, "project", canonicalRoot);
             const endpoint = `http://127.0.0.1:8787/api/owner/projects/${project.projectId}/command-metrics`;
             const payload = {
@@ -165,7 +165,7 @@ test("Owner rejects a real Session linked to another registered Project", async 
     const first = await makeManagedSessionFixture();
     const second = await makeManagedSessionFixture();
     const store = first.openStore();
-    const otherProject = store.registerProject({ root: second.projectRoot, displayName: "Other Project" });
+    const otherProject = store.projects.register({ root: second.projectRoot, displayName: "Other Project" });
     const otherDir = join(
         first.home,
         ".wld",

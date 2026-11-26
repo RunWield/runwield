@@ -45,7 +45,7 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
             const root = await repository.checkout();
             const worktreeRoot = await fsMkdtemp(join(tmpdir(), "workspace-gate-tree-"));
             const store = openOwnerCoordinationStore();
-            const project = store.registerProject({ root });
+            const project = store.projects.register({ root });
             const runtime = createSessionRuntime({ sessionStore: store });
             const service = new WorkspaceSessionContinuationService({ store });
             try {

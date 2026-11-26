@@ -79,7 +79,7 @@ test("unified Workspace search ranks canonical sources and opens Project artifac
     });
     const { store, ownerApp, app } = pairedApp(dir);
     try {
-        const project = store.registerProject({ root, displayName: "Search Project" });
+        const project = store.projects.register({ root, displayName: "Search Project" });
         await ownerApp.workspaceSearch.refresh();
         const headers = { cookie: cookiePair("credential-secret") };
         const response = await app(
@@ -123,7 +123,7 @@ test("unified Workspace search ranks canonical sources and opens Project artifac
         assertEquals(staleDestination.status, 200);
         assertStringIncludes(await staleDestination.text(), "Replaced content");
 
-        store.setProjectStatus(project.projectId, "inactive");
+        store.projects.setStatus(project.projectId, "inactive");
         const inactiveResponse = await app(
             new Request("http://127.0.0.1:8787/api/owner/search?q=Searchable%20Compass", { headers }),
         );
@@ -293,17 +293,17 @@ test("Project settings stays accessible when its root disappears or its registra
         assertStringIncludes(inactiveHtml, 'data-action="set-status" data-project-status="active"');
         assertStringIncludes(inactiveHtml, "inactive · missing");
         assertEquals((await action({ action: "relink", newRoot: movedRoot })).status, 200);
-        const inactiveHealth = store.getProjectHealth(project.projectId);
+        const inactiveHealth = store.projects.getHealth(project.projectId);
         assertEquals(inactiveHealth.projectStatus, "inactive");
         assertEquals(inactiveHealth.status, "available");
         assertEquals((await action({ action: "set-status", status: "active" })).status, 200);
-        assertEquals(store.getProjectHealth(project.projectId).projectStatus, "active");
+        assertEquals(store.projects.getHealth(project.projectId).projectStatus, "active");
         const repaired = await app(new Request(settingsUrl, { headers }));
         assertEquals(repaired.status, 200);
         assertStringIncludes(await repaired.text(), "available");
         assertEquals((await action({ action: "remove" })).status, 200);
         assertEquals((await fsStat(movedRoot)).isDirectory(), true);
-        assertEquals(store.listProjects(), []);
+        assertEquals(store.projects.list(), []);
         assertEquals((await app(new Request(settingsUrl, { headers }))).status, 404);
         const projectsPage = await app(new Request("http://127.0.0.1:8787/projects", { headers }));
         assertEquals((await projectsPage.text()).includes("Moved Project"), false);
@@ -417,10 +417,10 @@ test("Removing and re-adding a Project preserves file-authoritative Session hist
     try {
         const { store, project, projectRoot, transcriptPath, session } = fixture;
         const transcript = await fsReadFile(transcriptPath, "utf8");
-        store.removeProject(project.projectId);
-        assertEquals(store.getProjectById(project.projectId), null);
+        store.projects.remove(project.projectId);
+        assertEquals(store.projects.get(project.projectId), null);
         assertEquals(await fsReadFile(transcriptPath, "utf8"), transcript);
-        const added = store.registerProject({ root: projectRoot });
+        const added = store.projects.register({ root: projectRoot });
         assertEquals(added.projectId, project.projectId);
         await store.catalogProjectSessions(added.projectId, { fullRescan: true });
         const rediscovered = await store.listProjectSessions(added.projectId);
@@ -511,7 +511,7 @@ test("Dashboard shares concurrent reads but refreshes evidence after they finish
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const sessions = createWorkspaceSessionContinuationService({ store });
     try {
-        store.registerProject({ root: projectRoot, displayName: "Project" });
+        store.projects.register({ root: projectRoot, displayName: "Project" });
         const first = loadOwnerDashboard(store, sessions);
         const concurrent = loadOwnerDashboard(store, sessions);
         assertStrictEquals(first, concurrent);
@@ -571,8 +571,8 @@ test("personal remote Workspace v2 Dashboard returns eligible completions for cl
     });
     const { store, ownerApp, app } = pairedApp(dir);
     try {
-        const registeredOne = store.registerProject({ root: projectOne, displayName: "One" });
-        store.registerProject({ root: projectTwo, displayName: "Two" });
+        const registeredOne = store.projects.register({ root: projectOne, displayName: "One" });
+        store.projects.register({ root: projectTwo, displayName: "Two" });
         const response = await app(
             new Request("http://127.0.0.1:8787/api/owner/dashboard", {
                 headers: { cookie: cookiePair("credential-secret"), accept: "application/json" },
@@ -635,7 +635,7 @@ test("Dashboard ignores historical attention flags and sorts all ready Plans by 
     await fsMkdir(root);
     const { store, ownerApp, app } = pairedApp(dir);
     try {
-        store.registerProject({ root, displayName: "Project" });
+        store.projects.register({ root, displayName: "Project" });
         for (const status of [
             "draft",
             "feedback",
@@ -900,7 +900,7 @@ test("personal remote Workspace v2 Dashboard uses live evidence for active work 
         verifiedAt: new Date().toISOString(),
     });
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
-    store.registerProject({ root: projectRoot });
+    store.projects.register({ root: projectRoot });
     const sessionContinuation = createWorkspaceSessionContinuationService({ store });
     try {
         const payload = await loadOwnerDashboard(store, sessionContinuation);

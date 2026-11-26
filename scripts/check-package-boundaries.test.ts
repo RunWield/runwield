@@ -247,21 +247,34 @@ test("independent packages cannot reach root src through aliases, public exports
     ]);
 });
 
-test("agent package tests must use portable fixtures", async (context) => {
-    const { lintRepository } = await makeRepository(context, {
-        "packages/agents/package.json": JSON.stringify({ name: "@runwield/agents", exports: "./index.ts" }),
-        "packages/agents/index.ts": "export {};",
-        "packages/agents/registry.test.ts": 'import "../../src/testing/lock.ts";',
-        "src/testing/lock.ts": "export {};",
+for (const domain of ["agents", "projects"]) {
+    test(`${domain} package tests must use portable fixtures`, async (context) => {
+        const directory = `packages/${domain}`;
+        const testFile = `${directory}/registry.test.ts`;
+        const { lintRepository } = await makeRepository(context, {
+            [`${directory}/package.json`]: JSON.stringify({ name: `@runwield/${domain}`, exports: "./index.ts" }),
+            [`${directory}/index.ts`]: "export {};",
+            [testFile]: [
+                'import "../../src/testing/lock.ts";',
+                'const childModule = import.meta.resolve("../../src/constants.ts");',
+            ].join("\n"),
+            "src/testing/lock.ts": "export {};",
+            "src/constants.ts": "export {};",
+        });
+        assert.deepEqual(lintRepository(), [
+            {
+                file: testFile,
+                line: 1,
+                message: `@runwield/${domain} depends on root src/: ${testFile} -> src/testing/lock.ts.`,
+            },
+            {
+                file: testFile,
+                line: 2,
+                message: `@runwield/${domain} depends on root src/: ${testFile} -> src/constants.ts.`,
+            },
+        ]);
     });
-    assert.deepEqual(lintRepository(), [
-        {
-            file: "packages/agents/registry.test.ts",
-            line: 1,
-            message: "@runwield/agents depends on root src/: packages/agents/registry.test.ts -> src/testing/lock.ts.",
-        },
-    ]);
-});
+}
 
 test("reports type-only package cycles downstream of an independent package", async (context) => {
     const { lintRepository } = await makeRepository(context, {

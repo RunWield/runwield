@@ -36,7 +36,7 @@ async function withExportHome(run: (home: string, cwd: string) => Promise<void>)
 
 async function createExportFixture(home: string, cwd: string) {
     const store = openOwnerCoordinationStore({ dbPath: join(home, "owner.sqlite3") });
-    const project = store.registerProject({ root: cwd });
+    const project = store.projects.register({ root: cwd });
     const manager = await createRootSessionManager("new", cwd);
     manager.appendSessionInfo("Complete export");
     manager.appendMessage({ role: "user", timestamp: Date.now(), content: "plan the export" });
