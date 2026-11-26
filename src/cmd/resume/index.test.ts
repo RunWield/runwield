@@ -125,7 +125,7 @@ test("runResumeCommand loads, replaces, and replays a real persisted session", a
         const seeded = seedPersistedSession(projectRoot);
         const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const runtime = createSessionRuntime({ sessionStore: store });
-        const current = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const current = await runtime.createSession({ cwd: projectRoot });
         const ui = makeUi([seeded.path]);
         let replacementId = "";
         try {
@@ -159,7 +159,7 @@ test("runResumeCommand falls back to read-only when another terminal claims a li
         });
         let replacementId = "";
         try {
-            const cataloged = await runtime.loadSession({
+            const cataloged = await runtime.resumeSession({
                 cwd: projectRoot,
                 sessionId: seeded.id,
                 sessionPath: seeded.path,
@@ -168,7 +168,7 @@ test("runResumeCommand falls back to read-only when another terminal claims a li
             if (!managed) throw new Error("Fixture Session was not cataloged");
             await runtime.closeSession(cataloged.sessionId);
 
-            const current = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const current = await runtime.createSession({ cwd: projectRoot });
             const ui = makeUi([seeded.path]);
             const selectListedSession = ui.uiAPI.promptSelect;
             let claimed = false;
@@ -218,7 +218,7 @@ test("runResumeCommand recovers an interrupted checkpoint and replays the commit
         const runtime = createSessionRuntime({ sessionStore: store });
         let unsubscribe = () => {};
         try {
-            const firstLoad = await runtime.loadSession({
+            const firstLoad = await runtime.resumeSession({
                 cwd: projectRoot,
                 sessionId: seeded.id,
                 sessionPath: seeded.path,
@@ -248,7 +248,7 @@ test("runResumeCommand recovers an interrupted checkpoint and replays the commit
             );
             store.markSessionUncertain(proof, { reason: "interrupted after a failed request" });
 
-            const current = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const current = await runtime.createSession({ cwd: projectRoot });
             const ui = makeUi([seeded.path]);
             const replayed: string[] = [];
             await runResumeCommand([], {
@@ -283,7 +283,7 @@ test("runResumeCommand offers full session names with date-only descriptions", a
         const seeded = seedPersistedSession(projectRoot, longMessage);
         const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const runtime = createSessionRuntime({ sessionStore: store });
-        const current = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const current = await runtime.createSession({ cwd: projectRoot });
         const ui = makeUi([]);
         try {
             await runResumeCommand([], {
@@ -317,7 +317,7 @@ test("runResumeCommand offers compaction from real transcript size and fixture s
         const seeded = seedPersistedSession(projectRoot, "large fixture context ".repeat(2000));
         const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const runtime = createSessionRuntime({ sessionStore: store });
-        const current = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const current = await runtime.createSession({ cwd: projectRoot });
         const ui = makeUi([seeded.path, "cancel"]);
         let replacementId = "";
         try {
@@ -350,7 +350,7 @@ test("runResumeCommand compacts a real loaded session through the faux model bou
             const seeded = seedPersistedSession(projectRoot, "compaction fixture context ".repeat(24000));
             const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
             const runtime = createSessionRuntime({ sessionStore: store });
-            const current = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const current = await runtime.createSession({ cwd: projectRoot });
             const ui = makeUi([seeded.path, "compact"]);
             let replacementId = "";
             const replayedStatuses: string[] = [];

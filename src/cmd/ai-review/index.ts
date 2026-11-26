@@ -62,7 +62,7 @@ export async function runAiReviewCommand(io: AiReviewCommandIo): Promise<number>
     }
 
     const runtime = createSessionRuntime({ ownerProcessKind: "workspace" });
-    const sessionId = await runtime.createPromptReadySession({ cwd: getCwd(), agentName: AGENTS.AI_REVIEWER });
+    const { sessionId } = await runtime.createSession({ cwd: getCwd(), agentName: AGENTS.AI_REVIEWER });
     const pendingUsageWrites: Promise<void>[] = [];
     const unsubscribe = runtime.subscribeSessionEvents(sessionId, (event: RuntimeUsageEventLike) => {
         if (!isRuntimeUsageEvent(event)) return;

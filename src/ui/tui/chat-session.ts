@@ -242,19 +242,27 @@ export async function startInteractiveSession(
     try {
         const sessionCwd = getCwd();
         const explicitOnboardingStartup = options.startupIntent === "onboard";
-        const createdSession = await sessionRuntime.createInteractiveSession({
-            cwd: sessionCwd,
-            mode: sessionStartMode,
-            resumeSessionId: continuation?.managed ? continuation.sessionId : options.resumeSessionId,
-            deferManagedActivationUntilAgentReady: shouldDeferManagedActivation,
-        });
-        let sessionId = createdSession.sessionId;
+        const resumedSession =
+            sessionStartMode === "continue"
+                ? await sessionRuntime.resumeSession({
+                      cwd: sessionCwd,
+                      sessionId: continuation?.sessionId ?? options.resumeSessionId,
+                      sessionPath: continuation && !continuation.managed ? continuation.sessionPath : undefined,
+                  })
+                : null;
+        const session =
+            resumedSession ??
+            (await sessionRuntime.createSession({
+                cwd: sessionCwd,
+                deferPersistenceUntilFirstMessage: shouldDeferManagedActivation,
+            }));
+        let sessionId = session.sessionId;
+        const sessionStartedAt = "startedAt" in session ? session.startedAt : new Date().toISOString();
         const runtimeSnapshot = () => getRuntimeSnapshot(sessionRuntime, sessionId);
         options.onSessionReady?.(sessionId, sessionRuntime);
         const documentLinks = new DocumentLinkHost(runtimeSnapshot().cwd);
         disposables.push(() => documentLinks.dispose());
         initSettings(runtimeSnapshot().cwd);
-        const sessionStartedAt = createdSession.startedAt;
         let sessionStartedEmptyProjectDirectory = false;
         try {
             sessionStartedEmptyProjectDirectory =

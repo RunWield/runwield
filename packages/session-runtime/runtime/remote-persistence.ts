@@ -182,7 +182,7 @@ export class RemoteSessionPersistence {
         }
     }
 
-    async resume(session: HostedSession, sessionId: string): Promise<void> {
+    async resume(session: HostedSession, sessionId: string) {
         const hydrated = await this.#hydrate(session, await this.control.begin(sessionId));
         try {
             const entries = [hydrated.manager.getHeader()!, ...hydrated.manager.getEntries()];
@@ -195,7 +195,7 @@ export class RemoteSessionPersistence {
             await withProjectRuntimeReadScope(() => restoreExecutionWorkflow(session, { persist: false }));
             await this.control.checkpoint(hydrated.operation);
             session.dehydrateManagedSession();
-            await this.synchronize(session, records);
+            return (await this.synchronize(session, records)) || [];
         } catch (error) {
             await this.control.markUncertain(hydrated.operation).catch(() => {});
             if (!session.disposed) session.dehydrateManagedSession();
@@ -258,6 +258,7 @@ export class RemoteSessionPersistence {
             session.restoreActiveExecutionWorkflow(null, null);
         session.replaceWorkflowContext(workflowContext, { persist: false });
         session.setManagedMetadata({ ...metadata, workflowContext, remoteRecords });
+        return saved.entries;
     }
 
     async discard(sessionId: string): Promise<void> {

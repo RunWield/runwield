@@ -33,7 +33,7 @@ test("Operator accepts a follow-up after task_completed settles", async () => {
         const store = openFileSessionStore();
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             const first = await runtime.promptUserTurn(sessionId, { initialRequest: "Perform the operation." });
             assertEquals(first.ok, true);
             const managedId = runtime.getSessionSnapshot(sessionId)?.managed?.runwieldSessionId || "";

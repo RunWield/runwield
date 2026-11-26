@@ -25,7 +25,7 @@ test("closeSession waits for the outer managed operation before disposal", async
             let prompt: Promise<{ ok: boolean; turns: number; error?: string }> | null = null;
             try {
                 store.registerProject({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
-                const created = await runtime.createInteractiveSession({ cwd, mode: "new" });
+                const created = await runtime.createSession({ cwd });
                 await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
                 const managed = runtime.getSessionSnapshot(created.sessionId)?.managed;
                 if (!managed) throw new Error("Expected managed Session metadata");
@@ -70,7 +70,7 @@ test("closeSession waits for the outer managed operation before disposal", async
                 const transcript = await fsReadFile(cataloged.transcriptPath, "utf8");
                 assertEquals(transcript.includes("hold the managed operation open"), true);
 
-                const reopened = await runtime.loadSession({
+                const reopened = await runtime.resumeSession({
                     cwd,
                     sessionId: cataloged.piSessionId,
                     sessionPath: cataloged.transcriptPath,

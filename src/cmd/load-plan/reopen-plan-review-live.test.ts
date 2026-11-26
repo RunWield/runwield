@@ -15,7 +15,7 @@ test("reopening a live review returns its address without opening another review
         const runtime = createSessionRuntime({ sessionStore: ownerStore, ownerProcessKind: "test" });
         const pending = Promise.withResolvers<{ outcome: "canceled" }>();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             let presentations = 0;
             const presented = Promise.withResolvers<void>();
             runtime.setInteractionAdapter(sessionId, {

@@ -168,7 +168,7 @@ async function checkCleanupRestart(
                 const sourceBranch = await git(root, ["branch", "--list", "worktree/demo"]);
                 const worktreeList = await git(root, ["worktree", "list", "--porcelain"]);
 
-                const sessionId = await runtime.createPromptReadySession({ cwd: root, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: root, agentName: "router" });
                 const messages: string[] = [];
                 const prompts: string[] = [];
                 let cleanupSelected = false;

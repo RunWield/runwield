@@ -149,10 +149,11 @@ export async function runStandaloneReview(
                 const worktree = await ensureReviewWorktree(target);
                 if (!sessionId) {
                     print(`Engineer workspace: ${worktree.path} (${worktree.branch})`);
-                    sessionId = await runtime.createPromptReadySession({
+                    const created = await runtime.createSession({
                         cwd: worktree.path,
                         agentName: AGENTS.ENGINEER,
                     });
+                    sessionId = created.sessionId;
                     print(`Engineer Session: ${sessionId}`);
                     unsubscribe = runtime.subscribeSessionEvents(sessionId, (event) => {
                         if (event.type === "assistant_text_delta") {

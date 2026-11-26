@@ -1211,7 +1211,7 @@ async function seedGoldenPriorSession(
                   ]
                 : []),
         ]);
-        const created = await runtime.createInteractiveSession({ cwd: getCwd(), mode: "new" });
+        const created = await runtime.createSession({ cwd: getCwd() });
         if (priorSession.agentName) await runtime.switchAgent(created.sessionId, { agentName: priorSession.agentName });
         await runtime.promptSession(created.sessionId, { initialRequest: priorSession.userText });
         if (priorSession.planName) {
@@ -1307,7 +1307,7 @@ async function seedGoldenCorruptSession(fauxProvider: ReturnType<typeof register
                     text: "This transcript will be corrupted after it is safely closed.",
                 }),
         ]);
-        const created = await runtime.createInteractiveSession({ cwd: getCwd(), mode: "new" });
+        const created = await runtime.createSession({ cwd: getCwd() });
         await runtime.switchAgent(created.sessionId, { agentName: "guide" });
         await runtime.promptSession(created.sessionId, { initialRequest: "seed corrupt resume fixture" });
         const sessionManagerId = runtime.getSessionSnapshot(created.sessionId)?.sessionManagerId;

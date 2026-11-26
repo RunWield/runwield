@@ -61,9 +61,7 @@ test("a Session reopens the current saved Plan after its pending review process 
                 join(homeDir, "owner.sqlite3"),
             )} });
             const runtime = createSessionRuntime({ sessionStore: ownerStore, ownerProcessKind: "test" });
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: ${JSON.stringify(
-                projectRoot,
-            )}, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: ${JSON.stringify(projectRoot)} });
             runtime.setInteractionAdapter(sessionId, {
                 requestInteraction(request) {
                     if (request.type !== RuntimeInteractionTypes.PLAN_REVIEW) throw new Error("Unexpected interaction");
@@ -140,10 +138,9 @@ test("a Session reopens the current saved Plan after its pending review process 
                 const ownerStore = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
                 const runtime = createSessionRuntime({ sessionStore: ownerStore, ownerProcessKind: "test" });
                 try {
-                    const resumed = await runtime.createInteractiveSession({
+                    const resumed = await runtime.resumeSession({
                         cwd: projectRoot,
-                        mode: "continue",
-                        resumeSessionId: persistentId,
+                        sessionId: persistentId,
                     });
                     let reviewedContent = "";
                     runtime.setInteractionAdapter(resumed.sessionId, {
@@ -217,9 +214,7 @@ test("Workspace opens and approves a saved Plan review after its owner is SIGKIL
             )};
             const store = openOwnerCoordinationStore({ dbPath: ${JSON.stringify(join(homeDir, "owner.sqlite3"))} });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: ${JSON.stringify(
-                projectRoot,
-            )}, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: ${JSON.stringify(projectRoot)} });
             const persistentId = runtime.getSessionSnapshot(sessionId).managed.runwieldSessionId;
             const projectId = store.getSessionById(persistentId).projectId;
             if (store.registerProject({ root: ${JSON.stringify(projectRoot)} }).projectId !== projectId) throw new Error("Workspace and Session identity differ");

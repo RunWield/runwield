@@ -338,7 +338,7 @@ test("managed Pair discussion restores the owner, tool, cwd, and checkpoint cont
             if (approvalEvidence.kind !== "success") throw new Error(approvalEvidence.message);
             const sessionHost = new SessionHost();
             const runtime = makeRuntime(sessionHost);
-            const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
             let activeRuntime = runtime;
             let activeSessionId = sessionId;
             let reloadedRuntime: SessionRuntime | null = null;
@@ -427,7 +427,7 @@ test("managed Pair discussion restores the owner, tool, cwd, and checkpoint cont
                 };
                 await runtime.closeAllSessionsWhenIdle?.();
                 reloadedRuntime = makeRuntime(new SessionHost());
-                const loaded = await reloadedRuntime.loadSession({
+                const loaded = await reloadedRuntime.resumeSession({
                     cwd: projectRoot,
                     sessionId: sessionInfo.persistedId,
                     sessionPath: sessionInfo.file,
@@ -496,7 +496,7 @@ test("resuming a session whose persisted workflow owner is engineer activates Pl
         // with a Plan executor.
         const sessionHost = new SessionHost();
         const runtime = makeRuntime(sessionHost);
-        const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+        const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
         const agentChanges: string[] = [];
         runtime.subscribeSessionEvents(sessionId, (event: { type?: string; agentName?: string }) => {
             if (event.type === RuntimeEventTypes.AGENT_CHANGED && event.agentName) agentChanges.push(event.agentName);
@@ -540,7 +540,7 @@ test("a QUICK_FIX workflow resumes under the selectable Engineer, not Plan Engin
         // of a Plan tells the two apart.
         const sessionHost = new SessionHost();
         const runtime = makeRuntime(sessionHost);
-        const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+        const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
         let promptedSystemPrompt = "";
         setModelResponseFactory((context: TranscriptContext) => {
             promptedSystemPrompt = getCurrentSystemPrompt(context.messages);
@@ -580,7 +580,7 @@ test("restored autonomous Plan execution retains Plan Deviation availability", a
             if (evidence.kind !== "success") throw new Error(evidence.message);
             const runtime = makeRuntime(new SessionHost());
             let restored: SessionRuntime | null = null;
-            const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
             const toolLists: string[][] = [];
             const response = (context: TranscriptContext) => {
                 toolLists.push(getCurrentTools(context.messages).map((tool) => tool.name));
@@ -600,7 +600,7 @@ test("restored autonomous Plan execution retains Plan Deviation availability", a
                 const info = (await runtime.getSessionInfo(sessionId)) as SavedSessionInfo;
                 await runtime.closeAllSessionsWhenIdle?.();
                 restored = makeRuntime(new SessionHost());
-                const loaded = await restored.loadSession({
+                const loaded = await restored.resumeSession({
                     cwd: projectRoot,
                     sessionId: info.persistedId,
                     sessionPath: info.file,
@@ -799,7 +799,7 @@ for (const legacy of [false, true]) {
                 if (evidence.kind !== "success") throw new Error(evidence.message);
                 const runtime = makeRuntime(new SessionHost());
                 let restored: SessionRuntime | null = null;
-                const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
                 const toolLists: string[][] = [];
                 const response = (context: TranscriptContext) => {
                     toolLists.push(getCurrentTools(context.messages).map((tool) => tool.name));
@@ -843,7 +843,7 @@ for (const legacy of [false, true]) {
                         });
                     }
                     restored = makeRuntime(new SessionHost());
-                    const loaded = await restored.loadSession({
+                    const loaded = await restored.resumeSession({
                         cwd: projectRoot,
                         sessionId: info.persistedId,
                         sessionPath: info.file,

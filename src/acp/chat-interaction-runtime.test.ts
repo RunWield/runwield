@@ -20,7 +20,7 @@ for (const type of ["select", "text", "approval", "plan_review"] as const) {
                 ownerInstanceId: crypto.randomUUID(),
             });
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 const planId = crypto.randomUUID();
                 if (type === "plan_review")
                     await seedPlan(projectRoot, "review-chat-boundary", "# Review", {
@@ -67,10 +67,7 @@ for (const type of ["select", "text", "approval", "plan_review"] as const) {
                         runtime.answerInteraction(sessionId, "chat-question", reply, source),
                         type !== "plan_review",
                     );
-                    assertEquals(
-                        session.notificationSurface,
-                        type === "plan_review" ? "tui" : (source ?? "tui"),
-                    );
+                    assertEquals(session.notificationSurface, type === "plan_review" ? "tui" : (source ?? "tui"));
                     if (type === "plan_review") controller.abort();
                     assertEquals((await pending).outcome, type === "plan_review" ? "canceled" : reply.outcome);
                     assertEquals(runtime.answerInteraction(sessionId, "chat-question", reply, "acp"), false);

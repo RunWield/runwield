@@ -75,10 +75,9 @@ test("collected producer evidence agrees with the owner report and Langfuse acro
             let lostSpanId = "";
             async function pi() {
                 model.respond(fauxAssistantMessage(PRIVATE_TEXT));
-                const created = await runtime.createInteractiveSession({
+                const created = await runtime.createSession({
                     cwd: root,
-                    mode: "new",
-                    deferManagedActivationUntilAgentReady: true,
+                    deferPersistenceUntilFirstMessage: true,
                 });
                 runtime.markPromptReadyAgent(created.sessionId, { agentName: "router" });
                 const result = await runtime.promptUserTurn(created.sessionId, { initialRequest: PRIVATE_TEXT });

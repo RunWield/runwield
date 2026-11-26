@@ -95,7 +95,7 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                         { expectedRevision: plan.revision },
                     );
                 }
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: root, agentName: "engineer" });
+                const { sessionId } = await runtime.createSession({ cwd: root, agentName: "engineer" });
                 await runtime.recordPlanAssociation(sessionId, {
                     planId: "earlier-plan-id",
                     planName: "earlier-plan",

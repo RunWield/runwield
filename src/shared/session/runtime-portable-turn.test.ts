@@ -18,7 +18,7 @@ test("portable runtime resumes provider context across close and reopen", async 
                 ownerInstanceId: crypto.randomUUID(),
             });
             try {
-                const id = await runtime.createPromptReadySession({ cwd: projectRoot });
+                const { sessionId: id } = await runtime.createSession({ cwd: projectRoot, selectDefaultAgent: true });
                 await runtime.promptUserTurn(id, { initialRequest: "Say hello." });
                 equal(await runtime.getLastAssistantText(id), "Portable turn completed.");
                 const managed = runtime.getSessionSnapshot(id)?.managed;

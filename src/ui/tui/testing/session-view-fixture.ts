@@ -26,7 +26,7 @@ export async function withSessionViewFixture(run: (fixture: SessionViewFixture) 
             ownerInstanceId: crypto.randomUUID(),
         });
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await run({ runtime, host, sessionId, session: host.requireSession(sessionId), store, projectRoot });
         } finally {
             await runtime.closeAllSessions();

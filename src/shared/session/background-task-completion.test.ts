@@ -110,7 +110,7 @@ for (const recallLaterMessage of [false, true]) {
                         },
                     ]);
                     try {
-                        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                        const created = await runtime.createSession({ cwd: projectRoot });
                         sessionId = created.sessionId;
                         await runtime.switchAgent(sessionId, { agentName: "engineer" });
                         runtime.subscribeSessionEvents(sessionId, (event) => {
@@ -210,7 +210,7 @@ test("completion during generated result acquisition prevents model dispatch", a
             ownerInstanceId: crypto.randomUUID(),
         });
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
             const completions: Array<Promise<{ details: { outcome: string } }>> = [];
             let parentEnded = false;
@@ -272,7 +272,7 @@ test("completion during generated result owner alignment rejects the stale turn"
                 ownerInstanceId: crypto.randomUUID(),
             });
             try {
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await runtime.createSession({ cwd: projectRoot });
                 await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
                 assertEquals(
                     (await runtime.promptUserTurn(created.sessionId, { initialRequest: "Start task." })).ok,
@@ -362,7 +362,7 @@ test("completion after generated turn acceptance prevents final model dispatch",
             let releasePreparation = () => {};
             let settlementTimeout: ReturnType<typeof setTimeout> | undefined;
             try {
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await runtime.createSession({ cwd: projectRoot });
                 await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
                 const session = host.requireSession(created.sessionId);
                 releasePreparation = () => session.completeAgentSteeringPreparation("hold-generated-prompt");
@@ -496,7 +496,7 @@ test("fresh work in the same Session receives new background results after compl
         ]);
         const runtime = createSessionRuntime({ ownerProcessKind: "test" });
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
             assertEquals(
                 (await runtime.promptUserTurn(created.sessionId, { initialRequest: "Complete old work." })).ok,
@@ -547,7 +547,7 @@ test("task_completed warns before cancelling a running shell task and does not d
         ]);
         const runtime = createSessionRuntime({ ownerProcessKind: "test" });
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
             runtime.subscribeSessionEvents(created.sessionId, (event) => {
                 if (event.type !== RuntimeEventTypes.TOOL_END) return;

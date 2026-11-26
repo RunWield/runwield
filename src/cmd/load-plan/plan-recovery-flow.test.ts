@@ -270,7 +270,7 @@ async function writeUnresolvedTransitionRecord(
 
 async function makeSession(projectRoot: string): Promise<PlanSessionSurface> {
     const runtime = createSessionRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
+    const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "guide" });
     sessionRuntimes.set(sessionId, runtime);
     return createPlanSessionSurface(runtime, sessionId, {
         executePlan: (options) => runtime.executePlan(sessionId, options),

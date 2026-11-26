@@ -14,10 +14,9 @@ test("a real managed text prompt records human activity independently of present
         await setCustomSetting("workflowMetrics", true, "project", fixture.projectRoot);
         const runtime = createSessionRuntime({ sessionStore: null, ownerProcessKind: "test" });
         try {
-            const created = await runtime.createInteractiveSession({
+            const created = await runtime.createSession({
                 cwd: fixture.projectRoot,
-                mode: "new",
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
             runtime.markPromptReadyAgent(created.sessionId, { agentName: "router" });
             const result = await runtime.promptUserTurn(created.sessionId, {

@@ -12,7 +12,7 @@ export async function approveAndCommit(cwd: string, signal?: AbortSignal, state:
     const before = (state.baselineHead ??= currentHead);
     const pendingPush = currentHead !== before && !(await git(cwd, ["status", "--porcelain"]));
     const runtime = createSessionRuntime({ ownerProcessKind: "workspace" });
-    const id = await runtime.createPromptReadySession({ cwd, agentName: AGENTS.OPERATOR });
+    const { sessionId: id } = await runtime.createSession({ cwd, agentName: AGENTS.OPERATOR });
     let turnError = "";
     const cancel = () => {
         void runtime.cancelSession(id);

@@ -117,7 +117,7 @@ export async function runJourneyRecovery(
     await git(root, ["commit", "-m", "Journey recovery Plans"]);
     for (const name of ["ongoing", "abandon"]) {
         if (name === "ongoing") {
-            const created = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
+            const created = await runtime.createSession({ cwd: root });
             let interrupted = false;
             interruptNext(() => {
                 interrupted = runtime.cancelSession(created.sessionId).aborted;
@@ -159,7 +159,7 @@ export async function runJourneyRecovery(
             worktreeBaseBranch: entry.baseBranch,
             executionBaselineTree: await git(entry.path, ["rev-parse", "HEAD^{tree}"]),
         });
-        const created = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
+        const created = await runtime.createSession({ cwd: root });
         const surface = createPlanSessionSurface(runtime, created.sessionId, {
             executePlan: (options) => runtime.executePlan(created.sessionId, options),
             runPlanningAgent: (options) => runtime.runPlanningAgent(created.sessionId, options),

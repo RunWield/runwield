@@ -39,7 +39,7 @@ test("saved Epic chat review keeps one conversation and live page across two run
         const conversations: Array<{ id: string; events: Array<{ delta: string }> }> = [];
         const turns: boolean[] = [];
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             runtime.setInteractionAdapter(sessionId, {
                 async requestInteraction(
                     request: Parameters<typeof requestLocalReviewInteraction>[0],

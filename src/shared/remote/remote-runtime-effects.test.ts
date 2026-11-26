@@ -241,7 +241,10 @@ for (const boundary of ["handoff", "validation", "repair", "publication"] as con
                 let ci = 0;
                 scriptReviewAndRecord(f);
                 try {
-                    const id = await runtime.createPromptReadySession({ cwd: f.remoteProject, agentName: "engineer" });
+                    const { sessionId: id } = await runtime.createSession({
+                        cwd: f.remoteProject,
+                        agentName: "engineer",
+                    });
                     await runtime.promptUserTurn(id, {
                         agentName: "engineer",
                         initialRequest: "Run the local boundary scenario.",

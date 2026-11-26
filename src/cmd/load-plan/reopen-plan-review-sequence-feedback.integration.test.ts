@@ -36,7 +36,7 @@ test("reopened Sequence combines container and child feedback for its planning A
             const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 const persistentId = runtime.getSessionSnapshot(sessionId)?.managed?.runwieldSessionId;
                 runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
                 await runtime.requestInteraction(sessionId, {

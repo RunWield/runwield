@@ -38,7 +38,7 @@ test("record retry belongs to the active Session and cancellation preserves deli
         });
         const runtime = createSessionRuntime({ ownerProcessKind: "test" });
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             const retry = runtime.retryWorkRecord(sessionId, "delivered");
             await started;
             assertEquals(runtime.getSessionSnapshot(sessionId)?.busy, true);

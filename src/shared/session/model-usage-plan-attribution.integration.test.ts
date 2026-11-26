@@ -41,7 +41,7 @@ test("production Pi turns link committed implementation, but not earlier or unsc
         setModelResponse("Fixture answer.");
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "General discussion." })).ok, true);
             const before = await readUsage(projectRoot);
@@ -104,7 +104,7 @@ test("delayed Pi reconciliation retains the original local day and committed Pla
         });
         try {
             setSystemTime(new Date("2026-11-02T04:59:00Z"));
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             const hosted = sessionHost.getSession(sessionId);
             assert(hosted);

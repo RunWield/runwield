@@ -44,6 +44,7 @@ import {
     realpath as fsRealpath,
     rm as fsRm,
     stat as fsStat,
+    utimes as fsUtimes,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { mkdirSync as fsMkdirSync, statSync as fsStatSync, writeFileSync as fsWriteFileSync } from "node:fs";
@@ -382,10 +383,6 @@ test("SessionRuntime restores the previous user model override when active root 
 });
 
 type FixtureModel = Partial<Pick<RunWieldModel, "provider" | "input" | "executionBackend" | "contextWindow">>;
-interface ReplayFixtureResult {
-    sessionManagerId: Awaited<ReturnType<SessionRuntime["loadSession"]>>["sessionManagerId"];
-    replayEvents: SessionRuntimeEvent[];
-}
 type PersistedFixtureMessage = Parameters<SessionManager["appendMessage"]>[0];
 interface FixtureMessage {
     role: string;
@@ -470,7 +467,7 @@ function makeSteeringAgentSession() {
 
 test("SessionRuntime exposes opaque ids and snapshots, never HostedSession objects", async () => {
     const runtime = makeRuntime();
-    const created = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
+    const created = await runtime.createSession({ cwd: runtimeProjectRoot() });
 
     assertEquals(typeof created.sessionId, "string");
     assertEquals(await fsRealpath(created.cwd), await fsRealpath(runtimeProjectRoot()));
@@ -574,13 +571,9 @@ test("SessionRuntime snapshots tolerate a streaming assistant message without us
 
 test("SessionRuntime rejects non-absolute session roots", async () => {
     const runtime = makeRuntime();
+    await assertRejects(() => runtime.createSession({ cwd: "relative/project" }), Error, "requires an absolute cwd");
     await assertRejects(
-        () => runtime.createInteractiveSession({ cwd: "relative/project" }),
-        Error,
-        "requires an absolute cwd",
-    );
-    await assertRejects(
-        () => runtime.loadSession({ cwd: "relative/project", sessionId: "persisted" }),
+        () => runtime.resumeSession({ cwd: "relative/project", sessionId: "persisted" }),
         Error,
         "requires an absolute cwd",
     );
@@ -594,13 +587,9 @@ test("SessionRuntime blocks Pi-backed create and load when owner coordination is
         ownerProcessKind: "test",
         ownerInstanceId: crypto.randomUUID(),
     });
+    await assertRejects(() => runtime.createSession({ cwd: runtimeProjectRoot() }), Error, "session_store_unavailable");
     await assertRejects(
-        () => runtime.createInteractiveSession({ cwd: runtimeProjectRoot(), mode: "new" }),
-        Error,
-        "session_store_unavailable",
-    );
-    await assertRejects(
-        () => runtime.loadSession({ cwd: runtimeProjectRoot(), sessionId: "persisted" }),
+        () => runtime.resumeSession({ cwd: runtimeProjectRoot(), sessionId: "persisted" }),
         Error,
         "session_store_unavailable",
     );
@@ -616,10 +605,9 @@ test("SessionRuntime uses the model selected by image preflight for submission",
                 return fauxAssistantMessage(fauxText("SessionRuntime fixture response."));
             });
             const runtime = createSessionRuntime();
-            const created = await runtime.createInteractiveSession({
+            const created = await runtime.createSession({
                 cwd: projectRoot,
-                mode: "new",
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
             try {
                 const image = { base64: btoa("img"), mimeType: "image/png" };
@@ -677,10 +665,9 @@ test("SessionRuntime keeps a prepared image model through Prompt Template prefli
                 return fauxAssistantMessage(fauxText("Template image response."));
             });
             const runtime = createSessionRuntime();
-            const created = await runtime.createInteractiveSession({
+            const created = await runtime.createSession({
                 cwd: projectRoot,
-                mode: "new",
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
             try {
                 const image = { base64: btoa("img"), mimeType: "image/png" };
@@ -767,10 +754,9 @@ test("SessionRuntime rejects a persisted image before hydrating a deferred Sessi
             );
             __resetSettingsForTests();
             const runtime = createSessionRuntime();
-            const created = await runtime.createInteractiveSession({
+            const created = await runtime.createSession({
                 cwd: projectRoot,
-                mode: "new",
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
             const imagePath = join(projectRoot, "image.png");
             await fsWriteFile(imagePath, new TextEncoder().encode("img"));
@@ -808,9 +794,8 @@ test("SessionRuntime persists a newly managed Pi transcript before cataloging it
                 ownerInstanceId: "runtime-test-owner",
             });
             try {
-                const created = await runtime.createInteractiveSession({
+                const created = await runtime.createSession({
                     cwd,
-                    mode: "new",
                 });
                 assertEquals(typeof created.sessionManagerId, "string");
                 const managed = runtime.getSessionSnapshot(created.sessionId)?.managed;
@@ -1108,7 +1093,7 @@ test("SessionRuntime automatically segments new Sessions in unregistered local p
                 ownerInstanceId: "runtime-test-owner",
             });
             try {
-                const created = await runtime.createInteractiveSession({ cwd, mode: "new" });
+                const created = await runtime.createSession({ cwd });
                 const managed = runtime.getSessionSnapshot(created.sessionId)?.managed;
                 assertEquals(typeof managed?.runwieldSessionId, "string");
                 assertEquals(typeof managed?.currentSegmentId, "string");
@@ -1141,9 +1126,8 @@ test("SessionRuntime publishes generation zero before dehydrating newly managed 
                 ownerInstanceId: "runtime-test-owner",
             });
             try {
-                const created = await runtime.createInteractiveSession({
+                const created = await runtime.createSession({
                     cwd,
-                    mode: "new",
                 });
                 assertEquals(typeof created.sessionManagerId, "string");
                 const active = store.inspectSessionActivation(
@@ -1220,7 +1204,7 @@ test("SessionRuntime automatically recovers append-only output written before ge
                 ownerInstanceId: "resuming-owner",
             });
             try {
-                const loaded = await runtime.loadSession({ cwd, sessionId: session.runwieldSessionId });
+                const loaded = await runtime.resumeSession({ cwd, sessionId: session.runwieldSessionId });
                 assertEquals(loaded.sessionManagerId, piSessionId);
                 assertEquals(
                     runtime.getSessionSnapshot(loaded.sessionId)?.managed?.runwieldSessionId,
@@ -1251,7 +1235,7 @@ test("SessionRuntime synchronization recovers safe append-only output after a la
             ownerInstanceId: "runtime-recovery-owner",
         });
         try {
-            const sessionId = await runtime.createPromptReadySession({ cwd, agentName: "guide" });
+            const { sessionId } = await runtime.createSession({ cwd, agentName: "guide" });
             const managed = runtime.getSessionSnapshot(sessionId)?.managed;
             if (!managed) throw new Error("Fixture Session was not managed");
             const segment = store.getCurrentSessionSegment(managed.runwieldSessionId);
@@ -1312,7 +1296,7 @@ test("SessionRuntime does not emit unchanged current managed sync state on idle 
             });
             let runwieldSessionId = "";
             try {
-                const created = await writerRuntime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await writerRuntime.createSession({ cwd: projectRoot });
                 await writerRuntime.switchAgent(created.sessionId, { agentName: "Ideator" });
                 runwieldSessionId =
                     writerRuntime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
@@ -1327,10 +1311,9 @@ test("SessionRuntime does not emit unchanged current managed sync state on idle 
                 ownerInstanceId: "runtime-idle-sync-observer",
             });
             try {
-                const resumed = await observerRuntime.createInteractiveSession({
+                const resumed = await observerRuntime.resumeSession({
                     cwd: projectRoot,
-                    mode: "continue",
-                    resumeSessionId: runwieldSessionId,
+                    sessionId: runwieldSessionId,
                 });
                 await observerRuntime.synchronizeManagedSession(resumed.sessionId);
                 const events: string[] = [];
@@ -1365,10 +1348,9 @@ test("SessionRuntime hydrates dormant managed Sessions for direct Plan workflow 
                     ownerInstanceId: "runtime-test-owner",
                 });
                 try {
-                    const created = await runtime.createInteractiveSession({
+                    const created = await runtime.createSession({
                         cwd,
-                        mode: "new",
-                        deferManagedActivationUntilAgentReady: true,
+                        deferPersistenceUntilFirstMessage: true,
                     });
                     await runtime.switchAgent(created.sessionId, { agentName: "planner" });
                     assertEquals(runtime.getSessionSnapshot(created.sessionId)?.managed?.generation, 0);
@@ -1396,10 +1378,9 @@ test("SessionRuntime lazy materialization creates missing Project roots", async 
     ensureRuntimeModelFixture();
     const cwd = join(runtimeProjectRoot(), `lazy-missing-root-${crypto.randomUUID()}`);
     const runtime = createSessionRuntime({ sessionStore: null, ownerProcessKind: "test" });
-    const created = await runtime.createInteractiveSession({
+    const created = await runtime.createSession({
         cwd,
-        mode: "new",
-        deferManagedActivationUntilAgentReady: true,
+        deferPersistenceUntilFirstMessage: true,
     });
     try {
         runtime.markPromptReadyAgent(created.sessionId, { agentName: "router" });
@@ -1417,10 +1398,9 @@ test("SessionRuntime keeps first-turn materialization failures retryable", async
     const cwd = join(runtimeProjectRoot(), `lazy-file-root-${crypto.randomUUID()}`);
     await fsWriteFile(cwd, "not a directory");
     const runtime = createSessionRuntime({ sessionStore: null, ownerProcessKind: "test" });
-    const created = await runtime.createInteractiveSession({
+    const created = await runtime.createSession({
         cwd,
-        mode: "new",
-        deferManagedActivationUntilAgentReady: true,
+        deferPersistenceUntilFirstMessage: true,
     });
     try {
         runtime.markPromptReadyAgent(created.sessionId, { agentName: "router" });
@@ -1445,7 +1425,7 @@ test("SessionRuntime creates persisted Sessions outside Git without project runt
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-non-git-session-"));
     const runtime = createSessionRuntime({ ownerProcessKind: "test" });
     try {
-        const created = await runtime.createInteractiveSession({ cwd, mode: "new" });
+        const created = await runtime.createSession({ cwd });
         assert(typeof created.sessionManagerId === "string");
         await assertRejects(() => fsStat(join(cwd, ".wld", "internal")), Error, "ENOENT");
     } finally {
@@ -1467,10 +1447,9 @@ test("SessionRuntime can defer managed creation cataloging until Agent readiness
             ownerProcessKind: "test",
             ownerInstanceId: "runtime-test-owner",
         });
-        const created = await runtime.createInteractiveSession({
+        const created = await runtime.createSession({
             cwd,
-            mode: "new",
-            deferManagedActivationUntilAgentReady: true,
+            deferPersistenceUntilFirstMessage: true,
         });
         try {
             assertEquals(created.sessionManagerId, null);
@@ -1490,56 +1469,110 @@ test("SessionRuntime can defer managed creation cataloging until Agent readiness
     }
 });
 
-test("SessionRuntime opens explicitly requested saved Sessions by stable and Pi IDs", async () => {
+test("SessionRuntime creates a bare shell or initializes the requested Agent", async () => {
     ensureRuntimeModelFixture();
-    const cwd = join(runtimeProjectRoot(), `explicit-resume-${crypto.randomUUID()}`);
+    const cwd = join(runtimeProjectRoot(), `create-session-${crypto.randomUUID()}`);
     await fsMkdir(cwd, { recursive: true });
     const runtime = createDefaultSessionRuntime({ ownerProcessKind: "test" });
-    const saved: { piSessionId: string; runwieldSessionId: string }[] = [];
     try {
-        for (let index = 0; index < 2; index++) {
-            const created = await runtime.createInteractiveSession({ cwd, mode: "new" });
+        const shell = await runtime.createSession({ cwd });
+        assert(shell.sessionManagerId);
+        assertEquals(runtime.getSessionSnapshot(shell.sessionId)?.activeAgent, null);
+
+        const ready = await runtime.createSession({ cwd, agentName: "guide" });
+        assert(ready.sessionManagerId);
+        assertEquals(runtime.getSessionSnapshot(ready.sessionId)?.activeAgent, "guide");
+
+        const deferred = await runtime.createSession({
+            cwd,
+            agentName: "router",
+            deferPersistenceUntilFirstMessage: true,
+        });
+        assertEquals(deferred.sessionManagerId, null);
+        assertEquals(runtime.getSessionSnapshot(deferred.sessionId)?.activeAgent, "router");
+        assertEquals(runtime.getSessionSnapshot(deferred.sessionId)?.managed, null);
+
+        assertEquals((await runtime.promptUserTurn(deferred.sessionId, { initialRequest: "Hello." })).ok, true);
+        assert(runtime.getSessionSnapshot(deferred.sessionId)?.sessionManagerId);
+    } finally {
+        await runtime.closeAllSessionsWhenIdle();
+    }
+});
+
+test("SessionRuntime resumes the latest saved Session or the explicitly requested stable or Pi ID", async () => {
+    ensureRuntimeModelFixture();
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-resume-session-"));
+    const runtime = createDefaultSessionRuntime({ ownerProcessKind: "test" });
+    try {
+        assertEquals(await runtime.resumeSession({ cwd }), null);
+
+        const saved: { piSessionId: string; runwieldSessionId: string; modified: Date }[] = [];
+        for (const modified of [new Date("2026-07-02T00:00:00Z"), new Date("2026-07-01T00:00:00Z")]) {
+            const created = await runtime.createSession({ cwd });
             const snapshot = runtime.getSessionSnapshot(created.sessionId);
             assert(snapshot?.sessionManagerId);
             assert(snapshot.managed?.runwieldSessionId);
             saved.push({
                 piSessionId: snapshot.sessionManagerId,
                 runwieldSessionId: snapshot.managed.runwieldSessionId,
+                modified,
             });
+            await runtime.closeSession(created.sessionId);
         }
         assertEquals(new Set(saved.map((session) => session.piSessionId)).size, 2);
         assertEquals(new Set(saved.map((session) => session.runwieldSessionId)).size, 2);
-    } finally {
-        await runtime.closeAllSessionsWhenIdle();
-    }
 
-    const resumedRuntime = createDefaultSessionRuntime({ ownerProcessKind: "test" });
-    try {
-        for (const { piSessionId, runwieldSessionId } of saved) {
+        for (const { piSessionId, runwieldSessionId, modified } of saved) {
             for (const sessionId of [runwieldSessionId, piSessionId]) {
-                const continued = await resumedRuntime.createInteractiveSession({
-                    cwd,
-                    mode: "continue",
-                    resumeSessionId: sessionId,
-                });
-                assertEquals(continued.sessionManagerId, piSessionId);
+                const resumed = await runtime.resumeSession({ cwd, sessionId });
+                assertEquals(resumed.sessionManagerId, piSessionId);
                 assertEquals(
-                    resumedRuntime.getSessionSnapshot(continued.sessionId)?.managed?.runwieldSessionId,
+                    runtime.getSessionSnapshot(resumed.sessionId)?.managed?.runwieldSessionId,
                     runwieldSessionId,
                 );
-                await resumedRuntime.closeSession(continued.sessionId);
-
-                const loaded = await resumedRuntime.loadSession({ cwd, sessionId });
-                assertEquals(loaded.sessionManagerId, piSessionId);
-                assertEquals(
-                    resumedRuntime.getSessionSnapshot(loaded.sessionId)?.managed?.runwieldSessionId,
-                    runwieldSessionId,
-                );
-                await resumedRuntime.closeSession(loaded.sessionId);
+                await runtime.closeSession(resumed.sessionId);
+                assert(resumed.sessionPath);
+                await fsUtimes(resumed.sessionPath, modified, modified);
             }
         }
+
+        const first = saved[0]!;
+        const second = saved[1]!;
+        const expectLatest = async (piSessionId: string) => {
+            const latest = await runtime.resumeSession({ cwd });
+            assert(latest);
+            assertEquals(latest.sessionManagerId, piSessionId);
+            await runtime.closeSession(latest.sessionId);
+        };
+
+        await expectLatest(first.piSessionId);
+        const store = openFileSessionStore();
+        try {
+            const secondRecord = store.getSessionById(second.runwieldSessionId);
+            assert(secondRecord);
+            const newest = new Date("2099-07-03T00:00:00Z");
+            await fsUtimes(secondRecord.transcriptPath, newest, newest);
+            await expectLatest(second.piSessionId);
+
+            store.archiveSession(second.runwieldSessionId);
+            await expectLatest(first.piSessionId);
+            store.archiveSession(first.runwieldSessionId);
+            assertEquals(await runtime.resumeSession({ cwd }), null);
+            const archived = await runtime.resumeSession({ cwd, sessionId: second.runwieldSessionId });
+            assertEquals(archived.sessionManagerId, second.piSessionId);
+            await runtime.closeSession(archived.sessionId);
+        } finally {
+            store.close();
+        }
+
+        await assertRejects(
+            () => runtime.resumeSession({ cwd, sessionId: "missing-session" }),
+            Error,
+            "No saved Session was found",
+        );
     } finally {
-        await resumedRuntime.closeAllSessionsWhenIdle();
+        await runtime.closeAllSessionsWhenIdle();
+        await removeTempDir(cwd);
     }
 });
 
@@ -1716,10 +1749,9 @@ test("SessionRuntime emits the first user message before busy and persistence", 
     const cwd = join(runtimeProjectRoot(), `first-message-order-${crypto.randomUUID()}`);
     await fsMkdir(cwd, { recursive: true });
     const runtime = createSessionRuntime({ sessionStore: null, ownerProcessKind: "test" });
-    const created = await runtime.createInteractiveSession({
+    const created = await runtime.createSession({
         cwd,
-        mode: "new",
-        deferManagedActivationUntilAgentReady: true,
+        deferPersistenceUntilFirstMessage: true,
     });
     const events: string[] = [];
     let userEventCount = 0;
@@ -1822,7 +1854,7 @@ test("SessionRuntime clean agent starts and switches resolve each agent preset m
             );
             const sessionHost = new SessionHost();
             const runtime = makeRuntime({ sessionHost });
-            const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot, selectDefaultAgent: true });
             const hostedSession = sessionHost.getSession(sessionId);
             assert(hostedSession);
             assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
@@ -1845,7 +1877,7 @@ test("SessionRuntime clean agent starts and switches resolve each agent preset m
             });
             await runtime.closeSession(sessionId);
 
-            const directGuideSessionId = await runtime.createPromptReadySession({
+            const { sessionId: directGuideSessionId } = await runtime.createSession({
                 cwd: projectRoot,
                 agentName: "guide",
             });
@@ -1864,10 +1896,9 @@ test("SessionRuntime prompt-ready metadata is limited to unpersisted new-session
     const cwd = join(runtimeProjectRoot(), `prompt-ready-shell-${crypto.randomUUID()}`);
     await fsMkdir(cwd, { recursive: true });
     const runtime = createSessionRuntime({ sessionStore: null, ownerProcessKind: "test" });
-    const created = await runtime.createInteractiveSession({
+    const created = await runtime.createSession({
         cwd,
-        mode: "new",
-        deferManagedActivationUntilAgentReady: true,
+        deferPersistenceUntilFirstMessage: true,
     });
     try {
         assertEquals(runtime.markPromptReadyAgent(created.sessionId, { agentName: "router" }).ok, true);
@@ -1904,7 +1935,7 @@ test("SessionRuntime releases managed activation after a completed TUI turn", as
                 ownerInstanceId: crypto.randomUUID(),
             });
             try {
-                const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "guide" });
                 const managed = runtime.getSessionSnapshot(sessionId)?.managed;
                 assert(managed);
                 const before = store.inspectSessionActivation(managed.runwieldSessionId);
@@ -1937,7 +1968,7 @@ test("SessionRuntime managed operation prefers persisted active agent over stale
                 ownerInstanceId: crypto.randomUUID(),
             });
             try {
-                const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "guide" });
                 const hosted = sessionHost.getSession(sessionId);
                 assert(hosted);
                 const managed = hosted.getManagedMetadata();
@@ -1985,7 +2016,7 @@ test("SessionRuntime managed workflow operations hold activation during model ex
                 ownerInstanceId: crypto.randomUUID(),
             });
             try {
-                const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "guide" });
                 const managed = sessionHost.getSession(sessionId)?.getManagedMetadata();
                 assert(managed);
                 const samples: ManagedActivationSample[] = [];
@@ -2025,7 +2056,7 @@ test("SessionRuntime persists tutorial context before the first model turn and r
             return fauxAssistantMessage(fauxText("Tutorial context observed."));
         },
     ]);
-    const sessionId = await runtime.createPromptReadySession({ cwd, agentName: "guide" });
+    const { sessionId } = await runtime.createSession({ cwd, agentName: "guide" });
     const initialTutorialContext = {
         version: 1,
         guidanceEnabled: true,
@@ -2070,10 +2101,9 @@ test("SessionRuntime persists tutorial context before the first model turn and r
 
         const reloaded = makeRuntime();
         try {
-            const loaded = await reloaded.createInteractiveSession({
+            const loaded = await reloaded.resumeSession({
                 cwd,
-                mode: "continue",
-                resumeSessionId: runwieldSessionId,
+                sessionId: runwieldSessionId,
             });
             assertEquals(reloaded.getSessionSnapshot(loaded.sessionId)?.managed?.dormant, true);
             assertEquals(reloaded.getSessionSnapshot(loaded.sessionId)?.tutorialContext, updated.tutorialContext);
@@ -2092,7 +2122,7 @@ test("SessionRuntime persists tutorial context before the first model turn and r
 test("SessionRuntime uses one segmented user-turn submission path", async () => {
     setRuntimeModelMessages([fauxAssistantMessage(fauxText("Normalized request received."))]);
     const runtime = makeRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "router" });
     const userMessages: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type === RuntimeEventTypes.USER_MESSAGE) userMessages.push(event.text);
@@ -2124,7 +2154,7 @@ test("SessionRuntime routes execution continuation input to the resolved Plan ow
     });
     setRuntimeModelMessages([fauxAssistantMessage(fauxText("Engineer continuation received."))]);
     const runtime = makeRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "router" });
     await runtime.switchAgent(sessionId, { agentName: "planner" });
     await runtime.setActiveExecutionWorkflow(sessionId, {
         planName: "p",
@@ -2172,7 +2202,7 @@ test("SessionRuntime keeps the next Epic decomposition reply with Slicer", async
         },
     ]);
     const runtime = makeRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "architect" });
+    const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "architect" });
 
     try {
         const slicerResult = await runtime.runSlicerAgent(sessionId, { planName: "epic-a" });
@@ -2241,14 +2271,14 @@ test("SessionRuntime owns managed submission blocking messages", () => {
 
 test("SessionRuntime projects an empty context report before an Agent is selected", async () => {
     const runtime = makeRuntime();
-    const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot() });
     assertEquals((await runtime.getSessionContextReport(sessionId))?.usedTokens, 0);
 });
 
 test("SessionRuntime projects active Agent Session context without exposing internals", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "engineer" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "engineer" });
 
     const report = await runtime.getSessionContextReport(sessionId);
     assertEquals(report?.agentDisplayName, "Engineer");
@@ -2263,7 +2293,7 @@ test("SessionRuntime projects active Agent Session context without exposing inte
 test("SessionRuntime uses one activation transaction for initial readiness and later switches", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "router" });
     const hostedSession = sessionHost.requireSession(sessionId);
     assertEquals(hostedSession.getRootAgentName(), null);
     assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "router");
@@ -2345,7 +2375,7 @@ test("SessionRuntime snapshots and events keep workflow footer context separate 
 
 test("SessionRuntime emits one keyboard-help event for the requested session", async () => {
     const runtime = makeRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), selectDefaultAgent: true });
     const events: SessionRuntimeEvent[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event);
@@ -2383,7 +2413,7 @@ test("SessionRuntime emits one keyboard-help event for the requested session", a
 
 test("SessionRuntime emits one ordered lifecycle for one prompt", async () => {
     const runtime = makeRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), selectDefaultAgent: true });
     const events: SessionRuntimeEvent[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event);
@@ -2443,7 +2473,7 @@ test("SessionRuntime keeps executePlan workflow operations busy while preparatio
         await rememberNonGitExecutionConsent("featurePlan", cwd);
         const approvalEvidence = await loadPlanActionEvidence(cwd, "execute-busy-plan-id");
         if (approvalEvidence.kind !== "success") throw new Error(approvalEvidence.message);
-        const sessionId = await runtime.createPromptReadySession({ cwd });
+        const { sessionId } = await runtime.createSession({ cwd, selectDefaultAgent: true });
         const busyStates: boolean[] = [];
         const preparationMessages: RuntimePreparationBusySample[] = [];
         let resolveLaunchSeen: () => void = () => {};
@@ -2543,7 +2573,7 @@ test("SessionRuntime keeps direct model operations busy until the outermost oper
 
 test("SessionRuntime cycles through max thinking level", async () => {
     const runtime = makeRuntime();
-    const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot() });
     await runtime.setSessionThinkingLevel(sessionId, "xhigh");
 
     const result = await runtime.cycleSessionThinkingLevel(sessionId);
@@ -2554,7 +2584,7 @@ test("SessionRuntime cycles through max thinking level", async () => {
 
 test("SessionRuntime event subscriptions unsubscribe deterministically", async () => {
     const runtime = makeRuntime();
-    const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot() });
     const events: SessionRuntimeEvent[] = [];
     const unsubscribe = runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event);
@@ -2574,7 +2604,7 @@ test("SessionRuntime event subscriptions unsubscribe deterministically", async (
 
 test("SessionRuntime owns the complete local shell tool lifecycle", async () => {
     const runtime = makeRuntime();
-    const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot() });
     const events: SessionRuntimeEvent[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event);
@@ -2598,7 +2628,7 @@ test("SessionRuntime owns the complete local shell tool lifecycle", async () => 
 test("SessionRuntime persists local shell commands as bash execution messages visible to LLM context", async () => {
     setRuntimeModelMessages([fauxAssistantMessage(fauxText("Initial fixture turn."))]);
     const runtime = makeRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), selectDefaultAgent: true });
     await runtime.promptSession(sessionId, { initialRequest: "start", initialImages: [] });
 
     await runtime.runLocalShellCommand(sessionId, {
@@ -2620,7 +2650,7 @@ test("SessionRuntime persists local shell commands as bash execution messages vi
 
 test("SessionRuntime cancellation terminates an active local shell command", async () => {
     const runtime = makeRuntime();
-    const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot() });
     let resolveStarted = () => {};
     const started = new Promise((resolve) => {
         resolveStarted = () => resolve(undefined);
@@ -2645,7 +2675,7 @@ test(
     },
     async () => {
         const runtime = makeRuntime();
-        const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
+        const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot() });
         const pidFile = await makeTempFile({ prefix: "runwield-local-shell-descendant-" });
         let resolveStarted = () => {};
         const started = new Promise((resolve) => {
@@ -2689,7 +2719,7 @@ test("SessionRuntime publishes handler errors and releases the turn", async () =
         },
     ]);
     const runtime = makeRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), selectDefaultAgent: true });
     const types: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         types.push(event.type);
@@ -2720,7 +2750,7 @@ test("SessionRuntime rejects overlapping turns for one id", async () => {
         },
     ]);
     const runtime = makeRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), selectDefaultAgent: true });
 
     const first = runtime.promptSession(sessionId, { initialRequest: "first", initialImages: [] });
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -2765,8 +2795,8 @@ test("SessionRuntime allows independent session ids to run concurrently", async 
         }),
     );
     const runtime = makeRuntime();
-    const alpha = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
-    const beta = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
+    const { sessionId: alpha } = await runtime.createSession({ cwd: runtimeProjectRoot(), selectDefaultAgent: true });
+    const { sessionId: beta } = await runtime.createSession({ cwd: runtimeProjectRoot(), selectDefaultAgent: true });
 
     const prompts = [
         runtime.promptSession(alpha, { initialRequest: "alpha", initialImages: [] }),
@@ -2822,7 +2852,7 @@ test("SessionRuntime /reload publishes replacement Prompt Template and Skill cat
             return fauxAssistantMessage(fauxText("Ready."));
         });
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const catalogEvents: Array<SessionRuntimeEvent> = [];
         runtime.subscribeSessionEvents(created.sessionId, (event) => {
             if (event.type === RuntimeEventTypes.COMMAND_CATALOG_CHANGED) catalogEvents.push(event);
@@ -2881,7 +2911,7 @@ test("SessionRuntime ignores synthetic switch-requesting tool results", async ()
         fauxAssistantMessage(fauxText("Still working as Engineer.")),
     ]);
     const runtime = makeRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "engineer" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "engineer" });
     const syntheticSwitchTool = {
         name: "synthetic_switch_request",
         label: "Synthetic Switch Request",
@@ -2951,7 +2981,7 @@ test("SessionRuntime delivers steering submitted from the Triage report to Plann
         return fauxAssistantMessage(fauxText("Planner received the handoff."));
     };
     setRuntimeModelResponseFactories(Array.from({ length: 6 }, () => response));
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "router" });
     const runtimeEvents: SessionRuntimeEvent[] = [];
     let steeringSubmission: Promise<SteeringResult> | null = null;
     let plannerSteeringSubmission: Promise<SteeringResult> | null = null;
@@ -3075,7 +3105,7 @@ test("SessionRuntime transfers pending Router steering to Planner in submission 
         return fauxAssistantMessage(fauxText("Planner received the pending steering."));
     };
     setRuntimeModelResponseFactories(Array.from({ length: 4 }, () => response));
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "router" });
     const prompt = runtime.promptUserTurn(sessionId, {
         initialRequest: "Fix the handoff ordering.",
         initialImages: [],
@@ -3131,7 +3161,7 @@ test("SessionRuntime waits for steering submitted during replacement prompt prep
         return fauxAssistantMessage(fauxText("Planner received preparation-time steering."));
     };
     setRuntimeModelResponseFactories(Array.from({ length: 4 }, () => response));
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "router" });
     let steeringSubmission: Promise<SteeringResult> | null = null;
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.type !== RuntimeEventTypes.AGENT_CHANGED || event.agentName !== "planner") return;
@@ -3188,7 +3218,7 @@ test("SessionRuntime does not replay handoff steering after a replacement provid
         return fauxAssistantMessage(fauxText("Planner retry completed."));
     };
     setRuntimeModelResponseFactories(Array.from({ length: 6 }, () => response));
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "router" });
     let steeringSubmission: Promise<SteeringResult> | null = null;
     const statuses: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
@@ -3245,7 +3275,7 @@ test("SessionRuntime cancellation after Triage acceptance does not start the rep
         return fauxAssistantMessage(fauxText("Replacement must not run."));
     };
     setRuntimeModelResponseFactories(Array.from({ length: 4 }, () => response));
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "router" });
     let cancellation: ReturnType<typeof runtime.cancelSession> | undefined;
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (!cancellation && event.type === RuntimeEventTypes.SYSTEM_STATUS && event.header === "Triage") {
@@ -3288,7 +3318,7 @@ test("SessionRuntime cancellation during Planner activation prevents replacement
         return fauxAssistantMessage(fauxText("Planner must not run."));
     };
     setRuntimeModelResponseFactories(Array.from({ length: 4 }, () => response));
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "router" });
     let cancellation: ReturnType<typeof runtime.cancelSession> | undefined;
     runtime.subscribeSessionEvents(sessionId, (event) => {
         if (!cancellation && event.type === RuntimeEventTypes.AGENT_CHANGED && event.agentName === "planner") {
@@ -3311,7 +3341,7 @@ test("SessionRuntime cancellation during Planner activation prevents replacement
 
 test("SessionRuntime lets dormant managed sessions consume deferred user follow-up messages", async () => {
     const runtime = makeRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "router" });
     await runtime.promptUserTurn(sessionId, { initialRequest: "finish this session" });
     assertEquals(runtime.getSessionSnapshot(sessionId)?.managed?.dormant, true);
 
@@ -3880,7 +3910,18 @@ test("SessionRuntime automatically catalogs and segments legacy transcripts when
                 ownerInstanceId: "runtime-test-owner",
             });
             try {
-                const loaded = await runtime.loadSession({ cwd, sessionId: piSessionId, sessionPath: transcriptPath });
+                await assertRejects(
+                    () =>
+                        runtime.resumeSession({ cwd, sessionId: "different-transcript", sessionPath: transcriptPath }),
+                    Error,
+                    "locator_conflict",
+                );
+                assertEquals(store.findSessionByLocator({ transcriptPath }), null);
+                const loaded = await runtime.resumeSession({
+                    cwd,
+                    sessionId: piSessionId,
+                    sessionPath: transcriptPath,
+                });
                 const managed = runtime.getSessionSnapshot(loaded.sessionId)?.managed;
                 const cataloged = store.findSessionByLocator({ transcriptPath });
                 assertEquals(cataloged?.piSessionId, piSessionId);
@@ -3899,7 +3940,7 @@ test("SessionRuntime automatically catalogs and segments legacy transcripts when
     });
 });
 
-test("SessionRuntime loadSession returns opaque metadata and preserves recorded tool results", async () => {
+test("SessionRuntime resume returns opaque metadata and preserves recorded tool results", async () => {
     ensureRuntimeModelFixture();
     const branch = [
         {
@@ -3985,7 +4026,7 @@ test("SessionRuntime loadSession returns opaque metadata and preserves recorded 
     if (!sessionPath) throw new Error("fixture transcript was not persisted");
     const runtime = createSessionRuntime();
 
-    const result: ReplayFixtureResult = await runtime.loadSession({
+    const result = await runtime.resumeSession({
         cwd: runtimeProjectRoot(),
         sessionId: "persisted-1",
         sessionPath,
@@ -4099,7 +4140,7 @@ test("SessionRuntime replays persisted task_completed summaries and manual QA ch
     if (!sessionPath) throw new Error("fixture transcript was not persisted");
     const runtime = createSessionRuntime();
 
-    const result: ReplayFixtureResult = await runtime.loadSession({
+    const result = await runtime.resumeSession({
         cwd: runtimeProjectRoot(),
         sessionId: "persisted-workflow",
         sessionPath,
@@ -4119,8 +4160,8 @@ test("SessionRuntime replays persisted task_completed summaries and manual QA ch
 
 test("SessionRuntime close operations dispose sessions by id", async () => {
     const runtime = makeRuntime();
-    const first = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
-    const second = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
+    const first = await runtime.createSession({ cwd: runtimeProjectRoot() });
+    const second = await runtime.createSession({ cwd: runtimeProjectRoot() });
 
     assertEquals(await runtime.closeSession(first.sessionId), { ok: true, closed: true });
     assertEquals(runtime.getSessionSnapshot(first.sessionId), null);
@@ -4132,7 +4173,7 @@ test("SessionRuntime close operations dispose sessions by id", async () => {
 test("SessionRuntime close settles cleanup when MCP pool close fails", async (t) => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), selectDefaultAgent: true });
     const hostedSession = sessionHost.requireSession(sessionId);
     const events: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
@@ -4170,7 +4211,7 @@ test("SessionRuntime close settles cleanup when MCP pool close fails", async (t)
 test("SessionRuntime snapshot derives workflow context from active execution workflow fallback", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), selectDefaultAgent: true });
     const hostedSession = sessionHost.requireSession(sessionId);
     hostedSession.setActiveExecutionWorkflow({
         planName: "footer-plan",
@@ -4193,7 +4234,7 @@ test("SessionRuntime snapshot derives workflow context from active execution wor
 test("SessionRuntime snapshot prefers explicit workflow context over active execution fallback", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), selectDefaultAgent: true });
     const hostedSession = sessionHost.requireSession(sessionId);
     hostedSession.setWorkflowExecutionContext({
         planName: "explicit-plan",
@@ -4221,7 +4262,7 @@ test("user-authorized agent switch releases active workflows", async () => {
     ensureRuntimeModelFixture();
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "engineer" });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), agentName: "engineer" });
     const hostedSession = sessionHost.requireSession(sessionId);
     hostedSession.setWorkflowPlanName("release-plan");
     await runtime.setActiveExecutionWorkflow(sessionId, {
@@ -4252,7 +4293,7 @@ test("user-authorized agent switch releases active workflows", async () => {
 
 test("SessionRuntime rejects image user turns before submission events", async () => {
     const runtime = makeRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
+    const { sessionId } = await runtime.createSession({ cwd: runtimeProjectRoot(), selectDefaultAgent: true });
     const events: string[] = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
         events.push(event.type);
@@ -4299,7 +4340,7 @@ test("Workspace gets a stop alert even when the handler suppresses its normal at
         const sessionHost = new SessionHost();
         const runtime = makeRuntime({ sessionHost });
         try {
-            const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "guide" });
             const hosted = sessionHost.getSession(sessionId);
             assertExists(hosted);
             setModelResponseFactory(() => {
@@ -4331,7 +4372,7 @@ test("managed Plan review requests persist the container before the adapter star
             ownerInstanceId: "review-bookmark-writer",
         });
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             const managed = runtime.getSessionSnapshot(sessionId)?.managed;
             assert(managed);
             assertEquals(fileStore.getLastPlanReview(managed.runwieldSessionId, managed.projectId), null);
@@ -4387,7 +4428,7 @@ test("managed Plan review requests persist the container before the adapter star
 test("managed image paste acquires dormant ownership and pending prompt images survive submission", async () => {
     await withRuntimeCommandFixture("runtime-real-image-", async ({ projectRoot, setModelResponseFactory }) => {
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const image = { base64: RUNTIME_TEST_PNG, mimeType: "image/png" };
         const events: SessionRuntimeEvent[] = [];
         runtime.subscribeSessionEvents(created.sessionId, (event) => {
@@ -4437,7 +4478,7 @@ test("managed turn reconciles steering when the external SDK omits queue notific
             ownerProcessKind: "test",
             ownerInstanceId: crypto.randomUUID(),
         });
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         await runtime.switchAgent(created.sessionId, { agentName: "guide" });
         const events: SessionRuntimeEvent[] = [];
         runtime.subscribeSessionEvents(created.sessionId, (event) => {

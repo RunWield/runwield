@@ -364,7 +364,7 @@ async function runTuiSurface(projectRoot: string): Promise<SurfaceSummary> {
     const events: RuntimeSurfaceEvent[] = [];
     let result: NamedInvocationPromptResult | null = null;
     try {
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         runtime.subscribeSessionEvents(created.sessionId, (event) => events.push(event));
         const originalPromptUserTurn = runtime.promptUserTurn.bind(runtime);
         runtime.promptUserTurn = (async (sessionId, options) => {

@@ -488,7 +488,7 @@ test("live Plan reviews use Plan titles and ordinary questions retain their Sess
                 },
                 undefined,
                 async (service) => {
-                    const created = await service.runtime.createInteractiveSession({
+                    const created = await service.runtime.createSession({
                         cwd: fixture.projectRoot,
                         agentName: "operator",
                     });
@@ -849,7 +849,7 @@ test("personal remote Workspace v2 Dashboard promotes associated live questions 
                 undefined,
                 async (service) => {
                     for (const name of ["done", "active"]) {
-                        const created = await service.runtime.createInteractiveSession({
+                        const created = await service.runtime.createSession({
                             cwd: fixture.projectRoot,
                             agentName: "operator",
                         });

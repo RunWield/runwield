@@ -23,7 +23,7 @@ async function waitFor(check: () => boolean) {
 
 async function createImageInput(projectRoot: string) {
     const runtime = createSessionRuntime();
-    const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot });
+    const { sessionId } = await runtime.createSession({ cwd: projectRoot });
     const terminal = new VirtualTerminal({ columns: 120, rows: 40 });
     const tui = new TuiAltScreen(terminal);
     const view = await createChatView({

@@ -166,7 +166,7 @@ function makeUiHarness(
 
 async function createPromptReadyRuntime(projectRoot: string): Promise<{ runtime: SessionRuntime; sessionId: string }> {
     const runtime = createSessionRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
     return { runtime, sessionId };
 }
 
@@ -402,7 +402,7 @@ test("runSettingsCommand applies a model preset to a new in-memory Session", asy
         async ({ projectRoot, setModelResponse }) => {
             setModelResponse("The preset model handled the first turn.");
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({
+            const { sessionId } = await runtime.createSession({
                 cwd: projectRoot,
                 agentName: "router",
                 deferPersistenceUntilFirstMessage: true,

@@ -65,7 +65,7 @@ async function assertRemoved(path: string): Promise<void> {
 test("share uploads complete Session HTML and JSON in one secret Gist", async () => {
     await withRuntimeCommandFixture("share-command-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const github = createGitHubFixture();
         const ui = createUi();
         try {
@@ -107,7 +107,7 @@ test("share uploads complete Session HTML and JSON in one secret Gist", async ()
 test("share reports GitHub CLI preflight failures before exporting the Session", async () => {
     await withRuntimeCommandFixture("share-preflight-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         try {
             const missing = createGitHubFixture({ failAt: "version" });
             const missingUi = createUi();
@@ -142,7 +142,7 @@ test("share reports GitHub CLI preflight failures before exporting the Session",
 test("share cleans the real exported fixture when gist creation fails", async () => {
     await withRuntimeCommandFixture("share-gist-failure-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const github = createGitHubFixture({ failAt: "gist" });
         const ui = createUi();
         try {
@@ -185,7 +185,7 @@ for (const gistOutput of ["", "not a URL", "https://example.com/not-a-gist"]) {
     test(`share rejects unconfirmed Gist output ${JSON.stringify(gistOutput)} and removes temporary files`, async () => {
         await withRuntimeCommandFixture("share-unconfirmed-", async ({ projectRoot }) => {
             const runtime = createSessionRuntime();
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             const github = createGitHubFixture({ gistOutput });
             const ui = createUi();
             try {
@@ -212,7 +212,7 @@ test("share does not restore a missing Session Manifest before export", async ()
     await withRuntimeCommandFixture("share-read-only-", async ({ projectRoot, homeDir, setModelResponse }) => {
         setModelResponse("Recorded reply.");
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const github = createGitHubFixture();
         const ui = createUi();
         let manifestPath = "";

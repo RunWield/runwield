@@ -80,7 +80,7 @@ test("reopened Sequence sends a complete group decision from its registered plan
             const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: repo, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: repo });
                 runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
                 await runtime.requestInteraction(sessionId, {
                     type: RuntimeInteractionTypes.PLAN_REVIEW,
@@ -125,7 +125,7 @@ test("Approve & Run executes the first Sequence child saved only in its planning
             const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: repo, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: repo });
                 runtime.setInteractionAdapter(sessionId, {
                     requestInteraction(request) {
                         if (request.type !== RuntimeInteractionTypes.PLAN_REVIEW) return { outcome: "canceled" };

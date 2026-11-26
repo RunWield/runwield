@@ -289,10 +289,9 @@ test("a fresh interactive shell exports a Session header without creating persis
     await withExportHome(async (home, cwd) => {
         const runtime = createSessionRuntime({ sessionStore: null });
         try {
-            const created = await runtime.createInteractiveSession({
+            const created = await runtime.createSession({
                 cwd,
-                mode: "new",
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
             const before = await readdir(home);
             const exported = await runtime.readSessionExport(created.sessionId);

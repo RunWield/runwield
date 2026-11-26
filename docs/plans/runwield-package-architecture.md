@@ -284,7 +284,7 @@ The host admits MCP servers and chooses which connections travel through the lap
 
 ## Session Runtime and the Factory worker
 
-The interactive Session Runtime owns the live session, its writer, queued messages, subscriptions, and pending interactions. TUI, ACP, and Workspace use the same implementation. A client that disconnects can load the stored session by its stable RunWield Session ID. [Session contract](../../packages/session-runtime/contract.ts)
+The interactive Session Runtime owns the live session, its writer, queued messages, subscriptions, and pending interactions. TUI, ACP, and Workspace use the same implementation. Clients call `createSession` to open a new Session, optionally selecting its initial agent. For a local project, `resumeSession` accepts either the stable RunWield Session ID or the Pi transcript ID and returns the reopened Session with its replay events. Omitting the ID selects the most recent unarchived Session. If none is available, the call returns `null`, so the TUI can start a new Session. [Session contract](../../packages/session-runtime/contract.ts)
 
 The root factory opens the personal session store by default. Interactive hosts use the services entry when they need to compose storage or run host-specific operations. Browser clients can load the event and interaction contracts independently. The transcript entry exposes the existing history readers. The file store, Pi session construction, and some workflow integrations still live in `src/` until the dependency pass. [Interactive services](../../packages/session-runtime/services.ts) · [Events](../../packages/session-runtime/events.ts) · [Interactions](../../packages/session-runtime/interactions.ts) · [Transcripts](../../packages/session-runtime/transcript.ts)
 

@@ -76,7 +76,7 @@ for (const action of ["hold", "review", "validate"]) {
                 }
                 const primaryBytes = await fsReadFile(primaryPath, "utf8");
                 const runtime = createSessionRuntime();
-                const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
                 const messages: string[] = [];
                 const choices: string[] = [action];
                 const uiAPI: UiAPI = {

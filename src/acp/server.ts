@@ -1333,10 +1333,12 @@ function createRunWieldAcpServer(context: AcpServerContext): AgentApp {
         if (!readiness.available) throwAuthenticationRequired(request.cwd);
         let runtimeSessionId;
         try {
-            runtimeSessionId = await runtime.createPromptReadySession({
+            const created = await runtime.createSession({
                 cwd: request.cwd,
+                selectDefaultAgent: true,
                 mcpServers: request.runwieldMcpServers,
             });
+            runtimeSessionId = created.sessionId;
         } catch (error) {
             throwProjectRuntimeRefusal(error, request.cwd);
             throw error;
@@ -1386,7 +1388,7 @@ function createRunWieldAcpServer(context: AcpServerContext): AgentApp {
             throw new RequestError(ACP_INVALID_STATE, `ACP session already exists: ${request.sessionId}`);
         }
         try {
-            const result = await runtime.loadSession({
+            const result = await runtime.resumeSession({
                 cwd: request.cwd,
                 sessionId: persistedSessionId,
                 sessionPath: request.sessionPath,

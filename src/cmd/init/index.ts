@@ -145,7 +145,7 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
     const sessionRuntime = attached ? options.sessionRuntime : createSessionRuntime();
     const createdSessionId = attached
         ? options.sessionId
-        : (await sessionRuntime.createInteractiveSession({ cwd: projectRoot, mode: "new" })).sessionId;
+        : (await sessionRuntime.createSession({ cwd: projectRoot })).sessionId;
 
     await recordInitOffered(projectRoot);
     const verificationCommandOperation = createInitVerificationCommandOperation({ projectRoot });

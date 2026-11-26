@@ -738,7 +738,7 @@ for (const tutorial of [false, true]) {
                     fauxAssistantMessage(fauxText("Execution remains paused in the fixture.")),
                 ]);
                 const runtime = createSessionRuntime();
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await runtime.createSession({ cwd: projectRoot });
                 runtime.setInteractionAdapter(created.sessionId, {
                     supportsInteraction: () => true,
                     requestInteraction: () => ({ outcome: "selected", value: "yes" }),

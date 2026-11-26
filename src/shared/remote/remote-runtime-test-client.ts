@@ -180,7 +180,7 @@ const runtime = new SessionRuntime({
     ownerProcessKind: "test",
     ownerInstanceId: crypto.randomUUID(),
 });
-let sessionId = await runtime.createPromptReadySession({ cwd: input.cwd, agentName: "remote-runtime" });
+let { sessionId } = await runtime.createSession({ cwd: input.cwd, agentName: "remote-runtime" });
 let workflowTurnEndResults: string[] = [];
 const report = (kind: string, ok?: boolean, error?: string) => {
     const snapshot = runtime.getSessionSnapshot(sessionId);
@@ -649,7 +649,7 @@ async function runCommands() {
             } else if (command.kind === "load-start") {
                 await runtime.closeAllSessionsWhenIdle();
                 pending.push(
-                    runtime.loadSession({ cwd: input.cwd, sessionId: command.sessionId || "" }).then(
+                    runtime.resumeSession({ cwd: input.cwd, sessionId: command.sessionId || "" }).then(
                         (loaded) => {
                             sessionId = loaded.sessionId;
                             report("load", true);
@@ -724,7 +724,7 @@ async function runCommands() {
                 report("turn", result.ok, result.error);
             } else if (command.kind === "load") {
                 await runtime.closeAllSessionsWhenIdle();
-                sessionId = (await runtime.loadSession({ cwd: input.cwd, sessionId: command.sessionId || "" }))
+                sessionId = (await runtime.resumeSession({ cwd: input.cwd, sessionId: command.sessionId || "" }))
                     .sessionId;
                 report("load", true);
             } else {

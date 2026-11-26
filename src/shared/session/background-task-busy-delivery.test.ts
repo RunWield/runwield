@@ -36,7 +36,7 @@ test("a completed task steers the busy parent root once before its next model re
         ]);
         const runtime = createSessionRuntime({ ownerProcessKind: "test" });
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
             const startGeneration = runtime.getSessionSnapshot(created.sessionId)?.managed?.generation ?? 0;
             assertEquals(
@@ -103,7 +103,7 @@ test("a busy root receives task output rather than its foreground delegated chil
         ]);
         const runtime = createSessionRuntime({ ownerProcessKind: "test" });
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
             const startGeneration = runtime.getSessionSnapshot(created.sessionId)?.managed?.generation ?? 0;
             assertEquals(

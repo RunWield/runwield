@@ -187,7 +187,7 @@ test("share, push, pull, and unshare compose through real Plan, crypto, secret, 
                 process.chdir(alternateRoot);
                 const runtime = createSessionRuntime();
                 try {
-                    const sessionId = await runtime.createPromptReadySession({
+                    const { sessionId } = await runtime.createSession({
                         cwd: alternateRoot,
                         agentName: "router",
                     });
@@ -351,7 +351,7 @@ test("named pull and push use a linked checkout's migrated 0.10 capability", asy
                         setModelResponse("The migrated collaboration content remains valid.");
                         const runtime = createSessionRuntime();
                         try {
-                            const sessionId = await runtime.createPromptReadySession({
+                            const { sessionId } = await runtime.createSession({
                                 cwd: alternateRoot,
                                 agentName: "router",
                             });

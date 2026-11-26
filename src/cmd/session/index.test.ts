@@ -69,7 +69,7 @@ test("session command reads saved messages and keeps compaction usage separate f
         await writeFile(path, records.map((record) => JSON.stringify(record)).join("\n") + "\n");
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.loadSession({
+            const { sessionId } = await runtime.resumeSession({
                 cwd: projectRoot,
                 sessionId: manager.getSessionId(),
                 sessionPath: path,
@@ -102,7 +102,7 @@ test("session command reports missing committed evidence without displaying inve
         setModelResponse("Saved response.");
         const store = openFileSessionStore();
         const runtime = createSessionRuntime({ sessionStore: store });
-        const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
+        const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "guide" });
         let transcript = "";
         try {
             assertEquals(

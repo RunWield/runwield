@@ -30,7 +30,7 @@ test("owner Workspace reopens an Architect Epic review and projects the revised 
                 status: "ready_for_work",
                 humanReviewMode: "ask",
             });
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, agentName: "architect" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "architect" });
             await runtime.recordPlanAssociation(sessionId, {
                 planId: "epic-review-id",
                 planName: "epic-review",

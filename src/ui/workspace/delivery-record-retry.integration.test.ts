@@ -55,7 +55,7 @@ for (const missing of [false, true]) {
                         publishedCommit: commit,
                         verifiedAt: "2026-10-08T10:00:00Z",
                     });
-                    const created = await runtime.createInteractiveSession({ cwd: root });
+                    const created = await runtime.createSession({ cwd: root });
                     const sessionId = runtime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
                     await runtime.closeAllSessionsWhenIdle();
                     if (missing) await fsRm(`${root}/docs/plans/delivered.md`);

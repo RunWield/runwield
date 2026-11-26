@@ -82,7 +82,7 @@ test("Workspace Resume continues a paused validation repair in its existing work
                 );
                 const ready = await loadPlan(tree.path, name);
                 assertExists(ready);
-                const id = await runtime.createPromptReadySession({
+                const { sessionId: id } = await runtime.createSession({
                     cwd: root,
                     agentName: "router",
                     deferPersistenceUntilFirstMessage: true,

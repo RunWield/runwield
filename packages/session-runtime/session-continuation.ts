@@ -1,31 +1,40 @@
-import {
-    getRunWieldSessionsBaseDir,
-    listCatalogSafeRootSessionLocators,
-} from "../../src/shared/session/root-session.ts";
+import { findLatestSavedSession, getRunWieldSessionsBaseDir } from "../../src/shared/session/root-session.ts";
 import {
     listManifests,
     listProjectsFromDisk,
-    sessionDirForRoot,
+    sessionDirForProject,
 } from "../../src/shared/session/file-session-storage.ts";
 
 /** Discover the selected transcript segment without opening a writer or repairing storage. */
 export async function resolveSessionContinuation(cwd: string, sessionId?: string) {
-    const baseDir = getRunWieldSessionsBaseDir();
-    const manifests = listProjectsFromDisk(baseDir).flatMap((project) =>
-        listManifests(sessionDirForRoot(baseDir, project.currentRoot), true).map((item) => item.manifest),
-    );
-    const locator = sessionId ? null : (await listCatalogSafeRootSessionLocators(cwd)).locators[0];
-    const manifest = manifests.find((candidate) =>
-        sessionId
-            ? candidate.runwieldSessionId === sessionId ||
-              candidate.segments.some((segment) => segment.piSessionId === sessionId)
-            : candidate.segments.some((segment) => segment.transcriptPath === locator?.sessionPath),
-    );
+    const latest = sessionId === undefined ? await findLatestSavedSession(cwd) : null;
+    const manifest = sessionId !== undefined ? findExplicitSessionManifest(sessionId) : latest?.manifest;
     if (manifest) {
         const segment = manifest.segments.find((candidate) => candidate.segmentId === manifest.currentSegmentId);
         if (!segment) throw new Error("The selected Session has no current transcript segment.");
         return { sessionId: manifest.runwieldSessionId, cwd: segment.transcriptCwd, managed: true };
     }
-    if (locator) return { sessionId: locator.piSessionId, cwd: locator.headerCwd, managed: false };
+    if (latest) {
+        return {
+            sessionId: latest.locator.piSessionId,
+            sessionPath: latest.locator.sessionPath,
+            cwd: latest.locator.headerCwd,
+            managed: false,
+        };
+    }
     return null;
+}
+
+function findExplicitSessionManifest(sessionId: string) {
+    const baseDir = getRunWieldSessionsBaseDir();
+    for (const project of listProjectsFromDisk(baseDir)) {
+        if (project.remote) continue;
+        const found = listManifests(sessionDirForProject(baseDir, project), true, project).find(
+            ({ manifest }) =>
+                manifest.runwieldSessionId === sessionId ||
+                manifest.segments.some((segment) => segment.piSessionId === sessionId),
+        );
+        if (found) return found.manifest;
+    }
+    return undefined;
 }

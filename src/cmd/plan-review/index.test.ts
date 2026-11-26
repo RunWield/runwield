@@ -14,7 +14,7 @@ test("/plan-review reports the live URL published by the review surface without 
         const runtime = createSessionRuntime({ sessionStore: ownerStore, ownerProcessKind: "test" });
         const pending = Promise.withResolvers<{ outcome: "canceled" }>();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             let presentations = 0;
             let originalCallbackUrl = "";
             const presented = Promise.withResolvers<void>();

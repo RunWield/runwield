@@ -61,7 +61,7 @@ const runtime = new SessionRuntime({
 });
 let ciStarted = 0;
 async function runScenario() {
-    const sessionId = await runtime.createPromptReadySession({ cwd: input.cwd, agentName: "remote-runtime" });
+    const { sessionId } = await runtime.createSession({ cwd: input.cwd, agentName: "remote-runtime" });
     await runtime
         .promptUserTurn(sessionId, {
             initialRequest: "Run the boundary scenario.",

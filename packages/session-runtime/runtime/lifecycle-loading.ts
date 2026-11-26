@@ -1,5 +1,6 @@
-import type { LoadedSession, SetInteractionAdapterResult } from "../contract.ts";
+import type { ResumedSession, SetInteractionAdapterResult } from "../contract.ts";
 import { isRemovedAgyProvider } from "@runwield/pi-ai/models";
+import { parseProviderModel } from "@runwield/pi-ai";
 import {
     readPersistedManualModelState,
     readPersistedModelState,
@@ -8,6 +9,7 @@ import {
 import { resolveActiveWorkflowRuntimeAgent } from "../../../src/shared/workflow/execution-agent.ts";
 import {
     classifyRootSessionLocator,
+    findLatestSavedSession,
     getRootSessionBranchEntries,
     isPathInside,
     listPersistedRootSessions,
@@ -21,8 +23,9 @@ import { recordSegmentLineageEvidence } from "../../../src/shared/session/workfl
 import { isAbsolute } from "node:path";
 
 import { enterGitProjectRuntime, isRuntimeRootSessionManager } from "./support.ts";
-import type { LoadSessionOptions } from "./types.ts";
+import type { ResumeSessionOptions } from "./types.ts";
 
+import type { HostedSession } from "../host.ts";
 import type { RuntimeServices } from "./base.ts";
 import type { RuntimeEvents } from "./events.ts";
 import type { RuntimeManagedOperations } from "./managed-operations.ts";
@@ -180,27 +183,37 @@ export class RuntimeLifecycleLoading {
         }
     }
 
-    async loadSession(options: LoadSessionOptions): Promise<LoadedSession> {
+    async resumeSession(options: ResumeSessionOptions): Promise<ResumedSession | null> {
         if (!options?.cwd || !isAbsolute(options.cwd)) {
-            throw new Error("SessionRuntime.loadSession requires an absolute cwd");
+            throw new Error("SessionRuntime.resumeSession requires an absolute cwd");
         }
-        if (!options.sessionId || typeof options.sessionId !== "string") {
-            throw new Error("SessionRuntime.loadSession requires a session id");
+        const { cwd, modelOverride, mcpServers } = options;
+        let { sessionId, sessionPath } = options;
+        if (sessionId !== undefined && (!sessionId || typeof sessionId !== "string")) {
+            throw new Error("SessionRuntime.resumeSession requires a valid session id");
         }
-        await enterGitProjectRuntime(options.cwd);
+        if (sessionId === undefined && sessionPath !== undefined) {
+            throw new Error("SessionRuntime.resumeSession requires a session id when given a session path");
+        }
+        await enterGitProjectRuntime(cwd);
         if (this.services.remotePersistence) {
+            sessionId ??= (await this.services.remotePersistence.control.list())[0]?.id;
+            if (!sessionId) return null;
             const hostedSession = this.services.sessionHost.createSession({
                 id: crypto.randomUUID(),
-                cwd: options.cwd,
+                cwd,
                 sessionManager: null,
             });
             this.events.beginBusyOperation(hostedSession.id);
             try {
-                await this.services.remotePersistence.resume(hostedSession, options.sessionId);
-                if (options.modelOverride) {
-                    hostedSession.mergePendingManagedTurnIntent({ model: options.modelOverride, manualModel: true });
-                }
+                const entries = await this.services.remotePersistence.resume(hostedSession, sessionId);
+                if (modelOverride) this.setPendingModelOverride(hostedSession, modelOverride);
+                if (mcpServers) hostedSession.setMcpRequestServers(mcpServers);
                 this.events.attachRuntimeEventSink(hostedSession);
+                const replayEvents = createProjectedReplayEvents(hostedSession.id, entries).map((event) =>
+                    createSessionRuntimeEvent(hostedSession.id, event),
+                );
+                this.events.replacePendingReplayEvents(hostedSession.id, replayEvents);
                 this.events.emitSessionEvent(hostedSession.id, {
                     type: RuntimeEventTypes.SESSION_LOADED,
                     cwd: hostedSession.cwd,
@@ -208,8 +221,8 @@ export class RuntimeLifecycleLoading {
                 return {
                     sessionId: hostedSession.id,
                     cwd: hostedSession.cwd,
-                    sessionManagerId: options.sessionId,
-                    replayEvents: [],
+                    sessionManagerId: sessionId,
+                    replayEvents,
                 };
             } catch (error) {
                 await this.services.sessionHost.disposeSession(hostedSession.id);
@@ -222,73 +235,84 @@ export class RuntimeLifecycleLoading {
         if (!ownerCoordinationStore) {
             throw new Error("Session Manager load is blocked: session_store_unavailable");
         }
-        const managedProject = this.settings.ensureSessionProjectForCwd(options.cwd);
+        const managedProject = this.settings.ensureSessionProjectForCwd(cwd);
         if (!managedProject) throw new Error("Session Manager load is blocked: project_identity_unavailable");
-        const cataloged = ownerCoordinationStore.getSessionById(options.sessionId, managedProject.projectId);
-        let sessionPath = options.sessionPath || cataloged?.transcriptPath;
+        const cataloged =
+            sessionId === undefined ? null : ownerCoordinationStore.getSessionById(sessionId, managedProject.projectId);
+        if (sessionId === undefined) {
+            const checkout = await classifyRootSessionLocator({ cwd, ownerCoordinationStore });
+            if (checkout.kind === "blocked") {
+                throw new Error(`Session Manager load is blocked: ${checkout.reason}`);
+            }
+            const latest = await findLatestSavedSession(cwd);
+            if (!latest) return null;
+            sessionId = latest.locator.piSessionId;
+            sessionPath = latest.locator.sessionPath;
+        }
+        sessionPath ||= cataloged?.transcriptPath;
         if (!sessionPath) {
-            const persisted = await listPersistedRootSessions(options.cwd);
-            sessionPath = persisted.find((session) => session.id === options.sessionId)?.path;
+            const persisted = await listPersistedRootSessions(cwd);
+            sessionPath = persisted.find((session) => session.id === sessionId)?.path;
         }
         const classified = await classifyRootSessionLocator({
-            cwd: options.cwd,
-            sessionId: options.sessionId,
+            cwd,
+            sessionId,
             sessionPath,
             ownerCoordinationStore,
             allowCatalog: !cataloged,
         });
         if (classified.kind === "blocked") {
+            if (classified.reason === "session_path_required") {
+                throw new Error(`Session Manager load is blocked: No saved Session was found with ID ${sessionId}.`);
+            }
             throw new Error(`Session Manager load is blocked: ${classified.reason}`);
         }
         if (cataloged && classified.session?.runwieldSessionId !== cataloged.runwieldSessionId) {
             throw new Error("Session Manager load is blocked: locator_conflict");
         }
-        if (classified.kind === "managed") {
-            if (classified.session) {
-                const managedSession = classified.session;
-                let inspected = ownerCoordinationStore.inspectSessionActivation(managedSession.runwieldSessionId);
-                if (
-                    ["uncertain", "reconcile_required"].includes(inspected.activation?.state || "") ||
-                    (!inspected.generation && inspected.activation?.state === "uninitialized")
-                ) {
-                    await this.sync.ensureInitialSessionGeneration(managedSession.runwieldSessionId);
-                    inspected = ownerCoordinationStore.inspectSessionActivation(managedSession.runwieldSessionId);
-                }
-                if (inspected.generation) {
-                    const adopted = this.lifecycle.adoptManagedSession({
-                        session: managedSession,
-                        cwd: options.cwd,
-                        generation: inspected.generation.generation,
-                    });
-                    const sync = await this.sync.synchronizeManagedSession(adopted.sessionId, { emitEvents: false });
-                    const adoptedHostedSession = this.services.sessionHost.getSession(adopted.sessionId);
-                    if (!adoptedHostedSession) throw new Error("Session Manager load did not retain adopted Session");
-                    const mcpIntegration = await this.settings.refreshMcpTools(
-                        adoptedHostedSession,
-                        options.mcpServers,
-                    );
-                    if (mcpIntegration) await adoptedHostedSession.setMcpIntegration(mcpIntegration);
-                    const setupEvents = this.events.consumePendingReplayEvents(adopted.sessionId);
-                    const replayEvents = sync.ok
-                        ? setupEvents.concat(
-                              (sync.events || []).map((event) => createSessionRuntimeEvent(adopted.sessionId, event)),
-                          )
-                        : setupEvents;
-                    this.events.replacePendingReplayEvents(adopted.sessionId, replayEvents);
-                    return {
-                        sessionId: adopted.sessionId,
-                        cwd: adoptedHostedSession.cwd,
-                        replayEvents,
-                        sessionManagerId: managedSession.piSessionId,
-                        sessionPath: managedSession.transcriptPath,
-                    };
-                }
-            }
-        }
         if (classified.kind !== "managed" || !classified.session) {
             throw new Error("Session Manager load is blocked: session_identity_unavailable");
         }
         const managedSession = classified.session;
+        let inspected = ownerCoordinationStore.inspectSessionActivation(managedSession.runwieldSessionId);
+        if (
+            ["uncertain", "reconcile_required"].includes(inspected.activation?.state || "") ||
+            (!inspected.generation && inspected.activation?.state === "uninitialized")
+        ) {
+            await this.sync.ensureInitialSessionGeneration(managedSession.runwieldSessionId);
+            inspected = ownerCoordinationStore.inspectSessionActivation(managedSession.runwieldSessionId);
+        }
+        if (inspected.generation) {
+            const adopted = this.lifecycle.adoptManagedSession({
+                session: managedSession,
+                cwd,
+                generation: inspected.generation.generation,
+            });
+            try {
+                const sync = await this.sync.synchronizeManagedSession(adopted.sessionId, { emitEvents: false });
+                const hostedSession = this.services.sessionHost.requireSession(adopted.sessionId);
+                if (modelOverride) this.setPendingModelOverride(hostedSession, modelOverride);
+                const mcpIntegration = await this.settings.refreshMcpTools(hostedSession, mcpServers);
+                if (mcpIntegration) await hostedSession.setMcpIntegration(mcpIntegration);
+                const setupEvents = this.events.consumePendingReplayEvents(adopted.sessionId);
+                const replayEvents = sync.ok
+                    ? setupEvents.concat(
+                          (sync.events || []).map((event) => createSessionRuntimeEvent(adopted.sessionId, event)),
+                      )
+                    : setupEvents;
+                this.events.replacePendingReplayEvents(adopted.sessionId, replayEvents);
+                return {
+                    sessionId: adopted.sessionId,
+                    cwd: hostedSession.cwd,
+                    replayEvents,
+                    sessionManagerId: managedSession.piSessionId,
+                    sessionPath: managedSession.transcriptPath,
+                };
+            } catch (error) {
+                await this.lifecycle.closeSession(adopted.sessionId);
+                throw error;
+            }
+        }
         const managedSegment = ownerCoordinationStore.getCurrentSessionSegment(managedSession.runwieldSessionId);
         if (!managedSegment) throw new Error("Session Manager load is blocked: session_segment_unavailable");
         const managedProof = ownerCoordinationStore.acquireSessionActivation({
@@ -312,10 +336,8 @@ export class RuntimeLifecycleLoading {
                 ? transcriptProjectSessionDir
                 : undefined;
             opened = await openPersistedRootSession({
-                cwd: options.cwd,
-                sessionId: cataloged
-                    ? (classified.locator?.piSessionId ?? managedSession.piSessionId)
-                    : options.sessionId,
+                cwd,
+                sessionId: cataloged ? (classified.locator?.piSessionId ?? managedSession.piSessionId) : sessionId,
                 sessionPath: managedTranscriptPath,
                 sessionDir: managedProjectSessionDir,
                 managedProjectRoot: managedProjectSessionDir ? transcriptProjectRoot : undefined,
@@ -344,7 +366,7 @@ export class RuntimeLifecycleLoading {
         const hostedSession = this.services.sessionHost.createSession({
             id: crypto.randomUUID(),
             sessionManager: sessionManager,
-            cwd: options.cwd,
+            cwd,
             managed: {
                 runwieldSessionId: managedSession.runwieldSessionId,
                 projectId: managedSession.projectId,
@@ -369,16 +391,17 @@ export class RuntimeLifecycleLoading {
         this.managedOperations.setPendingCreationProof(hostedSession.id, managedProof);
         this.events.attachRuntimeEventSink(hostedSession);
         try {
+            if (mcpServers) hostedSession.setMcpRequestServers(mcpServers);
             const savedModel =
                 readPersistedManualModelState(sessionManager, agentName) || readPersistedModelState(sessionManager);
             // Load the transcript without replacing or running its retired selection.
-            if (!options.modelOverride && savedModel && isRemovedAgyProvider(savedModel.provider)) {
+            if (!modelOverride && savedModel && isRemovedAgyProvider(savedModel.provider)) {
                 hostedSession.setActiveModelState(savedModel.model, savedModel.provider, true);
             } else {
                 await this.settings.activateSessionAgent(hostedSession, {
                     agentName,
-                    model: options.modelOverride,
-                    mcpServers: options.mcpServers,
+                    model: modelOverride,
+                    mcpServers: mcpServers,
                 });
             }
             const setupEvents = this.events.consumePendingReplayEvents(hostedSession.id);
@@ -404,6 +427,15 @@ export class RuntimeLifecycleLoading {
             await this.lifecycle.closeSession(hostedSession.id);
             throw error;
         }
+    }
+
+    private setPendingModelOverride(session: HostedSession, reference: string) {
+        const parsed = parseProviderModel(reference);
+        session.mergePendingManagedTurnIntent({
+            model: parsed.ok ? parsed.id : reference,
+            provider: parsed.ok ? parsed.provider : "",
+            manualModel: true,
+        });
     }
 
     setInteractionAdapter(

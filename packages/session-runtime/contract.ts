@@ -7,26 +7,19 @@ export interface SessionRuntimeOptions {
     ownerInstanceId?: string;
 }
 
-/** Select a checkout and, optionally, a saved Session to continue. */
-export interface CreateInteractiveSessionOptions {
-    cwd: string;
-    mode?: "new" | "continue";
-    resumeSessionId?: string;
-    deferManagedActivationUntilAgentReady?: boolean;
-}
-
-/** Select a checkout and initial agent for a new Session. */
-export interface CreatePromptReadySessionOptions {
+/** Select a checkout and optionally prepare an initial agent for a new Session. */
+export interface CreateSessionOptions {
     cwd: string;
     agentName?: string;
     deferPersistenceUntilFirstMessage?: boolean;
 }
 
-/** Locate a saved Session and optionally select a model for the next turn. */
-export interface LoadSessionOptions {
+/** Select a saved Session and optionally select a model for its next turn. */
+export interface ResumeSessionOptions {
     cwd: string;
-    /** For a local Project, either its stable RunWield Session ID or its Pi transcript ID. */
-    sessionId: string;
+    /** A local RunWield Session ID or Pi transcript ID. Omit to resume the latest saved Session. */
+    sessionId?: string;
+    /** Optional local transcript locator for an explicit Session ID. */
     sessionPath?: string;
     modelOverride?: string;
 }
@@ -40,7 +33,7 @@ export interface CreatedSession {
 }
 
 /** Runtime identity and replay data for a saved Session. */
-export interface LoadedSession {
+export interface ResumedSession {
     sessionId: string;
     cwd: string;
     sessionManagerId: string;
@@ -150,14 +143,13 @@ export type SessionRuntimeEventListener = (event: SessionRuntimeEvent) => void |
 
 /** Operations an adapter uses to own Sessions and their active turns. */
 export interface SessionRuntime {
-    /** Open a new Session or continue an existing one in the given checkout. */
-    createInteractiveSession(options: CreateInteractiveSessionOptions): Promise<CreatedSession>;
+    /** Create a Session with an optional initial agent. */
+    createSession(options: CreateSessionOptions): Promise<CreatedSession>;
 
-    /** Create a new Session with its initial agent selected. Returns the runtime Session ID. */
-    createPromptReadySession(options: CreatePromptReadySessionOptions): Promise<string>;
-
-    /** Load saved Session state and return its initial replay events. */
-    loadSession(options: LoadSessionOptions): Promise<LoadedSession>;
+    /** Reopen the requested saved Session with its replay events. An unavailable ID rejects the request. */
+    resumeSession(options: ResumeSessionOptions & { sessionId: string }): Promise<ResumedSession>;
+    /** With no ID, reopen the most recent unarchived Session, or return null when none is available. */
+    resumeSession(options: ResumeSessionOptions): Promise<ResumedSession | null>;
 
     /** Submit user input and wait for its outcome, including any replacement Session. */
     promptUserTurn(sessionId: string, options: UserPromptOptions): Promise<UserPromptResult>;

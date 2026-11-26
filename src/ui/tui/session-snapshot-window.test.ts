@@ -20,13 +20,13 @@ async function withSessions(run: (runtime: SessionRuntime, first: string, second
     await withRuntimeCommandFixture("snapshot-window-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         try {
-            const first = await runtime.createInteractiveSession({
+            const first = await runtime.createSession({
                 cwd: projectRoot,
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
-            const second = await runtime.createInteractiveSession({
+            const second = await runtime.createSession({
                 cwd: projectRoot,
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
             run(runtime, first.sessionId, second.sessionId);
         } finally {

@@ -38,7 +38,7 @@ import type {
 type RuntimeEventsDependency = Pick<RuntimeEvents, "emitSessionEvent" | "runBusyOperation">;
 type RuntimeLifecycleDependency = Pick<
     RuntimeLifecycle,
-    "closeSession" | "createInteractiveSession" | "materializeDeferredWorkflowSession"
+    "closeSession" | "createSession" | "materializeDeferredWorkflowSession"
 >;
 type RuntimeManagedOperationsDependency = Pick<
     RuntimeManagedOperations,
@@ -914,10 +914,9 @@ ${outcome.feedback || ""}`,
             const action = resolution.kind;
 
             const adapter = currentOldSession.getInteractionAdapter();
-            const created = await this.lifecycle.createInteractiveSession({
+            const created = await this.lifecycle.createSession({
                 cwd: currentContinuation.projectRoot,
-                mode: "new",
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
             const newSessionId = created.sessionId;
             const newSession = this.services.sessionHost.getSession(newSessionId);

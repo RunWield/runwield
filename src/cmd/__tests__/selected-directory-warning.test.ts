@@ -241,7 +241,7 @@ test("ACP Load Plan at a registered home root keeps protocol behavior without a 
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
             });
-            const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
             await withRetainedPlanFixture(projectRoot, () =>
                 runLoadPlanCommand(["acp"], {
                     slashSurface: "acp",

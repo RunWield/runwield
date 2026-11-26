@@ -28,9 +28,8 @@ test("managed prompt re-entry is rejected while a real operation holds the capab
                 });
                 let firstPrompt: Promise<{ ok: boolean; turns: number; error?: string }> | null = null;
                 try {
-                    const created = await runtime.createInteractiveSession({
+                    const created = await runtime.createSession({
                         cwd,
-                        mode: "new",
                     });
                     await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
                     const dormant = runtime.getSessionSnapshot(created.sessionId);

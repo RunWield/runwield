@@ -21,7 +21,7 @@ test("a failed review launch does not claim the review was completed", async () 
         const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
             await runtime.requestInteraction(sessionId, {
                 type: RuntimeInteractionTypes.PLAN_REVIEW,

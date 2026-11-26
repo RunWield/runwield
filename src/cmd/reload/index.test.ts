@@ -11,7 +11,7 @@ for (const deferred of [false, true]) {
     test(`reload applies manual settings to a ${deferred ? "deferred" : "active"} Session`, async () => {
         await withRuntimeCommandFixture("reload-mascot-", async ({ projectRoot }) => {
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({
+            const { sessionId } = await runtime.createSession({
                 cwd: projectRoot,
                 agentName: "router",
                 deferPersistenceUntilFirstMessage: deferred,

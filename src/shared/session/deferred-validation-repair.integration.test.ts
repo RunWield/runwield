@@ -81,7 +81,7 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                     assertExists(ready);
                     assertEquals(ready.attrs.status, "implemented");
                     assertEquals(ready.attrs.validationPhase, "semantic");
-                    const id = await runtime.createPromptReadySession({
+                    const { sessionId: id } = await runtime.createSession({
                         cwd: root,
                         agentName: "router",
                         deferPersistenceUntilFirstMessage: true,
@@ -188,7 +188,7 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                     await runtime.closeAllSessionsWhenIdle();
                     const restarted = createSessionRuntime({ sessionStore: store });
                     try {
-                        const loaded = await restarted.loadSession({
+                        const loaded = await restarted.resumeSession({
                             cwd: root,
                             sessionId: segments[0].piSessionId,
                             sessionPath: segments[0].transcriptPath,
@@ -268,7 +268,7 @@ test("continue resumes paused AI review with its prior review context, not an En
                 );
                 const ready = await loadPlan(tree.path, name);
                 assertExists(ready);
-                const id = await runtime.createPromptReadySession({ cwd: root, agentName: "engineer" });
+                const { sessionId: id } = await runtime.createSession({ cwd: root, agentName: "engineer" });
                 const interrupted = () =>
                     fauxAssistantMessage(fauxText("Review interrupted."), {
                         stopReason: "error",
@@ -397,7 +397,7 @@ for (const entrypoint of ["prompt", "validation"] as const) {
                         },
                         { expectedRevision: plan.revision },
                     );
-                    const id = await runtime.createPromptReadySession({ cwd: root, agentName: "engineer" });
+                    const { sessionId: id } = await runtime.createSession({ cwd: root, agentName: "engineer" });
                     await runtime.setActiveExecutionWorkflow(id, {
                         planName: name,
                         projectRoot: root,

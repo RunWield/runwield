@@ -36,7 +36,7 @@ test("portable provider turn receives real read tool bytes", async () => {
             ownerInstanceId: crypto.randomUUID(),
         });
         try {
-            const id = await runtime.createPromptReadySession({ cwd: projectRoot });
+            const { sessionId: id } = await runtime.createSession({ cwd: projectRoot, selectDefaultAgent: true });
             await runtime.promptUserTurn(id, { initialRequest: "Read readme.txt." });
             equal(await runtime.getLastAssistantText(id), "Read completed.");
             ok(toolNames.includes("memory"), `memory extension is available: ${toolNames.join(", ")}`);

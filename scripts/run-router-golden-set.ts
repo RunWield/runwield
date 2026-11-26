@@ -296,7 +296,7 @@ export async function runRouterForGoldenRequest(
         messagesPromise = options.runAgentSession({ ...agentOptions, cwd: options.cwd });
     } else {
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: options.cwd || getCwd() });
+        const created = await runtime.createSession({ cwd: options.cwd || getCwd() });
         cancel = () => {
             runtime.cancelSession(created.sessionId);
         };

@@ -111,7 +111,7 @@ async function createRuntime(
     agentName = "router",
 ): Promise<{ runtime: SessionRuntime; sessionId: string }> {
     const runtime = createSessionRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName });
+    const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName });
     return { runtime, sessionId };
 }
 

@@ -1,21 +1,18 @@
 import { syncTranscriptFileAndParent } from "../../../src/shared/session/file-session-storage.ts";
-import type { CloseSessionResult, CreatedSession, CreateInteractiveSessionOptions } from "../contract.ts";
+import type { CloseSessionResult, CreatedSession } from "../contract.ts";
 import { projects } from "@runwield/projects";
 import { stat as fsStat } from "node:fs/promises";
 import { AGENTS } from "../../../src/shared/session/agent-registry.ts";
 import {
-    classifyRootSessionLocator,
     createRootSessionManager,
     isPathInside,
-    listCatalogSafeRootSessionLocators,
-    listPersistedRootSessions,
     resolveCreatedRootSessionPath,
 } from "../../../src/shared/session/root-session.ts";
 import { RuntimeEventTypes } from "../events.ts";
 import { captureTranscriptEvidence } from "../session-transcript-projection.ts";
 import { recordSegmentLineageEvidence } from "../../../src/shared/session/workflow-context-session.ts";
 import { isAbsolute } from "node:path";
-import type { PromptReadySessionOptions } from "./types.ts";
+import type { CreateSessionOptions } from "./types.ts";
 
 import { enterGitProjectRuntime, isRuntimeRootSessionManager } from "./support.ts";
 
@@ -26,7 +23,6 @@ import type { RuntimeManagedOperations } from "./managed-operations.ts";
 import type { RuntimeReads } from "./reads.ts";
 import type { RuntimeAgentSettings } from "./agent-settings.ts";
 import type { RuntimeManagedSync } from "./managed-sync.ts";
-import type { RuntimeLifecycleLoading } from "./lifecycle-loading.ts";
 import type { RuntimeTurns } from "./turns.ts";
 
 type RuntimeEventsDependency = Pick<
@@ -51,7 +47,6 @@ type RuntimeAgentSettingsDependency = Pick<
     "ensureSessionProjectForCwd" | "markPromptReadyAgent" | "refreshMcpTools" | "switchAgent"
 >;
 type RuntimeManagedSyncDependency = Pick<RuntimeManagedSync, "synchronizeManagedSession">;
-type RuntimeLifecycleLoadingDependency = Pick<RuntimeLifecycleLoading, "loadSession">;
 type RuntimeTurnsDependency = Pick<RuntimeTurns, "awaitSettlement" | "cancelSession">;
 
 export class RuntimeLifecycle {
@@ -61,7 +56,6 @@ export class RuntimeLifecycle {
     private reads!: RuntimeReadsDependency;
     private settings!: RuntimeAgentSettingsDependency;
     private sync!: RuntimeManagedSyncDependency;
-    private loading!: RuntimeLifecycleLoadingDependency;
     private turns!: RuntimeTurnsDependency;
 
     constructor(private readonly services: RuntimeServices) {}
@@ -73,7 +67,6 @@ export class RuntimeLifecycle {
         reads: RuntimeReadsDependency,
         settings: RuntimeAgentSettingsDependency,
         sync: RuntimeManagedSyncDependency,
-        loading: RuntimeLifecycleLoadingDependency,
         turns: RuntimeTurnsDependency,
     ) {
         this.events = events;
@@ -82,7 +75,6 @@ export class RuntimeLifecycle {
         this.reads = reads;
         this.settings = settings;
         this.sync = sync;
-        this.loading = loading;
         this.turns = turns;
     }
     private pendingManagedCreationProjects = new Map<string, { cwd: string; name?: string }>();
@@ -366,111 +358,62 @@ export class RuntimeLifecycle {
         return { sessionId: hostedSession.id, cwd: hostedSession.cwd, runwieldSessionId: cataloged.runwieldSessionId };
     }
 
-    async createInteractiveSession(options: CreateInteractiveSessionOptions): Promise<CreatedSession> {
+    async createSession(options: CreateSessionOptions): Promise<CreatedSession> {
         if (!options?.cwd || !isAbsolute(options.cwd)) {
-            throw new Error("SessionRuntime.createInteractiveSession requires an absolute cwd");
+            throw new Error("SessionRuntime.createSession requires an absolute cwd");
         }
+        const deferPersistence =
+            options.deferPersistenceUntilFirstMessage === true || Boolean(this.services.remotePersistence);
+        const created = await this.createSessionShell(options.cwd, deferPersistence);
+        const { agentName: requestedAgentName, mcpServers, selectDefaultAgent } = options;
+        const agentName = requestedAgentName ?? (selectDefaultAgent ? AGENTS.ROUTER : undefined);
+        if (!agentName && !mcpServers) return created;
+        const hostedSession = this.services.sessionHost.requireSession(created.sessionId);
+        try {
+            if (mcpServers) hostedSession.setMcpRequestServers(mcpServers);
+            if (!agentName) return created;
+            if (deferPersistence) {
+                const mcpIntegration = await this.settings.refreshMcpTools(hostedSession, mcpServers);
+                if (mcpIntegration) await hostedSession.setMcpIntegration(mcpIntegration);
+            }
+            const activated = deferPersistence
+                ? this.settings.markPromptReadyAgent(hostedSession.id, { agentName })
+                : await this.settings.switchAgent(hostedSession.id, { agentName, mcpServers });
+            if (!activated.ok) throw new Error(activated.error || "The Session could not start");
+            if (requestedAgentName) hostedSession.mergePendingManagedTurnIntent({ agentName: requestedAgentName });
+            return created;
+        } catch (error) {
+            await this.closeSession(hostedSession.id);
+            throw error;
+        }
+    }
+
+    private async createSessionShell(cwd: string, deferPersistence: boolean): Promise<CreatedSession> {
         const ownerCoordinationStore = this.services.sessionStore;
-        const deferManagedCreation = Boolean(
-            (options.mode || "new") === "new" &&
-            (options.deferManagedActivationUntilAgentReady || this.services.remotePersistence),
-        );
-        if (!deferManagedCreation) await enterGitProjectRuntime(options.cwd);
-        if (!ownerCoordinationStore && !deferManagedCreation) {
+        if (!deferPersistence) await enterGitProjectRuntime(cwd);
+        if (!ownerCoordinationStore && !deferPersistence) {
             throw new Error("Session Manager access is blocked: session_store_unavailable");
         }
-        const managedProject = deferManagedCreation ? null : this.settings.ensureSessionProjectForCwd(options.cwd);
-        if (!deferManagedCreation && !managedProject) {
+        const managedProject = deferPersistence ? null : this.settings.ensureSessionProjectForCwd(cwd);
+        if (!deferPersistence && !managedProject) {
             throw new Error("Session Manager create is blocked: project_identity_unavailable");
         }
-        if ((options.mode || "new") === "continue") {
-            const classified = await classifyRootSessionLocator({
-                cwd: options.cwd,
-                ownerCoordinationStore,
-            });
-            if (classified.kind === "blocked") {
-                throw new Error(`Session continue is blocked: ${classified.reason}`);
-            }
-            let selectedSession = null;
-            if (options.resumeSessionId) {
-                const cataloged =
-                    ownerCoordinationStore?.getSessionById(options.resumeSessionId, managedProject?.projectId) || null;
-                // The scoped store lookup verifies linked Project membership.
-                if (cataloged) {
-                    selectedSession = {
-                        id: cataloged.piSessionId,
-                        path: cataloged.transcriptPath,
-                        cwd: cataloged.transcriptCwd,
-                    };
-                }
-                if (!selectedSession) {
-                    const located = await classifyRootSessionLocator({
-                        cwd: options.cwd,
-                        sessionId: options.resumeSessionId,
-                        ownerCoordinationStore,
-                    });
-                    if (
-                        located.kind === "managed" &&
-                        located.session &&
-                        ownerCoordinationStore?.getSessionById(
-                            located.session.runwieldSessionId,
-                            managedProject?.projectId,
-                        )
-                    ) {
-                        selectedSession = {
-                            id: located.session.piSessionId,
-                            path: located.session.transcriptPath,
-                            cwd: located.session.transcriptCwd,
-                        };
-                    }
-                }
-            } else {
-                const persistedSessions =
-                    classified.kind === "managed"
-                        ? (await listCatalogSafeRootSessionLocators(options.cwd)).locators.map((locator) => ({
-                              id: locator.piSessionId,
-                              path: locator.sessionPath,
-                              cwd: locator.headerCwd,
-                              modified: locator.headerTimestamp || undefined,
-                          }))
-                        : await listPersistedRootSessions(options.cwd);
-                selectedSession = persistedSessions[0] || null;
-            }
-            if (options.resumeSessionId && !selectedSession) {
-                throw new Error(`No saved Session was found with ID ${options.resumeSessionId}.`);
-            }
-            if (selectedSession?.id && selectedSession?.path) {
-                const loaded = await this.loading.loadSession({
-                    cwd: options.cwd,
-                    sessionId: selectedSession.id,
-                    sessionPath: selectedSession.path,
-                });
-                return {
-                    sessionId: loaded.sessionId,
-                    cwd: loaded.cwd,
-                    sessionManagerId: loaded.sessionManagerId,
-                    startedAt: new Date().toISOString(),
-                };
-            }
-        }
-        const sessionManager = deferManagedCreation
-            ? null
-            : await createRootSessionManager(options.mode || "new", options.cwd);
+        const sessionManager = deferPersistence ? null : await createRootSessionManager("new", cwd);
         let managedSession = null;
         let managedCurrentSegmentId = "";
         let managedProof = null;
-        if (managedProject && ownerCoordinationStore && !deferManagedCreation) {
+        if (managedProject && ownerCoordinationStore) {
             try {
                 if (!sessionManager) throw new Error("The Session could not be opened");
                 const piSessionId = sessionManager.getSessionId?.();
                 if (!piSessionId) throw new Error("The Session could not be persisted");
-                const transcriptPath = await this.resolveCreatedSessionPath(options.cwd, sessionManager);
+                const transcriptPath = await this.resolveCreatedSessionPath(cwd, sessionManager);
                 const acquired = await ownerCoordinationStore.ensureSessionCatalogRecordAndAcquire({
                     locator: {
                         projectId: managedProject.projectId,
                         piSessionId,
                         transcriptPath,
-                        transcriptCwd: options.cwd,
+                        transcriptCwd: cwd,
                         source: "created",
                     },
                     activation: {
@@ -506,7 +449,7 @@ export class RuntimeLifecycle {
         const hostedSession = this.services.sessionHost.createSession({
             id: crypto.randomUUID(),
             sessionManager: sessionManager,
-            cwd: options.cwd,
+            cwd,
             managed: managedSession
                 ? {
                       runwieldSessionId: managedSession.runwieldSessionId,
@@ -531,8 +474,8 @@ export class RuntimeLifecycle {
                 : null,
         });
         if (managedProof) this.managedOperations.setPendingCreationProof(hostedSession.id, managedProof);
-        if (deferManagedCreation) {
-            this.pendingManagedCreationProjects.set(hostedSession.id, { cwd: options.cwd });
+        if (deferPersistence) {
+            this.pendingManagedCreationProjects.set(hostedSession.id, { cwd });
         }
         this.events.attachRuntimeEventSink(hostedSession);
         if (managedProof && managedSession) {
@@ -576,6 +519,7 @@ export class RuntimeLifecycle {
                     // Preserve the creation failure.
                 }
                 hostedSession.dehydrateManagedSession();
+                await this.closeSession(hostedSession.id);
                 throw error;
             }
         }
@@ -589,38 +533,6 @@ export class RuntimeLifecycle {
             sessionManagerId: sessionManager?.getSessionId?.() || null,
             startedAt: sessionManager?.getHeader?.()?.timestamp || new Date().toISOString(),
         };
-    }
-
-    async createPromptReadySession(options: PromptReadySessionOptions) {
-        if (!options?.cwd || !isAbsolute(options.cwd)) {
-            throw new Error("SessionRuntime.createPromptReadySession requires an absolute cwd");
-        }
-        const agentName = options.agentName || AGENTS.ROUTER;
-        const deferPersistence =
-            options.deferPersistenceUntilFirstMessage === true || Boolean(this.services.remotePersistence);
-        const created = await this.createInteractiveSession({
-            cwd: options.cwd,
-            mode: "new",
-            deferManagedActivationUntilAgentReady: deferPersistence,
-        });
-        const hostedSession = this.services.sessionHost.getSession(created.sessionId);
-        if (!hostedSession) throw new Error("SessionRuntime failed to retain the new session");
-        if (options.mcpServers) hostedSession.setMcpRequestServers(options.mcpServers);
-        try {
-            if (deferPersistence) {
-                const mcpIntegration = await this.settings.refreshMcpTools(hostedSession, options.mcpServers);
-                if (mcpIntegration) await hostedSession.setMcpIntegration(mcpIntegration);
-            }
-            const activated = deferPersistence
-                ? this.settings.markPromptReadyAgent(hostedSession.id, { agentName })
-                : await this.settings.switchAgent(hostedSession.id, { agentName, mcpServers: options.mcpServers });
-            if (!activated.ok) throw new Error(activated.error || "The Session could not start");
-            if (options.agentName) hostedSession.mergePendingManagedTurnIntent({ agentName: options.agentName });
-            return hostedSession.id;
-        } catch (error) {
-            await this.closeSession(hostedSession.id);
-            throw error;
-        }
     }
 
     async materializePromptReadySession(sessionId: string) {

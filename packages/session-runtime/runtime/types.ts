@@ -5,8 +5,8 @@ import type { MinimalSessionManagerLike } from "../host.ts";
 import type { ImageAttachment, RuntimeQueuedMessage } from "../events.ts";
 import type {
     ContextUsageSnapshot,
-    CreatePromptReadySessionOptions,
-    LoadSessionOptions as PublicLoadSessionOptions,
+    CreateSessionOptions as PublicCreateSessionOptions,
+    ResumeSessionOptions as PublicResumeSessionOptions,
     SessionRuntimeOptions,
     UserPromptOptions,
     UserPromptResult as PublicUserPromptResult,
@@ -68,9 +68,11 @@ export interface RuntimeContextCapacity {
     autoCompactionEnabled: boolean | null;
 }
 
-export interface PromptReadySessionOptions extends CreatePromptReadySessionOptions {
-    mcpServers?: McpServerDefinition[];
-}
+/** The default agent leaves the first turn's explicit agent preference unset. */
+export type CreateSessionOptions = PublicCreateSessionOptions &
+    ({ selectDefaultAgent?: never } | { selectDefaultAgent: true; agentName?: never }) & {
+        mcpServers?: McpServerDefinition[];
+    };
 
 export interface PromptSessionOptions extends UserPromptOptions {
     generatedTaskId?: string;
@@ -113,7 +115,7 @@ export interface PromptSessionResult {
 
 export interface UserPromptResult extends PromptSessionResult, PublicUserPromptResult {}
 
-export interface LoadSessionOptions extends PublicLoadSessionOptions {
+export interface ResumeSessionOptions extends PublicResumeSessionOptions {
     mcpServers?: McpServerDefinition[];
 }
 

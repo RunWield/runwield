@@ -26,7 +26,7 @@ test("chat view refreshes warmed sidebar state for events from a replacement Ses
         try {
             tui.start();
             tui.renderNow(true);
-            const second = await runtime.createInteractiveSession({ cwd: projectRoot });
+            const second = await runtime.createSession({ cwd: projectRoot });
             activeId = second.sessionId;
             view.resetForSessionReplacement();
             tui.renderNow(true);

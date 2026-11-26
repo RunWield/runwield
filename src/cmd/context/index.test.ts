@@ -140,7 +140,7 @@ test("context command renders the committed Session model and estimates without 
     await withRuntimeCommandFixture("context-command-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("Context is ready.");
         const runtime = createSessionRuntime();
-        const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
+        const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "guide" });
         const { uiAPI, messages } = makeUi();
         try {
             assertEquals(

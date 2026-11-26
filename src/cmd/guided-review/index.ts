@@ -96,7 +96,7 @@ export async function generateGuidedReview(
     if (!prompt.trim()) throw new Error("RunWield Guided Review requires a prompt.");
     if (options.inMemory) return generateInMemoryGuide(prompt, options);
     const runtime = createSessionRuntime({ ownerProcessKind: "workspace" });
-    const sessionId = await runtime.createPromptReadySession({ cwd: options.cwd, agentName: "guide" });
+    const { sessionId } = await runtime.createSession({ cwd: options.cwd, agentName: "guide" });
     const pendingUsageWrites: Promise<void>[] = [];
     const unsubscribe = runtime.subscribeSessionEvents(sessionId, (event: RuntimeUsageEventLike) => {
         if (!isRuntimeUsageEvent(event)) return;

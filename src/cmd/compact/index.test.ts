@@ -20,7 +20,7 @@ for (const outcome of ["success", "failure", "canceled"] as const) {
             async ({ projectRoot, setModelResponseFactory, setModelResponseFactories }) => {
                 await setCompactionKeepRecentTokens(1);
                 const runtime = createSessionRuntime();
-                const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "guide" });
                 const messages: string[] = [];
                 const notifications: Notification[] = [];
                 try {

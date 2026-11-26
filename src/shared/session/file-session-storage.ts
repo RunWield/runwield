@@ -470,7 +470,7 @@ export function listManifests(
     sessionDir: string,
     readOnly = false,
     project?: StoredSessionProject,
-): Array<{ path: string; manifest: FileSessionManifest }> {
+): Array<{ path: string; manifest: FileSessionManifest; hasPrimaryManifest: boolean }> {
     if (!readOnly) restoreManifestsFromRecoveryDescriptors(sessionDir);
     return listSessionManifestFiles(sessionDir, readOnly).flatMap(({ path, text, hasPrimaryManifest }) => {
         const manifest: FileSessionManifest = JSON.parse(text);
@@ -480,7 +480,7 @@ export function listManifests(
             recoveryProject(dirname(sessionDir), manifest)?.sessionDirectory !== sessionDir
         )
             return [];
-        return [{ path, manifest: project ? projectManifest(manifest, project) : manifest }];
+        return [{ path, manifest: project ? projectManifest(manifest, project) : manifest, hasPrimaryManifest }];
     });
 }
 

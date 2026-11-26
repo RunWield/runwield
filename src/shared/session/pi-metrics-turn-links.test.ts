@@ -18,7 +18,7 @@ test("one Pi execution links usage from successive model turns to its own turn",
         ]);
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "Read fixture." })).ok, true);
             await drainWorkflowMetrics();
@@ -57,7 +57,7 @@ test("Pi assistant usage keeps observed message timing before settlement", async
         ]);
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "Read fixture." })).ok, true);
             await drainWorkflowMetrics();

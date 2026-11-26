@@ -261,9 +261,8 @@ async function seedActiveElsewhereManagedSession(
             ownerInstanceId: "chat-input-managed-seed",
         });
         try {
-            const created = await runtime.createInteractiveSession({
+            const created = await runtime.createSession({
                 cwd: projectRoot,
-                mode: "new",
             });
             await runtime.switchAgent(created.sessionId, { agentName: "operator" });
             const managed = runtime.getSessionSnapshot(created.sessionId)?.managed;

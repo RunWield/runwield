@@ -32,7 +32,7 @@ test("disabled recording leaves no Project JSONL after a real Agent turn", async
         setModelResponse("No metric should be written.");
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(sessionId, { agentName: "guide" });
             assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "Answer briefly." })).ok, true);
             await drainWorkflowMetrics();
@@ -69,7 +69,7 @@ test("real mixed-tool turn reconstructs ordered calls and batch children from sh
         ]);
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "Inspect safe tools." })).ok, true);
             const rows = (await readMetrics(projectRoot)).reverse();
@@ -136,7 +136,7 @@ test("real background delegate records its parent execution without surfacing ch
         ]);
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "Delegate a read." })).ok, true);
             for (let i = 0; i < 400 && runtime.getSessionBackgroundTaskState(sessionId)?.active; i++) {
@@ -183,7 +183,7 @@ test("two parallel background delegates retain their shared parent execution", a
             ]);
             const runtime = createSessionRuntime();
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 await runtime.switchAgent(sessionId, { agentName: "engineer" });
                 assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "Delegate twice." })).ok, true);
                 for (let i = 0; i < 400 && runtime.getSessionBackgroundTaskState(sessionId)?.active; i++) {
@@ -274,7 +274,7 @@ test("real foreground delegate preserves parent links with no background task ID
             ]);
             const runtime = createSessionRuntime();
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 await runtime.switchAgent(sessionId, { agentName: "engineer" });
                 assertEquals(
                     (await runtime.promptUserTurn(sessionId, { initialRequest: "Delegate foreground." })).ok,
@@ -461,7 +461,7 @@ test("Runtime manual compaction carries the caller command ID into saved observa
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await assertRejects(
                 () => runtime.compactSession(sessionId, undefined, "cmd_runtime"),
                 Error,

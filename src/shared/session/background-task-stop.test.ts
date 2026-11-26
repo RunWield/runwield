@@ -42,7 +42,7 @@ process.stdout.write("must not run\\n");
         ]);
         const runtime = createSessionRuntime({ ownerProcessKind: "test" });
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
             let taskId = "";
             runtime.subscribeSessionEvents(created.sessionId, (event) => {
@@ -106,7 +106,7 @@ test("Stop during generated turn acquisition prevents a late model request", asy
             ]);
             const runtime = createSessionRuntime({ ownerProcessKind: "test" });
             try {
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await runtime.createSession({ cwd: projectRoot });
                 await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
                 let parentEnded = false;
                 let cancelled = false;

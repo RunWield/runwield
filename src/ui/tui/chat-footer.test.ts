@@ -78,7 +78,7 @@ test("footer location shortens RunWield-managed worktree paths", () => {
 test("live footer controller subscribes to usage and rebinds on Session replacement", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
         let activeSessionId = sessionId;
-        const second = await runtime.createInteractiveSession({ cwd: projectRoot });
+        const second = await runtime.createSession({ cwd: projectRoot });
         const controller = createChatFooterController({
             runtime,
             getSessionId: () => activeSessionId,

@@ -69,7 +69,7 @@ test("reopened saved Epic chat hands feedback to Architect and shows its model-a
             const prompts: string[] = [];
             let modelTurns = 0;
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 const initial = await ensurePlanIdentity(projectRoot, "epic");
                 runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
                 await runtime.requestInteraction(sessionId, {

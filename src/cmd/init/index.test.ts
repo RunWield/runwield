@@ -101,7 +101,7 @@ test("init exercises real project state, assets, settings, and Agent runtime in 
                 ]);
                 const ui = createUi();
                 const runtime = createSessionRuntime();
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await runtime.createSession({ cwd: projectRoot });
                 runtime.setInteractionAdapter(created.sessionId, {
                     supportsInteraction: () => true,
                     requestInteraction: () => ({ outcome: "selected", value: "yes" }),
@@ -142,7 +142,7 @@ test("init exercises real project state, assets, settings, and Agent runtime in 
                     ]);
                     const ui = createUi();
                     const runtime = createSessionRuntime();
-                    const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                    const created = await runtime.createSession({ cwd: projectRoot });
                     runtime.setInteractionAdapter(created.sessionId, {
                         supportsInteraction: () => true,
                         requestInteraction: () => ({ outcome: "selected", value: "yes" }),

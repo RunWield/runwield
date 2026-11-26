@@ -61,7 +61,7 @@ async function runSettingsClient() {
         ownerProcessKind: "test",
         ownerInstanceId: crypto.randomUUID(),
     });
-    let id = await runtime.createPromptReadySession({ cwd: input.cwd, agentName: "remote-runtime" });
+    let { sessionId: id } = await runtime.createSession({ cwd: input.cwd, agentName: "remote-runtime" });
     function report(ok = true, error?: string) {
         const managed = host.getSession(id)?.getManagedMetadata();
         console.log(
@@ -86,7 +86,8 @@ async function runSettingsClient() {
             try {
                 if (command.kind === "load") {
                     await runtime.closeAllSessionsWhenIdle();
-                    id = (await runtime.loadSession({ cwd: input.cwd, sessionId: command.sessionId || "" })).sessionId;
+                    id = (await runtime.resumeSession({ cwd: input.cwd, sessionId: command.sessionId || "" }))
+                        .sessionId;
                 } else if (command.kind === "pending") {
                     host.getSession(id)!.mergePendingManagedTurnIntent({
                         agentName: command.agentName,

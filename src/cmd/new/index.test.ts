@@ -52,7 +52,7 @@ test("runNewCommand creates and names an in-memory Router session until its firs
     await withRuntimeCommandFixture("runwield-new-command-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("New Session ready.");
         const runtime = createSessionRuntime();
-        const current = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const current = await runtime.createSession({ cwd: projectRoot });
         const transcriptsBeforeNew = await countTranscripts(projectRoot);
         let replacementId = "";
         let cleared = false;

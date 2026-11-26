@@ -201,7 +201,7 @@ export async function runResumeCommand(argv: string[], options: ResumeCommandOpt
         compact = choice === "compact";
     }
 
-    const loaded = await sessionRuntime.loadSession({
+    const loaded = await sessionRuntime.resumeSession({
         cwd: current.cwd,
         sessionId: selected.id,
         sessionPath: selected.path,

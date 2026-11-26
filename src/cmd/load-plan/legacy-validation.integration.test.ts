@@ -139,7 +139,7 @@ for (const stage of stages.flatMap((stage) => [
                 await fsWriteFile(join(root, "implementation.txt"), "unrelated primary edits\n");
                 const executionHead = await git(tree, ["rev-parse", "HEAD"]);
                 const messages: string[] = [];
-                const sessionId = await runtime.createPromptReadySession({ cwd: root, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: root, agentName: "router" });
 
                 if (stage.reappeared) {
                     // Arrange an upgraded project whose old binary flushes its

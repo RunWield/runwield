@@ -50,7 +50,7 @@ import { registerBackgroundSteeringOwner } from "./background-steering.ts";
 type RuntimeEventsDependency = Pick<RuntimeEvents, "beginBusyOperation" | "emitSessionEvent" | "endBusyOperation">;
 type RuntimeLifecycleDependency = Pick<
     RuntimeLifecycle,
-    "hasPendingProject" | "materializeDeferredManagedShell" | "createInteractiveSession"
+    "hasPendingProject" | "materializeDeferredManagedShell" | "createSession"
 >;
 type RuntimeManagedOperationsDependency = Pick<
     RuntimeManagedOperations,
@@ -422,10 +422,9 @@ export class RuntimeTurns {
                 commandErrorReason = commandOutcome;
             }
             if (result.templateNewSession && namedInvocation.kind === "prompt_template") {
-                const created = await this.lifecycle.createInteractiveSession({
+                const created = await this.lifecycle.createSession({
                     cwd: hostedSession.cwd,
-                    mode: "new",
-                    deferManagedActivationUntilAgentReady: true,
+                    deferPersistenceUntilFirstMessage: true,
                 });
                 const next = this.services.sessionHost.requireSession(created.sessionId);
                 next.setInteractionAdapter(hostedSession.getInteractionAdapter());

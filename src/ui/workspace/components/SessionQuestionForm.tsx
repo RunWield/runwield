@@ -1,13 +1,6 @@
 /** Shared select/text/approval question controls for Workspace-style browser surfaces. */
 import { type SubmitEvent, useEffect, useState } from "react";
-import { isApprovalAcceptedValue } from "@runwield/session-runtime/interactions";
-
-type SessionQuestionOption = {
-    value: string;
-    label: string;
-    description?: string;
-    _meta?: { accepted?: boolean; approvalOutcome?: string };
-};
+import { isApprovalAcceptedValue, type RuntimeInteractionOption } from "@runwield/session-runtime/interactions";
 
 type SessionQuestionResponse = {
     outcome: string;
@@ -27,11 +20,11 @@ type SessionQuestionFormProps = {
     action?: string;
     sessionId?: string;
     questionId?: string;
-    options?: SessionQuestionOption[];
+    options?: RuntimeInteractionOption[];
     onResponse?: (response: SessionQuestionResponse) => Promise<void> | void;
 };
 
-function defaultOptions(mode: string): SessionQuestionOption[] {
+function defaultOptions(mode: string): RuntimeInteractionOption[] {
     if (mode === "approval") return [{ value: "approve", label: "Approve" }, { value: "decline", label: "Decline" }];
     return [{ value: "guide", label: "Guide" }, { value: "planner", label: "Planner" }, {
         value: "engineer",

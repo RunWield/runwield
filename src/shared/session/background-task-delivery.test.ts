@@ -36,7 +36,7 @@ test("an idle managed Session receives a completed shell task without another us
         const store = openFileSessionStore();
         const runtime = createSessionRuntime({ ownerProcessKind: "test", sessionStore: store });
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
             const initialGeneration = runtime.getSessionSnapshot(created.sessionId)?.managed?.generation ?? 0;
             runtime.subscribeSessionEvents(created.sessionId, (event) => {

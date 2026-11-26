@@ -101,7 +101,7 @@ test("tutorial verified recap requires exact verified status", async () => {
             );
 
             const runtime = createSessionRuntime();
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             const messages: string[] = [];
             try {
                 await runtime.promptUserTurn(created.sessionId, {
@@ -146,7 +146,7 @@ test("tutorial guidance persists deduplication and requires an associated Plan f
     await withRuntimeCommandFixture("tutorial-guidance-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("Choose a small change.");
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const sessionId = created.sessionId;
         const messages: string[] = [];
         const view = tutorialView(messages);
@@ -229,7 +229,7 @@ test("completed tutorial recap restores after reload without changing saved prog
         const view = tutorialView(messages);
         const uiAPI = view.uiAPI;
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await runtime.promptUserTurn(created.sessionId, {
                 initialRequest: "Start tutorial",
                 agentName: "planner",
@@ -252,10 +252,9 @@ test("completed tutorial recap restores after reload without changing saved prog
             const savedGeneration = saved?.managed?.generation;
             const managed = saved?.managed;
             await runtime.closeAllSessionsWhenIdle();
-            const loaded = await restarted.createInteractiveSession({
+            const loaded = await restarted.resumeSession({
                 cwd: projectRoot,
-                mode: "continue",
-                resumeSessionId: managed?.runwieldSessionId || "",
+                sessionId: managed?.runwieldSessionId || "",
             });
             messages.length = 0;
             await restarted.replaySession(loaded.sessionId);

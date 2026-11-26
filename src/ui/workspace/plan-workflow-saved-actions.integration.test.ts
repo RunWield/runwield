@@ -40,7 +40,7 @@ for (const withSession of [false, true]) {
                 });
                 let sessionId: string | undefined;
                 if (withSession) {
-                    const created = await runtime.createInteractiveSession({ cwd: root });
+                    const created = await runtime.createSession({ cwd: root });
                     await runtime.recordPlanAssociation(created.sessionId, {
                         planId: "held-id",
                         planName: "held",

@@ -72,7 +72,7 @@ async function withSlashFixture(
         await writeCatalogFixtures(projectRoot, options);
         setModelResponse("Fixture turn complete.");
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         await runtime.renameSession(created.sessionId, "Slash fixture");
         const messages: string[] = [];
         const submittedRequests: string[] = [];

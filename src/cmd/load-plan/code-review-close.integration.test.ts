@@ -36,7 +36,7 @@ test("load-plan offers code review again after closing, including in a fresh Ses
             const runtime = createSessionRuntime();
             const messages: string[] = [];
             try {
-                const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
                 runtime.setInteractionAdapter(sessionId, {
                     requestInteraction(request) {
                         if (request.type === "code_review") {

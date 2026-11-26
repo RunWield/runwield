@@ -93,7 +93,8 @@ test("root Pi turns can call a real MCP fixture tool", async () => {
             },
         ]);
         try {
-            const sessionId = await runtime.createPromptReadySession({
+            const { sessionId } = await runtime.createSession({
+                selectDefaultAgent: true,
                 cwd: fixture.projectRoot,
                 mcpServers: [
                     {
@@ -230,7 +231,8 @@ test("root Agent handoff keeps the MCP fixture tool available", async () => {
             },
         ]);
         try {
-            const sessionId = await runtime.createPromptReadySession({
+            const { sessionId } = await runtime.createSession({
+                selectDefaultAgent: true,
                 cwd: fixture.projectRoot,
                 mcpServers: [
                     {
@@ -270,11 +272,13 @@ test("two Runtime Sessions own and close their MCP integrations independently", 
             source: "request" as const,
         });
         try {
-            const firstId = await runtime.createPromptReadySession({
+            const { sessionId: firstId } = await runtime.createSession({
+                selectDefaultAgent: true,
                 cwd: fixture.projectRoot,
                 mcpServers: [serverFor(firstLog)],
             });
-            const secondId = await runtime.createPromptReadySession({
+            const { sessionId: secondId } = await runtime.createSession({
+                selectDefaultAgent: true,
                 cwd: fixture.projectRoot,
                 mcpServers: [serverFor(secondLog)],
             });
@@ -311,8 +315,14 @@ test("managed Runtime dehydration retains MCP ownership until disposal without c
         const first = await startFixtureIntegration();
         const second = await startFixtureIntegration();
         try {
-            const firstId = await runtime.createPromptReadySession({ cwd: fixture.projectRoot });
-            const secondId = await runtime.createPromptReadySession({ cwd: fixture.projectRoot });
+            const { sessionId: firstId } = await runtime.createSession({
+                cwd: fixture.projectRoot,
+                selectDefaultAgent: true,
+            });
+            const { sessionId: secondId } = await runtime.createSession({
+                cwd: fixture.projectRoot,
+                selectDefaultAgent: true,
+            });
             const firstSession = host.requireSession(firstId);
             const secondSession = host.requireSession(secondId);
             assert(firstSession.getManagedMetadata()?.transcriptPath);
@@ -353,7 +363,8 @@ test("Runtime replacement carries MCP ownership to the new Session", async () =>
             fauxAssistantMessage(fauxText("Replacement MCP turn complete.")),
         ]);
         try {
-            const sessionId = await runtime.createPromptReadySession({
+            const { sessionId } = await runtime.createSession({
+                selectDefaultAgent: true,
                 cwd: fixture.projectRoot,
                 mcpServers: [
                     {

@@ -38,7 +38,7 @@ test("the Session reopens B with its latest contents after reviews of A and B an
         try {
             const a = await createReviewPlan(root, "a");
             const b = await createReviewPlan(root, "b");
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: root });
             runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
             for (const [name, id] of [
                 ["a", a.attrs.planId],
@@ -54,10 +54,9 @@ test("the Session reopens B with its latest contents after reviews of A and B an
             assert(stableSessionId);
             await runtime.closeAllSessionsWhenIdle();
             runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
-            const resumed = await runtime.createInteractiveSession({
+            const resumed = await runtime.resumeSession({
                 cwd: root,
-                mode: "continue",
-                resumeSessionId: stableSessionId,
+                sessionId: stableSessionId,
             });
             assertEquals(runtime.getSessionSnapshot(resumed.sessionId)?.managed?.runwieldSessionId, stableSessionId);
             const before = await loadPlan(root, "b");
@@ -92,7 +91,7 @@ test("the Session reopens B with its latest contents after reviews of A and B an
             assertEquals(modelTurns, 0);
             assertEquals((await loadPlan(root, "b"))?.attrs.status, "draft");
 
-            const other = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
+            const other = await runtime.createSession({ cwd: root });
             assertEquals((await runtime.reopenPlanReview(other.sessionId)).kind, "no_reference");
             assertEquals(reviewCount, 1);
         } finally {
@@ -110,7 +109,7 @@ test("a deleted reviewed Plan is not replaced by another Plan", async () => {
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
         try {
             const target = await createReviewPlan(root, "target");
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: root });
             runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
             await runtime.requestInteraction(sessionId, {
                 type: RuntimeInteractionTypes.PLAN_REVIEW,
@@ -141,7 +140,7 @@ test("a reused Plan name with a different identity is not reopened", async () =>
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
         try {
             const target = await createReviewPlan(root, "target");
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: root });
             runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
             await runtime.requestInteraction(sessionId, {
                 type: RuntimeInteractionTypes.PLAN_REVIEW,
@@ -173,7 +172,7 @@ for (const status of ["archived", "verified"] as const) {
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
             try {
                 const target = await createReviewPlan(root, "target");
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: root });
                 runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
                 await runtime.requestInteraction(sessionId, {
                     type: RuntimeInteractionTypes.PLAN_REVIEW,
@@ -220,7 +219,7 @@ test("an unrelated active turn reports busy rather than launching the saved revi
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
         try {
             const target = await createReviewPlan(root, "target");
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: root });
             runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
             await runtime.requestInteraction(sessionId, {
                 type: RuntimeInteractionTypes.PLAN_REVIEW,

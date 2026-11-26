@@ -1599,10 +1599,9 @@ export class WorkspaceSessionContinuationService {
             let preparedModelOverride = "";
             if ((options.images || []).length > 0) {
                 try {
-                    const created = await this.runtime.createInteractiveSession({
+                    const created = await this.runtime.createSession({
                         cwd: project.currentRoot,
-                        mode: "new",
-                        deferManagedActivationUntilAgentReady: true,
+                        deferPersistenceUntilFirstMessage: true,
                     });
                     preparedSessionId = created.sessionId;
                     if (launch.model) {
@@ -1661,10 +1660,9 @@ export class WorkspaceSessionContinuationService {
                 let unsubscribe = () => {};
                 try {
                     if (!sessionId) {
-                        const created = await this.runtime.createInteractiveSession({
+                        const created = await this.runtime.createSession({
                             cwd: project.currentRoot,
-                            mode: "new",
-                            deferManagedActivationUntilAgentReady: true,
+                            deferPersistenceUntilFirstMessage: true,
                         });
                         sessionId = created.sessionId;
                     }
@@ -2471,9 +2469,8 @@ export class WorkspaceSessionContinuationService {
         const ready = Promise.withResolvers<void>();
         this.pendingCreateRequests.set(key, { requestHash, settled: ready.promise });
         try {
-            const created = await this.runtime.createInteractiveSession({
+            const created = await this.runtime.createSession({
                 cwd: requireOwnerProjectRoot(this.store, options.projectId),
-                mode: "new",
             });
             const managed = this.runtime.getSessionSnapshot(created.sessionId)?.managed;
             if (!managed) throw new Error("Plan review Session could not be created.");

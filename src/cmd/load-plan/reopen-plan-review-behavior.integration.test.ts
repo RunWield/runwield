@@ -55,7 +55,7 @@ test("reopened ordinary feedback sends its image to the saved planning Agent in 
             const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 await savedReview(runtime, sessionId, projectRoot, "target", "architect");
                 const persistentId = runtime.getSessionSnapshot(sessionId)?.managed?.runwieldSessionId;
                 let context: TranscriptContext | undefined;
@@ -114,7 +114,7 @@ test("reopened ordinary approval and run starts the saved Plan", async () => {
         const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await savedReview(runtime, sessionId, projectRoot, "target", "planner");
             runtime.setInteractionAdapter(sessionId, {
                 async requestInteraction(request) {
@@ -173,7 +173,7 @@ test("reopened PROJECT Epic approval starts decomposition in the same Session", 
             const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 await savedReview(runtime, sessionId, projectRoot, "epic", "architect");
                 const persistentId = runtime.getSessionSnapshot(sessionId)?.managed?.runwieldSessionId;
                 runtime.setInteractionAdapter(sessionId, {
@@ -238,7 +238,7 @@ test("reopened Sequence combines child feedback and then approves and runs the f
             const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 await savedReview(runtime, sessionId, projectRoot, "sequence", "architect");
                 let reviewed: SequenceReviewDocument[] = [];
                 runtime.setInteractionAdapter(sessionId, {

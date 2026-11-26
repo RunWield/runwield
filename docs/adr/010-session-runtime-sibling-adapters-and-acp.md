@@ -79,9 +79,10 @@ Session id is an in-process runtime identity and is deliberately distinct from
 both persisted SessionManager ids and transport-facing ACP session ids, so
 loading the same persisted conversation never aliases mutable runtime state.
 
-Adapters consume ordered semantic events and install a typed interaction
-adapter. They do not pass a rendering object to `createPromptReadySession()`,
-`loadSession()`, or `promptSession()`. During the remaining workflow migration,
+Adapters open a new Session with `createSession()` and can select its initial agent.
+They use `resumeSession()` to reopen a saved Session and receive its replay events.
+Adapters consume ordered semantic events and install a typed interaction adapter.
+During the remaining workflow migration,
 `SessionRuntime` owns a private compatibility presentation port that translates
 legacy engine output calls into the same event stream; this port is not an
 adapter extension API. Runtime adapters use `getSessionSnapshot()`, runtime

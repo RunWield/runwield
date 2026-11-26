@@ -286,26 +286,18 @@ test("explicit-ID interactive resume translates accepted linked Session membersh
                     .kind,
                 "existing",
             );
-            for (const resumeSessionId of [first.session.runwieldSessionId, first.session.piSessionId]) {
-                const loaded = await runtime.createInteractiveSession({ cwd: two, mode: "continue", resumeSessionId });
-                equal(loaded.cwd, two);
-                equal(loaded.sessionManagerId, first.session.piSessionId);
-                equal((await runtime.renameSession(loaded.sessionId, "Linked explicit resume")).ok, true);
-                await runtime.closeSession(loaded.sessionId);
-                await rejects(
-                    () => runtime.createInteractiveSession({ cwd: declined, mode: "continue", resumeSessionId }),
-                    /No saved Session/,
-                );
-                const direct = await runtime.loadSession({ cwd: two, sessionId: resumeSessionId });
-                equal(direct.cwd, two);
-                equal(direct.sessionManagerId, first.session.piSessionId);
+            for (const sessionId of [first.session.runwieldSessionId, first.session.piSessionId]) {
+                const resumed = await runtime.resumeSession({ cwd: two, sessionId });
+                equal(resumed.cwd, two);
+                equal(resumed.sessionManagerId, first.session.piSessionId);
                 equal(
-                    runtime.getSessionSnapshot(direct.sessionId)?.managed?.runwieldSessionId,
+                    runtime.getSessionSnapshot(resumed.sessionId)?.managed?.runwieldSessionId,
                     first.session.runwieldSessionId,
                 );
-                await runtime.closeSession(direct.sessionId);
+                equal((await runtime.renameSession(resumed.sessionId, "Linked explicit resume")).ok, true);
+                await runtime.closeSession(resumed.sessionId);
                 await rejects(
-                    () => runtime.loadSession({ cwd: declined, sessionId: resumeSessionId }),
+                    () => runtime.resumeSession({ cwd: declined, sessionId }),
                     /Session Manager load is blocked/,
                 );
             }
@@ -339,10 +331,9 @@ test("Sessions created between successive moves resume and settle in the current
             const before = await readFile(saved.path);
             await rename(middle, current);
             equal((await projects.checkout.admit(current)).kind, "existing");
-            const loaded = await runtime.createInteractiveSession({
+            const loaded = await runtime.resumeSession({
                 cwd: current,
-                mode: "continue",
-                resumeSessionId: saved.session.runwieldSessionId,
+                sessionId: saved.session.runwieldSessionId,
             });
             equal(loaded.cwd, current);
             equal((await runtime.renameSession(loaded.sessionId, "After two moves")).ok, true);
@@ -419,7 +410,7 @@ test("admitting a repair worktree retains the predecessor bundle despite its suc
             await git(root, ["worktree", "add", "--detach", worktree]);
             const originalLock = lockPath(dirname(saved.path), saved.session.runwieldSessionId);
             const inode = (await stat(originalLock)).ino;
-            const loaded = await runtime.loadSession({
+            const loaded = await runtime.resumeSession({
                 cwd: root,
                 sessionId: saved.session.piSessionId,
                 sessionPath: saved.path,
@@ -508,7 +499,7 @@ test("a moved Session rolls its successor into the bound store and rejects a for
             equal((await projects.checkout.admit(root)).kind, "existing");
             await rename(root, moved);
             equal((await projects.checkout.admit(moved)).kind, "existing");
-            const loaded = await runtime.loadSession({
+            const loaded = await runtime.resumeSession({
                 cwd: moved,
                 sessionId: saved.session.piSessionId,
                 sessionPath: saved.path,
@@ -719,7 +710,7 @@ test("runtime loading keeps tools in the selected checkout and settles into the 
                 await projects.checkout.admit(${JSON.stringify(moved)});
                 const store = openFileSessionStore();
                 const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: 'test' });
-                const loaded = await runtime.loadSession({ cwd: ${JSON.stringify(moved)}, sessionId: ${JSON.stringify(saved.session.piSessionId)}, sessionPath: ${JSON.stringify(saved.path)} });
+                const loaded = await runtime.resumeSession({ cwd: ${JSON.stringify(moved)}, sessionId: ${JSON.stringify(saved.session.piSessionId)}, sessionPath: ${JSON.stringify(saved.path)} });
                 if (loaded.cwd !== ${JSON.stringify(moved)}) throw Error('Runtime uses historical cwd: '+loaded.cwd);
                 const renamed = await runtime.renameSession(loaded.sessionId, 'Continued runtime');
                 if (!renamed.ok) throw Error(JSON.stringify(renamed));

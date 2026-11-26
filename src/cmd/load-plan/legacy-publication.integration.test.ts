@@ -134,7 +134,7 @@ for (const repair of [false, true]) {
                     setAutocompleteProvider: () => {},
                     handleInput: () => {},
                 };
-                const sessionId = await runtime.createPromptReadySession({ cwd: root, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: root, agentName: "router" });
                 // These are production entry points, not direct migration calls.
                 for (let load = 0; load < 2; load++) {
                     await runLoadPlanCommand([join(root, planPath)], {

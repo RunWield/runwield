@@ -151,7 +151,7 @@ for (const continueWork of [false, true]) {
                 const prompts: string[] = [];
                 try {
                     await registerMissingExecution(root, path);
-                    const sessionId = await runtime.createPromptReadySession({ cwd: root, agentName: "router" });
+                    const { sessionId } = await runtime.createSession({ cwd: root, agentName: "router" });
                     await runLoadPlanCommand(["missing"], {
                         sessionRuntime: runtime,
                         sessionId,

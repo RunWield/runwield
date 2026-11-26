@@ -50,7 +50,8 @@ test("new template sessions use Operator configuration and keep it on follow-up"
             const runtime = makeRuntime();
             try {
                 for (const deferred of [false, true]) {
-                    const id = await runtime.createPromptReadySession({
+                    const { sessionId: id } = await runtime.createSession({
+                        selectDefaultAgent: true,
                         cwd: projectRoot,
                         deferPersistenceUntilFirstMessage: deferred,
                     });
@@ -82,7 +83,7 @@ test("template omissions keep explicit new-session selections and ongoing Sessio
             const runtime = makeRuntime();
             try {
                 for (const agentName of ["router", "planner"]) {
-                    const id = await runtime.createPromptReadySession({
+                    const { sessionId: id } = await runtime.createSession({
                         cwd: projectRoot,
                         agentName,
                         deferPersistenceUntilFirstMessage: true,
@@ -114,17 +115,16 @@ test("template settings override manual selections and survive resume", async ()
             setModelResponse("done");
             const runtime = makeRuntime();
             try {
-                const id = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "operator" });
+                const { sessionId: id } = await runtime.createSession({ cwd: projectRoot, agentName: "operator" });
                 await runtime.reconfigureSessionModel(id, "fixture-model", "runtime-command-fixture");
                 await runtime.setSessionThinkingLevel(id, "low");
                 await runtime.promptUserTurn(id, { initialRequest: "/fixture" });
                 const saved = runtime.getSessionSnapshot(id);
                 assert(saved?.managed);
                 await runtime.closeSessionWhenIdle(id);
-                const resumed = await runtime.createInteractiveSession({
+                const resumed = await runtime.resumeSession({
                     cwd: projectRoot,
-                    mode: "continue",
-                    resumeSessionId: saved.managed.runwieldSessionId,
+                    sessionId: saved.managed.runwieldSessionId,
                 });
                 await runtime.promptUserTurn(resumed.sessionId, { initialRequest: "continue" });
                 const after = runtime.getSessionSnapshot(resumed.sessionId);
@@ -152,7 +152,7 @@ test("a conflicting template can be canceled without changing planning or sendin
         );
         const runtime = makeRuntime();
         try {
-            const id = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "planner" });
+            const { sessionId: id } = await runtime.createSession({ cwd: projectRoot, agentName: "planner" });
             await runtime.promptUserTurn(id, { initialRequest: "Plan this change." });
             const before = runtime.getSessionSnapshot(id);
             const questions: RuntimeInteractionRequest[] = [];
@@ -209,7 +209,7 @@ test("a conflicting template opens an ordinary new Session and preserves plannin
         );
         const runtime = makeRuntime();
         try {
-            const id = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "planner" });
+            const { sessionId: id } = await runtime.createSession({ cwd: projectRoot, agentName: "planner" });
             await runtime.promptUserTurn(id, { initialRequest: "PLANNING-SENTINEL" });
             const before = runtime.getSessionSnapshot(id);
             let announcedId = "";
@@ -275,7 +275,7 @@ test("a conflicting execution Agent is protected and invalid settings do not sub
         setModelResponse("done");
         const runtime = makeRuntime();
         try {
-            const id = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "engineer" });
+            const { sessionId: id } = await runtime.createSession({ cwd: projectRoot, agentName: "engineer" });
             await runtime.setActiveExecutionWorkflow(id, {
                 planName: "",
                 triageMeta: { classification: "QUICK_FIX" },
@@ -319,7 +319,7 @@ test("changing Agent through a template uses that Agent defaults, while a manual
             setModelResponse("done");
             const runtime = makeRuntime();
             try {
-                const id = await runtime.createPromptReadySession({
+                const { sessionId: id } = await runtime.createSession({
                     cwd: projectRoot,
                     agentName: "operator",
                     deferPersistenceUntilFirstMessage: true,
@@ -333,7 +333,7 @@ test("changing Agent through a template uses that Agent defaults, while a manual
                     thinkingLevel: "low",
                 });
                 await writeTemplate(projectRoot);
-                const router = await runtime.createPromptReadySession({ cwd: projectRoot });
+                const { sessionId: router } = await runtime.createSession({ cwd: projectRoot, selectDefaultAgent: true });
                 await runtime.switchAgent(router, { agentName: "router", releaseActiveWorkflow: true });
                 const selected = await runtime.promptUserTurn(router, { initialRequest: "/fixture" });
                 assertEquals(selected.namedInvocation?.profile.agentName, "router");

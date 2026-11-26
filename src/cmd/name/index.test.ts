@@ -49,7 +49,7 @@ async function withNameCommandFixture(run: (fixture: NameCommandFixture) => Prom
 
 async function createRuntimeSession(projectRoot: string): Promise<{ runtime: SessionRuntime; sessionId: string }> {
     const runtime = createSessionRuntime();
-    const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+    const created = await runtime.createSession({ cwd: projectRoot });
     return { runtime, sessionId: created.sessionId };
 }
 

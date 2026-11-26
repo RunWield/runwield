@@ -15,8 +15,13 @@ import { RuntimeManagedSync } from "./runtime/managed-sync.ts";
 import { RuntimeWorkflows } from "./runtime/workflows.ts";
 import { RuntimeTurns } from "./runtime/turns.ts";
 
-import type { CreateSessionRuntimeOptions, SessionRuntimeComposition } from "./runtime/types.ts";
-import type { SessionRuntime as SessionRuntimeContract } from "./contract.ts";
+import type {
+    CreateSessionOptions,
+    CreateSessionRuntimeOptions,
+    ResumeSessionOptions,
+    SessionRuntimeComposition,
+} from "./runtime/types.ts";
+import type { CreatedSession, ResumedSession, SessionRuntime as SessionRuntimeContract } from "./contract.ts";
 
 // Runtime ownership is not a test capability. It routes a settled root turn
 // back to the Session that owns its managed writer and interaction adapter.
@@ -95,7 +100,6 @@ export class SessionRuntime implements SessionRuntimeContract {
             this.#reads,
             this.#settings,
             this.#sync,
-            this.#loading,
             this.#turns,
         );
         this.#loading.connect(
@@ -425,21 +429,20 @@ export class SessionRuntime implements SessionRuntimeContract {
     rollManagedSessionSegment(...args: Parameters<RuntimeTurns["rollManagedSessionSegment"]>) {
         return this.#turns.rollManagedSessionSegment(...args);
     }
-    /** Open a new Session or resume a saved Session in a checkout. */
-    createInteractiveSession(...args: Parameters<RuntimeLifecycle["createInteractiveSession"]>) {
-        return this.#lifecycle.createInteractiveSession(...args);
-    }
-    /** Create a Session with its initial agent selected. */
-    createPromptReadySession(...args: Parameters<RuntimeLifecycle["createPromptReadySession"]>) {
-        return this.#lifecycle.createPromptReadySession(...args);
+    /** Create a Session with an optional initial agent. */
+    createSession(options: CreateSessionOptions): Promise<CreatedSession> {
+        return this.#lifecycle.createSession(options);
     }
     /** Persist and activate a Session whose first prompt was deferred. */
     materializePromptReadySession(...args: Parameters<RuntimeLifecycle["materializePromptReadySession"]>) {
         return this.#lifecycle.materializePromptReadySession(...args);
     }
-    /** Open the requested saved Session and return its initial replay. */
-    loadSession(...args: Parameters<RuntimeLifecycleLoading["loadSession"]>) {
-        return this.#loading.loadSession(...args);
+    /** Reopen the requested saved Session with its replay events. An unavailable ID rejects the request. */
+    resumeSession(options: ResumeSessionOptions & { sessionId: string }): Promise<ResumedSession>;
+    /** With no ID, reopen the most recent unarchived Session, or return null when none is available. */
+    resumeSession(options: ResumeSessionOptions): Promise<ResumedSession | null>;
+    resumeSession(options: ResumeSessionOptions): Promise<ResumedSession | null> {
+        return this.#loading.resumeSession(options);
     }
     /** Install or detach the presenter for this Session's interaction requests. */
     setInteractionAdapter(...args: Parameters<RuntimeLifecycleLoading["setInteractionAdapter"]>) {

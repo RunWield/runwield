@@ -69,7 +69,7 @@ test("runModelsCommand switches an explicit configured model through the real re
             const ui = makeUi();
             const runtime = createSessionRuntime();
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 assertEquals(getSettingsManager(projectRoot).getDefaultModel(), undefined);
 
                 await runModelsCommand([FIXTURE_MODEL], {
@@ -101,7 +101,7 @@ test("runModelsCommand switches a new in-memory Session before its first message
             const ui = makeUi();
             const runtime = createSessionRuntime();
             try {
-                const sessionId = await runtime.createPromptReadySession({
+                const { sessionId } = await runtime.createSession({
                     cwd: projectRoot,
                     agentName: "router",
                     deferPersistenceUntilFirstMessage: true,
@@ -152,7 +152,7 @@ test("runModelsCommand keeps a manual model choice ahead of the active preset on
             const ui = makeUi();
             const runtime = createSessionRuntime();
             try {
-                const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
                 assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
                     model: "preset-model",
                     provider: "runtime-command-fixture",
@@ -187,7 +187,7 @@ test("runModelsCommand fallback selector lists and switches real configured mode
         const ui = makeUi(FIXTURE_MODEL);
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
 
             await runModelsCommand([], {
                 uiAPI: ui.uiAPI,
@@ -238,7 +238,7 @@ test("runModelsCommand keeps the current model after unavailable selections and 
         const ui = makeUi();
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runModelsCommand([FIXTURE_MODEL], {
                 uiAPI: ui.uiAPI,
                 sessionId,
@@ -316,7 +316,7 @@ test("runModelsCommand rejects a retired Antigravity model selection for the cur
         const ui = makeUi();
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runModelsCommand([FIXTURE_MODEL], {
                 uiAPI: ui.uiAPI,
                 sessionId,
@@ -355,7 +355,7 @@ test("runModelsCommand reports canceled selection and failed explicit selection 
         const ui = makeUi();
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             assertEquals(await runModelsCommand([], { ...ui, sessionId, sessionRuntime: runtime }), "canceled");
             assertEquals(ui.editor.disableSubmit, false);
             assertEquals(
