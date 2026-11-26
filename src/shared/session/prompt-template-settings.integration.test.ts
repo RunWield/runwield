@@ -7,10 +7,10 @@ import { fauxAssistantMessage, type FauxResponseFactory, fauxText } from "@earen
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
-import { SessionRuntime } from "./session-runtime.ts";
-import { SessionHost } from "./session-host.ts";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
+import { SessionHost } from "@runwield/session-runtime/host";
 import { openFileSessionStore } from "./file-session-store.ts";
-import type { RuntimeInteractionRequest } from "./session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 
 function makeRuntime() {
     return new SessionRuntime({

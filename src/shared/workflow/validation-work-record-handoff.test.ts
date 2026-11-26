@@ -6,7 +6,7 @@ import { fauxAssistantMessage, type FauxResponseFactory, fauxToolCall } from "@e
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { getRunWieldSessionDir } from "../session/root-session.ts";
 import { listWorkRecords, restoreWorkRecordDocument } from "../work-records/store.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";

@@ -2,7 +2,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import stripAnsi from "strip-ansi";
 import { initRunWieldTheme } from "../../ui/theme/theme.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { getHomeDir } from "../../constants.ts";
 import type { SessionContextReport } from "../../shared/session/session-context-report.ts";

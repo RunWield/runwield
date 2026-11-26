@@ -14,7 +14,7 @@ import process from "node:process";
 import { join } from "node:path";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { SESSION_RUNTIME_METHOD_POLICY } from "./session-runtime-method-policy.ts";
 import { getRunWieldSessionDir } from "./root-session.ts";
 

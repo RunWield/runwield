@@ -1,6 +1,6 @@
 import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import { workflowEvents } from "@runwield/workflow/events";
 
 const definition = toolRegistry.get("work_record_completed").definition;

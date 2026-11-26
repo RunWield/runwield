@@ -17,10 +17,12 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { getCwd } from "../../constants.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
-import { SessionHost } from "../session/session-host.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { SessionHost, HostedSession } from "@runwield/session-runtime/host";
 import { buildAgentSession, runIsolatedAgentSession } from "../session/session.ts";
-import { SessionRuntime, createSessionRuntime } from "../session/session-runtime.ts";
+import {
+    InteractiveSessionRuntime as SessionRuntime,
+    createInteractiveSessionRuntime as createSessionRuntime,
+} from "@runwield/session-runtime/services";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { startMcpIntegration } from "@runwield/pi-ai/mcp";
 import { mcpFixtureHost } from "./integration-fixture.ts";

@@ -10,9 +10,9 @@ import { type ExtensionToolContext, SessionManager, type ToolDefinition } from "
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
 import { type AgentHandler, createAgentHandler } from "./agent-handler.ts";
-import { HostedSession } from "./hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { ensureRootAgentSession } from "./session.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { setCustomSetting } from "../settings.ts";
 import { workflowEvents } from "@runwield/workflow/events";
 import { listPendingTaskCompletions } from "./task-completion-session.ts";

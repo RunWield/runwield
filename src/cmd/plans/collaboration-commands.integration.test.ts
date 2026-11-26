@@ -37,7 +37,7 @@ import {
     readSecretStore,
 } from "../../shared/collaboration/secrets.ts";
 import { parseCollaborationUrl } from "../../shared/collaboration/urls.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { withCollaborationServer } from "./collaboration-command-test-fixture.ts";
 import { pullPlanForRevision, runPlansPullCommand } from "./pull.ts";

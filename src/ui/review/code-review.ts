@@ -4,13 +4,13 @@ import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
  * Launches the browser code-review surface for a completed workflow diff.
  */
 
-import {
-    type ReviewConversation,
-    type ReviewDecisionValue,
-    type StandaloneReviewPayload,
-    startCodeReviewSurface,
-} from "./review-launcher.ts";
+import { type StandaloneReviewPayload, startCodeReviewSurface } from "./review-launcher.ts";
 import { isAbsolute, resolve } from "node:path";
+import type {
+    CodeReviewAnnotation,
+    ReviewConversation,
+    ReviewDecisionValue,
+} from "@runwield/session-runtime/interactions";
 import { mimeTypeForImagePath } from "../../shared/session/image-attachments.ts";
 import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
@@ -22,15 +22,6 @@ type ReviewData = ReviewDecisionValue;
 interface ReviewDataRecord {
     [key: string]: ReviewData;
 }
-
-export type CodeReviewAnnotation = ReviewDataRecord & {
-    file?: string;
-    path?: string;
-    filePath?: string;
-    line?: number;
-    text?: string;
-    comment?: string;
-};
 
 interface ReviewImageAttachment {
     path: string;

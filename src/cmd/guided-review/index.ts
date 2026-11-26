@@ -1,7 +1,10 @@
 import process from "node:process";
 import { getCwd } from "../../constants.ts";
-import { createSessionRuntime, generateInMemoryGuide } from "../../shared/session/session-runtime.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    generateInMemoryGuide,
+} from "@runwield/session-runtime/services";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { encodeGuidedReviewMetadata, encodeGuidedReviewUsageEvent, type GuidedReviewUsage } from "./protocol.ts";
 
 export interface GuidedReviewCommandIo {

@@ -1,6 +1,6 @@
 /** Shared select/text/approval question controls for Workspace-style browser surfaces. */
 import { type SubmitEvent, useEffect, useState } from "react";
-import { isApprovalAcceptedValue } from "../../../shared/session/interaction-values.ts";
+import { isApprovalAcceptedValue } from "@runwield/session-runtime/interactions";
 
 type SessionQuestionOption = {
     value: string;

@@ -1,5 +1,5 @@
 /** A short-lived read projection owned by one real Session runtime. */
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 
 type SessionSnapshot = ReturnType<SessionRuntime["getSessionSnapshot"]>;
 

@@ -16,14 +16,14 @@ import {
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { runActiveAgentTurn, switchActiveAgent } from "./agent-switching.ts";
 import { __getRootSessionMetadataForTests } from "./session.ts";
-import { HostedSession } from "./hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { buildPostTriageRequest } from "../workflow/workflow-prompts.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.ts";
-import { createReplayEvents } from "./session-transcript-projection.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+import { createReplayEvents } from "@runwield/session-runtime/transcript";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
-import type { SessionRuntimeEvent } from "./session-runtime-events.ts";
+import type { SessionRuntimeEvent } from "@runwield/session-runtime/events";
 
 interface TranscriptContentBlock {
     type: string;

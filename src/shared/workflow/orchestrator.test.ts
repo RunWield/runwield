@@ -16,11 +16,11 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan, listPlans } from "../testing/plan-query-fixture.ts";
 
 import { git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { listPendingTaskCompletions } from "../session/task-completion-session.ts";
 import { setCustomSetting } from "../settings.ts";
-import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
-import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
+import type { SessionRuntimeEvent } from "@runwield/session-runtime/events";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "@runwield/session-runtime/interactions";
 import { dispatchPostTriage, type DispatchPostTriageArgs, readLatestTriageOutcome } from "./orchestrator.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { workflowEvents } from "@runwield/workflow/events";

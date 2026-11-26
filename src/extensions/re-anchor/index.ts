@@ -23,7 +23,7 @@ import {
 } from "../../plan-store/index.ts";
 import { normalizeWorkflowPlanName } from "../../shared/session/workflow-context-session.ts";
 import { normalizeLedger, renderOpenItems } from "../../shared/workflow/review-ledger.ts";
-import type { HostedSession } from "../../shared/session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 
 export interface ReAnchorOptions {
     /** The agent this session was built for. Decides which artifact, if any, is re-anchored. */

@@ -5,9 +5,13 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { strictEqual as assertStrictEquals } from "node:assert/strict";
-import { HostedSession } from "./hosted-session.ts";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.ts";
+import {
+    HostedSession,
+    requestHostedSessionInteraction,
+    emitHostedSessionRuntimeEvent,
+} from "@runwield/session-runtime/host";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 
 test("Plan review captures only the selected Architect and keeps the same conversation through dehydration", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
@@ -63,7 +67,7 @@ test("Plan review keeps the planning reply after final feedback and grouped Sequ
     const session = new HostedSession({ id: crypto.randomUUID(), cwd });
     try {
         await seedPlan(cwd, "plan", "# Review Plan", { planId: "review-id" });
-        const answers: Array<import("./session-runtime-interactions.ts").RuntimeInteractionResponse> = [
+        const answers: Array<import("@runwield/session-runtime/interactions").RuntimeInteractionResponse> = [
             { outcome: "selected", _meta: { approved: false, feedback: "Revise the Epic." } },
             { outcome: "accepted", _meta: { approved: false, sequenceDecision: {}, feedback: "Revise the group." } },
             { outcome: "accepted", _meta: { sequenceDecision: {}, conversationTurn: true } },

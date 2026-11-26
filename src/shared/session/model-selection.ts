@@ -1,7 +1,7 @@
 import { isUnsupportedModelExecutionBackendError } from "@runwield/pi-ai";
 import { getSettingsManager, setRemoteDefaultModelSelection } from "../settings.ts";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
-import type { SessionRuntime } from "./session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 
 export interface ModelActivationResult {
     status: "active" | "deferred";

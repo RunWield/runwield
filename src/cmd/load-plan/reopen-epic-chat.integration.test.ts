@@ -5,7 +5,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { requestLocalReviewInteraction } from "../../shared/session/local-review-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";

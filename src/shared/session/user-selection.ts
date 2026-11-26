@@ -3,7 +3,7 @@ import { AGENTS, agentRegistry } from "./agent-registry.ts";
 import { getModelRegistry } from "@runwield/pi-ai";
 import { parseProviderModel } from "@runwield/pi-ai";
 import { getSettingsManager } from "../settings.ts";
-import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session-runtime.ts";
+import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session.ts";
 import { setActiveSessionModel } from "./model-selection.ts";
 
 export function buildWorkflowOnlyAgentMessage(agentName: string, projectRoot?: string) {
@@ -82,7 +82,7 @@ export async function requireUserAgentOption(agentName, projectRoot) {
 }
 
 /**
- * @param {import('./session-runtime.ts').SessionRuntime} runtime
+ * @param {import('@runwield/session-runtime/services').InteractiveSessionRuntime} runtime
  * @param {string} sessionId
  * @param {string} agentName
  * @returns {Promise<{ ok: true, agentName: string } | { ok: false, error: string }>}
@@ -139,7 +139,7 @@ export function parseUserModelSelection(value) {
 }
 
 /**
- * @param {import('./session-runtime.ts').SessionRuntime} runtime
+ * @param {import('@runwield/session-runtime/services').InteractiveSessionRuntime} runtime
  * @param {string} sessionId
  * @param {string} model
  * @param {string} provider

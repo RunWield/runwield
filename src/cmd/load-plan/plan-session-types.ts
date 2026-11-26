@@ -21,7 +21,7 @@ export interface ReviewImage {
 
 /** What a Plan review returns to the command. */
 export interface PlanReviewOutcome {
-    outcome?: import("../../shared/session/session-runtime-interactions.ts").RuntimeInteractionOutcome;
+    outcome?: import("@runwield/session-runtime/interactions").RuntimeInteractionOutcome;
     conversationTurn?: boolean;
     canceled: boolean;
     cancellationReason?: string;

@@ -15,7 +15,7 @@ import type {
     FileSessionProject,
     FileSessionStore,
 } from "./file-session-store.ts";
-import type { MinimalSessionManagerLike } from "./hosted-session.ts";
+import type { MinimalSessionManagerLike } from "@runwield/session-runtime/host";
 import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { open, readdir, realpath, stat as fsStat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";

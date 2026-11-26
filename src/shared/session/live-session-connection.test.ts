@@ -59,7 +59,9 @@ async function withLiveTurn(run: (live: LiveTurn) => Promise<void>) {
 type LiveTurn = {
     sessionId: string;
     operationId: string;
-    queued: () => ReturnType<import("./session-runtime.ts").SessionRuntime["getQueuedMessages"]>;
+    queued: () => ReturnType<
+        import("@runwield/session-runtime/services").InteractiveSessionRuntime["getQueuedMessages"]
+    >;
     finish: () => Promise<void>;
 };
 

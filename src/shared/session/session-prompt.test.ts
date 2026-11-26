@@ -42,9 +42,9 @@ import {
     runRootTurn,
     shouldBypassAutoCompactionForAssistantMessage,
 } from "./session.ts";
-import { HostedSession } from "./hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import type { RequestAttemptEntry } from "./request-dispatch.ts";
-import type { ImageAttachment } from "./image-attachments.ts";
+import type { ImageAttachment } from "@runwield/session-runtime/events";
 import { getRunWieldSessionDir } from "./root-session.ts";
 import { RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 import { estimateContextTextTokens } from "./session-context-report.ts";

@@ -17,7 +17,7 @@ import process from "node:process";
 import fs from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import {
     ownerNotificationsStreamApi,
     ownerProjectSessionsApi,
@@ -799,10 +799,10 @@ test("Workspace answers a live question in a separate TUI process", async () => 
         const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
         const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
         const storeUrl = new URL("../../shared/owner-coordination/index.ts", import.meta.url).href;
-        const runtimeUrl = new URL("../../shared/session/session-runtime.ts", import.meta.url).href;
+        const runtimeUrl = import.meta.resolve("@runwield/session-runtime/services");
         const code = `
             import { openOwnerCoordinationStore } from ${JSON.stringify(storeUrl)};
-            import { createSessionRuntime } from ${JSON.stringify(runtimeUrl)};
+            import { createInteractiveSessionRuntime as createSessionRuntime } from ${JSON.stringify(runtimeUrl)};
             const store = openOwnerCoordinationStore({ dbPath: ${JSON.stringify(fixture.dbPath)} });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "tui" });
             const session = store.getSessionById(${JSON.stringify(fixture.session.runwieldSessionId)});

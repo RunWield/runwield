@@ -4,8 +4,8 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { SessionRuntime } from "./session-runtime.ts";
-import { SessionHost } from "./session-host.ts";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
+import { SessionHost } from "@runwield/session-runtime/host";
 import { openFileSessionStore } from "./file-session-store.ts";
 
 test("portable provider turn receives real read tool bytes", async () => {
@@ -20,9 +20,11 @@ test("portable provider turn receives real read tool bytes", async () => {
                 return fauxAssistantMessage(fauxToolCall("read", { path: "readme.txt" }));
             },
             (context) => {
-                sawToolBytes = context.messages.some((message) =>
-                    message.role === "toolResult" && !message.isError &&
-                    JSON.stringify(message.content).includes(marker)
+                sawToolBytes = context.messages.some(
+                    (message) =>
+                        message.role === "toolResult" &&
+                        !message.isError &&
+                        JSON.stringify(message.content).includes(marker),
                 );
                 return fauxAssistantMessage(fauxText("Read completed."));
             },

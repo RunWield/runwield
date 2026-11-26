@@ -3,7 +3,7 @@ import { switchActiveAgent } from "../session/agent-switching.ts";
 import { runRootTurnUntilRootWorkflowEvent } from "../session/root-workflow-turn.ts";
 import { workflowEvents } from "@runwield/workflow/events";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { AssociationPurpose } from "../session/plan-association.ts";
 

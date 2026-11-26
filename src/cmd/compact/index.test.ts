@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, type FauxResponseFactory } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { setCompactionKeepRecentTokens } from "../../shared/settings.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import type { CommandContext } from "../registry.ts";

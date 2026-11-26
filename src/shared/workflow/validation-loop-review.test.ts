@@ -40,8 +40,8 @@ import {
 import { type AgentMessage } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, type TextContent, type ToolResultMessage } from "@earendil-works/pi-ai";
 import { type SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { type RuntimeInteractionRequest } from "../session/session-runtime-interactions.ts";
-import { type WorkflowContext } from "../session/workflow-context-session.ts";
+import { type RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
+import { type WorkflowContext } from "@runwield/session-runtime/events";
 import type { TriageMeta } from "@runwield/workflow/state";
 import { type ReviewAdvisoryInput, type ReviewCompletePayload, type ReviewFindingInput } from "./review-outcome.ts";
 import { type ValidationLoopArgs } from "./validation-types.ts";
@@ -812,9 +812,9 @@ test("runValidationPhase dispatches semantic review feedback to Reviewer-Feedbac
     assertExists(approvedPlanBody);
     const sessions: IsolatedAgentSessionOptions[] = /** @type {any[]} */ [];
     const reviewerWorkflowContexts: (WorkflowContext | null)[] =
-        /** @type {Array<import('../session/workflow-context-session.ts').WorkflowContext | null>} */ [];
+        /** @type {Array<import("@runwield/session-runtime/events").WorkflowContext | null>} */ [];
     const repairWorkflowContexts: (WorkflowContext | null)[] =
-        /** @type {Array<import('../session/workflow-context-session.ts').WorkflowContext | null>} */ [];
+        /** @type {Array<import("@runwield/session-runtime/events").WorkflowContext | null>} */ [];
     const repairActiveOwners: Array<string | undefined> = /** @type {Array<string | undefined>} */ [];
     const repairActivePlanNames: Array<string | null> = /** @type {Array<string | null>} */ [];
 

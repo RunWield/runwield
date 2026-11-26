@@ -97,9 +97,9 @@ second core boundary used by Session workflows and Workspace. Workflow binds a P
 
 | Area                        | Responsibilities                                                                                                     | Primary implementation                                                                                                                                   |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Session application runtime | Create/load/close sessions, serialize turns, switch agents, cancel work, emit semantic events, broker interactions   | `src/shared/session/session-runtime.ts`                                                                                                                  |
-| Per-session ownership       | Project root, root and sub-agent sessions, active agent/model/thinking state, active workflow reference, interactions    | `src/shared/session/hosted-session.ts`                                                                                                                   |
-| Multi-session registry      | Adopt, find, list, and dispose hosted sessions                                                                       | `src/shared/session/session-host.ts`                                                                                                                     |
+| Session application runtime | Create/load/close sessions, serialize turns, switch agents, cancel work, emit semantic events, broker interactions   | `packages/session-runtime/index.ts`                                                                                                                  |
+| Per-session ownership       | Project root, root and sub-agent sessions, active agent/model/thinking state, active workflow reference, interactions    | `packages/session-runtime/hosted-session.ts`                                                                                                                   |
+| Multi-session registry      | Adopt, find, list, and dispose hosted sessions                                                                       | `packages/session-runtime/host.ts`                                                                                                                     |
 | Pi integration              | Build configured `AgentSession` objects, assemble prompts, wire tools, translate Pi events, run prompts, reuse roots | `src/shared/session/session.ts`                                                                                                                          |
 | Workflow application logic  | Bind execution attempts, interpret tool outcomes, route requests, and advance validation and publication                             | `packages/workflow/`, `src/shared/session/agent-handler.ts`, `src/shared/workflow/orchestrator.ts`                                         |
 | Plan domain                 | Canonical Markdown persistence, identities, hierarchy, lifecycle state machine, collaboration write lock             | `src/plan-store.ts`, `packages/plans/lifecycle.ts`                                                                                             |
@@ -162,8 +162,7 @@ Forbidden edges are as important as the shown edges:
 
 ## Public Runtime boundary
 
-The public boundary lives in `src/shared/session/session-runtime.ts`, `src/shared/session/session-runtime-events.ts`,
-and `src/shared/session/session-runtime-interactions.ts`.
+The root of `@runwield/session-runtime` defines the shared session operations. Interactive hosts also use its services and transcript entries. The events and interactions entries describe what an adapter can observe or answer.
 
 | Surface                 | Consumer-visible contract                                                                      |
 | ----------------------- | ---------------------------------------------------------------------------------------------- |
@@ -504,7 +503,7 @@ shell, and the spawn/abort race is closed inside the module rather than re-imple
 
 ### Runtime events and interactions
 
-`session-runtime-events.ts` defines the adapter-neutral event vocabulary. It covers:
+`@runwield/session-runtime/events` defines the adapter-neutral event vocabulary. It covers:
 
 - session creation, loading, closing, replay, and renaming;
 - user messages, assistant text/thinking deltas, and usage;
@@ -1085,11 +1084,11 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 
 | Concern                                   | Start here                                                                    |
 | ----------------------------------------- | ----------------------------------------------------------------------------- |
-| Runtime API and turn loop                 | `src/shared/session/session-runtime.ts`                                       |
-| Per-session state                         | `src/shared/session/hosted-session.ts`                                        |
-| Session registry                          | `src/shared/session/session-host.ts`                                          |
-| Runtime event contract                    | `src/shared/session/session-runtime-events.ts`                                |
-| Interaction contract                      | `src/shared/session/session-runtime-interactions.ts`                          |
+| Runtime API and turn loop                 | `packages/session-runtime/index.ts`                                       |
+| Per-session state                         | `packages/session-runtime/hosted-session.ts`                                        |
+| Session registry                          | `packages/session-runtime/host.ts`                                          |
+| Runtime event contract                    | `packages/session-runtime/events.ts`                                |
+| Interaction contract                      | `packages/session-runtime/interactions.ts`                          |
 | Pi session construction and prompt bridge | `src/shared/session/session.ts`                                               |
 | Agent definition layering                 | `packages/agents/registry.ts`                                                |
 | Agent switching                           | `src/shared/session/agent-switching.ts`                                       |

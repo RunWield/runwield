@@ -7,7 +7,7 @@ import { stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.ts";

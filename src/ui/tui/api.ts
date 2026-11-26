@@ -13,10 +13,7 @@ import {
 import { getSettingsManager } from "../../shared/settings.ts";
 import { WORKFLOW_TOOL_NAMES } from "../../tools/registry.ts";
 import { imageTheme } from "../theme/theme.ts";
-import type {
-    RuntimeManagedSyncStateEvent,
-    RuntimeValidationProgress,
-} from "../../shared/session/session-runtime-events.ts";
+import type { RuntimeManagedSyncStateEvent, RuntimeValidationProgress } from "@runwield/session-runtime/events";
 import type { DocumentLinkHost } from "../review/document-link-host.ts";
 import type { SessionHelpPayload } from "../../shared/session/session-help.ts";
 import {

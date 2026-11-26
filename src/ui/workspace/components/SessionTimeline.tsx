@@ -4,11 +4,8 @@ import type { ImageReference } from "../../../shared/session/named-invocation.ts
 import type { DeliveryReport, DeliveryReportArtifact } from "../../../shared/workflow/delivery-report.ts";
 import type { PlanDeviation } from "@runwield/plans/format";
 import type { CurrentPairCheckpoint, PairCheckpointReport } from "../../../shared/session/pair-checkpoint-session.ts";
-import type {
-    RuntimeInteractionOption,
-    RuntimeInteractionRequest,
-} from "../../../shared/session/session-runtime-interactions.ts";
-import type { RuntimeUsage, RuntimeValidationProgress } from "../../../shared/session/session-runtime-events.ts";
+import type { RuntimeInteractionOption, RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
+import type { RuntimeUsage, RuntimeValidationProgress } from "@runwield/session-runtime/events";
 import { DeliveryReportCard } from "./DeliveryReportCard.tsx";
 import { useEffect, useRef, useState } from "react";
 import { WORKFLOW_TOOL_NAMES } from "../../../tools/registry.ts";
@@ -16,7 +13,7 @@ import {
     isApprovalAcceptedValue,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../../../shared/session/interaction-values.ts";
+} from "@runwield/session-runtime/interactions";
 import { MarkdownView } from "./MarkdownView.tsx";
 import { SessionQuestionForm } from "./SessionQuestionForm.tsx";
 import { RunWieldLink, RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";

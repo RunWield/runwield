@@ -2,13 +2,13 @@ import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { createSessionRuntime } from "@runwield/session-runtime";
 import { createInteractiveCompositionHarness } from "../../ui/tui/testing/interactive-composition-fixture.ts";
 import { setCustomSetting } from "../settings.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { readRequestAttemptEntries } from "./request-dispatch.ts";
-import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
+import { captureTranscriptEvidence } from "@runwield/session-runtime/transcript";
 
 test("Operator accepts a follow-up after task_completed settles", async () => {
     await withRuntimeCommandFixture("operator-follow-up-", async ({ projectRoot, setModelResponseFactories }) => {
@@ -31,7 +31,7 @@ test("Operator accepts a follow-up after task_completed settles", async () => {
             },
         ]);
         const store = openFileSessionStore();
-        const runtime = createSessionRuntime({ ownerProcessKind: "test", sessionStore: store });
+        const runtime = createSessionRuntime();
         try {
             const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
             const first = await runtime.promptUserTurn(sessionId, { initialRequest: "Perform the operation." });

@@ -5,13 +5,15 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
-import { createSessionRuntime, SessionRuntime } from "./session-runtime.ts";
-import { SessionHost } from "./session-host.ts";
-import { getRuntimeRootAgentSession } from "./runtime/support.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
+import { SessionHost, HostedSession } from "@runwield/session-runtime/host";
+import { AgentSession } from "@earendil-works/pi-coding-agent";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { HostedSession } from "./hosted-session.ts";
 import { createValidationSessionPort } from "../workflow/validation-session-adapter.ts";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -36,6 +38,7 @@ for (const recallLaterMessage of [false, true]) {
                     });
                     let sessionId = "";
                     let taskId = "";
+                    let settledTask: { taskId: string; state: string } | undefined;
                     let resultQueuedAtCompletion = false;
                     let settled = () => {};
                     const taskSettled = new Promise<void>((resolve) => (settled = resolve));
@@ -73,9 +76,9 @@ for (const recallLaterMessage of [false, true]) {
                             let queued = false;
                             for (let attempt = 0; attempt < 300; attempt++) {
                                 queued = Boolean(
-                                    getRuntimeRootAgentSession(session)
-                                        ?.getSteeringMessages?.()
-                                        .some((text) => text.includes(expected)),
+                                    activeSteeringMessages(session.getRootAgentSession()).some((text) =>
+                                        text.includes(expected),
+                                    ),
                                 );
                                 if (queued) break;
                                 await new Promise((resolve) => setTimeout(resolve, 10));
@@ -111,12 +114,15 @@ for (const recallLaterMessage of [false, true]) {
                         sessionId = created.sessionId;
                         await runtime.switchAgent(sessionId, { agentName: "engineer" });
                         runtime.subscribeSessionEvents(sessionId, (event) => {
-                            if (event.type === RuntimeEventTypes.BACKGROUND_TASK_SETTLED) settled();
+                            if (event.type === RuntimeEventTypes.BACKGROUND_TASK_SETTLED) {
+                                settledTask = { taskId: event.taskId, state: event.state };
+                                settled();
+                            }
                             if (event.type === RuntimeEventTypes.TOOL_END && event.toolName === "task_completed") {
                                 resultQueuedAtCompletion =
-                                    (getRuntimeRootAgentSession(host.requireSession(sessionId))
-                                        ?.getSteeringMessages?.()
-                                        .filter((text) => text.includes(`Background task ${taskId} (shell) completed.`))
+                                    (activeSteeringMessages(
+                                        host.requireSession(sessionId).getRootAgentSession(),
+                                    ).filter((text) => text.includes(`Background task ${taskId} (shell) completed.`))
                                         .length || 0) > 1;
                             }
                             if (
@@ -131,6 +137,7 @@ for (const recallLaterMessage of [false, true]) {
                         });
                         assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "Finish." })).ok, true);
                         assertEquals(calls, 3);
+                        assertEquals(settledTask, { taskId, state: "completed" });
                         assertEquals(resultQueuedAtCompletion, false);
                         assertStringIncludes(userRequest, "image/png");
                         const messages = JSON.parse(userRequest) as ModelInputMessage[];
@@ -579,3 +586,9 @@ test("task_completed warns before cancelling a running shell task and does not d
         }
     });
 });
+
+function activeSteeringMessages(
+    session: ReturnType<import("@runwield/session-runtime/host").HostedSession["getRootAgentSession"]>,
+): readonly string[] {
+    return session instanceof AgentSession ? session.getSteeringMessages() : [];
+}

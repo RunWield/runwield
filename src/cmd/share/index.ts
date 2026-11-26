@@ -11,7 +11,7 @@ import { rm as fsRm } from "node:fs/promises";
  */
 
 import { theme } from "../../ui/theme/theme.ts";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 
 interface CommandResult {
     success: boolean;

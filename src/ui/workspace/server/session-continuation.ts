@@ -1,17 +1,18 @@
+import { readPlanApprovalAction } from "../../../shared/workflow/plan-approval.ts";
 import type {
     RuntimeInteractionAdapter,
     RuntimeInteractionOption,
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
-} from "../../../shared/session/session-runtime-interactions.ts";
+} from "@runwield/session-runtime/interactions";
 import type {
     RuntimeAttentionRequestedEvent,
     RuntimeQueuedMessage,
     SessionRuntimeEvent,
-} from "../../../shared/session/session-runtime-events.ts";
+    ImageAttachment,
+} from "@runwield/session-runtime/events";
 import type { LiveSessionInfo } from "../../../shared/session/live-session-connection.ts";
 import type { BrowserNotificationPolicy } from "../../../shared/session/notification-content.ts";
-import type { ImageAttachment } from "../../../shared/session/image-attachments.ts";
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../plan-store/index.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
@@ -72,20 +73,20 @@ import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts
 import { loadReviewFeedbackImages } from "../../../shared/workflow/review-feedback-images.ts";
 import { getWorktreeReviewDiff, WorktreeReviewComparisonError } from "../../../shared/workflow/git-snapshot.ts";
 import {
-    createSessionRuntime,
+    createInteractiveSessionRuntime as createSessionRuntime,
     deriveManagedSessionContinuationDecision,
     listPromptTemplates,
     listSkills,
-} from "../../../shared/session/session-runtime.ts";
+} from "@runwield/session-runtime/services";
 import { getRunWieldSessionDir } from "../../../shared/session/root-session.ts";
-import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
+import { projectAggregateTranscript } from "@runwield/session-runtime/transcript";
 import {
     captureTranscriptEvidence,
     getCommittedTranscriptAuthorityFacts,
     summarizeProjectedEntries,
     summarizeResumableTranscript,
     validateExpiredControlTranscriptEvidence,
-} from "../../../shared/session/session-transcript-projection.ts";
+} from "@runwield/session-runtime/transcript";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 
 /** A rejected image submission has not been accepted as an operation. */
@@ -2229,8 +2230,11 @@ export class WorkspaceSessionContinuationService {
                     outcome: "accepted",
                     _meta: {
                         approved: decision.approved === true,
-                        approvalAction: decision.approvalAction,
-                        feedback: decision.feedback,
+                        approvalAction:
+                            typeof decision.approvalAction === "string"
+                                ? readPlanApprovalAction(decision.approvalAction)
+                                : undefined,
+                        feedback: typeof decision.feedback === "string" ? decision.feedback : undefined,
                         sequenceDecision: decision,
                         ...(decision.conversationTurn === true && { conversationTurn: true }),
                     },
@@ -2240,7 +2244,7 @@ export class WorkspaceSessionContinuationService {
                 const planId = String(planReview.planId || "");
                 const source =
                     planReview.reviewedSource && typeof planReview.reviewedSource === "object"
-                        ? (planReview.reviewedSource as Record<string, unknown>)
+                        ? planReview.reviewedSource
                         : null;
                 if (
                     !source ||

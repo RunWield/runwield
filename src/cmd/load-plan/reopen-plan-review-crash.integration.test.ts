@@ -16,9 +16,9 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createOwnerWorkspaceApp } from "../../ui/workspace/server.ts";
 
@@ -48,14 +48,14 @@ test("a Session reopens the current saved Plan after its pending review process 
             // never closes the runtime or settles the operation before SIGKILL.
             const script = `
             import { writeFileSync, renameSync } from "node:fs";
-            import { createSessionRuntime } from ${JSON.stringify(
-                import.meta.resolve("../../shared/session/session-runtime.ts"),
+            import { createInteractiveSessionRuntime as createSessionRuntime } from ${JSON.stringify(
+                import.meta.resolve("@runwield/session-runtime/services"),
             )};
             import { openOwnerCoordinationStore } from ${JSON.stringify(
                 import.meta.resolve("../../shared/owner-coordination/index.ts"),
             )};
             import { RuntimeInteractionTypes } from ${JSON.stringify(
-                import.meta.resolve("../../shared/session/session-runtime-interactions.ts"),
+                import.meta.resolve("@runwield/session-runtime/interactions"),
             )};
             const ownerStore = openOwnerCoordinationStore({ dbPath: ${JSON.stringify(
                 join(homeDir, "owner.sqlite3"),
@@ -206,14 +206,14 @@ test("Workspace opens and approves a saved Plan review after its owner is SIGKIL
             const readyPath = join(homeDir, "workspace-review-pending.json");
             const script = `
             import { writeFileSync, renameSync } from "node:fs";
-            import { createSessionRuntime } from ${JSON.stringify(
-                import.meta.resolve("../../shared/session/session-runtime.ts"),
+            import { createInteractiveSessionRuntime as createSessionRuntime } from ${JSON.stringify(
+                import.meta.resolve("@runwield/session-runtime/services"),
             )};
             import { openOwnerCoordinationStore } from ${JSON.stringify(
                 import.meta.resolve("../../shared/owner-coordination/index.ts"),
             )};
             import { RuntimeInteractionTypes } from ${JSON.stringify(
-                import.meta.resolve("../../shared/session/session-runtime-interactions.ts"),
+                import.meta.resolve("@runwield/session-runtime/interactions"),
             )};
             const store = openOwnerCoordinationStore({ dbPath: ${JSON.stringify(join(homeDir, "owner.sqlite3"))} });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });

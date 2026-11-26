@@ -4,7 +4,7 @@
  */
 
 import type { GoldenScenario } from "../testing/scenario-runner.ts";
-import type { RuntimeInteractionRequest } from "../../../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 
 import { ok as assert } from "node:assert/strict";

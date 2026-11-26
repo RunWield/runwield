@@ -2,7 +2,10 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { test } from "node:test";
 import { readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    type InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runExportCommand } from "./index.ts";
 import type { SessionExportDocument } from "../../shared/session/session-export.ts";

@@ -8,7 +8,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { ensureRootAgentSession } from "../session/session.ts";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
 import { attachRecorder, makeUi, makeValidationProjectRoot, runValidationLoop } from "./validation-test-helpers.ts";

@@ -15,7 +15,7 @@ import { archivePlan } from "../../plan-store/index.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { setCustomSetting } from "../settings.ts";
 import { createGitPort } from "../git-port.ts";
 import { listEntries } from "../worktree-registry.ts";

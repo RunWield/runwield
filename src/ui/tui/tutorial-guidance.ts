@@ -1,6 +1,6 @@
 import { hasPlanDeliveryEvidence } from "../../plan-store/index.ts";
 
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { workRecordsForCheckout } from "../../plan-store/index.ts";
 import { isPlanExecutionRuntimeAgent } from "../../shared/workflow/execution-agent.ts";
 import { type PlanResource as LoadedPlan, planDocumentsForCheckout } from "../../plan-store/index.ts";
@@ -9,8 +9,8 @@ import { getCustomSetting } from "../../shared/settings.ts";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
 import type { UiAPI } from "./api.ts";
 
-type SessionRuntimeEvent = import("../../shared/session/session-runtime-events.ts").SessionRuntimeEvent;
-type SessionRuntime = ReturnType<typeof import("../../shared/session/session-runtime.ts").createSessionRuntime>;
+type SessionRuntimeEvent = import("@runwield/session-runtime/events").SessionRuntimeEvent;
+type SessionRuntime = ReturnType<typeof import("@runwield/session-runtime/services").createInteractiveSessionRuntime>;
 type SessionSnapshot = NonNullable<ReturnType<SessionRuntime["getSessionSnapshot"]>>;
 
 type TutorialExplanation = {

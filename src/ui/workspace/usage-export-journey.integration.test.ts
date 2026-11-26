@@ -11,7 +11,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { runInstallCommand } from "../../cmd/install/index.ts";
 import { resolveApprovedMetricsExporters } from "../../shared/extensions/metrics-exporter.ts";
 import { setCustomSetting } from "../../shared/settings.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import {
     readMetricsExportHostIdentity,
     grantMetricsExportDestination,

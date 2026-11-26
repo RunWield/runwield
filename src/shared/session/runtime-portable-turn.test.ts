@@ -2,8 +2,8 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { equal, ok } from "node:assert/strict";
 import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { SessionRuntime } from "./session-runtime.ts";
-import { SessionHost } from "./session-host.ts";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
+import { SessionHost } from "@runwield/session-runtime/host";
 import { openFileSessionStore } from "./file-session-store.ts";
 
 test("portable runtime resumes provider context across close and reopen", async () => {
@@ -40,15 +40,18 @@ test("portable runtime resumes provider context across close and reopen", async 
                     let sawSavedAssistant = false;
                     let sawCurrentUser = false;
                     setModelResponseFactory((context) => {
-                        sawSavedUser = context.messages.some((message) =>
-                            message.role === "user" && JSON.stringify(message.content).includes("Say hello.")
+                        sawSavedUser = context.messages.some(
+                            (message) =>
+                                message.role === "user" && JSON.stringify(message.content).includes("Say hello."),
                         );
-                        sawSavedAssistant = context.messages.some((message) =>
-                            message.role === "assistant" &&
-                            JSON.stringify(message.content).includes("Portable turn completed.")
+                        sawSavedAssistant = context.messages.some(
+                            (message) =>
+                                message.role === "assistant" &&
+                                JSON.stringify(message.content).includes("Portable turn completed."),
                         );
-                        sawCurrentUser = context.messages.some((message) =>
-                            message.role === "user" && JSON.stringify(message.content).includes("Continue.")
+                        sawCurrentUser = context.messages.some(
+                            (message) =>
+                                message.role === "user" && JSON.stringify(message.content).includes("Continue."),
                         );
                         return fauxAssistantMessage(fauxText("Resumed turn completed."));
                     });

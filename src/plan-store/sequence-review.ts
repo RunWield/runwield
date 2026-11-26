@@ -44,7 +44,7 @@ import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { runSequenceReviewTransition } from "./transitions.ts";
 import { reviewSourceStillMatches } from "./review.ts";
 import { workflowEvents } from "@runwield/workflow/events";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import type { PlanApprovalAction } from "../shared/workflow/plan-approval.ts";
 import type { PlanWrittenEventPayload } from "@runwield/workflow/events";
 

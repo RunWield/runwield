@@ -17,7 +17,7 @@ import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 

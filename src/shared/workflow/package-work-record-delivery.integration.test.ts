@@ -56,7 +56,7 @@ test("ordinary Recorder shares retained preparation and canonical settlement", a
     const { withRuntimeCommandFixture } = await import("../../cmd/testing/runtime-command-fixture.ts");
     await withRuntimeCommandFixture("package-ordinary-recorder-", async ({ setModelResponseFactories }) => {
         const { fauxAssistantMessage, fauxToolCall } = await import("@earendil-works/pi-ai");
-        const { HostedSession } = await import("../session/hosted-session.ts");
+        const { HostedSession } = await import("@runwield/session-runtime/host");
         const { runValidationAttempt } = await import("./validation-supervisor.ts");
         const { loadPackageWorkflowPlan } = await import("../../plan-store/workflows.ts");
         const { createGitPort } = await import("../git-port.ts");

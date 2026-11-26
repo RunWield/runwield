@@ -13,7 +13,8 @@ import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types";
 import { createMultiFileEditTool } from "../../../../tools/multi_file_edit.ts";
-import { HostedSession } from "../../hosted-session.ts";
+import type { RuntimeEventDraft } from "@runwield/session-runtime/events";
+import { HostedSession } from "@runwield/session-runtime/host";
 
 import { CLAUDE_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "./mcp-bridge.ts";
 
@@ -29,7 +30,7 @@ interface BridgeTestContext {
     client: Client;
     transport: StreamableHTTPClientTransport;
     mirrored: unknown[];
-    runtimeEvents: Array<Record<string, unknown>>;
+    runtimeEvents: RuntimeEventDraft[];
 }
 
 async function withBridge(tools: BridgeTools, callback: (context: BridgeTestContext) => Promise<void>): Promise<void> {
@@ -45,12 +46,12 @@ async function withBridgeWithSignal(
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-mcp-bridge-"));
     const manager = SessionManager.inMemory(cwd);
     const mirrored: unknown[] = [];
-    const runtimeEvents: Array<Record<string, unknown>> = [];
+    const runtimeEvents: RuntimeEventDraft[] = [];
     const hostedSession = new HostedSession({
         id: crypto.randomUUID(),
         cwd,
         sessionManager: manager,
-        eventSink: (event: Record<string, unknown>) => runtimeEvents.push(event),
+        eventSink: (event) => runtimeEvents.push(event),
     });
     const bridge = await startRunWieldMcpBridge({
         tools: typeof tools === "function" ? tools(hostedSession) : tools,

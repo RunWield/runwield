@@ -6,8 +6,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { startMcpIntegration } from "@runwield/pi-ai/mcp";
 import { mcpFixtureHost, mcpFixtureServer } from "../mcp/integration-fixture.ts";
-import { HostedSession } from "./hosted-session.ts";
-import { SessionHost } from "./session-host.ts";
+import { HostedSession, SessionHost } from "@runwield/session-runtime/host";
 
 test("SessionHost preserves real manager identity and removes only the requested session", async () => {
     await withRuntimeCommandFixture("session-host-identity-", async ({ projectRoot }) => {
@@ -98,7 +97,10 @@ test("HostedSession keeps replacement MCP integration usable when the prior SDK 
             shutdown.mock.restore();
             strictEqual(hosted.getMcpIntegration(), replacement);
             assertEquals(prior.getTools(), []);
-            assertEquals(replacement.getTools().map((tool) => tool.name), toolNames);
+            assertEquals(
+                replacement.getTools().map((tool) => tool.name),
+                toolNames,
+            );
             assertEquals(dispose.mock.calls.length, 1);
             assertStringIncludes(JSON.stringify(await hosted.getMcpIntegration()?.runCommand("")), "connected");
             await hosted.dispose();

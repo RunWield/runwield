@@ -9,7 +9,7 @@ import {
     openPersistedRootSession,
 } from "../session/root-session.ts";
 import { listRecentResumableSessions } from "../session/session-resume-list.ts";
-import { captureTranscriptEvidence } from "../session/session-transcript-projection.ts";
+import { captureTranscriptEvidence } from "@runwield/session-runtime/transcript";
 import { sessionBelongsToOwnerProject } from "../../ui/workspace/server/owner-projects.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import {

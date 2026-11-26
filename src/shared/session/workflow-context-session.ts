@@ -1,3 +1,4 @@
+import type { WorkflowContext, RuntimeValidationProgress } from "@runwield/session-runtime/events";
 /**
  * @module shared/session/workflow-context-session
  *
@@ -8,7 +9,6 @@ import { toolRegistry } from "@runwield/tools";
 
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { SegmentHandoffPayload } from "../workflow/execution-segment-handoff.ts";
-import type { RuntimeValidationProgress } from "./session-runtime-events.ts";
 import type { WorkflowProgressFact } from "../workflow/workflow-presentation.ts";
 import type { SessionSegmentLineageEvidence } from "./file-session-store-types.ts";
 
@@ -21,26 +21,6 @@ export interface LineageSessionManager {
 interface WorkflowContextStore extends Pick<LineageSessionManager, "getBranch" | "getEntries"> {
     appendCustomEntry?: (customType: string, data: WorkflowContext) => string | void;
 }
-
-export type WorkflowContext = {
-    routingIntent?: string;
-    complexity?: string;
-    summary?: string;
-    planName?: string;
-    parentPlan?: string;
-    planId?: string;
-    status?: string;
-    classification?: string;
-    progressFacts?: WorkflowProgressFact[];
-    validationProgress?: RuntimeValidationProgress;
-    canRun?: boolean;
-    canResume?: boolean;
-    canRecover?: boolean;
-    liveQuestion?: boolean;
-    livePlanReview?: boolean;
-    liveCodeReview?: boolean;
-    liveReviewUrl?: string;
-};
 
 export interface WorkflowContextTriageMeta {
     routingIntent?: string;

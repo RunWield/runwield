@@ -5,7 +5,10 @@ import { getEditorTheme } from "../../ui/theme/theme.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    type InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 import {
     getCodeReviewMode,
     getCustomSetting,

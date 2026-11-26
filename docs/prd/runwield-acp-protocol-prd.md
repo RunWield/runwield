@@ -156,7 +156,8 @@ defining another lifecycle.
 - Given a saved Session, `session/close` releases its live resources without changing archive state. Explicitly loading
   an archived Session restores its saved conversation without unarchiving it.
 - Given a Session created through ACP, when the process exits and a compatible client loads the returned Session
-  identifier, it reaches the same saved conversation.
+  identifier, it reaches the same saved conversation. A later `session/load` using the stable RunWield Session ID
+  returned in the load response restores the same conversation from the same Project without a transcript path.
 - Given the same Session open in an idle TUI, when an ACP client continues it, the open screen does not reserve it or
   create another conversation.
 - When a client receives Plan links without RunWield-specific presentation metadata, the ordinary text links remain

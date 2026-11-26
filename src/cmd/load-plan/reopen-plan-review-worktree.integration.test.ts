@@ -11,7 +11,7 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { HostedSession } from "../../shared/session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { executePlan } from "../../shared/workflow/plan-executor.ts";
 import { join } from "node:path";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
@@ -26,9 +26,9 @@ import {
     type SequenceReviewDocument,
     validateSequenceReviewDecision,
 } from "../../plan-store/index.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { reopenSavedPlanReview } from "./reopen-plan-review.ts";
 
@@ -200,10 +200,10 @@ test("Workspace accepts a live Sequence group decision from a registered plannin
             const store = fixture.openStore();
             const service = new WorkspaceSessionContinuationService({ store });
             const storeUrl = new URL("../../shared/owner-coordination/index.ts", import.meta.url).href;
-            const runtimeUrl = new URL("../../shared/session/session-runtime.ts", import.meta.url).href;
+            const runtimeUrl = import.meta.resolve("@runwield/session-runtime/services");
             const code = `
             import { openOwnerCoordinationStore } from ${JSON.stringify(storeUrl)};
-            import { createSessionRuntime } from ${JSON.stringify(runtimeUrl)};
+            import { createInteractiveSessionRuntime as createSessionRuntime } from ${JSON.stringify(runtimeUrl)};
             import { withRetainedPlanFixture } from ${JSON.stringify(new URL("../../shared/testing/retained-plan-fixture.ts", import.meta.url).href)};
             await withRetainedPlanFixture(${JSON.stringify(repo)}, async () => {
             const store = openOwnerCoordinationStore({ dbPath: ${JSON.stringify(fixture.dbPath)} });

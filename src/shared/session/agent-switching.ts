@@ -15,12 +15,12 @@ import {
     runRootTurn,
     shouldReuseExistingRootSession,
 } from "./session.ts";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.ts";
+import { emitHostedSessionRuntimeEvent, type HostedSession, type ThinkingLevel } from "@runwield/session-runtime/host";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { HostedSession, ThinkingLevel } from "./hosted-session.ts";
-import type { ImageAttachment } from "./image-attachments.ts";
+import type { ImageAttachment } from "@runwield/session-runtime/events";
 import type { TriageMeta } from "@runwield/workflow/state";
 import type { McpIntegration } from "@runwield/pi-ai/mcp";
 import type { McpServerDefinition } from "../mcp/config.ts";

@@ -9,8 +9,8 @@ import { setCustomSetting } from "../settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
 import { withWorkflowMetricJournalLock } from "../workflow/metrics-journal.ts";
 import { UsageReporter } from "../workflow/usage-reporting.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
-import { HostedSession } from "./hosted-session.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
+import { HostedSession } from "@runwield/session-runtime/host";
 import {
     drainSessionCompactionMetrics,
     ensureRootAgentSession,

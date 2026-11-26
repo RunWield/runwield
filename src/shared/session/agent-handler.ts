@@ -22,8 +22,13 @@ import {
 import { runWorkflowValidationToStableBoundary } from "../workflow/validation.ts";
 import { switchActiveAgent } from "./agent-switching.ts";
 import { agentRegistry, AGENTS } from "./agent-registry.ts";
-import { emitHostedSessionRuntimeEvent, emitSystemStatus, RuntimeEventTypes } from "./session-runtime-events.ts";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
+import {
+    emitHostedSessionRuntimeEvent,
+    emitSystemStatus,
+    requestHostedSessionInteraction,
+} from "@runwield/session-runtime/host";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import {
     acknowledgeTaskCompletion,
     claimPendingTaskCompletion,
@@ -38,10 +43,10 @@ import { isValidationCheckpoint } from "@runwield/plans/controller-state";
 import { validationCheckpointCanResume } from "../workflow/validation-checkpoint.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { TriageOutcome } from "@runwield/tools";
-import type { ImageAttachment } from "./image-attachments.ts";
+import type { ImageAttachment } from "@runwield/session-runtime/events";
 
 type ActiveExecutionWorkflow = import("@runwield/workflow/state").ActiveExecutionWorkflow;
-type HostedSession = import("./hosted-session.ts").HostedSession;
+type HostedSession = import("@runwield/session-runtime/host").HostedSession;
 type SessionManager = import("@earendil-works/pi-coding-agent").SessionManager;
 type TriageMeta = import("@runwield/workflow/state").TriageMeta;
 type PlanExecutionResult = import("../workflow/workflow.ts").PlanExecutionResult;
@@ -100,7 +105,7 @@ export type AgentMessageHandler = (
 
 interface AgentHandlerCompleteResult extends AgentTurnCompleteResult {
     validationResult?: WorkflowValidationResult;
-    executionToStart?: import("./runtime/workflow-options.ts").RuntimeExecutePlanOptions;
+    executionToStart?: import("@runwield/session-runtime/services").RuntimeExecutePlanOptions;
 }
 
 type AgentHandlerTurnResult = AgentHandlerCompleteResult;
@@ -148,7 +153,7 @@ function refreshedQuickFixWorkflow(workflow: ActiveExecutionWorkflow): ActiveExe
  * Ask the user to restore a newly-created Plan that was stashed out of the
  * primary checkout while its execution worktree was active.
  *
- * @param {import('./hosted-session.ts').HostedSession} hostedSession
+ * @param {import('@runwield/session-runtime/host').HostedSession} hostedSession
  * @param {string} planName
  * @returns {Promise<boolean>}
  */

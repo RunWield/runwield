@@ -4,7 +4,7 @@
  */
 
 import { getCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.ts";
-import { RuntimeEventTypes } from "../shared/session/session-runtime-events.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 
 import type {
     SessionNotification,
@@ -14,11 +14,27 @@ import type {
 } from "@agentclientprotocol/sdk/unstable";
 import type { ContextUsage } from "@earendil-works/pi-coding-agent";
 import type { ToolContentBlock } from "@runwield/pi-ai/turn";
-import type { SessionRuntimeEvent } from "../shared/session/session-runtime-events.ts";
+import type { SessionRuntimeEvent } from "@runwield/session-runtime/events";
 
 export type { SessionNotification, SessionUpdate } from "@agentclientprotocol/sdk/unstable";
 export type AcpContextUsage = Pick<ContextUsage, "tokens" | "contextWindow">;
-export type RuntimeAcpMetadata = NonNullable<SessionRuntimeEvent["_meta"]>;
+interface RuntimeAcpMetadata {
+    agentName?: string;
+    messageKind?: string;
+    workflowMessage?: string;
+    approved?: boolean;
+    toolName?: string;
+    durationMs?: number | null;
+    type?: SessionRuntimeEvent["type"];
+    model?: string | null;
+    provider?: string | null;
+    thinkingLevel?: string;
+    interactionId?: string;
+    interactionType?: string;
+    outcome?: string;
+    level?: string;
+    validationProgress?: import("@runwield/session-runtime/events").RuntimeValidationProgress;
+}
 
 export interface AcpUsageUpdate extends UsageUpdate {
     sessionUpdate: "usage_update";

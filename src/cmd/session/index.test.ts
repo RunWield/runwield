@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runSessionCommand } from "./index.ts";

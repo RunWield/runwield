@@ -37,9 +37,10 @@ import { toolRegistry, type TriageOutcome, type TriageOutcomeInput } from "@runw
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
-    RuntimeEventTypes,
-} from "../session/session-runtime-events.ts";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
+    requestHostedSessionInteraction,
+} from "@runwield/session-runtime/host";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "@runwield/workflow/decisions";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.ts";
@@ -58,7 +59,7 @@ import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
 import { workflowEvents, WorkflowStepCompleted } from "@runwield/workflow/events";
-import type { DeferredPlanExecution } from "../session/session-runtime.ts";
+import type { DeferredPlanExecution } from "@runwield/session-runtime/services";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 
 export { runLocalCI, runMechanicalValidation } from "./validation.ts";
@@ -73,10 +74,10 @@ interface TriageToolResultMessage {
 }
 
 export interface DispatchPostTriageArgs {
-    hostedSession: import("../session/hosted-session.ts").HostedSession;
+    hostedSession: import("@runwield/session-runtime/host").HostedSession;
     triage: TriageOutcomeInput;
     userRequest: string;
-    images?: import("../session/image-attachments.ts").ImageAttachment[];
+    images?: import("@runwield/session-runtime/events").ImageAttachment[];
     sessionManager?: SessionManager;
     localCI: LocalCIPort;
     signal?: AbortSignal;
@@ -131,10 +132,10 @@ function refreshedQuickFixWorkflow(
 }
 
 async function runRootTurnUntilTaskCompletion(args: {
-    hostedSession: import("../session/hosted-session.ts").HostedSession;
+    hostedSession: import("@runwield/session-runtime/host").HostedSession;
     agentName: string;
     userRequest: string;
-    images?: import("../session/image-attachments.ts").ImageAttachment[];
+    images?: import("@runwield/session-runtime/events").ImageAttachment[];
     dispatchKind?: import("../session/request-dispatch.ts").RequestDispatchKind;
     signal?: AbortSignal;
 }): Promise<AgentMessage[]> {
@@ -184,12 +185,12 @@ async function runRootTurnUntilTaskCompletion(args: {
 }
 
 /**
- * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
+ * @param {import('@runwield/session-runtime/host').HostedSession} hostedSession
  * @param {string} projectRoot
  * @returns {Promise<boolean>}
  */
 async function confirmNonGitQuickFixExecution(
-    hostedSession: import("../session/hosted-session.ts").HostedSession,
+    hostedSession: import("@runwield/session-runtime/host").HostedSession,
     projectRoot: string,
 ): Promise<boolean> {
     const response = await requestHostedSessionInteraction(
@@ -247,12 +248,12 @@ export function readLatestTriageOutcome(messages: AgentMessage[], fromIndex?: nu
  *
  * @param {import('@earendil-works/pi-coding-agent').SessionManager | undefined} sessionManager
  * @param {TriageOutcome} triage
- * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
+ * @param {import('@runwield/session-runtime/host').HostedSession} hostedSession
  */
 function applyAutoSessionName(
     sessionManager: SessionManager | undefined,
     triage: TriageOutcome,
-    hostedSession: import("../session/hosted-session.ts").HostedSession,
+    hostedSession: import("@runwield/session-runtime/host").HostedSession,
 ): void {
     if (!sessionManager) return;
 

@@ -15,8 +15,8 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { presentEpicChildPlan, resolveEpicContinuation } from "./epic-continuation.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 
-import type { HostedSession } from "../session/hosted-session.ts";
-import type { RuntimeSystemStatusEvent } from "../session/session-runtime-events.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
+import type { RuntimeSystemStatusEvent } from "@runwield/session-runtime/events";
 
 type CapturedStatusEvent = Pick<RuntimeSystemStatusEvent, "type" | "message" | "header" | "level">;
 type CapturedStatusSession = Pick<HostedSession, "cwd" | "getEventSink">;

@@ -254,7 +254,7 @@ justify shipping speculative services, mock authentication, remote transport imp
 
 - Existing Workspace components and `src/ui/design-system/` for workbench UX, themes, documents, editors, and diffs.
 - `src/acp/server.ts`, `event-mapper.ts`, `interaction-mapper.ts`, and `session-map.ts` for standard protocol behavior.
-- `src/shared/session/session-runtime.ts` and file Session stores for turns, writer ownership, persistence, and recovery.
+- `packages/session-runtime/index.ts` and file Session stores for turns, writer ownership, persistence, and recovery.
 - `src/shared/workflow/plan-actions.ts` and current Plan-store services for revision-checked workflow operations.
 - Existing Workspace receipt/generation checks, moved behind their authoritative boundary rather than duplicated.
 - `scripts/compile-command.ts`, existing compiled-runtime qualification, and packaging/release conventions.

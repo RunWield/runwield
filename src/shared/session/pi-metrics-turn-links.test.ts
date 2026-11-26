@@ -6,7 +6,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 
 test("one Pi execution links usage from successive model turns to its own turn", async () => {
     await withRuntimeCommandFixture("metrics-pi-multi-turn-", async ({ projectRoot, setModelResponseFactories }) => {

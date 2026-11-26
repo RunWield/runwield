@@ -5,10 +5,15 @@ import type {
     RuntimeAssistantTextDeltaEvent,
     RuntimeAssistantThinkingDeltaEvent,
     RuntimeAssistantThinkingEndEvent,
-} from "./session-runtime-events.ts";
+    SessionRuntimeEvent,
+    RuntimeCommandCatalogChangedEvent,
+    RuntimeUserMessageEvent,
+    RuntimeQueuedMessageEvent,
+    RuntimeAttentionRequestedEvent,
+} from "@runwield/session-runtime/events";
 import type { RunWieldModel } from "@runwield/pi-ai/models";
 import type { ExecutionSession } from "./execution-backend.ts";
-import type { DisposableLike } from "./hosted-session.ts";
+import { SessionHost, type DisposableLike } from "@runwield/session-runtime/host";
 interface QueueFixtureEvent {
     type: "queue_update";
     steering: string[];
@@ -20,16 +25,8 @@ interface MutableTestSessionManager {
 }
 import type { FauxResponseFactory, Context } from "@earendil-works/pi-ai";
 import type { AgentMessageHandler, AgentHandler } from "./agent-handler.ts";
-import type {
-    SessionRuntimeEvent,
-    RuntimeCommandCatalogChangedEvent,
-    RuntimeUserMessageEvent,
-    RuntimeQueuedMessageEvent,
-    RuntimeAttentionRequestedEvent,
-} from "./session-runtime-events.ts";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import type { LastPlanReviewReference } from "./file-session-store-types.ts";
-import { getRuntimeRootAgentSession } from "./runtime/support.ts";
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { delimiter } from "node:path";
 import {
@@ -65,12 +62,18 @@ import { ExtensionRunner, SessionManager } from "@earendil-works/pi-coding-agent
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../settings.ts";
-import { SessionHost } from "./session-host.ts";
-import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
+import { captureTranscriptEvidence } from "@runwield/session-runtime/transcript";
 import { switchActiveAgent } from "./agent-switching.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.ts";
-import { RuntimeInteractionTypes } from "./session-runtime-interactions.ts";
-import { createSessionRuntime, SessionRuntime, SessionTurnInProgressError } from "./session-runtime.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
+import {
+    createSessionRuntime as createDefaultSessionRuntime,
+    SessionTurnInProgressError,
+} from "@runwield/session-runtime";
 import { getRootSessionRebuildOptions } from "./session.ts";
 import { createRootSessionManager, getRunWieldSessionDir, resolveCreatedRootSessionPath } from "./root-session.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
@@ -1217,8 +1220,12 @@ test("SessionRuntime automatically recovers append-only output written before ge
                 ownerInstanceId: "resuming-owner",
             });
             try {
-                const loaded = await runtime.loadSession({ cwd, sessionId: piSessionId, sessionPath: transcriptPath });
+                const loaded = await runtime.loadSession({ cwd, sessionId: session.runwieldSessionId });
                 assertEquals(loaded.sessionManagerId, piSessionId);
+                assertEquals(
+                    runtime.getSessionSnapshot(loaded.sessionId)?.managed?.runwieldSessionId,
+                    session.runwieldSessionId,
+                );
                 const recovered = resumedStore.inspectSessionActivation(session.runwieldSessionId);
                 assertEquals(recovered.activation?.state, "idle");
                 assertEquals(recovered.generation?.generation, 0);
@@ -1483,56 +1490,56 @@ test("SessionRuntime can defer managed creation cataloging until Agent readiness
     }
 });
 
-test("SessionRuntime continue opens the explicitly requested saved Session", async () => {
+test("SessionRuntime opens explicitly requested saved Sessions by stable and Pi IDs", async () => {
     ensureRuntimeModelFixture();
     const cwd = join(runtimeProjectRoot(), `explicit-resume-${crypto.randomUUID()}`);
     await fsMkdir(cwd, { recursive: true });
-    const runtime = createSessionRuntime({ ownerProcessKind: "test" });
-    let firstPersistedId = "";
-    let firstRunWieldId = "";
+    const runtime = createDefaultSessionRuntime({ ownerProcessKind: "test" });
+    const saved: { piSessionId: string; runwieldSessionId: string }[] = [];
     try {
-        const first = await runtime.createInteractiveSession({ cwd, mode: "new" });
-        const second = await runtime.createInteractiveSession({ cwd, mode: "new" });
-        firstPersistedId = runtime.getSessionSnapshot(first.sessionId)?.sessionManagerId || "";
-        firstRunWieldId = runtime.getSessionSnapshot(first.sessionId)?.managed?.runwieldSessionId || "";
-        const secondPersistedId = runtime.getSessionSnapshot(second.sessionId)?.sessionManagerId;
-        assert(firstPersistedId);
-        assert(firstRunWieldId);
-        assert(typeof secondPersistedId === "string");
-        assert(firstPersistedId !== secondPersistedId);
+        for (let index = 0; index < 2; index++) {
+            const created = await runtime.createInteractiveSession({ cwd, mode: "new" });
+            const snapshot = runtime.getSessionSnapshot(created.sessionId);
+            assert(snapshot?.sessionManagerId);
+            assert(snapshot.managed?.runwieldSessionId);
+            saved.push({
+                piSessionId: snapshot.sessionManagerId,
+                runwieldSessionId: snapshot.managed.runwieldSessionId,
+            });
+        }
+        assertEquals(new Set(saved.map((session) => session.piSessionId)).size, 2);
+        assertEquals(new Set(saved.map((session) => session.runwieldSessionId)).size, 2);
     } finally {
         await runtime.closeAllSessionsWhenIdle();
     }
 
-    const resumedRuntime = createSessionRuntime({ ownerProcessKind: "test" });
+    const resumedRuntime = createDefaultSessionRuntime({ ownerProcessKind: "test" });
     try {
-        const resumed = await resumedRuntime.createInteractiveSession({
-            cwd,
-            mode: "continue",
-            resumeSessionId: firstRunWieldId,
-        });
+        for (const { piSessionId, runwieldSessionId } of saved) {
+            for (const sessionId of [runwieldSessionId, piSessionId]) {
+                const continued = await resumedRuntime.createInteractiveSession({
+                    cwd,
+                    mode: "continue",
+                    resumeSessionId: sessionId,
+                });
+                assertEquals(continued.sessionManagerId, piSessionId);
+                assertEquals(
+                    resumedRuntime.getSessionSnapshot(continued.sessionId)?.managed?.runwieldSessionId,
+                    runwieldSessionId,
+                );
+                await resumedRuntime.closeSession(continued.sessionId);
 
-        assertEquals(resumedRuntime.getSessionSnapshot(resumed.sessionId)?.sessionManagerId, firstPersistedId);
-        assertEquals(resumedRuntime.getSessionSnapshot(resumed.sessionId)?.managed?.runwieldSessionId, firstRunWieldId);
+                const loaded = await resumedRuntime.loadSession({ cwd, sessionId });
+                assertEquals(loaded.sessionManagerId, piSessionId);
+                assertEquals(
+                    resumedRuntime.getSessionSnapshot(loaded.sessionId)?.managed?.runwieldSessionId,
+                    runwieldSessionId,
+                );
+                await resumedRuntime.closeSession(loaded.sessionId);
+            }
+        }
     } finally {
         await resumedRuntime.closeAllSessionsWhenIdle();
-    }
-
-    const transcriptIdRuntime = createSessionRuntime({ ownerProcessKind: "test" });
-    try {
-        const resumed = await transcriptIdRuntime.createInteractiveSession({
-            cwd,
-            mode: "continue",
-            resumeSessionId: firstPersistedId,
-        });
-
-        assertEquals(transcriptIdRuntime.getSessionSnapshot(resumed.sessionId)?.sessionManagerId, firstPersistedId);
-        assertEquals(
-            transcriptIdRuntime.getSessionSnapshot(resumed.sessionId)?.managed?.runwieldSessionId,
-            firstRunWieldId,
-        );
-    } finally {
-        await transcriptIdRuntime.closeAllSessionsWhenIdle();
     }
 });
 
@@ -4439,7 +4446,7 @@ test("managed turn reconciles steering when the external SDK omits queue notific
         let followup = "";
         setModelResponseFactories([
             async () => {
-                const sdk = getRuntimeRootAgentSession(host.requireSession(created.sessionId));
+                const sdk = host.requireSession(created.sessionId).getRootAgentSession();
                 // The fault belongs to the external Pi SDK; owned runtime, queue,
                 // manager, activation, and handler all execute normally.
                 if (!sdk) throw new Error("Active Pi SDK session is missing");

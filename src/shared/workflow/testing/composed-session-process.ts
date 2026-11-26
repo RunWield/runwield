@@ -2,7 +2,7 @@ import { projects } from "@runwield/projects";
 import { ok, equal } from "node:assert/strict";
 import { createServer } from "node:http";
 import { openFileSessionStore } from "../../session/file-session-store.ts";
-import { createSessionRuntime } from "../../session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { loadPlan } from "../../testing/plan-query-fixture.ts";
 
 const [command, root, locator] = process.argv.slice(2);

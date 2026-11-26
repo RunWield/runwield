@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { getRunWieldRuntimeDir } from "../../constants.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import {
     advancePublicationAttempt,
     createPublicationAttempt,

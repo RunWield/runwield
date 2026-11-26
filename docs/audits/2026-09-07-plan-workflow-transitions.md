@@ -73,7 +73,7 @@ race only watches `triage_report` and `plan_written`. It waits for turn return b
   Plan/triage event branch returns without aborting or joining the running producer.
 - [Engineer runners](../../src/shared/workflow/engineer-runner.ts#L33): both initial and segment-handoff paths await
   `runActiveAgentTurn` before claiming accepted completion.
-- [Managed semantic repair](../../src/shared/session/runtime/workflows.ts#L591): also awaits the active turn before
+- [Managed semantic repair](../../packages/session-runtime/runtime/workflows.ts#L591): also awaits the active turn before
   consuming repair completion.
 - [Orchestrator](../../src/shared/workflow/orchestrator.ts): `runRootTurnUntilTaskCompletion` does race the event and
   aborts the turn, but does not wait for producer shutdown before returning.
@@ -122,7 +122,7 @@ real adapter is awaiting repair, after file edits, after accepted completion, an
 
 - [engineer-runner](../../src/shared/workflow/engineer-runner.ts#L64) claims and acknowledges completion before its
   caller reaches [finalizePlanImplementation](../../packages/workflow/implementation-checkpoint.ts).
-- [Managed semantic repair](../../src/shared/session/runtime/workflows.ts#L620) acknowledges before
+- [Managed semantic repair](../../packages/session-runtime/runtime/workflows.ts#L620) acknowledges before
   `recordValidationRepairCompletion` persists the generation receipt.
 - [Planning runner](../../src/shared/workflow/planning-agent.ts#L79) and
   [root Plan dispatch](../../src/shared/session/agent-handler.ts#L363) settle the accepted Plan event before downstream

@@ -1,7 +1,7 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
 import { AGENTS } from "../session/agent-registry.ts";
 import { resolvePlanExecutionPolicy } from "@runwield/plans/format";
-import { emitSystemStatus } from "../session/session-runtime-events.ts";
+import { emitSystemStatus } from "@runwield/session-runtime/host";
 
 export function resolveExecutionOwner(meta) {
     const policy = resolvePlanExecutionPolicy(meta);
@@ -28,7 +28,7 @@ export const PairPauseReasons = Object.freeze({
 });
 
 /**
- * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
+ * @param {import('@runwield/session-runtime/host').HostedSession} hostedSession
  * @returns {boolean}
  */
 export function supportsPairExecution(hostedSession) {
@@ -44,7 +44,7 @@ export function supportsPairExecution(hostedSession) {
  */
 
 /**
- * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
+ * @param {import('@runwield/session-runtime/host').HostedSession} hostedSession
  * @param {{ executionAgent: "engineer"|"frontend-engineer", collaborationRecommendation: "autonomous"|"pair", source: "canonical"|"legacy_frontend"|"legacy_frontend_false"|"absent" }} policy
  * @returns {RuntimeCollaborationSelection}
  */

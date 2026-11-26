@@ -19,9 +19,9 @@ other transports should attach to the same core runtime surface as the TUI.
 ## Decision
 
 Introduce a `SessionRuntime` layer above `SessionHost`/`HostedSession` and below
-all user-interface adapters. `src/shared/session/session-runtime.ts` is its sole
-public source surface. Private TypeScript owners under
-`src/shared/session/runtime/` divide events, queues, managed operations,
+all user-interface adapters. Applications use the public entries of
+`@runwield/session-runtime`. The root entry defines the session operations.
+Private TypeScript owners under `packages/session-runtime/runtime/` divide events, queues, managed operations,
 lifecycle, turns, reads, settings, workflow, image, and local-shell behavior
 without exposing those implementations to consumers. `SessionRuntime` owns
 adapter-neutral session operations such as create, load, prompt, cancel,

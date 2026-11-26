@@ -1,4 +1,4 @@
-import type { WorkflowContext } from "./workflow-context-session.ts";
+import type { WorkflowContext } from "@runwield/session-runtime/events";
 import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 
 // Legacy transcripts lack accepted progress. Reconcile only confirmed same-Plan delivery,

@@ -1,13 +1,14 @@
+import { syncTranscriptFileAndParent } from "./file-session-storage.ts";
 /*
  * @module shared/session/segment-rollover
  * Transactional Session Transcript Segment Rollover orchestration.
  */
 
 import { REMOTE_SESSION_IDENTITY_ENTRY } from "../remote/session-protocol.ts";
-import type { ManagedSessionMetadata } from "./hosted-session.ts";
+import type { ManagedSessionMetadata } from "@runwield/session-runtime/host";
 import type { FileActivationProof } from "./file-session-store-types.ts";
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "./root-session.ts";
-import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.ts";
+import { captureTranscriptEvidence } from "@runwield/session-runtime/transcript";
 import {
     recordNormalizedWorkflowContext,
     recordPendingSegmentContinuation,
@@ -19,7 +20,7 @@ import type { SegmentHandoffPayload } from "../workflow/execution-segment-handof
 
 type RolloverKind = "execution" | "semantic_repair";
 
-type RuntimeSessionManager = import("./hosted-session.ts").MinimalSessionManagerLike;
+type RuntimeSessionManager = import("@runwield/session-runtime/host").MinimalSessionManagerLike;
 type HostedManagedSession = {
     cwd: string;
     getManagedMetadata: () => ManagedSessionMetadata | null;

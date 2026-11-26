@@ -9,7 +9,7 @@ import type {
     SessionConfigOption,
 } from "@agentclientprotocol/sdk/unstable";
 import type { Message, ProviderStreams, TranscriptContext } from "@earendil-works/pi-ai";
-import type { RuntimeValidationProgress } from "../shared/session/session-runtime-events.ts";
+import type { RuntimeValidationProgress } from "@runwield/session-runtime/events";
 import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import { collectProcessOutput } from "../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
@@ -44,7 +44,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 
-import { captureTranscriptEvidence } from "../shared/session/session-transcript-projection.ts";
+import { captureTranscriptEvidence } from "@runwield/session-runtime/transcript";
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.ts";
@@ -1956,6 +1956,39 @@ test("ACP session/load replays a real persisted Session and accepts another prom
             assertEquals(sawLoadedMcpResultInTurn, true);
             assertStringIncludes(joinedAgentText(continued.messages), "continued fixture response");
             assertStringIncludes(await fsReadFile(logPath, "utf8"), '"marker":"acp-loaded"');
+
+            const closed = await request(secondHandle, {
+                jsonrpc: "2.0",
+                id: "close-loaded",
+                method: "session/close",
+                params: { sessionId: created.sessionId },
+            });
+            assertEquals(closed.error, undefined);
+
+            await sendMessage(secondHandle, {
+                jsonrpc: "2.0",
+                id: "load-stable",
+                method: "session/load",
+                params: { sessionId: stablePersistedSessionId, cwd: fixture.projectRoot, mcpServers: [] },
+            });
+            const reloaded = await readThroughResponse(secondHandle, "load-stable");
+            assertEquals(reloaded.response.result?._meta?.runwield?.persistedSessionId, stablePersistedSessionId);
+            assertStringIncludes(joinedAgentText(reloaded.messages), "first fixture response");
+            assertStringIncludes(joinedAgentText(reloaded.messages), "continued fixture response");
+
+            for (const alias of [
+                created.persistedSessionId,
+                `acp-${created.persistedSessionId}`,
+                `acp-${stablePersistedSessionId}`,
+            ]) {
+                const duplicate = await request(secondHandle, {
+                    jsonrpc: "2.0",
+                    id: alias,
+                    method: "session/load",
+                    params: { sessionId: alias, cwd: fixture.projectRoot, mcpServers: [] },
+                });
+                assertEquals(duplicate.error?.code, -32002);
+            }
         } finally {
             await closeTestServer(secondHandle);
             await fsRm(logPath).catch(() => {});

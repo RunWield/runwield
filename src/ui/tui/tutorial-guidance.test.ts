@@ -13,7 +13,7 @@ import {
     withRuntimeCommandFixture as withRuntimeFixture,
     type RuntimeCommandFixture,
 } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import type { PlanFrontMatter } from "@runwield/plans/format";
 import {
     seedPlan as savePlan,
@@ -23,7 +23,7 @@ import {
     RuntimeEventTypes,
     type RuntimeValidationCheckResults,
     type SessionRuntimeEvent,
-} from "../../shared/session/session-runtime-events.ts";
+} from "@runwield/session-runtime/events";
 import { presentTutorialEvent, restoreVerifiedTutorialRecap } from "./tutorial-guidance.ts";
 import { setCustomSetting } from "../../shared/settings.ts";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";

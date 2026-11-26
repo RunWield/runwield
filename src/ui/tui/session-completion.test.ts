@@ -15,7 +15,8 @@ import { createChatView } from "./chat-view.ts";
 import { createChatInputController } from "./chat-input-controller.ts";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import { emitHostedSessionRuntimeEvent } from "@runwield/session-runtime/host";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {

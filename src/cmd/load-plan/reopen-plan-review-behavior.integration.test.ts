@@ -13,9 +13,9 @@ import {
 import { ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";

@@ -10,9 +10,9 @@ import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { archivePlan, ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 
 const gitFixture = defineCommittedGitFixture();

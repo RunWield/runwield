@@ -13,15 +13,14 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
-import { HostedSession } from "../../shared/session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
+import type { ReviewDecisionValue, ReviewServerOutput } from "@runwield/session-runtime/interactions";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createUiApiFixture } from "../tui/ui-api-test-fixture.ts";
 import { createTuiInteractionAdapter } from "../tui/runtime-interaction-adapter.ts";
 import { getWorktreeReviewDiff } from "../../shared/workflow/git-snapshot.ts";
 import {
-    type ReviewDecisionValue,
-    type ReviewServerOutput,
     startArtifactReadSurface,
     startCodeReviewSurface,
     startPlanReviewSurface,

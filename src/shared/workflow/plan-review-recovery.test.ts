@@ -35,7 +35,7 @@ test("Plan Review recovers unanswered results instead of treating cancellation t
         { exit: true, feedback: "Exited" },
         { approved: false, feedback: "" },
     ]) {
-        const approved = { _meta: { approved: true, approvalAction: "later" } };
+        const approved = { _meta: { approved: true, approvalAction: "later" as const } };
         const reviews = [response, approved];
         const result = await requestRecoverablePlanReview({
             requestReview: () => Promise.resolve(reviews.shift()),
@@ -46,7 +46,7 @@ test("Plan Review recovers unanswered results instead of treating cancellation t
 });
 
 test("Plan Review recovery retries after unanswered review when user accepts", async () => {
-    const reviews = [{ outcome: "canceled" }, { _meta: { approved: true, approvalAction: "run" } }];
+    const reviews = [{ outcome: "canceled" }, { _meta: { approved: true, approvalAction: "run" as const } }];
     const prompts: string[] = [];
     const result = await requestRecoverablePlanReview({
         requestReview: () => Promise.resolve(reviews.shift()),

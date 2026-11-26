@@ -5,10 +5,10 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.ts";
-import { createReplayEvents } from "./session-transcript-projection.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+import { createReplayEvents } from "@runwield/session-runtime/transcript";
 
 test("an idle managed Session receives a completed shell task without another user prompt", async () => {
     await withRuntimeCommandFixture("background-delivery-", async ({ projectRoot, setModelResponseFactories }) => {

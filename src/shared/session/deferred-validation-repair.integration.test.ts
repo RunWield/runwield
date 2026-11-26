@@ -17,7 +17,7 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { setCustomSetting } from "../settings.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 

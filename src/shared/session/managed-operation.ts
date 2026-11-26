@@ -19,7 +19,7 @@ export type ManagedOperationDescriptor = {
         expectedGeneration?: number | null;
         initialRequest?: string;
         generatedTaskId?: string;
-        initialImages?: import("./image-attachments.ts").ImageAttachment[];
+        initialImages?: import("@runwield/session-runtime/events").ImageAttachment[];
         initialTutorialContext?: import("./tutorial-context-session.ts").TutorialContext;
         turnId?: string;
         agentName?: string;

@@ -11,7 +11,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import {
     acknowledgeTaskCompletion,
     claimPendingTaskCompletion,

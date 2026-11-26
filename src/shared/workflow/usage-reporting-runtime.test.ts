@@ -3,7 +3,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { setCustomSetting } from "../settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.ts";
 import { UsageReporter } from "./usage-reporting.ts";

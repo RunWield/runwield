@@ -6,8 +6,11 @@ import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
-import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    type InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 import { createGenerationGuard } from "./generation-guard.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.ts";
 import { setCustomSetting } from "../../shared/settings.ts";

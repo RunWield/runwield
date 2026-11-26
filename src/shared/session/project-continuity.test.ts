@@ -12,17 +12,17 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 import { captureForegroundProcess } from "../captured-process.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { createRootSessionManager, resolveCreatedRootSessionPath, openPersistedRootSession } from "./root-session.ts";
-import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
+import { captureTranscriptEvidence } from "@runwield/session-runtime/transcript";
 import { listRecentResumableSessions } from "./session-resume-list.ts";
 import { lockPath, manifestPath, sessionDirForRoot, writeJsonAtomically } from "./file-session-storage.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 
 const repository = defineCommittedGitFixture();
 const storeModule = new URL("./file-session-store.ts", import.meta.url).href;
 const rootModule = new URL("./root-session.ts", import.meta.url).href;
 const identityModule = import.meta.resolve("@runwield/projects");
 const resumeModule = new URL("./session-resume-list.ts", import.meta.url).href;
-const projectionModule = new URL("./session-transcript-projection.ts", import.meta.url).href;
+const projectionModule = import.meta.resolve("@runwield/session-runtime/transcript");
 
 async function withHome(body: (home: string) => Promise<void>) {
     await withProcessGlobalTestLock(async () => {
@@ -295,6 +295,18 @@ test("explicit-ID interactive resume translates accepted linked Session membersh
                 await rejects(
                     () => runtime.createInteractiveSession({ cwd: declined, mode: "continue", resumeSessionId }),
                     /No saved Session/,
+                );
+                const direct = await runtime.loadSession({ cwd: two, sessionId: resumeSessionId });
+                equal(direct.cwd, two);
+                equal(direct.sessionManagerId, first.session.piSessionId);
+                equal(
+                    runtime.getSessionSnapshot(direct.sessionId)?.managed?.runwieldSessionId,
+                    first.session.runwieldSessionId,
+                );
+                await runtime.closeSession(direct.sessionId);
+                await rejects(
+                    () => runtime.loadSession({ cwd: declined, sessionId: resumeSessionId }),
+                    /Session Manager load is blocked/,
                 );
             }
             equal(
@@ -697,12 +709,12 @@ test("runtime loading keeps tools in the selected checkout and settles into the 
             const saved = await seed(root);
             equal((await projects.checkout.admit(root)).kind, "existing");
             await rename(root, moved);
-            const runtimeModule = new URL("./session-runtime.ts", import.meta.url).href;
+            const runtimeModule = import.meta.resolve("@runwield/session-runtime/services");
             const output = await child(
                 moved,
                 `
                 import { projects } from ${JSON.stringify(identityModule)};
-                import { createSessionRuntime } from ${JSON.stringify(runtimeModule)};
+                import { createInteractiveSessionRuntime as createSessionRuntime } from ${JSON.stringify(runtimeModule)};
                 import { openFileSessionStore } from ${JSON.stringify(storeModule)};
                 await projects.checkout.admit(${JSON.stringify(moved)});
                 const store = openFileSessionStore();

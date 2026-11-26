@@ -22,7 +22,7 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { addEntry, findById, updateEntry } from "../worktree-registry.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";

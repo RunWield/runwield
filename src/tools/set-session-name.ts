@@ -2,9 +2,9 @@
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import { emitHostedSessionRuntimeEvent, type HostedSession } from "@runwield/session-runtime/host";
 import { toolRegistry, type SetSessionNameDetails } from "@runwield/tools";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../shared/session/session-runtime-events.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 
 type SetSessionNameResult = AgentToolResult<SetSessionNameDetails | null> & { isError?: boolean };
 

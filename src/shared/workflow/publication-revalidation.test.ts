@@ -27,7 +27,7 @@ import { findById, retirePublicationForRevalidation, updatePublication } from ".
 import { openPublication } from "@runwield/workflow/publication-runtime";
 import { candidateIdentity } from "./validation-scope.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 import { assertPreMergeCandidateUnchanged } from "../worktree.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";

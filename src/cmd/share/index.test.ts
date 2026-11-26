@@ -3,7 +3,7 @@ import { readFile as fsReadFile, readdir, rename, stat as fsStat } from "node:fs
 import { basename, dirname, join } from "node:path";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { type GitHubCliPort, runShareCommand } from "./index.ts";
 
 interface GitHubInvocation {

@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { listPersistedRootSessions } from "../shared/session/root-session.ts";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
 import { WorkspaceSessionContinuationService } from "./workspace/server/session-continuation.ts";

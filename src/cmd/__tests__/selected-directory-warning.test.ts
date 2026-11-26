@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { runLoadPlanCommand } from "../load-plan/index.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";

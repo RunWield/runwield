@@ -8,7 +8,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { setCustomSetting } from "../settings.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { effectiveDeliveryBranch } from "@runwield/workflow/publication";

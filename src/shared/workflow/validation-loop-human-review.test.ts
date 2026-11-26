@@ -15,12 +15,12 @@ import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts"
 import { type PlanFrontMatterInput } from "@runwield/plans";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import type {
     RuntimeInteractionAdapter,
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
-} from "../session/session-runtime-interactions.ts";
+} from "@runwield/session-runtime/interactions";
 import type { runCodeReview } from "../../ui/review/code-review.ts";
 import type { PlanStatus } from "@runwield/plans/lifecycle";
 import type { IsolatedAgentSessionOptions } from "./validation-session-adapter.ts";

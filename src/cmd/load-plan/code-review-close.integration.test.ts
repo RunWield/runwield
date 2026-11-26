@@ -6,7 +6,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { join } from "node:path";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { withRuntimeCommandFixture as withBaseRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 

@@ -12,11 +12,8 @@ import { CLI_BIN } from "../../constants.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../shared/workflow/execution-agent.ts";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
 import { resetTuiState as resetTuiStateFn } from "../command-helpers.ts";
-import {
-    RuntimeInteractionOutcomes,
-    RuntimeInteractionTypes,
-} from "../../shared/session/session-runtime-interactions.ts";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";

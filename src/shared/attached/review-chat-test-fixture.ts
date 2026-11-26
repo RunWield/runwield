@@ -2,7 +2,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { EVIDENCE, runOperation } from "./attached-test-fixture.ts";
 import type { AttachedJsonObject, AttachedWorkflowView } from "./operations.ts";
-import type { ReviewConversation } from "../../ui/review/review-launcher.ts";
+import type { ReviewConversation } from "@runwield/session-runtime/interactions";
 
 export interface BrowserConversation extends ReviewConversation {
     reviewRevision: number;

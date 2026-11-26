@@ -7,7 +7,7 @@ import { DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText, getCurrentSystemPrompt, type TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { buildAgentSession, expandSkillCommand, listSkills } from "./session.ts";
 import { listVisibleSkillCatalog } from "./skill-catalog.ts";
 import { resolveNamedInvocation } from "./named-invocation.ts";

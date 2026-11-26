@@ -1,6 +1,6 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { createReplayEvents } from "./session-transcript-projection.ts";
+import { createReplayEvents } from "@runwield/session-runtime/transcript";
 
 test("saved native, legacy and extension tool calls replay with useful titles and action kinds", () => {
     const fixtures = [

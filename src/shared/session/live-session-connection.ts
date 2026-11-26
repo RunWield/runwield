@@ -6,16 +6,17 @@ import { createServer as createSocketServer, type Socket } from "node:net";
 import { createServer, request as httpRequest, type ServerResponse } from "node:http";
 import { getHomeDir } from "../../constants.ts";
 
-import type { ImageAttachment } from "./image-attachments.ts";
-import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "./session-runtime-interactions.ts";
 import type {
+    ImageAttachment,
     NotificationSurface,
     RuntimeAttentionRequestedEvent,
     RuntimeQueuedMessage,
     SessionRuntimeEvent,
-} from "./session-runtime-events.ts";
-import type { SessionRuntime, SteerSessionResult } from "./session-runtime.ts";
-import type { HostedSession } from "./hosted-session.ts";
+} from "@runwield/session-runtime/events";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "@runwield/session-runtime/interactions";
+import type { SessionRuntime, SteerSessionResult } from "@runwield/session-runtime";
+import type { InteractiveSessionRuntime } from "@runwield/session-runtime/services";
+import type { HostedSession } from "@runwield/session-runtime/host";
 
 type LiveSessionCommand = {
     action: "answer" | "cancel" | "steer";
@@ -29,7 +30,7 @@ type LiveSessionCommand = {
 type SteeringReceipt = { input: string; result: Promise<SteerSessionResult> };
 type LiveSessionCommandResult = { ok: boolean; queued?: boolean; error?: string };
 export type LiveSessionInfo = Pick<
-    NonNullable<ReturnType<SessionRuntime["getSessionSnapshot"]>>,
+    NonNullable<ReturnType<InteractiveSessionRuntime["getSessionSnapshot"]>>,
     | "name"
     | "sessionStats"
     | "contextUsage"
@@ -43,7 +44,7 @@ export type LiveSessionInfo = Pick<
 >;
 /** Only user-facing Session state crosses the live observation boundary. */
 export function projectLiveSessionInfo(
-    snapshot: ReturnType<SessionRuntime["getSessionSnapshot"]>,
+    snapshot: ReturnType<InteractiveSessionRuntime["getSessionSnapshot"]>,
 ): LiveSessionInfo | null {
     if (!snapshot) return null;
     return {
@@ -73,21 +74,8 @@ function socketPath(sessionId: string, operationId: string) {
     return platform === "win32" ? `\\\\.\\pipe\\runwield-${key}` : `/tmp/runwield-${key}.sock`;
 }
 
-export interface LiveSessionRuntime {
-    getSessionSnapshot(sessionId: string): ReturnType<SessionRuntime["getSessionSnapshot"]>;
-    getQueuedMessages(sessionId: string): ReturnType<SessionRuntime["getQueuedMessages"]>;
-    steerSession(
-        sessionId: string,
-        text: string,
-        images: ImageAttachment[],
-        inputSurface?: NotificationSurface,
-    ): Promise<SteerSessionResult>;
-    cancelSession(sessionId: string): ReturnType<SessionRuntime["cancelSession"]>;
-    subscribeSessionEvents(
-        sessionId: string,
-        listener: (event: SessionRuntimeEvent) => void | Promise<void>,
-    ): () => void;
-}
+export type LiveSessionRuntime = Pick<SessionRuntime, "steerSession" | "cancelSession" | "subscribeSessionEvents"> &
+    Pick<InteractiveSessionRuntime, "getSessionSnapshot" | "getQueuedMessages">;
 
 export async function openLiveSessionConnection(
     runtime: LiveSessionRuntime,

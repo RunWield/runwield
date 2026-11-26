@@ -33,7 +33,7 @@ import {
     secretRecordKey,
 } from "../../shared/collaboration/secrets.ts";
 import { parseCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
-import { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import {
     buildPullRevisionRequest,
     type PullReviewComment,

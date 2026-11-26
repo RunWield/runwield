@@ -20,8 +20,8 @@ import {
 } from "../../shared/workflow/validation-progress-presentation.ts";
 import { MermaidMarkdown } from "./mermaid-markdown.ts";
 import stripAnsi from "strip-ansi";
-import type { SessionHelpItem, SessionHelpPayload } from "../../shared/session/session-help.ts";
-import type { RuntimeValidationProgress } from "../../shared/session/session-runtime-events.ts";
+import type { RuntimeKeyboardHelpItem, RuntimeValidationProgress } from "@runwield/session-runtime/events";
+import type { SessionHelpPayload } from "../../shared/session/session-help.ts";
 import type { DocumentLinkHost } from "../review/document-link-host.ts";
 import type { ManagedSyncStatus, RunningTask, UiAPI } from "./api.ts";
 
@@ -633,7 +633,7 @@ export class KeyboardHelpBlock {
         this.block.invalidate();
     }
 
-    renderItem(item: SessionHelpItem, keyWidth: number, width: number) {
+    renderItem(item: RuntimeKeyboardHelpItem, keyWidth: number, width: number) {
         const key = theme.fg("accent", item.key.padEnd(keyWidth));
         const prefixWidth = keyWidth + 1;
         const descriptionWidth = Math.max(1, width - prefixWidth);
@@ -644,7 +644,7 @@ export class KeyboardHelpBlock {
         });
     }
 
-    renderColumn(items: SessionHelpItem[], keyWidth: number, columnWidth: number) {
+    renderColumn(items: RuntimeKeyboardHelpItem[], keyWidth: number, columnWidth: number) {
         return items.flatMap((item) => this.renderItem(item, keyWidth, columnWidth));
     }
 

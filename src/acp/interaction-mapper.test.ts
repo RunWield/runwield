@@ -6,7 +6,7 @@ import { test } from "node:test";
  */
 
 import { createAcpInteractionAdapter } from "./interaction-mapper.ts";
-import type { RuntimeInteractionRequest } from "../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 
 import type { SessionNotification } from "@agentclientprotocol/sdk/unstable";
 

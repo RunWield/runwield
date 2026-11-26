@@ -4,7 +4,7 @@ import type { PlanReadAvailability } from "../../../plan-store/index.ts";
 import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
 import type { ValidationCheckpointPhase } from "@runwield/plans/controller-state";
 import { getRunWieldSessionDir } from "../../../shared/session/root-session.ts";
-import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
+import { projectAggregateTranscript } from "@runwield/session-runtime/transcript";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import { validationStageLabel } from "../../../shared/workflow/validation-progress-presentation.ts";
 import {

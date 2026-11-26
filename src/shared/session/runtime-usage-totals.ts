@@ -1,5 +1,5 @@
-import { normalizeRuntimeUsage } from "./session-runtime-events.ts";
-import type { RuntimeUsage } from "./session-runtime-events.ts";
+import { normalizeRuntimeUsage } from "@runwield/session-runtime/host";
+import type { RuntimeUsage } from "@runwield/session-runtime/events";
 
 export type UsageCategory = "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens" | "costUsd";
 export type MeasurementAvailability = "complete" | "partial" | "unavailable";

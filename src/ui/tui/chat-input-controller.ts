@@ -9,7 +9,7 @@ import { getModelRegistry } from "@runwield/pi-ai";
 import { persistThinkingLevel, recordUserInputHistory, type SessionRuntime } from "./chat-session.ts";
 import { createGenerationGuard } from "./generation-guard.ts";
 import { type ChatView, createPastedImagePreview } from "./chat-view.ts";
-import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
+import type { ImageAttachment } from "@runwield/session-runtime/events";
 import type { UiAPI } from "./api.ts";
 import type { TutorialContext } from "../../shared/session/tutorial-context-session.ts";
 import { AGENTS } from "../../shared/session/agent-registry.ts";

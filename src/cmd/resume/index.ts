@@ -6,7 +6,7 @@ import process from "node:process";
  */
 
 import type { SelectListLayoutOptions } from "@earendil-works/pi-tui";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import { getModelRegistry } from "@runwield/pi-ai";
 import { buildConversationRestoredMessage } from "../../shared/session/session-user-messages.ts";
 import { getMergedCustomSetting, getSettingsManager } from "../../shared/settings.ts";

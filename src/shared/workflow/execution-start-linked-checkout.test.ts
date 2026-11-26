@@ -13,7 +13,7 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 

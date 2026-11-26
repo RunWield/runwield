@@ -6,11 +6,14 @@ import {
     selectPlanAccess,
     withPlanAccess,
 } from "../../src/plan-store/index.ts";
-import type { HostedSession } from "../../src/shared/session/hosted-session.ts";
 import { findActiveByPlanName, findById } from "../../src/shared/worktree-registry.ts";
 import { projects } from "@runwield/projects";
 import { resolveExecutionOwner } from "../../src/shared/workflow/execution-collaboration.ts";
-import { finalizePlanImplementation, type PlanImplementationResult } from "./implementation-checkpoint.ts";
+import {
+    finalizePlanImplementation,
+    type ImplementationCompletionHost,
+    type PlanImplementationResult,
+} from "./implementation-checkpoint.ts";
 import type { ActiveExecutionWorkflow } from "./state.ts";
 import type { WorkflowLocation } from "./index.ts";
 
@@ -24,7 +27,7 @@ export interface ImplementationCompletion {
 /** Identifies the attempt to reopen and the host session to acknowledge on completion. */
 export interface ResumeAttemptOptions {
     attemptId?: string;
-    hostedSession?: HostedSession;
+    hostedSession?: ImplementationCompletionHost;
 }
 
 /** Binds completion to the execution context captured when this attempt started or resumed. */
@@ -38,7 +41,7 @@ export interface WorkflowAttempt {
 export function bindAttempt(
     location: WorkflowLocation,
     state: ActiveExecutionWorkflow,
-    hostedSession?: HostedSession,
+    hostedSession?: ImplementationCompletionHost,
 ): WorkflowAttempt {
     const executionContext = structuredClone(state);
     return {

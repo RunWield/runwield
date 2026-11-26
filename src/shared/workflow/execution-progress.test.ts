@@ -19,7 +19,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import {
     checkpointExecutionPreparation,
@@ -33,7 +33,7 @@ import { executePlan } from "./workflow.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { captureWorktreeTree } from "./git-snapshot.ts";
 import { runInitCommand } from "../../cmd/init/index.ts";
-import { createSessionRuntime } from "../session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { recordTutorialContext } from "../session/tutorial-context-session.ts";
 import { createInitialTutorialContext } from "../../ui/tui/onboarding-content.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
@@ -95,8 +95,10 @@ function makeHostedSession(id: string, cwd: string, events: RuntimeStatusEvent[]
     const hostedSession = new HostedSession({
         id,
         cwd,
-        eventSink: (event: RuntimeStatusEvent) => {
-            events.push(event);
+        eventSink: (event) => {
+            if ("message" in event && typeof event.message === "string") {
+                events.push({ type: event.type, message: event.message });
+            }
         },
     });
     const sessionManager = SessionManager.inMemory(cwd);

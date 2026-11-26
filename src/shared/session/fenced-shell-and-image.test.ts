@@ -13,7 +13,7 @@ import process from "node:process";
 import { join } from "node:path";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { getRunWieldSessionDir } from "./root-session.ts";
 
 function digestHex(bytes: Uint8Array): Promise<string> {

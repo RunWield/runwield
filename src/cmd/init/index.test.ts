@@ -7,8 +7,8 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { __resetSettingsForTests } from "../../shared/settings.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { getCwdInitState } from "./init-state.ts";
 import { runInitCommand } from "./index.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";

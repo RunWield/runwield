@@ -19,7 +19,7 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { listEntries, updateEntry } from "../worktree-registry.ts";

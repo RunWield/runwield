@@ -13,7 +13,7 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import { openPersistedRootSession } from "./root-session.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import {
     readPersistedPendingSegmentContinuation,
     readPersistedSegmentLineageEvidence,

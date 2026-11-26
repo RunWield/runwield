@@ -5,7 +5,7 @@ import { test } from "node:test";
 // See ../2026-09-07-plan-workflow-transitions.md.
 import { assertEquals } from "../../../src/testing/assertions.ts";
 import { loadPlan } from "../../../src/plan-store.ts";
-import { HostedSession } from "../../../src/shared/session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { workflowEvents } from "@runwield/workflow/events";
 import { createPlanWrittenTool } from "../../../src/tools/plan-written.ts";
 

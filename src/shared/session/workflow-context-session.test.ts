@@ -1,7 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { WorkflowContext } from "./workflow-context-session.ts";
+import type { WorkflowContext } from "@runwield/session-runtime/events";
 import type { WorkflowProgressFact } from "../workflow/workflow-presentation.ts";
 import {
     deriveWorkflowContextFromExecutionWorkflow,

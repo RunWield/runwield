@@ -8,7 +8,7 @@
  * skip Mechanical Validation, or override a checkpoint.
  */
 
-import type { HostedSession } from "../session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 
 /** The phase currently shown for a live validation run. */
 export type ValidationPhaseName = "mechanical" | "semantic" | "delivery";

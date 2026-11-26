@@ -8,8 +8,8 @@ import {
     RuntimeInteractionTypes,
     type RuntimeInteractionRequest,
     type RuntimeInteractionResponse,
-} from "../session/session-runtime-interactions.ts";
-import type { HostedSession } from "../session/hosted-session.ts";
+} from "@runwield/session-runtime/interactions";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import type { SequenceReviewDecision } from "../../plan-store/index.ts";
 
 export const SESSION_COMPLETE_GUIDANCE =

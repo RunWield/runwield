@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { AGENTS } from "../session/agent-registry.ts";
-import { createSessionRuntime } from "../session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { git } from "./git.ts";
 export interface ApprovalPublicationState {
     baselineHead?: string;

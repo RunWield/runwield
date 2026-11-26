@@ -9,8 +9,8 @@ import type { ToolParameters } from "@runwield/tools";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
-import { HostedSession } from "../session/hosted-session.ts";
-import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
+import type { SessionRuntimeEvent } from "@runwield/session-runtime/events";
 import { __resetSettingsForTests } from "../settings.ts";
 import type { PlanStatus } from "@runwield/plans/lifecycle";
 import {

@@ -1,3 +1,4 @@
+import type { RuntimeToolKind } from "@runwield/session-runtime/events";
 /**
  * @module shared/session/tool-event-title
  * Build the semantic tool title carried by both live and replayed Runtime
@@ -47,9 +48,6 @@ export interface RuntimeToolTitleArgs {
     brief?: string;
     mode?: string;
 }
-
-export type RuntimeToolKind =
-    "read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "switch_mode" | "other";
 
 export interface RuntimeToolDescriptor {
     toolName: string;

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { readdir as fsReaddir } from "node:fs/promises";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { initTUIWithPair, stopTUI } from "../../ui/tui/tui.ts";
 import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.ts";

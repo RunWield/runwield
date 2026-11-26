@@ -2,10 +2,10 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import {
     isNotificationEventName,
-    isRuntimeAttentionNotificationEventName,
     normalizeBrowserNotificationPolicy,
     normalizeNotificationPolicy,
 } from "./notification-content.ts";
+import { isRuntimeAttentionNotificationEventName } from "@runwield/session-runtime/events";
 
 test("notification policy defaults on and only literal false disables", () => {
     const malformed = JSON.parse('{"enabled":"no","events":{"planWritten":false}}');

@@ -3,7 +3,7 @@
 import { getCwd, getHomeDir } from "../../constants.ts";
 import { recordSnipMissingWarningShown, shouldShowSnipMissingWarning } from "../../cmd/init/init-state.ts";
 import { hasSnipBinary } from "../../shared/runtime-preflight.ts";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import { getSettingsManager } from "../../shared/settings.ts";
 
 interface PromptTemplate {

@@ -4,7 +4,7 @@
  * the public SessionRuntime surface.
  */
 
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 
 export interface BashContext {
     userRequest: string;

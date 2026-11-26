@@ -36,7 +36,7 @@ test("whole Attached delivery starts zero Core model sessions and excludes priva
     let transport: StdioClientTransport | undefined;
     try {
         const marker = join(fixture.parent, "core-model-turns");
-        const hosted = fileURLToPath(new URL("../session/hosted-session.ts", import.meta.url));
+        const hosted = fileURLToPath(new URL("../../../packages/session-runtime/hosted-session.ts", import.meta.url));
         const sessions = fileURLToPath(new URL("../session/session.ts", import.meta.url));
         const monitor = join(fixture.parent, "monitor.ts");
         await writeFile(
@@ -45,16 +45,19 @@ test("whole Attached delivery starts zero Core model sessions and excludes priva
 import { plugin } from "bun";
 import { readFileSync } from "node:fs";
 const signatures = new Map(${JSON.stringify([
-                [hosted, "constructor(options) {"],
-                [sessions, "export async function runIsolatedAgentSession(opts) {"],
+                [hosted, "constructor(options: HostedSessionOptions) {"],
+                [
+                    sessions,
+                    "export async function runIsolatedAgentSession(opts: RunIsolatedAgentSessionOptions): Promise<AgentMessage[]> {",
+                ],
             ])});
 plugin({ name: "count-core-model-sessions", setup(build) {
-    build.onLoad({ filter: /\/(hosted-session|session)\.js$/ }, ({path}) => {
+    build.onLoad({ filter: /\/(hosted-session|session)\.ts$/ }, ({path}) => {
         const signature = signatures.get(path);
         if (!signature) return;
         const source = readFileSync(path, "utf8");
         if (!source.includes(signature)) throw new Error("Core turn monitor signature changed");
-        return { contents: 'import { appendFileSync as recordCoreTurn } from "node:fs";\n' + source.replace(signature, signature + ' recordCoreTurn(' + ${JSON.stringify(JSON.stringify(marker))} + ', "Core model session");'), loader: "js" };
+        return { contents: 'import { appendFileSync as recordCoreTurn } from "node:fs";\n' + source.replace(signature, signature + ' recordCoreTurn(' + ${JSON.stringify(JSON.stringify(marker))} + ', "Core model session");'), loader: "ts" };
     });
 } });
 `,

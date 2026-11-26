@@ -1,3 +1,4 @@
+import type { RuntimeKeyboardHelpItem } from "@runwield/session-runtime/events";
 /**
  * @module shared/session/session-help
  *
@@ -24,14 +25,9 @@ const KEYBOARD_HELP_ITEMS = Object.freeze([
     Object.freeze({ key: "!!", description: "to run bash (no context)" }),
 ]);
 
-export interface SessionHelpItem {
-    key: string;
-    description: string;
-}
-
 export interface SessionHelpPayload {
     title: string;
-    items: SessionHelpItem[];
+    items: RuntimeKeyboardHelpItem[];
 }
 
 /**

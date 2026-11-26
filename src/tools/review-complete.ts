@@ -8,7 +8,7 @@
 import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import { emitReviewResultMessage } from "../shared/session/workflow-messages.ts";
 import { recordWorkflowOutcome, workflowOutcomeEventId } from "../shared/workflow/outcome-observations.ts";
 import { workflowEvents } from "@runwield/workflow/events";

@@ -4,13 +4,8 @@ import { applyAttachedCodeReviewDecision } from "./code-review-decision.ts";
 /** Process-local browser hosting; the coordinator owns every durable review decision. */
 import { type BrowserPort, SYSTEM_BROWSER_PORT } from "../browser-port.ts";
 import { preparePlanReviewPayload } from "../../ui/review/plan-review.ts";
-import {
-    type ReviewConversationEvent,
-    type ReviewConversation,
-    type ReviewSurface,
-    startCodeReviewSurface,
-    startPlanReviewSurface,
-} from "../../ui/review/review-launcher.ts";
+import { type ReviewSurface, startCodeReviewSurface, startPlanReviewSurface } from "../../ui/review/review-launcher.ts";
+import type { ReviewConversation, ReviewConversationEvent } from "@runwield/session-runtime/interactions";
 import type { ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.ts";
 import { readStatus, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";

@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { runLoadPlanCommand } from "./index.ts";
 
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";

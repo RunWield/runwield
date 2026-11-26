@@ -17,10 +17,11 @@ import {
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
-import { SessionRuntime } from "./session-runtime.ts";
-import { SessionHost } from "./session-host.ts";
+import { createSessionRuntime } from "@runwield/session-runtime";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
+import { SessionHost } from "@runwield/session-runtime/host";
 import { openFileSessionStore } from "./file-session-store.ts";
-import type { RuntimeInteractionRequest } from "./session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 
 interface NamedInvocationPromptResult {
     ok: boolean;
@@ -102,16 +103,21 @@ test("bundled release from Router exposes an interactive interview before releas
                     return fauxAssistantMessage(fauxText("Release canceled."));
                 },
             ]);
-            const runtime = makeRuntime();
+            const runtime = createSessionRuntime();
             try {
                 const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-                runtime.setInteractionAdapter(created.sessionId, {
+                const installed = runtime.setInteractionAdapter(created.sessionId, {
                     supportsInteraction: () => true,
                     requestInteraction: (request: RuntimeInteractionRequest) => {
                         questions.push(request);
-                        return { outcome: "canceled" };
+                        assert(request.id);
+                        const answer = { outcome: "canceled" } as const;
+                        assertEquals(runtime.answerInteraction(created.sessionId, request.id, answer), true);
+                        assertEquals(runtime.answerInteraction(created.sessionId, request.id, answer), false);
+                        return new Promise(() => {});
                     },
                 });
+                assertEquals(installed, { ok: true });
                 const result = (await runtime.promptUserTurn(created.sessionId, {
                     initialRequest: "/release",
                     initialImages: [],

@@ -14,16 +14,9 @@ import {
 } from "@runwield/tools";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
-import type {
-    RuntimeInteractionRequest,
-    RuntimeInteractionResponse,
-} from "../shared/session/session-runtime-interactions.ts";
-import {
-    requestHostedSessionInteraction,
-    RuntimeInteractionOutcomes,
-    RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.ts";
+import { requestHostedSessionInteraction, type HostedSession } from "@runwield/session-runtime/host";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "@runwield/session-runtime/interactions";
+import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 
 const userInterview = toolRegistry.get("user_interview");
 

@@ -1,7 +1,7 @@
 import { captureForegroundProcess } from "../captured-process.ts";
 import { fetchPR, submitPRReview } from "@plannotator/shared/pr-provider.ts";
 import type { PRReviewFileComment, PRReviewFileLevelComment, PRRuntime } from "@plannotator/shared/pr-types.ts";
-import type { CodeReviewAnnotation } from "../../ui/review/code-review.ts";
+import type { CodeReviewAnnotation } from "@runwield/session-runtime/interactions";
 import type { PRReviewTarget } from "./review-target.ts";
 import { git } from "./git.ts";
 

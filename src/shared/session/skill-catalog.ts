@@ -1,3 +1,4 @@
+import type { SkillRecord, SkillSource } from "@runwield/session-runtime/events";
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
 import { dirname, join, resolve } from "node:path";
@@ -11,17 +12,6 @@ import {
 import { directoryExists, fileExists } from "../helpers.ts";
 import { getCustomSetting } from "../settings.ts";
 import { bundledSkills } from "./skill-assets.ts";
-
-export type SkillSource = "local" | "home" | "bundled" | "external";
-
-export interface SkillRecord {
-    name: string;
-    description: string;
-    path: string;
-    source: SkillSource;
-    disableModelInvocation: boolean;
-    directoryName: string;
-}
 
 type SkillLayer = {
     dir: string;

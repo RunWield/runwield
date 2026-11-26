@@ -6,7 +6,7 @@
 import { toolRegistry } from "@runwield/tools";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
 import { theme } from "../../ui/theme/theme.ts";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 
 interface NameCommandUi {
     appendSystemMessage(message: string): void;

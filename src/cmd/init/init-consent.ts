@@ -1,4 +1,4 @@
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import type { UiAPI } from "../../ui/tui/api.ts";
 
 export const INIT_FILE_CONFIRMATION = `Init will create or update these project files:

@@ -3,9 +3,9 @@ import { makeTempFile } from "../../testing/temp-file.ts";
 import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "./hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { attachSessionEventSubscribers } from "./session.ts";
-import { createSessionRuntimeEvent } from "./session-runtime-events.ts";
+import { createSessionRuntimeEvent } from "@runwield/session-runtime/events";
 import { getCwd } from "../../constants.ts";
 
 import type {
@@ -21,7 +21,7 @@ import type {
     RuntimeToolEndEvent,
     RuntimeToolIdentity,
     SessionRuntimeEvent,
-} from "./session-runtime-events.ts";
+} from "@runwield/session-runtime/events";
 
 interface SubscriberMessageFixture extends Omit<Partial<AssistantMessage>, "usage"> {
     id?: string;

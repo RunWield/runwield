@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { getSettingsManager, setCustomSetting } from "../../shared/settings.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { getModelCompletions, runModelsCommand } from "./index.ts";

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
-import { emitHostedSessionRuntimeEvent } from "../../shared/session/session-runtime-events.ts";
+import { emitHostedSessionRuntimeEvent } from "@runwield/session-runtime/host";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { initRunWieldTheme } from "../theme/theme.ts";
 import {

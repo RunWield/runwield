@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { runManualQaChecklistPrompt } from "./validation.ts";
 
 test("Manual QA runs the bundled isolated Operator and persists its visible checklist", async () => {

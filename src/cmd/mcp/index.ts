@@ -1,5 +1,5 @@
 import process from "node:process";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import type { UiAPI } from "../../ui/tui/api.ts";
 
 interface McpCommandContext {

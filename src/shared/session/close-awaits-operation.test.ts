@@ -4,8 +4,8 @@ import { test } from "node:test";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 
 function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));

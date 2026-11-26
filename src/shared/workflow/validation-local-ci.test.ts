@@ -15,12 +15,12 @@ import process from "node:process";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { getExactProjectCustomSetting, setCustomSetting, setExactProjectCustomSetting } from "../settings.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { createSessionRuntimeEvent } from "../session/session-runtime-events.ts";
+import { createSessionRuntimeEvent } from "@runwield/session-runtime/events";
 
 const IS_WINDOWS = process.platform === "win32";
 

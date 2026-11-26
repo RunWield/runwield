@@ -1,5 +1,5 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "./hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import { readRequestAttemptEntries, type RequestAttemptEntry } from "./request-dispatch.ts";
 import { compareWorkflowAttempts, workflowAttemptKey } from "@runwield/workflow/events";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";

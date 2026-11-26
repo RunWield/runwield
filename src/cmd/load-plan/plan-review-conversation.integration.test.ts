@@ -10,11 +10,11 @@ import { ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { requestLocalReviewInteraction } from "../../shared/session/local-review-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import type { PlanReviewConversation } from "../../shared/session/plan-review-conversation.ts";
+import type { ReviewConversation } from "@runwield/session-runtime/interactions";
 
 interface ReviewAnswer {
     approved: boolean;
@@ -86,7 +86,7 @@ for (const source of ["tool", "saved", "epic"] as const) {
                     let presentations = 0;
                     let reviewUrl = "";
                     let rounds = 0;
-                    const conversations: PlanReviewConversation[] = [];
+                    const conversations: ReviewConversation[] = [];
                     let transcript: TranscriptContext | undefined;
                     let agentWorking = false;
                     const agentStarted = Promise.withResolvers<void>();
@@ -139,7 +139,9 @@ for (const source of ["tool", "saved", "epic"] as const) {
                         runtime.setInteractionAdapter(sessionId, {
                             async requestInteraction(request, signal) {
                                 if (request.type !== "plan_review") return { outcome: "canceled" };
-                                conversations.push(request._meta?.reviewConversation as PlanReviewConversation);
+                                const conversation = request._meta?.reviewConversation;
+                                assert(conversation);
+                                conversations.push(conversation);
                                 return await requestLocalReviewInteraction(
                                     {
                                         ...request,

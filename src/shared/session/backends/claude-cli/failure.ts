@@ -1,6 +1,5 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../../hosted-session.ts";
-import { emitSystemStatus } from "../../session-runtime-events.ts";
+import { emitSystemStatus, type HostedSession } from "@runwield/session-runtime/host";
 
 export type ClaudeCliBackendErrorKind =
     | "missing_executable"

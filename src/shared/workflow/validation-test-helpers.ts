@@ -9,10 +9,9 @@ import type { PlanFrontMatterInput } from "@runwield/plans";
 import type { runCodeReview } from "../../ui/review/code-review.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { GitPort } from "../git-port.ts";
-import type { SessionRuntimeEventSink } from "../session/session-host.ts";
+import { HostedSession, type SessionRuntimeEventSink } from "@runwield/session-runtime/host";
 import type { RuntimeToolTitleArgs } from "../session/tool-event-title.ts";
-import { HostedSession } from "../session/hosted-session.ts";
-import { createSessionRuntimeEvent, type RuntimeSystemStatusEvent } from "../session/session-runtime-events.ts";
+import { createSessionRuntimeEvent, type RuntimeSystemStatusEvent } from "@runwield/session-runtime/events";
 import {
     runValidationLoop as runValidationLoopImpl,
     runValidationPhase as runValidationPhaseImpl,

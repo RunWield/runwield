@@ -7,8 +7,8 @@ import {
     makeManagedSessionFixture,
     readTranscriptEvidence,
 } from "../../testing/managed-session-fixture.ts";
-import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
-import { projectCommittedTranscript } from "./session-transcript-projection.ts";
+import { projectAggregateTranscript } from "@runwield/session-runtime/transcript";
+import { projectCommittedTranscript } from "@runwield/session-runtime/transcript";
 
 async function writeSuccessorTranscript(projectRoot: string, piSessionId: string, sessionDir: string): Promise<string> {
     const timestamp = "2026-01-01T00:02:00.000Z";

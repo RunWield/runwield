@@ -23,6 +23,7 @@ const INPUTS = [
     "packages/projects",
     "packages/resources",
     "packages/session-files",
+    "packages/session-runtime",
     "packages/tools",
     "packages/workflow",
     "third_party/plannotator/packages",

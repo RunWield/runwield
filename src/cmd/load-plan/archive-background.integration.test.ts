@@ -7,7 +7,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { archiveSavedPlan } from "../../plan-store/index.ts";
 import { loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";

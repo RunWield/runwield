@@ -3,12 +3,16 @@ import { parseProjectId } from "@runwield/projects";
 import type { WorkRecordMnemotecaPort } from "../../shared/work-records/mnemoteca-port.ts";
 import type { OwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import type { RemoteWorkspaceAdapter } from "./server/remote-adapter.ts";
-import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.ts";
+import type {
+    ReviewConversation,
+    ReviewServerOutput,
+    RuntimeInteractionRequest,
+} from "@runwield/session-runtime/interactions";
 import type { WorkspaceApiState, WorkspaceLifecycleApiState } from "./routes/api/handlers.ts";
 import type { RemoteApiState } from "./routes/remote-api.ts";
 import type { ReviewPayload, ReviewRequestState } from "./routes/api/review-handlers.ts";
 import type { ReviewAgentPayload } from "./routes/api/review-agent-handlers.ts";
-import type { CodeReviewStatus, ReviewConversation } from "../review/review-launcher.ts";
+import type { CodeReviewStatus } from "../review/review-launcher.ts";
 import type { OwnerRouteContext, OwnerSessionState, OwnerStoreState, ProjectParams } from "./routes/owner-api.ts";
 import { readPlanReviewPresentation, planControllerRoot } from "../../plan-store/index.ts";
 
@@ -249,11 +253,6 @@ export type RemoteWorkspaceApp = WorkspaceApp & {
 };
 const REVIEW_PAYLOAD_HEADER = "x-runwield-review-payload";
 const QUESTION_PAYLOAD_HEADER = "x-runwield-question-payload";
-
-export interface ReviewServerOutput {
-    stream: "stdout" | "stderr";
-    text: string;
-}
 
 export type ReviewServerOutputListener = (output: ReviewServerOutput) => void;
 

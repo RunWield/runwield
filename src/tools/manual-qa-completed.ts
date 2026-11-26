@@ -1,8 +1,7 @@
 import { toolRegistry } from "@runwield/tools";
 import { defineTool, type SessionManager } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import { emitAssistantMessage, type HostedSession } from "@runwield/session-runtime/host";
 import { recordManualQaChecklistMessage } from "../shared/session/workflow-messages.ts";
-import { emitAssistantMessage } from "../shared/session/session-runtime-events.ts";
 import { workflowEvents } from "@runwield/workflow/events";
 
 const definition = toolRegistry.get("manual_qa_completed").definition;

@@ -8,7 +8,7 @@
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, JsonValue, ToolResultMessage } from "@earendil-works/pi-ai";
-import type { ImageAttachment } from "../session/image-attachments.ts";
+import type { ImageAttachment } from "@runwield/session-runtime/events";
 import type { TriageMeta } from "@runwield/workflow/state";
 import type { ReviewAdvisory, ReviewFinding } from "./review-outcome.ts";
 

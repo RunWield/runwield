@@ -7,7 +7,6 @@
  */
 
 import type { TriageOutcome } from "@runwield/tools";
-import type { HostedSession } from "../../src/shared/session/hosted-session.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 export const WORKFLOW_TOOL_EVENT_CUSTOM_TYPE = "runwield.workflow_tool_event" as const;
@@ -89,16 +88,45 @@ export type WorkflowToolEventPayload<K extends WorkflowToolEventKind = WorkflowT
 
 type ActiveExecutionWorkflow = import("./state.ts").ActiveExecutionWorkflow;
 
-export type WorkflowEventHost = Pick<
-    HostedSession,
-    | "getRootAgentSession"
-    | "getRootSessionManager"
-    | "getActiveSteeringTargetSession"
-    | "getActiveExecutionWorkflow"
-    | "getWorkflowContext"
-    | "getActiveTurnId"
->;
-type OwningSession = ReturnType<WorkflowEventHost["getRootAgentSession"]>;
+/** Identity of the root or isolated agent that emitted a report. */
+interface WorkflowEventOwner {
+    dispose?: () => void | Promise<void>;
+}
+
+type OwningSession = WorkflowEventOwner | null;
+
+/** Read the agent, turn, and transcript identity needed to route accepted tool reports. */
+export interface WorkflowEventHost {
+    /** Return the agent session that owns the root transcript. */
+    getRootAgentSession(): OwningSession;
+    /** Read the root transcript's workflow reports, when the host supports replay. */
+    getWorkflowEventJournalReader(): WorkflowEventJournalReader | null;
+    /** Write root workflow reports, when the host supports appending to the transcript. */
+    getWorkflowEventJournalWriter(): WorkflowEventJournalWriter | null;
+    /** Identify the agent session currently receiving steering input. */
+    getActiveSteeringTargetSession(): OwningSession;
+    /** Read the workflow whose step is accepting reports. */
+    getActiveExecutionWorkflow(): ActiveExecutionWorkflow | null;
+    /** Read the Plan name associated with the current work. */
+    getWorkflowContext(): { planName?: string } | null;
+    /** Identify the turn that owns a new report. */
+    getActiveTurnId(): string | null;
+}
+
+/** Access the volatile completion mirror alongside accepted reports from the transcript. */
+export interface WorkflowTaskCompletionHost extends WorkflowEventHost {
+    /** Keep a completion available to the active host until it is consumed. */
+    recordPendingTaskCompletion(agentName: string, report: string, timestampMs: number): void;
+    /** Remove and return the pending completion for its owning agent session. */
+    consumePendingTaskCompletion(owningSession: OwningSession): PendingCompletionReport | null;
+}
+
+interface PendingCompletionReport {
+    agentName: string;
+    report: string;
+    timestampMs: number;
+}
+
 type EventSourceSession = { sessionManager?: { getSessionId(): string } };
 type ToolEventSource = { hostedSession: WorkflowEventHost; owningSession: OwningSession };
 const toolEventSources = new AsyncLocalStorage<ToolEventSource>();
@@ -165,19 +193,23 @@ type DurableSettledEvent = {
     settledAtMs: number;
 };
 
-type DurableEvent = DurableAcceptedEvent | DurableSettledEvent;
+/** Fields shared by versioned records in the workflow report journal. */
+export interface WorkflowEventJournalRecord {
+    version: number;
+    state: string;
+}
 
-type WorkflowToolEventSessionEntry = {
-    type?: string;
-    customType?: string;
-    data?: DurableEvent | null;
-};
+/** Replay root workflow reports from the host's transcript. */
+export interface WorkflowEventJournalReader {
+    /** Read records for this custom type in transcript order, using the active branch when available. */
+    read(customType: string): readonly WorkflowEventJournalRecord[];
+}
 
-type WorkflowToolEventSessionManager = {
-    appendCustomEntry?: (customType: string, data: DurableEvent) => void;
-    getBranch?: () => WorkflowToolEventSessionEntry[];
-    getEntries?: () => WorkflowToolEventSessionEntry[];
-};
+/** Persist root workflow reports in the host's transcript. */
+export interface WorkflowEventJournalWriter {
+    /** Append a record to the transcript history used for replay. */
+    append<Record extends WorkflowEventJournalRecord>(customType: string, record: Record): void;
+}
 
 /** Holds a host's events and the consumers waiting for matching reports. */
 interface EventState {
@@ -227,16 +259,6 @@ function stateFor(hostedSession: WorkflowEventHost): EventState {
         states.set(hostedSession, state);
     }
     return state;
-}
-
-function getEventSessionManager(hostedSession: WorkflowEventHost): WorkflowToolEventSessionManager | null {
-    return hostedSession.getRootSessionManager?.() as WorkflowToolEventSessionManager | null;
-}
-
-function getEntries(sessionManager: WorkflowToolEventSessionManager | null): WorkflowToolEventSessionEntry[] {
-    if (!sessionManager) return [];
-    const entries = sessionManager.getBranch?.() || sessionManager.getEntries?.() || [];
-    return Array.isArray(entries) ? entries : [];
 }
 
 /** Reconstruct the attempt key used by older session records. */
@@ -301,30 +323,34 @@ function matchesOptions(event: WorkflowToolEvent, options: ClaimWorkflowToolEven
     return true;
 }
 
-function isDurableAccepted(event: DurableEvent | null | undefined): event is DurableAcceptedEvent {
+function isDurableAccepted(event: WorkflowEventJournalRecord): event is DurableAcceptedEvent {
     return (
-        event?.version === 1 &&
+        event.version === 1 &&
         event.state === "accepted" &&
+        "eventId" in event &&
         typeof event.eventId === "string" &&
+        "toolCallId" in event &&
         typeof event.toolCallId === "string" &&
+        "kind" in event &&
         typeof event.kind === "string" &&
+        "owner" in event &&
         event.owner === "root" &&
+        "acceptedAtMs" in event &&
         typeof event.acceptedAtMs === "number"
     );
 }
 
-function isDurableSettled(event: DurableEvent | null | undefined): event is DurableSettledEvent {
-    return event?.version === 1 && event.state === "settled" && typeof event.eventId === "string";
+function isDurableSettled(event: WorkflowEventJournalRecord): event is DurableSettledEvent {
+    return event.version === 1 && event.state === "settled" && "eventId" in event && typeof event.eventId === "string";
 }
 
 function readUnsettledDurableEvents(hostedSession: WorkflowEventHost): WorkflowToolEvent[] {
-    const sessionManager = getEventSessionManager(hostedSession);
+    const journal = hostedSession.getWorkflowEventJournalReader();
     const accepted: DurableAcceptedEvent[] = [];
     const settled = new Set<string>();
-    for (const entry of getEntries(sessionManager)) {
-        if (entry.type !== "custom" || entry.customType !== WORKFLOW_TOOL_EVENT_CUSTOM_TYPE) continue;
-        if (isDurableAccepted(entry.data)) accepted.push(entry.data);
-        if (isDurableSettled(entry.data)) settled.add(entry.data.eventId);
+    for (const record of journal?.read(WORKFLOW_TOOL_EVENT_CUSTOM_TYPE) ?? []) {
+        if (isDurableAccepted(record)) accepted.push(record);
+        if (isDurableSettled(record)) settled.add(record.eventId);
     }
     const rootSession = hostedSession.getRootAgentSession();
     return accepted
@@ -351,10 +377,10 @@ function workflowToolCallKey(turnId: string | null, toolCallId: string): string 
 
 function readDurableToolCallKeys(hostedSession: WorkflowEventHost): Set<string> {
     const toolCallKeys = new Set<string>();
-    for (const entry of getEntries(getEventSessionManager(hostedSession))) {
-        if (entry.type !== "custom" || entry.customType !== WORKFLOW_TOOL_EVENT_CUSTOM_TYPE) continue;
-        if (isDurableAccepted(entry.data)) {
-            toolCallKeys.add(workflowToolCallKey(entry.data.turnId, entry.data.toolCallId));
+    const journal = hostedSession.getWorkflowEventJournalReader();
+    for (const record of journal?.read(WORKFLOW_TOOL_EVENT_CUSTOM_TYPE) ?? []) {
+        if (isDurableAccepted(record)) {
+            toolCallKeys.add(workflowToolCallKey(record.turnId, record.toolCallId));
         }
     }
     return toolCallKeys;
@@ -415,9 +441,8 @@ function publishWorkflowToolEvent<K extends WorkflowToolEventKind>(
         claimed: false,
         settled: false,
     };
-    const sessionManager = getEventSessionManager(hostedSession);
-    if (owner === "root" && sessionManager?.appendCustomEntry) {
-        sessionManager.appendCustomEntry(WORKFLOW_TOOL_EVENT_CUSTOM_TYPE, {
+    if (owner === "root") {
+        hostedSession.getWorkflowEventJournalWriter()?.append(WORKFLOW_TOOL_EVENT_CUSTOM_TYPE, {
             version: 1,
             state: "accepted",
             eventId: event.eventId,
@@ -430,7 +455,7 @@ function publishWorkflowToolEvent<K extends WorkflowToolEventKind>(
             workflow: event.workflow,
             workflowAttemptKey: event.workflowAttemptKey,
             ...(event.validationGeneration ? { validationGeneration: event.validationGeneration } : {}),
-        });
+        } satisfies DurableAcceptedEvent);
     }
     state.events.push(event);
     wakeWaiters(hostedSession);
@@ -518,14 +543,13 @@ function settleWorkflowToolEvent(
     const stored = stateFor(hostedSession).events.find((candidate) => candidate === record);
     if (!stored) throw new Error("The workflow event belongs to a different Session.");
     if (stored.settled) return;
-    const sessionManager = getEventSessionManager(hostedSession);
-    if (stored.owner === "root" && sessionManager?.appendCustomEntry) {
-        sessionManager.appendCustomEntry(WORKFLOW_TOOL_EVENT_CUSTOM_TYPE, {
+    if (stored.owner === "root") {
+        hostedSession.getWorkflowEventJournalWriter()?.append(WORKFLOW_TOOL_EVENT_CUSTOM_TYPE, {
             version: 1,
             state: "settled",
             eventId: stored.eventId,
             settledAtMs,
-        });
+        } satisfies DurableSettledEvent);
     }
     stored.settled = true;
 }

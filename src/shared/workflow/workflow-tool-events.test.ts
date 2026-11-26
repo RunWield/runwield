@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { assertEquals, assertExists, assertThrows } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { makeToolProjectFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { workflowEvents, WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "@runwield/workflow/events";
 import { createManualQaCompletedTool } from "../../tools/manual-qa-completed.ts";
 
@@ -89,6 +89,56 @@ test("Workflow Tool Event is consume-once and settled through the root outbox", 
         .getBranch()
         .filter((entry) => entry.type === "custom" && entry.customType === WORKFLOW_TOOL_EVENT_CUSTOM_TYPE);
     assertEquals(journalEntries.length, 2);
+});
+
+test("write-only and read-only transcript adapters preserve workflow report journaling", () => {
+    const sessionDir = join(PROJECT_ROOT, "partial-journal-sessions");
+    const manager = SessionManager.create(PROJECT_ROOT, sessionDir);
+    manager.appendMessage({ role: "user", content: "Run workflow QA.", timestamp: 1 });
+    const transcript = manager.getSessionFile();
+    assertExists(transcript);
+    const writerOnly = new HostedSession({
+        id: "writer-only",
+        cwd: PROJECT_ROOT,
+        sessionManager: { appendCustomEntry: manager.appendCustomEntry.bind(manager) },
+    });
+    const report = {
+        toolCallId: "transcript-capabilities",
+        kind: "manual_qa_completed" as const,
+        payload: { checklistMarkdown: "- [ ] Try" },
+    };
+    const written = workflowEvents(writerOnly);
+    const published = written.publish(report);
+    const alreadySettled = written.publish({ ...report, toolCallId: "settled-by-writer" });
+    written.settle(alreadySettled);
+    assertEquals(writerOnly.getWorkflowEventJournalReader(), null);
+
+    const reopened = SessionManager.open(transcript, sessionDir, PROJECT_ROOT);
+    const getEntries = reopened.getEntries.bind(reopened);
+    const readerOnly = new HostedSession({ id: "reader-only", cwd: PROJECT_ROOT, sessionManager: { getEntries } });
+    assertEquals(readerOnly.getWorkflowEventJournalWriter(), null);
+    assertEquals(
+        workflowEvents(readerOnly)
+            .pending()
+            .map((event) => event.eventId),
+        [published.eventId],
+    );
+
+    const readerWriter = new HostedSession({
+        id: "reader-writer",
+        cwd: PROJECT_ROOT,
+        sessionManager: { appendCustomEntry: reopened.appendCustomEntry.bind(reopened), getEntries },
+    });
+    const queue = workflowEvents(readerWriter);
+    const replayed = queue.claim({ kinds: [report.kind], owningSession: null });
+    assertExists(replayed);
+    assertEquals(replayed.eventId, published.eventId);
+    queue.settle(replayed);
+    const { hostedSession: settled } = makeHostedSession(
+        "journal-settled",
+        SessionManager.open(transcript, sessionDir),
+    );
+    assertEquals(workflowEvents(settled).pending(), []);
 });
 
 test("Workflow Tool Event waiters receive events published before turn completion", async () => {

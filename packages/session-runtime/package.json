@@ -1,0 +1,22 @@
+{
+    "name": "@runwield/session-runtime",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./index.ts",
+        "./events": "./events.ts",
+        "./host": "./host.ts",
+        "./interactions": "./interactions.ts",
+        "./services": "./services.ts",
+        "./transcript": "./transcript.ts"
+    },
+    "dependencies": {
+        "@earendil-works/pi-coding-agent": "1.6.0",
+        "@runwield/agents": "workspace:*",
+        "@runwield/parsing": "workspace:*",
+        "@runwield/pi-ai": "workspace:*",
+        "@runwield/plans": "workspace:*",
+        "@runwield/projects": "workspace:*",
+        "@runwield/workflow": "workspace:*"
+    }
+}

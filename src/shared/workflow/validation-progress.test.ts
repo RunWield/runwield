@@ -2,8 +2,8 @@ import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 
-import { HostedSession } from "../session/hosted-session.ts";
-import { createSessionRuntimeEvent } from "../session/session-runtime-events.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
+import { createSessionRuntimeEvent } from "@runwield/session-runtime/events";
 import {
     createValidationProgress,
     emitRunWieldSystemStatus,

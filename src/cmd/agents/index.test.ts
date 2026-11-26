@@ -10,7 +10,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { Container, Editor, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { setCustomSetting } from "../../shared/settings.ts";
 import { getEditorTheme } from "../../ui/theme/theme.ts";
 import { createUiApi } from "../../ui/tui/api.ts";

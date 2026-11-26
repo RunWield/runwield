@@ -1,3 +1,4 @@
+import type { ImageAttachment } from "@runwield/session-runtime/events";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import { mkdirSync, openSync, writeSync, fsyncSync, closeSync, statSync, fstatSync, readSync } from "node:fs";
 /**
@@ -18,13 +19,6 @@ import { Buffer } from "node:buffer";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { TurnImage } from "@runwield/pi-ai/turn";
 import type { ModelDiscoveryNetworkPort, RunWieldModel, RunWieldModelRegistry } from "@runwield/pi-ai/models";
-
-export type ImageAttachment = {
-    base64: string;
-    mimeType: string;
-    ref?: string;
-    path?: string;
-};
 
 export interface ImageInputModel {
     input?: string[];

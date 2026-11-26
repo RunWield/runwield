@@ -7,28 +7,23 @@ import {
     isApprovalAcceptedValue,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../../shared/session/session-runtime-interactions.ts";
+} from "@runwield/session-runtime/interactions";
 import { runCodeReview } from "../review/code-review.ts";
 import { submitPlanForReview } from "../review/plan-review.ts";
 import { startArtifactReadSurface } from "../review/review-launcher.ts";
 
 import type { BrowserPort } from "../../shared/browser-port.ts";
-import type {
-    RuntimeInteractionAdapter,
-    RuntimeInteractionRequest,
-} from "../../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionAdapter } from "@runwield/session-runtime/interactions";
 import type { UiAPI } from "./api.ts";
 
 export interface TuiInteractionPorts {
     browser: BrowserPort;
 }
 
-type RuntimeInteractionMetadata = NonNullable<RuntimeInteractionRequest["_meta"]>;
 type ArtifactReadOptions = Parameters<typeof startArtifactReadSurface>[0];
 
 /** Metadata is supplied by the JavaScript SessionRuntime interaction broker. */
-export interface TuiArtifactReviewMetadata
-    extends RuntimeInteractionMetadata, Omit<ArtifactReadOptions, "browser" | "path"> {
+export interface TuiArtifactReviewMetadata extends Omit<ArtifactReadOptions, "browser" | "path"> {
     artifactPath?: ArtifactReadOptions["path"];
 }
 

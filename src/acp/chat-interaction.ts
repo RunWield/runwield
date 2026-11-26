@@ -1,10 +1,10 @@
-import { isApprovalAcceptedValue } from "../shared/session/interaction-values.ts";
 import {
+    isApprovalAcceptedValue,
     RuntimeInteractionOutcomes,
     type RuntimeInteractionRequest,
     type RuntimeInteractionResponse,
     RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.ts";
+} from "@runwield/session-runtime/interactions";
 
 function displayLabel(label: string) {
     return label.replace(/\s*\(recommended\)$/i, "");

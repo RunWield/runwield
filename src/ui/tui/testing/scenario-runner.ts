@@ -7,9 +7,9 @@ import type { PlanApprovalAction } from "../../../shared/workflow/plan-approval.
 
 import type { JsonRecord } from "@runwield/parsing/jsonc";
 
-import type { SessionRuntimeEvent } from "../../../shared/session/session-runtime-events.ts";
+import type { SessionRuntimeEvent } from "@runwield/session-runtime/events";
 
-import type { RuntimeInteractionRequest } from "../../../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 
 import type { GoldenScriptTurn } from "./scenario-actor.ts";
 
@@ -567,9 +567,9 @@ import process from "node:process";
 
 import { dirname, join, relative } from "node:path";
 
-import { createSessionRuntime } from "../../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 
-import { RuntimeEventTypes } from "../../../shared/session/session-runtime-events.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 
 import { openFileSessionStore } from "../../../shared/session/file-session-store.ts";
 
@@ -1948,7 +1948,7 @@ async function runComposedTuiScenarioInScope(
             // parent can switch from its startup budget to the scenario budget.
             options.onReady?.();
             const runtime = composition.runtime;
-            /** @param {import('../../../shared/session/session-runtime-events.ts').SessionRuntimeEvent} event */
+            /** @param {import("@runwield/session-runtime/events").SessionRuntimeEvent} event */
             const handleRuntimeEvent = (event: SessionRuntimeEvent) => {
                 events.push(`runtime:${event.type}`);
                 if (event.type === "agent_changed") {
@@ -3122,7 +3122,7 @@ async function runComposedTuiScenarioInScope(
                     events.push("terminal:autocomplete:/he");
                 } else if (typed.type === "runtimeInteraction") {
                     const request =
-                        /** @type {import('../../../shared/session/session-runtime-interactions.ts').RuntimeInteractionRequest} */ typed.request ||
+                        /** @type {import("@runwield/session-runtime/interactions").RuntimeInteractionRequest} */ typed.request ||
                         {};
                     activeScriptedInteractionType =
                         request.type === "approval" ? "approval" : request.type === "text" ? "text" : "select";

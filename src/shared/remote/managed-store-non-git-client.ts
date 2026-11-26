@@ -1,5 +1,5 @@
 import { openWorkflow } from "@runwield/workflow";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { equal, ok, rejects } from "node:assert/strict";

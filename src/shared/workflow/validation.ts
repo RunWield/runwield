@@ -49,7 +49,7 @@ export type { ValidationPhaseResult, WorkflowValidationResult } from "./validati
 type PlanFrontMatter = import("@runwield/plans").PlanFrontMatter;
 type TriageMeta = import("@runwield/workflow/state").TriageMeta & Partial<PlanFrontMatter>;
 type ActiveExecutionWorkflow = import("@runwield/workflow/state").ActiveExecutionWorkflow;
-type HostedSession = import("../session/hosted-session.ts").HostedSession;
+type HostedSession = import("@runwield/session-runtime/host").HostedSession;
 type GitPort = import("../git-port.ts").GitPort;
 type WorkRecordMnemotecaPort = import("../work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort;
 

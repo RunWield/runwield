@@ -2,11 +2,14 @@ import { savePlanValidationCheckpoint } from "../../plan-store/index.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { type AgentMessage } from "@earendil-works/pi-agent-core";
-import { type HostedSession } from "../session/hosted-session.ts";
+import {
+    emitAssistantMessage,
+    requestHostedSessionInteraction,
+    type HostedSession,
+} from "@runwield/session-runtime/host";
 import { runIsolatedAgentSession } from "../session/session.ts";
 import { readRequestAttemptEntries } from "../session/request-dispatch.ts";
-import { emitAssistantMessage, type RuntimeValidationProgress } from "../session/session-runtime-events.ts";
-import { requestHostedSessionInteraction } from "../session/session-runtime-interactions.ts";
+import { type RuntimeValidationProgress } from "@runwield/session-runtime/events";
 import { agentRegistry, AGENTS, SUBAGENTS } from "../session/agent-registry.ts";
 import { ClaudeCliBackendError } from "../session/backends/claude-cli/failure.ts";
 import {

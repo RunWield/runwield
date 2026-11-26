@@ -1,7 +1,7 @@
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { assertExists } from "./assertions.ts";
 import { join } from "node:path";
-import { HostedSession } from "../shared/session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { createGitPort } from "../shared/git-port.ts";
 import { executeWorkflowTestTools, type WorkflowTestToolCall } from "./workflow-agent-tools.ts";
 import { continueWorkflowValidation } from "../shared/workflow/validation.ts";
@@ -14,7 +14,7 @@ import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemot
 import {
     type RuntimeInteractionRequest,
     type RuntimeInteractionResponse,
-} from "../shared/session/session-runtime-interactions.ts";
+} from "@runwield/session-runtime/interactions";
 
 export type SessionScript = {
     outcomes: Array<ReviewCompletePayload | null>;

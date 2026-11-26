@@ -5,7 +5,7 @@ import { test } from "node:test";
 // not an OS process-kill test: a fresh Session consumes a real saved adapter state.
 import { assertEquals, assertExists } from "../../../src/testing/assertions.ts";
 import { loadPlan } from "../../../src/plan-store.ts";
-import { HostedSession } from "../../../src/shared/session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import type { SemanticReviewPort } from "../../../src/shared/workflow/validation-session-adapter.ts";
 import { continueWorkflowValidation } from "../../../src/shared/workflow/validation-supervisor.ts";
 import { makeStubGitPort, makeValidationProjectRoot } from "../../../src/shared/workflow/validation-test-helpers.ts";

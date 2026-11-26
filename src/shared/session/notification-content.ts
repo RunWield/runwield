@@ -3,8 +3,9 @@
  * Browser-safe RunWield notification vocabulary and common policy.
  */
 
-export type NotificationEventName = "agentStopped" | "planWritten" | "userInterview" | "compactionFinished";
-export type RuntimeAttentionNotificationEventName = Exclude<NotificationEventName, "compactionFinished">;
+import type { RuntimeAttentionNotificationEventName } from "@runwield/session-runtime/events";
+
+export type NotificationEventName = RuntimeAttentionNotificationEventName | "compactionFinished";
 
 export type NotificationEventSettings = Partial<Record<NotificationEventName, boolean>>;
 
@@ -33,12 +34,6 @@ const NOTIFICATION_EVENTS: readonly NotificationEventName[] = [
     "compactionFinished",
 ];
 
-const RUNTIME_ATTENTION_EVENTS: readonly RuntimeAttentionNotificationEventName[] = [
-    "agentStopped",
-    "planWritten",
-    "userInterview",
-];
-
 const EVENT_LABELS: Record<NotificationEventName, string> = {
     agentStopped: "Agent stopped",
     planWritten: "Plan ready",
@@ -55,12 +50,6 @@ const EVENT_MESSAGES: Record<NotificationEventName, string> = {
 
 export function isNotificationEventName(eventName: string): eventName is NotificationEventName {
     return NOTIFICATION_EVENTS.includes(eventName as NotificationEventName);
-}
-
-export function isRuntimeAttentionNotificationEventName(
-    eventName: string,
-): eventName is RuntimeAttentionNotificationEventName {
-    return RUNTIME_ATTENTION_EVENTS.includes(eventName as RuntimeAttentionNotificationEventName);
 }
 
 export function getNotificationEventLabel(eventName: NotificationEventName): string {
@@ -84,9 +73,8 @@ export function normalizeNotificationPolicy(
     raw: NotificationSettingsRecord | null | undefined,
 ): CommonNotificationPolicy {
     const record = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
-    const eventsRaw = record.events && typeof record.events === "object" && !Array.isArray(record.events)
-        ? record.events
-        : {};
+    const eventsRaw =
+        record.events && typeof record.events === "object" && !Array.isArray(record.events) ? record.events : {};
 
     return {
         enabled: record.enabled !== false,

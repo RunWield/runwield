@@ -7,12 +7,15 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { ExecutionMetricsRecorder } from "../workflow/execution-metrics.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { SessionHost } from "./session-host.ts";
+import { SessionHost } from "@runwield/session-runtime/host";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { setCustomSetting } from "../settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
-import { createSessionRuntime, SessionRuntime } from "./session-runtime.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 
 interface UsageRow {
     event: string;

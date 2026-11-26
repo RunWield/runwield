@@ -28,7 +28,7 @@ type TutorialSessionEntry = {
 };
 
 type TutorialSessionManager = Pick<
-    import("./hosted-session.ts").MinimalSessionManagerLike,
+    import("@runwield/session-runtime/host").MinimalSessionManagerLike,
     "getBranch" | "getEntries" | "appendCustomEntry"
 >;
 

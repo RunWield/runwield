@@ -25,7 +25,7 @@ import type {
 } from "@runwield/plans/controller-state";
 import type { ReviewDiffScope, ReviewInspection } from "./review-inspection.ts";
 
-import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "@runwield/session-runtime/interactions";
 
 /** Live requests may carry callbacks that the validation host strips before saving the wait. */
 export type ValidationInteractionRequest = StoredInteractionRequest<RuntimeInteractionRequest["_meta"]>;

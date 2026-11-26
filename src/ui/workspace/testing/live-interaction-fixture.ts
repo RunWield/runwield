@@ -1,8 +1,10 @@
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture, type RuntimeCommandFixture } from "../../../cmd/testing/runtime-command-fixture.ts";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
-import type { RuntimeInteractionRequest } from "../../../shared/session/session-runtime-interactions.ts";
-import type { RuntimeInteractionResult } from "../../../shared/session/runtime/types.ts";
+import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
+
+type RuntimeInteractionResult = Awaited<ReturnType<SessionRuntime["requestInteraction"]>>;
 import { WorkspaceSessionContinuationService } from "../server/session-continuation.ts";
 import { createOwnerWorkspaceApp } from "../server.ts";
 

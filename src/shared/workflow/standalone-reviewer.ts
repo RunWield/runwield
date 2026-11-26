@@ -1,7 +1,7 @@
 import { AGENTS, SUBAGENTS, agentRegistry } from "../session/agent-registry.ts";
 import { getCwd } from "../../constants.ts";
 import { createGitPort } from "../git-port.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import {
     abortActiveSession,
     getConfiguredAgentTemperature,

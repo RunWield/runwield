@@ -12,7 +12,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../testing/as
 import { join } from "node:path";
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 import { checkpointExecutionWorktree, removeWorktreeGitArtifacts } from "./worktree.ts";
-import { HostedSession } from "./session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { runLocalCI } from "./workflow/validation-local-ci.ts";
 import { setExactProjectCustomSetting } from "./settings.ts";
 import { publishExecutionWorktreeIsolated } from "./isolated-publication.ts";

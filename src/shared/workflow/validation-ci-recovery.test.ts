@@ -9,7 +9,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { type PlanFrontMatterInput } from "@runwield/plans/format";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { ensureRootAgentSession } from "../session/session.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";

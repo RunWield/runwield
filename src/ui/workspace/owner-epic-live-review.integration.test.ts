@@ -8,7 +8,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { createOwnerWorkspaceApp } from "./server.ts";
 
 const origin = "http://127.0.0.1:8787";

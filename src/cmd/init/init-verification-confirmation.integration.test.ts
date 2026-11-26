@@ -7,14 +7,11 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { getCwdInitState, recordInitDone } from "./init-state.ts";
 import { runInitCommand } from "./index.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
-import type {
-    RuntimeInteractionRequest,
-    RuntimeInteractionResponse,
-} from "../../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "@runwield/session-runtime/interactions";
 
 interface InitUi {
     messages: Array<{ message: string; error?: boolean }>;

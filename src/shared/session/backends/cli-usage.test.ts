@@ -14,9 +14,9 @@ import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.
 import { getNativeModelRegistry } from "@runwield/pi-ai/models";
 import { setCustomSetting } from "../../settings.ts";
 import { getWorkflowMetricsFilePath } from "../../workflow/metrics.ts";
-import { HostedSession } from "../hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { createRootSessionManager } from "../root-session.ts";
-import type { RuntimeUsage, SessionRuntimeEvent } from "../session-runtime-events.ts";
+import type { RuntimeUsage, SessionRuntimeEvent } from "@runwield/session-runtime/events";
 import { ClaudeCliExecutionSession } from "./claude-cli/execution-session.ts";
 
 const repository = defineGitFixture(async (root) => {

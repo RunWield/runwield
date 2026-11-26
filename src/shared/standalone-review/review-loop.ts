@@ -1,12 +1,9 @@
 import process from "node:process";
 import { AGENTS, agentRegistry } from "../session/agent-registry.ts";
-import { createSessionRuntime } from "../session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
+import type { ReviewConversation } from "@runwield/session-runtime/interactions";
 import { formatCodeReviewAnnotations, runCodeReview } from "../../ui/review/code-review.ts";
-import {
-    type ReviewConversation,
-    type StandaloneReviewPayload,
-    stopActiveReviewSurfaces,
-} from "../../ui/review/review-launcher.ts";
+import { type StandaloneReviewPayload, stopActiveReviewSurfaces } from "../../ui/review/review-launcher.ts";
 import type { BrowserPort } from "../browser-port.ts";
 import { buildGuidedReviewPolicy, recommendGuidedReview } from "../workflow/guided-review.ts";
 import { ensureReviewWorktree, settleReviewWorktree } from "./review-worktree.ts";

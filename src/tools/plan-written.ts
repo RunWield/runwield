@@ -42,13 +42,10 @@ import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
-    RuntimeEventTypes,
-} from "../shared/session/session-runtime-events.ts";
-import {
     requestHostedSessionInteraction,
-    RuntimeInteractionOutcomes,
-    RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.ts";
+} from "@runwield/session-runtime/host";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import {
     appendSessionCompleteGuidance,
     requestPlanReviewRetryConfirmation,
@@ -56,7 +53,7 @@ import {
     SESSION_COMPLETE_GUIDANCE,
 } from "../shared/workflow/plan-review-recovery.ts";
 import { workflowEvents } from "@runwield/workflow/events";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import type { TriageMeta } from "@runwield/workflow/state";
 
 const planWritten = toolRegistry.get("plan_written");
@@ -291,7 +288,7 @@ async function resolveTriageMeta(
  * @param {{
  *   triageMeta?: TriageMeta,
  *   agentName?: string,
- *   hostedSession?: import('../shared/session/hosted-session.ts').HostedSession,
+ *   hostedSession?: import('@runwield/session-runtime/host').HostedSession,
  * }} opts
  * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition}
  */
