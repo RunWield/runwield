@@ -6,7 +6,7 @@ import type { JsonValue } from "@runwield/parsing/jsonc";
 import type { ActiveModelState } from "@runwield/pi-ai";
 import type { ToolResult } from "@runwield/pi-ai/turn";
 import type { DeliveryReport } from "../../src/shared/workflow/delivery-report.ts";
-import type { SequenceReviewDocument } from "../../src/plan-store/sequence-review.ts";
+import type { SequenceReviewDocument } from "../../src/plan-store/index.ts";
 import type { PlanActionEvidence } from "../../src/shared/workflow/plan-actions.ts";
 import type { RuntimeInteractionOutcome, RuntimeInteractionType } from "./interactions.ts";
 import type { WorkflowProgressFact } from "../../src/shared/workflow/workflow-presentation.ts";

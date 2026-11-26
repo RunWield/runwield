@@ -4,8 +4,7 @@
  */
 
 import type { PlanFrontMatter } from "@runwield/plans";
-import type { PackageWorkflowInput } from "../../src/plan-store/packages.ts";
-import type { SequenceReviewDecision, SequenceReviewDocument } from "../../src/plan-store/sequence-review.ts";
+import type { PackageWorkflowInput, SequenceReviewDecision, SequenceReviewDocument } from "../../src/plan-store/index.ts";
 import type { SessionArtifactKind } from "../../src/shared/session/file-session-store-types.ts";
 import type { GuidedReviewPolicy } from "../../src/shared/workflow/guided-review.ts";
 import type { PlanWorktreeExpectation } from "../../src/shared/workflow/plan-actions.ts";
