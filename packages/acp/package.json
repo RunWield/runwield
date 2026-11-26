@@ -1,0 +1,16 @@
+{
+    "name": "@runwield/acp",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./index.ts",
+        "./client": "./client.ts",
+        "./protocol": "./protocol.ts"
+    },
+    "dependencies": {
+        "@agentclientprotocol/sdk": "2.6.0",
+        "@runwield/parsing": "workspace:*",
+        "@runwield/pi-ai": "workspace:*",
+        "@runwield/session-runtime": "workspace:*"
+    }
+}

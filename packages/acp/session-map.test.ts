@@ -1,4 +1,4 @@
-import { assertEquals } from "../testing/assertions.ts";
+import { deepStrictEqual as assertEquals } from "node:assert/strict";
 import { test } from "node:test";
 /**
  * @module acp/session-map.test

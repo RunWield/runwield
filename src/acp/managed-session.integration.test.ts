@@ -6,7 +6,7 @@ import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../testing/managed-session-fixture.ts";
-import { startRunWieldAcpServer } from "./server.ts";
+import { startRunWieldAcpServer } from "../cmd/acp/server.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -15,11 +15,14 @@ function startTestServer() {
     const input = new TransformStream();
     const output = new TransformStream();
     const diagnostics: string[] = [];
-    const connection = startRunWieldAcpServer(input.readable, output.writable, {
-        diagnostic: (message: string) => {
-            diagnostics.push(message);
+    const connection = startRunWieldAcpServer(
+        { readable: input.readable, writable: output.writable },
+        {
+            diagnostic: (message: string) => {
+                diagnostics.push(message);
+            },
         },
-    });
+    );
     return {
         inputWriter: input.writable.getWriter(),
         outputReader: output.readable.getReader(),

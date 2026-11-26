@@ -6,7 +6,7 @@
     "engines": {
         "bun": "^1.4.0"
     },
-    "workspaces": ["packages/agents", "packages/bundled-assets", "packages/parsing", "packages/pi-ai", "packages/plans", "packages/projects", "packages/resources", "packages/session-files", "packages/session-runtime", "packages/tools", "packages/workflow"],
+    "workspaces": ["packages/acp", "packages/agents", "packages/bundled-assets", "packages/parsing", "packages/pi-ai", "packages/plans", "packages/projects", "packages/resources", "packages/session-files", "packages/session-runtime", "packages/tools", "packages/workflow"],
     "trustedDependencies": [],
     "scripts": {
         "install:locked": "bun scripts/check-bun-runtime.ts && bun install --frozen-lockfile --ignore-scripts && cd docs-site && bun install --frozen-lockfile --ignore-scripts",
@@ -94,6 +94,7 @@
         "@lezer/common": "1.5.3",
         "@lezer/highlight": "1.2.5",
         "@modelcontextprotocol/sdk": "1.32.0",
+        "@runwield/acp": "workspace:*",
         "@runwield/agents": "workspace:*",
         "@runwield/bundled-assets": "workspace:*",
         "@runwield/parsing": "workspace:*",

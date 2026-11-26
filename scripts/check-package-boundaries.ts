@@ -48,6 +48,7 @@ interface ModuleReference {
 }
 
 const EXTRACTED_DOMAIN_PACKAGES = new Set([
+    "@runwield/acp",
     "@runwield/tools",
     "@runwield/agents",
     "@runwield/projects",

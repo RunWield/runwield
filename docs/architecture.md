@@ -153,7 +153,7 @@ flowchart LR
 
 Forbidden edges are as important as the shown edges:
 
-- Core must not import `src/ui/` or `src/acp/`.
+- Core exposes its operations to the UI and ACP adapters. Package imports point from those adapters to Core.
 - TUI, ACP, and commands must not import session host, hosted session, root-session, agent-handler, agent-switching, or
   the Pi session implementation.
 - TUI and ACP must not publish events or obtain an internal session object.
@@ -315,7 +315,7 @@ flowchart LR
 
 Core review logic lives in workflow modules and knows only the semantic request and response. Browser-aware plan/code
 review implementations live under `src/ui/review/`. The TUI maps interactions in
-`src/ui/tui/runtime-interaction-adapter.ts`; ACP maps them in `src/acp/interaction-mapper.ts`.
+`src/ui/tui/runtime-interaction-adapter.ts`; ACP maps them in `packages/acp/interaction-mapper.ts`.
 
 ## Root cause of the duplicated TUI blocks
 
@@ -1022,7 +1022,7 @@ The current layout is:
 | `src/shared/session/`                | Runtime boundary plus private session engine implementation | May depend on other Core modules; never consumers             |
 | `src/shared/workflow/`, `src/tools/` | Consumer-neutral workflow and tool engine                   | May emit through internal session sink; never render          |
 | `src/ui/tui/`                        | TUI event/interaction consumer                              | Runtime public modules and UI code only; no session internals |
-| `src/acp/`                           | ACP event/interaction consumer                              | Runtime public modules and ACP protocol code only             |
+| `packages/acp/`                      | ACP event/interaction consumer                              | Runtime public modules and ACP protocol code only             |
 | `src/ui/review/`                     | Browser review interaction implementation                   | UI/review infrastructure; Core does not import it             |
 | `src/cmd/`                           | CLI/TUI command consumers                                   | Runtime public surface; no hosted/root/handler internals      |
 
@@ -1044,7 +1044,7 @@ dependency guard are what prevent this seam from silently returning.
 | One Pi text/thinking/tool translation                  | `src/shared/session/session-subscribers.test.ts`                                    |
 | Consumer-ready event identity, usage, and tool data    | `src/shared/session/session-runtime-events.test.ts`                                 |
 | One shared tool title and semantic-kind implementation | `src/shared/session/tool-event-title.test.ts`                                       |
-| TUI and ACP consume the same transcript                | `src/ui/tui/runtime-adapter.test.ts`, `src/acp/event-mapper.test.js`                |
+| TUI and ACP consume the same transcript                | `src/ui/tui/runtime-adapter.test.ts`, `packages/acp/event-mapper.test.ts`                |
 | Duplicate TUI adapter attachment fails until disposal  | `src/ui/tui/runtime-adapter.test.ts`                                                |
 | Local shell is Runtime-owned                           | `src/shared/session/session-runtime.test.ts`, `src/ui/tui/bash-interceptor.test.js` |
 | Semantic interactions and cancellation                 | `src/shared/session/session-runtime.test.ts`, adapter interaction tests             |
@@ -1103,7 +1103,7 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 | Settings and models                       | `src/shared/settings.ts`, `src/shared/models/`                                |
 | Tool policy                               | `src/tools/registry.ts`, agent front matter in `packages/agents/definitions/`       |
 | TUI adapter                               | `src/ui/tui/chat-session.ts`, `src/ui/tui/runtime-adapter.ts`                 |
-| ACP adapter                               | `src/acp/server.ts`, `src/acp/session-map.ts`, mapper modules in `src/acp/`   |
+| ACP adapter                               | `packages/acp/server.ts`, `packages/acp/session-map.ts`, and the app in `src/cmd/acp/`   |
 | Workspace Plan adapter                    | `src/ui/workspace/server/plan-adapter.ts`                                     |
 | Review consumer surface                   | `src/ui/review/review-launcher.ts`, `src/review-workspace-server.ts`          |
 

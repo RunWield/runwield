@@ -1,11 +1,18 @@
 import { formatProviderModelReference, type ActiveModelState } from "@runwield/pi-ai";
-import { listUserModelOptions } from "../shared/session/user-selection.ts";
 import type { SessionConfigOption } from "@agentclientprotocol/sdk/unstable";
 
 /** The session's current model and reasoning choice. */
 export interface AcpModelSelection {
     activeModel?: ActiveModelState;
     thinkingLevel?: string;
+}
+
+/** A provider model the host can select, including whether it supports reasoning levels. */
+export interface AcpModelOption {
+    id: string;
+    name: string;
+    provider: string;
+    reasoning: boolean;
 }
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
@@ -15,10 +22,11 @@ const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "ma
  */
 export async function buildAcpModelOptions(
     selection: AcpModelSelection | null | undefined,
+    listModels: () => Promise<readonly AcpModelOption[]>,
 ): Promise<SessionConfigOption[]> {
     const active = selection?.activeModel;
     if (!active?.model) return [];
-    const models = await listUserModelOptions();
+    const models = await listModels();
     const currentValue = formatProviderModelReference(active);
     const options = models.map((model) => ({
         value: `${model.provider}/${model.id}`,

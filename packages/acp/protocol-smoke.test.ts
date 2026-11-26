@@ -4,8 +4,10 @@ import { test } from "node:test";
  */
 
 import { ok as assert } from "node:assert/strict";
-import { assertEquals, assertThrows } from "../testing/assertions.ts";
-import { assertAcpFrameSchema, findAcpSchemaViolations } from "./schema-conformance.ts";
+import { assertEquals, assertThrows } from "../../src/testing/assertions.ts";
+import { assertAcpFrameSchema } from "../../src/testing/acp-schema.ts";
+import { RequestError } from "@agentclientprotocol/sdk/unstable";
+import { decodeAcpSteeringRequest, findAcpSchemaViolations } from "@runwield/acp/protocol";
 
 test("ACP Cost requires an amount and a currency", () => {
     assertEquals(findAcpSchemaViolations("Cost", { amount: 0.5, currency: "USD" }), []);
@@ -16,6 +18,10 @@ test("ACP Cost requires an amount and a currency", () => {
             `ACP Cost should reject ${JSON.stringify(invalid)}`,
         );
     }
+});
+
+test("ACP schema validation rejects names outside the published definitions", () => {
+    assertThrows(() => findAcpSchemaViolations("constructor", {}), Error, "Unknown ACP schema definition");
 });
 
 test("ACP usage_update carries cost as an object, never a bare number", () => {
@@ -50,4 +56,20 @@ test("assertAcpFrameSchema validates serialized NDJSON frames and handles malfor
         Error,
         "must be a JSON object",
     );
+});
+
+test("the public ACP steering decoder preserves request metadata", () => {
+    const prompt = [{ type: "text", text: "Keep the logs" }];
+    const request = {
+        sessionId: "session-1",
+        prompt,
+        _meta: { steering: { idleBehavior: "promptRequired" }, clientHint: "test" },
+    };
+    assertEquals(decodeAcpSteeringRequest(request), request);
+    const invalid = assertThrows(
+        () => decodeAcpSteeringRequest({ ...request, _meta: { steering: { idleBehavior: "enqueue" } } }),
+        RequestError,
+        "_session/steering idleBehavior must be promptRequired",
+    );
+    assertEquals(invalid.code, -32602);
 });

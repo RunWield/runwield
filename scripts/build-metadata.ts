@@ -15,6 +15,7 @@ export const BUILD_METADATA_SCHEMA = 1;
 const INPUTS = [
     "src",
     "scripts",
+    "packages/acp",
     "packages/agents",
     "packages/bundled-assets",
     "packages/parsing",

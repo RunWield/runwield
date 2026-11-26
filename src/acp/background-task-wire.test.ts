@@ -4,7 +4,7 @@ import type { InitializeRequest, NewSessionRequest, PromptRequest } from "@agent
 import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { startRunWieldAcpServer } from "./server.ts";
+import { startRunWieldAcpServer } from "../cmd/acp/server.ts";
 
 interface WireTextContent {
     text?: string;
@@ -66,7 +66,7 @@ test("ACP sends an automatic task result after the original end_turn response", 
         ]);
         const input = new TransformStream<Uint8Array, Uint8Array>();
         const output = new TransformStream<Uint8Array, Uint8Array>();
-        const connection = startRunWieldAcpServer(input.readable, output.writable);
+        const connection = startRunWieldAcpServer({ readable: input.readable, writable: output.writable });
         const writer = input.writable.getWriter();
         const reader = output.readable.getReader();
         const decoder = new TextDecoder();

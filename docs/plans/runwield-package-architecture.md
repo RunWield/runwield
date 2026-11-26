@@ -27,7 +27,7 @@ Retire the root `src/` directory in three passes. Preserve behavior for users, i
 
 ## Packages and extraction order
 
-Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. [Plan milestone history](https://github.com/RunWield/runwield/pull/650) has merged. [Plan artifacts and publication copies](https://github.com/RunWield/runwield/pull/651) have merged. [Workflow](https://github.com/RunWield/runwield/pull/652) has merged. [Pi-AI](https://github.com/RunWield/runwield/pull/653) has merged. This extraction covers Session Runtime. ACP follows it in the interface pass. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
+Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. [Plan milestone history](https://github.com/RunWield/runwield/pull/650) has merged. [Plan artifacts and publication copies](https://github.com/RunWield/runwield/pull/651) have merged. [Workflow](https://github.com/RunWield/runwield/pull/652) has merged. [Pi-AI](https://github.com/RunWield/runwield/pull/653) has merged. The Session Runtime contract is in [PR #654](https://github.com/RunWield/runwield/pull/654). ACP is the final domain in the interface pass. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
 
 | Order and package | Public interface and responsibilities | Evidence that the move preserved behavior |
 | --- | --- | --- |
@@ -289,6 +289,12 @@ The interactive Session Runtime owns the live session, its writer, queued messag
 The root factory opens the personal session store by default. Interactive hosts use the services entry when they need to compose storage or run host-specific operations. Browser clients can load the event and interaction contracts independently. The transcript entry exposes the existing history readers. The file store, Pi session construction, and some workflow integrations still live in `src/` until the dependency pass. [Interactive services](../../packages/session-runtime/services.ts) · [Events](../../packages/session-runtime/events.ts) · [Interactions](../../packages/session-runtime/interactions.ts) · [Transcripts](../../packages/session-runtime/transcript.ts)
 
 A Factory worker can use pi-durable to execute or resume a turn while reusing the RunWield model registry, effective Agent prompts, tool definitions, and Workflow rules. For the Router recipe, the worker accepts the admitted input through ACP and returns the accepted `triage_report`. That operation needs neither an interactive session host nor a UI subscription. The pi-durable execution adapter and pod-recovery qualification are future Factory work.
+
+## ACP connections
+
+The ACP package connects clients and servers over caller-supplied byte streams. Client apps import `@runwield/acp/client` to register their ACP handlers and send typed SDK requests. The protocol entry exposes wire validation and RunWield extension codecs. [Client binding](../../packages/acp/client.ts) · [Protocol](../../packages/acp/protocol.ts)
+
+The server binding translates requests and Session Runtime events and owns the ACP IDs and outstanding prompts for each connection. The CLI wires in the interactive runtime and its local services, opens stdin and stdout, handles signals, and releases the resources it opened. [Server binding](../../packages/acp/server.ts) · [CLI entry](../../src/cmd/acp/index.ts)
 
 ## MCP and app boundaries
 

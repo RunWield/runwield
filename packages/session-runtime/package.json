@@ -4,6 +4,7 @@
     "type": "module",
     "exports": {
         ".": "./index.ts",
+        "./errors": "./turn-in-progress.ts",
         "./events": "./events.ts",
         "./host": "./host.ts",
         "./interactions": "./interactions.ts",

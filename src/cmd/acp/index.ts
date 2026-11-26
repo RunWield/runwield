@@ -6,7 +6,7 @@ import process from "node:process";
  * ACP stdio command entrypoint.
  */
 
-import { startRunWieldAcpServer } from "../../acp/server.ts";
+import { startRunWieldAcpServer } from "./server.ts";
 
 function writeDiagnostic(message: string): void {
     console.error(`[RunWield ACP] ${message}`);
@@ -16,21 +16,23 @@ function writeDiagnostic(message: string): void {
  * Run the ACP stdio adapter. stdout is reserved for ACP protocol frames only.
  */
 export async function runAcpCommand(_argv: string[] = []): Promise<void> {
-    const connection = startRunWieldAcpServer(readableStdin(), Writable.toWeb(process.stdout), {
-        diagnostic: writeDiagnostic,
-    });
-
-    const abort = () => connection.close();
     const signals: NodeJS.Signals[] = process.platform === "win32" ? ["SIGINT"] : ["SIGINT", "SIGTERM"];
-    for (const signal of signals) process.on(signal, abort);
-
+    let abort: (() => void) | undefined;
     try {
+        const connection = startRunWieldAcpServer(
+            { readable: readableStdin(), writable: Writable.toWeb(process.stdout) },
+            { diagnostic: writeDiagnostic },
+        );
+        abort = () => connection.close();
+        for (const signal of signals) process.on(signal, abort);
         await connection.closed;
     } catch (err) {
         writeDiagnostic(`fatal server error: ${err instanceof Error ? err.message : String(err)}`);
         throw err;
     } finally {
-        for (const signal of signals) process.off(signal, abort);
-        connection.close();
+        if (abort) {
+            for (const signal of signals) process.off(signal, abort);
+            abort();
+        }
     }
 }

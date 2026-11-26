@@ -15,6 +15,12 @@ import type {
     RuntimeInteractionAdapter,
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
+    RuntimeInteractionSurface,
+} from "@runwield/session-runtime/interactions";
+import {
+    isApprovalAcceptedValue,
+    RuntimeInteractionOutcomes,
+    RuntimeInteractionTypes,
 } from "@runwield/session-runtime/interactions";
 
 export interface AcpElicitationResponse extends ElicitationAcceptAction {
@@ -30,10 +36,46 @@ export interface AcpInteractionContext extends AcpInteractionClient {
     client?: AcpInteractionClient;
 }
 
-export interface AcpInteractionAdapterOptions {
+/** The pending ACP interaction and the HTTP handler for its answer. */
+export interface AcpBrowserQuestionOptions {
+    interaction: RuntimeInteractionRequest;
+    acpSessionId: string;
+    /** Handle the response submitted by the browser. */
+    answerQuestion(request: Request): Response | Promise<Response>;
+}
+
+/** A browser question served by the host until the client answers or disconnects. */
+export interface AcpBrowserQuestionServer {
+    url: string;
+    /** Close the question server and optionally drain its active requests. */
+    shutdown(options?: { drain?: boolean }): Promise<void>;
+}
+
+/** Callbacks an interactive host uses to present a local review and collect its decision. */
+export interface AcpReviewInteractionOptions {
+    /** Notify the ACP client when the review has a URL. */
+    onSurfaceReady(surface: string | RuntimeInteractionSurface): void | Promise<void>;
+    /** Ask the client for the decision on a reviewed artifact. */
+    requestArtifactDecision(url: string): Promise<RuntimeInteractionResponse>;
+}
+
+/** Local review surfaces provided by the host. */
+export interface AcpReviewServices {
+    /** Start a browser question for the current interaction. */
+    startBrowserQuestionServer(options: AcpBrowserQuestionOptions): AcpBrowserQuestionServer;
+    /** Present the review to the user and return the decision to the connection. */
+    requestLocalReviewInteraction(
+        interaction: RuntimeInteractionRequest,
+        signal: AbortSignal | undefined,
+        options: AcpReviewInteractionOptions,
+    ): Promise<RuntimeInteractionResponse>;
+}
+
+interface AcpInteractionAdapterOptions {
     context: AcpInteractionContext;
     acpSessionId: string;
     clientCapabilities?: Pick<ClientCapabilities, "elicitation"> | null;
+    review?: AcpReviewServices;
     presentChatQuestion?: (
         interaction: RuntimeInteractionRequest,
         signal?: AbortSignal,
@@ -44,17 +86,6 @@ interface BrowserQuestionOptions extends Pick<AcpInteractionAdapterOptions, "con
     interaction: RuntimeInteractionRequest;
     signal?: AbortSignal;
 }
-
-interface ReviewSurface {
-    url: string;
-}
-import {
-    isApprovalAcceptedValue,
-    RuntimeInteractionOutcomes,
-    RuntimeInteractionTypes,
-} from "@runwield/session-runtime/interactions";
-import { startBrowserQuestionServer } from "../shared/session/browser-question.ts";
-import { requestLocalReviewInteraction } from "../shared/session/local-review-interactions.ts";
 
 function supportsFormElicitation(capabilities: AcpInteractionAdapterOptions["clientCapabilities"]) {
     const value = capabilities || {};
@@ -79,7 +110,10 @@ function notifyClient(context: AcpInteractionContext, method: string, params: Se
     return Promise.resolve();
 }
 
-async function requestBrowserQuestion(options: BrowserQuestionOptions): Promise<RuntimeInteractionResponse> {
+async function requestBrowserQuestion(
+    review: AcpReviewServices,
+    options: BrowserQuestionOptions,
+): Promise<RuntimeInteractionResponse> {
     const answered = Promise.withResolvers<RuntimeInteractionResponse>();
     let used = false;
     let origin = "";
@@ -126,7 +160,7 @@ async function requestBrowserQuestion(options: BrowserQuestionOptions): Promise<
         }
         return new Response("Answer submitted. You can close this tab.");
     };
-    const question = startBrowserQuestionServer({
+    const question = review.startBrowserQuestionServer({
         interaction: options.interaction,
         acpSessionId: options.acpSessionId,
         answerQuestion,
@@ -221,6 +255,7 @@ export function createAcpInteractionAdapter({
     context,
     acpSessionId,
     clientCapabilities,
+    review,
     presentChatQuestion,
 }: AcpInteractionAdapterOptions): RuntimeInteractionAdapter {
     return {
@@ -229,9 +264,12 @@ export function createAcpInteractionAdapter({
                 type === RuntimeInteractionTypes.SELECT ||
                 type === RuntimeInteractionTypes.TEXT ||
                 type === RuntimeInteractionTypes.APPROVAL ||
-                type === RuntimeInteractionTypes.PLAN_REVIEW ||
-                type === RuntimeInteractionTypes.CODE_REVIEW ||
-                type === RuntimeInteractionTypes.ARTIFACT_REVIEW
+                Boolean(
+                    review &&
+                    (type === RuntimeInteractionTypes.PLAN_REVIEW ||
+                        type === RuntimeInteractionTypes.CODE_REVIEW ||
+                        type === RuntimeInteractionTypes.ARTIFACT_REVIEW),
+                )
             );
         },
         async requestInteraction(interaction, signal) {
@@ -242,7 +280,7 @@ export function createAcpInteractionAdapter({
                 };
             }
 
-            const notifySurfaceReady = async (surface: string | ReviewSurface) => {
+            const notifySurfaceReady = async (surface: string | RuntimeInteractionSurface) => {
                 const reviewUrl = typeof surface === "string" ? surface : surface.url;
                 await notifyClient(context, methods.client.session.update, {
                     sessionId: acpSessionId,
@@ -260,7 +298,10 @@ export function createAcpInteractionAdapter({
                 interaction.type === RuntimeInteractionTypes.CODE_REVIEW ||
                 interaction.type === RuntimeInteractionTypes.ARTIFACT_REVIEW
             ) {
-                return await requestLocalReviewInteraction(interaction, signal, {
+                if (!review) {
+                    return { outcome: RuntimeInteractionOutcomes.UNSUPPORTED, message: "Local review is unavailable." };
+                }
+                return await review.requestLocalReviewInteraction(interaction, signal, {
                     onSurfaceReady: notifySurfaceReady,
                     requestArtifactDecision: async () => {
                         const decision: RuntimeInteractionRequest = {
@@ -270,7 +311,12 @@ export function createAcpInteractionAdapter({
                             allowEmpty: true,
                             placeholder: interaction.placeholder || "Feedback (leave empty to accept)",
                         };
-                        return await requestBrowserQuestion({ context, acpSessionId, interaction: decision, signal });
+                        return await requestBrowserQuestion(review, {
+                            context,
+                            acpSessionId,
+                            interaction: decision,
+                            signal,
+                        });
                     },
                 });
             }

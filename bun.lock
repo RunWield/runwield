@@ -44,6 +44,7 @@
         "@radix-ui/react-slot": "1.5.0",
         "@radix-ui/react-tabs": "1.1.21",
         "@radix-ui/react-tooltip": "1.2.16",
+        "@runwield/acp": "workspace:*",
         "@runwield/agents": "workspace:*",
         "@runwield/bundled-assets": "workspace:*",
         "@runwield/parsing": "workspace:*",
@@ -116,6 +117,15 @@
         "prettier": "3.9.10",
         "typescript": "6.0.3",
         "typescript-eslint": "8.72.2",
+      },
+    },
+    "packages/acp": {
+      "name": "@runwield/acp",
+      "dependencies": {
+        "@agentclientprotocol/sdk": "2.6.0",
+        "@runwield/parsing": "workspace:*",
+        "@runwield/pi-ai": "workspace:*",
+        "@runwield/session-runtime": "workspace:*",
       },
     },
     "packages/agents": {
@@ -782,6 +792,8 @@
     "@rolldown/binding-win32-x64-msvc": ["@rolldown/binding-win32-x64-msvc@1.3.3", "", { "os": "win32", "cpu": "x64" }, "sha512-Ggzyuq1mN7claruAZH10aiiM1N3LRCoMP5xDXPdU514ulL0D2bksCWgFqEmEM2/pDzEP7Dq+dcv7IH452jtr1w=="],
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
+
+    "@runwield/acp": ["@runwield/acp@workspace:packages/acp"],
 
     "@runwield/agents": ["@runwield/agents@workspace:packages/agents"],
 

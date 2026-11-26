@@ -1,3 +1,7 @@
+import {
+    readLiveSessionConnection,
+    waitForSessionActivationSettlement,
+} from "../../../src/shared/session/live-session-connection.ts";
 import { syncTranscriptFileAndParent } from "../../../src/shared/session/file-session-storage.ts";
 import type { CloseSessionResult, CreatedSession } from "../contract.ts";
 import { projects } from "@runwield/projects";
@@ -93,6 +97,27 @@ export class RuntimeLifecycle {
 
     clearPendingProject(sessionId: string) {
         this.pendingManagedCreationProjects.delete(sessionId);
+    }
+
+    canArchiveSavedSessions(): boolean {
+        return this.services.sessionStore !== null;
+    }
+
+    async archiveSavedSession(persistedId: string): Promise<void> {
+        const store = this.services.sessionStore;
+        if (!store) throw new Error("Session Manager archive is blocked: session_store_unavailable");
+        const session = store.getSessionById(persistedId) || store.findSessionByLocator({ piSessionId: persistedId });
+        if (!session) return;
+        const { runwieldSessionId, projectId } = session;
+        const activation = store.inspectSessionActivation(runwieldSessionId).activation;
+        if (activation?.state === "active" && activation.operationId) {
+            const result = await readLiveSessionConnection(runwieldSessionId, activation.operationId, {
+                action: "cancel",
+            });
+            if (!result.ok) throw new Error(result.error || "The Session could not be stopped.");
+        }
+        await waitForSessionActivationSettlement(store, runwieldSessionId);
+        store.archiveSession(runwieldSessionId, projectId);
     }
 
     async closeSession(id: string): Promise<CloseSessionResult> {

@@ -383,6 +383,14 @@ export class SessionRuntime implements SessionRuntimeContract {
     setSessionThinkingLevel(...args: Parameters<RuntimeAgentSettings["setSessionThinkingLevel"]>) {
         return this.#settings.setSessionThinkingLevel(...args);
     }
+    /** Whether this runtime has a store that can archive saved Sessions. */
+    canArchiveSavedSessions(): boolean {
+        return this.#lifecycle.canArchiveSavedSessions();
+    }
+    /** Stop the saved Session's active writer and archive it by RunWield or Pi ID. Missing Sessions are already settled. */
+    archiveSavedSession(persistedId: string): Promise<void> {
+        return this.#lifecycle.archiveSavedSession(persistedId);
+    }
     /** Dispose the open Session and release its resources. */
     closeSession(...args: Parameters<RuntimeLifecycle["closeSession"]>) {
         return this.#lifecycle.closeSession(...args);

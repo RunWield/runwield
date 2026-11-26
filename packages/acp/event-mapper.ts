@@ -3,22 +3,30 @@
  * Maps adapter-neutral SessionRuntime events to ACP session/update notifications.
  */
 
-import { getCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.ts";
 import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 
 import type {
+    AvailableCommand,
     SessionNotification,
     SessionUpdate,
     ToolCallContent,
     UsageUpdate,
 } from "@agentclientprotocol/sdk/unstable";
-import type { ContextUsage } from "@earendil-works/pi-coding-agent";
 import type { ToolContentBlock } from "@runwield/pi-ai/turn";
-import type { SessionRuntimeEvent } from "@runwield/session-runtime/events";
+import type {
+    PromptTemplateMeta,
+    RuntimeEventMetadata,
+    RuntimeValidationProgress,
+    SessionRuntimeEvent,
+    SkillRecord,
+} from "@runwield/session-runtime/events";
 
-export type { SessionNotification, SessionUpdate } from "@agentclientprotocol/sdk/unstable";
-export type AcpContextUsage = Pick<ContextUsage, "tokens" | "contextWindow">;
-interface RuntimeAcpMetadata {
+export interface AcpContextUsage {
+    tokens: number | null;
+    contextWindow: number;
+}
+
+interface RuntimeAcpMetadata extends RuntimeEventMetadata {
     agentName?: string;
     messageKind?: string;
     workflowMessage?: string;
@@ -33,28 +41,66 @@ interface RuntimeAcpMetadata {
     interactionType?: string;
     outcome?: string;
     level?: string;
-    validationProgress?: import("@runwield/session-runtime/events").RuntimeValidationProgress;
+    validationProgress?: RuntimeValidationProgress;
+    planName?: string;
+    reviewerUrl?: string;
+    spaceId?: string;
+    serverUrl?: string;
+    revision?: number;
+    reused?: boolean;
 }
 
 export interface AcpUsageUpdate extends UsageUpdate {
     sessionUpdate: "usage_update";
 }
 
-function safeMeta(value: unknown) {
-    if (value === undefined) return undefined;
-    if (!value || typeof value !== "object") return { runwield: value };
-    return {
-        runwield: Object.fromEntries(
-            Object.entries(value as RuntimeAcpMetadata).filter(([, entry]) => entry !== undefined),
-        ),
-    };
+function definedMetadata(value: RuntimeAcpMetadata) {
+    const fields = { ...value };
+    for (const key of Object.keys(fields) as (keyof RuntimeAcpMetadata)[]) {
+        if (fields[key] === undefined) delete fields[key];
+    }
+    return Object.keys(fields).length ? { runwield: fields } : undefined;
 }
 
 function runtimeMeta(event: SessionRuntimeEvent, extra: RuntimeAcpMetadata = {}) {
-    const raw = event._meta;
-    const base = raw && typeof raw === "object" ? raw : {};
-    const merged = Object.fromEntries(Object.entries({ ...base, ...extra }).filter(([, value]) => value !== undefined));
-    return Object.keys(merged).length > 0 ? safeMeta(merged) : undefined;
+    return definedMetadata({ ...event._meta, ...extra });
+}
+
+/** A host command shown in the client's list of available slash commands. */
+export interface AcpCommandDefinition {
+    name: string;
+    description: string;
+    usage?: readonly string[];
+}
+
+/** Supplies built-in commands and resolves name collisions with Session skills and prompt templates. */
+export interface AcpCommandCatalog {
+    /** List built-in commands offered by the host. */
+    listBuiltins(): readonly AcpCommandDefinition[];
+    /** Check whether a name is already owned by a built-in command. */
+    isReserved(name: string): boolean;
+}
+
+export function buildAcpCommandCatalog(
+    catalog: AcpCommandCatalog | undefined,
+    promptTemplates: readonly Pick<PromptTemplateMeta, "name" | "description" | "argumentHint">[] = [],
+    skills: readonly Pick<SkillRecord, "name" | "description">[] = [],
+): AvailableCommand[] {
+    return [
+        ...(catalog?.listBuiltins() ?? []).map((command) => ({
+            name: command.name,
+            description: command.description,
+            ...(command.usage?.[0] ? { input: { hint: command.usage[0].replace(/^.*?\s+/, "") } } : {}),
+        })),
+        ...promptTemplates
+            .filter((template) => !catalog?.isReserved(template.name))
+            .map((template) => ({
+                name: template.name,
+                description: template.description || "Prompt template",
+                ...(template.argumentHint ? { input: { hint: template.argumentHint } } : {}),
+            })),
+        ...skills.map((skill) => ({ name: `skill:${skill.name}`, description: skill.description || "Skill" })),
+    ];
 }
 
 /** ACP uses the same content-block shapes inside one protocol wrapper. */
@@ -83,6 +129,7 @@ export function mapRuntimeEventToAcpUpdate(
     event: SessionRuntimeEvent,
     sessionCostUsd = 0,
     contextUsage: AcpContextUsage | null = null,
+    commandCatalog?: AcpCommandCatalog,
 ): SessionUpdate | null {
     switch (event.type) {
         case RuntimeEventTypes.USER_MESSAGE:
@@ -150,7 +197,7 @@ export function mapRuntimeEventToAcpUpdate(
                 sessionUpdate: "agent_message_chunk",
                 messageId: event.messageId,
                 content: { type: "text", text: event.message },
-                _meta: safeMeta({
+                _meta: definedMetadata({
                     type: event.type,
                     planName: event.planName,
                     reviewerUrl: event.reviewerUrl,
@@ -202,24 +249,7 @@ export function mapRuntimeEventToAcpUpdate(
         case RuntimeEventTypes.COMMAND_CATALOG_CHANGED: {
             return {
                 sessionUpdate: "available_commands_update",
-                availableCommands: [
-                    ...getSlashCommandDefinitions("acp").map((command) => ({
-                        name: command.name,
-                        description: command.description,
-                        ...(command.usage?.[0] ? { input: { hint: command.usage[0].replace(/^.*?\s+/, "") } } : {}),
-                    })),
-                    ...(event.promptTemplates || [])
-                        .filter((template) => !getCommandDefinition(template.name))
-                        .map((template) => ({
-                            name: template.name,
-                            description: template.description || "Prompt template",
-                            ...(template.argumentHint ? { input: { hint: template.argumentHint } } : {}),
-                        })),
-                    ...(event.skills || []).map((skill) => ({
-                        name: `skill:${skill.name}`,
-                        description: skill.description || "Skill",
-                    })),
-                ],
+                availableCommands: buildAcpCommandCatalog(commandCatalog, event.promptTemplates, event.skills),
             };
         }
         case RuntimeEventTypes.INTERACTION_RESOLVED:
@@ -261,8 +291,9 @@ export function mapRuntimeEventToAcpSessionNotification(
     event: SessionRuntimeEvent,
     sessionCostUsd = 0,
     contextUsage: AcpContextUsage | null = null,
+    commandCatalog?: AcpCommandCatalog,
 ): SessionNotification | null {
-    const update = mapRuntimeEventToAcpUpdate(event, sessionCostUsd, contextUsage);
+    const update = mapRuntimeEventToAcpUpdate(event, sessionCostUsd, contextUsage, commandCatalog);
     if (!update) return null;
     return { sessionId: acpSessionId, update };
 }

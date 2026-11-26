@@ -18,7 +18,7 @@ import { createUiApi } from "./tui/api.ts";
 import { SpinnerBlock } from "./tui/blocks.ts";
 import { initRunWieldTheme } from "./theme/theme.ts";
 import { runScopedSubmitHandoffLoop } from "./tui/chat-session.ts";
-import { startRunWieldAcpServer } from "../acp/server.ts";
+import { startRunWieldAcpServer } from "../cmd/acp/server.ts";
 
 interface NamedInvocationProfile {
     agentName?: string;
@@ -316,7 +316,7 @@ function normalizedProfile(profile: NamedInvocationProfile | undefined): NamedIn
 function startTestServer(): TestServerHandle {
     const input = new TransformStream<Uint8Array, Uint8Array>();
     const output = new TransformStream<Uint8Array, Uint8Array>();
-    const connection = startRunWieldAcpServer(input.readable, output.writable);
+    const connection = startRunWieldAcpServer({ readable: input.readable, writable: output.writable });
     return {
         inputWriter: input.writable.getWriter(),
         outputReader: output.readable.getReader(),

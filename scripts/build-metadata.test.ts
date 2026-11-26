@@ -21,6 +21,7 @@ async function fixture() {
     for (const dir of [
         "src/shared",
         "scripts",
+        "packages/acp",
         "packages/agents/definitions",
         "packages/bundled-assets",
         "packages/parsing",
@@ -78,6 +79,7 @@ test("common identity changes for dirty included source and resources, not gener
         await fsWriteFile(join(root, "packages/tools/routing.ts"), "changed package source");
         assertNotEquals(await identity(), changedSource);
         for (const file of [
+            "packages/acp/index.ts",
             "packages/agents/definitions/router.md",
             "packages/bundled-assets/index.ts",
             "packages/parsing/front-matter.ts",
