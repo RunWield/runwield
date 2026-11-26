@@ -12,7 +12,7 @@ import { registerApiProvider, unregisterApiProviders } from "@earendil-works/pi-
 import { assertEquals } from "./assertions.ts";
 import { writeRuntimeExecutableFixture } from "./runtime-executable-fixture.ts";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
-import { getModelRegistry } from "../shared/models/model-registry.ts";
+import { getNativeModelRegistry } from "@runwield/pi-ai/models";
 import { createRootSessionManager } from "../shared/session/root-session.ts";
 import { ClaudeCliExecutionSession } from "../shared/session/backends/claude-cli/execution-session.ts";
 import { ExecutionMetricsRecorder } from "../shared/workflow/execution-metrics.ts";
@@ -31,7 +31,7 @@ export const JOURNEY_PERIOD = { start: "2026-09-01", end: "2026-09-04" };
 
 /** Fixed upstream measurements, not token estimates from the faux provider's prompt serializer. */
 export async function configureJourneyModel() {
-    await getModelRegistry().getRuntime();
+    await getNativeModelRegistry().getRuntime();
     const responses: AssistantMessage[] = [];
     let interrupt: (() => void) | undefined;
     const stream: ProviderStreams["streamSimple"] = (model) => {
@@ -102,7 +102,7 @@ console.log(${JSON.stringify(vendor)});
     const previousPath = process.env.PATH;
     process.env.PATH = `${bin}${process.platform === "win32" ? ";" : ":"}${previousPath || ""}`;
     try {
-        const model = getModelRegistry().find("claude-cli", "sonnet");
+        const model = getNativeModelRegistry().find("claude-cli", "sonnet");
         assert(model);
         const session = new ClaudeCliExecutionSession({
             cwd: root,

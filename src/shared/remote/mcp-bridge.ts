@@ -1,7 +1,7 @@
-import { type JsonRpcMessage, type McpTransport, parseJsonRpcMessage, StdioTransport } from "@earendil-works/pi-mcp";
-import { getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio";
+import { type JsonRpcMessage, type McpTransport, parseJsonRpcMessage } from "@earendil-works/pi-mcp";
+import { createMcpStdioTransport } from "@runwield/pi-ai/mcp";
 import { getHomeDir } from "../../constants.ts";
-import { type JsonMap, readPersonalMcpConfig } from "../mcp/config.ts";
+import { type JsonMap, type McpServerDefinition, readPersonalMcpConfig } from "../mcp/config.ts";
 import type { RemoteSettingsConnection } from "./settings-bridge.ts";
 
 const MAX_MESSAGE = 16 * 1024 * 1024;
@@ -47,7 +47,7 @@ async function readRequest(request: Request): Promise<RelayRequest> {
 }
 
 interface LaptopTransport {
-    transport?: StdioTransport;
+    transport?: McpTransport;
     closed: boolean;
     sequence: number;
     queuedBytes: number;
@@ -155,14 +155,7 @@ export class LaptopMcpBridge {
             if (this.closed || current.closed || !admitted() || request.signal.aborted) throw failure();
             const server = config.servers.find((server) => server.name === input.name);
             if (!server) throw failure();
-            const transport = new StdioTransport({
-                command: server.command,
-                args: server.args,
-                env: { ...getDefaultEnvironment(), ...server.env },
-                inheritEnv: false,
-                cwd: getHomeDir(),
-                stderr: "pipe",
-            });
+            const transport = createMcpStdioTransport(server, getHomeDir());
             current.transport = transport;
             const stream = new ReadableStream<Uint8Array>(
                 {
@@ -203,6 +196,13 @@ export class LaptopMcpBridge {
 
 let connection: RemoteSettingsConnection | undefined;
 const clients = new Set<RemoteMcpTransport>();
+
+/** Each connection attempt uses a new relay transport for an admitted laptop server. */
+export function remoteMcpTransportFor(servers: readonly McpServerDefinition[]) {
+    const laptopNames = new Set(servers.filter((server) => server.location === "laptop").map((server) => server.name));
+    return (name: string): McpTransport | undefined =>
+        laptopNames.has(name) ? new RemoteMcpTransport(name) : undefined;
+}
 
 /** Configure after handshake; clearing also closes all remote-owned transports. */
 export function configureRemoteMcpConnection(value: RemoteSettingsConnection): () => Promise<void> {

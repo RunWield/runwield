@@ -1,6 +1,6 @@
 /** Typed outcomes for validation operations that did not reach a terminal Plan state. */
 
-import type { JsonValue } from "../jsonc.ts";
+import type { JsonValue } from "@runwield/parsing/jsonc";
 import { getCustomSetting } from "../settings.ts";
 import { recordMetric } from "./validation-context.ts";
 import type { ValidationLoopArgs } from "./validation-types.ts";

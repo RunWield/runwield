@@ -1,3 +1,4 @@
+import { codingAgent } from "@runwield/pi-ai/coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { buildAgentSession } from "../session.ts";
 import { normalizeRuntimeUsage } from "../session-runtime-events.ts";
@@ -36,7 +37,7 @@ export async function generateInMemoryGuide(
     options.signal?.addEventListener("abort", abort, { once: true });
     try {
         options.signal?.throwIfAborted();
-        await session.prompt(prompt);
+        await codingAgent.prompt(session, { text: prompt });
         await Promise.all(pendingUsageWrites);
         options.signal?.throwIfAborted();
         const message = session.messages.findLast((entry) => entry.role === "assistant");

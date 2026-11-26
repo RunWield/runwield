@@ -2,7 +2,8 @@ import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { createAssistantMessageEventStream, normalizeContext } from "@earendil-works/pi-ai";
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
-import { formatProviderError, normalizeProviderStream } from "./provider-errors.ts";
+import { normalizeProviderStream } from "@runwield/pi-ai/coding-agent";
+import { formatProviderError } from "@runwield/pi-ai/turn";
 
 const model: Model<Api> = {
     api: "fixture",
@@ -54,7 +55,10 @@ test("standalone EOF keeps partial response and final result in sync", async () 
     });
     const events = [];
     for await (const event of stream) events.push(event);
-    assertEquals(events.map((event) => event.type), ["start", "text_delta", "error"]);
+    assertEquals(
+        events.map((event) => event.type),
+        ["start", "text_delta", "error"],
+    );
     const failure = events.find((event) => event.type === "error");
     if (!failure || failure.type !== "error") throw new Error("Missing error event");
     assertEquals(failure.error.errorMessage, "Network error: Unexpected EOF");
@@ -82,13 +86,14 @@ for (const failureKind of ["sync", "rejected", "iterator"]) {
                 throw new Error("Unexpected EOF");
             };
         }
-        const provider = failureKind === "sync"
-            ? () => {
-                throw new Error("Unexpected EOF");
-            }
-            : failureKind === "rejected"
-            ? () => Promise.reject(new Error("Unexpected EOF"))
-            : () => source;
+        const provider =
+            failureKind === "sync"
+                ? () => {
+                      throw new Error("Unexpected EOF");
+                  }
+                : failureKind === "rejected"
+                  ? () => Promise.reject(new Error("Unexpected EOF"))
+                  : () => source;
         const stream = normalizeProviderStream(provider, model, context);
         const events = [];
         for await (const event of stream) events.push(event);
@@ -97,7 +102,10 @@ for (const failureKind of ["sync", "rejected", "iterator"]) {
         assertEquals(failure.error.errorMessage, "Network error: Unexpected EOF");
         assertEquals(await stream.result(), failure.error);
         if (failureKind === "iterator") {
-            assertEquals(failure.error.content.map((block) => block.type), ["text", "thinking", "toolCall"]);
+            assertEquals(
+                failure.error.content.map((block) => block.type),
+                ["text", "thinking", "toolCall"],
+            );
             assertEquals(failure.error.usage, usage);
         }
     });

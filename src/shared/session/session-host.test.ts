@@ -1,27 +1,13 @@
+import { strictEqual } from "node:assert";
 import { test } from "node:test";
-import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
+import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { AgentSession, ExtensionRunner, SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
-import { McpIntegration } from "../mcp/integration.ts";
+import { startMcpIntegration } from "@runwield/pi-ai/mcp";
+import { mcpFixtureHost, mcpFixtureServer } from "../mcp/integration-fixture.ts";
 import { HostedSession } from "./hosted-session.ts";
 import { SessionHost } from "./session-host.ts";
-import { buildAgentSession } from "./session.ts";
-
-// Pi is an external SDK. Keep RunWield's MCP integration and cleanup real while
-// making the SDK report a failed shutdown and observing its disposal boundary.
-async function sdkShutdown(cwd: string, fail: boolean, disposed: () => void): Promise<AgentSession> {
-    const { session } = await buildAgentSession({ cwd, agentName: "guide" });
-    const runner = session.extensionRunner;
-    if (!runner) throw new Error("Real Pi extension runner was not initialized");
-    if (fail) runner.emit = () => Promise.reject(new Error("SDK shutdown failed"));
-    const dispose = session.dispose.bind(session);
-    session.dispose = () => {
-        dispose();
-        disposed();
-    };
-    return session;
-}
 
 test("SessionHost preserves real manager identity and removes only the requested session", async () => {
     await withRuntimeCommandFixture("session-host-identity-", async ({ projectRoot }) => {
@@ -87,31 +73,39 @@ test("SessionHost rejects two live owners of one persisted RunWield Session unti
     });
 });
 
-test("HostedSession keeps replacement MCP integration usable when the prior SDK shutdown fails", async () => {
+test("HostedSession keeps replacement MCP integration usable when the prior SDK shutdown fails", async (t) => {
     await withRuntimeCommandFixture("session-host-mcp-", async ({ projectRoot }) => {
         const hosted = new HostedSession({ id: "mcp-replacement", cwd: projectRoot });
-        let priorDisposed = false;
-        let replacementDisposed = false;
-        const prior = new McpIntegration();
-        prior.setSession(
-            await sdkShutdown(projectRoot, true, () => {
-                priorDisposed = true;
-            }),
-        );
-        const replacement = new McpIntegration();
-        replacement.setSession(
-            await sdkShutdown(projectRoot, false, () => {
-                replacementDisposed = true;
-            }),
-        );
-        await hosted.setMcpIntegration(prior);
-        await hosted.setMcpIntegration(replacement);
-        assertEquals(priorDisposed, true);
-        assertEquals(replacementDisposed, false);
-        assertEquals(await hosted.getMcpIntegration()?.runCommand("status"), [
-            { message: "No MCP servers configured.", level: "info" },
-        ]);
-        await hosted.dispose();
-        assertEquals(replacementDisposed, true);
+        const options = { ...mcpFixtureHost(projectRoot), servers: [mcpFixtureServer()] };
+        const { integration: prior } = await startMcpIntegration(options);
+        try {
+            await hosted.setMcpIntegration(prior);
+            const { integration: replacement } = await startMcpIntegration(options);
+            const toolNames = prior.getTools().map((tool) => tool.name);
+            assertEquals(toolNames.length > 0, true);
+            const emit = ExtensionRunner.prototype.emit;
+            const shutdown = t.mock.method(
+                ExtensionRunner.prototype,
+                "emit",
+                async function (this: ExtensionRunner, event: Parameters<typeof emit>[0]) {
+                    const result = await emit.call(this, event);
+                    if (event.type === "session_shutdown") throw new Error("SDK shutdown failed");
+                    return result;
+                },
+            );
+            const dispose = t.mock.method(AgentSession.prototype, "dispose");
+            await hosted.setMcpIntegration(replacement);
+            shutdown.mock.restore();
+            strictEqual(hosted.getMcpIntegration(), replacement);
+            assertEquals(prior.getTools(), []);
+            assertEquals(replacement.getTools().map((tool) => tool.name), toolNames);
+            assertEquals(dispose.mock.calls.length, 1);
+            assertStringIncludes(JSON.stringify(await hosted.getMcpIntegration()?.runCommand("")), "connected");
+            await hosted.dispose();
+            assertEquals(replacement.getTools(), []);
+            assertEquals(dispose.mock.calls.length, 2);
+        } finally {
+            if (!hosted.disposed) await hosted.dispose();
+        }
     });
 });

@@ -1,4 +1,4 @@
-import { isRemovedAgyProvider, removedAgyModelError } from "../../shared/models/removed-providers.ts";
+import { isRemovedAgyProvider, removedAgyModelError } from "@runwield/pi-ai/models";
 import process from "node:process";
 /**
  * @module cmd/resume
@@ -7,7 +7,7 @@ import process from "node:process";
 
 import type { SelectListLayoutOptions } from "@earendil-works/pi-tui";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getModelRegistry } from "../../shared/models/model-registry.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
 import { buildConversationRestoredMessage } from "../../shared/session/session-user-messages.ts";
 import { getMergedCustomSetting, getSettingsManager } from "../../shared/settings.ts";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";

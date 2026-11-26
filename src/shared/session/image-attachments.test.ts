@@ -28,7 +28,7 @@ import { __resetSettingsForTests } from "../settings.ts";
 
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import { RunWieldModelRegistry } from "../models/model-registry.ts";
+import { RunWieldModelRegistry } from "@runwield/pi-ai/models";
 import type { FetchRequest } from "../fetch-request.ts";
 
 interface VisionFallbackSettings {
@@ -209,7 +209,7 @@ test("resolveVisionFallbackModel reports unknown, unauthenticated, and non-visio
                     );
                     const registry = new RunWieldModelRegistry({ configDir });
                     await assertRejects(
-                        () => resolveVisionFallbackModel(registry, NO_MODEL_DISCOVERY_NETWORK, cwd),
+                        () => resolveVisionFallbackModel(registry, cwd, NO_MODEL_DISCOVERY_NETWORK),
                         Error,
                         scenario.expected,
                     );
@@ -224,7 +224,7 @@ test("resolveVisionFallbackModel rejects Antigravity before model discovery", as
         await withVisionSettings({ visionFallback: { model: "agy-cli/gemini-3.8-flash" } }, async (home, cwd) => {
             const registry = new RunWieldModelRegistry({ configDir: join(home, ".wld") });
             await assertRejects(
-                () => resolveVisionFallbackModel(registry, NO_MODEL_DISCOVERY_NETWORK, cwd),
+                () => resolveVisionFallbackModel(registry, cwd, NO_MODEL_DISCOVERY_NETWORK),
                 Error,
                 "Antigravity",
             );
@@ -256,7 +256,7 @@ test("resolveVisionFallbackModel discovers configured provider models", async ()
                         json: () => Promise.resolve({ data: [{ id: "discovered" }] }),
                     } as Response)) as FetchRequest,
             };
-            const resolved = await resolveVisionFallbackModel(registry, network, tempProject);
+            const resolved = await resolveVisionFallbackModel(registry, tempProject, network);
             assertEquals(resolved?.modelRef, "local/discovered");
             assertEquals(resolved?.model.input, ["text", "image"]);
             assertEquals(getCwd().endsWith(tempProject.replace(/^\/private/, "")), true);

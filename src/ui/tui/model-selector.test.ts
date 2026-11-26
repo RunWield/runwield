@@ -2,7 +2,8 @@ import { test } from "node:test";
 import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Editor, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { getModelRegistry, RunWieldModelRegistry } from "../../shared/models/model-registry.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
+import { RunWieldModelRegistry } from "@runwield/pi-ai/models";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { getEditorTheme, initRunWieldTheme } from "../theme/theme.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.ts";
@@ -39,7 +40,7 @@ test("^TUI model selector exposes Pi and Claude CLI without offering retired Ant
         const selected: Array<{ id: string; provider: string }> = [];
         try {
             const registry = getModelRegistry();
-            await registry.getRuntime();
+            await registry.ready();
             const currentModel = registry.find("runtime-command-fixture", "fixture-model");
             const selector = new RunWieldModelSelectorComponent({
                 tui,
@@ -87,7 +88,7 @@ test("TUI model selector cancellation leaves selection callbacks untouched", asy
         let cancelled = false;
         try {
             const registry = getModelRegistry();
-            await registry.getRuntime();
+            await registry.ready();
             const selector = new RunWieldModelSelectorComponent({
                 tui,
                 modelRegistry: registry,
@@ -163,7 +164,7 @@ for (const [outcome, action] of [
                     await runtime.refresh({ providers: ["openai"], allowNetwork: true, force: true });
                     latest = true;
                     serverRequests = 0;
-                    const registry = new RunWieldModelRegistry({ runtime, configDir: homeDir });
+                    const registry = new RunWieldModelRegistry({ runtime, configDir: homeDir }).catalog;
                     const selected: string[] = [];
                     const search = action === "empty-row" ? "new-catalog-model" : "catalog-model";
                     const selector = new RunWieldModelSelectorComponent({

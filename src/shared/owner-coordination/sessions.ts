@@ -23,7 +23,7 @@ import {
 import { bindProjectRegistry } from "@runwield/projects/owner-coordination";
 
 import type { SQLOutputValue } from "node:sqlite";
-import type { JsonRecord } from "../jsonc.ts";
+import type { JsonRecord } from "@runwield/parsing/jsonc";
 import type {
     CatalogDiagnostic,
     CatalogedSession as FileCatalogedSession,

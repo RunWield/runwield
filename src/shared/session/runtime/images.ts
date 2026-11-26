@@ -1,4 +1,4 @@
-import { isRemovedAgyProvider, removedAgyModelError } from "../../models/removed-providers.ts";
+import { isRemovedAgyProvider, removedAgyModelError } from "@runwield/pi-ai/models";
 import { AGENTS, agentRegistry } from "../agent-registry.ts";
 import { readPersistedManualModelState, resolveResumeAgentName } from ".././active-agent-session.ts";
 import { resolveModel } from ".././session.ts";
@@ -13,7 +13,7 @@ import {
     prepareImagesForModel,
     resolveVisionFallbackModel,
 } from ".././image-attachments.ts";
-import { getModelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK } from "../../models/model-registry.ts";
+import { getNativeModelRegistry } from "@runwield/pi-ai/models";
 
 import { getRuntimeRootAgentSession, isRuntimeRootSessionManager, resolvePersistedResumeModel } from "./support.ts";
 import type { ManagedOperationFailure, PromptSessionOptions } from "./types.ts";
@@ -30,7 +30,7 @@ type PersistedSessionImage = Awaited<ReturnType<typeof persistImageAttachment>> 
     error?: undefined;
 };
 interface RuntimeImageAgentSession {
-    modelRegistry?: ReturnType<typeof getModelRegistry>;
+    modelRegistry?: ReturnType<typeof getNativeModelRegistry>;
     model?: RuntimeImageModel;
 }
 
@@ -95,7 +95,7 @@ export class RuntimeImages {
         const managed = session.getManagedMetadata?.();
         const modelProvider = modelState.provider || managed?.provider || "";
         const modelId = modelState.model || managed?.model || "";
-        const modelRegistry = agentSession.modelRegistry || getModelRegistry();
+        const modelRegistry = agentSession.modelRegistry || getNativeModelRegistry();
         const activeModel =
             agentSession.model || (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
         if (isRemovedAgyProvider(activeModel?.provider || modelProvider)) {
@@ -110,9 +110,7 @@ export class RuntimeImages {
         let fallbackModelRef: string | undefined;
         if (images.length > 0 && !modelSupportsImageInput(activeModel)) {
             try {
-                fallbackModelRef = (
-                    await resolveVisionFallbackModel(modelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK, session.cwd)
-                )?.modelRef;
+                fallbackModelRef = (await resolveVisionFallbackModel(modelRegistry, session.cwd))?.modelRef;
             } catch (error) {
                 return { ok: false as const, message: error instanceof Error ? error.message : String(error) };
             }
@@ -129,7 +127,7 @@ export class RuntimeImages {
         const managed = session.getManagedMetadata?.();
         const modelProvider = modelState.provider || managed?.provider || "";
         const modelId = modelState.model || managed?.model || "";
-        const modelRegistry = agentSession?.modelRegistry || getModelRegistry();
+        const modelRegistry = agentSession?.modelRegistry || getNativeModelRegistry();
         const activeModel =
             agentSession?.model || (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
         const imageModel =
@@ -148,7 +146,7 @@ export class RuntimeImages {
         session: import(".././hosted-session.ts").HostedSession,
         images: import(".././image-attachments.ts").ImageAttachment[],
         activeModel: RuntimeImageModel | null | undefined,
-        modelRegistry: ReturnType<typeof getModelRegistry>,
+        modelRegistry: ReturnType<typeof getNativeModelRegistry>,
     ) {
         if (!images || images.length === 0) return { ok: true, mode: "none" };
         const modelProvider = (activeModel || {}).provider;
@@ -165,9 +163,7 @@ export class RuntimeImages {
         let fallbackModelRef;
         if (!modelSupportsImageInput(activeModel)) {
             try {
-                fallbackModelRef = (
-                    await resolveVisionFallbackModel(modelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK, session.cwd)
-                )?.modelRef;
+                fallbackModelRef = (await resolveVisionFallbackModel(modelRegistry, session.cwd))?.modelRef;
             } catch (error) {
                 return { ok: false, message: error instanceof Error ? error.message : String(error) };
             }
@@ -196,7 +192,7 @@ export class RuntimeImages {
                 : options.preparedModelOverride || options.modelOverride;
         const ignoreManualModelOverride = namedInvocation.kind === "prompt_template";
         const agentDef = await agentRegistry.get(agentName, session.cwd);
-        const modelRegistry = getModelRegistry();
+        const modelRegistry = getNativeModelRegistry();
         const currentSessionManager = session.getRootSessionManager?.();
         let sessionManager: import("./support.ts").RuntimeRootSessionManager | null = isRuntimeRootSessionManager(
             currentSessionManager,

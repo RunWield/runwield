@@ -9,7 +9,8 @@ import { Type } from "typebox";
 import { withRuntimeCommandFixture, type RuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { buildAgentSession } from "./session.ts";
 import { setCustomSetting } from "../settings.ts";
-import { startMcpIntegration } from "../mcp/integration.ts";
+import { startMcpIntegration } from "@runwield/pi-ai/mcp";
+import { mcpFixtureHost } from "../mcp/integration-fixture.ts";
 
 async function script(fixture: RuntimeCommandFixture, session: AgentSession, code: string) {
     const id = crypto.randomUUID();
@@ -222,7 +223,7 @@ test("codemode calls the real MCP connection and follows root replacement withou
         const toolsPath = join(f.projectRoot, "mcp-tools.txt");
         await writeFile(toolsPath, "fixture_echo");
         const { integration } = await startMcpIntegration({
-            cwd: f.projectRoot,
+            ...mcpFixtureHost(f.projectRoot),
             servers: [
                 {
                     name: "fixture",
@@ -365,7 +366,7 @@ test("worker admission queues excess scripts and an aborted queued script never 
 test("non-chat models use configured auth and persist attributed usage exactly once", async () => {
     await withRuntimeCommandFixture("codemode-model-", async (f) => {
         const { createProvider } = await import("@earendil-works/pi-ai");
-        const { getModelRuntime } = await import("../models/model-registry.ts");
+        const { getModelRuntime } = await import("@runwield/pi-ai/models");
         const runtime = await getModelRuntime();
         const calls: string[] = [];
         runtime.registerNativeProvider(

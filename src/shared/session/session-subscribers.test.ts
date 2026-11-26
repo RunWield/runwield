@@ -1,3 +1,4 @@
+import type { ToolResult } from "@runwield/pi-ai/turn";
 import { makeTempFile } from "../../testing/temp-file.ts";
 import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
@@ -19,7 +20,6 @@ import type {
     RuntimeAssistantThinkingDeltaEvent,
     RuntimeToolEndEvent,
     RuntimeToolIdentity,
-    RuntimeToolResult,
     SessionRuntimeEvent,
 } from "./session-runtime-events.ts";
 
@@ -56,7 +56,7 @@ type SubscriberEventFixture = SubscriberFixtureFields<AgentSessionEvent> &
 type ObservedSubscriberEvent = SessionRuntimeEvent &
     Partial<
         RuntimeToolIdentity &
-            RuntimeToolResult &
+            ToolResult &
             Pick<RuntimeToolEndEvent, "durationMs"> &
             Pick<RuntimeAssistantThinkingDeltaEvent, "messageId">
     >;

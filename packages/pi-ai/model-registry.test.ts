@@ -1,16 +1,17 @@
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { FetchRequest } from "../fetch-request.ts";
+import type { FetchRequest } from "../../src/shared/fetch-request.ts";
 import { test } from "node:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals } from "../../testing/assertions.ts";
+import { assertEquals } from "../../src/testing/assertions.ts";
 import { join } from "node:path";
 import {
     discoverProviderModel,
     migratePiModelConfigOnce,
     RunWieldCredentialStore,
+    getRunWieldCredentialStore,
     RunWieldModelRegistry,
 } from "./model-registry.ts";
 
@@ -167,14 +168,14 @@ for (const mode of ["default", "explicit-vision", "allowlist"] as const) {
                     },
                 }),
             );
-            const credentialStore = new RunWieldCredentialStore(join(tempDir, "auth.json"));
+            const credentialStore = getRunWieldCredentialStore(tempDir);
             const runtime = await ModelRuntime.create({
                 credentials: credentialStore,
                 modelsPath: null,
                 allowModelNetwork: false,
                 refreshOnCreate: false,
             });
-            const registry = new RunWieldModelRegistry({ configDir: tempDir, credentialStore, runtime });
+            const registry = new RunWieldModelRegistry({ configDir: tempDir, runtime });
             const fetchFixture: FetchRequest = (input, init) => {
                 assertEquals(String(input), "https://provider.example/v1/models");
                 assertEquals(new Headers(init?.headers).get("authorization"), "Bearer fixture-key");
@@ -185,11 +186,10 @@ for (const mode of ["default", "explicit-vision", "allowlist"] as const) {
                     registry,
                     "fixture",
                     id,
-                    { fetch: fetchFixture },
                     {
-                        runwieldDir: tempDir,
                         ...(mode === "explicit-vision" ? { input: ["text", "image"] } : {}),
                     },
+                    { fetch: fetchFixture },
                 );
                 assert(found);
                 assertEquals(found.id, id);

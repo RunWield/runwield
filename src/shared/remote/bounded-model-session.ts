@@ -1,23 +1,18 @@
+import { codingAgent, type CodingAgent } from "@runwield/pi-ai/coding-agent";
 import { opendir } from "node:fs/promises";
 import { stat as fsStat } from "node:fs/promises";
-import {
-    type AgentSession,
-    createAgentSession,
-    DefaultResourceLoader,
-    SessionManager,
-} from "@earendil-works/pi-coding-agent";
+import { type AgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, join } from "node:path";
-import { type RunWieldModel, RunWieldModelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK } from "../models/model-registry.ts";
+import { type RunWieldModel, RunWieldModelRegistry } from "@runwield/pi-ai/models";
 import {
-    applySessionTemperature,
     assembleFinalSystemPrompt,
     getConfiguredAgentTemperature,
     getPromptTemplatePaths,
     resolveModel,
 } from "../session/session.ts";
 import { agentRegistry } from "../session/agent-registry.ts";
-import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
-import { parseProviderModel } from "../models/model-validation.ts";
+import { assertModelExecutionBackendSupported } from "@runwield/pi-ai";
+import { parseProviderModel } from "@runwield/pi-ai";
 import { modelSupportsImageInput, resolveVisionFallbackModel } from "../session/image-attachments.ts";
 import { getResolvedVisionFallbackModelSetting, getSettingsManager } from "../settings.ts";
 import { createSeeImageTool } from "../../tools/see-image.ts";
@@ -27,7 +22,11 @@ import {
     mappedRemotePackageSettings,
     resolveInstalledPackagePromptResources,
 } from "../package-resources.ts";
-import { createRemoteModelRuntime, fetchRemoteModelCatalog, type RemoteModelConnection } from "./model-bridge.ts";
+import {
+    createRemoteModelRuntime,
+    fetchRemoteModelCatalog,
+    type RemoteModelConnection,
+} from "@runwield/pi-ai/remote-models";
 import {
     assertPersonalResourcePath,
     configureRemotePersonalResources,
@@ -96,7 +95,7 @@ export async function createBoundedRemoteModelSession(options: {
     agentName?: string;
     agentDef?: Parameters<typeof resolveModel>[1];
     /** Synthetic project tools for bounded integration checks; this does not enable remote user turns. */
-    customTools?: NonNullable<Parameters<typeof createAgentSession>[0]>["customTools"];
+    customTools?: Parameters<CodingAgent["create"]>[0]["customTools"];
 }): Promise<{ session: AgentSession; registry: RunWieldModelRegistry }> {
     if (remotePersonalResourcesActive()) throw new Error("Remote personal resources are already configured");
     if (
@@ -142,14 +141,14 @@ export async function createBoundedRemoteModelSession(options: {
         getResolvedVisionFallbackModelSetting(options.cwd) &&
         !customTools.some((tool) => tool.name === "see_image")
     ) {
-        const fallback = await resolveVisionFallbackModel(registry, SYSTEM_MODEL_DISCOVERY_NETWORK, options.cwd);
+        const fallback = await resolveVisionFallbackModel(registry, options.cwd);
         if (fallback) {
             customTools.push(
                 createSeeImageTool({
                     cwd: options.cwd,
                     remoteModel: fallback.model,
-                    completeSimpleFn: (model, context, streamOptions) =>
-                        runtime.streamSimple(model, context, streamOptions).result(),
+                    completeTurn: (model, input, options) =>
+                        codingAgent.complete(model, input, { ...options, runtime }),
                     onModelStart: options.personalOwner
                         ? async () => {
                               // Capture consent and identity per request.
@@ -201,7 +200,7 @@ export async function createBoundedRemoteModelSession(options: {
             }
         }
     }
-    const loader = new DefaultResourceLoader({
+    const loader = await codingAgent.loadResources({
         cwd: options.cwd,
         agentDir: personalGlobalRoot(),
         settingsManager: mappedRemotePackageSettings(settingsManager),
@@ -213,8 +212,7 @@ export async function createBoundedRemoteModelSession(options: {
         noThemes: true,
         systemPromptOverride: () => systemPrompt,
     });
-    await loader.reload();
-    const { session } = await createAgentSession({
+    const { session } = await codingAgent.create({
         cwd: options.cwd,
         agentDir: personalGlobalRoot(),
         modelRuntime: runtime,
@@ -226,6 +224,8 @@ export async function createBoundedRemoteModelSession(options: {
         customTools,
         ...(customTools.length ? {} : { noTools: "all" }),
     });
-    applySessionTemperature(session, getConfiguredAgentTemperature(agentName, options.cwd) ?? agentDef.temperature);
+    codingAgent.configureProvider(session, {
+        temperature: getConfiguredAgentTemperature(agentName, options.cwd) ?? agentDef.temperature,
+    });
     return { session, registry };
 }

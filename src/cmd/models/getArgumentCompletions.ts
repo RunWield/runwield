@@ -1,9 +1,9 @@
-import { getModelRegistry, getModelRuntime } from "../../shared/models/model-registry.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
 import type { CommandCompletionItem } from "../registry.ts";
 
 export async function getModelCompletions(argumentPrefix: string): Promise<CommandCompletionItem[]> {
-    await getModelRuntime();
     const modelRegistry = getModelRegistry();
+    await modelRegistry.ready();
     const models =
         typeof modelRegistry.getSelectable === "function"
             ? modelRegistry.getSelectable()

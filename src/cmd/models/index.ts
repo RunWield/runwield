@@ -1,12 +1,12 @@
-import { isRemovedAgyProvider, removedAgyModelError } from "../../shared/models/removed-providers.ts";
+import { isRemovedAgyProvider, removedAgyModelError } from "@runwield/pi-ai/models";
 /**
  * @module cmd/models
  * Handler for the model listing and switching command.
  */
 
 import type { UiAPI } from "../../ui/tui/api.ts";
-import { getModelRegistry } from "../../shared/models/model-registry.ts";
-import { parseProviderModel } from "../../shared/models/model-validation.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
+import { parseProviderModel } from "@runwield/pi-ai";
 import { setDefaultModelSelection } from "../../shared/session/model-selection.ts";
 import {
     applyUserModelSelection,
@@ -65,7 +65,7 @@ export async function runModelsCommand(
     }
 
     const modelRegistry = getModelRegistry();
-    await modelRegistry.getRuntime();
+    await modelRegistry.ready();
 
     if (!firstArg) {
         if (!uiAPI) {

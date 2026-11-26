@@ -1,4 +1,4 @@
-import type { JsonRecord } from "../../shared/jsonc.ts";
+import type { JsonRecord } from "@runwield/parsing/jsonc";
 import {
     getCodeReviewMode,
     getCustomSetting,

@@ -22,7 +22,7 @@ import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-a
 import type { HostedSession, ThinkingLevel } from "./hosted-session.ts";
 import type { ImageAttachment } from "./image-attachments.ts";
 import type { TriageMeta } from "@runwield/workflow/state";
-import type { McpIntegration } from "../mcp/integration.ts";
+import type { McpIntegration } from "@runwield/pi-ai/mcp";
 import type { McpServerDefinition } from "../mcp/config.ts";
 import type { ManagedOperationCapability } from "./managed-operation.ts";
 import type { RequestDispatchKind } from "./request-dispatch.ts";

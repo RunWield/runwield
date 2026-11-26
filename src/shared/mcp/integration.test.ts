@@ -22,8 +22,9 @@ import { HostedSession } from "../session/hosted-session.ts";
 import { buildAgentSession, runIsolatedAgentSession } from "../session/session.ts";
 import { SessionRuntime, createSessionRuntime } from "../session/session-runtime.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { startMcpIntegration } from "./integration.ts";
-import { getModelRegistry } from "../models/model-registry.ts";
+import { startMcpIntegration } from "@runwield/pi-ai/mcp";
+import { mcpFixtureHost } from "./integration-fixture.ts";
+import { getModelRuntime } from "@runwield/pi-ai/models";
 import { getSettingsDir, getSettingsManager } from "../settings.ts";
 
 interface McpResultDetails {
@@ -51,7 +52,7 @@ async function readLog(path: string): Promise<string[]> {
 async function startFixtureIntegration(env: Record<string, string> = {}) {
     const logPath = await makeTempFile({ prefix: "runwield-mcp-log-" });
     const integrationResult = await startMcpIntegration({
-        cwd: getCwd(),
+        ...mcpFixtureHost(getCwd()),
         servers: [
             {
                 name: "fixture",
@@ -383,7 +384,7 @@ test("Runtime replacement carries MCP ownership to the new Session", async () =>
 
 test("MCP integration warnings identify connection failures without exposing raw server text", async () => {
     const spawnFailure = await startMcpIntegration({
-        cwd: getCwd(),
+        ...mcpFixtureHost(getCwd()),
         servers: [{ name: "dead", command: "/definitely/not/runwield-mcp", args: [], env: {}, source: "request" }],
     });
     try {
@@ -480,7 +481,7 @@ test("Pi MCP updates root declarations and withdraws tools without reconnecting"
     const { session } = await createAgentSession({
         cwd,
         agentDir: getSettingsDir("global"),
-        modelRuntime: await getModelRegistry().getRuntime(),
+        modelRuntime: await getModelRuntime(),
         settingsManager: getSettingsManager(cwd),
         sessionManager: SessionManager.inMemory(cwd),
         noTools: "builtin",
@@ -583,7 +584,7 @@ test("an initially empty MCP inventory updates its root while isolated calls sta
         const toolsPath = join(fixture.projectRoot, "mcp-tools.txt");
         await fsWriteFile(toolsPath, "");
         const { integration } = await startMcpIntegration({
-            cwd: fixture.projectRoot,
+            ...mcpFixtureHost(fixture.projectRoot),
             servers: [
                 {
                     name: "fixture",
@@ -646,7 +647,7 @@ test("a root with failed initial discovery receives tools after official MCP rec
         const failurePath = join(fixture.projectRoot, "init-error.txt");
         await fsWriteFile(failurePath, "1");
         const { integration, warnings } = await startMcpIntegration({
-            cwd: fixture.projectRoot,
+            ...mcpFixtureHost(fixture.projectRoot),
             servers: [
                 {
                     name: "fixture",

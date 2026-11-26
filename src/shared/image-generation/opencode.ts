@@ -1,11 +1,11 @@
-import type { ImageContent, ImagesInputContent } from "@earendil-works/pi-ai";
-import { getModelRegistry, getModelRuntime } from "../models/model-registry.ts";
+import type { TurnImage, TurnInput } from "@runwield/pi-ai/turn";
+import { getNativeModelRegistry, getModelRuntime } from "@runwield/pi-ai/models";
 import type { ImageGenerationSettings } from "../image-generation-settings.ts";
 
 interface OpenCodeImageRequest {
     model: string;
     settings: ImageGenerationSettings;
-    input: ImagesInputContent[];
+    input: TurnInput;
     signal?: AbortSignal;
 }
 interface ResponseImage {
@@ -21,7 +21,7 @@ interface ImageResponse {
 }
 
 /** Hosted image tool over OpenCode's documented Responses endpoint, using existing Pi auth. */
-export async function generateOpenCodeImage(request: OpenCodeImageRequest): Promise<ImageContent> {
+export async function generateOpenCodeImage(request: OpenCodeImageRequest): Promise<TurnImage> {
     request.signal?.throwIfAborted();
     const runtime = await getModelRuntime();
     const model = runtime.getModel("opencode", request.model);
@@ -30,7 +30,7 @@ export async function generateOpenCodeImage(request: OpenCodeImageRequest): Prom
             `opencode/${request.model} is not a Responses model. This adapter requires OpenCode to support its hosted image_generation tool; vision input alone is not sufficient.`,
         );
     }
-    if (request.input.some((block) => block.type === "image") && !model.input.includes("image")) {
+    if (request.input.images?.length && !model.input.includes("image")) {
         throw new Error(`opencode/${request.model} does not accept reference images.`);
     }
     const level = request.settings.thinkingLevel;
@@ -47,7 +47,7 @@ export async function generateOpenCodeImage(request: OpenCodeImageRequest): Prom
     if (request.settings.temperature !== undefined && model.reasoning) {
         throw new Error("OpenCode temperature is not enabled for reasoning models in this image adapter. Remove it.");
     }
-    const auth = await getModelRegistry().getApiKeyAndHeaders(model);
+    const auth = await getNativeModelRegistry().getApiKeyAndHeaders(model);
     if (!auth.ok || !auth.apiKey) throw new Error("Configure the existing opencode provider login/key in RunWield.");
     const timeout = new AbortController();
     const timer = setTimeout(() => timeout.abort(new Error("OpenCode image generation timed out.")), 300_000);
@@ -67,16 +67,19 @@ export async function generateOpenCodeImage(request: OpenCodeImageRequest): Prom
                 model: model.id,
                 store: false,
                 stream: false,
-                input: [{
-                    role: "user",
-                    content: request.input.map((block) =>
-                        block.type === "text" ? { type: "input_text", text: block.text } : {
-                            type: "input_image",
-                            image_url: `data:${block.mimeType};base64,${block.data}`,
-                            detail: "auto",
-                        }
-                    ),
-                }],
+                input: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "input_text", text: request.input.text },
+                            ...(request.input.images ?? []).map((image) => ({
+                                type: "input_image",
+                                image_url: `data:${image.mimeType};base64,${image.data}`,
+                                detail: "auto",
+                            })),
+                        ],
+                    },
+                ],
                 tools: [{ type: "image_generation", output_format: "png" }],
                 tool_choice: { type: "image_generation" },
                 ...(effort ? { reasoning: { effort } } : {}),
@@ -105,7 +108,8 @@ export async function generateOpenCodeImage(request: OpenCodeImageRequest): Prom
             throw new Error(`OpenCode returned a non-JSON image response (HTTP ${response.status}).`);
         }
         if (!response.ok || result.error) {
-            const message = String(result.error?.message || response.statusText).replaceAll(auth.apiKey, "[redacted]")
+            const message = String(result.error?.message || response.statusText)
+                .replaceAll(auth.apiKey, "[redacted]")
                 .slice(0, 500);
             throw new Error(
                 `OpenCode image generation rejected (HTTP ${response.status}): ${message}. Check model access and hosted image-tool support; no fallback or retry was made.`,

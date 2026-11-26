@@ -6,7 +6,7 @@
     "engines": {
         "bun": "^1.4.0"
     },
-    "workspaces": ["packages/agents", "packages/bundled-assets", "packages/parsing", "packages/plans", "packages/projects", "packages/resources", "packages/session-files", "packages/tools", "packages/workflow"],
+    "workspaces": ["packages/agents", "packages/bundled-assets", "packages/parsing", "packages/pi-ai", "packages/plans", "packages/projects", "packages/resources", "packages/session-files", "packages/tools", "packages/workflow"],
     "trustedDependencies": [],
     "scripts": {
         "install:locked": "bun scripts/check-bun-runtime.ts && bun install --frozen-lockfile --ignore-scripts && cd docs-site && bun install --frozen-lockfile --ignore-scripts",
@@ -97,6 +97,7 @@
         "@runwield/agents": "workspace:*",
         "@runwield/bundled-assets": "workspace:*",
         "@runwield/parsing": "workspace:*",
+        "@runwield/pi-ai": "workspace:*",
         "@runwield/plans": "workspace:*",
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
@@ -143,7 +144,6 @@
         "happy-dom": "21.0.4",
         "highlight.js": "11.12.0",
         "js-yaml": "4.3.2",
-        "jsonc-parser": "3.3.1",
         "katex": "0.19.1",
         "lucide-react": "1.55.0",
         "marked": "18.0.11",

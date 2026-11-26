@@ -52,7 +52,7 @@ import {
 } from "./event-mapper.ts";
 import { createAcpInteractionAdapter } from "./interaction-mapper.ts";
 import { formatChatQuestion, parseChatReply } from "./chat-interaction.ts";
-import { buildAcpModelOptions } from "./model-options.ts";
+import { buildAcpModelOptions, type AcpModelSelection } from "./model-options.ts";
 import { getCommandDefinition, getSlashCommandDefinition, getSlashCommandDefinitions } from "../cmd/registry.ts";
 import { ProjectRuntimeEntryRefusedError } from "../shared/project-runtime-layout.ts";
 import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "../shared/session/session-runtime-interactions.ts";
@@ -509,15 +509,14 @@ async function notifyAcpCommandCatalog(
 
 async function notifyAcpModelOptions(
     context: AcpNotificationContext,
-    runtime: SessionRuntime,
-    runtimeSessionId: string,
     acpSessionId: string,
+    selection: AcpModelSelection,
 ) {
     await notifyClient(context, methods.client.session.update, {
         sessionId: acpSessionId,
         update: {
             sessionUpdate: "config_option_update",
-            configOptions: await buildAcpModelOptions(runtime, runtimeSessionId),
+            configOptions: await buildAcpModelOptions(selection),
         },
     });
 }
@@ -1014,15 +1013,26 @@ function createLiveOperation(options: AcpLiveOperationOptions) {
                 completed.resolve();
                 signalWake();
             }
-            const usage = runtime.getSessionSnapshot(runtimeSessionId)?.contextUsage || null;
-            const notification = mapEventWithSessionCost(sessionMap, acpSessionId, event, usage);
+            const snapshot = runtime.getSessionSnapshot(runtimeSessionId);
+            const notification = mapEventWithSessionCost(sessionMap, acpSessionId, event, snapshot?.contextUsage || null);
             if (
                 event.type === RuntimeEventTypes.MODEL_CHANGED ||
                 event.type === RuntimeEventTypes.AGENT_CHANGED ||
                 event.type === RuntimeEventTypes.THINKING_LEVEL_CHANGED
             ) {
+                // The managed session may return to its dormant snapshot while the catalog loads.
+                const selection: AcpModelSelection = {
+                    activeModel:
+                        event.type === RuntimeEventTypes.MODEL_CHANGED
+                            ? { model: event.model, provider: event.provider }
+                            : snapshot?.activeModel,
+                    thinkingLevel:
+                        event.type === RuntimeEventTypes.THINKING_LEVEL_CHANGED
+                            ? event.thinkingLevel
+                            : snapshot?.thinkingLevel,
+                };
                 queue(async (context) => {
-                    await notifyAcpModelOptions(context, runtime, runtimeSessionId, acpSessionId);
+                    await notifyAcpModelOptions(context, acpSessionId, selection);
                     await notifyAcpContextUsage(context, runtime, sessionMap, runtimeSessionId, acpSessionId);
                 });
             }
@@ -1322,7 +1332,7 @@ function createRunWieldAcpServer(context: AcpServerContext): AgentApp {
             { persistedSessionId },
         );
         await replaySetupEvents(context, runtime, sessionMap, runtimeSessionId, record.acpSessionId);
-        const configOptions = await buildAcpModelOptions(runtime, runtimeSessionId);
+        const configOptions = await buildAcpModelOptions(runtime.getSessionSnapshot(runtimeSessionId));
         queueMicrotask(() => {
             notifyAcpCommandCatalog(context, runtime, runtimeSessionId, record.acpSessionId).catch(() => {});
         });
@@ -1382,7 +1392,7 @@ function createRunWieldAcpServer(context: AcpServerContext): AgentApp {
                 .filter(Boolean)
                 .map((notification) => notifyClient(context, methods.client.session.update, notification!));
             await Promise.allSettled(notifications);
-            const configOptions = await buildAcpModelOptions(runtime, result.sessionId);
+            const configOptions = await buildAcpModelOptions(runtime.getSessionSnapshot(result.sessionId));
             queueMicrotask(() => {
                 notifyAcpCommandCatalog(context, runtime, result.sessionId, record.acpSessionId).catch(() => {});
             });
@@ -1422,7 +1432,7 @@ function createRunWieldAcpServer(context: AcpServerContext): AgentApp {
         if (typeof configId !== "string" || typeof value !== "string") {
             throwInvalidParams("Expected a select config option with a string value");
         }
-        const exposedOptions = await buildAcpModelOptions(runtime, runtimeSessionId);
+        const exposedOptions = await buildAcpModelOptions(runtime.getSessionSnapshot(runtimeSessionId));
         const option = exposedOptions.find((candidate) => candidate.id === configId);
         if (!option || option.type !== "select") {
             throwInvalidParams(`Config option is not available: ${configId}=${value}`, { configId, value });
@@ -1470,7 +1480,7 @@ function createRunWieldAcpServer(context: AcpServerContext): AgentApp {
                 });
             }
         }
-        const configOptions = await buildAcpModelOptions(runtime, runtimeSessionId);
+        const configOptions = await buildAcpModelOptions(runtime.getSessionSnapshot(runtimeSessionId));
         await notifyClient(context, methods.client.session.update, {
             sessionId,
             update: { sessionUpdate: "config_option_update", configOptions },

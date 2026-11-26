@@ -1,8 +1,8 @@
-import type { McpIntegration } from "../../../mcp/integration.ts";
+import type { McpIntegration } from "@runwield/pi-ai/mcp";
 import type { Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { RunWieldModel } from "../../../models/model-registry.ts";
+import type { RunWieldModel } from "@runwield/pi-ai/models";
 import type { HostedSession } from "../../hosted-session.ts";
 import {
     emitHostedSessionRuntimeEvent,

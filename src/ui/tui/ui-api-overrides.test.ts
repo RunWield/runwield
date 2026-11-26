@@ -1,3 +1,4 @@
+import type { ActiveModelState } from "@runwield/pi-ai";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../testing/assertions.ts";
@@ -292,7 +293,7 @@ test("installUiApiOverrides closes a visible tool group before appending an imag
 
 test("/model opens the refresh-capable picker and selects a configured model", async () => {
     await withRuntimeCommandFixture("ui-api-model-selector-", async ({ projectRoot }) => {
-        const selectedModels: Array<{ model: string; provider?: string }> = [];
+        const selectedModels: ActiveModelState[] = [];
         const harness = makeHarness(projectRoot);
         installUiApiOverrides({
             ...harness,
@@ -337,7 +338,7 @@ test("/model opens the refresh-capable picker and selects a configured model", a
 
 test("installUiApiOverrides sends Claude selections through the runtime callback", async () => {
     await withRuntimeCommandFixture("ui-api-model-selector-claude-", async ({ projectRoot }) => {
-        const selectedModels: Array<{ model: string; provider?: string }> = [];
+        const selectedModels: ActiveModelState[] = [];
         const harness = makeHarness(projectRoot);
         installUiApiOverrides({
             ...harness,

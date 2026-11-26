@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
-import { getModelRegistry } from "../../models/model-registry.ts";
+import { getNativeModelRegistry } from "@runwield/pi-ai/models";
 import { setCustomSetting } from "../../settings.ts";
 import { getWorkflowMetricsFilePath } from "../../workflow/metrics.ts";
 import { HostedSession } from "../hosted-session.ts";
@@ -206,7 +206,7 @@ fixtures.push({
 for (const fixture of fixtures) {
     test(`${fixture.name}, including saved replay`, async () => {
         await withCliFixture(fixture, async (root) => {
-            const model = getModelRegistry().find("claude-cli", "sonnet");
+            const model = getNativeModelRegistry().find("claude-cli", "sonnet");
             assert(model);
             const manager = await createRootSessionManager("new", root);
             const hostedSession = new HostedSession({ id: "usage-fixture", cwd: root, sessionManager: manager });

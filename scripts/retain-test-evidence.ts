@@ -6,7 +6,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import type { JsonRecord, JsonValue } from "../src/shared/jsonc.ts";
+import type { JsonRecord, JsonValue } from "@runwield/parsing/jsonc";
 import type { PublicationPhase } from "@runwield/workflow/publication";
 
 const evidenceDirectory = /^runwield-golden-tui-(?:timeout|child-failure|failure)-[a-z0-9]+$/i;

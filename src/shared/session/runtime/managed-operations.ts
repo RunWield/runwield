@@ -12,7 +12,7 @@ import { RuntimeEventTypes } from ".././session-runtime-events.ts";
 import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.ts";
 import { openLiveSessionConnection } from ".././live-session-connection.ts";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.ts";
-import { parseProviderModel } from "../../models/model-validation.ts";
+import { parseProviderModel } from "@runwield/pi-ai";
 import { sessionDirForCheckout } from ".././file-session-storage.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 

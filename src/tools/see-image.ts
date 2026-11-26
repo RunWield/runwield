@@ -6,8 +6,9 @@
 import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult, SessionManager } from "@earendil-works/pi-coding-agent";
-import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai/compat";
-import { getModelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK } from "../shared/models/model-registry.ts";
+import type { CodingAgent } from "@runwield/pi-ai/coding-agent";
+import type { RunWieldModel } from "@runwield/pi-ai/models";
+import { getNativeModelRegistry } from "@runwield/pi-ai/models";
 import { remotePersonalResourcesActive } from "../shared/remote/personal-resources.ts";
 import { readImageRef, resolveVisionFallbackModel } from "../shared/session/image-attachments.ts";
 import { RuntimeUsageTotals } from "../shared/session/runtime-usage-totals.ts";
@@ -18,22 +19,6 @@ const definition = toolRegistry.get("see_image").definition;
 export const DEFAULT_SEE_IMAGE_PROMPT =
     "Describe this image in detail for a text-only coding agent. Include all visible UI/content, readable text and error messages, relevant layout, controls, highlighted regions, and visual state. If text or details are unclear, say so explicitly.";
 
-interface TextContentBlock {
-    type?: string;
-    text?: string;
-    data?: string;
-    mimeType?: string;
-}
-
-type AssistantContent = string | TextContentBlock[] | AssistantMessage["content"] | null | undefined;
-type VisionModel = Model<Api>;
-
-type CompleteSimpleFunction = (
-    model: VisionModel,
-    context: Context,
-    options?: SimpleStreamOptions,
-) => Promise<AssistantMessage>;
-
 export interface VisionMeasurementHandle {
     /** Called once after the request, including failed responses and thrown errors. */
     finish(observation: ModelUsageObservation, outcome: ExecutionOutcome): void | Promise<void>;
@@ -42,11 +27,11 @@ export interface VisionMeasurementHandle {
 interface SeeImageToolOptions {
     cwd: string;
     sessionManager?: SessionManager;
-    completeSimpleFn?: CompleteSimpleFunction;
+    completeTurn: CodingAgent["complete"];
     /** Capture the recorder and persist its start before dispatching the model request. */
     onModelStart?: () => VisionMeasurementHandle | Promise<VisionMeasurementHandle>;
     /** Selected by the bounded remote Session, never by this tool's caller. */
-    remoteModel?: VisionModel;
+    remoteModel?: RunWieldModel;
 }
 
 interface SeeImageDetails {
@@ -55,23 +40,12 @@ interface SeeImageDetails {
 
 type SeeImageResult = AgentToolResult<SeeImageDetails> & { isError?: boolean };
 
-export function extractAssistantText(content: AssistantContent): string {
-    if (typeof content === "string") return content;
-    if (!Array.isArray(content)) return "";
-    return content
-        .map((block) => (block.type === "text" ? block.text || "" : ""))
-        .filter(Boolean)
-        .join("\n")
-        .trim();
-}
-
 export function createSeeImageTool(opts: SeeImageToolOptions) {
     const remote = remotePersonalResourcesActive();
     if (remote !== Boolean(opts.remoteModel)) {
         throw new Error("Remote see_image requires a selected vision model; local callers cannot replace it");
     }
-    if (!opts.completeSimpleFn) throw new Error("see_image requires a model completion function");
-    const modelRegistry = remote ? undefined : getModelRegistry();
+    const modelRegistry = remote ? undefined : getNativeModelRegistry();
 
     return defineTool<typeof definition.parameters, SeeImageDetails>({
         ...definition,
@@ -84,7 +58,7 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
                 });
                 const fallback = remote
                     ? { model: opts.remoteModel! }
-                    : await resolveVisionFallbackModel(modelRegistry!, SYSTEM_MODEL_DISCOVERY_NETWORK, opts.cwd);
+                    : await resolveVisionFallbackModel(modelRegistry!, opts.cwd);
                 if (!fallback) throw new Error("visionFallback.model is not configured.");
                 // Remote sessions have no provider credentials. The projected native runtime
                 // carries this request over the authenticated control connection instead.
@@ -98,18 +72,6 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
 
                 const question = params.question?.trim() || DEFAULT_SEE_IMAGE_PROMPT;
 
-                const context: Context = {
-                    messages: [
-                        {
-                            role: "user",
-                            content: [
-                                { type: "text", text: question },
-                                { type: "image", data: image.base64, mimeType: image.mimeType },
-                            ],
-                            timestamp: Date.now(),
-                        },
-                    ],
-                };
                 const measurement = await opts.onModelStart?.();
                 const startedAt = new Date().toISOString();
                 let outcome: ExecutionOutcome = "failed";
@@ -130,23 +92,24 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
                     unavailableReason: "source_unavailable",
                 };
                 try {
-                    const response = await opts.completeSimpleFn!(fallback.model, context, {
-                        signal,
-                        apiKey: auth?.ok ? auth.apiKey : undefined,
-                        headers: auth?.ok ? auth.headers : undefined,
-                        env: auth?.ok ? auth.env : undefined,
-                        maxTokens: 2048,
-                    });
-                    const failed = response.stopReason === "error" || response.stopReason === "aborted";
+                    const response = await opts.completeTurn(
+                        fallback.model,
+                        {
+                            text: question,
+                            images: [{ type: "image", data: image.base64, mimeType: image.mimeType }],
+                        },
+                        { signal, credentials: auth?.ok ? auth : undefined, maxTokens: 2048 },
+                    );
+                    const failed = response.status !== "succeeded";
                     const usage = response.usage;
                     observation = {
                         ...observation,
-                        inputTokens: usage?.input ?? null,
-                        outputTokens: usage?.output ?? null,
-                        cacheReadTokens: usage?.cacheRead ?? null,
-                        cacheWriteTokens: usage?.cacheWrite ?? null,
-                        costAmount: usage?.cost?.total ?? null,
-                        costSource: usage?.cost?.total != null ? "calculated" : "unavailable",
+                        inputTokens: usage?.inputTokens ?? null,
+                        outputTokens: usage?.outputTokens ?? null,
+                        cacheReadTokens: usage?.cacheReadTokens ?? null,
+                        cacheWriteTokens: usage?.cacheWriteTokens ?? null,
+                        costAmount: usage?.costAmount ?? null,
+                        costSource: usage?.costAmount != null ? "calculated" : "unavailable",
                         unavailableReason: failed ? "source_unavailable" : usage ? null : "not_reported",
                     };
                     const totals = new RuntimeUsageTotals();
@@ -155,9 +118,9 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
                         failed && totals.measurementAvailability !== "unavailable"
                             ? "partial"
                             : totals.measurementAvailability;
-                    outcome = response.stopReason === "aborted" ? "canceled" : failed ? "failed" : "succeeded";
+                    outcome = response.status;
                     if (failed) throw new Error(response.errorMessage || "visionFallback.model returned an error.");
-                    const text = extractAssistantText(response.content) || "(visionFallback.model returned no text)";
+                    const text = response.text || "(visionFallback.model returned no text)";
                     return { content: [{ type: "text" as const, text }], details: { ok: true } };
                 } finally {
                     if (signal?.aborted) {

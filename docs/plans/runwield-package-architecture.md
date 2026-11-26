@@ -27,7 +27,7 @@ Retire the root `src/` directory in three passes. Preserve behavior for users, i
 
 ## Packages and extraction order
 
-Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. [Plan milestone history](https://github.com/RunWield/runwield/pull/650) has merged. [Plan artifacts and publication copies](https://github.com/RunWield/runwield/pull/651) have merged. This extraction covers Workflow. The Pi-AI wrapper follows it in the interface pass. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
+Tools, Agents, Projects, and the [Plan document and lifecycle package](https://github.com/RunWield/runwield/pull/645) have merged. The [Project-bound store](https://github.com/RunWield/runwield/pull/646), [caller migration](https://github.com/RunWield/runwield/pull/647), [Work Record reads](https://github.com/RunWield/runwield/pull/648), and [store-assigned Work Record creation](https://github.com/RunWield/runwield/pull/649) have also merged. [Plan milestone history](https://github.com/RunWield/runwield/pull/650) has merged. [Plan artifacts and publication copies](https://github.com/RunWield/runwield/pull/651) have merged. [Workflow](https://github.com/RunWield/runwield/pull/652) has merged. This extraction covers the Pi-AI wrapper. Session Runtime follows it in the interface pass. [Tools PR](https://github.com/RunWield/runwield/pull/641) · [Agents PR](https://github.com/RunWield/runwield/pull/643) · [Projects PR](https://github.com/RunWield/runwield/pull/644)
 
 | Order and package | Public interface and responsibilities | Evidence that the move preserved behavior |
 | --- | --- | --- |
@@ -273,6 +273,14 @@ A client opens a Workflow for the selected Plan in its Project. Starting or resu
 | Publication and recovery | Open the publication attempt in its Project to prepare copies, advance with evidence, reconcile or finish cleanup. Plans supplies the frozen documents. Workflow owns the transition and its receipt. |
 
 The interface pass retains the existing file-backed Plan checkpoints, Session outbox and publication receipts. New worktree completion receipts can also record the implementation commit. A retry of an older completed worktree with no recorded commit leaves later edits alone and returns no commit ID. Worktree and Git operations, Plan Store binding, the validation engine and Session execution still use runtime code under `src/`. The next pass moves those implementations to their owners. [Workflow events](../../packages/workflow/events.ts) · [Routing](../../packages/workflow/routing.ts) · [Publication](../../packages/workflow/publication-runtime.ts)
+
+## Pi-AI contract
+
+Applications use the model registry to list models, resolve a selection, and manage provider login. The registry locates the personal configuration and credential store. Its public model descriptors contain the fields used for display and selection. The coding-agent binding resolves the native model for execution. [Model registry interface](../../packages/pi-ai/model-catalog.ts) · [Native model binding](../../packages/pi-ai/models.ts)
+
+The Session chooses the Agent, prompt, allowed tools, and collaboration policy. The coding-agent binding submits prompts and steering messages, applies provider settings, and converts direct completions into text, usage, and an outcome. An abort signal follows the request to the provider. Session identity, transcripts, and workflow transitions stay with their current owners. [Coding-agent binding](../../packages/pi-ai/coding-agent.ts) · [Turn inputs and results](../../packages/pi-ai/turn.ts)
+
+The host admits MCP servers and chooses which connections travel through the laptop. Pi-AI starts discovery, binds tools to a root session, handles MCP commands, and closes connections. The remote model binding carries the catalog and provider stream across the existing connection. [MCP interface](../../packages/pi-ai/mcp.ts) · [Remote model binding](../../packages/pi-ai/remote-models.ts)
 
 ## MCP and app boundaries
 

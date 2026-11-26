@@ -23,11 +23,12 @@ import {
     InMemoryCredentialStore,
     type ProviderStreams,
 } from "@earendil-works/pi-ai";
-import { getModelRegistry, getModelRuntime } from "../models/model-registry.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
+import { getModelRuntime } from "@runwield/pi-ai/models";
 import { expandPromptTemplate, listPromptTemplates, resolveModel } from "../session/session.ts";
 import { expandSkillRecord, listSkills } from "../session/skill-catalog.ts";
 import { createBoundedRemoteModelSession, resolveBoundedRemoteModelSelection } from "./bounded-model-session.ts";
-import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
+import { handleModelRequest, LocalModelBridge } from "@runwield/pi-ai/remote-models";
 import type { RemoteMount } from "./sftp-mount.ts";
 
 interface TestSettingsObject {

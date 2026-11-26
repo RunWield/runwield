@@ -1,9 +1,10 @@
-import { isRemovedAgyProvider } from "../../models/removed-providers.ts";
+import { isRemovedAgyProvider } from "@runwield/pi-ai/models";
 import { AGENTS, SUBAGENTS } from "../agent-registry.ts";
 import { readPersistedActiveAgentName, readPersistedModelState } from ".././active-agent-session.ts";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
-import { getModelRegistry } from "../../models/model-registry.ts";
-import { parseProviderModel } from "../../models/model-validation.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
+import type { RunWieldModelRegistry } from "@runwield/pi-ai/models";
+import { parseProviderModel } from "@runwield/pi-ai";
 import { getSettingsManager } from "../../settings.ts";
 import { isGitRepository } from "../../git.ts";
 import { preparePlanController } from "../../../plan-store/index.ts";
@@ -72,7 +73,7 @@ export interface RuntimeAgentSession {
     getContextUsage?: import("@earendil-works/pi-coding-agent").AgentSession["getContextUsage"];
     subscribe(listener: (event: { type: string; steering?: readonly string[] }) => void): () => void;
     agent?: import("@earendil-works/pi-coding-agent").AgentSession["agent"];
-    modelRegistry?: ReturnType<typeof getModelRegistry>;
+    modelRegistry?: RunWieldModelRegistry;
     isStreaming?: boolean;
     isCompacting?: boolean;
     getSteeringMessages?(): readonly string[];

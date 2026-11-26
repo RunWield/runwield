@@ -1,3 +1,4 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import type { Message } from "@earendil-works/pi-ai";
 
@@ -13,4 +14,9 @@ export function projectProviderSystemPrompt(messages: Message[], systemPrompt: s
         },
         ...messages.filter((message) => message.role !== "system"),
     ];
+}
+
+/** Refresh Pi's leading instructions on each request after the host switches Agents. */
+export function projectSystemPromptExtension(pi: ExtensionAPI) {
+    pi.on("before_agent_start", (event) => ({ systemPrompt: event.systemPrompt }));
 }

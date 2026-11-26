@@ -12,7 +12,7 @@ import {
     InMemoryCredentialStore,
     type ProviderStreams,
 } from "@earendil-works/pi-ai";
-import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
+import { handleModelRequest, LocalModelBridge } from "@runwield/pi-ai/remote-models";
 import { runRemoteModelProof } from "./model-proof.ts";
 
 async function within<T>(promise: Promise<T>, label: string): Promise<T> {

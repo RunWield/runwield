@@ -1,10 +1,8 @@
 /** Shared conversation renderer. It consumes live or replay events, never a Runtime. */
+import type { ToolResult } from "@runwield/pi-ai/turn";
+import type { JsonValue } from "@runwield/parsing/jsonc";
 import type { AgentMessageAppender, UiAPI } from "./api.ts";
-import {
-    RuntimeEventTypes,
-    type RuntimeToolResult,
-    type SessionRuntimeEvent,
-} from "../../shared/session/session-runtime-events.ts";
+import { RuntimeEventTypes, type SessionRuntimeEvent } from "../../shared/session/session-runtime-events.ts";
 
 import type { ProjectedRuntimeEvent } from "../../shared/session/session-transcript-projection.ts";
 
@@ -17,18 +15,14 @@ interface RuntimeDisplayImage {
 
 type RuntimeDisplayEvent = SessionRuntimeEvent | ProjectedRuntimeEvent;
 
-interface RuntimeDisplayImageCandidate {
-    base64?: string;
-    mimeType?: string;
-}
-
-function collectDetailDisplayImage(image: RuntimeDisplayImageCandidate): RuntimeDisplayImage[] {
+function collectDetailDisplayImage(image: JsonValue): RuntimeDisplayImage[] {
+    if (!image || typeof image !== "object" || Array.isArray(image)) return [];
     return typeof image.base64 === "string" && typeof image.mimeType === "string"
         ? [{ base64: image.base64, mimeType: image.mimeType }]
         : [];
 }
 
-function collectRuntimeDisplayImages(event: RuntimeToolResult): RuntimeDisplayImage[] {
+function collectRuntimeDisplayImages(event: ToolResult): RuntimeDisplayImage[] {
     const contentImages = Array.isArray(event.content)
         ? event.content.flatMap((block) =>
               block?.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string"
@@ -36,8 +30,9 @@ function collectRuntimeDisplayImages(event: RuntimeToolResult): RuntimeDisplayIm
                   : [],
           )
         : [];
-    const detailImages = Array.isArray(event.details?.runwieldDisplayImages)
-        ? event.details.runwieldDisplayImages.flatMap(collectDetailDisplayImage)
+    const details = Array.isArray(event.details) ? null : event.details;
+    const detailImages = Array.isArray(details?.runwieldDisplayImages)
+        ? details.runwieldDisplayImages.flatMap(collectDetailDisplayImage)
         : [];
     const images: RuntimeDisplayImage[] = [];
     const seen = new Set();
@@ -109,6 +104,7 @@ export function createTuiDisplayConsumer(uiAPI: UiAPI) {
                     if (
                         !block &&
                         value.toolName === "task_completed" &&
+                        !Array.isArray(value.details) &&
                         value.details?.outcome === "pair_completion_checkpoint" &&
                         value.output
                     ) {

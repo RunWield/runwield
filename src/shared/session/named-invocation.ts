@@ -2,7 +2,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
 import { basename, join } from "node:path";
 import { fileExists } from "../helpers.ts";
-import { parseProviderModel } from "../models/model-validation.ts";
+import { parseProviderModel } from "@runwield/pi-ai";
 import { resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { assertPersonalResourcePath, PersonalResourcePathError } from "../remote/personal-resources.ts";
 import { agentRegistry } from "./agent-registry.ts";

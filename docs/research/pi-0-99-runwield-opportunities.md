@@ -43,7 +43,7 @@ The missing `getDeviceId` option affects the **new OpenAI login path**, not the 
 `runtime.login()` without these options, and the new OAuth implementation throws when the UUID is absent. Separately,
 RunWield's API-key picker excludes all OAuth-capable providers; OpenAI now belongs to that set.
 
-Sources: [RunWield login adapter](../../src/shared/models/model-registry.ts), `loginProvider`;
+Sources: [RunWield login adapter](../../packages/pi-ai/model-registry.ts), `loginProvider`;
 [provider picker](../../src/cmd/auth/index.ts), `getLoginProviderOptions`;
 [release notes](https://pi.dev/changelog/releases/0.99.0).
 
@@ -130,7 +130,7 @@ Pi supports streamable HTTP, OAuth, dynamic tool lists, and structured tool resu
 remote services and less text parsing.
 
 Sources: [current MCP scope and trust rules](../user-documentation/mcp.md),
-[MCP client](../../src/shared/mcp/integration.ts), [Pi MCP documentation](https://pi.dev/docs/latest/mcp).
+[MCP client](../../packages/pi-ai/mcp.ts), [Pi MCP documentation](https://pi.dev/docs/latest/mcp).
 
 **Recommendation:** Treat result fidelity and remote-service support as separate opportunities. Correct result/error
 handling is useful even without codemode. Add HTTP/OAuth when a user names a service they need.
@@ -149,7 +149,7 @@ separately from physical response identity. Routing state survives compaction an
 does not currently register virtual models, and its surfaces expose one active model/thinking pair.
 
 Sources: [Pi virtual models](https://pi.dev/docs/latest/virtual-models),
-[model registry](../../src/shared/models/model-registry.ts), [runtime reads](../../src/shared/session/runtime/reads.ts).
+[model registry](../../packages/pi-ai/model-registry.ts), [runtime reads](../../src/shared/session/runtime/reads.ts).
 
 **Recommendation:** Keep explicit model selection as the default. Evaluate an opt-in policy against the existing
 per-Agent presets. Prefer stable models through a tool cycle instead of switching on every request.
@@ -174,7 +174,7 @@ provider failures but has no handler for this new event. Pi's event is nonpersis
 the stream.
 
 Sources: [Pi provider stream event](https://pi.dev/docs/latest/extensions#provider_stream_event),
-[RunWield provider errors](../../src/shared/session/provider-errors.ts),
+[RunWield provider errors](../../packages/pi-ai/turn.ts),
 [Session stream setup](../../src/shared/session/session.ts).
 
 **Recommendation:** Consider opt-in, bounded, redacted diagnostics. Keep ordinary user notices concise. This is not an

@@ -16,7 +16,7 @@ import {
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";
 import { UsageReporter } from "../workflow/usage-reporting.ts";
-import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
+import { handleModelRequest, LocalModelBridge } from "@runwield/pi-ai/remote-models";
 
 test("bounded remote see_image records vision requests, not verification turns", async (t) => {
     await withWorkflowMetricsFixture(async (fixture) => {

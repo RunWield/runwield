@@ -23,7 +23,7 @@ import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "../server/owner-projects.ts";
 import { getSlashCommandDefinition } from "../../../cmd/registry.ts";
 
-import type { JsonValue } from "../../../shared/jsonc.ts";
+import type { JsonValue } from "@runwield/parsing/jsonc";
 import type { CatalogDiagnostic } from "../../../shared/session/file-session-store-types.ts";
 import type { RuntimeToolStartEvent, SessionRuntimeEvent } from "../../../shared/session/session-runtime-events.ts";
 import type { recordSlashCommandMetric } from "../../../shared/workflow/command-metrics.ts";

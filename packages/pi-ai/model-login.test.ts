@@ -6,15 +6,15 @@ import { platform } from "node:process";
 import { test } from "node:test";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
-import { RunWieldCredentialStore, RunWieldModelRegistry } from "./model-registry.ts";
+import { getRunWieldCredentialStore, RunWieldModelRegistry } from "./model-registry.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 async function registryFor(configDir: string): Promise<RunWieldModelRegistry> {
     registerBunOAuthFlows();
-    const credentialStore = new RunWieldCredentialStore(join(configDir, "auth.json"));
+    const credentialStore = getRunWieldCredentialStore(configDir);
     const runtime = await ModelRuntime.create({ credentials: credentialStore, modelsPath: null });
-    return new RunWieldModelRegistry({ configDir, credentialStore, runtime });
+    return new RunWieldModelRegistry({ configDir, runtime });
 }
 
 /** Run the real OpenAI flow, but stop at the browser prompt before any account or token request. */

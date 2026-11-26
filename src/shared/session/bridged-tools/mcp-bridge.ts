@@ -1,3 +1,6 @@
+import { codingAgent, type ToolCallModel } from "@runwield/pi-ai/coding-agent";
+import { normalizeToolResult, type ToolContentBlock } from "@runwield/pi-ai/turn";
+import type { JsonRecord as JsonObject, JsonValue } from "@runwield/parsing/jsonc";
 import { serveHttp } from "../../http-server.ts";
 /**
  * @module shared/session/bridged-tools/mcp-bridge
@@ -25,28 +28,13 @@ import {
     type SessionManager,
     type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { Api, ImageContent, ProviderId, TextContent } from "@earendil-works/pi-ai";
-import { validateToolCall } from "@earendil-works/pi-ai";
 import { Server } from "@modelcontextprotocol/sdk/server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp";
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from "@modelcontextprotocol/sdk/types";
 import { RUNWIELD_MCP_TOOL_TIMEOUT_MS } from "./tool-timeout.ts";
-import {
-    emitHostedSessionRuntimeEvent,
-    normalizeRuntimeToolResult,
-    RuntimeEventTypes,
-} from "../session-runtime-events.ts";
+import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../session-runtime-events.ts";
 import type { HostedSession } from "../hosted-session.ts";
 import { describeRuntimeTool } from "../tool-event-title.ts";
-
-/** Concrete JSON shapes crossing the MCP boundary. */
-type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
-interface JsonObject {
-    [key: string]: JsonValue;
-}
-
-/** Tool content blocks the bridge forwards to MCP. */
-type ToolContentBlock = TextContent | ImageContent;
 
 type ToolContent = ToolContentBlock[];
 
@@ -81,13 +69,6 @@ function isLifecycleTool(internalName: string): boolean {
     return internalName === "pair_checkpoint" || workflowMcpAliasFor(internalName) !== undefined;
 }
 
-/** Model fields the recorded assistant toolCall message carries from the current model. */
-export interface RunWieldMcpBridgeAssistantBase {
-    api: Api;
-    provider: ProviderId;
-    model: string;
-}
-
 /** Message shapes this bridge records (assistant toolCall + toolResult). */
 type BridgeRecordedMessage = Parameters<SessionManager["appendMessage"]>[0];
 
@@ -103,7 +84,7 @@ export interface RunWieldMcpBridgeOptions {
     /** Mirror of recorded messages into the execution-session message list. */
     onMessage?: (message: BridgeRecordedMessage) => void;
     /** Model fields stamped onto the canonical assistant toolCall messages. */
-    assistantBase: RunWieldMcpBridgeAssistantBase;
+    assistantBase: ToolCallModel;
     /** Flush pending assistant display deltas before tool runtime events are emitted. */
     beforeRuntimeToolEvent?: () => void;
     /** Trusted provenance value stamped onto all bridge-recorded results. */
@@ -156,15 +137,6 @@ type McpToolResult = {
     structuredContent?: JsonObject;
     isError?: boolean;
 };
-
-const ZERO_USAGE = {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-} as const;
 
 function generateBearerToken(): string {
     const bytes = new Uint8Array(32);
@@ -229,8 +201,7 @@ function mergeAbortSignals(first?: AbortSignal, second?: AbortSignal): AbortSign
  * Bearer token (both in-process only) could otherwise stream an arbitrarily
  * large request body — exhausting memory while the SDK parses the JSON — or
  * pass oversized / deeply nested tool-call arguments, exhausting memory while
- * `validateToolCall` (from `@earendil-works/pi-ai`, outside this repo) builds
- * its validation structures. We bound both inputs before they reach the SDK.
+ * Pi builds its validation structures. We bound both inputs before they reach the SDK.
  */
 
 /** Hard cap on the raw bytes of any inbound MCP request body. */
@@ -371,7 +342,7 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
         result: Pick<DelegatedToolResult, "content" | "details">,
     ): void {
         options.beforeRuntimeToolEvent?.();
-        const toolResult = normalizeRuntimeToolResult(result);
+        const toolResult = normalizeToolResult(result);
         emitHostedSessionRuntimeEvent(options.hostedSession, {
             type: RuntimeEventTypes.TOOL_UPDATE,
             toolCallId: callId,
@@ -382,7 +353,7 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
 
     function emitToolEnd(internalName: string, callId: string, result: DelegatedToolResult): void {
         options.beforeRuntimeToolEvent?.();
-        const toolResult = normalizeRuntimeToolResult(result);
+        const toolResult = normalizeToolResult(result);
         const startedAt = toolStartedAt.get(callId);
         const args = toolArgs.get(callId);
         toolStartedAt.delete(callId);
@@ -398,30 +369,21 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
     }
 
     function recordToolCall(internalName: string, callId: string, args: JsonObject): void {
-        appendMessage({
-            role: "assistant",
-            timestamp: Date.now(),
-            content: [{ type: "toolCall", id: callId, name: internalName, arguments: args }],
-            api: options.assistantBase.api,
-            provider: options.assistantBase.provider,
-            model: options.assistantBase.model,
-            usage: { ...ZERO_USAGE },
-            stopReason: "toolUse",
-        });
+        appendMessage(codingAgent.toolCallMessage(options.assistantBase, { id: callId, name: internalName, args }));
         toolArgs.set(callId, args);
         emitToolStart(internalName, callId, args);
     }
 
     function recordToolResult(internalName: string, callId: string, result: DelegatedToolResult): void {
-        appendMessage({
-            role: "toolResult",
-            toolCallId: callId,
-            toolName: internalName,
-            content: result.content,
-            details: stampDetails(result.details, options.provenance),
-            isError: result.isError === true,
-            timestamp: Date.now(),
-        });
+        appendMessage(
+            codingAgent.toolResultMessage({
+                id: callId,
+                name: internalName,
+                content: result.content,
+                details: stampDetails(result.details, options.provenance),
+                isError: result.isError,
+            }),
+        );
         emitToolEnd(internalName, callId, result);
     }
 
@@ -468,16 +430,7 @@ export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions):
 
         let params: JsonObject;
         try {
-            params = validateToolCall(
-                [
-                    {
-                        name: alias,
-                        description: entry.definition.description,
-                        parameters: entry.definition.parameters,
-                    },
-                ],
-                { type: "toolCall", id: callId, name: alias, arguments: args ?? {} },
-            ) as JsonObject;
+            params = codingAgent.validateToolArguments(entry.definition, { id: callId, name: alias, args: args ?? {} });
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             return rejectedResult(`invalid arguments for ${alias}: ${reason}`, entry, callId, args ?? {});

@@ -47,6 +47,7 @@
         "@runwield/agents": "workspace:*",
         "@runwield/bundled-assets": "workspace:*",
         "@runwield/parsing": "workspace:*",
+        "@runwield/pi-ai": "workspace:*",
         "@runwield/plans": "workspace:*",
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
@@ -78,7 +79,6 @@
         "happy-dom": "21.0.4",
         "highlight.js": "11.12.0",
         "js-yaml": "4.3.2",
-        "jsonc-parser": "3.3.1",
         "katex": "0.19.1",
         "lucide-react": "1.55.0",
         "marked": "18.0.11",
@@ -133,6 +133,18 @@
       "name": "@runwield/parsing",
       "dependencies": {
         "js-yaml": "4.3.2",
+        "jsonc-parser": "3.3.1",
+      },
+    },
+    "packages/pi-ai": {
+      "name": "@runwield/pi-ai",
+      "dependencies": {
+        "@earendil-works/pi-ai": "1.6.0",
+        "@earendil-works/pi-coding-agent": "1.6.0",
+        "@earendil-works/pi-mcp": "1.6.0",
+        "@modelcontextprotocol/sdk": "1.32.0",
+        "@runwield/parsing": "workspace:*",
+        "@runwield/resources": "workspace:*",
       },
     },
     "packages/plans": {
@@ -763,6 +775,8 @@
     "@runwield/bundled-assets": ["@runwield/bundled-assets@workspace:packages/bundled-assets"],
 
     "@runwield/parsing": ["@runwield/parsing@workspace:packages/parsing"],
+
+    "@runwield/pi-ai": ["@runwield/pi-ai@workspace:packages/pi-ai"],
 
     "@runwield/plans": ["@runwield/plans@workspace:packages/plans"],
 

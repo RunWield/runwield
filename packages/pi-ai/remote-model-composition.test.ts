@@ -1,15 +1,15 @@
-import { serveHttp } from "../http-server.ts";
+import { serveHttp } from "../../src/shared/http-server.ts";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { mkdtemp as fsMkdtemp, writeFile as fsWriteFile, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { join } from "node:path";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertThrows } from "../../src/testing/assertions.ts";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
-import { configureRemoteModelConnection, getModelRegistry, getModelRuntime } from "./model-registry.ts";
-import { handleModelRequest, LocalModelBridge } from "../remote/model-bridge.ts";
-import { configureRemotePersonalResources } from "../remote/personal-resources.ts";
+import { configureRemoteModelConnection, getNativeModelRegistry, getModelRuntime } from "./model-registry.ts";
+import { handleModelRequest, LocalModelBridge } from "./remote-models.ts";
+import { configureRemotePersonalResources } from "@runwield/resources/personal";
 
 async function fixture() {
     let upstreamAuthorization = "";
@@ -85,7 +85,7 @@ async function fixture() {
 
 function assertClosed() {
     assertThrows(() => getModelRuntime(), Error, "explicit control connection");
-    assertThrows(() => getModelRegistry(), Error, "explicit control connection");
+    assertThrows(() => getNativeModelRegistry(), Error, "explicit control connection");
 }
 
 test("production remote model composition boundary", async (test) => {
@@ -167,11 +167,11 @@ test("production remote model composition boundary", async (test) => {
             const connection = { ...service.connection };
             const clear = await configureRemoteModelConnection(connection);
             try {
-                const registry = getModelRegistry();
+                const registry = getNativeModelRegistry();
                 const runtime = await getModelRuntime();
                 assert(registry.remote);
                 assertEquals(await registry.getRuntime(), runtime);
-                assertEquals(getModelRegistry(), registry);
+                assertEquals(getNativeModelRegistry(), registry);
                 assertEquals(
                     registry.getSelectable().map(({ provider, id }) => `${provider}/${id}`),
                     ["laptop-synthetic/allowed"],
@@ -200,7 +200,7 @@ test("production remote model composition boundary", async (test) => {
         await test.test("installed registry keeps authentication and catalog mutations laptop-owned", async () => {
             const clear = await configureRemoteModelConnection(service.connection);
             try {
-                const registry = getModelRegistry();
+                const registry = getNativeModelRegistry();
                 const model = registry.find("laptop-synthetic", "allowed")!;
                 assertEquals(await registry.getApiKeyAndHeaders(model), {
                     ok: false,
@@ -250,7 +250,7 @@ test("production remote model composition boundary", async (test) => {
                 assert(nextRuntime !== firstRuntime);
                 firstClear();
                 assertEquals(await getModelRuntime(), nextRuntime);
-                assertEquals(await getModelRegistry().getRuntime(), nextRuntime);
+                assertEquals(await getNativeModelRegistry().getRuntime(), nextRuntime);
             } finally {
                 nextClear();
             }

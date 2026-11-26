@@ -51,6 +51,7 @@ const EXTRACTED_DOMAIN_PACKAGES = new Set([
     "@runwield/tools",
     "@runwield/agents",
     "@runwield/projects",
+    "@runwield/pi-ai",
     "@runwield/plans",
     "@runwield/workflow",
 ]);

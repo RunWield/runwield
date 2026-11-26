@@ -8,7 +8,6 @@ import { configureRemotePersonalResources } from "./personal-resources.ts";
 import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../session/root-session.ts";
 import { persistImageAttachment, readImageRef, resolveImageRef } from "../session/image-attachments.ts";
 import { createSeeImageTool } from "../../tools/see-image.ts";
-import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 
 interface Input {
     connection: RemoteSessionConnection;
@@ -68,15 +67,9 @@ try {
                 contextWindow: 128000,
                 maxTokens: 2048,
             },
-            completeSimpleFn: (_model, context) => {
-                for (const message of context.messages) {
-                    if (message.role === "user" && Array.isArray(message.content)) {
-                        for (const block of message.content) {
-                            if (block.type === "image") images.push(`${block.mimeType}:${block.data}`);
-                        }
-                    }
-                }
-                return Promise.resolve(fauxAssistantMessage(fauxText("Image described.")));
+            completeTurn: (_model, input) => {
+                for (const image of input.images ?? []) images.push(`${image.mimeType}:${image.data}`);
+                return Promise.resolve({ text: "Image described.", status: "succeeded" });
             },
         });
         // The tool does not use ExtensionToolContext. Match the existing local tool test invocation.

@@ -13,7 +13,7 @@ import { assertEquals } from "../../src/testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../src/testing/process-global-lock.ts";
 import { defineGitFixture, git } from "../../src/shared/git-test-fixture.ts";
-import { getModelRegistry } from "../../src/shared/models/model-registry.ts";
+import { getNativeModelRegistry } from "@runwield/pi-ai/models";
 import { setCustomSetting } from "../../src/shared/settings.ts";
 import { getWorkflowMetricsFilePath } from "../../src/shared/workflow/metrics.ts";
 import {
@@ -67,7 +67,7 @@ await new Promise((resolve) => setTimeout(resolve, 30));
             process.env["HOME"] = home;
             process.env["PATH"] = `${bin}:${previousPath || ""}`;
             await setCustomSetting("workflowMetrics", true, "project", root);
-            const model = getModelRegistry().find("claude-cli", "sonnet");
+            const model = getNativeModelRegistry().find("claude-cli", "sonnet");
             assert(model);
             const manager = await createRootSessionManager("new", root);
             const hostedSession = new HostedSession({ id: "usage-fixture", cwd: root, sessionManager: manager });

@@ -6,18 +6,18 @@ import { mkdirSync, openSync, writeSync, fsyncSync, closeSync, statSync, fstatSy
  */
 
 import { basename, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
-import { discoverProviderModel } from "../models/model-registry.ts";
-import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
-import { parseProviderModel } from "../models/model-validation.ts";
-import { isRemovedAgyProvider, removedAgyModelError } from "../models/removed-providers.ts";
+import { discoverProviderModel } from "@runwield/pi-ai/models";
+import { assertModelExecutionBackendSupported } from "@runwield/pi-ai";
+import { parseProviderModel } from "@runwield/pi-ai";
+import { isRemovedAgyProvider, removedAgyModelError } from "@runwield/pi-ai/models";
 import { getResolvedVisionFallbackModelSetting } from "../settings.ts";
 import { getRemoteSessionSaveBridge, getRunWieldSessionDir } from "./root-session.ts";
 import { MAX_SESSION_BYTES } from "../remote/session-protocol.ts";
 import { Buffer } from "node:buffer";
 
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { ImageContent } from "@earendil-works/pi-ai";
-import type { ModelDiscoveryNetworkPort, RunWieldModel, RunWieldModelRegistry } from "../models/model-registry.ts";
+import type { TurnImage } from "@runwield/pi-ai/turn";
+import type { ModelDiscoveryNetworkPort, RunWieldModel, RunWieldModelRegistry } from "@runwield/pi-ai/models";
 
 export type ImageAttachment = {
     base64: string;
@@ -50,7 +50,7 @@ export type ImageRoutingMode = "direct" | "fallback" | "none";
 export interface PreparedImages {
     ok: true;
     text: string;
-    images: ImageContent[] | undefined;
+    images: TurnImage[] | undefined;
     mode: ImageRoutingMode;
 }
 export interface ImageRoutingFailure {
@@ -304,8 +304,8 @@ export function preflightImageAttachments(
 
 export async function resolveVisionFallbackModel(
     modelRegistry: RunWieldModelRegistry,
-    network: ModelDiscoveryNetworkPort,
     projectRoot: string,
+    network?: ModelDiscoveryNetworkPort,
 ): Promise<VisionFallbackModel | undefined> {
     const configured = getResolvedVisionFallbackModelSetting(projectRoot);
     if (!configured) return undefined;
@@ -321,9 +321,15 @@ export async function resolveVisionFallbackModel(
         try {
             // The fallback model is explicitly configured for vision, so register
             // discovered models with image input even though /models can't report it.
-            found = await discoverProviderModel(modelRegistry, parsed.provider, parsed.id, network, {
-                input: ["text", "image"],
-            });
+            found = await discoverProviderModel(
+                modelRegistry,
+                parsed.provider,
+                parsed.id,
+                {
+                    input: ["text", "image"],
+                },
+                network,
+            );
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             throw new Error(`Unknown visionFallback.model: ${configured}. ${message}`);

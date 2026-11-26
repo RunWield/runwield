@@ -1,3 +1,5 @@
+import type { ActiveModelState } from "@runwield/pi-ai";
+import type { ToolResult } from "@runwield/pi-ai/turn";
 /**
  * @module shared/session/session-runtime-events
  * Adapter-neutral SessionRuntime event vocabulary.
@@ -134,25 +136,11 @@ export type RuntimeToolIdentity = { toolCallId: string; toolName: string; title:
 
 export type RuntimeToolStartEvent = RuntimeEventBase & RuntimeToolIdentity & { type: "tool_start"; args?: unknown };
 
-export type RuntimeToolContentBlock =
-    { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
-
-export interface RuntimeToolResult {
-    /** Complete displayable content snapshot. */
-    content: RuntimeToolContentBlock[];
-    /** Complete text-only projection for text surfaces. */
-    output: string;
-    /** Structured tool result details such as truncation metadata. */
-    details: Record<string, unknown> | null;
-}
-
-export type RuntimeToolUpdateEvent = RuntimeEventBase &
-    RuntimeToolIdentity &
-    RuntimeToolResult & { type: "tool_update" };
+export type RuntimeToolUpdateEvent = RuntimeEventBase & RuntimeToolIdentity & ToolResult & { type: "tool_update" };
 
 export type RuntimeToolEndEvent = RuntimeEventBase &
     RuntimeToolIdentity &
-    RuntimeToolResult & { type: "tool_end"; isError: boolean; durationMs: number | null };
+    ToolResult & { type: "tool_end"; isError: boolean; durationMs: number | null };
 
 export type RuntimeValidationCheckResult = "pending" | "running" | "passed" | "failed" | "skipped" | "canceled";
 
@@ -207,7 +195,7 @@ export type RuntimeAgentChangedEvent = RuntimeEventBase & {
     busyLines?: readonly string[];
 };
 
-export type RuntimeModelChangedEvent = RuntimeEventBase & { type: "model_changed"; model: string; provider?: string };
+export type RuntimeModelChangedEvent = RuntimeEventBase & ActiveModelState & { type: "model_changed" };
 
 export type RuntimeThinkingLevelChangedEvent = RuntimeEventBase & {
     type: "thinking_level_changed";
@@ -375,19 +363,6 @@ type SystemStatusOptions = Partial<Pick<RuntimeSystemStatusEvent, "level" | "hea
 type AssistantMessageOptions = Partial<
     Pick<RuntimeAssistantTextDeltaEvent, "messageKind" | "workflowMessage" | "toolCallId" | "approved">
 >;
-
-// Tool adapters can supply arbitrary JS values. Narrow the display fields at the normalization boundary.
-interface RawToolResult {
-    content?: unknown;
-    details?: unknown;
-}
-
-interface RawToolBlock {
-    type?: unknown;
-    text?: unknown;
-    data?: unknown;
-    mimeType?: unknown;
-}
 
 const MESSAGE_ID_EVENT_TYPES = new Set<string>([
     RuntimeEventTypes.USER_MESSAGE,
@@ -940,68 +915,6 @@ export function normalizeRuntimeUsage(value: unknown): RuntimeUsage {
         ),
     };
     return contextWindow !== null && contextWindow > 0 ? { ...normalized, contextWindow } : normalized;
-}
-
-/**
- * Normalize tool output once at the Runtime boundary. The text projection is
- * intentionally included beside structured content so terminal consumers do
- * not flatten blocks and richer consumers do not have to recover structure.
- */
-function removeModelOnlyImageOmissionNotes(output: string) {
-    return output
-        .split("\n")
-        .filter(
-            (line) =>
-                !line.startsWith("[Image omitted:") && !line.startsWith("[Current model does not support images."),
-        )
-        .join("\n")
-        .trimEnd();
-}
-
-export function normalizeRuntimeToolResult(value: unknown): RuntimeToolResult {
-    const source = value && typeof value === "object" ? (value as RawToolResult) : null;
-    const rawContent: unknown[] = Array.isArray(value)
-        ? value
-        : Array.isArray(source?.content)
-          ? source.content
-          : [value];
-
-    const content: RuntimeToolContentBlock[] = [];
-    for (const rawBlock of rawContent) {
-        if (typeof rawBlock === "string") {
-            content.push({ type: "text", text: rawBlock });
-            continue;
-        }
-        if (!rawBlock || typeof rawBlock !== "object") {
-            if (rawBlock !== undefined && rawBlock !== null) {
-                content.push({ type: "text", text: String(rawBlock) });
-            }
-            continue;
-        }
-        const block = rawBlock as RawToolBlock;
-        if (block.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string") {
-            content.push({ type: "image", data: block.data, mimeType: block.mimeType });
-            continue;
-        }
-        if (typeof block.text === "string") content.push({ type: "text", text: block.text });
-    }
-    const details =
-        source?.details && typeof source.details === "object" ? (source.details as RuntimeToolResult["details"]) : null;
-    let output =
-        details?.runwieldDisplay === "binary_display_suppressed"
-            ? ""
-            : content
-                  .filter((block) => block.type === "text")
-                  .map((block) => block.text)
-                  .join("");
-    if (Array.isArray(details?.runwieldDisplayImages)) {
-        output = removeModelOnlyImageOmissionNotes(output);
-    }
-    return {
-        content,
-        output,
-        details,
-    };
 }
 
 export function createSessionRuntimeEvent<T extends RuntimeEventTypeDraft>(

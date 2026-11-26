@@ -3,7 +3,7 @@ import { platform } from "node:process";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { type Stats } from "node:fs";
 import { lstat as fsLstat, readFile as fsReadFile } from "node:fs/promises";
-import { parse as parseJsonc } from "../jsonc.ts";
+import { parse as parseJsonc } from "@runwield/parsing/jsonc";
 import { join } from "node:path";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
 import { readRemotePersonalMcpConfig } from "../remote/settings-bridge.ts";

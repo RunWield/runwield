@@ -60,7 +60,7 @@ for (const sessionId of ["bridge-owned", undefined]) {
                 import { InMemoryCredentialStore, cleanupSessionResources } from ${JSON.stringify(
                     import.meta.resolve("@earendil-works/pi-ai"),
                 )};
-                import { LocalModelBridge } from ${JSON.stringify(new URL("./model-bridge.ts", import.meta.url).href)};
+                import { LocalModelBridge } from ${JSON.stringify(import.meta.resolve("@runwield/pi-ai/remote-models"))};
                 const runtime = await ModelRuntime.create({
                     credentials: new InMemoryCredentialStore(), modelsPath: null,
                     allowModelNetwork: false, refreshOnCreate: false,

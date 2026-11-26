@@ -10,13 +10,17 @@ import {
     runIsolatedAgentSession,
 } from ".././session.ts";
 import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.ts";
-import { assertModelExecutionBackendSupported } from "../../models/model-execution.ts";
-import { getModelRegistry } from "../../models/model-registry.ts";
-import { parseProviderModel } from "../../models/model-validation.ts";
-import { clearMascotEnabledCache, getSettingsManager, setGlobalCompactionSetting } from "../../settings.ts";
+import { assertModelExecutionBackendSupported, getModelRegistry, parseProviderModel } from "@runwield/pi-ai";
+import {
+    clearMascotEnabledCache,
+    getSettingsDir,
+    getSettingsManager,
+    setGlobalCompactionSetting,
+} from "../../settings.ts";
 import { getSessionKeyboardHelp } from ".././session-help.ts";
 import { resolveMcpConfig } from "../../mcp/config.ts";
-import { startMcpIntegration } from "../../mcp/integration.ts";
+import { type McpIntegration, startMcpIntegration } from "@runwield/pi-ai/mcp";
+import { remoteMcpTransportFor } from "../../remote/mcp-bridge.ts";
 import { readCurrentPairCheckpoint, recordPairCheckpointSnapshot } from ".././pair-checkpoint-session.ts";
 import { recordExecutionWorkflowSnapshot } from "../execution-workflow-session.ts";
 import { resolvePersistedExecutionRootConfiguration } from "./support.ts";
@@ -543,7 +547,13 @@ export class RuntimeAgentSettings {
                 { level: "warning" },
             );
         }
-        const started = await startMcpIntegration({ cwd: hostedSession.cwd, servers: resolved.servers });
+        const started = await startMcpIntegration({
+            cwd: hostedSession.cwd,
+            agentDir: getSettingsDir("global"),
+            servers: resolved.servers,
+            settingsManager: resolved.servers.length ? getSettingsManager(hostedSession.cwd) : undefined,
+            createTransport: remoteMcpTransportFor(resolved.servers),
+        });
         for (const item of started.warnings) {
             emitSystemStatus(
                 hostedSession,
@@ -650,7 +660,7 @@ export class RuntimeAgentSettings {
             releaseActiveWorkflow?: boolean;
             customTools?: import("@earendil-works/pi-coding-agent").ToolDefinition[];
             mcpRootTools?: import("@earendil-works/pi-coding-agent").ToolDefinition[];
-            mcpIntegration?: import("../../mcp/integration.ts").McpIntegration;
+            mcpIntegration?: McpIntegration;
             toolNames?: string[];
             reloadMcpTools?: boolean;
             mcpServers?: import("../../mcp/config.ts").McpServerDefinition[];

@@ -16,7 +16,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { registerApiProvider, unregisterApiProviders } from "@earendil-works/pi-ai/compat";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { getModelRegistry } from "../models/model-registry.ts";
+import { getModelRuntime } from "@runwield/pi-ai/models";
 import { buildAgentSession, runIsolatedAgentSession } from "./session.ts";
 import { HostedSession } from "./hosted-session.ts";
 import { UsageReporter } from "../workflow/usage-reporting.ts";
@@ -62,7 +62,7 @@ async function configureVision(fixture: VisionFixture, scenario: VisionScenario 
     settings.workflowMetrics = true;
     await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
     await fsWriteFile(join(fixture.projectRoot, "shot.png"), new Uint8Array([1, 2, 3]));
-    const runtime = await getModelRegistry().getRuntime();
+    const runtime = await getModelRuntime();
     let primaryRequests = 0;
     const stream: ProviderStreams["streamSimple"] = () => {
         const result = createAssistantMessageEventStream();

@@ -11,7 +11,7 @@ import {
     withRuntimeCommandFixture,
 } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getSettingsManager } from "../../shared/settings.ts";
-import { getModelRegistry } from "../../shared/models/model-registry.ts";
+import { getModelRegistry } from "@runwield/pi-ai";
 import { getConfiguredModelAvailability, getSelectedDefaultModelAvailability } from "./model-welcome.ts";
 import {
     createInteractiveCompositionHarness,

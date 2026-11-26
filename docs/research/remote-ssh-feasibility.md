@@ -43,7 +43,7 @@ does not prove a full remote RunWield Session or Claude/Antigravity CLI support.
 
 Source:
 
-- [`model-registry.ts`](../../src/shared/models/model-registry.ts): `ExecutionBackend`, `RunWieldCredentialStore`,
+- [`model-registry.ts`](../../packages/pi-ai/model-registry.ts): `ExecutionBackend`, `RunWieldCredentialStore`,
   `createRunWieldModelRuntime`, `getApiKeyAndHeaders`.
 - [`session.ts`](../../src/shared/session/session.ts): `buildAgentSession`, resource loading, and `createAgentSession`.
 - [`Claude command`](../../src/shared/session/backends/claude-cli/command.ts): `prepareClaudeCliCommand` explicitly
@@ -79,7 +79,7 @@ Official provider documentation confirms that remote browser login is not the sa
   [`session.ts`](../../src/shared/session/session.ts), [`sleep`](../../src/cmd/sleep/index.ts).
 - MCP servers and helper binaries currently execute against one `cwd`. Some need local credentials; others need remote
   project files. An arbitrary personal integration cannot be assumed portable. Sources:
-  [`MCP integration`](../../src/shared/mcp/integration.ts),
+  [`MCP integration`](../../packages/pi-ai/mcp.ts),
   [`RunWield MCP bridge`](../../src/shared/session/bridged-tools/mcp-bridge.ts),
   [`helper execution`](../../src/extensions/helper-binary-exec.ts).
 - Working outside Git is already supported in parts of Core. A remote home directory is not inherently invalid, but
@@ -102,7 +102,7 @@ Official provider documentation confirms that remote browser login is not the sa
   subprocesses do not all share the same termination path. Sources:
   [`foreground-process.ts`](../../src/shared/foreground-process.ts),
   [`foreground-process tests`](../../src/shared/foreground-process.test.ts),
-  [`MCP integration`](../../src/shared/mcp/integration.ts).
+  [`MCP integration`](../../packages/pi-ai/mcp.ts).
 - Network loss is not instantly detectable. Stopping a process does not undo files already written or an external action
   already accepted. Remote output that never reached local storage cannot be described as saved history.
 

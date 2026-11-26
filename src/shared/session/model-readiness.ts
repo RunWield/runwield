@@ -1,5 +1,5 @@
-import { isRemovedAgyProvider, removedAgyModelError } from "../models/removed-providers.ts";
-import { getModelRegistry } from "../models/model-registry.ts";
+import { isRemovedAgyProvider, removedAgyModelError } from "@runwield/pi-ai/models";
+import { getModelRegistry } from "@runwield/pi-ai";
 import { getSettingsManager } from "../settings.ts";
 
 export interface ModelAvailability {

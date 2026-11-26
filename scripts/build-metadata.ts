@@ -18,6 +18,7 @@ const INPUTS = [
     "packages/agents",
     "packages/bundled-assets",
     "packages/parsing",
+    "packages/pi-ai",
     "packages/plans",
     "packages/projects",
     "packages/resources",
