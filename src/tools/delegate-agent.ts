@@ -292,24 +292,16 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
     return defineTool<typeof definition.parameters, DelegateAgentDetails>({
         ...definition,
         async execute(toolCallId, params, signal, _onUpdate, _ctx): Promise<DelegateAgentResult> {
-            const requestedMode: DelegationMode = params.mode === "write" ? "write" : "read";
-            const requestedRole = typeof params.role === "string" && params.role ? params.role : "general";
-            const brief = typeof params.brief === "string" ? params.brief.trim() : "";
-            if (!brief) {
+            const request = delegateAgent.prepare(params);
+            const { mode: requestedMode, role: requestedRole } = request;
+            if (!request.ok) {
                 return {
-                    content: [{ type: "text" as const, text: "Delegation failed: brief is required." }],
-                    details: { ok: false, mode: requestedMode, role: requestedRole, error: "brief_required" },
+                    content: [{ type: "text" as const, text: request.message }],
+                    details: { ok: false, mode: requestedMode, role: requestedRole, error: request.error },
                     isError: true,
                 };
             }
-
-            if (params.background && requestedMode === "write") {
-                return {
-                    content: [{ type: "text" as const, text: "Background delegation requires requested read mode." }],
-                    details: { ok: false, mode: requestedMode, role: requestedRole, error: "background_write_denied" },
-                    isError: true,
-                };
-            }
+            const { brief } = request;
             const delegation = agentRegistry.delegation.resolve(requestedMode, requestedRole);
             if (!delegation) {
                 const message = `Delegation failed: unknown role "${requestedRole}". Valid roles: ${roleIds.join(

@@ -7,7 +7,7 @@ affectedPaths:
     - "src/shared/session/session.ts"
     - "src/shared/session/SYSTEM_PROMPT_TEMPLATE.md"
     - "src/shared/session/session-context-report.js"
-    - "src/tools/registry.js"
+    - "packages/tools/registry.ts"
     - "src/agent-definitions/"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"

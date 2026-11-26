@@ -53,3 +53,39 @@ export function createDelegateAgentDefinition<Role extends string>(
         parameters,
     };
 }
+
+interface DelegationInput {
+    mode: DelegationMode;
+    role?: string;
+    brief: string;
+    background?: boolean;
+}
+
+interface DelegationRequest {
+    mode: DelegationMode;
+    role: string;
+}
+
+export type PreparedDelegation =
+    | (DelegationRequest & { ok: true; brief: string })
+    | (DelegationRequest & { ok: false; error: "brief_required" | "background_write_denied"; message: string });
+
+/** Validate the requested delegation before the caller applies its role and authority rules. */
+export function prepareDelegation(params: DelegationInput): PreparedDelegation {
+    const mode = params.mode === "write" ? "write" : "read";
+    const role = typeof params.role === "string" && params.role ? params.role : "general";
+    const brief = typeof params.brief === "string" ? params.brief.trim() : "";
+    if (!brief) {
+        return { ok: false, mode, role, error: "brief_required", message: "Delegation failed: brief is required." };
+    }
+    if (params.background && mode === "write") {
+        return {
+            ok: false,
+            mode,
+            role,
+            error: "background_write_denied",
+            message: "Background delegation requires requested read mode.",
+        };
+    }
+    return { ok: true, mode, role, brief };
+}

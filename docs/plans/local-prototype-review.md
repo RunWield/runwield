@@ -7,7 +7,7 @@ affectedPaths:
     - "src/plan-front-matter.ts"
     - "src/shared/project-runtime-layout.ts"
     - "src/shared/plan-prototypes.ts"
-    - "src/tools/registry.ts"
+    - "packages/tools/registry.ts"
     - "src/ui/review/plan-review.ts"
     - "src/ui/workspace/react/PlanReviewSurface.tsx"
     - "src/ui/workspace/routes/api/review-handlers.ts"
@@ -172,7 +172,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/plan-prototypes.ts`, `src/shared/project-runtime-layout.ts` — own revision, feedback, and local storage rules.
 - `src/plan-store.ts`, `src/plan-front-matter.ts`, archive/prune callers — retain typed references through saves, rename,
   worktrees, archive/restore, and reference-aware cleanup.
-- `src/tools/plan-prototype.ts`, `src/tools/registry.ts` — submit/read retained material without exposing a filesystem server.
+- `src/tools/plan-prototype.ts`, `packages/tools/registry.ts` — submit/read retained material without exposing a filesystem server.
 - `src/ui/review/plan-review.ts`, `src/ui/workspace/react/PlanReviewSurface.tsx`, feedback modules and review API handlers —
   display prototypes, persist comments, and send typed context through the existing conversation.
 - `third_party/plannotator` gitlink, `.gitmodules` (fork fallback only), and `third_party/plannotator-revision.txt` —

@@ -44,5 +44,3 @@ export function createWorkRecordReadTool(opts: WorkRecordReadToolOptions) {
         },
     });
 }
-
-export const WORK_RECORD_READ_TOOL_NAME = definition.name;

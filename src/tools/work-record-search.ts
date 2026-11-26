@@ -54,5 +54,3 @@ export function createWorkRecordSearchTool(opts: WorkRecordSearchToolOptions) {
         },
     });
 }
-
-export const WORK_RECORD_SEARCH_TOOL_NAME = definition.name;

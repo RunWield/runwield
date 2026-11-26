@@ -1,3 +1,4 @@
+import { toolRegistry } from "@runwield/tools";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { createUiApiFixture } from "./ui-api-test-fixture.ts";
 import {
@@ -26,7 +27,6 @@ import {
 } from "@runwield/session-runtime/events";
 import { presentTutorialEvent, restoreVerifiedTutorialRecap } from "./tutorial-guidance.ts";
 import { setCustomSetting } from "../../shared/settings.ts";
-import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
 
 async function withSessionViewFixture(run: (fixture: SessionViewFixture) => Promise<void>) {
     return await withSessionFixture((fixture) => withRetainedPlanFixture(fixture.projectRoot, () => run(fixture)));
@@ -369,7 +369,12 @@ test("tutorial does not label repeated implementation as AI repair and discloses
         await startTutorial(fixture);
         await runtime.recordPlanAssociation(sessionId, { planId: "plan-1", planName: "plan", purpose: "recovery" });
         await runtime.updateTutorialContext(sessionId, { planId: "plan-1" });
-        await setCustomSetting("verification_command", INIT_VERIFICATION_COMMAND_PLACEHOLDER, "project", projectRoot);
+        await setCustomSetting(
+            "verification_command",
+            toolRegistry.get("init_save_verification_command").placeholder,
+            "project",
+            projectRoot,
+        );
         const view = createUiApiFixture();
         try {
             await presentTutorialEvent({

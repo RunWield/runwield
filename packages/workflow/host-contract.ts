@@ -1,6 +1,6 @@
 export type HostDeliveryMode = "publication" | "in_place";
 /** Typed process-independent waits. Outcomes are claims; the engine checks them. */
-import type { ReviewCompletePayload } from "../../src/shared/workflow/review-outcome.ts";
+import type { ReviewCompleteParams } from "@runwield/tools";
 import type { ReviewDiffScope, ReviewDiffSpan } from "../../src/shared/workflow/review-inspection.ts";
 import type {
     PendingHostDecision,
@@ -39,7 +39,7 @@ export type ValidationHostResume =
     | {
           kind: "reviewer";
           identity: ValidationReviewerIdentity;
-          outcome: ReviewCompletePayload | null;
+          outcome: ReviewCompleteParams | null;
           coverage: ReviewDiffSpan[];
           failure?: import("../../src/shared/workflow/validation-operational-errors.ts").ValidationOperationalFailure;
       }

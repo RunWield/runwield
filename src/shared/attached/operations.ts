@@ -1107,7 +1107,7 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
 export interface AttachedValidationPayload {
     sections?: string;
     actionId?: string;
-    outcome?: import("../workflow/review-outcome.ts").ReviewCompletePayload;
+    outcome?: import("@runwield/tools").ReviewCompleteParams;
     answer?: import("@runwield/plans/controller-state").ValidationInteractionResponse;
     command?: string;
     scope?: string;
@@ -1211,51 +1211,43 @@ export function parseValidationInput(
             const findings =
                 outcome.findings === undefined
                     ? undefined
-                    : readRows(
-                          outcome.findings,
-                          "findings",
-                          (row): import("../workflow/review-outcome.ts").ReviewFindingInput => {
-                              readObject(row, "finding", [
-                                  "id",
-                                  "resolved",
-                                  "title",
-                                  "requirement",
-                                  "evidence",
-                                  "status",
-                                  "rejectionReason",
-                                  "origin",
-                              ]);
-                              if (row.resolved !== undefined && typeof row.resolved !== "boolean") {
-                                  reject("invalid_input", "resolved", "resolved must be boolean.");
-                              }
-                              const status = row.status;
-                              if (
-                                  status !== undefined &&
-                                  status !== "new" &&
-                                  status !== "fix_confirmed" &&
-                                  status !== "fix_rejected"
-                              ) {
-                                  reject("invalid_input", "status", "Invalid finding status.");
-                              }
-                              const origin = row.origin;
-                              if (
-                                  origin !== undefined &&
-                                  origin !== "missed_original" &&
-                                  origin !== "repair_regression"
-                              )
-                                  reject("invalid_input", "origin", "Invalid finding origin.");
-                              return {
-                                  title: readText(row, "title", "title", 4096),
-                                  id: readOptionalText(row, "id", "id", 200),
-                                  resolved: typeof row.resolved === "boolean" ? row.resolved : undefined,
-                                  status,
-                                  origin,
-                                  requirement: readOptionalText(row, "requirement", "requirement", 4096),
-                                  evidence: readOptionalText(row, "evidence", "evidence", 4096),
-                                  rejectionReason: readOptionalText(row, "rejectionReason", "rejectionReason", 4096),
-                              };
-                          },
-                      );
+                    : readRows(outcome.findings, "findings", (row): import("@runwield/tools").ReviewFindingInput => {
+                          readObject(row, "finding", [
+                              "id",
+                              "resolved",
+                              "title",
+                              "requirement",
+                              "evidence",
+                              "status",
+                              "rejectionReason",
+                              "origin",
+                          ]);
+                          if (row.resolved !== undefined && typeof row.resolved !== "boolean") {
+                              reject("invalid_input", "resolved", "resolved must be boolean.");
+                          }
+                          const status = row.status;
+                          if (
+                              status !== undefined &&
+                              status !== "new" &&
+                              status !== "fix_confirmed" &&
+                              status !== "fix_rejected"
+                          ) {
+                              reject("invalid_input", "status", "Invalid finding status.");
+                          }
+                          const origin = row.origin;
+                          if (origin !== undefined && origin !== "missed_original" && origin !== "repair_regression")
+                              reject("invalid_input", "origin", "Invalid finding origin.");
+                          return {
+                              title: readText(row, "title", "title", 4096),
+                              id: readOptionalText(row, "id", "id", 200),
+                              resolved: typeof row.resolved === "boolean" ? row.resolved : undefined,
+                              status,
+                              origin,
+                              requirement: readOptionalText(row, "requirement", "requirement", 4096),
+                              evidence: readOptionalText(row, "evidence", "evidence", 4096),
+                              rejectionReason: readOptionalText(row, "rejectionReason", "rejectionReason", 4096),
+                          };
+                      });
             const advisories =
                 outcome.advisories === undefined
                     ? undefined

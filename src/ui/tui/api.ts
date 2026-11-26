@@ -11,7 +11,7 @@ import {
     type SelectListLayoutOptions,
 } from "@earendil-works/pi-tui";
 import { getSettingsManager } from "../../shared/settings.ts";
-import { WORKFLOW_TOOL_NAMES } from "../../tools/registry.ts";
+import { WORKFLOW_TOOL_NAMES } from "../workflow-tool-presentation.ts";
 import { imageTheme } from "../theme/theme.ts";
 import type { RuntimeManagedSyncStateEvent, RuntimeValidationProgress } from "@runwield/session-runtime/events";
 import type { DocumentLinkHost } from "../review/document-link-host.ts";

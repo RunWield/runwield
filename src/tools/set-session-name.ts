@@ -3,8 +3,12 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { emitHostedSessionRuntimeEvent, type HostedSession } from "@runwield/session-runtime/host";
-import { toolRegistry, type SetSessionNameDetails } from "@runwield/tools";
+import { toolRegistry } from "@runwield/tools";
 import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+
+interface SetSessionNameDetails {
+    name: string;
+}
 
 type SetSessionNameResult = AgentToolResult<SetSessionNameDetails | null> & { isError?: boolean };
 

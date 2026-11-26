@@ -1,3 +1,4 @@
+import { toolRegistry } from "@runwield/tools";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import {
@@ -11,10 +12,7 @@ import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import { join } from "node:path";
 import { parse as parseJsonc } from "@runwield/parsing/jsonc";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import {
-    createInitVerificationCommandOperation,
-    INIT_VERIFICATION_COMMAND_PLACEHOLDER,
-} from "./init-verification-command.ts";
+import { createInitVerificationCommandOperation } from "./init-verification-command.ts";
 
 interface InitVerificationCommandParams {
     command?: string;
@@ -62,10 +60,13 @@ test("init verification command operation saves the exact placeholder for no imp
 
     assertEquals(result.details, {
         outcome: "saved",
-        verificationCommand: INIT_VERIFICATION_COMMAND_PLACEHOLDER,
+        verificationCommand: toolRegistry.get("init_save_verification_command").placeholder,
     });
-    assertEquals(operation.getConfirmedCommand(), INIT_VERIFICATION_COMMAND_PLACEHOLDER);
-    assertEquals((await readProjectSettings(projectRoot)).verification_command, INIT_VERIFICATION_COMMAND_PLACEHOLDER);
+    assertEquals(operation.getConfirmedCommand(), toolRegistry.get("init_save_verification_command").placeholder);
+    assertEquals(
+        (await readProjectSettings(projectRoot)).verification_command,
+        toolRegistry.get("init_save_verification_command").placeholder,
+    );
 });
 
 test("init verification command operation preserves unrelated project settings", async () => {

@@ -34,6 +34,7 @@ interface PackageDiagnostic {
 interface ModuleResolver {
     options: ts.CompilerOptions;
     cache: ts.ModuleResolutionCache;
+    typeReferenceCache: ts.TypeReferenceDirectiveResolutionCache;
 }
 
 interface SourcePiece {
@@ -45,7 +46,27 @@ interface ModuleReference {
     specifier: string;
     offset: number;
     reexport: boolean;
+    typeDirective?: ts.FileReference;
 }
+
+interface ResolvedImport {
+    named?: PackageBoundary;
+    entries: string[];
+    direct?: string;
+    actual?: string;
+}
+
+interface ModuleDependency {
+    importer: string;
+    target: string;
+    line: number;
+}
+
+// Add each package here once its implementation has moved out of the application.
+const INDEPENDENT_PACKAGES = new Set(["@runwield/tools"]);
+
+// Keep the lookup path so the boundary check can inspect it as well as the real path.
+const TYPE_REFERENCE_HOST: ts.ModuleResolutionHost = { ...ts.sys, realpath: undefined };
 
 const EXTRACTED_DOMAIN_PACKAGES = new Set([
     "@runwield/acp",
@@ -222,7 +243,19 @@ function localReexports(
 
 function typescriptModuleReferences(file: string, piece: SourcePiece): ModuleReference[] {
     const tree = ts.createSourceFile(file, piece.text, ts.ScriptTarget.Latest, true);
-    const references: ModuleReference[] = [];
+    const references: ModuleReference[] = [
+        ...tree.referencedFiles.map(({ fileName, pos }) => ({
+            specifier: physicalImport(fileName, file) === undefined ? `./${fileName}` : fileName,
+            offset: piece.offset + pos,
+            reexport: false,
+        })),
+        ...tree.typeReferenceDirectives.map((typeDirective) => ({
+            specifier: typeDirective.fileName,
+            offset: piece.offset + typeDirective.pos,
+            reexport: false,
+            typeDirective,
+        })),
+    ];
     function visit(node: ts.Node): void {
         if (ts.isSourceFile(node) || ts.isModuleBlock(node)) {
             references.push(...localReexports(node.statements, tree, piece.offset));
@@ -296,9 +329,78 @@ function physicalImport(specifier: string, importer: string): string | undefined
     if (/^\.\.?([\\/]|$)/.test(specifier)) return resolve(dirname(importer), specifier);
 }
 
+function checkRootSourceDependencies(
+    root: string,
+    rootSource: string,
+    boundary: PackageBoundary,
+    dependencies: ReadonlyMap<string, ModuleDependency[]>,
+): PackageDiagnostic[] {
+    const diagnostics: PackageDiagnostic[] = [];
+    const startingFiles = [...dependencies.keys()].filter((file) => contains(boundary.directory, file));
+    const queue = [...startingFiles];
+    const parents = new Map<string, string | undefined>(startingFiles.map((file) => [file, undefined]));
+    for (const importer of queue) {
+        for (const edge of dependencies.get(importer) ?? []) {
+            if (contains(rootSource, edge.target)) {
+                const path = [edge.target];
+                for (let file: string | undefined = importer; file !== undefined; file = parents.get(file)) {
+                    path.push(file);
+                }
+                diagnostics.push({
+                    file: relative(root, importer),
+                    line: edge.line,
+                    message: `${boundary.name} depends on root src/: ${path
+                        .reverse()
+                        .map((file) => relative(root, file))
+                        .join(" -> ")}.`,
+                });
+            } else if (!parents.has(edge.target) && dependencies.has(edge.target)) {
+                parents.set(edge.target, importer);
+                queue.push(edge.target);
+            }
+        }
+    }
+    return diagnostics;
+}
+
+function isTestFile(file: string): boolean {
+    return /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file);
+}
+
+function checkPackageCycles(
+    root: string,
+    boundary: PackageBoundary,
+    dependencies: ReadonlyMap<PackageBoundary, Map<PackageBoundary, ModuleDependency>>,
+): PackageDiagnostic[] {
+    const visited = new Set<PackageBoundary>();
+    const path = new Set<PackageBoundary>();
+    function visit(owner: PackageBoundary): PackageDiagnostic | undefined {
+        visited.add(owner);
+        path.add(owner);
+        for (const [target, edge] of dependencies.get(owner) ?? []) {
+            if (path.has(target)) {
+                const names = [...path, target].map(({ name }) => name).join(" -> ");
+                return {
+                    file: relative(root, edge.importer),
+                    line: edge.line,
+                    message: `Package dependency cycle from ${boundary.name}: ${names}.`,
+                };
+            }
+            if (!visited.has(target)) {
+                const cycle = visit(target);
+                if (cycle) return cycle;
+            }
+        }
+        path.delete(owner);
+    }
+    const cycle = visit(boundary);
+    return cycle ? [cycle] : [];
+}
+
 /** Discover package ownership and public entry points from first-party manifests. */
 export async function createPackageBoundaryLint(repoRoot: string, files: readonly string[]) {
     const root = await realpath(repoRoot);
+    const rootSource = join(root, "src");
     const packages: PackageBoundary[] = await Promise.all(
         files
             .filter((file) => /^packages\/[^/]+\/package\.json$/.test(file))
@@ -316,6 +418,7 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
     );
     const byName = new Map(packages.map((boundary) => [boundary.name, boundary]));
     const packageAt = (file: string) => packages.find((boundary) => contains(boundary.directory, file));
+    const fileDependencies = new Map<string, ModuleDependency[]>();
     const configPaths = new Set(
         files.filter((file) => /(?:^|\/)tsconfig\.json$/.test(file)).map((file) => resolve(root, file)),
     );
@@ -343,57 +446,140 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
         );
         const options = config?.options ?? {};
         const cache = ts.createModuleResolutionCache(directory, (path) => path, options);
-        const resolver = { options, cache };
+        const typeReferenceCache = ts.createTypeReferenceDirectiveResolutionCache(
+            directory,
+            (path) => path,
+            options,
+            cache.getPackageJsonInfoCache(),
+        );
+        const resolver = { options, cache, typeReferenceCache };
         resolvers.set(directory, resolver);
         return resolver;
     }
 
-    function packageViolation(
-        importer: string,
-        owner: PackageBoundary | undefined,
-        { specifier, reexport }: ModuleReference,
-    ) {
-        const applicationReexport = reexport && contains(join(root, "src"), importer);
-        const violation = (target: PackageBoundary, publicEntry: boolean) => {
-            if (target === owner) return;
-            if (!publicEntry)
-                return `Private import "${specifier}" from ${target.name}. Use an entry point declared in ${relative(root, join(target.directory, "package.json"))}.`;
-            if (applicationReexport && EXTRACTED_DOMAIN_PACKAGES.has(target.name))
-                return `Application code re-exports "${specifier}". Consumers must import ${target.name} directly.`;
-        };
+    function resolveImport({ specifier, typeDirective }: ModuleReference, importer: string): ResolvedImport {
+        const { options, cache, typeReferenceCache } = resolverFor(importer);
+        if (typeDirective) {
+            const mode =
+                typeDirective.resolutionMode ?? ts.getImpliedNodeFormatForFile(importer, cache, ts.sys, options);
+            const { resolvedTypeReferenceDirective } = ts.resolveTypeReferenceDirective(
+                specifier,
+                importer,
+                options,
+                TYPE_REFERENCE_HOST,
+                undefined,
+                typeReferenceCache,
+                mode,
+            );
+            const resolved = resolvedTypeReferenceDirective?.resolvedFileName;
+            return {
+                entries: [],
+                direct: resolved,
+                actual: resolved && canonicalPath(resolved),
+            };
+        }
         const path = specifier.startsWith("#") ? specifier : specifier.replace(/[?#].*$/, "");
         const [first, second] = path.split("/");
         const packageName = first.startsWith("@") ? `${first}/${second}` : first;
         const named = byName.get(packageName);
-        if (named) {
-            const subpath = path === packageName ? "." : `.${path.slice(packageName.length)}`;
-            return violation(named, entryForSubpath(named, subpath).length > 0);
-        }
-
+        const subpath = path === packageName ? "." : `.${path.slice(packageName.length)}`;
+        const entries = named ? entryForSubpath(named, subpath) : [];
         const direct = physicalImport(path, importer);
-        if (direct) {
-            const target = packageAt(direct);
-            if (target && (target === owner || isPublicFile(target, direct))) return violation(target, true);
-        }
-        const { options, cache } = resolverFor(importer);
-        const loaded = ts.resolveModuleName(path, importer, options, ts.sys, cache).resolvedModule;
-        const resolved = loaded?.resolvedFileName ?? direct;
-        if (!resolved) return;
-        const actual = ts.sys.realpath?.(resolved) ?? resolved;
-        const target = packageAt(actual);
-        if (target) return violation(target, isPublicFile(target, actual));
+        const loaded = ts.resolveModuleName(direct ?? path, importer, options, ts.sys, cache).resolvedModule;
+        const physical = loaded?.resolvedFileName ?? direct;
+        const actual = physical ? canonicalPath(physical) : undefined;
+        return { named, entries, direct, actual };
     }
 
-    return (source: string, file: string): PackageDiagnostic[] => {
+    function canonicalPath(file: string): string {
+        return ts.sys.realpath?.(file) ?? file;
+    }
+
+    function lint(source: string, file: string): PackageDiagnostic[] {
         const importer = resolve(root, file);
         const owner = packageAt(importer);
         const references = sourceModuleReferences(file, source);
         const diagnostics: PackageDiagnostic[] = [];
+        const edges = new Map<string, ModuleDependency>();
         for (const reference of references.sort((left, right) => left.offset - right.offset)) {
-            const message = packageViolation(importer, owner, reference);
-            if (message)
-                diagnostics.push({ file, line: source.slice(0, reference.offset).split("\n").length, message });
+            const { specifier, reexport, offset } = reference;
+            const { named, entries, direct, actual } = resolveImport(reference, importer);
+            const line = source.slice(0, offset).split("\n").length;
+            const target = actual ? packageAt(actual) : undefined;
+            const applicationReexport = reexport && contains(rootSource, importer);
+            const checkImport = (boundary: PackageBoundary, isPublic: boolean) => {
+                if (boundary === owner) return;
+                if (!isPublic) {
+                    const manifest = relative(root, join(boundary.directory, "package.json"));
+                    diagnostics.push({
+                        file,
+                        line,
+                        message: `Private import "${specifier}" from ${boundary.name}. Use an entry point declared in ${manifest}.`,
+                    });
+                } else if (applicationReexport && EXTRACTED_DOMAIN_PACKAGES.has(boundary.name)) {
+                    diagnostics.push({
+                        file,
+                        line,
+                        message: `Application code re-exports "${specifier}". Consumers must import ${boundary.name} directly.`,
+                    });
+                }
+            };
+            if (named) checkImport(named, entries.length > 0);
+            if (target && target !== named && actual) {
+                checkImport(
+                    target,
+                    isPublicFile(target, actual) || (direct !== undefined && isPublicFile(target, direct)),
+                );
+            }
+
+            const destinations = named ? entries.map((entry) => canonicalPath(resolve(named.directory, entry))) : [];
+            if (direct && contains(rootSource, direct) && (!actual || !contains(rootSource, actual))) {
+                destinations.push(direct);
+            }
+            if (actual) destinations.push(actual);
+            for (const destination of destinations) {
+                if (!edges.has(destination)) edges.set(destination, { importer, target: destination, line });
+            }
         }
+        fileDependencies.set(importer, [...edges.values()]);
         return diagnostics;
-    };
+    }
+
+    function packageDependencies(owner: PackageBoundary): Map<PackageBoundary, ModuleDependency> {
+        const outgoing = new Map<PackageBoundary, ModuleDependency>();
+        const queue = [...fileDependencies.keys()].filter(
+            (file) =>
+                contains(owner.directory, file) &&
+                (INDEPENDENT_PACKAGES.has(owner.name) ? !isTestFile(file) : isPublicFile(owner, file)),
+        );
+        const visited = new Set(queue);
+        for (const importer of queue) {
+            for (const edge of fileDependencies.get(importer) ?? []) {
+                const target = packageAt(edge.target);
+                if (target && target !== owner) {
+                    if (!outgoing.has(target)) outgoing.set(target, edge);
+                } else if (
+                    !contains(rootSource, edge.target) &&
+                    !visited.has(edge.target) &&
+                    fileDependencies.has(edge.target)
+                ) {
+                    visited.add(edge.target);
+                    queue.push(edge.target);
+                }
+            }
+        }
+        return outgoing;
+    }
+
+    function checkIndependence(): PackageDiagnostic[] {
+        const graph = new Map(packages.map((boundary) => [boundary, packageDependencies(boundary)]));
+        return packages
+            .filter(({ name }) => INDEPENDENT_PACKAGES.has(name))
+            .flatMap((boundary) => [
+                ...checkRootSourceDependencies(root, rootSource, boundary, fileDependencies),
+                ...checkPackageCycles(root, boundary, graph),
+            ]);
+    }
+
+    return { lint, checkIndependence };
 }

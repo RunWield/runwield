@@ -8,7 +8,7 @@ import { continueWorkflowValidation } from "../shared/workflow/validation.ts";
 import { runLocalCI } from "../shared/workflow/validation-local-ci.ts";
 import { getWorkflowDiff, getWorktreeReviewDiff } from "../shared/workflow/git-snapshot.ts";
 import { parseDiffFiles } from "../shared/workflow/review-diff.ts";
-import { type ReviewCompletePayload } from "../shared/workflow/review-outcome.ts";
+import { type ReviewCompleteParams } from "@runwield/tools";
 import { type HostFixture } from "../shared/workflow/testing/validation-host-fixture.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 import {
@@ -17,7 +17,7 @@ import {
 } from "@runwield/session-runtime/interactions";
 
 export type SessionScript = {
-    outcomes: Array<ReviewCompletePayload | null>;
+    outcomes: Array<ReviewCompleteParams | null>;
     answer?: (request: RuntimeInteractionRequest) => RuntimeInteractionResponse;
     repairCompleted?: boolean;
 };

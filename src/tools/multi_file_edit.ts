@@ -1,4 +1,4 @@
-import { toolRegistry, type MultiFileEdit, type MultiFileEditParams } from "@runwield/tools";
+import { toolRegistry, type MultiFileEdit, type MultiFileEditInput, type MultiFileEditParams } from "@runwield/tools";
 import { createHash } from "node:crypto";
 import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
@@ -15,7 +15,7 @@ import { readFile as fsReadFile, unlink, writeFile as fsWriteFile } from "node:f
  */
 
 import { defineTool, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
-import type { AgentToolResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, join } from "node:path";
 import { getHomeDir } from "../constants.ts";
 import { operatePlanFile, resolvePlanFileTarget, savePlanFileBatch, type PlanFileResult } from "../plan-store/index.ts";
@@ -124,26 +124,6 @@ interface MultiFileEditDetails {
 
 type MultiFileEditResult = AgentToolResult<MultiFileEditDetails | null> & { isError?: boolean };
 
-type MultiFileEditToolDefinition = ToolDefinition<
-    typeof multiFileEdit.definition.parameters,
-    MultiFileEditDetails | null
->;
-type PrepareArgumentsFunction = NonNullable<MultiFileEditToolDefinition["prepareArguments"]>;
-type InputCandidate = Parameters<PrepareArgumentsFunction>[0];
-
-interface InputRecord {
-    path?: InputCandidate;
-    file_path?: InputCandidate;
-    oldText?: InputCandidate;
-    newText?: InputCandidate;
-    root?: InputCandidate;
-    edits?: InputCandidate;
-}
-
-function isInputRecord(input: InputCandidate): input is InputRecord {
-    return Boolean(input) && typeof input === "object" && !Array.isArray(input);
-}
-
 /**
  * @param {string} targetPath
  * @param {string} baseDir
@@ -167,62 +147,6 @@ function resolveRoot(root: string, cwd: string): string {
 }
 
 /**
- * @param {unknown} input
- * @returns {MultiFileEditParams}
- */
-const prepareMultiFileEditArguments: PrepareArgumentsFunction = (input) => {
-    if (!isInputRecord(input)) return input as MultiFileEditParams;
-
-    const args = input;
-    const topLevelPath =
-        typeof args.path === "string" ? args.path : typeof args.file_path === "string" ? args.file_path : undefined;
-
-    if (Array.isArray(args.edits)) {
-        const edits = args.edits.map((rawEdit) => {
-            if (!isInputRecord(rawEdit)) return rawEdit;
-            const editPath =
-                typeof rawEdit.path === "string"
-                    ? rawEdit.path
-                    : typeof rawEdit.file_path === "string"
-                      ? rawEdit.file_path
-                      : topLevelPath;
-            return {
-                path: editPath,
-                oldText: rawEdit.oldText,
-                newText: rawEdit.newText,
-            };
-        });
-        return {
-            ...(typeof args.root === "string" ? { root: args.root } : {}),
-            edits,
-        } as MultiFileEditParams;
-    }
-
-    if (topLevelPath && typeof args.oldText === "string" && typeof args.newText === "string") {
-        return {
-            ...(typeof args.root === "string" ? { root: args.root } : {}),
-            edits: [{ path: topLevelPath, oldText: args.oldText, newText: args.newText }],
-        };
-    }
-
-    return input as MultiFileEditParams;
-};
-
-/**
- * @param {MultiFileEdit[]} edits
- * @returns {Map<string, MultiFileEdit[]>}
- */
-function groupEditsByPath(edits: MultiFileEdit[]): Map<string, MultiFileEdit[]> {
-    const grouped = new Map<string, MultiFileEdit[]>();
-    for (const edit of edits) {
-        const existing = grouped.get(edit.path) || [];
-        existing.push(edit);
-        grouped.set(edit.path, existing);
-    }
-    return grouped;
-}
-
-/**
  * @param {string} cwd
  * @returns {import('@earendil-works/pi-coding-agent').ToolDefinition}
  */
@@ -231,11 +155,12 @@ export function createMultiFileEditTool(cwd: string) {
         ...multiFileEdit.definition,
         promptGuidelines: [...multiFileEdit.definition.promptGuidelines],
 
-        prepareArguments: prepareMultiFileEditArguments,
+        // Pi validates the prepared arguments against the model-facing schema before execute.
+        prepareArguments: (input) => multiFileEdit.prepareArguments(input as MultiFileEditInput) as MultiFileEditParams,
         async execute(_toolCallId, params, _signal, _onUpdate, _ctx): Promise<MultiFileEditResult> {
             const typedParams: MultiFileEditParams = params;
             const baseDir = typedParams.root ? resolveRoot(typedParams.root, cwd) : cwd;
-            const groupedEdits = groupEditsByPath(typedParams.edits);
+            const groupedEdits = multiFileEdit.groupByPath(typedParams.edits);
             const written: PreparedFileEdit[] = [];
             try {
                 const targets: EditTarget[] = [];

@@ -330,7 +330,7 @@ export interface ProjectStoreEpicProjection {
     childPlanId: string;
     childRevision: string;
     projection: "deviations" | "notes";
-    notes: import("../tools/review-complete.ts").ReviewIntegrationNote[];
+    notes: import("@runwield/tools").ReviewIntegrationNote[];
 }
 export interface ProjectStoreDeviation {
     kind: "record-deviation";

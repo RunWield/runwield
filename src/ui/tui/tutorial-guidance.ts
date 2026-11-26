@@ -1,3 +1,4 @@
+import { toolRegistry } from "@runwield/tools";
 import { hasPlanDeliveryEvidence } from "../../plan-store/index.ts";
 
 import { RuntimeEventTypes } from "@runwield/session-runtime/events";
@@ -6,7 +7,6 @@ import { isPlanExecutionRuntimeAgent } from "../../shared/workflow/execution-age
 import { type PlanResource as LoadedPlan, planDocumentsForCheckout } from "../../plan-store/index.ts";
 
 import { getCustomSetting } from "../../shared/settings.ts";
-import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
 import type { UiAPI } from "./api.ts";
 
 type SessionRuntimeEvent = import("@runwield/session-runtime/events").SessionRuntimeEvent;
@@ -230,7 +230,8 @@ export async function presentTutorialEvent({
     if (!explanation || context.shownExplanationIds.includes(explanation.id)) return;
     if (
         explanation.id === "project-checks" &&
-        getCustomSetting("verification_command", "project", snapshot.cwd) === INIT_VERIFICATION_COMMAND_PLACEHOLDER
+        getCustomSetting("verification_command", "project", snapshot.cwd) ===
+            toolRegistry.get("init_save_verification_command").placeholder
     ) {
         explanation = {
             ...explanation,

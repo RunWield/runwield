@@ -316,3 +316,141 @@ export function prepareInterview(params: InterviewParameters): PreparedInterview
 
     return { ok: true, questions };
 }
+
+export interface InterviewChoiceOption {
+    value: string;
+    label: string;
+}
+
+type ChoiceInterviewQuestion = YesNoInterviewQuestion | MultipleChoiceInterviewQuestion;
+
+export type PreparedInterviewAnswer =
+    { error: InterviewError } | { value: InterviewAnswerValue; valueLabel?: string; otherText?: string };
+
+const RECOMMENDED_SUFFIX_PATTERN = /\s*\(recommended\)\s*$/i;
+
+function withRecommendedSuffix(label: string): string {
+    return RECOMMENDED_SUFFIX_PATTERN.test(label) ? label.trim() : label + " (recommended)";
+}
+
+function formatInterviewChoiceLabel(choice: InterviewChoice, recommended: boolean): string {
+    const label = choice.label || choice.value;
+    return recommended ? withRecommendedSuffix(label) : label;
+}
+
+/** Build the choice list for a validated yes/no or multiple-choice question. */
+export function interviewChoiceOptions(question: ChoiceInterviewQuestion): InterviewChoiceOption[] {
+    const choices =
+        question.type === "yes_no"
+            ? [
+                  { value: "yes", label: question.default === true ? "Yes (recommended)" : "Yes" },
+                  { value: "no", label: question.default === false ? "No (recommended)" : "No" },
+              ]
+            : question.choices.map((choice) => ({
+                  value: choice.value,
+                  label: formatInterviewChoiceLabel(choice, choice.value === question.default),
+              }));
+    return [...choices, { value: INTERVIEW_OTHER_VALUE, label: "Other" }];
+}
+
+/** Convert a host’s selected choice into the corresponding typed answer. */
+export function prepareInterviewChoiceAnswer(
+    question: ChoiceInterviewQuestion,
+    value: InterviewAnswerValue,
+): PreparedInterviewAnswer {
+    if (question.type === "yes_no") {
+        if (value === "yes" || value === "no") return { value: value === "yes", valueLabel: value };
+        return {
+            error: {
+                code: "INVALID_ANSWER",
+                message: "Unexpected yes/no response: " + value,
+                questionId: question.id,
+            },
+        };
+    }
+    const selected = question.choices.find((choice) => choice.value === value);
+    if (!selected) {
+        return {
+            error: {
+                code: "INVALID_ANSWER",
+                message: "Selected option does not exist: " + value,
+                questionId: question.id,
+            },
+        };
+    }
+    return {
+        value: selected.value,
+        valueLabel: formatInterviewChoiceLabel(selected, selected.value === question.default),
+    };
+}
+
+/** Normalize a text answer according to the validated question’s empty-answer policy. */
+export function prepareInterviewTextAnswer(question: TextInterviewQuestion, text: string): PreparedInterviewAnswer {
+    const allowEmpty = question.allowEmpty === true;
+    const normalized = allowEmpty ? text : text.trim();
+    if (!allowEmpty && !normalized) {
+        return {
+            error: {
+                code: "EMPTY_ANSWER",
+                message: "Text answer cannot be empty.",
+                questionId: question.id,
+            },
+        };
+    }
+    return { value: normalized };
+}
+
+/** Normalize the free text supplied for an Other selection. */
+export function prepareInterviewOtherAnswer(question: InterviewQuestion, otherText: string): PreparedInterviewAnswer {
+    const normalized = otherText.trim();
+    if (!normalized) {
+        return {
+            error: {
+                code: "EMPTY_ANSWER",
+                message: "The 'Other' answer cannot be empty.",
+                questionId: question.id,
+            },
+        };
+    }
+    return { value: INTERVIEW_OTHER_VALUE, valueLabel: "Other", otherText: normalized };
+}
+
+function formatAnswerSelection(answer: InterviewResultAnswer): string {
+    if (answer.otherText) return `Other: ${answer.otherText}`;
+    if (answer.valueLabel) return answer.valueLabel;
+    return String(answer.value);
+}
+
+function answerLineNumber(answer: InterviewResultAnswer): number {
+    if (typeof answer.value === "string" && /^\d+$/.test(answer.value)) return Number(answer.value);
+    return answer.index;
+}
+
+function buildCompletedResultSummary(details: CompletedInterviewResultDetails): string {
+    const summaries = details.answers.map(
+        (answer) =>
+            `${answer.prompt}\n\n${answerLineNumber(answer)}. Answer selected was ${formatAnswerSelection(answer)}`,
+    );
+    return summaries.join("\n\n");
+}
+
+function buildResultSummary(details: InterviewResultDetails): string {
+    if (details.status === "completed") {
+        return buildCompletedResultSummary(details);
+    }
+
+    if (details.status === "canceled") {
+        return `Interview canceled at question ${
+            details.canceledAt || "?"
+        }: captured ${details.answeredCount}/${details.totalQuestions} answer(s).`;
+    }
+
+    const reason = details.errors?.[0]?.message || "unknown error";
+    return `Interview ${details.status.replaceAll("_", " ")}: ${reason}`;
+}
+
+/** Render the interview result and its JSON payload without an interaction host. */
+export function formatInterviewResult(details: InterviewResultDetails): string {
+    const payload = { ...details, errors: details.errors || [] };
+    return buildResultSummary(details) + "\n\ninterview_result_json:\n" + JSON.stringify(payload, null, 2);
+}

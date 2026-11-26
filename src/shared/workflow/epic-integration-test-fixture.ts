@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { executeWorkflowTestTools, type WorkflowTestToolCall } from "../../testing/workflow-agent-tools.ts";
 import type { IsolatedAgentSessionOptions, SemanticReviewPort } from "./validation-session-adapter.ts";
-import type { ReviewFinding, ReviewAdvisory } from "../../tools/review-complete.ts";
+import type { ReviewFinding, ReviewAdvisory } from "@runwield/tools";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { parseDiffFiles } from "./review-diff-tool.ts";
 import { makeRecordedSession, makeUi } from "./validation-test-helpers.ts";

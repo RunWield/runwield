@@ -7,12 +7,15 @@ import { join } from "node:path";
 import { getHomeDir } from "../constants.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { persistImageAttachment } from "../shared/session/image-attachments.ts";
-import { createSeeImageTool, DEFAULT_SEE_IMAGE_PROMPT } from "./see-image.ts";
+import { createSeeImageTool } from "./see-image.ts";
 
 import { fauxAssistantMessage, fauxText, fauxThinking } from "@earendil-works/pi-ai";
 import { registerBuiltInApiProviders, registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { codingAgent } from "@runwield/pi-ai/coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+
+const expectedDefaultQuestion =
+    "Describe this image in detail for a text-only coding agent. Include all visible UI/content, readable text and error messages, relevant layout, controls, highlighted regions, and visual state. If text or details are unclear, say so explicitly.";
 
 type SeeImageTool = ReturnType<typeof createSeeImageTool>;
 type SeeImageToolContext = Parameters<SeeImageTool["execute"]>[4];
@@ -86,7 +89,7 @@ test("see_image maps a native vision response and forwards cancellation", async 
                     assertEquals(context.messages.length, 1);
                     assertEquals(message.role, "user");
                     assertEquals(message.content, [
-                        { type: "text", text: DEFAULT_SEE_IMAGE_PROMPT },
+                        { type: "text", text: expectedDefaultQuestion },
                         { type: "image", data: "AQID", mimeType: "image/png" },
                     ]);
                     assertEquals(model.provider, "vision");
@@ -214,7 +217,7 @@ test("see_image resolves attachment refs from the session image directory", asyn
             provider.setResponses([
                 (context) => {
                     assertEquals(context.messages[0].content, [
-                        { type: "text", text: DEFAULT_SEE_IMAGE_PROMPT },
+                        { type: "text", text: expectedDefaultQuestion },
                         { type: "image", data: btoa("img"), mimeType: "image/png" },
                     ]);
                     return fauxAssistantMessage(fauxText("attachment description"));

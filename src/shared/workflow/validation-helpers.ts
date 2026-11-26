@@ -396,7 +396,7 @@ async function runCompletionGatedRepair({
  * beside the original, so one defect becomes two and the count grows each round.
  *
  * @param {import('@runwield/plans/controller-state').ReviewLedger} ledger
- * @param {import('../../tools/review-complete.ts').ReviewFinding[] | undefined} findings
+ * @param {import("@runwield/tools").ReviewFinding[] | undefined} findings
  * @returns {string[]}
  */
 export { unaccountedOpenItems } from "./review-ledger.ts";

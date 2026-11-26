@@ -10,7 +10,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, JsonValue, ToolResultMessage } from "@earendil-works/pi-ai";
 import type { ImageAttachment } from "@runwield/session-runtime/events";
 import type { TriageMeta } from "@runwield/workflow/state";
-import type { ReviewAdvisory, ReviewFinding } from "./review-outcome.ts";
+import type { ReviewAdvisory, ReviewFinding } from "@runwield/tools";
 
 /** Older transcripts may omit tool-result metadata or use legacy assistant content. */
 type LegacyTranscriptToolResult = Pick<ToolResultMessage, "role" | "toolName" | "details"> &

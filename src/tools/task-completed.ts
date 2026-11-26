@@ -24,12 +24,37 @@ import { resolveActiveWorkflowRuntimeAgent } from "../shared/workflow/execution-
 
 import {
     toolRegistry,
-    type TaskCompletedDetails,
+    type BrowserPreflightOutcome,
     type TaskCompletedReportKind,
     type ToolParameters,
 } from "@runwield/tools";
 
 const taskCompleted = toolRegistry.get("task_completed");
+
+/** Session-bound outcomes that depend on execution and Pair checkpoint state. */
+export type TaskCompletedDetails =
+    | {
+          outcome: "rejected";
+          reason:
+              | "execution_not_started"
+              | "pair_execution_paused"
+              | "wrong_execution_owner"
+              | "pair_final_checkpoint_pending"
+              | "pair_checkpoint_context_unavailable"
+              | "background_tasks_pending"
+              | "background_cleanup_failed";
+      }
+    | {
+          outcome: "pair_completion_checkpoint";
+          checkpointId: string;
+          checkpointNumber: number;
+          decision: "pending";
+      }
+    | {
+          outcome: "task_completed";
+          message: string;
+          browserPreflightOutcome?: BrowserPreflightOutcome;
+      };
 
 type TaskCompletedResult = AgentToolResult<TaskCompletedDetails> & { terminate: boolean };
 

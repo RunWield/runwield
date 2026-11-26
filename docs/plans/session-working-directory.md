@@ -4,7 +4,7 @@ workKind: "FEATURE"
 complexity: "HIGH"
 affectedPaths:
     - "src/tools/session-directory.ts"
-    - "src/tools/registry.ts"
+    - "packages/agents/tool-policy.ts"
     - "src/shared/session/"
     - "src/shared/git.ts"
     - "src/shared/project-checkout.ts"
@@ -128,7 +128,7 @@ pause mechanism is included. TUI, ACP, and Workspace use the same Core operation
 ## Reuse Opportunities
 
 - `src/tools/set-session-name.ts` — tool factory and typed text/details results.
-- `src/tools/registry.ts:UNIVERSAL_AGENT_TOOL_NAMES` and Session tool resolution — all root Agents receive the tool
+- `packages/agents/tool-policy.ts:UNIVERSAL_AGENT_TOOL_NAMES` and Session tool resolution — all root Agents receive the tool
   without repeating an allowlist change in each definition.
 - `src/shared/session/root-workflow-turn.ts` — typed, root-owned event handoff and old-root settlement, not parsing tool
   result prose. Directory movement is not a workflow advancement tool.
@@ -174,7 +174,7 @@ pause mechanism is included. TUI, ACP, and Workspace use the same Core operation
    mutation capability. Cover `planning-agent.ts::runPlanningAgent` and direct `runActiveAgentTurn` callers such as Slicer,
    not only `createAgentHandler`; the move is consumed internally and never becomes a `decidePostPlanning` result.
    Preserve queued steering exactly once through the root transition. Use the typed event transport if needed, but do
-   not put this tool in `WORKFLOW_ADVANCEMENT_TOOL_NAMES`, parse response prose, release a workflow, or replay an old
+   not put this tool in `WORKFLOW_TOOL_NAMES`, parse response prose, release a workflow, or replay an old
    accepted move on resume.
    Isolated Agents cannot move their parent Session. Duplicate/stale root requests cannot apply a second transition.
    A generated result continues the current user request only after success or a clear refusal; no extra user message,

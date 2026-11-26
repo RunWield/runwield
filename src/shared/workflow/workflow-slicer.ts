@@ -22,7 +22,7 @@ import { ensureEpicBranch } from "./epic-branch.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { TriageMeta } from "@runwield/workflow/state";
 
-const definition = toolRegistry.get("slicer_finalize_decomposition").definition;
+const slicerFinalize = toolRegistry.get("slicer_finalize_decomposition");
 
 export interface RunSlicerAgentOptions {
     planName: string;
@@ -147,12 +147,10 @@ function formatToolError(text) {
 export function createSlicerFinalizeTool({ planName, cwd }) {
     if (!cwd) throw new Error("createSlicerFinalizeTool: cwd is required");
     return defineTool({
-        ...definition,
+        ...slicerFinalize.definition,
         async execute(_toolCallId, params) {
             try {
-                if (!String(params.confirmation || "").trim()) {
-                    throw new Error("Explicit user confirmation is required to finalize decomposition.");
-                }
+                slicerFinalize.assertConfirmation(params.confirmation);
                 const result = await finalizePlanDecomposition(cwd, planName, params.children || []);
                 const branchSummary = await prepareEpicBranchSummary(cwd, planName);
                 if (result.alreadyReady) {

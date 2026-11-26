@@ -23,30 +23,6 @@ const FRONTEND_ENGINEER_MESSAGE_DESCRIPTION =
     " Include final URL/route, headed-browser checks, relevant viewports/states, diagnostics, and visible evidence; Pair checkpoint acceptance is not verification evidence.";
 
 export type BrowserPreflightOutcome = "succeeded" | "failed" | "externally_blocked";
-export type TaskCompletedDetails =
-    | {
-          outcome: "rejected";
-          reason:
-              | "execution_not_started"
-              | "pair_execution_paused"
-              | "wrong_execution_owner"
-              | "pair_final_checkpoint_pending"
-              | "pair_checkpoint_context_unavailable"
-              | "background_tasks_pending"
-              | "background_cleanup_failed";
-      }
-    | {
-          outcome: "pair_completion_checkpoint";
-          checkpointId: string;
-          checkpointNumber: number;
-          decision: "pending";
-      }
-    | {
-          outcome: "task_completed";
-          message: string;
-          browserPreflightOutcome?: BrowserPreflightOutcome;
-      };
-
 const DESCRIPTION =
     "Declare that you have finished the execution task you were assigned. " +
     "For PLANNED_CHANGE and PROJECT workflows, this signals the orchestrator to begin saved-plan validation. " +

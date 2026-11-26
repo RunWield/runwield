@@ -59,10 +59,10 @@ export interface ReviewCompleteEventPayload {
     outcome: "approved" | "feedback";
     approved: boolean;
     feedback: string;
-    findings: import("../../src/shared/workflow/review-outcome.ts").ReviewFinding[];
-    advisories: import("../../src/shared/workflow/review-outcome.ts").ReviewAdvisory[];
+    findings: import("@runwield/tools").ReviewFinding[];
+    advisories: import("@runwield/tools").ReviewAdvisory[];
     /** Epic children only; absent from older recorded events. */
-    integrationNotes?: import("../../src/shared/workflow/review-outcome.ts").ReviewIntegrationNote[];
+    integrationNotes?: import("@runwield/tools").ReviewIntegrationNote[];
 }
 
 /** Reports whether the QA checklist was newly recorded or already existed. */

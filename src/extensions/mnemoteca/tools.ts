@@ -4,11 +4,17 @@ import { join } from "node:path";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
 import { requestRemoteMemory } from "../../shared/remote/memory-bridge.ts";
 import { resolveMemoryCollection } from "../../shared/memory-collection.ts";
-import { toolRegistry, type MemoryParams } from "@runwield/tools";
+import {
+    toolRegistry,
+    type DeleteMemoryRequest,
+    type MemoryParams,
+    type MemoryScopePresence,
+    type StoreMemoryRequest,
+} from "@runwield/tools";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HelperBinaryExec } from "../helper-binary-exec.ts";
 
-const definition = toolRegistry.get("memory").definition;
+const memory = toolRegistry.get("memory");
 
 export interface MnemotecaToolHost {
     cwd: string;
@@ -36,18 +42,6 @@ interface SearchFailure {
 }
 
 type SearchResult = SearchSuccess | SearchFailure;
-
-interface ScopePresenceSuccess {
-    status: "success";
-    present: boolean;
-}
-
-interface ScopePresenceFailure {
-    status: "failure";
-    message: string;
-}
-
-type ScopePresenceResult = ScopePresenceSuccess | ScopePresenceFailure;
 
 export const MISSING_BINARY_MSG =
     "Error: mnemoteca binary not found. Rerun the RunWield installer to install required runtime helpers: curl -fsSL https://raw.githubusercontent.com/gandazgul/runwield/main/install.sh | bash";
@@ -146,7 +140,7 @@ export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] 
         name: string,
         id: number,
         signal?: AbortSignal,
-    ): Promise<ScopePresenceResult> {
+    ): Promise<MemoryScopePresence> {
         const directory = await mkdtemp(join(tmpdir(), "wld-memory-scope-"));
         const output = join(directory, "memories.jsonl");
         const args = scope === "global" ? ["export", "--global"] : ["export", "--name", name];
@@ -175,84 +169,66 @@ export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] 
         return { content: [{ type: "text" as const, text: `Error: ${message}` }], details };
     }
 
-    async function recall(typed: MemoryParams, signal?: AbortSignal) {
-        if (!typed.query) return errorResult("query is required for recall.", typed);
+    async function recall(query: string, details: MemoryParams, signal?: AbortSignal) {
         const name = await ensureProjectInitialized(signal);
-        const safeQuery = `"${typed.query.replaceAll('"', '""')}"`;
+        const safeQuery = `"${query.replaceAll('"', '""')}"`;
         const [project, global] = await Promise.all([
             searchProject(name, safeQuery, signal),
             searchGlobal(safeQuery, signal),
         ]);
         return {
             content: [{ type: "text" as const, text: formatMergedRecall(name, project, global) }],
-            details: typed,
+            details,
         };
     }
 
-    async function store(typed: MemoryParams, signal?: AbortSignal) {
-        if (!typed.content) return errorResult("content is required for store.", typed);
-
-        if (typed.scope === "global") {
+    async function store(request: StoreMemoryRequest, details: MemoryParams, signal?: AbortSignal) {
+        let args: string[];
+        if (request.scope === "global") {
             await mnemoteca(["init", "--global"], signal).catch(() => "");
-            const args = ["add", "--global"];
-            if (typed.core) args.push("--tag", "core");
-            args.push(typed.content);
-            const result = await mnemoteca(args, signal);
-            return {
-                content: [{ type: "text" as const, text: result.trim() }],
-                details: typed,
-                callMessage: `Storing global memory:\n\n${typed.content}`,
-            };
+            args = ["add", "--global"];
+        } else {
+            const name = await ensureProjectInitialized(signal);
+            args = ["add", "--name", name];
         }
-
-        const name = await ensureProjectInitialized(signal);
-        const args = ["add", "--name", name];
-        if (typed.core) args.push("--tag", "core");
-        args.push(typed.content);
+        if (request.core) args.push("--tag", "core");
+        args.push(request.content);
         const result = await mnemoteca(args, signal);
         return {
             content: [{ type: "text" as const, text: result.trim() }],
-            details: typed,
-            callMessage: `Storing project memory:\n\n${typed.content}`,
+            details,
+            callMessage: `Storing ${request.scope} memory:\n\n${request.content}`,
         };
     }
 
-    async function deleteMemory(typed: MemoryParams, signal?: AbortSignal) {
-        if (typeof typed.id !== "number") return errorResult("id is required for delete.", typed);
-        if (typed.scope !== "project" && typed.scope !== "global") {
-            return errorResult("scope is required for delete.", typed);
-        }
-
+    async function deleteMemory(request: DeleteMemoryRequest, details: MemoryParams, signal?: AbortSignal) {
         const name = await ensureProjectInitialized(signal);
         const [project, global] = await Promise.all([
-            scopedIdPresence("project", name, typed.id, signal),
-            scopedIdPresence("global", name, typed.id, signal),
+            scopedIdPresence("project", name, request.id, signal),
+            scopedIdPresence("global", name, request.id, signal),
         ]);
-        if (project.status === "failure") return errorResult(`project scope check failed: ${project.message}`, typed);
-        if (global.status === "failure") return errorResult(`global scope check failed: ${global.message}`, typed);
-        if (project.present && global.present) {
-            return errorResult(`id ${typed.id} is ambiguous across project and global memory. Refusing delete.`, typed);
-        }
-        const targetPresent = typed.scope === "project" ? project.present : global.present;
-        if (!targetPresent) return errorResult(`id ${typed.id} was not found in ${typed.scope} memory.`, typed);
+        const error = memory.checkDeleteScope(request, project, global);
+        if (error) return errorResult(error, details);
 
-        const result = await mnemoteca(["delete", String(typed.id)], signal);
+        const result = await mnemoteca(["delete", String(request.id)], signal);
         return {
             content: [{ type: "text" as const, text: result.trim() || "Memory deleted." }],
-            details: typed,
+            details,
         };
     }
 
     return [
         defineTool({
-            ...definition,
-            promptGuidelines: [...definition.promptGuidelines],
+            ...memory.definition,
+            promptGuidelines: [...memory.definition.promptGuidelines],
             async execute(_id, params, signal) {
                 if (remotePersonalResourcesActive()) return await requestRemoteMemory(params, signal);
-                if (params.action === "recall") return await recall(params, signal);
-                if (params.action === "store") return await store(params, signal);
-                if (params.action === "delete") return await deleteMemory(params, signal);
-                return errorResult("action must be recall, store, or delete.", params);
+                const prepared = memory.prepare(params);
+                if (!prepared.ok) return errorResult(prepared.error, params);
+                const { request } = prepared;
+                if (request.action === "recall") return await recall(request.query, params, signal);
+                if (request.action === "store") return await store(request, params, signal);
+                return await deleteMemory(request, params, signal);
             },
         }),
     ];

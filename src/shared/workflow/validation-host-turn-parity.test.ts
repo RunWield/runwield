@@ -4,7 +4,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
-import { type ReviewCompletePayload } from "./review-outcome.ts";
+import { type ReviewCompleteParams } from "@runwield/tools";
 import {
     complete,
     coverage,
@@ -23,7 +23,7 @@ const finding = {
     status: "new" as const,
 };
 const fixed = { id: "R1-1", title: "Wrong value", status: "fix_confirmed" as const };
-type Case = { name: string; options?: HostFixtureOptions; ciRepair?: boolean; outcomes: ReviewCompletePayload[] };
+type Case = { name: string; options?: HostFixtureOptions; ciRepair?: boolean; outcomes: ReviewCompleteParams[] };
 const cases: Case[] = [
     { name: "CI failure, repair, and pass", ciRepair: true, outcomes: [{ approved: true }] },
     {

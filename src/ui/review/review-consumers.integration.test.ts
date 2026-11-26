@@ -28,7 +28,7 @@ import { reviewFileContentApi } from "../workspace/routes/api/review-file-handle
 import { type AgentMessage } from "@earendil-works/pi-agent-core";
 import { type TextContent, type ToolResultMessage } from "@earendil-works/pi-ai";
 import { type SemanticReviewPort } from "../../shared/workflow/validation.ts";
-import { type ReviewFindingInput, type ReviewOutcomeDetails } from "../../shared/workflow/review-outcome.ts";
+import { type ReviewFindingInput, type ReviewOutcomeDetails } from "@runwield/tools";
 
 type ReviewSessionOptions = Parameters<SemanticReviewPort["runIsolatedAgentSession"]>[0];
 

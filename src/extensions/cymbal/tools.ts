@@ -1,4 +1,4 @@
-import { toolRegistry, type CodeBatchOperation, type CodeBatchParams } from "@runwield/tools";
+import { toolRegistry, type CodeBatchOperation } from "@runwield/tools";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HelperBinaryExec } from "../helper-binary-exec.ts";
 
@@ -8,8 +8,6 @@ export interface CymbalToolHost {
     cwd: string;
     exec: HelperBinaryExec;
 }
-
-export const MAX_CODE_BATCH_OUTPUT_CHARS = 50_000;
 
 interface CymbalSourceLine {
     line: number;
@@ -46,17 +44,6 @@ interface CymbalBatchResponse {
 interface CymbalReadResult {
     text: string;
     isError: boolean;
-}
-
-interface CodeBatchItemDetails {
-    operation: CodeBatchOperation;
-    status: "success" | "error";
-    truncated: boolean;
-}
-
-interface CodeBatchSection {
-    text: string;
-    details: CodeBatchItemDetails;
 }
 
 function codeBatchTarget(operation: CodeBatchOperation): string {
@@ -158,56 +145,8 @@ function parseNativeBatchResults(
     return results;
 }
 
-export function validateCodeBatchParams(params: CodeBatchParams): string | null {
-    if (!params || typeof params !== "object") return "code_batch requires an operations array.";
-    if (!Array.isArray(params.operations)) return "code_batch requires an operations array.";
-    if (params.operations.length === 0) return "code_batch requires at least one operation.";
-    if (params.operations.length > codeBatch.maxOperations) {
-        return `code_batch supports at most ${codeBatch.maxOperations} operations per call.`;
-    }
-    for (let i = 0; i < params.operations.length; i++) {
-        const operation = params.operations[i];
-        if (!operation || typeof operation !== "object") return `operations[${i}] must be an object.`;
-        if (operation.op === "show") {
-            if (typeof operation.target !== "string" || operation.target.trim().length === 0) {
-                return `operations[${i}].target must be a non-empty string for show.`;
-            }
-            continue;
-        }
-        if (operation.op === "outline") {
-            if (typeof operation.file !== "string" || operation.file.trim().length === 0) {
-                return `operations[${i}].file must be a non-empty string for outline.`;
-            }
-            continue;
-        }
-        return `operations[${i}].op must be "show" or "outline".`;
-    }
-    return null;
-}
-
-export function getCodeBatchCymbalArgs(operation: CodeBatchOperation): string[] {
+function getCodeBatchCymbalArgs(operation: CodeBatchOperation): string[] {
     return operation.op === "show" ? ["show", operation.target] : ["outline", operation.file];
-}
-export function getCodeBatchOperationLabel(operation: CodeBatchOperation): string {
-    return operation.op === "show" ? `show ${operation.target}` : `outline ${operation.file}`;
-}
-function formatCodeBatchSection(
-    index: number,
-    operation: CodeBatchOperation,
-    result: CymbalReadResult,
-    budget: number,
-): CodeBatchSection {
-    const status = result.isError ? "error" : "success";
-    const label = getCodeBatchOperationLabel(operation);
-    // Keep unusually long targets from consuming the space reserved for status and content.
-    const heading = label.length > 512 ? `${label.slice(0, 511)}…` : label;
-    const prefix = `## ${index + 1}. ${heading}\nStatus: ${status}\n\n`;
-    const body = result.text.trim() || "No results found.";
-    const available = budget - prefix.length;
-    const truncated = body.length > available;
-    const marker = "\n\n[Result truncated. Use a narrower code_show or code_outline request.]";
-    const text = prefix + (truncated ? body.slice(0, available - marker.length) + marker : body);
-    return { text, details: { operation, status, truncated } };
 }
 
 export function createCymbalTools(host: CymbalToolHost): ToolDefinition[] {
@@ -281,7 +220,7 @@ export function createCymbalTools(host: CymbalToolHost): ToolDefinition[] {
         defineTool({
             ...codeBatch.definition,
             async execute(_id, params, signal) {
-                const validationError = validateCodeBatchParams(params);
+                const validationError = codeBatch.validate(params);
                 if (validationError) {
                     return {
                         content: [{ type: "text" as const, text: validationError }],
@@ -310,27 +249,16 @@ export function createCymbalTools(host: CymbalToolHost): ToolDefinition[] {
                     }
                     signal?.throwIfAborted();
                 }
-                const separator = "\n\n---\n\n";
-                const sectionBudget = Math.floor(
-                    (MAX_CODE_BATCH_OUTPUT_CHARS - separator.length * (params.operations.length - 1)) /
-                        params.operations.length,
-                );
-                const sections = params.operations.map((operation, index) =>
-                    formatCodeBatchSection(
-                        index,
+                const report = codeBatch.report(
+                    params.operations.map((operation) => ({
                         operation,
-                        results.get(operation.op)!.get(codeBatchTarget(operation))!,
-                        sectionBudget,
-                    ),
+                        ...results.get(operation.op)!.get(codeBatchTarget(operation))!,
+                    })),
                 );
                 return {
-                    content: [{ type: "text" as const, text: sections.map((section) => section.text).join(separator) }],
-                    details: {
-                        operationCount: params.operations.length,
-                        truncated: sections.some((section) => section.details.truncated),
-                        results: sections.map((section) => section.details),
-                    },
-                    isError: sections.every((section) => section.details.status === "error"),
+                    content: [{ type: "text" as const, text: report.text }],
+                    details: report.details,
+                    isError: report.isError,
                 };
             },
         }),

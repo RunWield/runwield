@@ -80,3 +80,10 @@ export const slicerFinalizeDecompositionDefinition = {
         }),
     }),
 } as const;
+
+/** Check that the submitted confirmation field is present. The workflow owns the decomposition lifecycle. */
+export function assertSlicerConfirmation(confirmation: string): void {
+    if (!String(confirmation || "").trim()) {
+        throw new Error("Explicit user confirmation is required to finalize decomposition.");
+    }
+}

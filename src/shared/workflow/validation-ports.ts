@@ -16,7 +16,7 @@
  * belong to `validation-session-adapter.ts`.
  */
 
-import type { ReviewAdvisory, ReviewFinding, ReviewIntegrationNote } from "../../tools/review-complete.ts";
+import type { ReviewAdvisory, ReviewFinding, ReviewIntegrationNote } from "@runwield/tools";
 import type { ValidationOperationalFailure } from "./validation-operational-errors.ts";
 import type {
     ReviewLedger,

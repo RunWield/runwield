@@ -14,10 +14,8 @@ import { readImageRef, resolveVisionFallbackModel } from "../shared/session/imag
 import { RuntimeUsageTotals } from "../shared/session/runtime-usage-totals.ts";
 import type { ExecutionOutcome, ModelUsageObservation } from "../shared/workflow/execution-metrics.ts";
 
-const definition = toolRegistry.get("see_image").definition;
-
-export const DEFAULT_SEE_IMAGE_PROMPT =
-    "Describe this image in detail for a text-only coding agent. Include all visible UI/content, readable text and error messages, relevant layout, controls, highlighted regions, and visual state. If text or details are unclear, say so explicitly.";
+const seeImage = toolRegistry.get("see_image");
+const { definition } = seeImage;
 
 export interface VisionMeasurementHandle {
     /** Called once after the request, including failed responses and thrown errors. */
@@ -70,7 +68,7 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
                     );
                 }
 
-                const question = params.question?.trim() || DEFAULT_SEE_IMAGE_PROMPT;
+                const question = seeImage.resolveQuestion(params.question);
 
                 const measurement = await opts.onModelStart?.();
                 const startedAt = new Date().toISOString();
