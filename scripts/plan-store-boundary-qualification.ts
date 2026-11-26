@@ -2,6 +2,14 @@
  * New private imports require a reviewed entry; consumer actions must use the public owner.
  */
 export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string; modules: readonly string[] }>> = {
+    "packages/plans/artifact-files.test.ts": {
+        reason: "Verify archive and restore roll back earlier artifact moves after a destination collision.",
+        modules: ["packages/plans/artifact-files.ts"],
+    },
+    "packages/plans/publication-files.test.ts": {
+        reason: "Verify delivery copy materialization rejects checkout escapes and preserves files outside the checkout.",
+        modules: ["packages/plans/publication-files.ts"],
+    },
     "src/cmd/load-plan/missing-directory-recovery.integration.test.ts": {
         reason: "Compare exact imported package bytes before/after public missing-checkout recovery, including deliberately replaced registry identity.",
         modules: ["src/plan-store/packages.ts"],

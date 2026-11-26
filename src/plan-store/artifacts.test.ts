@@ -109,37 +109,6 @@ test("Epic Artifact moves to archive and back without becoming a Plan", async ()
     });
 });
 
-for (const archive of [true, false]) {
-    test(`Epic artifact collision rolls back earlier ${archive ? "archive" : "restore"} moves`, async () => {
-        await withEpicFixture(async (projectRoot) => {
-            const activeDir = join(projectRoot, "docs", "plans", "epic");
-            const archiveDir = join(projectRoot, "docs", "plans", "archived", "epic");
-            const fromDir = archive ? activeDir : archiveDir;
-            const toDir = archive ? archiveDir : activeDir;
-            const fromQa = join(fromDir, "manual-qa.md");
-            const toQa = join(toDir, "manual-qa.md");
-            const fromReport = join(fromDir, "integration-report.md");
-            const toReport = join(toDir, "integration-report.md");
-            await fsMkdir(fromDir, { recursive: true });
-            await fsMkdir(toDir, { recursive: true });
-            await fsWriteFile(fromQa, "checklist");
-            await fsWriteFile(fromReport, "source report");
-            await fsWriteFile(toReport, "destination report");
-
-            await assertRejects(
-                () => moveCheckoutEpicArtifacts(projectRoot, "epic", archive),
-                Error,
-                "Epic Artifact already exists",
-            );
-
-            assertEquals(await fsReadFile(fromQa, "utf8"), "checklist");
-            await assertRejects(() => fsReadFile(toQa, "utf8"), Error, "ENOENT");
-            assertEquals(await fsReadFile(fromReport, "utf8"), "source report");
-            assertEquals(await fsReadFile(toReport, "utf8"), "destination report");
-        });
-    });
-}
-
 test("project-bound artifact access uses the Epic ID and its current revision", async () => {
     const fixture = await packageFixture();
     const other = await packageFixture();
