@@ -1,7 +1,4 @@
-import type {
-    RuntimeValidationCheckResult,
-    RuntimeValidationProgress,
-} from "../../shared/session/session-runtime-events.ts";
+import type { RuntimeValidationCheckResult, RuntimeValidationProgress } from "@runwield/session-runtime/events";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";

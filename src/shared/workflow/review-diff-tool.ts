@@ -3,7 +3,7 @@ import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { workflowEvents } from "@runwield/workflow/events";
 import { createReviewDiffReader } from "./review-diff.ts";
-import type { HostedSession } from "../session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import type { ReviewInspection } from "./review-inspection.ts";
 import type { ReviewLedger } from "@runwield/plans/controller-state";
 import type { ReviewDiffTexts } from "./review-diff.ts";

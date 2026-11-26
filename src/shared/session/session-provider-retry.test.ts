@@ -19,8 +19,8 @@ import {
     runIsolatedAgentSession,
     runNonInteractiveAgentPrompt,
 } from "./session.ts";
-import { HostedSession } from "./hosted-session.ts";
-import { createReplayEvents } from "./session-transcript-projection.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
+import { createReplayEvents } from "@runwield/session-runtime/transcript";
 import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
 import type { GuardCustomEntry } from "./runaway-loop-guard.ts";
@@ -365,7 +365,10 @@ test("Pi summary retry recovers from EOF without a second policy", async () => {
         ]);
         const hostedSession = new HostedSession({ id: "summary-retry", cwd: fixture.projectRoot });
         const notices: ProviderNotice[] = [];
-        hostedSession.setEventSink({ emit: (event: ProviderNotice) => notices.push(event) });
+        hostedSession.setEventSink((event) => {
+            if ("message" in event && typeof event.message === "string")
+                notices.push({ type: event.type, message: event.message });
+        });
         const { session, agentDef } = await buildAgentSession({
             hostedSession,
             agentName: "guide",

@@ -8,7 +8,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { createOwnerWorkspaceApp } from "./server.ts";
 
 const origin = "http://127.0.0.1:8787";
@@ -30,7 +30,7 @@ test("owner Workspace reopens an Architect Epic review and projects the revised 
                 status: "ready_for_work",
                 humanReviewMode: "ask",
             });
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, agentName: "architect" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "architect" });
             await runtime.recordPlanAssociation(sessionId, {
                 planId: "epic-review-id",
                 planName: "epic-review",

@@ -5,7 +5,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { requestLocalReviewInteraction } from "../../shared/session/local-review-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
@@ -39,7 +39,7 @@ test("saved Epic chat review keeps one conversation and live page across two run
         const conversations: Array<{ id: string; events: Array<{ delta: string }> }> = [];
         const turns: boolean[] = [];
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             runtime.setInteractionAdapter(sessionId, {
                 async requestInteraction(
                     request: Parameters<typeof requestLocalReviewInteraction>[0],

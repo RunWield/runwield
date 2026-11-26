@@ -12,11 +12,10 @@ import {
 import { ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { requestLocalReviewInteraction } from "../../shared/session/local-review-interactions.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
-import type { PlanReviewConversation } from "../../shared/session/plan-review-conversation.ts";
+import { type ReviewConversation, RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 
 async function decide(url: string, body: Record<string, string | boolean>) {
@@ -66,11 +65,11 @@ test("reopened saved Epic chat hands feedback to Architect and shows its model-a
             let url = "";
             let readyCount = 0;
             const surfaces = Array.from({ length: 3 }, () => Promise.withResolvers<string>());
-            const conversations: PlanReviewConversation[] = [];
+            const conversations: ReviewConversation[] = [];
             const prompts: string[] = [];
             let modelTurns = 0;
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 const initial = await ensurePlanIdentity(projectRoot, "epic");
                 runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
                 await runtime.requestInteraction(sessionId, {
@@ -104,7 +103,7 @@ test("reopened saved Epic chat hands feedback to Architect and shows its model-a
                         if (request.type !== RuntimeInteractionTypes.PLAN_REVIEW) return { outcome: "canceled" };
                         const conversation = request._meta?.reviewConversation;
                         assert(conversation && typeof conversation === "object" && "id" in conversation);
-                        conversations.push(conversation as PlanReviewConversation);
+                        conversations.push(conversation);
                         const response = await requestLocalReviewInteraction(
                             {
                                 ...request,

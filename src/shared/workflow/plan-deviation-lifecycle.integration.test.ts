@@ -12,7 +12,7 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { createGitPort } from "../git-port.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
@@ -22,7 +22,7 @@ import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts"
 import { runValidationPhase } from "./validation.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { findWorkRecordById, generateWorkRecordForSource, previewWorkRecordBackfill } from "../work-records/index.ts";
-import type { RuntimeInteractionRequest } from "../session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 import type { IsolatedAgentSessionOptions } from "./validation-session-adapter.ts";
 
 const FIXTURE = defineCommittedGitFixture({

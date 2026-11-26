@@ -19,9 +19,9 @@ other transports should attach to the same core runtime surface as the TUI.
 ## Decision
 
 Introduce a `SessionRuntime` layer above `SessionHost`/`HostedSession` and below
-all user-interface adapters. `src/shared/session/session-runtime.ts` is its sole
-public source surface. Private TypeScript owners under
-`src/shared/session/runtime/` divide events, queues, managed operations,
+all user-interface adapters. Applications use the public entries of
+`@runwield/session-runtime`. The root entry defines the session operations.
+Private TypeScript owners under `packages/session-runtime/runtime/` divide events, queues, managed operations,
 lifecycle, turns, reads, settings, workflow, image, and local-shell behavior
 without exposing those implementations to consumers. `SessionRuntime` owns
 adapter-neutral session operations such as create, load, prompt, cancel,
@@ -79,9 +79,10 @@ Session id is an in-process runtime identity and is deliberately distinct from
 both persisted SessionManager ids and transport-facing ACP session ids, so
 loading the same persisted conversation never aliases mutable runtime state.
 
-Adapters consume ordered semantic events and install a typed interaction
-adapter. They do not pass a rendering object to `createPromptReadySession()`,
-`loadSession()`, or `promptSession()`. During the remaining workflow migration,
+Adapters open a new Session with `createSession()` and can select its initial agent.
+They use `resumeSession()` to reopen a saved Session and receive its replay events.
+Adapters consume ordered semantic events and install a typed interaction adapter.
+During the remaining workflow migration,
 `SessionRuntime` owns a private compatibility presentation port that translates
 legacy engine output calls into the same event stream; this port is not an
 adapter extension API. Runtime adapters use `getSessionSnapshot()`, runtime

@@ -12,7 +12,7 @@ import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
 import { continueWorkflowValidation } from "./validation.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { createGitPort } from "../git-port.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
 import { runLocalCI } from "./validation-local-ci.ts";

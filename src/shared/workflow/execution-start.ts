@@ -30,7 +30,8 @@ import {
 } from "./plan-branch.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
+import { requestHostedSessionInteraction, emitSystemStatus } from "@runwield/session-runtime/host";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import {
     checkpointExecutionPreparation,
     createWorktreeGitArtifacts,
@@ -73,7 +74,6 @@ import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { CollaborationStyles, resolveExecutionOwner } from "./execution-collaboration.ts";
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
-import { emitSystemStatus } from "../session/session-runtime-events.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 
@@ -110,7 +110,7 @@ async function runCymbalIndexForExecutionWorktree(hostedSession, worktreePath) {
 }
 
 /**
- * @param {import('../session/hosted-session.ts').HostedSession} hostedSession
+ * @param {import('@runwield/session-runtime/host').HostedSession} hostedSession
  * @param {string} projectRoot
  * @returns {Promise<boolean>}
  */
@@ -292,7 +292,7 @@ export async function reconcileExecutionPreparationLocation(
     return await resolveWorkflowPlanLocation(cwd, planName, options);
 }
 
-interface ExecutionStartOptions {
+export interface ExecutionStartOptions {
     packageSelection?: PlanAccess;
     planName: string;
     expectedPlanId?: string;
@@ -300,7 +300,7 @@ interface ExecutionStartOptions {
     currentStatus?: import("@runwield/plans/lifecycle").PlanStatus;
     cwd?: string;
     existingExecution?: import("@runwield/workflow/state").ActiveExecutionWorkflow | null;
-    hostedSession?: import("../session/hosted-session.ts").HostedSession;
+    hostedSession?: import("@runwield/session-runtime/host").HostedSession;
     collaborationStyle?: "autonomous" | "pair";
     collaborationRecommendation?: "autonomous" | "pair";
     ports: ExecutionStartPorts;

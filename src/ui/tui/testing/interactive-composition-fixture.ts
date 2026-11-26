@@ -26,7 +26,7 @@
 import { endBlink } from "../boot-logo.ts";
 import { createInteractiveTuiComposition } from "../interactive-tui-composition.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
-import type { SessionRuntime } from "../../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import { stopTUI } from "../tui.ts";
 import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
 

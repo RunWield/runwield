@@ -8,7 +8,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import type { ExtensionAPI, ContextEvent, SessionCompactEvent } from "@earendil-works/pi-coding-agent";
 import reAnchorExtension from "./index.ts";
 import type { ReAnchorOptions } from "./index.ts";
-import { HostedSession } from "../../shared/session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import type { ReviewLedger } from "@runwield/plans/controller-state";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";

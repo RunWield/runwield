@@ -2,7 +2,7 @@ import { toolRegistry } from "@runwield/tools";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { workflowEpicArtifacts } from "../plan-store/index.ts";
 import { workflowEvents } from "@runwield/workflow/events";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 
 const definition = toolRegistry.get("qa_checklist_generated").definition;
 

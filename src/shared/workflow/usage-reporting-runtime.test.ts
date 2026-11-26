@@ -3,7 +3,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { setCustomSetting } from "../settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.ts";
 import { UsageReporter } from "./usage-reporting.ts";
@@ -14,10 +14,9 @@ test("a real managed text prompt records human activity independently of present
         await setCustomSetting("workflowMetrics", true, "project", fixture.projectRoot);
         const runtime = createSessionRuntime({ sessionStore: null, ownerProcessKind: "test" });
         try {
-            const created = await runtime.createInteractiveSession({
+            const created = await runtime.createSession({
                 cwd: fixture.projectRoot,
-                mode: "new",
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
             runtime.markPromptReadyAgent(created.sessionId, { agentName: "router" });
             const result = await runtime.promptUserTurn(created.sessionId, {

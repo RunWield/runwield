@@ -21,7 +21,7 @@ import {
     sessionDirForProject,
     writeTextAtomically,
 } from "../session/file-session-storage.ts";
-import { buildProjectedSessionInfo, summarizeResumableTranscript } from "../session/session-transcript-projection.ts";
+import { buildProjectedSessionInfo, summarizeResumableTranscript } from "@runwield/session-runtime/transcript";
 import {
     REMOTE_SESSION_IDENTITY_ENTRY,
     sessionDigest,

@@ -4,10 +4,10 @@ import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import type { InterviewResultDetails } from "@runwield/tools";
 import { createUserInterviewTool } from "../user-interview.ts";
-import { HostedSession } from "../../shared/session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import type { InterviewParameters } from "@runwield/tools";
-import type { RuntimeInteractionOption } from "../../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionOption } from "@runwield/session-runtime/interactions";
 
 type InterviewTool = ReturnType<typeof createUserInterviewTool>;
 type InterviewResult = AgentToolResult<InterviewResultDetails>;

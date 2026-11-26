@@ -8,7 +8,7 @@ import { getCwd } from "../../constants.ts";
 
 import { assertEquals, assertExists, assertThrows } from "../../testing/assertions.ts";
 import { createWorkRecordCompletedTool } from "../../tools/work-record-completed.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { findWorkRecordById, runWorkRecordBackfill } from "./index.ts";
 import { workRecords, type WorkRecordFrontMatter } from "@runwield/plans/work-records";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";

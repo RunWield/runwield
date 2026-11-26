@@ -6,7 +6,7 @@ import { sessionStoragePath } from "@runwield/session-files";
 import { dirname } from "node:path";
 import type { FileSessionStore } from "../session/file-session-store-types.ts";
 import { reasonForCandidate } from "../session/plan-session-lookup.ts";
-import { summarizeResumableTranscript, buildProjectedSessionInfo } from "../session/session-transcript-projection.ts";
+import { summarizeResumableTranscript, buildProjectedSessionInfo } from "@runwield/session-runtime/transcript";
 import { type RemotePlanSessionQuery, type RemoteSessionRecords } from "./session-protocol.ts";
 
 export function projectRemoteSessionRecords(

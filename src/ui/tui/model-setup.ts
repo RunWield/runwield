@@ -4,7 +4,7 @@ import {
     getConfiguredProviderAvailability,
     getSelectedDefaultModelAvailability,
 } from "../../shared/session/model-readiness.ts";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import type { UiAPI } from "./api.ts";
 
 type SetupChoice = "claude-cli" | "subscription" | "api-key";

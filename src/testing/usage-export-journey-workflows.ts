@@ -11,9 +11,9 @@ import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 import { createGitPort } from "../shared/git-port.ts";
 import { git } from "../shared/git-test-fixture.ts";
 import { setExactProjectCustomSetting } from "../shared/settings.ts";
-import { HostedSession } from "../shared/session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { ensureRootAgentSession } from "../shared/session/session.ts";
-import type { SessionRuntime } from "../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import { findById } from "../shared/worktree-registry.ts";
 import { createTestWorktreeAttempt } from "../shared/worktree-test-helpers.ts";
 import { openPublication } from "@runwield/workflow/publication-runtime";
@@ -117,7 +117,7 @@ export async function runJourneyRecovery(
     await git(root, ["commit", "-m", "Journey recovery Plans"]);
     for (const name of ["ongoing", "abandon"]) {
         if (name === "ongoing") {
-            const created = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
+            const created = await runtime.createSession({ cwd: root });
             let interrupted = false;
             interruptNext(() => {
                 interrupted = runtime.cancelSession(created.sessionId).aborted;
@@ -159,7 +159,7 @@ export async function runJourneyRecovery(
             worktreeBaseBranch: entry.baseBranch,
             executionBaselineTree: await git(entry.path, ["rev-parse", "HEAD^{tree}"]),
         });
-        const created = await runtime.createInteractiveSession({ cwd: root, mode: "new" });
+        const created = await runtime.createSession({ cwd: root });
         const surface = createPlanSessionSurface(runtime, created.sessionId, {
             executePlan: (options) => runtime.executePlan(created.sessionId, options),
             runPlanningAgent: (options) => runtime.runPlanningAgent(created.sessionId, options),

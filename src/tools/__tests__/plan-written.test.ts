@@ -12,8 +12,12 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { match as assertMatch, strictEqual } from "node:assert/strict";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "../../shared/session/hosted-session.ts";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import {
+    HostedSession,
+    emitHostedSessionRuntimeEvent,
+    type SessionRuntimeEventSink,
+} from "@runwield/session-runtime/host";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { SESSION_COMPLETE_GUIDANCE } from "../../shared/workflow/plan-review-recovery.ts";
 import { createPlanWrittenTool, type PlanWrittenToolResult } from "../plan-written.ts";
 import type { TriageMeta } from "@runwield/workflow/state";
@@ -23,11 +27,10 @@ import { addEntry as addRegistryEntry } from "../../shared/worktree-registry.ts"
 import { join } from "node:path";
 import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
+    type ReviewConversation,
     type RuntimeInteractionRequest,
     type RuntimeInteractionResponse,
-} from "../../shared/session/session-runtime-interactions.ts";
-import { type PlanReviewConversation } from "../../shared/session/plan-review-conversation.ts";
-import { type SessionRuntimeEventSink } from "../../shared/session/session-host.ts";
+} from "@runwield/session-runtime/interactions";
 import { type PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import { type SharedPlanReviewDecision } from "../../plan-store/index.ts";
 
@@ -66,7 +69,7 @@ interface RecordedPlanVersion {
 
 interface RecordedReviewMetadata extends HarnessReviewMetadata {
     agentLabel?: string;
-    reviewConversation?: PlanReviewConversation;
+    reviewConversation?: ReviewConversation;
     planId?: string;
     planPath?: string;
     expectedRevision?: string;

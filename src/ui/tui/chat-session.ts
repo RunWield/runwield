@@ -1,6 +1,7 @@
+import type { SessionRuntime as RuntimeContract } from "@runwield/session-runtime";
 import { projects } from "@runwield/projects";
 import { admitProjectWithIdentityChoice } from "./project-identity-entry.ts";
-import { resolveSessionContinuation } from "../../shared/session/session-runtime.ts";
+import { resolveSessionContinuation } from "@runwield/session-runtime/services";
 import {
     confirmMissingManagedProjectDirectory,
     confirmProjectDirectory,
@@ -49,11 +50,11 @@ import {
     recordInitOffered as recordInitOfferedFn,
 } from "../../cmd/init/init-state.ts";
 import { isProjectInitComplete } from "../../cmd/init/init-completion.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { setActiveSessionModel } from "../../shared/session/model-selection.ts";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
 import { startMetricsExportScheduler } from "../../shared/workflow/metrics-export-scheduler.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { renderBootBanner } from "./boot-banner.ts";
 import { getSelectedDefaultModelAvailability, maybeShowModelWelcome } from "./model-welcome.ts";
 import { createChatFooterController } from "./chat-footer.ts";
@@ -66,7 +67,7 @@ import {
     ONBOARDING_WARNING,
 } from "./onboarding-content.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
-import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
+import type { ImageAttachment } from "@runwield/session-runtime/events";
 import type { UiAPI } from "./api.ts";
 
 const CHAT_PROMPT_AGENT_NAME = AGENTS.OPERATOR;
@@ -123,7 +124,7 @@ export async function persistThinkingLevel(
     }
 }
 
-export function getActiveModel(runtime: SessionRuntime, sessionId: string): string {
+export function getActiveModel(runtime: Pick<RuntimeContract, "getSessionSnapshot">, sessionId: string): string {
     return runtime.getSessionSnapshot(sessionId)?.activeModel.model || "";
 }
 
@@ -241,19 +242,27 @@ export async function startInteractiveSession(
     try {
         const sessionCwd = getCwd();
         const explicitOnboardingStartup = options.startupIntent === "onboard";
-        const createdSession = await sessionRuntime.createInteractiveSession({
-            cwd: sessionCwd,
-            mode: sessionStartMode,
-            resumeSessionId: continuation?.managed ? continuation.sessionId : options.resumeSessionId,
-            deferManagedActivationUntilAgentReady: shouldDeferManagedActivation,
-        });
-        let sessionId = createdSession.sessionId;
+        const resumedSession =
+            sessionStartMode === "continue"
+                ? await sessionRuntime.resumeSession({
+                      cwd: sessionCwd,
+                      sessionId: continuation?.sessionId ?? options.resumeSessionId,
+                      sessionPath: continuation && !continuation.managed ? continuation.sessionPath : undefined,
+                  })
+                : null;
+        const session =
+            resumedSession ??
+            (await sessionRuntime.createSession({
+                cwd: sessionCwd,
+                deferPersistenceUntilFirstMessage: shouldDeferManagedActivation,
+            }));
+        let sessionId = session.sessionId;
+        const sessionStartedAt = "startedAt" in session ? session.startedAt : new Date().toISOString();
         const runtimeSnapshot = () => getRuntimeSnapshot(sessionRuntime, sessionId);
         options.onSessionReady?.(sessionId, sessionRuntime);
         const documentLinks = new DocumentLinkHost(runtimeSnapshot().cwd);
         disposables.push(() => documentLinks.dispose());
         initSettings(runtimeSnapshot().cwd);
-        const sessionStartedAt = createdSession.startedAt;
         let sessionStartedEmptyProjectDirectory = false;
         try {
             sessionStartedEmptyProjectDirectory =

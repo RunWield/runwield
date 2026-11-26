@@ -3,9 +3,8 @@
  * Semantic messages produced by workflow tools.
  */
 
-import { emitAssistantMessage } from "./session-runtime-events.ts";
+import { emitAssistantMessage, type HostedSession } from "@runwield/session-runtime/host";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "./hosted-session.ts";
 
 interface TaskCompletedMessageFields {
     message?: unknown;

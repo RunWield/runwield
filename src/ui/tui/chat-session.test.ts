@@ -7,7 +7,7 @@ import { stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.ts";
@@ -43,7 +43,7 @@ test("setActiveModel delegates reconfiguration to SessionRuntime without persist
     await withRuntimeCommandFixture("chat-session-model-persistence-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(sessionId, { agentName: "router" });
             await setActiveModel(runtime, sessionId, "fixture-model", "runtime-command-fixture");
             assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, {
@@ -76,7 +76,7 @@ test("TUI resume preserves the Session thinking choice over the global default",
         const runtime = createSessionRuntime();
         let resumeSessionId = "";
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(created.sessionId, { agentName: "guide" });
             await runtime.setSessionThinkingLevel(created.sessionId, "low");
             resumeSessionId = runtime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
@@ -106,7 +106,7 @@ test("TUI resume asks before restoring saved tutorial guidance", async () => {
         const runtime = createSessionRuntime();
         let resumeSessionId = "";
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await runtime.promptUserTurn(created.sessionId, {
                 initialRequest: "Start tutorial",
                 initialImages: [],
@@ -546,7 +546,7 @@ for (const cancel of ["quit", "escape", "ctrl-c", "end-input"]) {
             if (cancel === "quit") {
                 const runtime = createSessionRuntime();
                 try {
-                    const created = await runtime.createInteractiveSession({ cwd: homeDir, mode: "new" });
+                    const created = await runtime.createSession({ cwd: homeDir });
                     await runtime.switchAgent(created.sessionId, { agentName: "operator" });
                 } finally {
                     await runtime.closeAllSessionsWhenIdle();
@@ -707,7 +707,7 @@ test("resuming a home Session from an ordinary cwd requires consent for the sele
         const runtime = createSessionRuntime();
         let resumeSessionId = "";
         try {
-            const created = await runtime.createInteractiveSession({ cwd: homeDir, mode: "new" });
+            const created = await runtime.createSession({ cwd: homeDir });
             await runtime.switchAgent(created.sessionId, { agentName: "operator" });
             resumeSessionId = runtime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
         } finally {
@@ -744,7 +744,7 @@ for (const explicit of [true, false]) {
             const runtime = createSessionRuntime();
             let id = "";
             try {
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await runtime.createSession({ cwd: projectRoot });
                 await runtime.switchAgent(created.sessionId, { agentName: "operator" });
                 id = runtime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
             } finally {

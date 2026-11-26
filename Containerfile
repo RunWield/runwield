@@ -17,6 +17,7 @@ COPY packages/plans ./packages/plans
 COPY packages/projects ./packages/projects
 COPY packages/resources ./packages/resources
 COPY packages/session-files ./packages/session-files
+COPY packages/session-runtime ./packages/session-runtime
 COPY packages/tools ./packages/tools
 COPY packages/workflow ./packages/workflow
 COPY scripts ./scripts

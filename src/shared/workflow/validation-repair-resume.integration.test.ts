@@ -10,7 +10,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { TASK_COMPLETION_CUSTOM_TYPE } from "../session/task-completion-session.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";

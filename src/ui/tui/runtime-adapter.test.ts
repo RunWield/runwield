@@ -1,15 +1,15 @@
 import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { emitHostedSessionRuntimeEvent } from "@runwield/session-runtime/host";
 import {
-    emitHostedSessionRuntimeEvent,
     type NotificationSurface,
+    type RuntimeEventDraft,
     type RuntimeValidationCheckResults,
     type RuntimeValidationProgress,
-    type SessionRuntimeEvent,
-} from "../../shared/session/session-runtime-events.ts";
+} from "@runwield/session-runtime/events";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import type { WorkflowContext } from "../../shared/session/workflow-context-session.ts";
+import type { WorkflowContext } from "@runwield/session-runtime/events";
 import stripAnsi from "strip-ansi";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import {
@@ -20,15 +20,13 @@ import {
 import { withSessionViewFixture, type SessionViewFixture } from "./testing/session-view-fixture.ts";
 import { createUiApiFixture } from "./ui-api-test-fixture.ts";
 
-type EventDraft = Partial<SessionRuntimeEvent> & Pick<SessionRuntimeEvent, "type">;
-
 interface AdapterFixture
     extends ReturnType<typeof createUiApiFixture>, Pick<SessionViewFixture, "runtime" | "sessionId" | "session"> {
     adapter: TuiRuntimeAdapterRegistration;
     options: TuiRuntimeAdapterOptions;
     notifications: string[];
     completions: string[];
-    emit: (event: EventDraft) => boolean;
+    emit: (event: RuntimeEventDraft) => boolean;
     panel: () => string;
 }
 
@@ -62,20 +60,7 @@ async function withAdapter(
                 options,
                 notifications,
                 completions,
-                emit: (event) =>
-                    emitHostedSessionRuntimeEvent(session, {
-                        ...(event.type.startsWith("tool_")
-                            ? {
-                                  title: "toolName" in event ? event.toolName : "",
-                                  kind: "execute",
-                                  content: [],
-                                  details: null,
-                                  durationMs: 0,
-                              }
-                            : {}),
-                        ...(event.type.startsWith("assistant_") ? { agentName: "Guide" } : {}),
-                        ...event,
-                    }),
+                emit: (event) => emitHostedSessionRuntimeEvent(session, event),
                 panel: () => stripAnsi(ui.validation.render(120).join("\n")),
             });
         } finally {
@@ -116,8 +101,11 @@ test("real TUI renders semantic messages, tool results and safe failures without
             type: "tool_end",
             toolCallId: "read",
             toolName: "read",
+            title: "read",
+            kind: "execute",
             output: "Important file contents",
             content: [{ type: "text", text: "Important file contents" }],
+            details: null,
             isError: false,
             durationMs: 10,
         });
@@ -226,20 +214,49 @@ test("replayed thinking and hidden workflow plumbing stay out of the transcript"
             type: "assistant_thinking_delta",
             messageId: "old",
             delta: "old private thought",
+            agentName: "Guide",
             _meta: { replay: true },
         });
-        emit({ type: "assistant_thinking_end", messageId: "old", _meta: { replay: true } });
-        emit({ type: "tool_start", toolCallId: "triage", toolName: "triage_report", title: "triage_report" });
+        emit({ type: "assistant_thinking_end", messageId: "old", agentName: "Guide", _meta: { replay: true } });
+        emit({
+            type: "tool_start",
+            toolCallId: "triage",
+            toolName: "triage_report",
+            title: "triage_report",
+            kind: "execute",
+        });
         emit({
             type: "tool_end",
             toolCallId: "triage",
             toolName: "triage_report",
+            title: "triage_report",
+            kind: "execute",
             output: "hidden plumbing",
+            content: [],
+            details: null,
             isError: false,
+            durationMs: 0,
         });
         emit({ type: "user_message", text: "!printf local-output", images: [] });
-        emit({ type: "tool_start", toolCallId: "local", toolName: "bash", title: "! printf local-output" });
-        emit({ type: "tool_end", toolCallId: "local", toolName: "bash", output: "local-output", isError: false });
+        emit({
+            type: "tool_start",
+            toolCallId: "local",
+            toolName: "bash",
+            title: "! printf local-output",
+            kind: "execute",
+        });
+        emit({
+            type: "tool_end",
+            toolCallId: "local",
+            toolName: "bash",
+            title: "bash",
+            kind: "execute",
+            output: "local-output",
+            content: [],
+            details: null,
+            isError: false,
+            durationMs: 0,
+        });
         assertEquals(allText().includes("old private thought"), false);
         assertEquals(allText().includes("hidden plumbing"), false);
         assertEquals(allText().includes("!printf local-output"), false);
@@ -369,9 +386,13 @@ test("TUI preserves read-tool images and hidden-tool image fallback without repe
                 type: "tool_end",
                 toolCallId: "image-read",
                 toolName: "read",
+                title: "read",
+                kind: "execute",
                 output: "Read image",
                 content: [image],
+                details: null,
                 isError: false,
+                durationMs: 0,
             });
             if (!uiAPI.toggleToolOutputsExpanded) throw new Error("Expected tool-output toggle");
             uiAPI.toggleToolOutputsExpanded();
@@ -381,9 +402,13 @@ test("TUI preserves read-tool images and hidden-tool image fallback without repe
                 type: "tool_end",
                 toolCallId: "hidden-image",
                 toolName: "task_completed",
+                title: "task_completed",
+                kind: "execute",
                 output: "",
                 content: [image],
+                details: null,
                 isError: false,
+                durationMs: 0,
             });
             assertEquals(allText().split("[image/png").length, before + 1);
             emit({ type: "agent_changed", agentName: "guide", displayName: "Guide", rootHandoff: true });

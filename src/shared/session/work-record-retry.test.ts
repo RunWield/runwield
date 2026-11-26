@@ -7,7 +7,7 @@ import { withRuntimeCommandFixture as withBaseRuntimeCommandFixture } from "../.
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { listWorkRecords } from "../work-records/index.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 
 // These cases exercise recording a retained checkout completion, before package delivery receipts existed.
 const withRuntimeCommandFixture: typeof withBaseRuntimeCommandFixture = (prefix, run) =>
@@ -38,7 +38,7 @@ test("record retry belongs to the active Session and cancellation preserves deli
         });
         const runtime = createSessionRuntime({ ownerProcessKind: "test" });
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             const retry = runtime.retryWorkRecord(sessionId, "delivered");
             await started;
             assertEquals(runtime.getSessionSnapshot(sessionId)?.busy, true);

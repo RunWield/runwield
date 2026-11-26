@@ -12,9 +12,9 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { setCustomSetting } from "../settings.ts";
-import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "../session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "@runwield/session-runtime/interactions";
 import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.ts";
 import { executePlan } from "./plan-executor.ts";
 

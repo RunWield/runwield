@@ -1,11 +1,22 @@
+import type {
+    PromptTemplateMeta,
+    PromptTemplateSource,
+    ImageAttachment,
+    RuntimeEventDraft,
+    RuntimeQueuedMessage,
+} from "@runwield/session-runtime/events";
 import { isRemovedAgyProvider, removedAgyModelError } from "@runwield/pi-ai/models";
 /** Shared helpers for loading agent definitions and running agent invocations. */
 
 import type { JsonValue } from "@runwield/parsing/jsonc";
 import type { FrontMatterRecord } from "../front-matter.ts";
 import type { ModelPresetsMap, ModelPresetAgentOverride } from "../model-presets.ts";
-import type { DisposableLike } from "./hosted-session.ts";
-import type { RuntimeAgentSession } from "./runtime/support.ts";
+import {
+    emitHostedSessionRuntimeEvent,
+    emitSystemStatus,
+    type DisposableLike,
+    type HostedSession,
+} from "@runwield/session-runtime/host";
 import type { EarlySteeringSession } from "./early-steering.ts";
 import type { AgentDefinition, LoadSubAgentDefinitionOptions, SubAgentDefinitionId } from "@runwield/agents";
 import type { ResolvedResource } from "../package-resources.ts";
@@ -17,7 +28,6 @@ import type {
     ContextEditableContent,
     ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "./hosted-session.ts";
 import type { BashAllowedCommands } from "../bash-command-policy.ts";
 import type { McpIntegration } from "@runwield/pi-ai/mcp";
 import type { TriageMeta } from "@runwield/workflow/state";
@@ -26,11 +36,8 @@ import type { ExecutionSession } from "./execution-backend.ts";
 import type { AgentMessageHandler } from "./agent-handler.ts";
 import type { RequestDispatchKind } from "./request-dispatch.ts";
 import type { RunWieldModel } from "@runwield/pi-ai/models";
-import type { SkillRecord } from "./skill-catalog.ts";
-import type { ImageAttachment } from "./image-attachments.ts";
 import type { UserMessage, AssistantMessage } from "@earendil-works/pi-ai";
 import type { ThinkingLevel, AgentMessage } from "@earendil-works/pi-agent-core";
-import type { SessionRuntimeEvent, RuntimeQueuedMessage } from "./session-runtime-events.ts";
 import type { AgentSwitchOptions } from "./agent-switching.ts";
 import type { ContextSnapshotObservation, ExecutionOutcome } from "../workflow/execution-metrics.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -76,12 +83,8 @@ import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { AGENTS, agentRegistry } from "./agent-registry.ts";
 import { getCwd, getHomeDir, PROMPT_TEMPLATES_DIR } from "../../constants.ts";
-import {
-    emitHostedSessionRuntimeEvent,
-    emitSystemStatus,
-    normalizeRuntimeUsage,
-    RuntimeEventTypes,
-} from "./session-runtime-events.ts";
+import { normalizeRuntimeUsage } from "@runwield/session-runtime/host";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import mnemotecaExtension from "../../extensions/mnemoteca/index.ts";
 import cymbalExtension from "../../extensions/cymbal/index.ts";
 import ketchExtension from "../../extensions/ketch/index.ts";
@@ -150,9 +153,11 @@ const setSessionName = toolRegistry.get("set_session_name");
 export type SessionRoot = AgentSession | ExecutionSession;
 type ResolvedSessionModel = ReturnType<typeof withModelExecutionCompatibility<RunWieldModel>>;
 type ThinkingModel = Partial<Pick<RunWieldModel, "provider" | "id" | "reasoning" | "executionBackend">>;
-type SteeringSession = Pick<RuntimeAgentSession, "model" | "isStreaming" | "clearQueue"> &
-    SessionModelContext &
-    Partial<Pick<AgentSession, "steer" | "abort">>;
+interface SteeringSession
+    extends SessionModelContext, Pick<AgentSession, "model">, Partial<Pick<AgentSession, "steer" | "abort">> {
+    isStreaming?: boolean;
+    clearQueue?(): void | { steering?: readonly string[]; followUp?: readonly string[] };
+}
 interface SessionManagerCarrier {
     sessionManager?: SessionManager;
 }
@@ -317,10 +322,6 @@ interface BuildExecutionSessionOptions {
 export interface BuildExecutionSessionResult extends Omit<BuildAgentSessionResult, "session"> {
     executionSession: ExecutionSession;
     session: ExecutionSession["session"];
-}
-
-interface SessionEventType {
-    type: string;
 }
 
 interface RunPromptOptions {
@@ -591,24 +592,9 @@ export function resolveExecutionThinkingLevel(options: ResolveExecutionThinkingL
     return { resolvedThinkingLevel, thinkingLevelSource };
 }
 
-export type PromptTemplateSource = "local" | "home" | "bundled" | "package";
-
 export type PreparedSteeringImage = TurnImage;
 
 const promptTemplateModelByName: Map<string, string | undefined> = new Map();
-
-export interface PromptTemplateMeta {
-    name: string;
-    description: string;
-    argumentHint: string | undefined;
-    model: string | undefined;
-    agent: string | undefined;
-    thinkingLevel: string | undefined;
-    path: string;
-    source: PromptTemplateSource;
-    packageSource?: string | undefined;
-    packageBaseDir?: string | undefined;
-}
 
 /** Resolve prompt template search paths by priority: local > home > bundled. */
 export function getPromptTemplatePaths(cwd?: string): string[] {
@@ -749,7 +735,6 @@ export async function listPromptTemplates(options: ListPromptTemplatesOptions = 
     return templates;
 }
 
-export type SkillMeta = SkillRecord;
 export { listSkills } from "./skill-catalog.ts";
 
 export function getGlobalAgentMdPaths(homeDir: string, options: GlobalAgentMdOptions = {}): string[] {
@@ -3209,7 +3194,7 @@ export function attachSessionEventSubscribers(
     const nextAssistantMessageId = () => `${currentRuntimeTurnId}:assistant:${++assistantMessageSequence}`;
     const nextThinkingMessageId = () => `${currentRuntimeTurnId}:thinking:${++thinkingMessageSequence}`;
 
-    const emitRuntimeEvent = (runtimeEvent: Partial<SessionRuntimeEvent> & SessionEventType) => {
+    const emitRuntimeEvent = (runtimeEvent: RuntimeEventDraft) => {
         const eventWithTurnId = runtimeEvent.turnId ? runtimeEvent : { turnId: currentRuntimeTurnId, ...runtimeEvent };
         return emitHostedSessionRuntimeEvent(hostedSession, eventWithTurnId);
     };

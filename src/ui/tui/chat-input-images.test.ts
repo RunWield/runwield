@@ -6,7 +6,7 @@ import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createChatView } from "./chat-view.ts";
 import { createChatInputController } from "./chat-input-controller.ts";
@@ -23,7 +23,7 @@ async function waitFor(check: () => boolean) {
 
 async function createImageInput(projectRoot: string) {
     const runtime = createSessionRuntime();
-    const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot });
+    const { sessionId } = await runtime.createSession({ cwd: projectRoot });
     const terminal = new VirtualTerminal({ columns: 120, rows: 40 });
     const tui = new TuiAltScreen(terminal);
     const view = await createChatView({

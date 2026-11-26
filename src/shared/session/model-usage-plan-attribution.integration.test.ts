@@ -7,12 +7,15 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { ExecutionMetricsRecorder } from "../workflow/execution-metrics.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { SessionHost } from "./session-host.ts";
+import { SessionHost } from "@runwield/session-runtime/host";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { setCustomSetting } from "../settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
-import { createSessionRuntime, SessionRuntime } from "./session-runtime.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 
 interface UsageRow {
     event: string;
@@ -38,7 +41,7 @@ test("production Pi turns link committed implementation, but not earlier or unsc
         setModelResponse("Fixture answer.");
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "General discussion." })).ok, true);
             const before = await readUsage(projectRoot);
@@ -101,7 +104,7 @@ test("delayed Pi reconciliation retains the original local day and committed Pla
         });
         try {
             setSystemTime(new Date("2026-11-02T04:59:00Z"));
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             const hosted = sessionHost.getSession(sessionId);
             assert(hosted);

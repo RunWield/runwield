@@ -4,11 +4,12 @@ import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWr
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { AGENTS } from "../shared/session/agent-registry.ts";
-import { WORKFLOW_CONTEXT_CUSTOM_TYPE, type WorkflowContext } from "../shared/session/workflow-context-session.ts";
+import { WORKFLOW_CONTEXT_CUSTOM_TYPE } from "../shared/session/workflow-context-session.ts";
+import { type WorkflowContext } from "@runwield/session-runtime/events";
 import { ACTIVE_AGENT_CUSTOM_TYPE } from "../shared/session/active-agent-session.ts";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
 import { sessionDirForProject } from "../shared/session/file-session-storage.ts";
-import { createSessionRuntime } from "../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 
 export type ManagedSessionFixture = Awaited<ReturnType<typeof makeManagedSessionFixture>>;
 type ManagedSessionFixtureOptions = {

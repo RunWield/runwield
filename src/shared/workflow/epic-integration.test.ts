@@ -13,7 +13,7 @@ import type { IsolatedAgentSessionOptions, SemanticReviewPort } from "./validati
 import { parseDiffFiles } from "./review-diff-tool.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 import { checkpointExecutionWorktree } from "../worktree.ts";
 import { recordIntegrationNotes, syncEpicChildPlanDeviations } from "../../plan-store/index.ts";

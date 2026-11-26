@@ -98,7 +98,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 9. [ ] **Needs Plan — Preserve compaction across model backends.** Claude CLI and Antigravity must support useful
        long-session continuation and respect existing compaction when selected. Do not silently resend the entire old
        conversation. Evidence: [CLI conversation](src/shared/session/external-cli-conversation.ts),
-       [Session runtime](src/shared/session/session-runtime.ts).
+       [Session runtime](packages/session-runtime/index.ts).
 
 10. [ ] **Needs Plan — Keep optional vision settings local to the correct Project.** Broken fallback setup must not
         block text-only conversation. Workspace must use the Session Project's settings, not the server's working

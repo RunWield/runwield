@@ -2,17 +2,12 @@ import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { type PlanExecutionPolicy, parsePlanFrontMatter, resolvePlanExecutionPolicy } from "@runwield/plans/format";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import { decidePostExecution, type PostExecutionOptions } from "@runwield/workflow/decisions";
 import { resolveExecutionOwner, supportsPairExecution } from "./workflow.ts";
 import { selectRuntimeCollaborationStyle } from "./execution-collaboration.ts";
 import { buildPairPausedMessage } from "./engineer-runner.ts";
-
-interface StatusEvent {
-    text?: string;
-    message?: string;
-}
 
 test("Plan metadata normalizes explicit pair execution ownership", () => {
     const parsed = parsePlanFrontMatter(`---
@@ -184,8 +179,9 @@ test("an engineer-owned Plan can select Pair, and an incapable host falls back w
         },
     });
     const incapable = new HostedSession({ id: "pair-engineer-incapable", cwd: getCwd() });
-    incapable.setEventSink({
-        emit: (event: StatusEvent) => statusMessages.push(event.text || event.message || ""),
+    incapable.setEventSink((event) => {
+        if ("text" in event && typeof event.text === "string") statusMessages.push(event.text);
+        else if ("message" in event && typeof event.message === "string") statusMessages.push(event.message);
     });
     const policy: PlanExecutionPolicy = {
         executionAgent: "engineer",

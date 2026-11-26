@@ -7,14 +7,11 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { getCwdInitState, recordInitDone } from "./init-state.ts";
 import { runInitCommand } from "./index.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
-import type {
-    RuntimeInteractionRequest,
-    RuntimeInteractionResponse,
-} from "../../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "@runwield/session-runtime/interactions";
 
 interface InitUi {
     messages: Array<{ message: string; error?: boolean }>;
@@ -105,7 +102,7 @@ test("init confirms verification and setup and saves both through the existing t
                 fauxAssistantMessage(fauxText("Initialization inspection complete.")),
             ]);
             const runtime = createSessionRuntime();
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             const requests: RuntimeInteractionRequest[] = [];
             runtime.setInteractionAdapter(created.sessionId, {
                 supportsInteraction: (typeName) => typeName === "select" || typeName === "text",
@@ -180,7 +177,7 @@ test("init saves an Other verification command after user free text", async () =
             fauxAssistantMessage(fauxText("Initialization inspection complete.")),
         ]);
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const answers = [choose("other"), text("pnpm test")];
         runtime.setInteractionAdapter(created.sessionId, {
             supportsInteraction: (typeName) => typeName === "select" || typeName === "text",
@@ -234,7 +231,7 @@ test("init cancellation leaves verification unset and init incomplete", async ()
             fauxAssistantMessage(fauxText("Verification command still needs confirmation.")),
         ]);
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         runtime.setInteractionAdapter(created.sessionId, {
             supportsInteraction: (typeName) => typeName === "select" || typeName === "text",
             requestInteraction: (request) =>
@@ -278,7 +275,8 @@ for (const outcome of ["no", "canceled", "unsupported"] as const) {
                 },
             ]);
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({
+            const { sessionId } = await runtime.createSession({
+                selectDefaultAgent: true,
                 cwd: projectRoot,
                 deferPersistenceUntilFirstMessage: true,
             });
@@ -332,7 +330,7 @@ for (const legacyInit of [false, true]) {
                 fauxAssistantMessage(fauxText("Setup still needs confirmation.")),
             ]);
             const runtime = createSessionRuntime();
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             runtime.setInteractionAdapter(created.sessionId, {
                 supportsInteraction: () => true,
                 requestInteraction: () => choose("yes"),

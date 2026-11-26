@@ -15,7 +15,7 @@ import {
     registeredWorkRecords,
 } from "../../../plan-store/index.ts";
 import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-records/list.ts";
-import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
+import { projectAggregateTranscript } from "@runwield/session-runtime/transcript";
 import { getWorkspaceSearchRefreshMarker } from "../../../shared/workspace-search-refresh.ts";
 import { assertContainedProjectPath, domainLanguagePaths, readSafeProjectMarkdown } from "./project-artifacts.ts";
 

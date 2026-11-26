@@ -1,6 +1,6 @@
 import { projects } from "@runwield/projects";
-import { SessionRuntime } from "../session/session-runtime.ts";
-import { SessionHost } from "../session/session-host.ts";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
+import { SessionHost } from "@runwield/session-runtime/host";
 import { RemoteSessionControl } from "./session-control-client.ts";
 import { renderSessionExportHtml } from "../../ui/session-export/session-export-html.ts";
 import { strict as assert } from "node:assert";

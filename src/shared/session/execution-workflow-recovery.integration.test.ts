@@ -11,9 +11,9 @@ import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { addEntry, getWorktreeRegistryPath } from "../worktree-registry.ts";
-import { HostedSession } from "./hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { restoreExecutionWorkflow } from "./execution-workflow-recovery.ts";
-import { resolvePersistedExecutionRootConfiguration } from "./runtime/support.ts";
+import { resolvePersistedExecutionRootConfiguration } from "./execution-workflow-recovery.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 
 const repository = defineGitFixture(async (root) => {

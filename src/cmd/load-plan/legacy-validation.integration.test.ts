@@ -19,8 +19,8 @@ import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createGitPort } from "../../shared/git-port.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-import { HostedSession } from "../../shared/session/hosted-session.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { findById } from "../../shared/worktree-registry.ts";
 import type { PlanFixtureController as ControllerRecord } from "../../shared/testing/plan-state-fixture.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
@@ -139,7 +139,7 @@ for (const stage of stages.flatMap((stage) => [
                 await fsWriteFile(join(root, "implementation.txt"), "unrelated primary edits\n");
                 const executionHead = await git(tree, ["rev-parse", "HEAD"]);
                 const messages: string[] = [];
-                const sessionId = await runtime.createPromptReadySession({ cwd: root, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: root, agentName: "router" });
 
                 if (stage.reappeared) {
                     // Arrange an upgraded project whose old binary flushes its

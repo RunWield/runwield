@@ -1,7 +1,7 @@
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import type { TriageMeta } from "@runwield/workflow/state";
-import type { SessionRuntimeEvent } from "../session/session-runtime-events.ts";
+import type { SessionRuntimeEvent } from "@runwield/session-runtime/events";
 import { hostname } from "node:os";
 import { test } from "node:test";
 import { lstatSync } from "node:fs";
@@ -29,7 +29,7 @@ import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { createTestWorktreeAttempt, makeRepo } from "../worktree-test-helpers.ts";
 import { createEngineValidationArgs } from "./validation.ts";

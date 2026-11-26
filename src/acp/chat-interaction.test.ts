@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
-import type { RuntimeInteractionRequest } from "../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 import { formatChatQuestion, parseChatReply } from "./chat-interaction.ts";
 
 test("interview chat only matches a unique exact label or displayed number", () => {

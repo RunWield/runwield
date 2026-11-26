@@ -17,10 +17,11 @@ import {
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.ts";
-import { SessionRuntime } from "./session-runtime.ts";
-import { SessionHost } from "./session-host.ts";
+import { createSessionRuntime } from "@runwield/session-runtime";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
+import { SessionHost } from "@runwield/session-runtime/host";
 import { openFileSessionStore } from "./file-session-store.ts";
-import type { RuntimeInteractionRequest } from "./session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 
 interface NamedInvocationPromptResult {
     ok: boolean;
@@ -102,16 +103,21 @@ test("bundled release from Router exposes an interactive interview before releas
                     return fauxAssistantMessage(fauxText("Release canceled."));
                 },
             ]);
-            const runtime = makeRuntime();
+            const runtime = createSessionRuntime();
             try {
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-                runtime.setInteractionAdapter(created.sessionId, {
+                const created = await runtime.createSession({ cwd: projectRoot });
+                const installed = runtime.setInteractionAdapter(created.sessionId, {
                     supportsInteraction: () => true,
                     requestInteraction: (request: RuntimeInteractionRequest) => {
                         questions.push(request);
-                        return { outcome: "canceled" };
+                        assert(request.id);
+                        const answer = { outcome: "canceled" } as const;
+                        assertEquals(runtime.answerInteraction(created.sessionId, request.id, answer), true);
+                        assertEquals(runtime.answerInteraction(created.sessionId, request.id, answer), false);
+                        return new Promise(() => {});
                     },
                 });
+                assertEquals(installed, { ok: true });
                 const result = (await runtime.promptUserTurn(created.sessionId, {
                     initialRequest: "/release",
                     initialImages: [],
@@ -191,7 +197,7 @@ test("Prompt Template invocation sends active Segment history plus the exact exp
             const store = openFileSessionStore();
             const runtime = makeRuntime(store);
             try {
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await runtime.createSession({ cwd: projectRoot });
                 const sessionId = created.sessionId;
                 await runtime.switchAgent(sessionId, { agentName: "engineer" });
 
@@ -330,7 +336,7 @@ test("Prompt Template invocation sends active Segment history plus the exact exp
             const runtime = makeRuntime(store);
             const events: Array<{ type: string; model?: string; provider?: string; thinkingLevel?: string }> = [];
             try {
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await runtime.createSession({ cwd: projectRoot });
                 const sessionId = created.sessionId;
                 await runtime.switchAgent(sessionId, { agentName: "engineer" });
                 const predecessor = await runtime.promptSession(sessionId, {
@@ -452,7 +458,7 @@ test("Prompt Template invocation rejects unsupported Claude CLI thinking before 
         const store = openFileSessionStore();
         const runtime = makeRuntime(store);
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             const sessionId = created.sessionId;
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             const beforeSnapshot = runtime.getSessionSnapshot(sessionId);
@@ -502,7 +508,7 @@ test("Prompt Template invocation uses ordinary Claude CLI handling for large req
         process.env["RUNWIELD_CLAUDE_FIXTURE_LOG"] = logPath;
         const runtime = makeRuntime();
         try {
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             const result = await runtime.promptUserTurn(created.sessionId, {
                 initialRequest: "/too-large",
                 initialImages: [],
@@ -551,7 +557,7 @@ test("Prompt Template expansion survives a file-backed resume and follow-up", as
             let runwieldSessionId = "";
             let transcriptPath = "";
             try {
-                const created = await firstRuntime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await firstRuntime.createSession({ cwd: projectRoot });
                 const result = await firstRuntime.promptUserTurn(created.sessionId, {
                     initialRequest: "/resume-template saved work",
                     initialImages: [],
@@ -569,10 +575,9 @@ test("Prompt Template expansion survives a file-backed resume and follow-up", as
 
             const resumedRuntime = makeRuntime(store);
             try {
-                const resumed = await resumedRuntime.createInteractiveSession({
+                const resumed = await resumedRuntime.resumeSession({
                     cwd: projectRoot,
-                    mode: "continue",
-                    resumeSessionId: runwieldSessionId,
+                    sessionId: runwieldSessionId,
                 });
                 const result = await resumedRuntime.promptUserTurn(resumed.sessionId, {
                     initialRequest: "Continue without repeating the earlier action.",
@@ -626,7 +631,7 @@ test("Prompt Template invocation stores persisted image references", async () =>
             const store = openFileSessionStore();
             const runtime = makeRuntime(store);
             try {
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await runtime.createSession({ cwd: projectRoot });
                 const result = await runtime.promptUserTurn(created.sessionId, {
                     initialRequest: "/inspect-image",
                     initialImages: [{ base64: imageData, mimeType: "image/png" }],
@@ -700,7 +705,7 @@ test("Prompt Template invocation rejects unsupported thinking before a model cal
             });
 
             const runtime = makeRuntime();
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await assertRejects(
                 () =>
                     runtime.promptUserTurn(created.sessionId, {
@@ -732,7 +737,7 @@ test("Prompt Templates use the current workflow tools and ordinary execution pat
             });
 
             const runtime = makeRuntime();
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             const sessionId = created.sessionId;
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             await runtime.setActiveExecutionWorkflow(sessionId, {
@@ -782,7 +787,7 @@ test("Prompt Template model override persists for ordinary follow-ups", async ()
             setModelResponseFactories([respond, respond]);
 
             const runtime = makeRuntime();
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const created = await runtime.createSession({ cwd: projectRoot });
             await runtime.switchAgent(created.sessionId, { agentName: "operator" });
 
             const result = await runtime.promptUserTurn(created.sessionId, {

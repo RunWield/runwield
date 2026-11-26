@@ -4,7 +4,7 @@ import type { createBackgroundTaskTool } from "../../../tools/background-task.ts
 import type { McpIntegration } from "@runwield/pi-ai/mcp";
 import type { AgentSession, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { DelegatedSubAgentDefinitionId } from "@runwield/agents";
-import type { SessionRuntimeEvent } from "../session-runtime-events.ts";
+import type { SessionRuntimeEvent } from "@runwield/session-runtime/events";
 import { withRuntimeCommandFixture } from "../../../cmd/testing/runtime-command-fixture.ts";
 import { bashFixtureExecutable } from "../../../../scripts/bash-fixture.ts";
 import { delimiter } from "node:path";
@@ -34,7 +34,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { AGENTS, SUBAGENTS, agentRegistry } from "../agent-registry.ts";
 import { __resetSettingsForTests, getSettingsManager } from "../../settings.ts";
-import { HostedSession, type HostedRuntimeEventObservation } from "../hosted-session.ts";
+import { HostedSession, type HostedRuntimeEventObservation } from "@runwield/session-runtime/host";
 import {
     buildAgentSession,
     buildExecutionSession,

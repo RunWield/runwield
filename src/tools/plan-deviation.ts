@@ -7,16 +7,15 @@ import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import {
+    requestHostedSessionInteraction,
+    supportsHostedSessionInteraction,
+    type HostedSession,
+} from "@runwield/session-runtime/host";
 import { recordPlanDeviation, StalePlanWriteError, planDocumentsForCheckout } from "../plan-store/index.ts";
 import { syncEpicChildPlanDeviations } from "../plan-store/index.ts";
 import { formatPlanDeviationForPrompt, type PlanDeviation } from "@runwield/plans/format";
-import {
-    requestHostedSessionInteraction,
-    RuntimeInteractionOutcomes,
-    RuntimeInteractionTypes,
-    supportsHostedSessionInteraction,
-} from "../shared/session/session-runtime-interactions.ts";
+import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 
 const definition = toolRegistry.get("record_plan_deviation").definition;
 

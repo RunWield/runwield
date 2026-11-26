@@ -7,8 +7,8 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import {
     exportMnemotecaCollection,
     type InteractiveSessionPort,
@@ -128,7 +128,7 @@ test("sleep backs up fixture memory before a real Runtime switches and runs Engi
         const projectId = await admit(projectRoot);
         setModelResponse("Memory maintenance complete.");
         const runtime = createSessionRuntime();
-        const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+        const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
         const messages: string[] = [];
         const requests: string[] = [];
         const agentsAtBackup: Array<string | null> = [];
@@ -181,7 +181,7 @@ test("sleep can be the first prompt in a new deferred-persistence Session", asyn
             await admit(projectRoot);
             setModelResponse("Memory maintenance complete.");
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({
+            const { sessionId } = await runtime.createSession({
                 cwd: projectRoot,
                 agentName: "router",
                 deferPersistenceUntilFirstMessage: true,
@@ -213,7 +213,7 @@ test("sleep leaves a real Runtime on its current Agent when external backup fail
     await withRuntimeCommandFixture("sleep-command-failure-", async ({ projectRoot }) => {
         await admit(projectRoot);
         const runtime = createSessionRuntime();
-        const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+        const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
         const mnemoteca = createMnemotecaFixture({ exitCode: 7 });
         const messages: string[] = [];
         try {
@@ -251,7 +251,7 @@ test("sleep maintains the admitted Project collection from a worktree", async ()
             await git(root, ["worktree", "add", "-b", "feature", worktree]);
             await admit(worktree);
             setModelResponse("Memory maintenance complete.");
-            sessionId = await runtime.createPromptReadySession({ cwd: worktree, agentName: "router" });
+            ({ sessionId } = await runtime.createSession({ cwd: worktree, agentName: "router" }));
             const requests: string[] = [];
             runtime.subscribeSessionEvents(sessionId, (event) => {
                 if (event.type === RuntimeEventTypes.USER_MESSAGE) requests.push(event.text);

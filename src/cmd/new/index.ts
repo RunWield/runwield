@@ -4,7 +4,7 @@
  */
 
 import { getCwd } from "../../constants.ts";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
 
 interface NewCommandUi {
@@ -33,8 +33,9 @@ export async function runNewCommand(argv: string[], options: NewCommandOptions =
     const projectRoot = options.sessionId
         ? options.sessionRuntime.getSessionSnapshot(options.sessionId)?.cwd || getCwd()
         : getCwd();
-    const nextSessionId = await options.sessionRuntime.createPromptReadySession({
+    const { sessionId: nextSessionId } = await options.sessionRuntime.createSession({
         cwd: projectRoot,
+        selectDefaultAgent: true,
         deferPersistenceUntilFirstMessage: true,
     });
     if (sessionName) await options.sessionRuntime.renameSession(nextSessionId, sessionName);

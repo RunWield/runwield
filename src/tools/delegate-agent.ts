@@ -12,7 +12,7 @@ import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { AGENTS, SUBAGENTS, agentRegistry } from "../shared/session/agent-registry.ts";
 import { formatProviderModelReference } from "@runwield/pi-ai";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import type {
     AgentDefinition,
     DelegatedAuthority,
@@ -85,7 +85,7 @@ export interface DelegateAgentDetails {
     roleAuthorityCeiling?: DelegatedAuthority;
     output?: string;
     task_id?: string;
-    state?: import("../shared/session/background-tasks.ts").BackgroundTaskState;
+    state?: import("@runwield/session-runtime/events").BackgroundTaskState;
     log_path?: string;
     tools?: string[];
     changedPaths?: string[] | null;
@@ -257,7 +257,7 @@ function truncateToolText(text: string): string {
 }
 
 /**
- * @param {import('../shared/session/hosted-session.ts').HostedSession} hostedSession
+ * @param {import('@runwield/session-runtime/host').HostedSession} hostedSession
  * @param {string | undefined} explicitOverride
  * @returns {string | undefined}
  */

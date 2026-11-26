@@ -2,7 +2,7 @@ import { projects } from "@runwield/projects";
 import { ok, equal } from "node:assert/strict";
 import { createServer } from "node:http";
 import { openFileSessionStore } from "../../session/file-session-store.ts";
-import { createSessionRuntime } from "../../session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { loadPlan } from "../../testing/plan-query-fixture.ts";
 
 const [command, root, locator] = process.argv.slice(2);
@@ -11,7 +11,7 @@ const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "t
 try {
     if (command === "create") {
         const project = store.ensureRuntimeProject({ root });
-        const loaded = await runtime.createInteractiveSession({ cwd: root });
+        const loaded = await runtime.createSession({ cwd: root });
         ok(loaded.sessionManagerId);
         ok(
             (
@@ -51,7 +51,7 @@ try {
         ok(session, "Saved Session locator must resolve after Project rename");
         if (command === "resume") {
             equal((await projects.checkout.admit(root)).kind, "existing");
-            const loaded = await runtime.loadSession({
+            const loaded = await runtime.resumeSession({
                 cwd: root,
                 sessionId: session.piSessionId,
                 sessionPath: locator,
@@ -76,7 +76,7 @@ try {
                 }),
             );
         } else {
-            const loaded = await runtime.loadSession({
+            const loaded = await runtime.resumeSession({
                 cwd: root,
                 sessionId: session.piSessionId,
                 sessionPath: locator,

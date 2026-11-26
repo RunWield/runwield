@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 
 function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,9 +28,8 @@ test("managed prompt re-entry is rejected while a real operation holds the capab
                 });
                 let firstPrompt: Promise<{ ok: boolean; turns: number; error?: string }> | null = null;
                 try {
-                    const created = await runtime.createInteractiveSession({
+                    const created = await runtime.createSession({
                         cwd,
-                        mode: "new",
                     });
                     await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
                     const dormant = runtime.getSessionSnapshot(created.sessionId);

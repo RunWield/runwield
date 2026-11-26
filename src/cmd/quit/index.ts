@@ -1,5 +1,6 @@
 import { exit } from "node:process";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { SessionRuntime } from "@runwield/session-runtime";
+import type { InteractiveSessionRuntime as InteractiveRuntime } from "@runwield/session-runtime/services";
 import { stopTUI } from "../../ui/tui/tui.ts";
 import { cleanupAgentBrowserSessionSync } from "../../shared/agent-browser-session.ts";
 
@@ -13,7 +14,8 @@ interface QuitCommandTui {
 
 interface QuitCommandOptions {
     editor?: QuitCommandEditor;
-    sessionRuntime?: SessionRuntime;
+    sessionRuntime?: Partial<Pick<SessionRuntime, "closeAllSessionsWhenIdle">> &
+        Pick<InteractiveRuntime, "closeAllSessions">;
     tui?: QuitCommandTui;
 }
 

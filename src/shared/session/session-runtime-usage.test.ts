@@ -1,7 +1,8 @@
-import type { RuntimeUsage } from "./session-runtime-events.ts";
+import type { RuntimeUsage } from "@runwield/session-runtime/events";
 import { test } from "node:test";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { createSessionRuntimeEvent, normalizeRuntimeUsage, RuntimeEventTypes } from "./session-runtime-events.ts";
+import { normalizeRuntimeUsage } from "@runwield/session-runtime/host";
+import { createSessionRuntimeEvent, RuntimeEventTypes } from "@runwield/session-runtime/events";
 
 const unavailable = {
     inputTokens: null,

@@ -21,7 +21,7 @@ import {
     isExportableMetric,
     type MetricsJournalRow,
 } from "../../src/shared/workflow/metrics-export-record.ts";
-import { HostedSession } from "../../src/shared/session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { createRootSessionManager } from "../../src/shared/session/root-session.ts";
 import { ClaudeCliExecutionSession } from "../../src/shared/session/backends/claude-cli/execution-session.ts";
 import { deliver } from "./exporter.ts";

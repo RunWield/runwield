@@ -34,11 +34,11 @@ export { CollaborationStyles, PairCheckpointDecisions, PairPauseReasons } from "
 
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { PlanExecutionPolicy } from "@runwield/plans/format";
-import type { HostedSession } from "../session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import type { PlanWrittenEventPayload } from "@runwield/workflow/events";
 import type { PlanExecutionResult, ExecutePlanOptions } from "./plan-executor.ts";
 import type { RunPlanningAgentOptions } from "./planning-agent.ts";
-import type { RuntimeTriageInput } from "../session/session-runtime.ts";
+import type { RuntimeTriageInput } from "@runwield/session-runtime/services";
 
 export type { PlanExecutionResult, ExecutePlanOptions } from "./plan-executor.ts";
 export type { RunPlanningAgentOptions } from "./planning-agent.ts";

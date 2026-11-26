@@ -1,7 +1,7 @@
 import { holdPlanFixtureCatalogLock } from "../../shared/testing/plan-state-fixture.ts";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import type { FileSessionGeneration } from "../../shared/session/file-session-store-types.ts";
-import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { test } from "node:test";
 import { recordPlanEvent } from "../../plan-store/index.ts";
@@ -13,7 +13,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 import { loadWorkspaceDetail } from "./server/plan-adapter.ts";
@@ -21,11 +21,6 @@ import { ownerProjectPlanProgressApi } from "./routes/owner-api.ts";
 import { loadOwnerPlanProgress } from "./server/owner-plan-progress.ts";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
 
-type SessionRuntime = ReturnType<typeof createSessionRuntime>;
-type InteractiveSessionOptions = Parameters<SessionRuntime["createInteractiveSession"]>[0];
-interface PlannerSessionOptions extends InteractiveSessionOptions {
-    agentName: string;
-}
 interface PlanReviewReference {
     expectedStatus: string | null;
     expectedRevision: string | null;
@@ -86,10 +81,7 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                     });
                     await git(root, ["add", "."]);
                     await git(root, ["commit", "-m", "Saved plan"]);
-                    const { sessionId } = await runtime.createInteractiveSession({
-                        cwd: root,
-                        agentName: "planner",
-                    } as PlannerSessionOptions);
+                    const { sessionId } = await runtime.createSession({ cwd: root });
                     const managed = runtime.getSessionSnapshot(sessionId)?.managed;
                     assertExists(managed);
                     await runtime.closeAllSessionsWhenIdle();

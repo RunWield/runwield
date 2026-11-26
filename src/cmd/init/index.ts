@@ -18,7 +18,10 @@ import { COMMAND_NAMES } from "../registry.ts";
 import { EMPTY_PROJECT_DIRECTORY_INIT_NOOP_BODY, isEmptyProjectDirectory } from "../../shared/project-state.ts";
 import { bundledSkills } from "../../shared/session/skill-assets.ts";
 import { extractBundledModelPresets } from "../../shared/model-presets.ts";
-import { createSessionRuntime, SessionRuntime } from "../../shared/session/session-runtime.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 import { getModelRegistry } from "@runwield/pi-ai";
 import { getCustomSetting, getSettingsManager } from "../../shared/settings.ts";
 import { printCommandHelp } from "../help/index.ts";
@@ -142,7 +145,7 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
     const sessionRuntime = attached ? options.sessionRuntime : createSessionRuntime();
     const createdSessionId = attached
         ? options.sessionId
-        : (await sessionRuntime.createInteractiveSession({ cwd: projectRoot, mode: "new" })).sessionId;
+        : (await sessionRuntime.createSession({ cwd: projectRoot })).sessionId;
 
     await recordInitOffered(projectRoot);
     const verificationCommandOperation = createInitVerificationCommandOperation({ projectRoot });

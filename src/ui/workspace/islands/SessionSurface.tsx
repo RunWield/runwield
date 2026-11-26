@@ -1,13 +1,13 @@
 import { isProjectAvailable } from "../project-availability.ts";
 import type { ChangeEvent, ClipboardEvent, ReactNode, RefObject } from "react";
-import type { ImageAttachment } from "../../../shared/session/image-attachments.ts";
-import type { LiveSessionInfo } from "../../../shared/session/live-session-connection.ts";
 import type {
+    ImageAttachment,
     RuntimeQueuedMessage,
     RuntimeValidationProgress,
-} from "../../../shared/session/session-runtime-events.ts";
+    WorkflowContext,
+} from "@runwield/session-runtime/events";
+import type { LiveSessionInfo } from "../../../shared/session/live-session-connection.ts";
 import type { SessionSidebarTab } from "../../../shared/session/session-sidebar.ts";
-import type { WorkflowContext } from "../../../shared/session/workflow-context-session.ts";
 import type { WorkflowPresentationAction } from "../../../shared/workflow/workflow-presentation.ts";
 import type { PlanFrontMatter } from "@runwield/plans/format";
 import type { OwnerProjectView } from "../server/owner-projects.ts";

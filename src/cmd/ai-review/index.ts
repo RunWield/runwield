@@ -1,8 +1,8 @@
 import process from "node:process";
 import { AGENTS } from "../../shared/session/agent-registry.ts";
 import { getCwd } from "../../constants.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import {
     encodeGuidedReviewMetadata,
     encodeGuidedReviewUsageEvent,
@@ -62,7 +62,7 @@ export async function runAiReviewCommand(io: AiReviewCommandIo): Promise<number>
     }
 
     const runtime = createSessionRuntime({ ownerProcessKind: "workspace" });
-    const sessionId = await runtime.createPromptReadySession({ cwd: getCwd(), agentName: AGENTS.AI_REVIEWER });
+    const { sessionId } = await runtime.createSession({ cwd: getCwd(), agentName: AGENTS.AI_REVIEWER });
     const pendingUsageWrites: Promise<void>[] = [];
     const unsubscribe = runtime.subscribeSessionEvents(sessionId, (event: RuntimeUsageEventLike) => {
         if (!isRuntimeUsageEvent(event)) return;

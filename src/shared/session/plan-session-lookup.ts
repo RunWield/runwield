@@ -5,7 +5,7 @@
 
 import { dirname } from "node:path";
 import type { FileSessionStore, ManifestPlanAssociation } from "./file-session-store-types.ts";
-import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
+import { projectAggregateTranscript } from "@runwield/session-runtime/transcript";
 
 export interface PlanAssociatedSession {
     runwieldSessionId: string;

@@ -509,7 +509,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                     "RunWield",
                 );
             } else {
-                const loaded = await runtime.loadSession({
+                const loaded = await runtime.resumeSession({
                     cwd: projectRoot,
                     sessionId: candidateToAdopt.piSessionId,
                     sessionPath: candidateToAdopt.transcriptPath,

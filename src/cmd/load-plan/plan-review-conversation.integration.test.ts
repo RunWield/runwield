@@ -10,11 +10,11 @@ import { ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { requestLocalReviewInteraction } from "../../shared/session/local-review-interactions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import type { PlanReviewConversation } from "../../shared/session/plan-review-conversation.ts";
+import type { ReviewConversation } from "@runwield/session-runtime/interactions";
 
 interface ReviewAnswer {
     approved: boolean;
@@ -86,7 +86,7 @@ for (const source of ["tool", "saved", "epic"] as const) {
                     let presentations = 0;
                     let reviewUrl = "";
                     let rounds = 0;
-                    const conversations: PlanReviewConversation[] = [];
+                    const conversations: ReviewConversation[] = [];
                     let transcript: TranscriptContext | undefined;
                     let agentWorking = false;
                     const agentStarted = Promise.withResolvers<void>();
@@ -120,7 +120,7 @@ for (const source of ["tool", "saved", "epic"] as const) {
                         },
                     ]);
                     try {
-                        const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                        const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                         const agent = source === "epic" ? "architect" : "planner";
                         if (source !== "tool") {
                             runtime.setInteractionAdapter(sessionId, {
@@ -139,7 +139,9 @@ for (const source of ["tool", "saved", "epic"] as const) {
                         runtime.setInteractionAdapter(sessionId, {
                             async requestInteraction(request, signal) {
                                 if (request.type !== "plan_review") return { outcome: "canceled" };
-                                conversations.push(request._meta?.reviewConversation as PlanReviewConversation);
+                                const conversation = request._meta?.reviewConversation;
+                                assert(conversation);
+                                conversations.push(conversation);
                                 return await requestLocalReviewInteraction(
                                     {
                                         ...request,
@@ -270,7 +272,7 @@ for (const status of ["approved", "ready_for_work", "ready_for_decomposition"] a
                     let presentations = 0;
                     let reviewUrl = "";
                     try {
-                        const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                        const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                         const agentName = status === "ready_for_decomposition" ? "architect" : "planner";
                         runtime.setInteractionAdapter(sessionId, {
                             requestInteraction: () => ({ outcome: "canceled" }),
@@ -365,7 +367,7 @@ test("explicit review cancellation does not run a conversation turn or re-arm", 
             let reviewUrl = "";
             const otherInteractions: string[] = [];
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 runtime.setInteractionAdapter(sessionId, {
                     async requestInteraction(request, signal) {
                         if (request.type !== "plan_review") {
@@ -441,7 +443,7 @@ test("saved Sequence conversation re-arms every tab without losing child readine
         let reviewUrl = "";
         let documents: Array<{ planId: string; plan: string }> = [];
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
             await runtime.requestInteraction(sessionId, {
                 type: "plan_review",
@@ -527,7 +529,7 @@ test("Approve and Run after a reply-only tool turn starts execution through the 
         let url = "";
         let rounds = 0;
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             runtime.setInteractionAdapter(sessionId, {
                 async requestInteraction(request, signal) {
                     if (request.type === "select") return { outcome: "selected", value: "proceed" };
@@ -629,7 +631,7 @@ test("direct conversation revision defers Approve and Run until the review write
             let url = "";
             let rounds = 0;
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
                 await runtime.requestInteraction(sessionId, {
                     type: "plan_review",
@@ -724,7 +726,7 @@ test("a ready Sequence child revision presents one draft snapshot and accepts ch
             let reviewUrl = "";
             let documents: SequenceReviewDocument[] = [];
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
                 await runtime.requestInteraction(sessionId, {
                     type: "plan_review",

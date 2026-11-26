@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runSessionCommand } from "./index.ts";
@@ -69,7 +69,7 @@ test("session command reads saved messages and keeps compaction usage separate f
         await writeFile(path, records.map((record) => JSON.stringify(record)).join("\n") + "\n");
         const runtime = createSessionRuntime();
         try {
-            const { sessionId } = await runtime.loadSession({
+            const { sessionId } = await runtime.resumeSession({
                 cwd: projectRoot,
                 sessionId: manager.getSessionId(),
                 sessionPath: path,
@@ -102,7 +102,7 @@ test("session command reports missing committed evidence without displaying inve
         setModelResponse("Saved response.");
         const store = openFileSessionStore();
         const runtime = createSessionRuntime({ sessionStore: store });
-        const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
+        const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "guide" });
         let transcript = "";
         try {
             assertEquals(

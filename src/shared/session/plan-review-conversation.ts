@@ -1,21 +1,7 @@
 import type { PlanFrontMatter } from "@runwield/plans";
-import { RuntimeEventTypes } from "./session-runtime-events.ts";
-import type { HostedRuntimeEventObservation } from "./hosted-session.ts";
-
-export interface PlanReviewConversationEvent {
-    type: "assistant_text_delta";
-    delta: string;
-    messageId: string;
-    agentName: string;
-}
-
-export interface PlanReviewConversation {
-    id: string;
-    agentLabel: string;
-    revision: number;
-    error?: string;
-    events: PlanReviewConversationEvent[];
-}
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+import type { HostedRuntimeEventObservation } from "@runwield/session-runtime/host";
+import type { ReviewConversation } from "@runwield/session-runtime/interactions";
 
 interface PlanReviewBase {
     attrs: PlanFrontMatter;
@@ -35,7 +21,7 @@ function planningAgentLabel(agentName: string): string {
 
 /** One session-owned conversation per container Plan identity, across review rounds. */
 export class PlanReviewConversationOwner {
-    private readonly conversations = new Map<string, PlanReviewConversation>();
+    private readonly conversations = new Map<string, ReviewConversation>();
     private readonly reviewBases = new Map<string, PlanReviewBase>();
 
     getReviewBase(planId: string) {
@@ -88,7 +74,7 @@ export class PlanReviewConversationOwner {
         });
     }
 
-    select(planId: string, planningAgentName: string): PlanReviewConversation {
+    select(planId: string, planningAgentName: string): ReviewConversation {
         if (this.disposed) throw new Error("Plan review conversation is disposed");
         let conversation = this.conversations.get(planId);
         if (!conversation) {

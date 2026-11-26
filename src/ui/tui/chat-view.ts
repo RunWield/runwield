@@ -2,7 +2,7 @@ import { RunWieldTui } from "./tui.ts";
 import { getCwd } from "../../constants.ts";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
 import { getSettingsManager, isMascotEnabled } from "../../shared/settings.ts";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import {
     CombinedAutocompleteProvider,
     Container,
@@ -41,7 +41,7 @@ import { installUiApiOverrides } from "./ui-api-overrides.ts";
 import { disposeKeybindings } from "./keybindings.ts";
 import type { Component } from "@earendil-works/pi-tui";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
-import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
+import type { ImageAttachment } from "@runwield/session-runtime/events";
 import type { WorkflowPresentationAction } from "../../shared/workflow/workflow-presentation.ts";
 import type { UiAPI } from "./api.ts";
 import {

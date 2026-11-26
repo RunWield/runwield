@@ -7,23 +7,26 @@ import {
     strictEqual as assertStrictEquals,
 } from "node:assert/strict";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    type InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
-import type { RuntimeInteractionResponse } from "../../shared/session/session-runtime-interactions.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+import type { RuntimeInteractionResponse } from "@runwield/session-runtime/interactions";
 import { tuiSessionSidebarProjection } from "./session-sidebar.ts";
 
 async function withSessions(run: (runtime: SessionRuntime, first: string, second: string) => void) {
     await withRuntimeCommandFixture("snapshot-window-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         try {
-            const first = await runtime.createInteractiveSession({
+            const first = await runtime.createSession({
                 cwd: projectRoot,
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
-            const second = await runtime.createInteractiveSession({
+            const second = await runtime.createSession({
                 cwd: projectRoot,
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
             run(runtime, first.sessionId, second.sessionId);
         } finally {

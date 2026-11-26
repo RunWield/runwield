@@ -1,3 +1,4 @@
+import type { BackgroundTaskState } from "@runwield/session-runtime/events";
 import { type FileHandle, open } from "node:fs/promises";
 import { mkdir as fsMkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -6,11 +7,9 @@ import { remoteBackgroundTaskLogDirectory } from "../remote/background-task-logs
 import { spawnForegroundShell } from "../foreground-process.ts";
 import { extractAssistantOutput } from "../workflow/workflow-results.ts";
 import type { DelegatedAgentSessionOptions } from "../../tools/delegate-agent.ts";
-import type { HostedSession } from "./hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 
 export type BackgroundTaskKind = "shell" | "delegate";
-export type BackgroundTaskState = "running" | "completed" | "failed" | "cancelled" | "timed_out";
-
 export interface BackgroundTaskStatus {
     task_id: string;
     kind: BackgroundTaskKind;

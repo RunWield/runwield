@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
-import { HostedSession } from "../../shared/session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import type { TextContent } from "@earendil-works/pi-ai";
-import type { RuntimeSystemStatusEvent } from "../../shared/session/session-runtime-events.ts";
+import type { RuntimeSystemStatusEvent } from "@runwield/session-runtime/events";
 import { createTriageReportTool } from "../triage-report.ts";
 import type { ToolParameters, TriageOutcome } from "@runwield/tools";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
@@ -25,7 +25,11 @@ test("triage_report execute returns canonical routingIntent details for INQUIRY"
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const events: FixtureTriageEvent[] = [];
         const hostedSession = new HostedSession({ id: "triage-inquiry", cwd: projectRoot });
-        hostedSession.setEventSink({ emit: (event: FixtureTriageEvent) => events.push(event) });
+        hostedSession.setEventSink((event) => {
+            events.push({
+                message: "message" in event && typeof event.message === "string" ? event.message : undefined,
+            });
+        });
         const tool = createTriageReportTool({ hostedSession });
 
         const params: TriageParameters = {
@@ -73,7 +77,11 @@ test("triage_report accepts documentation Work Kind only for planned changes", a
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const events: FixtureTriageEvent[] = [];
         const hostedSession = new HostedSession({ id: "triage-documentation", cwd: projectRoot });
-        hostedSession.setEventSink({ emit: (event: FixtureTriageEvent) => events.push(event) });
+        hostedSession.setEventSink((event) => {
+            events.push({
+                message: "message" in event && typeof event.message === "string" ? event.message : undefined,
+            });
+        });
         const tool = createTriageReportTool({ hostedSession });
 
         const planned = await (tool.execute as FixtureExecute)("call-1", {
@@ -154,7 +162,11 @@ test("triage_report rejects FEATURE routing before applying session effects", as
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const events: FixtureTriageEvent[] = [];
         const hostedSession = new HostedSession({ id: "triage-invalid", cwd: projectRoot });
-        hostedSession.setEventSink({ emit: (event: FixtureTriageEvent) => events.push(event) });
+        hostedSession.setEventSink((event) => {
+            events.push({
+                message: "message" in event && typeof event.message === "string" ? event.message : undefined,
+            });
+        });
         const tool = createTriageReportTool({ hostedSession });
         await assertRejects(
             () =>

@@ -1,7 +1,7 @@
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import type { RuntimeInteractionRequest } from "../../shared/session/session-runtime-interactions.ts";
+import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 import type { OwnerPlanProgress } from "./server/owner-plan-progress.ts";
 import type { WorkspacePlanReviewStarted } from "./server/session-continuation.ts";
 import { tmpdir } from "node:os";
@@ -13,7 +13,7 @@ import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
@@ -95,7 +95,7 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                         { expectedRevision: plan.revision },
                     );
                 }
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: root, agentName: "engineer" });
+                const { sessionId } = await runtime.createSession({ cwd: root, agentName: "engineer" });
                 await runtime.recordPlanAssociation(sessionId, {
                     planId: "earlier-plan-id",
                     planName: "earlier-plan",

@@ -5,9 +5,8 @@
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import { emitSystemStatus, type HostedSession } from "@runwield/session-runtime/host";
 import { toolRegistry, type TriageOutcome } from "@runwield/tools";
-import { emitSystemStatus } from "../shared/session/session-runtime-events.ts";
 import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
 import { workflowEvents } from "@runwield/workflow/events";
 

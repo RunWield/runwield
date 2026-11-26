@@ -20,7 +20,7 @@ import { Type } from "typebox";
 import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { getNativeModelRegistry } from "@runwield/pi-ai/models";
 import { createTaskCompletedTool } from "../../../../tools/task-completed.ts";
-import { HostedSession } from "../../hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { setCustomSetting } from "../../../settings.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../../workflow/metrics.ts";
 import { readLatestTaskCompletedOutcome } from "../../../workflow/workflow-results.ts";
@@ -854,8 +854,10 @@ test("^Claude CLI auth failure is a sanitized visible non-zero exit$", async () 
             cwd: root,
             sessionManager: manager as never,
         });
-        const events: Array<{ type?: string; level?: string; message?: string }> = [];
-        hostedSession.setEventSink((event: { type?: string; level?: string; message?: string }) => events.push(event));
+        const events: string[] = [];
+        hostedSession.setEventSink((event) => {
+            if (event.type === "system_status" && "level" in event && event.level) events.push(event.level);
+        });
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Engineer",
@@ -881,10 +883,7 @@ test("^Claude CLI auth failure is a sanitized visible non-zero exit$", async () 
         const serialized = JSON.stringify(manager.getBranch());
         assertEquals(serialized.includes("secret-token"), false);
         assertEquals(serialized.includes("Authorization"), false);
-        assertEquals(
-            events.some((event) => event.type === "system_status" && event.level === "error"),
-            true,
-        );
+        assertEquals(events.includes("error"), true);
     });
 });
 
@@ -900,8 +899,12 @@ test("^Claude CLI structured limit failure shows Claude's message$", async () =>
             cwd: root,
             sessionManager: manager as never,
         });
-        const events: Array<{ type?: string; message?: string }> = [];
-        hostedSession.setEventSink((event: { type?: string; message?: string }) => events.push(event));
+        const events: string[] = [];
+        hostedSession.setEventSink((event) => {
+            if (event.type === "system_status" && "message" in event && typeof event.message === "string") {
+                events.push(event.message);
+            }
+        });
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Engineer",
@@ -923,10 +926,7 @@ test("^Claude CLI structured limit failure shows Claude's message$", async () =>
         }>;
         assertEquals(statusEntries.length, 1);
         assertEquals(statusEntries[0].data?.message, limitMessage);
-        assertEquals(
-            events.some((event) => event.type === "system_status" && event.message === limitMessage),
-            true,
-        );
+        assertEquals(events.includes(limitMessage), true);
     });
 });
 

@@ -1,8 +1,7 @@
 import { withRuntimeCommandFixture } from "../../../cmd/testing/runtime-command-fixture.ts";
-import { SessionHost } from "../../../shared/session/session-host.ts";
-import { SessionRuntime } from "../../../shared/session/session-runtime.ts";
+import { SessionHost, type HostedSession } from "@runwield/session-runtime/host";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import { openFileSessionStore } from "../../../shared/session/file-session-store.ts";
-import type { HostedSession } from "../../../shared/session/hosted-session.ts";
 import type { FileSessionStore } from "../../../shared/session/file-session-store-types.ts";
 
 export interface SessionViewFixture {
@@ -27,7 +26,7 @@ export async function withSessionViewFixture(run: (fixture: SessionViewFixture) 
             ownerInstanceId: crypto.randomUUID(),
         });
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             await run({ runtime, host, sessionId, session: host.requireSession(sessionId), store, projectRoot });
         } finally {
             await runtime.closeAllSessions();

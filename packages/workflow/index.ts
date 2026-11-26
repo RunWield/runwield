@@ -2,6 +2,7 @@ import { plans, type PlanStatus } from "@runwield/plans";
 import type { HostTurnValidationResult, ValidationHostResume } from "./host-contract.ts";
 import type { ResumeAttemptOptions, WorkflowAttempt } from "./attempt.ts";
 import type { WorkflowProgress } from "./progress.ts";
+import type { ExecutionStartOptions } from "../../src/shared/workflow/execution-start.ts";
 
 export { readWorkflowActivity, type WorkflowActivity } from "./activity.ts";
 export type { ActiveExecutionWorkflow } from "./state.ts";
@@ -17,7 +18,7 @@ export interface WorkflowLocation {
 
 /** Carries the host session and collaboration preferences into execution. */
 export interface StartWorkflowOptions {
-    hostedSession?: import("../../src/shared/session/hosted-session.ts").HostedSession;
+    hostedSession?: ExecutionStartOptions["hostedSession"];
     collaborationStyle?: "autonomous" | "pair";
     collaborationRecommendation?: "autonomous" | "pair";
 }

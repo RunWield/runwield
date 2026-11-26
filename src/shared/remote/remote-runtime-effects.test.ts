@@ -208,8 +208,9 @@ for (const boundary of ["handoff", "validation", "repair", "publication"] as con
         await withRemoteRuntimeFixture(async (f) => {
             await withRetainedPlanFixture(f.remoteProject, async () => {
                 const { Type } = await import("typebox");
-                const { SessionRuntime } = await import("../session/session-runtime.ts");
-                const { SessionHost } = await import("../session/session-host.ts");
+                const { InteractiveSessionRuntime: SessionRuntime } =
+                    await import("@runwield/session-runtime/services");
+                const { SessionHost } = await import("@runwield/session-runtime/host");
                 const { openFileSessionStore } = await import("../session/file-session-store.ts");
                 const { createExecutionStartPorts, startActiveExecutionWorkflow } =
                     await import("../workflow/execution-start.ts");
@@ -240,7 +241,10 @@ for (const boundary of ["handoff", "validation", "repair", "publication"] as con
                 let ci = 0;
                 scriptReviewAndRecord(f);
                 try {
-                    const id = await runtime.createPromptReadySession({ cwd: f.remoteProject, agentName: "engineer" });
+                    const { sessionId: id } = await runtime.createSession({
+                        cwd: f.remoteProject,
+                        agentName: "engineer",
+                    });
                     await runtime.promptUserTurn(id, {
                         agentName: "engineer",
                         initialRequest: "Run the local boundary scenario.",

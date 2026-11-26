@@ -7,7 +7,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.ts";
@@ -55,7 +55,7 @@ for (const missing of [false, true]) {
                         publishedCommit: commit,
                         verifiedAt: "2026-10-08T10:00:00Z",
                     });
-                    const created = await runtime.createInteractiveSession({ cwd: root });
+                    const created = await runtime.createSession({ cwd: root });
                     const sessionId = runtime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
                     await runtime.closeAllSessionsWhenIdle();
                     if (missing) await fsRm(`${root}/docs/plans/delivered.md`);

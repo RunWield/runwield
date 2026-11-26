@@ -22,10 +22,11 @@ import { openValidationLog, formatValidationOutput, VALIDATION_OUTPUT_LIMIT_BYTE
 import {
     emitHostedSessionRuntimeEvent,
     emitSystemStatus,
-    RuntimeEventTypes,
-} from "../session/session-runtime-events.ts";
+    requestHostedSessionInteraction,
+} from "@runwield/session-runtime/host";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { describeRuntimeTool } from "../session/tool-event-title.ts";
-import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
 import { classifyValidationOperationalError } from "./validation-operational-errors.ts";
 
@@ -77,7 +78,7 @@ export async function saveValidationCommand(
 }
 
 async function askForValidationCommand(
-    hostedSession: import("../session/hosted-session.ts").HostedSession,
+    hostedSession: import("@runwield/session-runtime/host").HostedSession,
     projectRoot: string,
     settingsPolicy: ValidationCommandSettingsPolicy,
 ): Promise<string> {
@@ -129,7 +130,7 @@ export interface ValidationCommandOptions {
 }
 
 export interface LocalCIOptions {
-    hostedSession: import("../session/hosted-session.ts").HostedSession;
+    hostedSession: import("@runwield/session-runtime/host").HostedSession;
     cwd: string;
     settingsPolicy?: ValidationCommandSettingsPolicy;
 }

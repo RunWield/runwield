@@ -52,6 +52,7 @@
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
         "@runwield/session-files": "workspace:*",
+        "@runwield/session-runtime": "workspace:*",
         "@runwield/tools": "workspace:*",
         "@runwield/workflow": "workspace:*",
         "@silvia-odwyer/photon-node": "0.3.4",
@@ -168,6 +169,18 @@
     },
     "packages/session-files": {
       "name": "@runwield/session-files",
+    },
+    "packages/session-runtime": {
+      "name": "@runwield/session-runtime",
+      "dependencies": {
+        "@earendil-works/pi-coding-agent": "1.6.0",
+        "@runwield/agents": "workspace:*",
+        "@runwield/parsing": "workspace:*",
+        "@runwield/pi-ai": "workspace:*",
+        "@runwield/plans": "workspace:*",
+        "@runwield/projects": "workspace:*",
+        "@runwield/workflow": "workspace:*",
+      },
     },
     "packages/tools": {
       "name": "@runwield/tools",
@@ -785,6 +798,8 @@
     "@runwield/resources": ["@runwield/resources@workspace:packages/resources"],
 
     "@runwield/session-files": ["@runwield/session-files@workspace:packages/session-files"],
+
+    "@runwield/session-runtime": ["@runwield/session-runtime@workspace:packages/session-runtime"],
 
     "@runwield/tools": ["@runwield/tools@workspace:packages/tools"],
 

@@ -7,7 +7,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { savePlanWithController as savePlan } from "../../shared/testing/plan-controller-fixture.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { buildWorkflowPresentation } from "../../shared/workflow/workflow-presentation.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
@@ -40,7 +40,7 @@ for (const withSession of [false, true]) {
                 });
                 let sessionId: string | undefined;
                 if (withSession) {
-                    const created = await runtime.createInteractiveSession({ cwd: root });
+                    const created = await runtime.createSession({ cwd: root });
                     await runtime.recordPlanAssociation(created.sessionId, {
                         planId: "held-id",
                         planName: "held",

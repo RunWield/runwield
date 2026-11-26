@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { listPersistedRootSessions } from "../shared/session/root-session.ts";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.ts";
 import { WorkspaceSessionContinuationService } from "./workspace/server/session-continuation.ts";
@@ -364,7 +364,7 @@ async function runTuiSurface(projectRoot: string): Promise<SurfaceSummary> {
     const events: RuntimeSurfaceEvent[] = [];
     let result: NamedInvocationPromptResult | null = null;
     try {
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         runtime.subscribeSessionEvents(created.sessionId, (event) => events.push(event));
         const originalPromptUserTurn = runtime.promptUserTurn.bind(runtime);
         runtime.promptUserTurn = (async (sessionId, options) => {

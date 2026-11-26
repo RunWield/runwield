@@ -15,7 +15,7 @@ import { injectFrontMatter, parsePlanFrontMatter } from "@runwield/plans/format"
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { addEntry, findById } from "../worktree-registry.ts";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
 import { continueWorkflowValidation } from "./validation.ts";

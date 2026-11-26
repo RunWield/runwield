@@ -32,7 +32,10 @@ import { parsePlanFrontMatter, type PlanFrontMatterInput } from "@runwield/plans
 import { resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
 import { loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    type InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { createPlanSessionSurface } from "./plan-session-surface.ts";
 import { discardWorktreeGitArtifacts } from "../../shared/worktree.ts";
@@ -108,7 +111,7 @@ async function createRuntime(
     agentName = "router",
 ): Promise<{ runtime: SessionRuntime; sessionId: string }> {
     const runtime = createSessionRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName });
+    const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName });
     return { runtime, sessionId };
 }
 

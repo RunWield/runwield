@@ -2,7 +2,7 @@ import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { isMascotEnabled } from "../../shared/settings.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runReloadCommand } from "./index.ts";
@@ -11,7 +11,7 @@ for (const deferred of [false, true]) {
     test(`reload applies manual settings to a ${deferred ? "deferred" : "active"} Session`, async () => {
         await withRuntimeCommandFixture("reload-mascot-", async ({ projectRoot }) => {
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({
+            const { sessionId } = await runtime.createSession({
                 cwd: projectRoot,
                 agentName: "router",
                 deferPersistenceUntilFirstMessage: deferred,

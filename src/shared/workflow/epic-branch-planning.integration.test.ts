@@ -23,8 +23,8 @@ import { listPlans, loadPlan } from "../testing/plan-query-fixture.ts";
 import { runLoadPlanCommand } from "../../cmd/load-plan/index.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../session/session-runtime.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { COLLABORATION_LOCK_BYPASS } from "../collaboration/lock.ts";
 import { listEntries } from "../worktree-registry.ts";
@@ -174,7 +174,7 @@ test("Epic next-child loading uses its existing default branch when the Epic has
             await git(repo, ["commit", "-m", "renumber next child on existing Epic branch"]);
             await git(repo, ["switch", "main"]);
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({ cwd: repo, agentName: "router" });
+            const { sessionId } = await runtime.createSession({ cwd: repo, agentName: "router" });
             const ui = makeLoadUi(["pick_child", "__next_child__", "cancel"]);
             const promptSelect = ui.uiAPI.promptSelect;
             ui.uiAPI.promptSelect = (title, options) => {
@@ -222,7 +222,7 @@ test("Starting an anonymous Epic child session creates a durable identity and re
             await git(repo, ["switch", "main"]);
             const branchHead = await git(repo, ["rev-parse", "epic-target"]);
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({ cwd: repo, agentName: "router" });
+            const { sessionId } = await runtime.createSession({ cwd: repo, agentName: "router" });
             const ui = makeLoadUi(["pick_child", "__next_child__", "cancel"]);
             try {
                 await runLoadPlanCommand(["epic"], {
@@ -367,7 +367,7 @@ test("Loading an Epic does not publish stale primary children back to its branch
             await fsWriteFile(join(repo, "docs/plans/epic/02-next.md"), targetChild.replace("next.js", "stale.js"));
             const head = await git(repo, ["rev-parse", "epic-target"]);
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({ cwd: repo, agentName: "router" });
+            const { sessionId } = await runtime.createSession({ cwd: repo, agentName: "router" });
             const ui = makeLoadUi(["pick_child", "epic/02-next", "view", "back", null, "cancel"]);
             try {
                 await runLoadPlanCommand(["epic"], {
@@ -440,7 +440,7 @@ test("Epic branch manual load and cancel creates no child worktree", async () =>
         const repo = await journeyFixture.checkout();
         return await withRetainedPlanFixture(repo, async () => {
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({ cwd: repo, agentName: "router" });
+            const { sessionId } = await runtime.createSession({ cwd: repo, agentName: "router" });
             const ui = makeLoadUi(["cancel"]);
             try {
                 await runLoadPlanCommand(["epic/02-next"], {
@@ -824,7 +824,7 @@ for (const action of ["view", "hold", "user_verify"]) {
             const repo = await journeyFixture.checkout();
             return await withRetainedPlanFixture(repo, async () => {
                 const runtime = createSessionRuntime();
-                const sessionId = await runtime.createPromptReadySession({ cwd: repo, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: repo, agentName: "router" });
                 const ui = makeLoadUi(action === "hold" ? ["hold", "confirm"] : [action, "cancel"]);
                 if (action === "user_verify") ui.uiAPI.promptText = () => Promise.resolve("Checked by user");
                 const before = await git(repo, ["show-ref"]);
@@ -894,7 +894,7 @@ for (const action of ["resume", "planner_re_review", "review", "proceed"]) {
                 const head = await advanceRemoteEpic(repo, action === "resume" ? "draft" : "ready_for_work");
                 setModelMessages([fauxAssistantMessage(fauxText("Planning session started."))]);
                 const runtime = createSessionRuntime();
-                const sessionId = await runtime.createPromptReadySession({ cwd: repo, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: repo, agentName: "router" });
                 runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
                 const ui = makeLoadUi([action]);
                 try {
@@ -988,7 +988,7 @@ test("Workspace saved review starts an unstarted target-only child session", asy
         const repo = await journeyFixture.checkout();
         return await withRetainedPlanFixture(repo, async () => {
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({ cwd: repo, agentName: "router" });
+            const { sessionId } = await runtime.createSession({ cwd: repo, agentName: "router" });
             let reviewRoot = "";
             runtime.setInteractionAdapter(sessionId, {
                 requestInteraction: async () => {
@@ -1138,7 +1138,7 @@ test("load-plan can cancel missing checkout recovery then continue from the save
             await git(workflow.executionCwd, ["commit", "-m", "save execution work"]);
             await fsRm(workflow.executionCwd, { recursive: true });
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({ cwd: repo, agentName: "router" });
+            const { sessionId } = await runtime.createSession({ cwd: repo, agentName: "router" });
             try {
                 const cancelled = makeLoadUi(["cancel"]);
                 await runLoadPlanCommand(["epic/02-next"], {

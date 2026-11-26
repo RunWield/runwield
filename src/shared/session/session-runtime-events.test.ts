@@ -1,14 +1,10 @@
 import { normalizeToolResult } from "@runwield/pi-ai/turn";
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
-import type { RuntimeAgentChangedEvent } from "./session-runtime-events.ts";
+import type { RuntimeAgentChangedEvent } from "@runwield/session-runtime/events";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { HostedSession } from "./hosted-session.ts";
-import {
-    createSessionRuntimeEvent,
-    emitHostedSessionRuntimeEvent,
-    RuntimeEventTypes,
-} from "./session-runtime-events.ts";
+import { HostedSession, emitHostedSessionRuntimeEvent } from "@runwield/session-runtime/host";
+import { createSessionRuntimeEvent, type RuntimeEventDraft, RuntimeEventTypes } from "@runwield/session-runtime/events";
 
 test("Runtime normalizes one complete structured tool result for every consumer", () => {
     assertEquals(
@@ -101,6 +97,7 @@ test("Runtime event factory supplies shared identity defaults and rejects partia
 
     assertThrows(
         () =>
+            // @ts-expect-error Intentionally omit required fields to exercise runtime validation.
             createSessionRuntimeEvent("session-1", {
                 type: RuntimeEventTypes.TOOL_UPDATE,
                 toolCallId: "tool-1",
@@ -144,11 +141,56 @@ test("Runtime event factory supplies shared identity defaults and rejects partia
             createSessionRuntimeEvent("session-1", {
                 type: RuntimeEventTypes.AGENT_CHANGED,
                 agentName: "operator",
+                // @ts-expect-error Intentionally pass a malformed field to exercise runtime validation.
                 rootHandoff: "yes",
             }),
         TypeError,
         "rootHandoff must be boolean",
     );
+});
+
+test("Runtime requires the task identity and state when a background task settles", () => {
+    const event = createSessionRuntimeEvent("session-1", {
+        type: RuntimeEventTypes.BACKGROUND_TASK_SETTLED,
+        taskId: "task-1",
+        state: "timed_out",
+    });
+    if (event.type !== RuntimeEventTypes.BACKGROUND_TASK_SETTLED) throw new Error("unexpected event type");
+    assertEquals(event.taskId, "task-1");
+    assertEquals(event.state, "timed_out");
+
+    assertThrows(
+        () =>
+            // @ts-expect-error A background settlement draft requires a task ID.
+            createSessionRuntimeEvent("session-1", {
+                type: RuntimeEventTypes.BACKGROUND_TASK_SETTLED,
+                state: "failed",
+            }),
+        TypeError,
+        "taskId must be a string",
+    );
+    assertThrows(
+        () =>
+            // @ts-expect-error A background settlement draft requires a state.
+            createSessionRuntimeEvent("session-1", {
+                type: RuntimeEventTypes.BACKGROUND_TASK_SETTLED,
+                taskId: "task-1",
+            }),
+        TypeError,
+        "state is invalid",
+    );
+});
+
+test("Runtime preserves reference-only images in replayed user messages", () => {
+    const images = [{ ref: "attachment:stored-image" }];
+    const event = createSessionRuntimeEvent("session-1", {
+        type: RuntimeEventTypes.USER_MESSAGE,
+        text: "Review the image",
+        _meta: { replay: true },
+        images,
+    });
+    if (event.type !== RuntimeEventTypes.USER_MESSAGE) throw new Error("unexpected event type");
+    assertEquals(event.images, images);
 });
 
 test("Runtime rejects malformed validation progress snapshots", () => {
@@ -168,11 +210,12 @@ test("Runtime rejects malformed validation progress snapshots", () => {
                 merge: "skipped",
             },
         },
-    };
+    } satisfies RuntimeEventDraft;
     assertThrows(
         () =>
             createSessionRuntimeEvent("session-1", {
                 ...base,
+                // @ts-expect-error Intentionally pass a malformed field to exercise runtime validation.
                 validationProgress: { ...base.validationProgress, outcome: "done" },
             }),
         TypeError,
@@ -322,6 +365,7 @@ test("Runtime event factory validates session replacement events", () => {
                 type: RuntimeEventTypes.SESSION_REPLACED,
                 oldSessionId: "old-session",
                 newSessionId: "new-session",
+                // @ts-expect-error Intentionally pass a malformed field to exercise runtime validation.
                 reason: "manual",
                 parentPlanName: "epic",
                 completedPlanName: "epic/01-done",
@@ -334,7 +378,7 @@ test("Runtime event factory validates session replacement events", () => {
 });
 
 test("Runtime attention reasons use shared notification vocabulary without TUI-only compaction", () => {
-    for (const reason of ["agentStopped", "planWritten", "userInterview"]) {
+    for (const reason of ["agentStopped", "planWritten", "userInterview"] as const) {
         const event = createSessionRuntimeEvent("session-1", {
             type: RuntimeEventTypes.ATTENTION_REQUESTED,
             reason,
@@ -346,6 +390,7 @@ test("Runtime attention reasons use shared notification vocabulary without TUI-o
         () =>
             createSessionRuntimeEvent("session-1", {
                 type: RuntimeEventTypes.ATTENTION_REQUESTED,
+                // @ts-expect-error Intentionally pass a malformed field to exercise runtime validation.
                 reason: "compactionFinished",
             }),
         TypeError,
@@ -371,6 +416,7 @@ test("Runtime sync state event is sanitized and validated", () => {
                 status: "current",
                 localGeneration: 1,
                 latestGeneration: 1,
+                // @ts-expect-error Intentionally add a private field to exercise runtime validation.
                 ownerInstanceId: "secret",
             }),
         TypeError,

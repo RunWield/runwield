@@ -11,8 +11,8 @@ import { configureRemotePersonalResources } from "./personal-resources.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
 import { configureRemoteModelConnection } from "@runwield/pi-ai/models";
 import { RemoteSessionControl, type RemoteSessionControlConnection } from "./session-control-client.ts";
-import { SessionRuntime } from "../session/session-runtime.ts";
-import { SessionHost } from "../session/session-host.ts";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
+import { SessionHost } from "@runwield/session-runtime/host";
 import { runValidationPhase, createEngineValidationArgs } from "../workflow/validation.ts";
 import { continueWorkflowValidation } from "../workflow/validation.ts";
 import { runPublicationPhase } from "../workflow/validation-publication.ts";
@@ -61,7 +61,7 @@ const runtime = new SessionRuntime({
 });
 let ciStarted = 0;
 async function runScenario() {
-    const sessionId = await runtime.createPromptReadySession({ cwd: input.cwd, agentName: "remote-runtime" });
+    const { sessionId } = await runtime.createSession({ cwd: input.cwd, agentName: "remote-runtime" });
     await runtime
         .promptUserTurn(sessionId, {
             initialRequest: "Run the boundary scenario.",

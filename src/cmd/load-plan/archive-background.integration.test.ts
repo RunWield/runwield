@@ -7,7 +7,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { archiveSavedPlan } from "../../plan-store/index.ts";
 import { loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";
@@ -120,7 +120,7 @@ for (const epic of [false, true]) {
                 });
                 await seedPlan(projectRoot, "next-plan", "# Next", { status: "draft" });
                 const runtime = createSessionRuntime();
-                const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
                 const release = Promise.withResolvers<void>();
                 const locked = Promise.withResolvers<void>();
                 const completed = Promise.withResolvers<void>();
@@ -205,7 +205,7 @@ test("load-plan reports a background archive failure and keeps the active Plan",
         await withRetainedPlanFixture(projectRoot, async () => {
             await seedPlan(projectRoot, "finished", "# Finished", { status: "verified" });
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
             const failed = Promise.withResolvers<string>();
             const messages: string[] = [];
             const uiAPI: UiAPI = {

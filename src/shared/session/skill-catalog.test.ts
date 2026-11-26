@@ -7,7 +7,7 @@ import { DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText, getCurrentSystemPrompt, type TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { buildAgentSession, expandSkillCommand, listSkills } from "./session.ts";
 import { listVisibleSkillCatalog } from "./skill-catalog.ts";
 import { resolveNamedInvocation } from "./named-invocation.ts";
@@ -416,7 +416,7 @@ test("Agent Session keeps Pi skills empty before and after Runtime reload", asyn
             ]);
             const runtime = createSessionRuntime();
             try {
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await runtime.createSession({ cwd: projectRoot });
                 await runtime.promptUserTurn(created.sessionId, { initialRequest: "before reload", initialImages: [] });
                 assertEquals(await runtime.reloadSession(created.sessionId), { ok: true });
                 await runtime.promptUserTurn(created.sessionId, { initialRequest: "after reload", initialImages: [] });
@@ -482,7 +482,7 @@ test("disabled external Skill requests cannot reach the model through Pi fallbac
             ]);
             const runtime = createSessionRuntime();
             try {
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const created = await runtime.createSession({ cwd: projectRoot });
                 await runtime.promptUserTurn(created.sessionId, {
                     initialRequest: "/skill:disabled-runtime-skill",
                     initialImages: [],

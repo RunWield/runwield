@@ -1,12 +1,9 @@
 import process from "node:process";
 import { AGENTS, agentRegistry } from "../session/agent-registry.ts";
-import { createSessionRuntime } from "../session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
+import type { ReviewConversation } from "@runwield/session-runtime/interactions";
 import { formatCodeReviewAnnotations, runCodeReview } from "../../ui/review/code-review.ts";
-import {
-    type ReviewConversation,
-    type StandaloneReviewPayload,
-    stopActiveReviewSurfaces,
-} from "../../ui/review/review-launcher.ts";
+import { type StandaloneReviewPayload, stopActiveReviewSurfaces } from "../../ui/review/review-launcher.ts";
 import type { BrowserPort } from "../browser-port.ts";
 import { buildGuidedReviewPolicy, recommendGuidedReview } from "../workflow/guided-review.ts";
 import { ensureReviewWorktree, settleReviewWorktree } from "./review-worktree.ts";
@@ -152,10 +149,11 @@ export async function runStandaloneReview(
                 const worktree = await ensureReviewWorktree(target);
                 if (!sessionId) {
                     print(`Engineer workspace: ${worktree.path} (${worktree.branch})`);
-                    sessionId = await runtime.createPromptReadySession({
+                    const created = await runtime.createSession({
                         cwd: worktree.path,
                         agentName: AGENTS.ENGINEER,
                     });
+                    sessionId = created.sessionId;
                     print(`Engineer Session: ${sessionId}`);
                     unsubscribe = runtime.subscribeSessionEvents(sessionId, (event) => {
                         if (event.type === "assistant_text_delta") {

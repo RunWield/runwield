@@ -21,10 +21,9 @@ import { decidePostExecution, decidePostPlanning } from "@runwield/workflow/deci
 import { buildTriageReport } from "./workflow-prompts.ts";
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "./validation.ts";
 import { continueWorkflowValidation } from "./validation.ts";
-import { emitSystemStatus } from "../session/session-runtime-events.ts";
+import { emitSystemStatus, type HostedSession } from "@runwield/session-runtime/host";
 import { buildPlanSummary } from "../plan-presentation.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
-import type { HostedSession } from "../session/hosted-session.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { WorkflowValidationResult } from "./validation.ts";
 import { createGitPort } from "../git-port.ts";

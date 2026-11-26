@@ -15,11 +15,12 @@ import type {
     FileSessionProject,
     FileSessionStore,
 } from "./file-session-store.ts";
-import type { MinimalSessionManagerLike } from "./hosted-session.ts";
+import type { FileSessionManifest } from "./file-session-store-types.ts";
+import type { MinimalSessionManagerLike } from "@runwield/session-runtime/host";
 import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { open, readdir, realpath, stat as fsStat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
-import { sessionDirForCheckout, sessionProjectMatches } from "./file-session-storage.ts";
+import { listManifests, sessionDirForCheckout, sessionProjectMatches } from "./file-session-storage.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { parseRemoteSessionTranscript } from "../remote/session-protocol.ts";
 
@@ -539,6 +540,13 @@ export async function classifyRootSessionLocator(
         return { kind: "blocked", reason: "locator_conflict" };
     }
     let session = byPath || byPi || null;
+    if (
+        options.sessionId &&
+        options.sessionId !== locator.piSessionId &&
+        options.sessionId !== session?.runwieldSessionId
+    ) {
+        return { kind: "blocked", reason: "locator_conflict" };
+    }
     if (!session && options.allowCatalog !== false) {
         try {
             session = await store.ensureSessionCatalogRecord({
@@ -779,6 +787,45 @@ export async function readCatalogSafeRootSessionLocator(
     } finally {
         await file.close();
     }
+}
+
+interface SavedSessionTranscript {
+    manifest: FileSessionManifest;
+    kind: string;
+    hasPrimaryManifest: boolean;
+}
+
+/** Read the latest eligible transcript in the checkout's verified Session directories. */
+export async function findLatestSavedSession(cwd: string) {
+    const { locators } = await listCatalogSafeRootSessionLocators(cwd);
+    if (locators.length === 0) return null;
+    const baseDir = getRunWieldSessionsBaseDir();
+    const manifestsByTranscript = new Map<string, SavedSessionTranscript>();
+    for (const directory of new Set(locators.map((locator) => locator.sessionDir))) {
+        for (const { manifest, hasPrimaryManifest } of listManifests(directory, true)) {
+            if (!Array.isArray(manifest.segments)) continue;
+            for (const segment of manifest.segments) {
+                if (typeof segment?.transcriptPath !== "string") continue;
+                const path = sessionStoragePath(segment.transcriptPath, baseDir);
+                const prior = manifestsByTranscript.get(path);
+                const authority = Number(hasPrimaryManifest) - Number(prior?.hasPrimaryManifest);
+                if (!prior || authority > 0 || (authority === 0 && manifest.updatedAt > prior.manifest.updatedAt)) {
+                    manifestsByTranscript.set(path, { manifest, kind: segment.kind, hasPrimaryManifest });
+                }
+            }
+        }
+    }
+    const sorted = locators.toSorted((left, right) => {
+        const modifiedDifference = (right.modified?.getTime() ?? 0) - (left.modified?.getTime() ?? 0);
+        return modifiedDifference || right.sessionPath.localeCompare(left.sessionPath);
+    });
+    for (const locator of sorted) {
+        const saved = manifestsByTranscript.get(sessionStoragePath(locator.sessionPath, baseDir));
+        if (!saved?.manifest.archivedAt && saved?.kind !== "semantic_repair") {
+            return { locator, manifest: saved?.manifest };
+        }
+    }
+    return null;
 }
 
 /**

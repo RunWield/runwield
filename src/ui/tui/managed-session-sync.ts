@@ -3,7 +3,7 @@
  * Idle read-only synchronization loop for dormant managed Sessions.
  */
 
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 
 type NativeTimerHandle = ReturnType<typeof setTimeout>;
 type TimerCallback = () => void;

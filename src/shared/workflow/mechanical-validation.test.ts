@@ -5,7 +5,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { fauxAssistantMessage, fauxToolCall, fauxText } from "@earendil-works/pi-ai";
 import { type AgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { ensureRootAgentSession } from "../session/session.ts";
 import { attachRecorder, makeUi, type ValidationUiRecorder } from "./validation-test-helpers.ts";
 import { systemLocalCIPort, type LocalCIPort, type LocalCIResult } from "./validation-local-ci.ts";

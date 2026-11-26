@@ -8,12 +8,8 @@ import { isEpicPlan, resolvePlanExecutionPolicy, isProjectPlan } from "@runwield
 import { AGENTS, agentRegistry } from "../session/agent-registry.ts";
 import { CLI_BIN } from "../../constants.ts";
 
-import { emitSystemStatus } from "../session/session-runtime-events.ts";
-import {
-    requestHostedSessionInteraction,
-    RuntimeInteractionOutcomes,
-    RuntimeInteractionTypes,
-} from "../session/session-runtime-interactions.ts";
+import { emitSystemStatus, requestHostedSessionInteraction, type HostedSession } from "@runwield/session-runtime/host";
+import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import { isExecutablePlanStatus } from "@runwield/plans/lifecycle";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
@@ -37,7 +33,6 @@ import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
-import type { HostedSession } from "../session/hosted-session.ts";
 
 function isPlanReviewRetryAccepted(response) {
     if (!response || typeof response !== "object") return false;

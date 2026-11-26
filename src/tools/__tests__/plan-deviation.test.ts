@@ -4,11 +4,8 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "../../shared/session/hosted-session.ts";
-import type {
-    RuntimeInteractionRequest,
-    RuntimeInteractionResponse,
-} from "../../shared/session/session-runtime-interactions.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
+import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "@runwield/session-runtime/interactions";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { createPlanDeviationTool } from "../plan-deviation.ts";

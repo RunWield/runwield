@@ -1,5 +1,5 @@
 import type { ActiveExecutionWorkflow } from "./state.ts";
-import type { HostedSession } from "../../src/shared/session/hosted-session.ts";
+import type { WorkflowTaskCompletionHost } from "./events.ts";
 import { withPlanImplementationCompletion } from "../../src/plan-store/index.ts";
 import { capturePlanAccess, capturePlanExecutionContext, hasCanonicalPlanAccess } from "../../src/plan-store/index.ts";
 import { resumePlanAttempt } from "../../src/plan-store/index.ts";
@@ -17,8 +17,13 @@ import {
 import { isInValidation } from "@runwield/plans/lifecycle";
 import { recordPlanEvent } from "../../src/plan-store/index.ts";
 import { restoreExecutionPlanFromBaseline } from "../../src/plan-store/index.ts";
-import { recordWorkflowOutcome } from "../../src/shared/workflow/outcome-observations.ts";
+import { recordWorkflowOutcome, type OutcomeSession } from "../../src/shared/workflow/outcome-observations.ts";
 import { listTransitionRecoveryRecords, runImplementationCheckpointTransition } from "../../src/plan-store/index.ts";
+
+/** Identify the managed session and acknowledge its reports when implementation settles. */
+export interface ImplementationCompletionHost extends WorkflowTaskCompletionHost {
+    getManagedMetadata(): OutcomeSession | null;
+}
 
 /** Supplies the captured execution context and revision checks used to checkpoint a completion report. */
 export interface FinalizePlanImplementationOptions {
@@ -30,7 +35,7 @@ export interface FinalizePlanImplementationOptions {
     expectedPlanId?: string;
     expectedPlanRevision?: string;
     expectedPlanBodyRevision?: string;
-    hostedSession?: HostedSession;
+    hostedSession?: ImplementationCompletionHost;
 }
 
 /** Reports the implementation commit when the completed attempt has one on record. */
@@ -287,7 +292,7 @@ async function finalizeLockedImplementation({
     return implementationCommit ? { implementationCommit } : {};
 }
 
-function acknowledgeImplementationCompletion(hostedSession: HostedSession | undefined) {
+function acknowledgeImplementationCompletion(hostedSession: ImplementationCompletionHost | undefined) {
     if (!hostedSession) return;
     const completion = claimPendingTaskCompletion(hostedSession, hostedSession.getRootAgentSession());
     if (completion) acknowledgeTaskCompletion(hostedSession, completion);

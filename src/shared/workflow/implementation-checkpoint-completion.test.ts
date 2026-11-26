@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { type ExtensionToolContext, SessionManager } from "@earendil-works/pi-coding-agent";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { listPendingTaskCompletions } from "../session/task-completion-session.ts";
 import { makeValidationProjectRoot } from "./validation-test-helpers.ts";
 

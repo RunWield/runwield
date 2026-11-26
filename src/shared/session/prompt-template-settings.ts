@@ -9,7 +9,7 @@ import {
 import { getNativeModelRegistry } from "@runwield/pi-ai/models";
 import { formatProviderModelReference } from "@runwield/pi-ai";
 import { resolveActiveWorkflowRuntimeAgent } from "../workflow/execution-agent.ts";
-import type { HostedSession } from "./hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import type { PromptTemplateInvocation, ThinkingLevel } from "./named-invocation.ts";
 import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 

@@ -4,14 +4,14 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { renamePlan } from "../../plan-store/index.ts";
 import { ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 
 test("an idle Session reopens the complete saved Sequence and saves approval without a model turn", async () => {
@@ -40,7 +40,7 @@ test("an idle Session reopens the complete saved Sequence and saves approval wit
         const fileStore = openFileSessionStore();
         const runtime = createSessionRuntime({ sessionStore: ownerStore, ownerProcessKind: "test" });
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
             await runtime.requestInteraction(sessionId, {
                 type: RuntimeInteractionTypes.PLAN_REVIEW,
@@ -99,7 +99,7 @@ test("a saved review does not open a replacement Plan identity", async () => {
         const ownerStore = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const runtime = createSessionRuntime({ sessionStore: ownerStore, ownerProcessKind: "test" });
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
             await runtime.requestInteraction(sessionId, {
                 type: RuntimeInteractionTypes.PLAN_REVIEW,

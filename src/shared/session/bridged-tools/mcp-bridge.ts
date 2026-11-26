@@ -32,8 +32,8 @@ import { Server } from "@modelcontextprotocol/sdk/server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp";
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from "@modelcontextprotocol/sdk/types";
 import { RUNWIELD_MCP_TOOL_TIMEOUT_MS } from "./tool-timeout.ts";
-import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../session-runtime-events.ts";
-import type { HostedSession } from "../hosted-session.ts";
+import { emitHostedSessionRuntimeEvent, type HostedSession } from "@runwield/session-runtime/host";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { describeRuntimeTool } from "../tool-event-title.ts";
 
 type ToolContent = ToolContentBlock[];

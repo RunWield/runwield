@@ -1,14 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { RuntimeUsageTotals } from "../../shared/session/runtime-usage-totals.ts";
-import type { RuntimeUsage } from "../../shared/session/session-runtime-events.ts";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { RuntimeUsage } from "@runwield/session-runtime/events";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.ts";
 import { AGENTS, agentRegistry } from "../../shared/session/agent-registry.ts";
 import { getCwd, getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
 import { getSettingsManager } from "../../shared/settings.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { readRunWieldPackageInstallSync } from "../../shared/package-install.ts";
 import type { Component } from "@earendil-works/pi-tui";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";

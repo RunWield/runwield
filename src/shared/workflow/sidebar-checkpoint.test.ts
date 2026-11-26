@@ -4,7 +4,7 @@ import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { createGitPort } from "../git-port.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { continueWorkflowValidation } from "./validation.ts";
 import { makeValidationProjectRoot, NO_ISOLATED_AGENT_PORT } from "./validation-test-helpers.ts";
 import { tuiSessionSidebarProjection } from "../../ui/tui/session-sidebar.ts";

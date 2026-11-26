@@ -21,7 +21,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import { AGENTS } from "../src/shared/session/agent-registry.ts";
 import { getCwd, getHomeDir } from "../src/constants.ts";
-import { createSessionRuntime } from "../src/shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { readLatestTriageOutcome as readLatestTriageOutcomeFn } from "../src/shared/workflow/orchestrator.ts";
 import {
     type CsvRow,
@@ -33,10 +33,10 @@ import {
     withRouterJudgementMetrics,
 } from "./router-eval-utils.ts";
 
-import type { SessionRuntime } from "../src/shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { ImageAttachment } from "../src/shared/session/image-attachments.ts";
+import type { ImageAttachment } from "@runwield/session-runtime/events";
 import type { TriageOutcome, TriageOutcomeInput } from "@runwield/tools";
 
 type BenchmarkBashProperties = {
@@ -296,7 +296,7 @@ export async function runRouterForGoldenRequest(
         messagesPromise = options.runAgentSession({ ...agentOptions, cwd: options.cwd });
     } else {
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: options.cwd || getCwd() });
+        const created = await runtime.createSession({ cwd: options.cwd || getCwd() });
         cancel = () => {
             runtime.cancelSession(created.sessionId);
         };

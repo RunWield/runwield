@@ -51,7 +51,7 @@ import { type PlanFrontMatter } from "@runwield/plans/format";
 import { type UiAPI } from "../../ui/tui/api.ts";
 import { type PlanSessionSurface } from "./plan-session-types.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { createPlanSessionSurface } from "./plan-session-surface.ts";
 import { recordWorkflowMetric } from "../../shared/workflow/metrics.ts";
 import { seedPlanState as updatePlanFrontMatter } from "../../shared/testing/plan-state-fixture.ts";
@@ -270,7 +270,7 @@ async function writeUnresolvedTransitionRecord(
 
 async function makeSession(projectRoot: string): Promise<PlanSessionSurface> {
     const runtime = createSessionRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "guide" });
+    const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "guide" });
     sessionRuntimes.set(sessionId, runtime);
     return createPlanSessionSurface(runtime, sessionId, {
         executePlan: (options) => runtime.executePlan(sessionId, options),

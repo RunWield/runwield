@@ -6,7 +6,10 @@ import { join } from "node:path";
 import { Container, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getCwdInitState } from "../../cmd/init/init-state.ts";
-import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    type InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 import { getSettingsManager } from "../../shared/settings.ts";
 import { createUiApi } from "./api.ts";
 import { SpinnerBlock } from "./blocks.ts";
@@ -51,7 +54,7 @@ function renderMessages(messageList: Container): string {
 
 async function createRuntimeSession(projectRoot: string): Promise<{ runtime: SessionRuntime; sessionId: string }> {
     const runtime = createSessionRuntime();
-    const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+    const created = await runtime.createSession({ cwd: projectRoot });
     return { runtime, sessionId: created.sessionId };
 }
 

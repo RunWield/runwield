@@ -18,11 +18,10 @@ import { configureRemoteMemoryConnection } from "./memory-bridge.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
 import { configureRemoteMcpConnection } from "./mcp-bridge.ts";
 import { RemoteSessionControl, type RemoteSessionControlConnection } from "./session-control-client.ts";
-import { SessionHost } from "../session/session-host.ts";
+import { SessionHost, HostedSession } from "@runwield/session-runtime/host";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
-import { SessionRuntime } from "../session/session-runtime.ts";
-import { RuntimeEventTypes } from "../session/session-runtime-events.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { buildAgentSession } from "../session/session.ts";
 import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../session/root-session.ts";
@@ -139,7 +138,7 @@ export interface RuntimeClientReport {
     reviewKind?: string;
     canReopen?: boolean;
     rollover?: import("../session/segment-rollover.ts").SegmentRolloverResult;
-    workflowContext?: import("../session/workflow-context-session.ts").WorkflowContext | null;
+    workflowContext?: import("@runwield/session-runtime/events").WorkflowContext | null;
     tutorialContext?: import("../session/tutorial-context-session.ts").TutorialContext | null;
     activeWorkflow?: import("@runwield/workflow/state").ActiveExecutionWorkflow | null;
     piSessionId?: string;
@@ -181,7 +180,7 @@ const runtime = new SessionRuntime({
     ownerProcessKind: "test",
     ownerInstanceId: crypto.randomUUID(),
 });
-let sessionId = await runtime.createPromptReadySession({ cwd: input.cwd, agentName: "remote-runtime" });
+let { sessionId } = await runtime.createSession({ cwd: input.cwd, agentName: "remote-runtime" });
 let workflowTurnEndResults: string[] = [];
 const report = (kind: string, ok?: boolean, error?: string) => {
     const snapshot = runtime.getSessionSnapshot(sessionId);
@@ -650,7 +649,7 @@ async function runCommands() {
             } else if (command.kind === "load-start") {
                 await runtime.closeAllSessionsWhenIdle();
                 pending.push(
-                    runtime.loadSession({ cwd: input.cwd, sessionId: command.sessionId || "" }).then(
+                    runtime.resumeSession({ cwd: input.cwd, sessionId: command.sessionId || "" }).then(
                         (loaded) => {
                             sessionId = loaded.sessionId;
                             report("load", true);
@@ -725,7 +724,7 @@ async function runCommands() {
                 report("turn", result.ok, result.error);
             } else if (command.kind === "load") {
                 await runtime.closeAllSessionsWhenIdle();
-                sessionId = (await runtime.loadSession({ cwd: input.cwd, sessionId: command.sessionId || "" }))
+                sessionId = (await runtime.resumeSession({ cwd: input.cwd, sessionId: command.sessionId || "" }))
                     .sessionId;
                 report("load", true);
             } else {

@@ -5,8 +5,8 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { validateToolArguments, fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { HostedSession } from "../../shared/session/hosted-session.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { createPairCheckpointTool } from "../pair-checkpoint.ts";
 import { readCurrentPairCheckpoint } from "../../shared/session/pair-checkpoint-session.ts";
 import { createTaskCompletedTool } from "../task-completed.ts";
@@ -15,10 +15,7 @@ import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testin
 import type { TextContent } from "@earendil-works/pi-ai";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import type { RequestDispatchKind } from "../../shared/session/request-dispatch.ts";
-import type {
-    RuntimeAssistantTextDeltaEvent,
-    SessionRuntimeEvent,
-} from "../../shared/session/session-runtime-events.ts";
+import type { RuntimeAssistantTextDeltaEvent, SessionRuntimeEvent } from "@runwield/session-runtime/events";
 import type { PairCheckpointDecision } from "../../shared/session/pair-checkpoint-session.ts";
 import type { PairCheckpointDetails } from "../pair-checkpoint.ts";
 import type { BrowserPreflightOutcome, TaskCompletedDetails } from "@runwield/tools";

@@ -1,5 +1,5 @@
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
-import type { HostedSession, MinimalSessionManagerLike } from "./hosted-session.ts";
+import type { HostedSession, MinimalSessionManagerLike } from "@runwield/session-runtime/host";
 
 export interface ExecutionWorkflowSnapshot {
     version: 1;

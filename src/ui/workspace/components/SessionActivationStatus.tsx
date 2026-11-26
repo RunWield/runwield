@@ -1,5 +1,5 @@
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
-import type { WorkflowContext } from "../../../shared/session/workflow-context-session.ts";
+import type { WorkflowContext } from "@runwield/session-runtime/events";
 
 export interface SessionAvailabilitySnapshot {
     activeAgent?: string | null;

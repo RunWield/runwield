@@ -2,11 +2,11 @@ import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { ensurePlanIdentity } from "../../plan-store/index.ts";
 
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 
 test("a failed review launch does not claim the review was completed", async () => {
     await withRuntimeCommandFixture("reopen-launch-", async ({ homeDir, projectRoot }) => {
@@ -21,7 +21,7 @@ test("a failed review launch does not claim the review was completed", async () 
         const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
             await runtime.requestInteraction(sessionId, {
                 type: RuntimeInteractionTypes.PLAN_REVIEW,

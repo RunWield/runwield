@@ -40,7 +40,7 @@ import { spawn } from "node:child_process";
 import { runRemoteSupervisor } from "./src/shared/remote/supervisor.ts";
 import { configureRemotePersonalResources } from "./src/shared/remote/personal-resources.ts";
 import { remoteBackgroundTaskLogDirectory } from "./src/shared/remote/background-task-logs.ts";
-import { HostedSession } from "./src/shared/session/hosted-session.ts";
+import { HostedSession } from ${JSON.stringify(fileURLToPath(import.meta.resolve("@runwield/session-runtime/host")))};
 if (process.argv.slice(2)[0] === "--remote-supervisor") await runRemoteSupervisor();
 else if (process.argv.slice(2)[0] === "--remote-model-proof") {
     const reader = Readable.toWeb(process.stdin).getReader();

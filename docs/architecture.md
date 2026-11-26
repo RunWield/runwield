@@ -97,9 +97,9 @@ second core boundary used by Session workflows and Workspace. Workflow binds a P
 
 | Area                        | Responsibilities                                                                                                     | Primary implementation                                                                                                                                   |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Session application runtime | Create/load/close sessions, serialize turns, switch agents, cancel work, emit semantic events, broker interactions   | `src/shared/session/session-runtime.ts`                                                                                                                  |
-| Per-session ownership       | Project root, root and sub-agent sessions, active agent/model/thinking state, active workflow reference, interactions    | `src/shared/session/hosted-session.ts`                                                                                                                   |
-| Multi-session registry      | Adopt, find, list, and dispose hosted sessions                                                                       | `src/shared/session/session-host.ts`                                                                                                                     |
+| Session application runtime | Create/load/close sessions, serialize turns, switch agents, cancel work, emit semantic events, broker interactions   | `packages/session-runtime/index.ts`                                                                                                                  |
+| Per-session ownership       | Project root, root and sub-agent sessions, active agent/model/thinking state, active workflow reference, interactions    | `packages/session-runtime/hosted-session.ts`                                                                                                                   |
+| Multi-session registry      | Adopt, find, list, and dispose hosted sessions                                                                       | `packages/session-runtime/host.ts`                                                                                                                     |
 | Pi integration              | Build configured `AgentSession` objects, assemble prompts, wire tools, translate Pi events, run prompts, reuse roots | `src/shared/session/session.ts`                                                                                                                          |
 | Workflow application logic  | Bind execution attempts, interpret tool outcomes, route requests, and advance validation and publication                             | `packages/workflow/`, `src/shared/session/agent-handler.ts`, `src/shared/workflow/orchestrator.ts`                                         |
 | Plan domain                 | Canonical Markdown persistence, identities, hierarchy, lifecycle state machine, collaboration write lock             | `src/plan-store.ts`, `packages/plans/lifecycle.ts`                                                                                             |
@@ -162,8 +162,7 @@ Forbidden edges are as important as the shown edges:
 
 ## Public Runtime boundary
 
-The public boundary lives in `src/shared/session/session-runtime.ts`, `src/shared/session/session-runtime-events.ts`,
-and `src/shared/session/session-runtime-interactions.ts`.
+The root of `@runwield/session-runtime` defines the shared session operations. Interactive hosts also use its services and transcript entries. The events and interactions entries describe what an adapter can observe or answer.
 
 | Surface                 | Consumer-visible contract                                                                      |
 | ----------------------- | ---------------------------------------------------------------------------------------------- |
@@ -253,7 +252,7 @@ timestamp, and turn context before fanout. No core producer receives a consumer 
 | Runtime or model error              | subscriber or Runtime catch                                                  | error normalized inside Core                                                                                                                         | `terminal_error`; Runtime still closes turn with `turn_end` and `busy_changed(false)`                                                          | TUI shows error; ACP reports protocol message/update                                       |
 | Cancellation                        | `cancelSession(id)`                                                          | abort root, sub-agents, compaction, queued input, interactions, and local processes                                                                  | one `cancellation` event with semantic scope/message; affected tools/interactions also terminate                                               | Consumers render/map the event and clear local presentation state                          |
 | Steering                            | `steerSession(id, text, images)` or `queueNextTurnMessage(id, text, images)` | Runtime targets a locally streaming root, or the sending surface keeps input in its small in-memory queue while another surface owns Session Control | `queued_message_changed` transitions                                                                                                           | Workspace and TUI anchor queued input above their composers; ACP acknowledges queued input |
-| Replay/resume                       | `loadSession()` then `replaySession()`                                       | Runtime translates persisted entries without exposing manager                                                                                        | the same normalized message, thinking, tool, usage, and status events used live                                                                | Consumer runs the same event handlers used for live output                                 |
+| Replay/resume                       | `resumeSession()` returns the initial replay                                | Runtime translates persisted entries without exposing manager                                                                                        | the same normalized message, thinking, tool, usage, and status events used live                                                                | Consumer runs the same event handlers used for live output                                 |
 | Agent/model/thinking change         | Runtime setter/switch method                                                 | Core rebuilds or updates owned root state                                                                                                            | `agent_changed`, `model_changed`, `thinking_level_changed`                                                                                     | Consumers update labels/protocol metadata                                                  |
 | Workflow footer context             | `triage_report`, `plan_written`, or execution start                          | Hosted session persists the normalized complete context; segment swaps copy it forward when needed                                                   | `workflow_context_changed`; `workflowContext` is also present in the Runtime snapshot and may fall back read-only to active execution metadata | TUI rerenders its footer; other consumers receive the same ready-to-use context            |
 | Session rename                      | `renameSession()` or workflow auto-name                                      | Runtime/persisted manager                                                                                                                            | `session_renamed`                                                                                                                              | TUI changes terminal title; ACP maps if supported                                          |
@@ -504,7 +503,7 @@ shell, and the spawn/abort race is closed inside the module rather than re-imple
 
 ### Runtime events and interactions
 
-`session-runtime-events.ts` defines the adapter-neutral event vocabulary. It covers:
+`@runwield/session-runtime/events` defines the adapter-neutral event vocabulary. It covers:
 
 - session creation, loading, closing, replay, and renaming;
 - user messages, assistant text/thinking deltas, and usage;
@@ -1085,11 +1084,11 @@ The highest-value cross-boundary paths for later confidence analysis are visible
 
 | Concern                                   | Start here                                                                    |
 | ----------------------------------------- | ----------------------------------------------------------------------------- |
-| Runtime API and turn loop                 | `src/shared/session/session-runtime.ts`                                       |
-| Per-session state                         | `src/shared/session/hosted-session.ts`                                        |
-| Session registry                          | `src/shared/session/session-host.ts`                                          |
-| Runtime event contract                    | `src/shared/session/session-runtime-events.ts`                                |
-| Interaction contract                      | `src/shared/session/session-runtime-interactions.ts`                          |
+| Runtime API and turn loop                 | `packages/session-runtime/index.ts`                                       |
+| Per-session state                         | `packages/session-runtime/hosted-session.ts`                                        |
+| Session registry                          | `packages/session-runtime/host.ts`                                          |
+| Runtime event contract                    | `packages/session-runtime/events.ts`                                |
+| Interaction contract                      | `packages/session-runtime/interactions.ts`                          |
 | Pi session construction and prompt bridge | `src/shared/session/session.ts`                                               |
 | Agent definition layering                 | `packages/agents/registry.ts`                                                |
 | Agent switching                           | `src/shared/session/agent-switching.ts`                                       |

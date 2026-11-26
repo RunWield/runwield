@@ -1,4 +1,4 @@
-import { emitSystemStatus } from "./session-runtime-events.ts";
+import { emitSystemStatus, type HostedSession } from "@runwield/session-runtime/host";
 import { clearAgentSessionQueueForTransition, runRootTurn } from "./session.ts";
 import {
     workflowEvents,
@@ -9,8 +9,7 @@ import {
 } from "@runwield/workflow/events";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "./hosted-session.ts";
-import type { ImageAttachment } from "./image-attachments.ts";
+import type { ImageAttachment } from "@runwield/session-runtime/events";
 
 interface RootAgentSessionState {
     dispose?: () => void | Promise<void>;
@@ -117,7 +116,8 @@ export async function runRootTurnUntilRootWorkflowEvent(args: {
                             const payload = feedbackEvent.payload as PlanWrittenEventPayload;
                             if (payload.outcome === "conversation" && payload.planName) {
                                 workflowEvents(args.hostedSession).settle(feedbackEvent);
-                                const { rearmPlanReviewConversation } = await import("./session-runtime.ts");
+                                const { rearmPlanReviewConversation } =
+                                    await import("@runwield/session-runtime/services");
                                 const outcome = await rearmPlanReviewConversation(
                                     args.hostedSession,
                                     payload.planName,

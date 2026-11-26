@@ -37,7 +37,7 @@ import {
     PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
 } from "./process-output.ts";
 import { workflowEpicArtifacts } from "../../plan-store/index.ts";
-import type { HostedSession } from "../session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 

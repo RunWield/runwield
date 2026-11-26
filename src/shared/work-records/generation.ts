@@ -35,7 +35,7 @@ import {
 import { AGENTS } from "../session/agent-registry.ts";
 import { ensurePlanIdentity, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts";
 import { SYSTEM_SEMANTIC_REVIEW_PORT } from "../workflow/validation-session-adapter.ts";
 import { workflowEvents } from "@runwield/workflow/events";

@@ -1,3 +1,4 @@
+import { open as fsOpen } from "node:fs/promises";
 /**
  * @module shared/session/file-session-storage
  * Durable paths, Project identity, and atomic manifest persistence.
@@ -17,7 +18,7 @@ import {
 } from "@runwield/session-files";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { lstatSync, readdirSync, readFileSync, realpathSync, renameSync, statSync } from "node:fs";
+import { constants, lstatSync, readdirSync, readFileSync, realpathSync, renameSync, statSync } from "node:fs";
 import { ensurePrivateDir, writeJsonAtomically } from "../private-json-file.ts";
 export { ensurePrivateDir, writeJsonAtomically, writeTextAtomically } from "../private-json-file.ts";
 import type {
@@ -469,7 +470,7 @@ export function listManifests(
     sessionDir: string,
     readOnly = false,
     project?: StoredSessionProject,
-): Array<{ path: string; manifest: FileSessionManifest }> {
+): Array<{ path: string; manifest: FileSessionManifest; hasPrimaryManifest: boolean }> {
     if (!readOnly) restoreManifestsFromRecoveryDescriptors(sessionDir);
     return listSessionManifestFiles(sessionDir, readOnly).flatMap(({ path, text, hasPrimaryManifest }) => {
         const manifest: FileSessionManifest = JSON.parse(text);
@@ -479,7 +480,7 @@ export function listManifests(
             recoveryProject(dirname(sessionDir), manifest)?.sessionDirectory !== sessionDir
         )
             return [];
-        return [{ path, manifest: project ? projectManifest(manifest, project) : manifest }];
+        return [{ path, manifest: project ? projectManifest(manifest, project) : manifest, hasPrimaryManifest }];
     });
 }
 
@@ -630,6 +631,15 @@ export class FileSessionManifestCache {
         projectId?: string,
         readOnly = false,
     ): { path: string; manifest: FileSessionManifest } | null {
+        if (
+            !runwieldSessionId ||
+            runwieldSessionId === "." ||
+            runwieldSessionId === ".." ||
+            basename(runwieldSessionId) !== runwieldSessionId ||
+            runwieldSessionId.includes("\0")
+        ) {
+            return null;
+        }
         const cached = this.#manifests.get(runwieldSessionId);
         if (cached) {
             for (const project of listProjectsFromDisk(this.#baseDir)) {
@@ -695,4 +705,23 @@ export function writeManifest(manifest: FileSessionManifest, path: string): void
     manifest.updatedAt = new Date().toISOString();
     writeJsonAtomically(path, manifest);
     writeRecoveryDescriptors(manifest, path);
+}
+
+export async function syncTranscriptFileAndParent(transcriptPath: string) {
+    const file = await fsOpen(transcriptPath, constants.O_WRONLY);
+    try {
+        await file.sync();
+    } finally {
+        await file.close();
+    }
+    try {
+        const dir = await fsOpen(dirname(transcriptPath), "r");
+        try {
+            await dir.sync();
+        } finally {
+            await dir.close();
+        }
+    } catch {
+        // Directory fsync is not available on every platform/filesystem. File fsync is still required.
+    }
 }

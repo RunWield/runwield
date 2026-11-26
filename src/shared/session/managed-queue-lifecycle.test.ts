@@ -4,8 +4,8 @@ import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
-import { RuntimeEventTypes } from "./session-runtime-events.ts";
-import { createSessionRuntime } from "./session-runtime.ts";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 
 function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,7 +42,7 @@ test("managed deferred messages deliver once and canceled messages stay cleared 
             });
             try {
                 store.registerProject({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
-                const created = await runtime.createInteractiveSession({ cwd, mode: "new" });
+                const created = await runtime.createSession({ cwd });
                 await runtime.switchAgent(created.sessionId, { agentName: "engineer" });
                 const managed = runtime.getSessionSnapshot(created.sessionId)?.managed;
                 if (!managed) throw new Error("Expected managed Session metadata");
@@ -113,7 +113,7 @@ test("managed deferred messages deliver once and canceled messages stay cleared 
                 const cataloged = store.getSessionById(managed.runwieldSessionId);
                 if (!cataloged) throw new Error("Expected cataloged Session");
                 assertEquals(await runtime.closeSession(created.sessionId), { ok: true, closed: true });
-                const reopened = await runtime.loadSession({
+                const reopened = await runtime.resumeSession({
                     cwd,
                     sessionId: cataloged.piSessionId,
                     sessionPath: cataloged.transcriptPath,

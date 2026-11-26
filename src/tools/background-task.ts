@@ -1,6 +1,6 @@
 import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import type { HostedSession } from "../shared/session/hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import { checkBashCommand, describeBashAllowedCommands } from "../shared/bash-command-policy.ts";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
 

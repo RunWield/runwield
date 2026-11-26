@@ -1,6 +1,6 @@
 import type { GuidedReviewUsage } from "../../cmd/guided-review/protocol.ts";
 import type { GuideCostTotals } from "./routes/api/review-agent-handlers.ts";
-import type { ReviewServerOutput } from "./server.ts";
+import type { ReviewServerOutput } from "@runwield/session-runtime/interactions";
 
 import {
     removeExecutableFixtureDirectory,

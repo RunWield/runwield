@@ -22,6 +22,7 @@ import { isAnsweredPlanReview } from "../../shared/workflow/plan-review-recovery
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { startPlanReviewSurface } from "./review-launcher.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
+import type { ReviewConversation, ReviewServerOutput } from "@runwield/session-runtime/interactions";
 import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 
@@ -41,20 +42,6 @@ interface PlanReviewDecision extends SequenceReviewDecision {
     annotations?: ReviewAnnotationInput[];
     codeAnnotations?: ReviewAnnotationInput[];
     conversationTurn?: boolean;
-}
-
-interface PlanReviewConversationEvent {
-    type: "assistant_text_delta";
-    delta: string;
-    messageId: string;
-    agentName: string;
-}
-
-interface PlanReviewConversation {
-    id: string;
-    agentLabel: string;
-    revision: number;
-    events: PlanReviewConversationEvent[];
 }
 
 interface PlanReviewRecoveryRequired {
@@ -86,11 +73,6 @@ export interface PlanReviewResult {
     recoveryRequired?: PlanReviewRecoveryRequired;
 }
 
-interface ReviewServerOutput {
-    stream: "stdout" | "stderr";
-    text: string;
-}
-
 interface ReviewSurfaceReady {
     url: string;
     opened: boolean;
@@ -103,7 +85,7 @@ interface SubmitPlanForReviewOptions {
     planPath: string;
     previousPlan?: string;
     planVersions?: Array<{ plan: string; timestamp: string }>;
-    reviewConversation?: PlanReviewConversation;
+    reviewConversation?: ReviewConversation;
     agentLabel?: string;
     triageMeta?: Partial<PlanFrontMatter>;
     onOutput?(output: ReviewServerOutput): void;

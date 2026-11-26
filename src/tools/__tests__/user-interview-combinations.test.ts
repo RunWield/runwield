@@ -4,7 +4,7 @@ import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import type { InterviewResultDetails } from "@runwield/tools";
 import { createUserInterviewTool } from "../../tools/user-interview.ts";
-import { HostedSession } from "../../shared/session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 
 type InterviewTool = ReturnType<typeof createUserInterviewTool>;

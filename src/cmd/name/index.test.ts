@@ -6,7 +6,10 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { __resetSettingsForTests } from "../../shared/settings.ts";
-import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    type InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.ts";
 import { runNameCommand } from "./index.ts";
@@ -46,7 +49,7 @@ async function withNameCommandFixture(run: (fixture: NameCommandFixture) => Prom
 
 async function createRuntimeSession(projectRoot: string): Promise<{ runtime: SessionRuntime; sessionId: string }> {
     const runtime = createSessionRuntime();
-    const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+    const created = await runtime.createSession({ cwd: projectRoot });
     return { runtime, sessionId: created.sessionId };
 }
 

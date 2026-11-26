@@ -3,9 +3,9 @@ import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 
 test("reopening a live review returns its address without opening another review", async () => {
     await withRuntimeCommandFixture("reopen-live-", async ({ homeDir, projectRoot }) => {
@@ -15,7 +15,7 @@ test("reopening a live review returns its address without opening another review
         const runtime = createSessionRuntime({ sessionStore: ownerStore, ownerProcessKind: "test" });
         const pending = Promise.withResolvers<{ outcome: "canceled" }>();
         try {
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            const { sessionId } = await runtime.createSession({ cwd: projectRoot });
             let presentations = 0;
             const presented = Promise.withResolvers<void>();
             runtime.setInteractionAdapter(sessionId, {

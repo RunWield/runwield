@@ -7,9 +7,9 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
-import { SessionRuntime } from "../session/session-runtime.ts";
-import { SessionHost } from "../session/session-host.ts";
-import { summarizeProjectedEntries } from "../session/session-transcript-projection.ts";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
+import { SessionHost } from "@runwield/session-runtime/host";
+import { summarizeProjectedEntries } from "@runwield/session-runtime/transcript";
 import { configureRemotePersonalResources } from "./personal-resources.ts";
 import { configureRemoteModelConnection } from "@runwield/pi-ai/models";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
@@ -61,7 +61,7 @@ async function runSettingsClient() {
         ownerProcessKind: "test",
         ownerInstanceId: crypto.randomUUID(),
     });
-    let id = await runtime.createPromptReadySession({ cwd: input.cwd, agentName: "remote-runtime" });
+    let { sessionId: id } = await runtime.createSession({ cwd: input.cwd, agentName: "remote-runtime" });
     function report(ok = true, error?: string) {
         const managed = host.getSession(id)?.getManagedMetadata();
         console.log(
@@ -86,7 +86,8 @@ async function runSettingsClient() {
             try {
                 if (command.kind === "load") {
                     await runtime.closeAllSessionsWhenIdle();
-                    id = (await runtime.loadSession({ cwd: input.cwd, sessionId: command.sessionId || "" })).sessionId;
+                    id = (await runtime.resumeSession({ cwd: input.cwd, sessionId: command.sessionId || "" }))
+                        .sessionId;
                 } else if (command.kind === "pending") {
                     host.getSession(id)!.mergePendingManagedTurnIntent({
                         agentName: command.agentName,

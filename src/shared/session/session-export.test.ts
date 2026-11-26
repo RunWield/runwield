@@ -8,11 +8,14 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
-import { SessionHost } from "./session-host.ts";
-import { SessionRuntime, createSessionRuntime } from "./session-runtime.ts";
+import { SessionHost } from "@runwield/session-runtime/host";
+import {
+    InteractiveSessionRuntime as SessionRuntime,
+    createInteractiveSessionRuntime as createSessionRuntime,
+} from "@runwield/session-runtime/services";
 import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.ts";
-import { captureTranscriptEvidence } from "./session-transcript-projection.ts";
-import type { TranscriptEntry } from "./session-transcript-manifest.ts";
+import { captureTranscriptEvidence } from "@runwield/session-runtime/transcript";
+import type { TranscriptEntry } from "@runwield/session-runtime/transcript";
 
 async function withExportHome(run: (home: string, cwd: string) => Promise<void>): Promise<void> {
     await withProcessGlobalTestLock(async () => {
@@ -286,10 +289,9 @@ test("a fresh interactive shell exports a Session header without creating persis
     await withExportHome(async (home, cwd) => {
         const runtime = createSessionRuntime({ sessionStore: null });
         try {
-            const created = await runtime.createInteractiveSession({
+            const created = await runtime.createSession({
                 cwd,
-                mode: "new",
-                deferManagedActivationUntilAgentReady: true,
+                deferPersistenceUntilFirstMessage: true,
             });
             const before = await readdir(home);
             const exported = await runtime.readSessionExport(created.sessionId);

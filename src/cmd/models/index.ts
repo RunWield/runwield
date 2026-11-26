@@ -13,7 +13,7 @@ import {
     listUserModelOptions,
     parseUserModelSelection,
 } from "../../shared/session/user-selection.ts";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import { getCwd } from "../../constants.ts";
 import { COMMAND_NAMES } from "../registry.ts";
 import { formatCommandHelp, printCommandHelp } from "../help/index.ts";

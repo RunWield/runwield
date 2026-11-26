@@ -14,7 +14,7 @@ import {
     projectCommittedTranscript,
     selectProjectedEventsAfterCursor,
     summarizeProjectedEntries,
-} from "./session-transcript-projection.ts";
+} from "@runwield/session-runtime/transcript";
 
 async function removeTempDir(path: string) {
     let lastError;

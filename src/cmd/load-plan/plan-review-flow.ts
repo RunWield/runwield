@@ -26,7 +26,7 @@ import {
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
 } from "../../shared/workflow/plan-review-recovery.ts";
-import { RuntimeInteractionOutcomes } from "../../shared/session/session-runtime-interactions.ts";
+import { RuntimeInteractionOutcomes } from "@runwield/session-runtime/interactions";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import { buildReReviewRevisionRequest } from "./plan-presentation.ts";
 import {

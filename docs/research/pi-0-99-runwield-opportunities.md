@@ -62,7 +62,7 @@ Pi now returns `handled` or `queued` from `steer()` and `followUp()`. RunWield d
 queue contents separately. This is an API difference, not proof of a user-visible defect.
 
 Sources: [Session steering](../../src/shared/session/session.ts),
-[queue owner](../../src/shared/session/runtime/queues.ts), installed `pi-coding-agent/dist/core/agent-session.d.ts`,
+[queue owner](../../packages/session-runtime/runtime/queues.ts), installed `pi-coding-agent/dist/core/agent-session.d.ts`,
 [release notes](https://pi.dev/changelog/releases/0.99.0).
 
 **Recommendation:** Remove this item from the current opportunity list. Revisit it when a supported input handler can
@@ -113,7 +113,7 @@ definitions, and return only the evidence needed for planning.
 - Keep direct-tool behavior for other Execution Backends. The CLI bridge currently rejects nested `executeTool` calls.
 - Do not assume script failure undoes prior actions or that a nested workflow-ending call ends the outer Agent turn.
 
-Sources: [runtime result normalization](../../src/shared/session/session-runtime-events.ts),
+Sources: [tool result normalization](../../packages/pi-ai/turn.ts),
 [CLI bridge](../../src/shared/session/bridged-tools/mcp-bridge.ts), installed Pi `extensions/types.d.ts` and
 `extensions/codemode/`.
 
@@ -149,7 +149,7 @@ separately from physical response identity. Routing state survives compaction an
 does not currently register virtual models, and its surfaces expose one active model/thinking pair.
 
 Sources: [Pi virtual models](https://pi.dev/docs/latest/virtual-models),
-[model registry](../../packages/pi-ai/model-registry.ts), [runtime reads](../../src/shared/session/runtime/reads.ts).
+[model registry](../../packages/pi-ai/model-registry.ts), [runtime reads](../../packages/session-runtime/runtime/reads.ts).
 
 **Recommendation:** Keep explicit model selection as the default. Evaluate an opt-in policy against the existing
 per-Agent presets. Prefer stable models through a tool cycle instead of switching on every request.

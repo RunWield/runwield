@@ -12,10 +12,10 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { defineGitFixture } from "../git-test-fixture.ts";
-import { SessionHost } from "../session/session-host.ts";
-import { SessionRuntime } from "../session/session-runtime.ts";
+import { SessionHost } from "@runwield/session-runtime/host";
+import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
-import type { RuntimeValidationProgress } from "../session/session-runtime-events.ts";
+import type { RuntimeValidationProgress } from "@runwield/session-runtime/events";
 import { createTuiInteractionAdapter } from "../../ui/tui/runtime-interaction-adapter.ts";
 import { readDeliveryEvidence } from "./delivery-evidence.ts";
 import {

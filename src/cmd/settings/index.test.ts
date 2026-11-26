@@ -5,7 +5,10 @@ import { getEditorTheme } from "../../ui/theme/theme.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    type InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 import {
     getCodeReviewMode,
     getCustomSetting,
@@ -163,7 +166,7 @@ function makeUiHarness(
 
 async function createPromptReadyRuntime(projectRoot: string): Promise<{ runtime: SessionRuntime; sessionId: string }> {
     const runtime = createSessionRuntime();
-    const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+    const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
     return { runtime, sessionId };
 }
 
@@ -399,7 +402,7 @@ test("runSettingsCommand applies a model preset to a new in-memory Session", asy
         async ({ projectRoot, setModelResponse }) => {
             setModelResponse("The preset model handled the first turn.");
             const runtime = createSessionRuntime();
-            const sessionId = await runtime.createPromptReadySession({
+            const { sessionId } = await runtime.createSession({
                 cwd: projectRoot,
                 agentName: "router",
                 deferPersistenceUntilFirstMessage: true,

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { readdir as fsReaddir } from "node:fs/promises";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.ts";
 import { initTUIWithPair, stopTUI } from "../../ui/tui/tui.ts";
 import { VirtualTerminal } from "../../ui/tui/testing/virtual-terminal.ts";
@@ -52,7 +52,7 @@ test("runNewCommand creates and names an in-memory Router session until its firs
     await withRuntimeCommandFixture("runwield-new-command-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("New Session ready.");
         const runtime = createSessionRuntime();
-        const current = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const current = await runtime.createSession({ cwd: projectRoot });
         const transcriptsBeforeNew = await countTranscripts(projectRoot);
         let replacementId = "";
         let cleared = false;

@@ -13,7 +13,7 @@ import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 test("live footer retains its selected model when unused personal defaults become unavailable", async () => {
     await withSessionViewFixture(async ({ runtime, host, sessionId, session, projectRoot }) => {
         session.resetAgentInfoStack("Router", "selected-model", "selected-provider", "router");
-        const qualified = await runtime.createInteractiveSession({ cwd: projectRoot });
+        const qualified = await runtime.createSession({ cwd: projectRoot });
         host.requireSession(qualified.sessionId).resetAgentInfoStack(
             "Router",
             "selected-provider/selected-model",

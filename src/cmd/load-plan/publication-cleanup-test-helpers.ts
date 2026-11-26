@@ -20,7 +20,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { addEntry, findById } from "../../shared/worktree-registry.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
@@ -168,7 +168,7 @@ async function checkCleanupRestart(
                 const sourceBranch = await git(root, ["branch", "--list", "worktree/demo"]);
                 const worktreeList = await git(root, ["worktree", "list", "--porcelain"]);
 
-                const sessionId = await runtime.createPromptReadySession({ cwd: root, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: root, agentName: "router" });
                 const messages: string[] = [];
                 const prompts: string[] = [];
                 let cleanupSelected = false;

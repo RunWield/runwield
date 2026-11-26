@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { runLoadPlanCommand } from "./index.ts";
 
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
@@ -76,7 +76,7 @@ for (const action of ["hold", "review", "validate"]) {
                 }
                 const primaryBytes = await fsReadFile(primaryPath, "utf8");
                 const runtime = createSessionRuntime();
-                const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
                 const messages: string[] = [];
                 const choices: string[] = [action];
                 const uiAPI: UiAPI = {

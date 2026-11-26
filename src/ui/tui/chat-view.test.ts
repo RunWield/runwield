@@ -655,7 +655,7 @@ test("idle concurrent chat views never read the clipboard across focus, replacem
         const clipboard = await installFakeClipboardCommands(projectRoot);
         const sessionIds = [sessionId];
         for (let index = 0; index < 2; index++) {
-            sessionIds.push((await runtime.createInteractiveSession({ cwd: projectRoot })).sessionId);
+            sessionIds.push((await runtime.createSession({ cwd: projectRoot })).sessionId);
         }
         const views = await Promise.all(
             sessionIds.map(async (id) => {

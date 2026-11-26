@@ -5,8 +5,8 @@
 
 import type { ProviderModelParseResult } from "@runwield/pi-ai";
 import type { EditorAPI, TuiAPI, UiAPI } from "./api.ts";
-import type { ImageAttachment } from "../../shared/session/image-attachments.ts";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { ImageAttachment } from "@runwield/session-runtime/events";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import type { GenerationGuard } from "./generation-guard.ts";
 import { setTerminalTitleForName } from "./terminal-title.ts";
 import { notifyRunWieldEventQuietly } from "./system-notifications.ts";

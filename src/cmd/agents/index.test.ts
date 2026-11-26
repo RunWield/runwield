@@ -10,7 +10,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { Container, Editor, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { setCustomSetting } from "../../shared/settings.ts";
 import { getEditorTheme } from "../../ui/theme/theme.ts";
 import { createUiApi } from "../../ui/tui/api.ts";
@@ -184,7 +184,7 @@ test("agent command keeps the active Agent when its configured model is unavaila
         );
         await setCustomSetting("activeModelPreset", "broken", "global", projectRoot);
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const sessionId = created.sessionId;
         await runtime.switchAgent(sessionId, { agentName: "guide" });
         const harness = makeTuiHarness();
@@ -258,7 +258,7 @@ test("agent chooser switches the real Runtime session to a fixture definition", 
         process.chdir(projectRoot);
         await writeFixtureAgent(projectRoot);
         const runtime = createSessionRuntime();
-        const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+        const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
         await runtime.renameSession(sessionId, "Fixture session");
         const harness = makeTuiHarness();
         try {
@@ -326,7 +326,7 @@ test("naming a workflow-only Agent in the TUI leaves the active Agent unchanged"
     await withRuntimeCommandFixture("agent-workflow-only-tui-", async ({ projectRoot }) => {
         process.chdir(projectRoot);
         const runtime = createSessionRuntime();
-        const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+        const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
         const harness = makeTuiHarness();
         try {
             const systemMessages: string[] = [];
@@ -358,7 +358,7 @@ test("the agent chooser never offers a workflow-only Agent to pick", async () =>
     await withRuntimeCommandFixture("agent-chooser-hides-", async ({ projectRoot }) => {
         process.chdir(projectRoot);
         const runtime = createSessionRuntime();
-        const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+        const { sessionId } = await runtime.createSession({ cwd: projectRoot, agentName: "router" });
         const harness = makeTuiHarness();
         try {
             const command = runAgentsCommand([], {

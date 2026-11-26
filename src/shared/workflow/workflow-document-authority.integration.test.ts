@@ -11,7 +11,7 @@ import { findPlansByParent, loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { addEntry } from "../worktree-registry.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { continueWorkflowValidation } from "./validation.ts";

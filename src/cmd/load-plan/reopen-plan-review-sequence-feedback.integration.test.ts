@@ -6,9 +6,9 @@ import { fauxAssistantMessage, fauxText, type TranscriptContext } from "@earendi
 import { ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
-import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.ts";
+import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 
@@ -36,7 +36,7 @@ test("reopened Sequence combines container and child feedback for its planning A
             const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
             try {
-                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                const { sessionId } = await runtime.createSession({ cwd: projectRoot });
                 const persistentId = runtime.getSessionSnapshot(sessionId)?.managed?.runwieldSessionId;
                 runtime.setInteractionAdapter(sessionId, { requestInteraction: () => ({ outcome: "canceled" }) });
                 await runtime.requestInteraction(sessionId, {

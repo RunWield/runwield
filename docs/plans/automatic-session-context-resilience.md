@@ -11,14 +11,14 @@ affectedPaths:
     - "src/shared/session/session.ts"
     - "src/shared/session/session-prompt.test.ts"
     - "src/shared/session/session-subscribers.test.ts"
-    - "src/shared/session/hosted-session.ts"
+    - "packages/session-runtime/hosted-session.ts"
     - "src/shared/session/hosted-session.test.ts"
     - "src/shared/session/abort-active-session.test.ts"
-    - "src/shared/session/runtime/turns.ts"
-    - "src/shared/session/runtime/agent-settings.ts"
-    - "src/shared/session/runtime/managed-operations.ts"
+    - "packages/session-runtime/runtime/turns.ts"
+    - "packages/session-runtime/runtime/agent-settings.ts"
+    - "packages/session-runtime/runtime/managed-operations.ts"
     - "src/shared/session/session-runtime.test.ts"
-    - "src/shared/session/session-runtime-events.ts"
+    - "packages/session-runtime/events.ts"
     - "src/shared/session/session-runtime-events.test.ts"
     - "src/shared/session/agent-handler.ts"
     - "src/shared/session/agent-handler.test.ts"
@@ -306,18 +306,18 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   continuation, no duplicate User Request/routing, and ordinary behavior below threshold.
 - `src/shared/session/session-subscribers.test.ts` — verify completed-turn observation and canonical context-resilience
   emission without duplicate generic compaction statuses.
-- `src/shared/session/hosted-session.ts` — retain the coordinator and current-segment root health across Pi Session
+- `packages/session-runtime/hosted-session.ts` — retain the coordinator and current-segment root health across Pi Session
   disposal, plus isolated-child health and cancellation. All compaction shares one arbiter per Hosted Session.
 - `src/shared/session/hosted-session.test.ts` — cover arbiter exclusivity, active-turn cancellation/settlement,
   disposal, and isolation between Hosted Sessions.
 - `src/shared/session/abort-active-session.test.ts` — verify the shared abort path handles streaming and compaction for
   root and every registered transient Agent Session without duplicate aborts.
-- `src/shared/session/runtime/turns.ts`, `runtime/agent-settings.ts`, and `runtime/managed-operations.ts` — integrate
+- `packages/session-runtime/runtime/turns.ts`, `runtime/agent-settings.ts`, and `runtime/managed-operations.ts` — integrate
   pause/cancellation settlement, fail-fast manual compaction, and health retention across ordinary dehydration. Keep
   `session-runtime.ts` as the public facade; policy belongs in the private owners.
 - `src/shared/session/session-runtime.test.ts` — cover cancellation races, recoverable paused settlement, busy-state
   continuity, root/transient parity, and independent Hosted Session progress.
-- `src/shared/session/session-runtime-events.ts` — add one canonical `context_resilience` event with validated status,
+- `packages/session-runtime/events.ts` — add one canonical `context_resilience` event with validated status,
   reason, message, and content-free pressure/recovery fields.
 - `src/shared/session/session-runtime-events.test.ts` — enforce the new event's exact required fields/enums and producer
   payload allowlist.
@@ -367,9 +367,9 @@ Existing functions, modules, or patterns to reuse:
   summaries and transcript format; do not infer missing behavior from hook names.
 - `src/shared/session/session.ts` — reuse prepared User Request token estimation, Agent Session metadata, and
   subscription lifecycle while moving compaction policy out of this broad module.
-- `src/shared/session/session-runtime-events.ts` — reuse fail-fast canonical event creation so TUI and ACP remain
+- `packages/session-runtime/events.ts` — reuse fail-fast canonical event creation so TUI and ACP remain
   sibling consumers of one semantic contract.
-- `src/shared/session/hosted-session.ts` — reuse per-Session turn ownership and transient Agent registration to scope
+- `packages/session-runtime/hosted-session.ts` — reuse per-Session turn ownership and transient Agent registration to scope
   the arbiter and cancellation.
 - `src/shared/session/session-context-report.ts` — reuse existing context-window/usage normalization where applicable;
   adapters must not inspect Agent Session internals.
@@ -416,7 +416,7 @@ Existing functions, modules, or patterns to reuse:
       pending user queues and unstarted internal continuation, preserves already persisted entries, emits one Runtime
       cancellation and at most one context cancellation, and holds busy/writer ownership until settlement. It does not
       emit `TERMINAL_ERROR`. `WorkflowStepCompleted` follows handoff rules instead of user-cancel cleanup.
-- [ ] Step 10: `session-runtime-events.ts` validates one canonical `context_resilience` event with statuses
+- [ ] Step 10: `packages/session-runtime/events.ts` validates one canonical `context_resilience` event with statuses
       `compacting`, `compacted`, `continuing`, `continued`, `ineffective`, `paused`, `canceled`, `failed`, and
       `rearmed`; reasons `threshold`, `oversized_request`, `compaction_failed`, `insufficient_recovery`, `user_cancel`,
       `manual_recovery`, and `capacity_recovery`; a Core-generated `message`; and optional finite numeric

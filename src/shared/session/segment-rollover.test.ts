@@ -1,3 +1,4 @@
+import { syncTranscriptFileAndParent } from "./file-session-storage.ts";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
@@ -6,11 +7,11 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.ts";
-import { type SessionManagerExtensions, HostedSession } from "./hosted-session.ts";
+import { type SessionManagerExtensions, HostedSession } from "@runwield/session-runtime/host";
 import { createRootSessionManager, openPersistedRootSession, resolveCreatedRootSessionPath } from "./root-session.ts";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
-import { projectAggregateTranscript } from "./session-transcript-manifest.ts";
-import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.ts";
+import { projectAggregateTranscript } from "@runwield/session-runtime/transcript";
+import { captureTranscriptEvidence } from "@runwield/session-runtime/transcript";
 import {
     readPersistedPendingSegmentContinuation,
     recordPendingSegmentContinuation,

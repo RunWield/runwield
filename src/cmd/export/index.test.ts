@@ -2,7 +2,10 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { test } from "node:test";
 import { readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    type InteractiveSessionRuntime as SessionRuntime,
+} from "@runwield/session-runtime/services";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runExportCommand } from "./index.ts";
 import type { SessionExportDocument } from "../../shared/session/session-export.ts";
@@ -31,7 +34,7 @@ function makeContext(sessionRuntime: SessionRuntime, sessionId: string) {
 test("export writes the complete Session JSON document and creates parent directories", async () => {
     await withRuntimeCommandFixture("export-json-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const fixture = makeContext(runtime, created.sessionId);
         try {
             await runExportCommand(["exports/session.json"], fixture.context);
@@ -52,7 +55,7 @@ test("export writes the complete Session JSON document and creates parent direct
 test("export defaults to self-contained HTML in the Session project", async () => {
     await withRuntimeCommandFixture("export-html-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const fixture = makeContext(runtime, created.sessionId);
         try {
             await runExportCommand([], fixture.context);
@@ -68,7 +71,7 @@ test("export defaults to self-contained HTML in the Session project", async () =
 test("export rejects retired JSONL paths without writing a file", async () => {
     await withRuntimeCommandFixture("export-jsonl-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const fixture = makeContext(runtime, created.sessionId);
         try {
             assertEquals(await runExportCommand(["session.jsonl"], fixture.context), "failed");
@@ -84,7 +87,7 @@ test("export rejects retired JSONL paths without writing a file", async () => {
 test("export reports file errors and resets the editor", async () => {
     await withRuntimeCommandFixture("export-error-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const fixture = makeContext(runtime, created.sessionId);
         try {
             await writeFile(join(projectRoot, "blocked"), "not a directory");
@@ -101,7 +104,7 @@ test("export reports file errors and resets the editor", async () => {
 test("export reports Runtime read errors and resets the editor", async () => {
     await withRuntimeCommandFixture("export-read-error-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const fixture = makeContext(runtime, created.sessionId);
         await runtime.closeSession(created.sessionId);
         assertEquals(await runExportCommand([], fixture.context), "failed");
@@ -115,7 +118,7 @@ test("export does not restore a missing Session Manifest through a snapshot read
     await withRuntimeCommandFixture("export-read-only-", async ({ projectRoot, homeDir, setModelResponse }) => {
         setModelResponse("Recorded reply.");
         const runtime = createSessionRuntime();
-        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const created = await runtime.createSession({ cwd: projectRoot });
         const fixture = makeContext(runtime, created.sessionId);
         let manifestPath = "";
         try {

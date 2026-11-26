@@ -1,6 +1,6 @@
 import { captureForegroundProcess } from "../captured-process.ts";
 import { realpath as fsRealpath } from "node:fs/promises";
-import type { HostedSession } from "./hosted-session.ts";
+import type { HostedSession } from "@runwield/session-runtime/host";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
@@ -9,8 +9,14 @@ import { readPersistedWorkflowContext } from "./workflow-context-session.ts";
 import { readPlanAssociations } from "./plan-association.ts";
 import { listEntries } from "../worktree-registry.ts";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
-import { resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
-import { readCurrentPairCheckpoint } from "./pair-checkpoint-session.ts";
+import { resolveActiveWorkflowRuntimeAgent, resolvePlanExecutionRuntimeAgent } from "../workflow/execution-agent.ts";
+import {
+    formatPairCheckpointContext,
+    readCurrentPairCheckpoint,
+    restorePairExecutionState,
+} from "./pair-checkpoint-session.ts";
+import { AGENTS } from "./agent-registry.ts";
+import { createPairCheckpointTool } from "../../tools/pair-checkpoint.ts";
 
 interface LifecycleEntry {
     type: string;
@@ -146,4 +152,29 @@ export async function restoreExecutionWorkflow(
         if (options.persist === false) session.restoreActiveExecutionWorkflow(recoveredWorkflow, null);
         else session.setActiveExecutionWorkflow(recoveredWorkflow);
     }
+}
+
+/** Restore durable execution ownership and optional Pair context before root activation. */
+export function resolvePersistedExecutionRootConfiguration(hostedSession: HostedSession) {
+    const checkpoint = restorePairExecutionState(hostedSession);
+    const workflow = hostedSession.getActiveExecutionWorkflow?.() || null;
+    const persistedAgent = readPersistedActiveAgentName(hostedSession.getRootSessionManager());
+    // Semantic repair owns this root until its focused repair turn is complete.
+    const agentName =
+        persistedAgent === AGENTS.REVIEWER_FEEDBACK_ENGINEER
+            ? persistedAgent
+            : resolveActiveWorkflowRuntimeAgent(workflow) || "";
+    if (!workflow || !agentName) return null;
+    const existingProjectState = hostedSession.getProjectStateContext?.() || "";
+    const checkpointContext = checkpoint ? formatPairCheckpointContext(checkpoint) : "";
+    return {
+        agentName,
+        cwd: workflow.executionCwd || hostedSession.cwd,
+        projectStateContext: existingProjectState
+            ? `${existingProjectState}\n\n${checkpointContext}`
+            : checkpointContext,
+        ...(workflow.collaborationStyle === "pair"
+            ? { customTools: [createPairCheckpointTool({ hostedSession })] }
+            : {}),
+    };
 }

@@ -2,9 +2,9 @@
 import type { ToolResult } from "@runwield/pi-ai/turn";
 import type { JsonValue } from "@runwield/parsing/jsonc";
 import type { AgentMessageAppender, UiAPI } from "./api.ts";
-import { RuntimeEventTypes, type SessionRuntimeEvent } from "../../shared/session/session-runtime-events.ts";
+import { RuntimeEventTypes, type SessionRuntimeEvent } from "@runwield/session-runtime/events";
 
-import type { ProjectedRuntimeEvent } from "../../shared/session/session-transcript-projection.ts";
+import type { ProjectedRuntimeEvent } from "@runwield/session-runtime/transcript";
 
 const HIDDEN_TOOL_BLOCK_NAMES = new Set(["task_completed", "review_complete", "triage_report", "user_interview"]);
 
@@ -56,7 +56,9 @@ export function createTuiDisplayConsumer(uiAPI: UiAPI) {
                     if (!(typeof value.text === "string" && value.text.startsWith("!") && value.images.length === 0)) {
                         uiAPI.appendUserMessage?.(value.text);
                         // Older named invocations can retain image references without embedded data.
-                        for (const image of value.images) uiAPI.appendImage?.(image.base64!, image.mimeType!);
+                        for (const image of value.images) {
+                            if (image.base64 && image.mimeType) uiAPI.appendImage?.(image.base64, image.mimeType);
+                        }
                     }
                     break;
                 case RuntimeEventTypes.ASSISTANT_TEXT_DELTA: {

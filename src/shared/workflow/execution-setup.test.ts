@@ -6,7 +6,7 @@ import { strict as assert } from "node:assert";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { listEntries } from "../worktree-registry.ts";

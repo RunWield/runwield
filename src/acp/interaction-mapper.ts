@@ -15,7 +15,7 @@ import type {
     RuntimeInteractionAdapter,
     RuntimeInteractionRequest,
     RuntimeInteractionResponse,
-} from "../shared/session/session-runtime-interactions.ts";
+} from "@runwield/session-runtime/interactions";
 
 export interface AcpElicitationResponse extends ElicitationAcceptAction {
     action?: string;
@@ -52,7 +52,7 @@ import {
     isApprovalAcceptedValue,
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,
-} from "../shared/session/session-runtime-interactions.ts";
+} from "@runwield/session-runtime/interactions";
 import { startBrowserQuestionServer } from "../shared/session/browser-question.ts";
 import { requestLocalReviewInteraction } from "../shared/session/local-review-interactions.ts";
 

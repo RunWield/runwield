@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { AGENTS } from "../session/agent-registry.ts";
-import { createSessionRuntime } from "../session/session-runtime.ts";
+import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { git } from "./git.ts";
 export interface ApprovalPublicationState {
     baselineHead?: string;
@@ -12,7 +12,7 @@ export async function approveAndCommit(cwd: string, signal?: AbortSignal, state:
     const before = (state.baselineHead ??= currentHead);
     const pendingPush = currentHead !== before && !(await git(cwd, ["status", "--porcelain"]));
     const runtime = createSessionRuntime({ ownerProcessKind: "workspace" });
-    const id = await runtime.createPromptReadySession({ cwd, agentName: AGENTS.OPERATOR });
+    const { sessionId: id } = await runtime.createSession({ cwd, agentName: AGENTS.OPERATOR });
     let turnError = "";
     const cancel = () => {
         void runtime.cancelSession(id);

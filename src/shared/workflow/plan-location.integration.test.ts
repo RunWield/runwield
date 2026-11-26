@@ -31,7 +31,7 @@ import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../
 import { listPlans, loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { HostedSession } from "../session/hosted-session.ts";
+import { HostedSession } from "@runwield/session-runtime/host";
 
 import { findById, getWorktreeRegistryPath, pruneEntry } from "../worktree-registry.ts";
 import { addEntry } from "../worktree-registry.ts";

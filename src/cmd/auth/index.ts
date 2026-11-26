@@ -5,7 +5,7 @@
 
 import { AGENTS } from "../../shared/session/agent-registry.ts";
 import { getModelRegistry, isExternalCliProvider, type ModelRegistry } from "@runwield/pi-ai";
-import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
+import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import type { UiAPI } from "../../ui/tui/api.ts";
 
 export interface AuthUiPort {
@@ -73,10 +73,7 @@ async function logoutProvider(registry: ModelRegistry, providerId: string): Prom
     await registry.logoutProvider(providerId);
 }
 
-export function getLoginProviderOptions(
-    registry: ModelRegistry,
-    authType: "oauth" | "api_key",
-): AuthProviderOption[] {
+export function getLoginProviderOptions(registry: ModelRegistry, authType: "oauth" | "api_key"): AuthProviderOption[] {
     const oauthProviders = getOAuthProviders(registry);
     if (authType === "oauth") {
         return oauthProviders

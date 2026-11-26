@@ -1,7 +1,10 @@
 import process from "node:process";
 import { getCwd } from "../../constants.ts";
-import { createSessionRuntime, generateInMemoryGuide } from "../../shared/session/session-runtime.ts";
-import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
+import {
+    createInteractiveSessionRuntime as createSessionRuntime,
+    generateInMemoryGuide,
+} from "@runwield/session-runtime/services";
+import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { encodeGuidedReviewMetadata, encodeGuidedReviewUsageEvent, type GuidedReviewUsage } from "./protocol.ts";
 
 export interface GuidedReviewCommandIo {
@@ -93,7 +96,7 @@ export async function generateGuidedReview(
     if (!prompt.trim()) throw new Error("RunWield Guided Review requires a prompt.");
     if (options.inMemory) return generateInMemoryGuide(prompt, options);
     const runtime = createSessionRuntime({ ownerProcessKind: "workspace" });
-    const sessionId = await runtime.createPromptReadySession({ cwd: options.cwd, agentName: "guide" });
+    const { sessionId } = await runtime.createSession({ cwd: options.cwd, agentName: "guide" });
     const pendingUsageWrites: Promise<void>[] = [];
     const unsubscribe = runtime.subscribeSessionEvents(sessionId, (event: RuntimeUsageEventLike) => {
         if (!isRuntimeUsageEvent(event)) return;

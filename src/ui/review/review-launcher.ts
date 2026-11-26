@@ -11,23 +11,20 @@ import type { SequenceReviewDocument } from "../../plan-store/index.ts";
 import { startReviewWorkspaceServer } from "../../review-workspace-server.ts";
 import { parsePlanFrontMatter, resolvePlanExecutionPolicy, type PlanExecutionPolicy } from "@runwield/plans/format";
 import type { PlanFrontMatter } from "@runwield/plans";
+import type {
+    ReviewConversation,
+    ReviewDecisionValue,
+    ReviewServerOutput,
+} from "@runwield/session-runtime/interactions";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.ts";
 import type { ReviewDecisionSink } from "../workspace/routes/api/review-handlers.ts";
-
-export type ReviewDecisionValue =
-    string | number | boolean | null | undefined | ReviewDecisionValue[] | { [key: string]: ReviewDecisionValue };
 
 export interface ReviewSurface<TDecision = ReviewDecisionValue> {
     url: string;
     opened: boolean;
     waitForDecision(): Promise<TDecision>;
     stop(): void | Promise<void>;
-}
-
-export interface ReviewServerOutput {
-    stream: "stdout" | "stderr";
-    text: string;
 }
 
 interface ReviewSurfaceServer<TDecision> {
@@ -61,36 +58,6 @@ interface PlanReviewPayload {
 interface ReviewSurfaceReady {
     url: string;
     opened: boolean;
-}
-
-export interface ReviewConversationEvent {
-    type: "assistant_text_delta";
-    delta: string;
-    messageId: string;
-    agentName: string;
-}
-
-export interface ReviewConversationTurn {
-    turnId: string;
-    message: string;
-    reply?: string;
-}
-
-export interface ReviewConversation {
-    /** Present only for hosts that restore temporary turns from a saved active round. */
-    turns?: ReviewConversationTurn[];
-    pending?: boolean;
-    /** Refresh a host-owned conversation from its saved source before each GET. */
-    refresh?(): Promise<void>;
-    onExit?(): void;
-    completed?: boolean;
-    resultMessage?: string;
-    completionDelivered?: boolean;
-    error?: string;
-    id: string;
-    agentLabel: string;
-    revision: number;
-    events: ReviewConversationEvent[];
 }
 
 interface PlanReviewSurfaceOptions {

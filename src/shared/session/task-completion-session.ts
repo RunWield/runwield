@@ -6,18 +6,20 @@
  * the lifecycle/validation code that acts on it.
  */
 
-import type { HostedSession } from "./hosted-session.ts";
 import {
     compareWorkflowAttempts,
     legacyWorkflowAttemptKey,
     workflowEvents,
+    type WorkflowEventJournalReader,
+    type WorkflowEventJournalRecord,
     type WorkflowToolEvent,
+    type WorkflowTaskCompletionHost,
 } from "@runwield/workflow/events";
 
 export const TASK_COMPLETION_CUSTOM_TYPE = "runwield.task_completion";
 
 type ActiveExecutionWorkflow = import("@runwield/workflow/state").ActiveExecutionWorkflow;
-type OwningSession = ReturnType<HostedSession["getRootAgentSession"]>;
+type OwningSession = ReturnType<WorkflowTaskCompletionHost["getRootAgentSession"]>;
 
 type AcceptedTaskCompletionEvent = {
     version: 1;
@@ -38,20 +40,6 @@ type ConsumedTaskCompletionEvent = {
     timestampMs: number;
 };
 
-type TaskCompletionJournalEvent = AcceptedTaskCompletionEvent | ConsumedTaskCompletionEvent;
-
-type TaskCompletionSessionEntry = {
-    type?: string;
-    customType?: string;
-    data?: TaskCompletionJournalEvent | null;
-};
-
-type TaskCompletionSessionManager = {
-    appendCustomEntry?: (customType: string, data: TaskCompletionJournalEvent) => void;
-    getBranch?: () => TaskCompletionSessionEntry[];
-    getEntries?: () => TaskCompletionSessionEntry[];
-};
-
 export type PendingTaskCompletionClaim = {
     completionId: string | null;
     agentName: string;
@@ -65,51 +53,55 @@ export type PendingTaskCompletionClaim = {
 };
 
 type RecordTaskCompletionArgs = {
-    hostedSession: HostedSession;
+    hostedSession: WorkflowTaskCompletionHost;
     toolCallId: string;
     agentName: string;
     report: string;
     timestampMs: number;
 };
 
-function getCompletionSessionManager(hostedSession: HostedSession): TaskCompletionSessionManager | null {
-    return hostedSession.getRootSessionManager?.() as TaskCompletionSessionManager | null;
-}
-
-function getEntries(sessionManager: TaskCompletionSessionManager | null): TaskCompletionSessionEntry[] {
-    if (!sessionManager) return [];
-    const entries = sessionManager.getBranch?.() || sessionManager.getEntries?.() || [];
-    return Array.isArray(entries) ? entries : [];
-}
-
-function isAcceptedEvent(event: TaskCompletionJournalEvent | null | undefined): event is AcceptedTaskCompletionEvent {
+function isAcceptedEvent(event: WorkflowEventJournalRecord): event is AcceptedTaskCompletionEvent {
+    const workflow = "workflow" in event ? event.workflow : null;
     return (
-        event?.version === 1 &&
+        event.version === 1 &&
         event.state === "accepted" &&
+        "completionId" in event &&
         typeof event.completionId === "string" &&
-        (event.validationGeneration === undefined || typeof event.validationGeneration === "string") &&
+        (!("validationGeneration" in event) ||
+            event.validationGeneration === undefined ||
+            typeof event.validationGeneration === "string") &&
+        "agentName" in event &&
         typeof event.agentName === "string" &&
+        "report" in event &&
         typeof event.report === "string" &&
+        "timestampMs" in event &&
         typeof event.timestampMs === "number" &&
+        "owner" in event &&
         event.owner === "root" &&
-        typeof event.workflow?.planName === "string" &&
-        (event.workflow.executionAgent === "engineer" || event.workflow.executionAgent === "frontend-engineer")
+        workflow !== null &&
+        typeof workflow === "object" &&
+        "planName" in workflow &&
+        typeof workflow.planName === "string" &&
+        "executionAgent" in workflow &&
+        (workflow.executionAgent === "engineer" || workflow.executionAgent === "frontend-engineer")
     );
 }
 
-function isConsumedEvent(event: TaskCompletionJournalEvent | null | undefined): event is ConsumedTaskCompletionEvent {
-    return event?.version === 1 && event.state === "consumed" && typeof event.completionId === "string";
+function isConsumedEvent(event: WorkflowEventJournalRecord): event is ConsumedTaskCompletionEvent {
+    return (
+        event.version === 1 &&
+        event.state === "consumed" &&
+        "completionId" in event &&
+        typeof event.completionId === "string"
+    );
 }
 
-function readUnconsumedAcceptedEvents(
-    sessionManager: TaskCompletionSessionManager | null,
-): AcceptedTaskCompletionEvent[] {
+function readUnconsumedAcceptedEvents(journal: WorkflowEventJournalReader | null): AcceptedTaskCompletionEvent[] {
     const accepted: AcceptedTaskCompletionEvent[] = [];
     const consumed = new Set<string>();
-    for (const entry of getEntries(sessionManager)) {
-        if (entry.type !== "custom" || entry.customType !== TASK_COMPLETION_CUSTOM_TYPE) continue;
-        if (isAcceptedEvent(entry.data)) accepted.push(entry.data);
-        if (isConsumedEvent(entry.data)) consumed.add(entry.data.completionId);
+    for (const record of journal?.read(TASK_COMPLETION_CUSTOM_TYPE) ?? []) {
+        if (isAcceptedEvent(record)) accepted.push(record);
+        if (isConsumedEvent(record)) consumed.add(record.completionId);
     }
     return accepted.filter((event) => !consumed.has(event.completionId));
 }
@@ -155,10 +147,10 @@ export function recordAcceptedTaskCompletion(args: RecordTaskCompletionArgs): st
     const workflow = hostedSession.getActiveExecutionWorkflow();
 
     let completionId: string | null = null;
-    const sessionManager = getCompletionSessionManager(hostedSession);
-    if (rootOwned && workflow && sessionManager?.appendCustomEntry) {
+    const journal = hostedSession.getWorkflowEventJournalWriter();
+    if (rootOwned && workflow && journal) {
         completionId = `${args.toolCallId || "task-completed"}:${crypto.randomUUID()}`;
-        sessionManager.appendCustomEntry(TASK_COMPLETION_CUSTOM_TYPE, {
+        journal.append(TASK_COMPLETION_CUSTOM_TYPE, {
             version: 1,
             state: "accepted",
             completionId,
@@ -168,7 +160,7 @@ export function recordAcceptedTaskCompletion(args: RecordTaskCompletionArgs): st
             owner: "root",
             workflow: { ...workflow },
             validationGeneration: workflow.validationGeneration || legacyWorkflowAttemptKey(workflow),
-        });
+        } satisfies AcceptedTaskCompletionEvent);
     }
 
     workflowEvents(hostedSession).publish({
@@ -194,7 +186,7 @@ export function recordAcceptedTaskCompletion(args: RecordTaskCompletionArgs): st
  * state from which retry is safe—has been reached.
  */
 export function claimPendingTaskCompletion(
-    hostedSession: HostedSession,
+    hostedSession: WorkflowTaskCompletionHost,
     owningSession: OwningSession,
 ): PendingTaskCompletionClaim | null {
     const activeWorkflow = hostedSession.getActiveExecutionWorkflow();
@@ -228,8 +220,7 @@ export function claimPendingTaskCompletion(
             };
         }
     }
-    const sessionManager = getCompletionSessionManager(hostedSession);
-    const pending = readUnconsumedAcceptedEvents(sessionManager).filter((event) => {
+    const pending = readUnconsumedAcceptedEvents(hostedSession.getWorkflowEventJournalReader()).filter((event) => {
         if (activeWorkflow) return matchesActiveWorkflow(event, activeWorkflow);
         return !workflowPlanName || event.workflow.planName === workflowPlanName;
     });
@@ -265,40 +256,40 @@ export function claimPendingTaskCompletion(
 }
 
 export function acknowledgeTaskCompletion(
-    hostedSession: HostedSession,
+    hostedSession: WorkflowTaskCompletionHost,
     completion: PendingTaskCompletionClaim,
     timestampMs = Date.now(),
 ): void {
-    const sessionManager = getCompletionSessionManager(hostedSession);
+    const journal = hostedSession.getWorkflowEventJournalWriter();
     if (completion.workflowToolEvent) {
         workflowEvents(hostedSession).settle(completion.workflowToolEvent, timestampMs);
-        const legacy = readUnconsumedAcceptedEvents(sessionManager)
+        const legacy = readUnconsumedAcceptedEvents(hostedSession.getWorkflowEventJournalReader())
             .filter((event) => event.agentName === completion.agentName && event.report === completion.report)
             .at(-1);
-        if (legacy && sessionManager?.appendCustomEntry) {
-            sessionManager.appendCustomEntry(TASK_COMPLETION_CUSTOM_TYPE, {
+        if (legacy && journal) {
+            journal.append(TASK_COMPLETION_CUSTOM_TYPE, {
                 version: 1,
                 state: "consumed",
                 completionId: legacy.completionId,
                 timestampMs,
-            });
+            } satisfies ConsumedTaskCompletionEvent);
         }
     }
     if (!completion.completionId || completion.workflowToolEvent) return;
-    if (!sessionManager?.appendCustomEntry) {
-        throw new Error("Cannot acknowledge durable task completion without a writable root SessionManager.");
+    if (!journal) {
+        throw new Error("Cannot acknowledge durable task completion without a root workflow journal.");
     }
-    sessionManager.appendCustomEntry(TASK_COMPLETION_CUSTOM_TYPE, {
+    journal.append(TASK_COMPLETION_CUSTOM_TYPE, {
         version: 1,
         state: "consumed",
         completionId: completion.completionId,
         timestampMs,
-    });
+    } satisfies ConsumedTaskCompletionEvent);
 }
 
-export function listPendingTaskCompletions(hostedSession: HostedSession): PendingTaskCompletionClaim[] {
+export function listPendingTaskCompletions(hostedSession: WorkflowTaskCompletionHost): PendingTaskCompletionClaim[] {
     const owningSession = hostedSession.getRootAgentSession();
-    return readUnconsumedAcceptedEvents(getCompletionSessionManager(hostedSession)).map((event) => ({
+    return readUnconsumedAcceptedEvents(hostedSession.getWorkflowEventJournalReader()).map((event) => ({
         completionId: event.completionId,
         agentName: event.agentName,
         report: event.report,
