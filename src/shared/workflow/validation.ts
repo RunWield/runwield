@@ -47,8 +47,8 @@ export { type SemanticReviewPort, SYSTEM_SEMANTIC_REVIEW_PORT } from "./validati
 export type { ValidationPhaseResult, WorkflowValidationResult } from "./validation-types.ts";
 
 type PlanFrontMatter = import("@runwield/plans").PlanFrontMatter;
-type TriageMeta = import("../../tools/plan-written.ts").TriageMeta & Partial<PlanFrontMatter>;
-type ActiveExecutionWorkflow = import("../session/hosted-session.ts").ActiveExecutionWorkflow;
+type TriageMeta = import("@runwield/workflow/state").TriageMeta & Partial<PlanFrontMatter>;
+type ActiveExecutionWorkflow = import("@runwield/workflow/state").ActiveExecutionWorkflow;
 type HostedSession = import("../session/hosted-session.ts").HostedSession;
 type GitPort = import("../git-port.ts").GitPort;
 type WorkRecordMnemotecaPort = import("../work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort;

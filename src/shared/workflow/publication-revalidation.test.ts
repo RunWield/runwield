@@ -24,12 +24,7 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
 import { findById, retirePublicationForRevalidation, updatePublication } from "../worktree-registry.ts";
-import {
-    advanceStoredPublication,
-    reconcileStoredPublication,
-    startPublicationAttempt,
-} from "./publication-machine.ts";
-import { preparePublicationRevalidation, prepareReviewedCandidateRevalidation } from "./publication-revalidation.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 import { candidateIdentity } from "./validation-scope.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { HostedSession } from "../session/hosted-session.ts";
@@ -98,9 +93,7 @@ async function fixture(epicChild = false) {
         await git(entry.path, ["add", "."]);
         await git(entry.path, ["commit", "-m", "Artifacts"]);
         const artifactCommit = await git(entry.path, ["rev-parse", "HEAD"]);
-        const started = await startPublicationAttempt({
-            projectRoot,
-            attemptId: entry.id,
+        const started = await openPublication(projectRoot).attempt(entry.id).start({
             planName: entry.planName,
             targetBranch: "main",
             executionBranch: entry.branch,
@@ -108,10 +101,12 @@ async function fixture(epicChild = false) {
             validatedCommit,
             targetHeadAtSeal: entry.baseCommit,
         });
-        const attempt = await advanceStoredPublication(projectRoot, started, "artifacts_committed", {
-            artifactCommit,
-            planPaths: ["docs/plans/rewrite.md"],
-        });
+        const attempt = await openPublication(projectRoot)
+            .resume(started)
+            .advance("artifacts_committed", {
+                artifactCommit,
+                planPaths: ["docs/plans/rewrite.md"],
+            });
         await fsMkdir(attempt.publicationRoot, { recursive: true });
         await fsWriteFile(join(attempt.publicationRoot, "repair.txt"), "preserve unfinished repair\n");
         return {
@@ -143,7 +138,7 @@ test("rewritten publication preserves files and starts fresh validation instead 
             const head = await git(f.entry.path, ["rev-parse", "HEAD"]);
             const index = await git(f.entry.path, ["diff", "--cached"]);
             const target = await git(f.projectRoot, ["rev-parse", "main"]);
-            const archive = await preparePublicationRevalidation(f.projectRoot, f.entry.planName);
+            const archive = await openPublication(f.projectRoot).revalidate(f.entry.planName);
             assert(archive);
             assertEquals(await git(f.entry.path, ["rev-parse", "HEAD"]), head);
             assertEquals(await git(f.entry.path, ["diff", "--cached"]), index);
@@ -162,7 +157,7 @@ test("rewritten publication preserves files and starts fresh validation instead 
             assertEquals(plan?.attrs.validatedCommit, undefined);
             assertEquals(plan?.attrs.humanReviewDecision, null);
             assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, undefined);
-            assertEquals(await preparePublicationRevalidation(f.projectRoot, f.entry.planName), null);
+            assertEquals(await openPublication(f.projectRoot).revalidate(f.entry.planName), null);
         } finally {
             await f.cleanup();
         }
@@ -174,7 +169,7 @@ test("unchanged publication and harmless empty commits keep their validation", a
     return await withRetainedPlanFixture(f.projectRoot, async () => {
         try {
             await git(f.entry.path, ["commit", "--allow-empty", "-m", "Empty"]);
-            assertEquals(await preparePublicationRevalidation(f.projectRoot, f.entry.planName), null);
+            assertEquals(await openPublication(f.projectRoot).revalidate(f.entry.planName), null);
             assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, f.attempt);
         } finally {
             await f.cleanup();
@@ -196,10 +191,10 @@ test(
                 const alias = join(parentAlias, basename(f.entry.path));
                 const attempt = { ...f.attempt, executionCwd: alias, revision: f.attempt.revision + 1 };
                 await updatePublication(f.projectRoot, f.entry.id, f.attempt.revision, attempt);
-                assertEquals(await preparePublicationRevalidation(f.projectRoot, f.entry.planName), null);
+                assertEquals(await openPublication(f.projectRoot).revalidate(f.entry.planName), null);
                 assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, attempt);
                 await fsWriteFile(join(alias, "feature.txt"), "changed implementation\n");
-                assert(await preparePublicationRevalidation(f.projectRoot, f.entry.planName));
+                assert(await openPublication(f.projectRoot).revalidate(f.entry.planName));
                 assertEquals((await loadPlan(alias, f.entry.planName))?.attrs.status, "implemented");
             } finally {
                 await f.cleanup();
@@ -217,7 +212,7 @@ test("publication recovery also handles pruned pre-rewrite commits", async () =>
             await git(f.projectRoot, ["reflog", "expire", "--expire=all", "--expire-unreachable=all", "--all"]);
             await git(f.projectRoot, ["gc", "--prune=now"]);
             await assertRejects(() => git(f.projectRoot, ["cat-file", "-e", f.attempt.artifactCommit!]));
-            assert(await preparePublicationRevalidation(f.projectRoot, f.entry.planName));
+            assert(await openPublication(f.projectRoot).revalidate(f.entry.planName));
             assertEquals((await loadPlan(f.entry.path, f.entry.planName))?.attrs.status, "implemented");
         } finally {
             await f.cleanup();
@@ -240,9 +235,9 @@ for (const boundary of ["intent", "preserved_checkout", "plan_reset"]) {
                     },
                 };
                 await updatePublication(f.projectRoot, f.entry.id, f.attempt.revision, attempt);
-                assertEquals(await reconcileStoredPublication(f.projectRoot, attempt), attempt);
+                assertEquals(await openPublication(f.projectRoot).resume(attempt).reconcile(), attempt);
                 await assertRejects(() =>
-                    advanceStoredPublication(f.projectRoot, attempt, "target_integrated", {
+                    openPublication(f.projectRoot).resume(attempt).advance("target_integrated", {
                         targetBaseCommit: f.entry.baseCommit,
                         integrationCommit: f.attempt.artifactCommit,
                     }),
@@ -268,13 +263,13 @@ for (const boundary of ["intent", "preserved_checkout", "plan_reset"]) {
                         },
                     );
                 }
-                const moduleUrl = new URL("./publication-revalidation.ts", import.meta.url).href;
+                const moduleUrl = import.meta.resolve("@runwield/workflow/publication-runtime");
                 const output = await captureForegroundProcess(process.execPath, {
                     args: runtimeSourceArgs([
                         "eval",
-                        `import {preparePublicationRevalidation} from ${JSON.stringify(
+                        `import { openPublication } from ${JSON.stringify(
                             moduleUrl,
-                        )}; import { withRetainedPlanFixture } from ${JSON.stringify(new URL("../testing/retained-plan-fixture.ts", import.meta.url).href)}; const [root, name] = (await import("node:process")).argv.slice(2); await withRetainedPlanFixture(root, () => preparePublicationRevalidation(root, name));`,
+                        )}; import { withRetainedPlanFixture } from ${JSON.stringify(new URL("../testing/retained-plan-fixture.ts", import.meta.url).href)}; const [root, name] = (await import("node:process")).argv.slice(2); await withRetainedPlanFixture(root, () => openPublication(root).revalidate(name));`,
                         f.projectRoot,
                         f.entry.planName,
                     ]),
@@ -301,12 +296,12 @@ test("an integration that may already have been pushed is never retired for sour
     const f = await fixture();
     return await withRetainedPlanFixture(f.projectRoot, async () => {
         try {
-            const integrated = await advanceStoredPublication(f.projectRoot, f.attempt, "target_integrated", {
+            const integrated = await openPublication(f.projectRoot).resume(f.attempt).advance("target_integrated", {
                 targetBaseCommit: f.entry.baseCommit,
                 integrationCommit: f.attempt.artifactCommit,
             });
             await f.rewrite();
-            assertEquals(await preparePublicationRevalidation(f.projectRoot, f.entry.planName), null);
+            assertEquals(await openPublication(f.projectRoot).revalidate(f.entry.planName), null);
             assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, integrated);
         } finally {
             await f.cleanup();
@@ -444,7 +439,7 @@ for (const running of [false, true]) {
             try {
                 assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, undefined);
                 await fsWriteFile(join(f.entry.path, "feature.txt"), "changed implementation\n");
-                assertEquals(await prepareReviewedCandidateRevalidation(f.projectRoot, f.entry.planName), true);
+                assertEquals(await openPublication(f.projectRoot).revalidateReviewedCandidate(f.entry.planName), true);
                 const plan = await loadPlan(f.entry.path, f.entry.planName);
                 assertEquals(plan?.attrs.status, "implemented");
                 assertEquals(plan?.attrs.validationPhase, "mechanical");
@@ -475,14 +470,14 @@ test("unchanged reviewed candidate and edits to any Plan document keep their rev
     const f = await reviewedFixture();
     return await withRetainedPlanFixture(f.projectRoot, async () => {
         try {
-            assertEquals(await prepareReviewedCandidateRevalidation(f.projectRoot, f.entry.planName), false);
+            assertEquals(await openPublication(f.projectRoot).revalidateReviewedCandidate(f.entry.planName), false);
             const original = await loadPlan(f.entry.path, f.entry.planName);
             assert(original);
             await seedPlan(f.entry.path, "rewrite", "# Changed Plan prose\n", original.attrs, {
                 expectedRevision: original.revision,
             });
             await seedPlan(f.entry.path, "epic/other", "# Sibling Plan\n", { status: "draft" });
-            assertEquals(await prepareReviewedCandidateRevalidation(f.projectRoot, f.entry.planName), false);
+            assertEquals(await openPublication(f.projectRoot).revalidateReviewedCandidate(f.entry.planName), false);
             const plan = await loadPlan(f.entry.path, f.entry.planName);
             assertEquals(plan?.attrs.status, "reviewed");
             assertEquals(plan?.attrs.validationCheckpoint, f.checkpoint);
@@ -498,7 +493,7 @@ test("reviewed checkpoints without a candidate identity retain legacy continuati
     return await withRetainedPlanFixture(f.projectRoot, async () => {
         try {
             await fsWriteFile(join(f.entry.path, "feature.txt"), "changed implementation\n");
-            assertEquals(await prepareReviewedCandidateRevalidation(f.projectRoot, f.entry.planName), false);
+            assertEquals(await openPublication(f.projectRoot).revalidateReviewedCandidate(f.entry.planName), false);
             const plan = await loadPlan(f.entry.path, f.entry.planName);
             assertEquals(plan?.attrs.status, "reviewed");
             assertEquals(plan?.attrs.validationCheckpoint, f.checkpoint);
@@ -553,7 +548,7 @@ test("a confirmed child deviation after sealing survives publication revalidatio
                     allowedPlanPaths: [],
                 }),
             );
-            assert(await preparePublicationRevalidation(f.projectRoot, f.entry.planName));
+            assert(await openPublication(f.projectRoot).revalidate(f.entry.planName));
             const child = (await loadPlan(f.entry.path, f.entry.planName))!;
             assertEquals(child.attrs.status, "implemented");
             assertEquals(child.attrs.planDeviations?.[0].id, "late-confirmation");

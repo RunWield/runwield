@@ -26,7 +26,7 @@ import {
 } from "./workflows.ts";
 import { isCommitPublishedToTarget } from "../shared/isolated-publication.ts";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
-import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
+import { effectiveDeliveryBranch, type PublicationAttempt } from "@runwield/workflow/publication";
 /** Immutable recording input retained after delivery removes the execution worktree. */
 import { join } from "node:path";
 import {
@@ -38,7 +38,6 @@ import {
 import { loadPlan } from "./queries.ts";
 import { savePlan } from "../plan-store.ts";
 import { findRecordingControllerByName, inspectControllerView, writeControllerState } from "./controllers.ts";
-import type { PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
 import { attachEpicChildren, buildActiveWorkRecordSource } from "../shared/work-records/generation.ts";
 import { isTerminalWorkRecordParent } from "../shared/work-records/auto-generation.ts";
 

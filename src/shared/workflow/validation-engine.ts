@@ -30,11 +30,10 @@ import { decideValidationRecovery, readValidationRetryPolicy } from "./validatio
 import type { ValidationLoopArgs, ValidationPhaseResult, WorkflowValidationResult } from "./validation-types.ts";
 import { MAX_PHASES_PER_CALL, PHASE_STATUS, VALIDATION_STATUS_ORDER } from "./validation-types.ts";
 import {
-    preparePublicationRevalidation,
-    prepareReviewedCandidateRevalidation,
+    openPublication,
     PUBLICATION_REVALIDATION_MESSAGE,
     CANDIDATE_REVALIDATION_MESSAGE,
-} from "./publication-revalidation.ts";
+} from "@runwield/workflow/publication-runtime";
 
 import { preparePlanController } from "../../plan-store/index.ts";
 import { validateHostReviewerResume } from "./validation-host-state.ts";
@@ -85,9 +84,9 @@ export async function runValidationPhase(args: ValidationLoopArgs): Promise<Vali
     await validateHostReviewerResume(args);
     // Let an answer reach the existing diff-bound check before resetting its wait.
     const answeringDecision = args.hostTurn?.resume?.kind === "decision" && !args.hostTurn.consumed;
-    const candidateChanged =
-        !answeringDecision && (await prepareReviewedCandidateRevalidation(getProjectRoot(args), args.planName));
-    const recoveryPath = await preparePublicationRevalidation(getProjectRoot(args), args.planName);
+    const publication = openPublication(getProjectRoot(args));
+    const candidateChanged = !answeringDecision && (await publication.revalidateReviewedCandidate(args.planName));
+    const recoveryPath = await publication.revalidate(args.planName);
     const revalidating = candidateChanged || Boolean(recoveryPath);
     const canonicalPlan = await loadCanonicalValidationPlan(args, documentRoot);
     if (canonicalPlan.kind === "blocked") return canonicalPlan.result;

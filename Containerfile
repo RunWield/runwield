@@ -17,6 +17,7 @@ COPY packages/projects ./packages/projects
 COPY packages/resources ./packages/resources
 COPY packages/session-files ./packages/session-files
 COPY packages/tools ./packages/tools
+COPY packages/workflow ./packages/workflow
 COPY scripts ./scripts
 COPY src ./src
 COPY third_party ./third_party

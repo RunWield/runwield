@@ -4,7 +4,7 @@ import { readFile, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals } from "../../testing/assertions.ts";
-import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "../workflow/workflow-tool-events.ts";
+import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "@runwield/workflow/events";
 import {
     assertRemoteStorageAbsent,
     latch,

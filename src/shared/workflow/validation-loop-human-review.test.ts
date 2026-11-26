@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, writeFile as fsWriteFile, rm as fsRm } from "node:fs/promises";
@@ -406,7 +407,6 @@ async function makeReviewedGitConversation() {
     const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
     const { recordPlanEvent } = await import("../../plan-store/index.ts");
     const { startActiveExecutionWorkflow, createExecutionStartPorts } = await import("./execution-start.ts");
-    const { finalizePlanImplementation } = await import("./implementation-checkpoint.ts");
     const root = await conversationFixture.checkout();
     await seedPlan(root, "p", "# p\n\nKeep the exported label.", {
         planId: "review-conversation",
@@ -427,7 +427,11 @@ async function makeReviewedGitConversation() {
         });
         assert(active.executionCwd);
         await fsWriteFile(join(active.executionCwd, "review-chat.ts"), "export const label = 'first';\n");
-        await finalizePlanImplementation({ projectRoot: root, planName: "p", executionContext: active });
+        await (
+            await openWorkflow({ cwd: root, planName: "p" }).resumeAttempt({
+                attemptId: active.packageAttemptId || active.worktreeId,
+            })
+        ).acceptCompletion({});
         await recordPlanEvent({
             cwd: root,
             planName: "p",

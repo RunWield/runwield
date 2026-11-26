@@ -1,6 +1,6 @@
 /** Illustrative fixture only. No live repository, user, model, or cost data. */
 import { buildDeliveryReport } from "../../../shared/workflow/delivery-report.ts";
-import { createPublicationAttempt } from "../../../shared/workflow/publication-attempt.ts";
+import { createPublicationAttempt } from "@runwield/workflow/publication";
 const time = "2026-10-08T10:00:00Z";
 export const DEV_DELIVERY_REPORT = buildDeliveryReport({
     planName: "Illustrative delivery fixture",
@@ -64,7 +64,6 @@ export function devDeliveryArtifact(artifactId: string) {
     return {
         ...artifact,
         imageBaseDir: "",
-        markdown:
-            `# ${artifact.title}\n\n> Illustrative fixture. These are not real delivery results.\n\n## Checked candidate\n\n${DEV_DELIVERY_REPORT.checkedCommit}\n\n## Delivered commit\n\n${DEV_DELIVERY_REPORT.deliveredCommit}\n\nHuman verification: Not recorded.\n`,
+        markdown: `# ${artifact.title}\n\n> Illustrative fixture. These are not real delivery results.\n\n## Checked candidate\n\n${DEV_DELIVERY_REPORT.checkedCommit}\n\n## Delivered commit\n\n${DEV_DELIVERY_REPORT.deliveredCommit}\n\nHuman verification: Not recorded.\n`,
     };
 }

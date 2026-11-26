@@ -18,7 +18,7 @@ import {
 } from "./validation-context.ts";
 import { CI_REPAIR_CYCLES, type UserActionOption } from "./validation-types.ts";
 import { clampCycle, emitProgress, emitStatus, repairBlockedReason } from "./validation-emit.ts";
-import { pauseForUserAction, requestInteraction } from "./validation-interactions.ts";
+import { pauseForUserAction, requestInteraction } from "@runwield/workflow/interactions";
 import { ValidationInteractionTypes } from "./validation-ports.ts";
 import { buildValidationRepairPrompt } from "./validation-repair-prompt.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
@@ -33,7 +33,7 @@ import type { CiRunEvidence } from "@runwield/plans/controller-state";
 import { candidateIdentity } from "./validation-scope.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { runValidationCommand, saveValidationCommand } from "./validation-local-ci.ts";
-import { ValidationHostShutdown } from "./validation-host-contract.ts";
+import { ValidationHostShutdown } from "@runwield/workflow/host-contract";
 import { requestHostRepair, saveHostCheckpoint } from "./validation-host-state.ts";
 
 const ENGINEER_FOLLOW_UP_OPTIONS: UserActionOption[] = [

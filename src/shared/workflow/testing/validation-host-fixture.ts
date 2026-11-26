@@ -1,9 +1,9 @@
+import { openWorkflow } from "@runwield/workflow";
 import { seedPlanState, seedPlan } from "../../testing/plan-state-fixture.ts";
 import { rememberNonGitExecutionConsent } from "../../non-git-execution-consent.ts";
 import { withLocalPlanWorkflow } from "../../../plan-store/index.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "../execution-start.ts";
 import { recordPlanEvent } from "../../../plan-store/index.ts";
-import { finalizePlanImplementation } from "../implementation-checkpoint.ts";
 import { runtimeSourceArgs } from "../../../testing/runtime-source-args.ts";
 import { tmpdir } from "node:os";
 import {
@@ -33,8 +33,8 @@ import {
     type HostTurnValidationResult,
     type ValidationHostRequest,
     type ValidationHostResume,
-} from "../validation-host-contract.ts";
-import { continueHostTurnValidation } from "../validation-host-turn.ts";
+} from "@runwield/workflow/host-contract";
+import { runHostValidation } from "./run-host-validation.ts";
 import { readDeliveryEvidence } from "../delivery-evidence.ts";
 import { getWorkflowMetricsFilePath } from "../metrics.ts";
 
@@ -124,12 +124,11 @@ export async function hostFixture(options: HostFixtureOptions = {}) {
             id = execution.worktreeId || "in-place";
             if (!options.planOnly)
                 await fsWriteFile(join(cwd, "implementation.ts"), "export const value = 1; // implemented\n");
-            await finalizePlanImplementation({
-                projectRoot: root,
-                planName: "p",
-                executionContext: execution,
-                executionReport: attrs.executionReport ?? undefined,
-            });
+            await (
+                await openWorkflow({ cwd: root, planName: "p" }).resumeAttempt({
+                    attemptId: execution?.packageAttemptId || execution?.worktreeId,
+                })
+            ).acceptCompletion({ executionReport: attrs.executionReport ?? undefined });
             const implemented = await loadPlan(root, "p");
             assertExists(implemented);
             await seedPlanState(
@@ -178,7 +177,7 @@ export async function hostFixture(options: HostFixtureOptions = {}) {
         bin,
         modelMarker,
         async turn(resume?: ValidationHostResume) {
-            return await continueHostTurnValidation({ projectRoot: root, planName: "p", resume });
+            return await runHostValidation({ projectRoot: root, planName: "p", resume });
         },
         async processTurn(resume?: ValidationHostResume): Promise<HostTurnValidationResult> {
             const output = await captureForegroundProcess(process.execPath, {

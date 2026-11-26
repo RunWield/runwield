@@ -27,7 +27,7 @@ export type RuntimePersistedTriageInput = Omit<
 export type RuntimeTriageInput =
     | RuntimeTriageFields
     | RuntimePersistedTriageInput
-    | import("../../../tools/plan-written.ts").TriageMeta
+    | import("@runwield/workflow/state").TriageMeta
     | import("@runwield/plans").PlanFrontMatter;
 export type RuntimeExecutePlanOptions = Partial<
     Omit<import("../../workflow/plan-executor.ts").ExecutePlanOptions, "hostedSession" | "triageMeta">
@@ -88,12 +88,12 @@ export interface SemanticRepairHandoffResult {
 export type SemanticRepairContinuation = Omit<
     import("../../workflow/execution-segment-handoff.ts").SemanticRepairSegmentContinuation,
     "activeWorkflow"
-> & { activeWorkflow: import("../hosted-session.ts").ActiveExecutionWorkflow };
+> & { activeWorkflow: import("@runwield/workflow/state").ActiveExecutionWorkflow };
 export interface RuntimeSemanticRepairOptions {
     suppressEpicContinuation?: boolean;
     planName: string;
     planContent?: string;
-    triageMeta?: import("../../../tools/plan-written.ts").TriageMeta;
+    triageMeta?: import("@runwield/workflow/state").TriageMeta;
 }
 
 export interface RuntimeValidationResult {
@@ -104,7 +104,7 @@ export interface RuntimeValidationResult {
     projectRoot?: string;
     reason?: string;
     executionComplete?: boolean;
-    executionContext?: import("../hosted-session.ts").ActiveExecutionWorkflow;
+    executionContext?: import("@runwield/workflow/state").ActiveExecutionWorkflow;
     executionSegmentHandoff?: import("../../workflow/execution-segment-handoff.ts").ExecutionSegmentContinuation;
     epicContinuation?: NonNullable<WorkflowValidationResult["epicContinuation"]>;
     semanticRepairHandoff?: WorkflowValidationResult["semanticRepairHandoff"];
@@ -112,7 +112,7 @@ export interface RuntimeValidationResult {
 
 export function isValidationTriageMeta(
     value: RuntimeTriageInput,
-): value is import("../../../tools/plan-written.ts").TriageMeta {
+): value is import("@runwield/workflow/state").TriageMeta {
     const classifications = new Set(["QUICK_FIX", "PLANNED_CHANGE", "PROJECT"]);
     const complexities = new Set(["LOW", "MEDIUM", "HIGH"]);
     const statuses = new Set([

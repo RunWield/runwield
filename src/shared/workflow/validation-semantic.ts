@@ -46,7 +46,7 @@ import {
 } from "./validation-context.ts";
 import { SEMANTIC_REVIEW_CYCLES, semanticReviewMode } from "./validation-types.ts";
 import { clampCycle, emitHalted, emitProgress, emitStatus, repairBlockedReason } from "./validation-emit.ts";
-import { requestInteraction } from "./validation-interactions.ts";
+import { requestInteraction } from "@runwield/workflow/interactions";
 import { ValidationInteractionTypes } from "./validation-ports.ts";
 import { persistHumanReviewMetadata, runHumanReviewPhase } from "./validation-human-review.ts";
 import { runPublicationPhase } from "./validation-publication.ts";
@@ -62,7 +62,7 @@ import {
     waitForValidationRetryWithSessionCancellation,
 } from "./validation-recovery.ts";
 
-import { sameHostIdentity, ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
+import { sameHostIdentity, ValidationHostRejected, ValidationHostWait } from "@runwield/workflow/host-contract";
 import { normalizeReviewOutcome, reviewCompletionMetricDetails } from "./review-outcome.ts";
 import {
     hostReviewerIdentity,

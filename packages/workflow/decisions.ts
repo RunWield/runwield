@@ -1,11 +1,25 @@
 /**
- * @module shared/workflow/decisions
  * Ephemeral Workflow Decision interpreters. These normalize raw tool/session
  * outcomes into semantic caller actions without mutating Plan Status.
  */
 
-import type { TriageMeta } from "../../tools/plan-written.ts";
-import type { PlanExecutionResult, PlanOutcomeResult } from "./workflow.ts";
+import type { PlanFrontMatter } from "@runwield/plans";
+import type { PlanWrittenEventPayload } from "./events.ts";
+
+/** Describes how an execution turn ended so the caller can choose its next action. */
+export interface PostExecutionReport {
+    executionComplete: boolean;
+    repairRequired: boolean;
+    paused?: boolean;
+    checkpointPending?: boolean;
+    checkpointId?: string;
+    canceled?: boolean;
+    intentionalComplete?: boolean;
+    intentionalCompleteReason?: string;
+    message?: string;
+    pauseReason?: "stop" | "canceled";
+    error?: string;
+}
 
 export type WorkflowDecisionKind =
     "execute_plan" | "start_slicer" | "save_plan" | "run_validation" | "complete_session" | "stay_with_agent" | "halt";
@@ -20,32 +34,36 @@ export type WorkflowDecisionReason =
     | "missing_execution_result"
     | "unknown_plan_outcome";
 
+/** Carries the Plan, agent, feedback, or pause details needed for the chosen action. */
 export interface WorkflowDecisionPayload {
     planName?: string;
-    triageMeta?: Partial<TriageMeta>;
+    triageMeta?: Partial<PlanFrontMatter>;
     reviewFeedback?: string;
-    reviewImages?: PlanOutcomeResult["images"];
+    reviewImages?: PlanWrittenEventPayload["images"];
     agentName?: string;
     reason?: string;
     message?: string;
-    error?: PlanExecutionResult["error"];
-    pauseReason?: PlanExecutionResult["pauseReason"];
+    error?: PostExecutionReport["error"];
+    pauseReason?: PostExecutionReport["pauseReason"];
     checkpointId?: string;
 }
 
+/** Names the next action and the information the caller needs to take it. */
 export interface WorkflowDecision {
     kind: WorkflowDecisionKind;
     payload: WorkflowDecisionPayload;
 }
 
+/** Identifies the planning agent and supplies triage metadata when the Plan report omits it. */
 export interface PostPlanningOptions {
     planningAgentName: string;
-    fallbackTriageMeta?: TriageMeta;
+    fallbackTriageMeta?: Partial<PlanFrontMatter>;
 }
 
+/** Identifies the Plan and agent to carry forward after an execution turn. */
 export interface PostExecutionOptions {
     planName: string;
-    triageMeta: TriageMeta;
+    triageMeta: Partial<PlanFrontMatter>;
     executionAgentName: string;
 }
 
@@ -67,7 +85,7 @@ export function summarizeWorkflowDecision(workflowDecision: WorkflowDecision) {
 
 /** Normalize the planning phase outcome into a semantic decision for callers. */
 export function decidePostPlanning(
-    planOutcome: PlanOutcomeResult | null | undefined,
+    planOutcome: PlanWrittenEventPayload | null | undefined,
     { planningAgentName, fallbackTriageMeta }: PostPlanningOptions,
 ): WorkflowDecision {
     const outcome = planOutcome?.outcome || "no_call";
@@ -154,7 +172,7 @@ export function decidePostPlanning(
  * active-agent changes, and Plan Events.
  */
 export function decidePostExecution(
-    executionResult: PlanExecutionResult | null | undefined,
+    executionResult: PostExecutionReport | null | undefined,
     { planName, triageMeta, executionAgentName }: PostExecutionOptions,
 ): WorkflowDecision {
     if (!executionResult) {

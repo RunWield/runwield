@@ -1,7 +1,7 @@
 export type HostDeliveryMode = "publication" | "in_place";
 /** Typed process-independent waits. Outcomes are claims; the engine checks them. */
-import type { ReviewCompletePayload } from "./review-outcome.ts";
-import type { ReviewDiffScope, ReviewDiffSpan } from "./review-inspection.ts";
+import type { ReviewCompletePayload } from "../../src/shared/workflow/review-outcome.ts";
+import type { ReviewDiffScope, ReviewDiffSpan } from "../../src/shared/workflow/review-inspection.ts";
 import type {
     PendingHostDecision,
     PendingHostRecorder,
@@ -11,7 +11,7 @@ import type {
     ValidationInteractionResponse,
     ValidationRepairIdentity,
 } from "@runwield/plans/controller-state";
-import type { ValidationRecoveryResult } from "./validation-recovery.ts";
+import type { ValidationRecoveryResult } from "../../src/shared/workflow/validation-recovery.ts";
 
 export type ValidationReviewerIdentity = ValidationHostIdentity & {
     semanticRound: number;
@@ -19,6 +19,7 @@ export type ValidationReviewerIdentity = ValidationHostIdentity & {
     correctionCount: number;
     diffHash: string;
 };
+/** Describes the review, repair, decision, or recording work validation needs from the host. */
 export type ValidationHostRequest =
     | {
           kind: "reviewer";
@@ -33,17 +34,19 @@ export type ValidationHostRequest =
     | PendingHostRepair
     | PendingHostDecision
     | PendingHostRecorder;
+/** Pairs a host response with the request identity that validation must check before continuing. */
 export type ValidationHostResume =
     | {
           kind: "reviewer";
           identity: ValidationReviewerIdentity;
           outcome: ReviewCompletePayload | null;
           coverage: ReviewDiffSpan[];
-          failure?: import("./validation-operational-errors.ts").ValidationOperationalFailure;
+          failure?: import("../../src/shared/workflow/validation-operational-errors.ts").ValidationOperationalFailure;
       }
     | { kind: "decision"; identity: ValidationDecisionIdentity; answer: ValidationInteractionResponse }
     | { kind: "task_completed"; identity: ValidationRepairIdentity; report: string }
     | { kind: "recorder"; identity: ValidationHostIdentity; sections: string };
+/** Reports the next host request or the outcome of this validation turn. */
 export type HostTurnValidationResult =
     | { kind: "host_request"; request: ValidationHostRequest }
     | {
@@ -55,6 +58,7 @@ export type HostTurnValidationResult =
     | { kind: "paused" | "failed"; reason: string; recovery?: ValidationRecoveryResult };
 export type ValidationHostTurn = { resume?: ValidationHostResume; consumed?: boolean; signal?: AbortSignal };
 
+/** Check that both host requests carry the same identity fields and values. */
 export function sameHostIdentity(
     left: ValidationHostIdentity | ValidationReviewerIdentity | ValidationDecisionIdentity | ValidationRepairIdentity,
     right: ValidationHostIdentity | ValidationReviewerIdentity | ValidationDecisionIdentity | ValidationRepairIdentity,

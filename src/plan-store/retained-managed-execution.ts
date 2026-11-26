@@ -8,7 +8,7 @@ import { operationHash } from "./operation-receipts.ts";
 import type { ControllerRecord } from "./controllers.ts";
 import type { WorktreeRegistryEntry } from "../shared/worktree-registry.ts";
 import { ensurePrivateDir, writeJsonAtomically, writeTextAtomically } from "../shared/private-json-file.ts";
-import { assertPublicationAttempt, type PublicationAttempt } from "../shared/workflow/publication-attempt.ts";
+import { assertPublicationAttempt, type PublicationAttempt } from "@runwield/workflow/publication";
 import { recoverLegacyPlanControllers } from "./runtime-recovery.ts";
 
 export interface RetainedManagedExecution {
@@ -395,16 +395,14 @@ export async function checkpointRetainedManagedExecution(
                             "verified-publication.json",
                         );
                         await assertManagedRuntimePath(proofPath, owner.executionAccountHome);
-                        const previous:
-                            import("../shared/workflow/publication-attempt.ts").PublicationAttempt | undefined =
-                            await fs
-                                .readFile(proofPath, "utf8")
-                                .then((text) => JSON.parse(text))
-                                .catch((error) => {
-                                    if (error instanceof Error && "code" in error && error.code === "ENOENT")
-                                        return undefined;
-                                    throw error;
-                                });
+                        const previous: PublicationAttempt | undefined = await fs
+                            .readFile(proofPath, "utf8")
+                            .then((text) => JSON.parse(text))
+                            .catch((error) => {
+                                if (error instanceof Error && "code" in error && error.code === "ENOENT")
+                                    return undefined;
+                                throw error;
+                            });
                         const candidateOnly =
                             !checkpoint.updates.verifiedAt &&
                             !checkpoint.updates.publicationReceipt &&

@@ -1,7 +1,7 @@
 import { prepareRequestDispatch } from "../../request-dispatch.ts";
 import { createTaskCompletedTool } from "../../../../tools/task-completed.ts";
 import { createPairCheckpointTool } from "../../../../tools/pair-checkpoint.ts";
-import { listPendingWorkflowToolEvents } from "../../../workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
@@ -138,7 +138,7 @@ test("workflow MCP bridge records canonical messages, provenance, and a rejected
         assertEquals(result.isError, true);
         assertEquals("outcome" in (result.details || {}), false);
         assertEquals(result.details?.provenance, CLAUDE_CLI_MCP_PROVENANCE);
-        assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 0);
+        assertEquals(workflowEvents(context.hostedSession).pending().length, 0);
     });
 });
 
@@ -149,7 +149,7 @@ test("workflow MCP bridge accepts a delegated result, stamps provenance, and ato
             arguments: { message: "all done" },
         });
         assertEquals(accepted.isError, false);
-        assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 1);
+        assertEquals(workflowEvents(context.hostedSession).pending().length, 1);
 
         const messages = recordedMessages(context);
         const results = messages.filter(
@@ -179,7 +179,7 @@ test("workflow MCP bridge accepts a delegated result, stamps provenance, and ato
         });
         assertEquals(after.isError, true);
         assertStringIncludes(resultText(after as never), "gate");
-        assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 1);
+        assertEquals(workflowEvents(context.hostedSession).pending().length, 1);
     });
 });
 
@@ -197,7 +197,7 @@ test("workflow MCP bridge serializes concurrent calls so only the first terminal
         assertEquals(firstResult.isError, false);
         assertEquals(secondResult.isError, true);
         // Serialization + gate: exactly one invocation reached the tool.
-        assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 1);
+        assertEquals(workflowEvents(context.hostedSession).pending().length, 1);
         const results = recordedMessages(context).filter(
             (msg) =>
                 (msg as { role?: string }).role === "toolResult" &&
@@ -674,7 +674,7 @@ test("RunWield MCP bridge checks argument budgets before the terminal gate can r
         assertEquals(recordedMessages(context).length, 2);
         assertEquals(context.mirrored.length, 2);
         assertEquals(context.runtimeEvents.length, eventsBefore);
-        assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 1);
+        assertEquals(workflowEvents(context.hostedSession).pending().length, 1);
     });
 });
 
@@ -703,7 +703,7 @@ for (const streamed of [false, true]) {
             await response.body?.cancel();
             assertEquals(recordedMessages(context), []);
             assertEquals(context.mirrored, []);
-            assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 0);
+            assertEquals(workflowEvents(context.hostedSession).pending().length, 0);
             await context.client.ping();
         });
     });
@@ -765,21 +765,21 @@ test("RunWield MCP bridge checks argument budgets before pending steering can re
             assertEquals(recordedMessages(context), []);
             assertEquals(context.mirrored, []);
             assertEquals(context.runtimeEvents.length, eventsBefore);
-            assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 0);
+            assertEquals(workflowEvents(context.hostedSession).pending().length, 0);
             const pending = await context.client.callTool({
                 name: "runwield_task_completed",
                 arguments: { message: "done" },
             });
             assertEquals(pending.isError, true);
             assertStringIncludes(resultText(pending as never), "user steering is pending");
-            assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 0);
+            assertEquals(workflowEvents(context.hostedSession).pending().length, 0);
             steering = [];
             const valid = await context.client.callTool({
                 name: "runwield_task_completed",
                 arguments: { message: "done" },
             });
             assertEquals(valid.isError, false);
-            assertEquals(listPendingWorkflowToolEvents(context.hostedSession).length, 1);
+            assertEquals(workflowEvents(context.hostedSession).pending().length, 1);
         },
         () => steering,
     );

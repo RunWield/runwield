@@ -19,7 +19,7 @@ import type {
 import { getPlanAttrs, readSemanticRoundState, recordLifecycleEvent, recordMetric } from "./validation-context.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { emitProgress } from "./validation-emit.ts";
-import { pauseForUserAction, requestInteraction } from "./validation-interactions.ts";
+import { pauseForUserAction, requestInteraction } from "@runwield/workflow/interactions";
 import { dispatchReviewConversationTurn, dispatchReviewFeedbackRepair } from "./validation-semantic.ts";
 import { buildValidationUserMessage } from "./validation-user-messages.ts";
 

@@ -38,6 +38,11 @@ export type PublicationFailure = {
     repairRoot?: string;
 };
 
+export type PublicationFailureInput = Omit<PublicationFailure, "phase" | "recordedAt"> & {
+    phase?: PublicationPhase;
+    recordedAt?: string;
+};
+
 export type PublicationAttempt = {
     deliveryMetadataVersion?: 1;
     retainedPublicationPolicy?: ExecutionPublicationPolicy;
@@ -93,16 +98,18 @@ export type PublicationPhaseEvidence = {
 
 const PHASE_INDEX = new Map(PUBLICATION_PHASES.map((phase, index) => [phase, index]));
 
+/** Check whether the current phase has reached or passed the expected phase. */
 export function publicationPhaseAtLeast(current: PublicationPhase, expected: PublicationPhase): boolean {
     return Number(PHASE_INDEX.get(current)) >= Number(PHASE_INDEX.get(expected));
 }
 
+/** Check for completed cleanup with no repair checkout left on record. */
 export function isPublicationAttemptCleanupComplete(attempt: PublicationAttempt): boolean {
     assertPublicationAttempt(attempt);
     return attempt.phase === "cleanup_complete" && !attempt.failure?.repairRoot;
 }
 
-export function createPublicationAttempt(args: {
+export type CreatePublicationAttemptInput = {
     attemptId: string;
     planId: string;
     planName: string;
@@ -113,7 +120,10 @@ export function createPublicationAttempt(args: {
     validatedCommit: string;
     targetHeadAtSeal: string;
     now?: string;
-}): PublicationAttempt {
+};
+
+/** Build the initial record for a validated commit and its intended Git target. */
+export function createPublicationAttempt(args: CreatePublicationAttemptInput): PublicationAttempt {
     const now = args.now || new Date().toISOString();
     for (const [name, value] of Object.entries(args)) {
         if (name === "now") continue;
@@ -163,6 +173,7 @@ function assertPhaseEvidence(phase: PublicationPhase, attempt: PublicationAttemp
     }
 }
 
+/** Build the next revision, validating evidence for the current or immediately following phase. */
 export function advancePublicationAttempt(
     current: PublicationAttempt,
     phase: PublicationPhase,
@@ -189,9 +200,10 @@ export function advancePublicationAttempt(
     return next;
 }
 
+/** Build a new revision with the failure details and any checkout retained for repair. */
 export function recordPublicationFailure(
     current: PublicationAttempt,
-    failure: Omit<PublicationFailure, "phase" | "recordedAt"> & { phase?: PublicationPhase; recordedAt?: string },
+    failure: PublicationFailureInput,
     now = new Date().toISOString(),
 ): PublicationAttempt {
     return {
@@ -208,6 +220,7 @@ export function recordPublicationFailure(
     };
 }
 
+/** Throw if a publication record is malformed or lacks the evidence required for its phase. */
 export function assertPublicationAttempt(value: PublicationAttempt): void {
     if (value.version !== PUBLICATION_ATTEMPT_VERSION) {
         throw new Error(`Unsupported publication attempt version: ${String(value.version)}.`);

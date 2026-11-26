@@ -6,7 +6,7 @@ import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { openPlanStoreForCheckout } from "../../plan-store/index.ts";
 import { plans } from "@runwield/plans";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { TriageMeta } from "@runwield/workflow/state";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 

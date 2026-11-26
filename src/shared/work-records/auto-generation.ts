@@ -18,7 +18,7 @@ import { readPublishedDeliverySources } from "../../plan-store/index.ts";
  * Targeted Work Record auto-generation after terminal Plan outcomes.
  */
 
-import { ValidationHostRejected, ValidationHostWait } from "../workflow/validation-host-contract.ts";
+import { ValidationHostRejected, ValidationHostWait } from "@runwield/workflow/host-contract";
 import { isPlannedChangeClassification, isChildFeaturePlan, isProjectPlan } from "@runwield/plans/format";
 
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";

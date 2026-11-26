@@ -1,19 +1,14 @@
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { test } from "node:test";
-import { rm, writeFile } from "node:fs/promises";
+import { rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
-import {
-    advanceStoredPublication,
-    loadPublicationAttempt,
-    reconcileStoredPublication,
-    startPublicationAttempt,
-} from "./publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 
 const planId = "11111111-1111-4111-8111-111111111111";
 const planPath = "docs/plans/demo.md";
@@ -44,9 +39,7 @@ async function deliveredAttempt(root: string, savePublishedReceipt = true) {
     await git(entry.path, ["add", "implementation.md"]);
     await git(entry.path, ["commit", "-m", "validated proposal and artifacts"]);
     const artifactCommit = await git(entry.path, ["rev-parse", "HEAD"]);
-    let attempt = await startPublicationAttempt({
-        projectRoot: root,
-        attemptId: entry.id,
+    let attempt = await openPublication(root).attempt(entry.id).start({
         planName: "demo",
         targetBranch: "main",
         executionBranch: entry.branch,
@@ -54,10 +47,12 @@ async function deliveredAttempt(root: string, savePublishedReceipt = true) {
         validatedCommit: artifactCommit,
         targetHeadAtSeal: base,
     });
-    attempt = await advanceStoredPublication(root, attempt, "artifacts_committed", {
-        artifactCommit,
-        planPaths: [planPath],
-    });
+    attempt = await openPublication(root)
+        .resume(attempt)
+        .advance("artifacts_committed", {
+            artifactCommit,
+            planPaths: [planPath],
+        });
     const delivered = await publishExecutionWorktreeIsolated({
         projectRoot: root,
         executionCwd: entry.path,
@@ -68,11 +63,11 @@ async function deliveredAttempt(root: string, savePublishedReceipt = true) {
         allowedPlanPaths: [planPath],
         publicationRoot: attempt.publicationRoot,
         onIntegrated: async (evidence) => {
-            attempt = await advanceStoredPublication(root, attempt, "target_integrated", evidence);
+            attempt = await openPublication(root).resume(attempt).advance("target_integrated", evidence);
         },
         onPublished: savePublishedReceipt
             ? async (evidence) => {
-                  attempt = await advanceStoredPublication(root, attempt, "target_published", evidence);
+                  attempt = await openPublication(root).resume(attempt).advance("target_published", evidence);
               }
             : undefined,
     });
@@ -88,11 +83,14 @@ test("retained remote publication verifies its saved authority when current bran
             await git(root, ["config", "branch.main.remote", "missing"]);
             const refs = await git(root, ["show-ref"]);
             const index = await git(root, ["ls-files", "--stage"]);
-            const verified = await reconcileStoredPublication(root, attempt);
+            const verified = await openPublication(root).resume(attempt).reconcile();
             assertEquals(verified.phase, "publication_verified");
             assertEquals(verified.upstreamRemote, "origin");
             assertEquals(verified.publishedCommit, commit);
-            assertEquals((await loadPublicationAttempt(root, attempt.attemptId))?.phase, "publication_verified");
+            assertEquals(
+                (await openPublication(root).attempt(attempt.attemptId).load())?.phase,
+                "publication_verified",
+            );
             assertEquals(await git(root, ["show-ref"]), refs);
             assertEquals(await git(root, ["ls-files", "--stage"]), index);
         } finally {
@@ -110,8 +108,57 @@ test("lost saved remote authority cannot be replaced by local target history", a
             await git(root, ["merge", "--ff-only", commit]);
             await git(root, ["remote", "remove", "origin"]);
             await git(root, ["config", "branch.main.remote", "."]);
-            assertEquals(await reconcileStoredPublication(root, attempt), attempt);
-            assertEquals((await loadPublicationAttempt(root, attempt.attemptId))?.phase, "target_published");
+            assertEquals(await openPublication(root).resume(attempt).reconcile(), attempt);
+            await assertRejects(
+                () => openPublication(root).resume(attempt).verify(),
+                Error,
+                "Publication could not be verified on its target.",
+            );
+            assertEquals((await openPublication(root).attempt(attempt.attemptId).load())?.phase, "target_published");
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+});
+
+test("only real cleanup can record completion and prune a published worktree", async () => {
+    const root = await repository.checkout();
+    return await withRetainedPlanFixture(root, async () => {
+        try {
+            const { attempt } = await deliveredAttempt(root);
+            const publication = openPublication(root);
+            await assertRejects(
+                () =>
+                    Reflect.apply(publication.resume(attempt).advance, undefined, [
+                        "publication_verified",
+                        { verifiedAt: new Date().toISOString() },
+                    ]),
+                Error,
+                "must be recorded by verification or cleanup",
+            );
+            const verified = await publication.resume(attempt).verify();
+            const actions = publication.resume(verified);
+            await assertRejects(
+                () =>
+                    Reflect.apply(actions.advance, undefined, [
+                        "cleanup_complete",
+                        { cleanedAt: new Date().toISOString() },
+                    ]),
+                Error,
+                "must be recorded by verification or cleanup",
+            );
+            assertEquals(await publication.attempt(attempt.attemptId).load(), verified);
+            assertEquals((await stat(verified.executionCwd)).isDirectory(), true);
+            assertEquals(
+                await git(root, ["rev-parse", `refs/heads/${verified.executionBranch}`]),
+                verified.artifactCommit,
+            );
+            const cleanup = await actions.cleanup();
+            assertEquals(cleanup.complete, true);
+            assertEquals(cleanup.attempt.phase, "cleanup_complete");
+            assertEquals(await publication.attempt(attempt.attemptId).load(), null);
+            await assertRejects(() => stat(verified.executionCwd), Error);
+            assertEquals(await git(root, ["branch", "--list", verified.executionBranch]), "");
         } finally {
             await rm(root, { recursive: true, force: true });
         }
@@ -126,11 +173,11 @@ test("unpublished integration still requires a valid current publication policy"
             assertEquals(attempt.phase, "target_integrated");
             await git(root, ["config", "branch.main.remote", "missing"]);
             await assertRejects(
-                () => reconcileStoredPublication(root, attempt),
+                () => openPublication(root).resume(attempt).reconcile(),
                 Error,
                 "Publication remote missing is unavailable",
             );
-            assertEquals((await loadPublicationAttempt(root, attempt.attemptId))?.phase, "target_integrated");
+            assertEquals((await openPublication(root).attempt(attempt.attemptId).load())?.phase, "target_integrated");
         } finally {
             await rm(root, { recursive: true, force: true });
         }

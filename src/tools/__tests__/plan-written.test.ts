@@ -15,7 +15,8 @@ import { assertEquals, assertExists, assertStringIncludes } from "../../testing/
 import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.ts";
 import { SESSION_COMPLETE_GUIDANCE } from "../../shared/workflow/plan-review-recovery.ts";
-import { createPlanWrittenTool, type PlanWrittenToolResult, type TriageMeta } from "../plan-written.ts";
+import { createPlanWrittenTool, type PlanWrittenToolResult } from "../plan-written.ts";
+import type { TriageMeta } from "@runwield/workflow/state";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { addEntry as addRegistryEntry } from "../../shared/worktree-registry.ts";

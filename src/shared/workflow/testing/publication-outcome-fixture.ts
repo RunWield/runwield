@@ -16,8 +16,9 @@ import { mergeFrontMatterText } from "@runwield/plans/format";
 
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
-import { addEntry } from "../../worktree-registry.ts";
-import { advanceStoredPublication, startPublicationAttempt } from "../publication-machine.ts";
+import { addEntry, updatePublication } from "../../worktree-registry.ts";
+import { advancePublicationAttempt, type PublicationAttempt } from "@runwield/workflow/publication";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 
 const repository = defineGitFixture((root) =>
     withRetainedPlanFixture(root, async () => {
@@ -81,9 +82,7 @@ export async function makePublicationOutcomeFixture(projectRoot: string, remote 
             await git(executionCwd, ["add", "."]);
             await git(executionCwd, ["commit", "-m", "Publication artifacts"]);
             const artifactCommit = await git(executionCwd, ["rev-parse", "HEAD"]);
-            let attempt = await startPublicationAttempt({
-                projectRoot,
-                attemptId: "attempt-demo",
+            let attempt = await openPublication(projectRoot).attempt("attempt-demo").start({
                 planName: "demo",
                 targetBranch: "main",
                 executionBranch: "worktree/demo",
@@ -92,7 +91,7 @@ export async function makePublicationOutcomeFixture(projectRoot: string, remote 
                 targetHeadAtSeal: baseCommit,
             });
             const planPaths = ["docs/plans/demo.md"];
-            attempt = await advanceStoredPublication(projectRoot, attempt, "artifacts_committed", {
+            attempt = await openPublication(projectRoot).resume(attempt).advance("artifacts_committed", {
                 artifactCommit,
                 planPaths,
             });
@@ -106,18 +105,26 @@ export async function makePublicationOutcomeFixture(projectRoot: string, remote 
                 allowedPlanPaths: planPaths,
                 publicationRoot: attempt.publicationRoot,
                 onIntegrated: async (evidence) => {
-                    attempt = await advanceStoredPublication(projectRoot, attempt, "target_integrated", evidence);
+                    attempt = await openPublication(projectRoot).resume(attempt).advance("target_integrated", evidence);
                 },
                 onPublished: async (evidence) => {
-                    attempt = await advanceStoredPublication(projectRoot, attempt, "target_published", evidence);
+                    attempt = await openPublication(projectRoot).resume(attempt).advance("target_published", evidence);
                 },
                 onVerified: async () => {
-                    attempt = await advanceStoredPublication(projectRoot, attempt, "publication_verified", {
-                        verifiedAt: new Date().toISOString(),
-                    });
+                    attempt = await openPublication(projectRoot).resume(attempt).verify();
                 },
             });
             return attempt;
+        },
+        async interruptAfterCleanup(attempt: PublicationAttempt) {
+            await git(projectRoot, ["worktree", "remove", executionCwd]);
+            await git(projectRoot, ["branch", "-D", attempt.executionBranch]);
+            await fsRm(attempt.publicationRoot, { recursive: true, force: true });
+            const completed = advancePublicationAttempt(attempt, "cleanup_complete", {
+                cleanedAt: new Date().toISOString(),
+            });
+            await updatePublication(projectRoot, attempt.attemptId, attempt, completed);
+            return completed;
         },
         async dispose() {
             await fsRm(worktreeRoot, { recursive: true }).catch(() => {});

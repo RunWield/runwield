@@ -8,10 +8,10 @@ import { semanticReviewMode } from "./validation-types.ts";
 import type { PhaseContext, ValidationLoopArgs } from "./validation-types.ts";
 import { type ValidationCheckpoint } from "@runwield/plans/controller-state";
 import { readValidationReviewState } from "./validation-checkpoint.ts";
-import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
-import type { ValidationHostResume } from "./validation-host-contract.ts";
-import type { TriageMeta } from "./validation-types.ts";
-import type { ValidationHostRequest } from "./validation-host-contract.ts";
+import { ValidationHostRejected, ValidationHostWait } from "@runwield/workflow/host-contract";
+import type { ValidationHostResume } from "@runwield/workflow/host-contract";
+import type { TriageMeta } from "@runwield/workflow/state";
+import type { ValidationHostRequest } from "@runwield/workflow/host-contract";
 
 export async function saveHostCheckpoint(
     args: ValidationLoopArgs,
@@ -120,7 +120,7 @@ export async function assertHostReviewerCandidate(args: HostReviewerCandidateArg
     const { getWorktreeReviewDiff, getWorkflowDiff } = await import("./git-snapshot.ts");
     const { requiredReviewDiffFiles } = await import("./review-diff.ts");
     const { ReviewInspection } = await import("./review-inspection.ts");
-    const { sameHostIdentity } = await import("./validation-host-contract.ts");
+    const { sameHostIdentity } = await import("@runwield/workflow/host-contract");
     const fullDiff = await getWorktreeReviewDiff(args.cwd, args.baseBranch, args.baseRef);
     const checkpoint = args.checkpoint;
     const resume = args.resume;

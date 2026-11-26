@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { packageFixture, create, read } from "../../testing/plan-package-fixture.ts";
@@ -5,7 +6,6 @@ import { loadPackageWorkflowPlan, type PackageWorkflowSelection } from "../../..
 import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
 import { recordPlanEvent } from "../../../plan-store/index.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../execution-start.ts";
-import { finalizePlanImplementation } from "../implementation-checkpoint.ts";
 import { git } from "../../git-test-fixture.ts";
 import { captureForegroundProcess } from "../../captured-process.ts";
 import type { PackageDocuments } from "@runwield/plans/history";
@@ -87,7 +87,11 @@ export async function publicationFixture(
             ports: createExecutionStartPorts(),
         });
         await fs.writeFile(join(workflow.executionCwd!, "code.txt"), "code\n");
-        await finalizePlanImplementation({ projectRoot: f.root, planName: "one", executionContext: workflow });
+        await (
+            await openWorkflow({ cwd: f.root, planName: "one" }).resumeAttempt({
+                attemptId: workflow.packageAttemptId || workflow.worktreeId,
+            })
+        ).acceptCompletion({});
         await recordPlanEvent({
             cwd: f.root,
             planName: "one",
@@ -153,11 +157,11 @@ export async function publicationFixture(
                         ports: createExecutionStartPorts(),
                     });
                     await fs.writeFile(join(workflow.executionCwd!, "code.txt"), "second implementation\n");
-                    await finalizePlanImplementation({
-                        projectRoot: f.root,
-                        planName: "one",
-                        executionContext: workflow,
-                    });
+                    await (
+                        await openWorkflow({ cwd: f.root, planName: "one" }).resumeAttempt({
+                            attemptId: workflow?.packageAttemptId || workflow?.worktreeId,
+                        })
+                    ).acceptCompletion({});
                     await recordPlanEvent({
                         cwd: f.root,
                         planName: "one",

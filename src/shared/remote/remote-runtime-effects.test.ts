@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { seedPlan as saveOwnedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
@@ -212,7 +213,6 @@ for (const boundary of ["handoff", "validation", "repair", "publication"] as con
                 const { openFileSessionStore } = await import("../session/file-session-store.ts");
                 const { createExecutionStartPorts, startActiveExecutionWorkflow } =
                     await import("../workflow/execution-start.ts");
-                const { finalizePlanImplementation } = await import("../workflow/implementation-checkpoint.ts");
                 const { runValidationPhase, createEngineValidationArgs } = await import("../workflow/validation.ts");
                 const { createValidationSessionPort } = await import("../workflow/validation-session-adapter.ts");
                 const { resolvePhaseContext } = await import("../workflow/validation-context.ts");
@@ -270,13 +270,15 @@ for (const boundary of ["handoff", "validation", "repair", "publication"] as con
                                             join(workflow.executionCwd!, "sentinel.txt"),
                                             "local implementation\n",
                                         );
-                                        await finalizePlanImplementation({
-                                            projectRoot: f.remoteProject,
-                                            planName: "effect-gate",
-                                            triageMeta: plan.attrs,
-                                            executionContext: workflow,
-                                            hostedSession: session,
-                                        });
+                                        await (
+                                            await openWorkflow({
+                                                cwd: f.remoteProject,
+                                                planName: "effect-gate",
+                                            }).resumeAttempt({
+                                                attemptId: workflow?.packageAttemptId || workflow?.worktreeId,
+                                                hostedSession: session,
+                                            })
+                                        ).acceptCompletion({});
                                         const implemented = (await loadPlan(workflow.executionCwd!, "effect-gate"))!;
                                         const args = {
                                             workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,

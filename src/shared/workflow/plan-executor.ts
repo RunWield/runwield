@@ -1,4 +1,6 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
+import { openWorkflow } from "@runwield/workflow";
+import type { PostExecutionReport } from "@runwield/workflow/decisions";
 import { readFrozenPlanExecutionDocuments, planDocumentReference } from "../../plan-store/index.ts";
 import { type PlanAccess } from "../../plan-store/index.ts";
 import { capturePlanAccess, selectPlanAccess, withPlanAccess } from "../../plan-store/index.ts";
@@ -24,19 +26,18 @@ import {
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.ts";
 import { CollaborationStyles, selectRuntimeCollaborationStyle } from "./execution-collaboration.ts";
-import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { runPlanningAgent } from "./planning-agent.ts";
 import { buildExecutionSegmentContinuation } from "./execution-segment-handoff.ts";
 import { loadPlanActionEvidence, type PlanActionEvidence, type PlanWorktreeExpectation } from "./plan-actions.ts";
 import { runEngineerWithPlan, runEngineerWithSegmentHandoff } from "./engineer-runner.ts";
 import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { projectEngineerPlanBody } from "./engineer-plan-projection.ts";
-import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { emitLaunchingExecutionAgent } from "./execution-preparation-progress.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { PlanFrontMatter } from "@runwield/plans";
-import type { ActiveExecutionWorkflow, HostedSession } from "../session/hosted-session.ts";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
+import type { HostedSession } from "../session/hosted-session.ts";
 
 function isPlanReviewRetryAccepted(response) {
     if (!response || typeof response !== "object") return false;
@@ -48,9 +49,7 @@ function isPlanReviewRetryAccepted(response) {
     return value === "yes" || value === "review_again" || value === "review";
 }
 
-export interface PlanExecutionResult {
-    repairRequired: boolean;
-    executionComplete: boolean;
+export interface PlanExecutionResult extends PostExecutionReport {
     paused?: boolean;
     checkpointPending?: boolean;
     checkpointId?: string;
@@ -60,7 +59,6 @@ export interface PlanExecutionResult {
     message?: string;
     feedback?: string;
     pauseReason?: "stop" | "canceled";
-    error?: string;
     completionReport?: string;
     executionContext?: ActiveExecutionWorkflow;
     executionSegmentHandoff?: import("./execution-segment-handoff.ts").ExecutionSegmentContinuation;
@@ -473,14 +471,11 @@ async function executePlanInScope({
 
     const executionContext = result.executionContext || hostedSession?.getActiveExecutionWorkflow?.();
     try {
-        await finalizePlanImplementation({
-            projectRoot,
-            planName,
-            triageMeta: effectiveMeta,
-            executionContext,
-            executionReport: result.completionReport,
+        const attempt = await openWorkflow({ cwd: projectRoot, planName, planId: effectiveMeta.planId }).resumeAttempt({
+            attemptId: executionContext?.packageAttemptId || executionContext?.worktreeId,
             hostedSession,
         });
+        await attempt.acceptCompletion({ executionReport: result.completionReport });
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         try {
@@ -571,17 +566,17 @@ export async function executeSingleEngineerPlan({
     }
     let executionContext;
     try {
-        executionContext = await startActiveExecutionWorkflow({
-            planName,
-            triageMeta,
-            currentStatus,
-            hostedSession,
-            cwd: hostedSession.cwd,
-            existingExecution: hostedSession.getActiveExecutionWorkflow?.(),
-            collaborationStyle,
-            collaborationRecommendation,
-            ports: createExecutionStartPorts(),
-        });
+        executionContext = (
+            await openWorkflow({
+                cwd: hostedSession.cwd,
+                planName,
+                planId: approvalSnapshot?.planId || triageMeta?.planId,
+            }).startOrResume({
+                hostedSession,
+                collaborationStyle,
+                collaborationRecommendation,
+            })
+        ).state;
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const failedWorkflow = hostedSession?.getActiveExecutionWorkflow?.();
@@ -802,14 +797,12 @@ export async function executePreparedPlanSegmentHandoff({
         };
     }
     try {
-        await finalizePlanImplementation({
-            projectRoot: workflow.projectRoot || hostedSession.cwd,
+        const attempt = await openWorkflow({
+            cwd: workflow.projectRoot || hostedSession.cwd,
             planName: continuation.plan.planName,
-            triageMeta: workflow.triageMeta,
-            executionContext: workflow,
-            executionReport: engineerResult.completionReport,
-            hostedSession,
-        });
+            planId: continuation.plan.planId,
+        }).resumeAttempt({ attemptId: workflow.packageAttemptId || workflow.worktreeId, hostedSession });
+        await attempt.acceptCompletion({ executionReport: engineerResult.completionReport });
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         return {

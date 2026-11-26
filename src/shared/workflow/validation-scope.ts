@@ -10,7 +10,7 @@
 import { createHash } from "node:crypto";
 import { isPlannedChangeClassification } from "@runwield/plans/format";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
-import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { TriageMeta } from "@runwield/workflow/state";
 
 /**
  * A Plan document, as opposed to implementation work.

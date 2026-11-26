@@ -7,7 +7,7 @@ import {
     buildPlanRecoveryUserMessage,
     buildValidationUserMessage,
 } from "../../shared/workflow/validation-user-messages.ts";
-import { cleanupStoredPublication } from "../../shared/workflow/publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 import {
     appendRecoveryReport,
     confirmRecoveryWorktreeAvailable,
@@ -245,7 +245,7 @@ export async function validateRecoveryPlan(context: RecoveryActionContext): Prom
     context.worktreeContext = await context.refreshRecoveryWorktree();
     const publication = context.worktreeContext?.publication;
     if (publication?.phase === "publication_verified" || publication?.phase === "cleanup_complete") {
-        const cleanup = await cleanupStoredPublication(context.projectRoot, publication);
+        const cleanup = await openPublication(context.projectRoot).resume(publication).cleanup();
         if (cleanup.preservedFiles) {
             context.uiAPI.appendSystemMessage(
                 buildValidationUserMessage({ kind: "publication_files_preserved", path: cleanup.preservedFiles }),

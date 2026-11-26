@@ -25,7 +25,7 @@ type EpicContinuationResolution = import("./epic-continuation.ts").EpicContinuat
 export type WorkflowValidationResult = {
     kind: "verified" | "paused" | "failed" | "semantic_repair_handoff" | "host_request";
     packageContinuation?: import("../../plan-store/index.ts").PackageAttemptContinuation;
-    hostRequest?: import("./validation-host-contract.ts").ValidationHostRequest;
+    hostRequest?: import("@runwield/workflow/host-contract").ValidationHostRequest;
     workRecord?: PlanFrontMatter["workRecord"];
     planName: string;
     projectRoot: string;
@@ -61,7 +61,7 @@ export type ValidationPhaseResult = WorkflowValidationResult & {
 };
 
 /** Triage metadata the engine reads Plan front matter through. */
-export type TriageMeta = import("../../tools/plan-written.ts").TriageMeta;
+import type { TriageMeta } from "@runwield/workflow/state";
 
 type PlanStatus = "implemented" | "validated_ci" | "reviewed" | "validated";
 type PlanEvent = RecordPlanEventArgs["event"];
@@ -110,7 +110,7 @@ export type ValidationLoopArgs = {
     localCI: ValidationLocalCIPort;
     workRecordMnemotecaPort: WorkRecordMnemotecaPort;
     supportsSemanticRepairHandoff?: boolean;
-    hostTurn?: import("./validation-host-contract.ts").ValidationHostTurn;
+    hostTurn?: import("@runwield/workflow/host-contract").ValidationHostTurn;
     /** Durable phase claimed by the validation supervisor. */
     continuationPhase?: ValidationCheckpointPhase;
     /** Durable attempt record claimed by the validation supervisor. */

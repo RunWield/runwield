@@ -50,7 +50,7 @@ import {
     advancePublicationAttempt,
     createPublicationAttempt,
     recordPublicationFailure,
-} from "./workflow/publication-attempt.ts";
+} from "@runwield/workflow/publication";
 
 // Legacy inputs are adopted through ordinary account ownership.
 const fixture = defineCommittedGitFixture({ "README.md": "# Runtime layout fixture\n" });

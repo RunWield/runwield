@@ -1,6 +1,6 @@
 import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat } from "node:fs/promises";
-import { effectiveDeliveryBranch } from "./plan-branch.ts";
+import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 /**
  * @module shared/workflow/validation-merge-verification
  *

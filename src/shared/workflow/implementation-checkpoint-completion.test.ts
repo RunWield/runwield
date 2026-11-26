@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { type ExtensionToolContext, SessionManager } from "@earendil-works/pi-coding-agent";
@@ -5,7 +6,6 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { listPendingTaskCompletions } from "../session/task-completion-session.ts";
-import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { makeValidationProjectRoot } from "./validation-test-helpers.ts";
 
 const EXTENSION_CONTEXT = {} as ExtensionToolContext;
@@ -25,7 +25,7 @@ test("implementation checkpoint acknowledges its accepted task_completed JSONL e
     });
     const root = { dispose: () => {} };
     hostedSession.setRootAgentSession(root);
-    const workflow: import("../session/execution-workflow-session.ts").ActiveExecutionWorkflow = {
+    const workflow: import("@runwield/workflow/state").ActiveExecutionWorkflow = {
         planName: "p",
         triageMeta: { classification: "PLANNED_CHANGE", status: "in_progress" },
         executionAgent: "engineer" as const,
@@ -55,14 +55,12 @@ test("implementation checkpoint acknowledges its accepted task_completed JSONL e
     }
     assertEquals(listPendingTaskCompletions(hostedSession).length, 1);
 
-    await finalizePlanImplementation({
-        projectRoot,
-        planName: "p",
-        triageMeta: workflow.triageMeta,
-        executionContext: workflow,
-        executionReport: "- Implementation complete.",
-        hostedSession,
-    });
+    await (
+        await openWorkflow({ cwd: projectRoot, planName: "p" }).resumeAttempt({
+            attemptId: workflow?.packageAttemptId || workflow?.worktreeId,
+            hostedSession,
+        })
+    ).acceptCompletion({ executionReport: "- Implementation complete." });
 
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "implemented");
     assertEquals(listPendingTaskCompletions(hostedSession), []);

@@ -13,12 +13,7 @@ import { openFileSessionStore } from "../session/file-session-store.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { recordManualModelSelection } from "../session/active-agent-session.ts";
 import { configureRemotePersonalResources } from "./personal-resources.ts";
-import {
-    listPendingWorkflowToolEvents,
-    publishWorkflowToolEvent,
-    settleWorkflowToolEvent,
-    waitForWorkflowToolEvent,
-} from "../workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import { MAX_SESSION_BYTES, type RemoteSessionConnection, type SessionWorkerRequest } from "./session-protocol.ts";
 import type { RemoteModelConnection } from "./model-bridge.ts";
 import { makeSaveAgent } from "./session-save-agent-fixture.ts";
@@ -318,8 +313,7 @@ try {
         const hostedSession = new HostedSession({ id: "remote-manual-fault", cwd: input.cwd, sessionManager: manager });
         const root = { dispose() {} };
         hostedSession.setRootAgentSession(root);
-        const event = publishWorkflowToolEvent({
-            hostedSession,
+        const event = workflowEvents(hostedSession).publish({
             toolCallId: "before-fault",
             kind: "plan_written",
             payload: { outcome: "approved_execute", planName: "remote-plan" },
@@ -329,15 +323,14 @@ try {
         const readStopped = denied(() => retainedRead());
         const writeStopped = denied(() => retainedWrite("must not authorize progress"));
         const progressStopped = denied(() =>
-            publishWorkflowToolEvent({
-                hostedSession,
+            workflowEvents(hostedSession).publish({
                 toolCallId: "after-fault",
                 kind: "plan_written",
                 payload: { outcome: "approved_execute", planName: "remote-plan" },
             }),
         );
-        const pendingStopped = denied(() => listPendingWorkflowToolEvents(hostedSession));
-        const settlementStopped = denied(() => settleWorkflowToolEvent(hostedSession, event));
+        const pendingStopped = denied(() => workflowEvents(hostedSession).pending());
+        const settlementStopped = denied(() => workflowEvents(hostedSession).settle(event));
         const checkpointStopped = denied(() => bridge.request("checkpoint"));
         console.log(
             JSON.stringify({
@@ -353,21 +346,20 @@ try {
         const hostedSession = new HostedSession({ id: "remote-workflow", cwd: input.cwd, sessionManager: manager });
         const root = { dispose() {} };
         hostedSession.setRootAgentSession(root);
-        const waited = waitForWorkflowToolEvent(hostedSession, { kinds: ["plan_written"], owningSession: root });
-        publishWorkflowToolEvent({
-            hostedSession,
+        const waited = workflowEvents(hostedSession).wait({ kinds: ["plan_written"], owningSession: root });
+        workflowEvents(hostedSession).publish({
             toolCallId: "remote-plan-call",
             kind: "plan_written",
             payload: { outcome: "approved_execute", planName: "remote-plan" },
         });
         const event = await waited;
         writeFileSync(input.marker, event.eventId);
-        settleWorkflowToolEvent(hostedSession, event);
+        workflowEvents(hostedSession).settle(event);
         bridge.request("checkpoint");
         console.log(
             JSON.stringify({
                 kind: event.kind,
-                pending: listPendingWorkflowToolEvents(hostedSession).length,
+                pending: workflowEvents(hostedSession).pending().length,
                 file: manager.getSessionFile() ?? null,
             }),
         );

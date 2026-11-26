@@ -8,7 +8,7 @@ import { read } from "../testing/plan-package-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
-import { loadPublicationAttempt } from "./publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 import { readPlanPackage, readPlanPackagePublication } from "../../plan-store/packages.ts";
 import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 
@@ -20,7 +20,7 @@ for (const boundary of ["artifact_effect", "copy_write"]) {
             setExactProjectCustomSetting("codereview", "none", f.root);
             const stopped = await f.drive(boundary);
             equal(stopped.code, 86, stopped.text);
-            const attempt = await loadPublicationAttempt(f.root, f.workflow.worktreeId!);
+            const attempt = await openPublication(f.root).attempt(f.workflow.worktreeId!).load();
             ok(attempt?.packageInput);
             equal(attempt.phase, "candidate_sealed");
             equal(attempt.artifactCommit, undefined);

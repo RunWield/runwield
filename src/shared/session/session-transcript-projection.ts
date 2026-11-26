@@ -23,7 +23,7 @@ import {
 } from "./named-invocation.ts";
 import { agentRegistry } from "./agent-registry.ts";
 import { RuntimeUsageTotals } from "./runtime-usage-totals.ts";
-import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "../workflow/workflow-tool-events.ts";
+import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "@runwield/workflow/events";
 
 import type { SessionEntry, SessionHeader } from "@earendil-works/pi-coding-agent";
 import type { JsonRecord } from "../jsonc.ts";

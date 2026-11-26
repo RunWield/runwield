@@ -6,7 +6,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { buildDeliveryReport, type DeliveryReportInput } from "./delivery-report.ts";
 import { deliveryReportText } from "../../ui/tui/delivery-report-text.ts";
 import { readDeliveryEvidence, recordDeliveryEvidence, savePublicationEvidence } from "./delivery-evidence.ts";
-import { createPublicationAttempt } from "./publication-attempt.ts";
+import { createPublicationAttempt } from "@runwield/workflow/publication";
 
 test("delivery evidence separates review, human verification and merge proof", () => {
     const report = buildDeliveryReport({

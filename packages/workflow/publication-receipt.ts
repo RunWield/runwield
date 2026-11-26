@@ -1,12 +1,17 @@
 /** A saved receipt is historical evidence, not proof for a different execution or target. */
 import type { PlanFrontMatter } from "@runwield/plans";
-import { effectiveDeliveryBranch } from "./plan-branch.ts";
+
+/** One owner for landing selection. Legacy Plans still honor target edits. */
+export function effectiveDeliveryBranch(attrs: Partial<PlanFrontMatter>): string | undefined {
+    return attrs.deliveryBranch?.trim() || attrs.targetBranch?.trim() || undefined;
+}
 
 type ReceiptPlan = Pick<
     PlanFrontMatter,
     "publicationReceipt" | "validatedCommit" | "deliveryEvidence" | "targetBranch" | "deliveryBranch" | "worktreeId"
 >;
 
+/** Check whether a saved receipt still matches the Plan's execution and delivery target. */
 export function hasApplicablePublicationReceipt(attrs: ReceiptPlan): boolean {
     const receipt = attrs.publicationReceipt;
     if (!receipt || attrs.worktreeId) return false;

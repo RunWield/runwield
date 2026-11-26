@@ -1,5 +1,7 @@
+import { openWorkflow } from "@runwield/workflow";
+import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import process from "node:process";
-import { planFixtureJournalDirectory, seedPlan } from "../testing/plan-state-fixture.ts";
+import { planFixtureJournalDirectory, seedPlan, seedPlanController } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
 import { delimiter, join } from "node:path";
@@ -21,19 +23,12 @@ import { assertEquals, assertRejects, assertStringIncludes, assertExists } from 
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.ts";
-import {
-    extractAssistantOutput,
-    finalizePlanImplementation,
-    readLatestPlanOutcome,
-    runPlanningAgent,
-    startActiveExecutionWorkflow,
-    type FinalizePlanImplementationOptions,
-} from "./workflow.ts";
+import { extractAssistantOutput, readLatestPlanOutcome, runPlanningAgent } from "./workflow.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { loadCanonicalExecutionPlanSource } from "../../plan-store/index.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
-import { createExecutionStartPorts } from "./execution-start.ts";
+import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { setCustomSetting } from "../settings.ts";
@@ -41,6 +36,7 @@ import { getCwd } from "../../constants.ts";
 import {
     findById as findWorktreeRegistryEntryById,
     listEntries as listWorktreeRegistryEntries,
+    updateEntry as updateWorktreeRegistryEntry,
 } from "../worktree-registry.ts";
 import { type PlanFrontMatterInput } from "@runwield/plans/format";
 import { type SessionRuntimeEventSink } from "../session/session-host.ts";
@@ -95,7 +91,7 @@ interface WorkflowFixturePlan extends Pick<PlanFrontMatterInput, "status" | "cla
 
 type RuntimeEventDraft = Parameters<SessionRuntimeEventSink["emit"]>[0];
 
-type ExecutionContext = NonNullable<FinalizePlanImplementationOptions["executionContext"]>;
+type ExecutionContext = import("@runwield/workflow/state").ActiveExecutionWorkflow;
 
 /**
  * A real project: a real Git repository holding real Plans.
@@ -855,13 +851,11 @@ test("finalizePlanImplementation checkpoints worktree changes before lifecycle c
             worktreeBranch: worktree.branch,
         };
 
-        const result = await finalizePlanImplementation({
-            projectRoot,
-            planName: "feature-plan",
-            triageMeta: { classification: "PLANNED_CHANGE", summary: "Preserve completed implementation work." },
-            executionContext,
-            executionReport: "- Implemented.",
-        });
+        const result = await (
+            await openWorkflow({ cwd: projectRoot, planName: "feature-plan" }).resumeAttempt({
+                attemptId: executionContext?.packageAttemptId || executionContext?.worktreeId,
+            })
+        ).acceptCompletion({ executionReport: "- Implemented." });
 
         const branchHeadAfter = await git(projectRoot, ["rev-parse", `${worktree.branch}^{commit}`]);
         assertEquals(result, { implementationCommit: branchHeadAfter });
@@ -903,13 +897,11 @@ test("finalizePlanImplementation restores missing execution_started before lifec
             worktreeBranch: worktree.branch,
         };
 
-        await finalizePlanImplementation({
-            projectRoot,
-            planName: "feature-plan",
-            triageMeta: { classification: "PLANNED_CHANGE", summary: "Recover lifecycle marker order." },
-            executionContext,
-            executionReport: "- Implemented after marker recovery.",
-        });
+        await (
+            await openWorkflow({ cwd: projectRoot, planName: "feature-plan" }).resumeAttempt({
+                attemptId: executionContext?.packageAttemptId || executionContext?.worktreeId,
+            })
+        ).acceptCompletion({ executionReport: "- Implemented after marker recovery." });
 
         assertEquals(await git(worktree.path, ["status", "--porcelain"]), "");
         const finalized = await loadPlan(worktree.path, "feature-plan");
@@ -949,13 +941,11 @@ test("finalizePlanImplementation restores a Plan deleted and committed by the En
         await git(worktreePath, ["commit", "-m", "Engineer accidentally deletes Plan"]);
         assertEquals(await loadPlan(worktreePath, "deleted-plan"), null);
 
-        const result = await finalizePlanImplementation({
-            projectRoot,
-            planName: "deleted-plan",
-            triageMeta: executionContext.triageMeta,
-            executionContext,
-            executionReport: "- Implemented without deleting lifecycle evidence.",
-        });
+        const result = await (
+            await openWorkflow({ cwd: projectRoot, planName: "deleted-plan" }).resumeAttempt({
+                attemptId: executionContext?.packageAttemptId || executionContext?.worktreeId,
+            })
+        ).acceptCompletion({ executionReport: "- Implemented without deleting lifecycle evidence." });
 
         assertEquals(typeof result.implementationCommit, "string");
         assertEquals(await git(worktreePath, ["status", "--porcelain"]), "");
@@ -971,17 +961,82 @@ test("finalizePlanImplementation fails closed without durable execution context"
     const projectRoot = await makeWorkflowProject([{ name: "feature-plan", status: "ready_for_work" }]);
     return await withRetainedPlanFixture(projectRoot, async () => {
         await assertRejects(
-            () =>
-                finalizePlanImplementation({
-                    projectRoot,
-                    planName: "feature-plan",
-                    triageMeta: { classification: "PLANNED_CHANGE" },
-                    executionContext: null,
-                }),
+            async () =>
+                (await openWorkflow({ cwd: projectRoot, planName: "feature-plan" }).resumeAttempt()).acceptCompletion(
+                    {},
+                ),
             Error,
             "durable execution context is missing",
         );
         assertEquals((await loadPlan(projectRoot, "feature-plan"))?.attrs.status, "ready_for_work");
+    });
+});
+
+test("a bound Workflow attempt cannot complete a replacement", async () => {
+    const planName = "feature-plan";
+    const projectRoot = await makeWorkflowProject([{ name: planName, status: "ready_for_work" }]);
+    await withRetainedPlanFixture(projectRoot, async () => {
+        const workflow = openWorkflow({ cwd: projectRoot, planName, planId: PLAN_UNDER_TEST });
+        const first = await workflow.startOrResume();
+        const firstId = first.state.worktreeId;
+        assertExists(firstId);
+        await updateWorktreeRegistryEntry(projectRoot, firstId, { status: "abandoned" });
+        const replacement = await settleWorktreeAttempt(
+            projectRoot,
+            await createWorktreeGitArtifacts({
+                projectRoot,
+                planName,
+                planId: PLAN_UNDER_TEST,
+            }),
+        );
+        await seedPlan(replacement.path, planName, "# Replacement", {
+            planId: PLAN_UNDER_TEST,
+            status: "implemented",
+        });
+
+        await seedPlanController(
+            replacement.path,
+            { planName, planId: PLAN_UNDER_TEST },
+            {
+                validationCheckpoint: makeValidationCheckpoint({
+                    attemptId: firstId,
+                    generation: "old-attempt",
+                    status: "implemented",
+                    phase: "mechanical",
+                    state: "paused",
+                    pendingHostDecision: {
+                        kind: "decision",
+                        identity: { attemptId: firstId, generation: "old-attempt", kind: "decision", key: "retry:1" },
+                        interaction: {
+                            type: "select",
+                            prompt: "Retry validation?",
+                            options: [{ value: "retry", label: "Retry" }],
+                        },
+                    },
+                }),
+            },
+        );
+
+        await assertRejects(
+            () => first.acceptCompletion({ executionReport: "Stale completion" }),
+            Error,
+            "recorded execution attempt changed",
+        );
+        const progress = await workflow.readProgress();
+        assertEquals(progress?.attemptId, replacement.id);
+        assertEquals(progress?.validation, undefined);
+        assertEquals(progress?.pendingAction, undefined);
+        assertEquals(
+            progress?.facts.some((fact) => fact.kind === "validation_checkpoint"),
+            false,
+        );
+        await assertRejects(
+            () => openWorkflow({ cwd: projectRoot, planName, planId: "different-plan" }).readProgress(),
+            Error,
+            "Workflow belongs to a different Plan",
+        );
+        assertEquals((await loadPlan(replacement.path, planName))?.attrs.status, "implemented");
+        assertEquals((await loadPlan(replacement.path, planName))?.attrs.executionReport, undefined);
     });
 });
 

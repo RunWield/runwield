@@ -4,7 +4,7 @@ import { preparePlanController } from "../../plan-store/index.ts";
 import { resolve } from "node:path";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { findExistingProjectPath } from "../project-checkout.ts";
-import { effectiveDeliveryBranch } from "./plan-branch.ts";
+import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 /**
  * Fail-closed resolver for Workflow Validation execution context.
  */

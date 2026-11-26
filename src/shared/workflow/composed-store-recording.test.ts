@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { test } from "node:test";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { realpath, writeFile, stat, lstat, rm, rename } from "node:fs/promises";
@@ -17,8 +18,7 @@ import {
 } from "../../plan-store/index.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
-import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
-import type { HostTurnValidationResult, ValidationHostResume } from "./validation-host-turn.ts";
+import type { HostTurnValidationResult, ValidationHostResume } from "@runwield/workflow/host-contract";
 import { setExactProjectCustomSetting } from "../settings.ts";
 import { retryWorkRecordForPlan } from "../work-records/auto-generation.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
@@ -91,7 +91,11 @@ test("first canonical record after cleanup keeps sealed prose, record identity a
             });
             ok(workflow.executionCwd);
             await writeFile(join(workflow.executionCwd, "sentinel.ts"), 'export const delivered = "original";\n');
-            await finalizePlanImplementation({ projectRoot: root, planName: "delivery", executionContext: workflow });
+            await (
+                await openWorkflow({ cwd: root, planName: "delivery" }).resumeAttempt({
+                    attemptId: workflow.packageAttemptId || workflow.worktreeId,
+                })
+            ).acceptCompletion({});
             await recordPlanEvent({
                 cwd: root,
                 planName: "delivery",

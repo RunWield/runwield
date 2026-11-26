@@ -40,7 +40,7 @@ test("corrupt retained input refuses publication, then exact restoration resumes
 
 for (const interrupted of [false, true]) {
     test(`changed code retires unpublished copies with interrupted receipt ${interrupted}`, async () => {
-        const { preparePublicationRevalidation } = await import("./publication-revalidation.ts");
+        const { openPublication } = await import("@runwield/workflow/publication-runtime");
         const { recordPlanEvent } = await import("../../plan-store/index.ts");
         const f = await publicationFixture(true);
         try {
@@ -51,7 +51,7 @@ for (const interrupted of [false, true]) {
                 await git(f.workflow.executionCwd!, ["commit", "-m", "Changed code after interrupted copies"]);
             }
             await f.scope(async () => {
-                ok(await preparePublicationRevalidation(f.root, "one"));
+                ok(await openPublication(f.root).revalidate("one"));
                 equal((await read(f.identity)).metadata.definition.status, "implemented");
                 await recordPlanEvent({
                     cwd: f.root,
@@ -372,11 +372,11 @@ test("stale receipt cannot complete or promote an active attempt; fresh proof se
 });
 
 test("edited publication copies refuse before push and exact restoration completes the same attempt", async () => {
-    const { loadPublicationAttempt } = await import("./publication-machine.ts");
+    const { openPublication } = await import("@runwield/workflow/publication-runtime");
     const f = await publicationFixture(true);
     try {
         equal((await f.drive("integration_effect")).code, 86);
-        const attempt = await loadPublicationAttempt(f.root, f.workflow.worktreeId!);
+        const attempt = await openPublication(f.root).attempt(f.workflow.worktreeId!).load();
         ok(attempt);
         const original = await git(attempt.publicationRoot, ["rev-parse", "HEAD"]);
         const target = await git(f.remote, ["rev-parse", "main"]);

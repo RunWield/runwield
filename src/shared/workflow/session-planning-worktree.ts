@@ -5,7 +5,7 @@ import { mergeFrontMatterText } from "@runwield/plans/format";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { findActiveByPlanName } from "../worktree-registry.ts";
 import { executionWorktreePathExists, recoverMissingExecutionWorktree } from "./execution-worktree-rescue.ts";
-import { isPublicationCleanupPending } from "./publication-attempt.ts";
+import { isPublicationCleanupPending } from "@runwield/workflow/publication";
 import { isGitRepository } from "../git.ts";
 import { ensureExecutionPlanFile } from "../../plan-store/index.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";

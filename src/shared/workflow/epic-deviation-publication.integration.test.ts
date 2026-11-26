@@ -16,7 +16,7 @@ import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts"
 import { createEngineValidationArgs } from "./validation.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { runPublicationPhase } from "./validation-publication.ts";
-import { loadPublicationAttempt } from "./publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 
 // Both sync boundaries must run through the real publication phase, not a test-side sync call.
 test("publication repairs the Epic projection before each candidate checkpoint", async () => {
@@ -93,7 +93,7 @@ test("publication repairs the Epic projection before each candidate checkpoint",
                 workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
                 semanticReviewPort: {
                     runIsolatedAgentSession: async (options) => {
-                        const attempt = await loadPublicationAttempt(projectRoot, worktree.id);
+                        const attempt = await openPublication(projectRoot).attempt(worktree.id).load();
                         if (!attempt) throw new Error("Publication did not seal its first candidate.");
                         firstSeal = await git(worktree.path, ["show", `${attempt.validatedCommit}:docs/plans/epic.md`]);
                         // Lose the projection between checkpoints. The final seal must restore it.

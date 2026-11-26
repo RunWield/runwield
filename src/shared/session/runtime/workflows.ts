@@ -237,7 +237,7 @@ export class RuntimeWorkflows {
         runtime: import("../session-runtime.ts").SessionRuntime,
         planName: string,
         planningAgentName: string,
-    ): Promise<import("../../workflow/workflow-tool-events.ts").PlanWrittenEventPayload> {
+    ): Promise<import("@runwield/workflow/events").PlanWrittenEventPayload> {
         const session = this.services.sessionHost.requireSession(sessionId);
         const { resolveWorkflowPlanLocation } = await import("../../../plan-store/index.ts");
         const { reopenSavedPlanReview } = await import("../../../cmd/load-plan/reopen-plan-review.ts");
@@ -341,8 +341,7 @@ export class RuntimeWorkflows {
         const { planDocumentsForCheckout } = await import("../../../plan-store/index.ts");
         const { loadPlanActionEvidence } = await import("../../workflow/plan-actions.ts");
         const { createPlanWrittenTool } = await import("../../../tools/plan-written.ts");
-        const { claimWorkflowToolEvent, settleWorkflowToolEvent } =
-            await import("../../workflow/workflow-tool-events.ts");
+        const { workflowEvents } = await import("@runwield/workflow/events");
         const plan = await planDocumentsForCheckout(session.cwd).evidenceById(planId);
         const agentName = plan.attrs.classification === "PROJECT" ? AGENTS.ARCHITECT : AGENTS.PLANNER;
         const reviewed = await this.managedOperations.runManagedStandaloneMutation(
@@ -365,12 +364,12 @@ export class RuntimeWorkflows {
                     undefined,
                     {} as import("@earendil-works/pi-coding-agent").ExtensionToolContext,
                 );
-                const event = claimWorkflowToolEvent(activeSession, { kinds: ["plan_written"], owningSession: null });
+                const event = workflowEvents(activeSession).claim({ kinds: ["plan_written"], owningSession: null });
                 if (event?.kind !== "plan_written") {
                     throw new Error(result.content.map((item) => (item.type === "text" ? item.text : "")).join("\n"));
                 }
-                settleWorkflowToolEvent(activeSession, event);
-                return event.payload as import("../../workflow/workflow-tool-events.ts").PlanWrittenEventPayload;
+                workflowEvents(activeSession).settle(event);
+                return event.payload as import("@runwield/workflow/events").PlanWrittenEventPayload;
             },
             { activateAgent: false },
         );
@@ -606,7 +605,7 @@ ${outcome.feedback || ""}`,
         if (!session) throw new Error("SessionRuntime.runValidation: session not found");
         if (!options.planName) throw new Error("SessionRuntime.runValidation: Plan name is required");
         const planName = options.planName;
-        let triageMeta: import("../../../tools/plan-written.ts").TriageMeta | undefined;
+        let triageMeta: import("@runwield/workflow/state").TriageMeta | undefined;
         let planContent = options.planContent || "";
         if (options.skipPendingSegmentResume !== true) {
             const pendingResult = await this.resumePendingExecutionSegmentHandoff(session, options);

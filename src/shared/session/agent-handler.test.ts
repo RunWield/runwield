@@ -14,7 +14,7 @@ import { HostedSession } from "./hosted-session.ts";
 import { ensureRootAgentSession } from "./session.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import { setCustomSetting } from "../settings.ts";
-import { listPendingWorkflowToolEvents, publishWorkflowToolEvent } from "../workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import { listPendingTaskCompletions } from "./task-completion-session.ts";
 
 const EXTENSION_CONTEXT = {} as ExtensionToolContext;
@@ -137,8 +137,7 @@ test("agent handler does not redispatch a stale Triage report on a later invocat
         const events: CapturedRuntimeEvent[] = [];
         setModelResponse("The later Router invocation completed without another routing decision.");
         const fixture = await activateHandler(projectRoot, "router", events);
-        publishWorkflowToolEvent({
-            hostedSession: fixture.hostedSession,
+        workflowEvents(fixture.hostedSession).publish({
             toolCallId: "stale-triage",
             kind: "triage_report",
             payload: {
@@ -156,7 +155,7 @@ test("agent handler does not redispatch a stale Triage report on a later invocat
             events.filter((event) => event.type === RuntimeEventTypes.AGENT_CHANGED && event.agentName === "guide"),
             [],
         );
-        assertEquals(listPendingWorkflowToolEvents(fixture.hostedSession).length, 1);
+        assertEquals(workflowEvents(fixture.hostedSession).pending().length, 1);
         fixture.hostedSession.dispose();
     });
 });

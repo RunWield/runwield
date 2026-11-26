@@ -32,7 +32,7 @@ import {
     type ProjectRuntimeLayout,
 } from "./project-runtime-layout.ts";
 import { inspectPlanIdentityDocuments } from "../plan-store/index.ts";
-import { assertPublicationAttempt, type PublicationAttempt } from "./workflow/publication-attempt.ts";
+import { assertPublicationAttempt, type PublicationAttempt } from "@runwield/workflow/publication";
 
 const registryMutation = new AsyncLocalStorage<ProjectRuntimeLayout>();
 
@@ -48,6 +48,8 @@ export interface WorktreeRegistryEntry {
     baseCommit: string;
     baseTree?: string;
     executionBaselineTree?: string;
+    /** Commit recorded when the implementation report was accepted. */
+    implementationCommit?: string;
     branch: string;
     path: string;
     status: "planning" | "active" | "completed" | "execution_failed" | "validation_failed" | "validated" | "abandoned";
@@ -866,12 +868,12 @@ export async function renameRestoredPlanEntry(projectRoot: string, id: string, e
 /**
  * Compare-and-swap the durable publication authority for one execution attempt.
  * A stale process cannot overwrite a phase another process has already proven.
- * @param expectedRevision null creates the first record
+ * @param expected null creates the first record. A snapshot also binds the write to its sealed candidate.
  */
 export async function updatePublication(
     projectRoot: string,
     id: string,
-    expectedRevision: number | null,
+    expected: number | PublicationAttempt | null,
     publication: PublicationAttempt,
 ) {
     return await withWorktreeRegistryLock(projectRoot, async () => {
@@ -880,11 +882,21 @@ export async function updatePublication(
         if (index === -1) throw new Error(`Worktree registry entry not found: ${id}`);
         const current = entries[index].publication;
         const currentRevision = current?.revision ?? null;
+        const expectedRevision = expected && typeof expected !== "number" ? expected.revision : expected;
         if (currentRevision !== expectedRevision) {
             throw new Error(
                 `Publication attempt ${id} changed concurrently: expected revision ${String(expectedRevision)}, ` +
                     `found ${String(currentRevision)}.`,
             );
+        }
+        if (
+            expected &&
+            typeof expected !== "number" &&
+            (current?.createdAt !== expected.createdAt ||
+                current.validatedCommit !== expected.validatedCommit ||
+                current.packageInput?.inputId !== expected.packageInput?.inputId)
+        ) {
+            throw new Error(`Publication attempt ${id} now owns a different sealed candidate.`);
         }
         assertPublicationAttempt(publication);
         if (publication.attemptId !== id) {

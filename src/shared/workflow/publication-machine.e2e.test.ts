@@ -16,7 +16,7 @@ import { ok as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { addEntry, findById } from "../worktree-registry.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
-import { publicationRootForAttempt } from "./publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 
 import { runDriver } from "./publication-machine-test-helpers.ts";
 
@@ -112,7 +112,7 @@ test("remote publication invoked from a linked checkout stages below the primary
         const attempt = await findById(projectRoot, "attempt-1");
         const publicationRoot = attempt?.publication?.publicationRoot;
         assert(publicationRoot);
-        assertEquals(publicationRoot, publicationRootForAttempt(linkedRoot, "attempt-1"));
+        assertEquals(publicationRoot, openPublication(linkedRoot).attempt("attempt-1").stagingRoot());
         assertEquals(
             publicationRoot,
             join(resolveProjectRuntimeLayout(projectRoot).primary.publicationStagingRoot, "attempt-1"),

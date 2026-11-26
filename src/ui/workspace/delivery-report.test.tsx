@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { buildDeliveryReport } from "../../shared/workflow/delivery-report.ts";
 import { reduceSessionEvents, SessionTimeline } from "./components/SessionTimeline.tsx";
-import { createPublicationAttempt } from "../../shared/workflow/publication-attempt.ts";
+import { createPublicationAttempt } from "@runwield/workflow/publication";
 
 test("Plan Branch completion card names the landing and the user's next merge", () => {
     const report = buildDeliveryReport({

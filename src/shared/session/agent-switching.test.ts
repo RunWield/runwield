@@ -22,7 +22,7 @@ import { RuntimeEventTypes } from "./session-runtime-events.ts";
 import { createReplayEvents } from "./session-transcript-projection.ts";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
-import type { ActiveExecutionWorkflow } from "./hosted-session.ts";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import type { SessionRuntimeEvent } from "./session-runtime-events.ts";
 
 interface TranscriptContentBlock {

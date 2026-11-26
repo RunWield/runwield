@@ -1,7 +1,7 @@
 /** Pi tool wrapper for host-neutral review diff reads. */
 import { toolRegistry } from "@runwield/tools";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { publishWorkflowToolEvent } from "./workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import { createReviewDiffReader } from "./review-diff.ts";
 import type { HostedSession } from "../session/hosted-session.ts";
 import type { ReviewInspection } from "./review-inspection.ts";
@@ -68,8 +68,7 @@ export function createReviewDiffTool(diffs: string | ReviewDiffTexts, options: R
                 options.inspection?.record(scope, path, start, end);
             }
             if (options.hostedSession && result.hasDiff !== undefined) {
-                publishWorkflowToolEvent({
-                    hostedSession: options.hostedSession,
+                workflowEvents(options.hostedSession).publish({
                     toolCallId,
                     kind: "review_diff",
                     payload: { hasDiff: result.hasDiff },

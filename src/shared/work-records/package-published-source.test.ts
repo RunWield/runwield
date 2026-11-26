@@ -9,7 +9,7 @@ import { captureForegroundProcess } from "../captured-process.ts";
 import { git } from "../git-test-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
-import { loadPublicationAttempt } from "../workflow/publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 import type { WorkRecordSource } from "./generation.ts";
 
@@ -24,7 +24,7 @@ for (const family of [undefined, "child", "epic"] as const) {
         try {
             const stopped = await f.drive("candidate_receipt");
             equal(stopped.code, 86, stopped.text);
-            const attempt = await loadPublicationAttempt(f.root, f.workflow.worktreeId!);
+            const attempt = await openPublication(f.root).attempt(f.workflow.worktreeId!).load();
             ok(attempt);
             const pending = await readPublishedDeliverySources(f.root, attempt);
             equal(pending.delivered.attrs.status, "reviewed");
@@ -153,7 +153,7 @@ test("delivered sources remain readable through another execution and publicatio
     const f = await publicationFixture(false);
     try {
         equal((await f.drive("candidate_receipt")).code, 86);
-        const attempt = await loadPublicationAttempt(f.root, f.workflow.worktreeId!);
+        const attempt = await openPublication(f.root).attempt(f.workflow.worktreeId!).load();
         ok(attempt);
         equal((await f.drive()).code, 0);
         const source = async (historical = false): Promise<WorkRecordSource> => {
@@ -193,7 +193,7 @@ test("delivered sources remain readable through another execution and publicatio
         const sealed = await f.drive("candidate_receipt");
         equal(sealed.code, 86, sealed.text);
         equal((await source(true)).attrs.status, "verified");
-        const next = await loadPublicationAttempt(f.root, f.workflow.worktreeId!);
+        const next = await openPublication(f.root).attempt(f.workflow.worktreeId!).load();
         ok(next);
         const pending = await readPublishedDeliverySources(f.root, next);
         equal(pending.delivered.pendingPublication, true);

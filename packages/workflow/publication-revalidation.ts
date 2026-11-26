@@ -1,29 +1,33 @@
-import { reconcileStoredPublication } from "./publication-machine.ts";
-import { publicationCopiesForCheckout } from "../../plan-store/index.ts";
-import { rename as fsRename } from "node:fs/promises";
-import { checkpointExecutionWorktree } from "../worktree.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+/** Recover a changed, unpublished source without reusing stale validation evidence. */
 import {
     lstat as fsLstat,
     mkdir as fsMkdir,
     readFile as fsReadFile,
     realpath as fsRealpath,
+    rename as fsRename,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-/** Recover a changed, unpublished source without reusing stale validation evidence. */
 import { join } from "node:path";
-import { withPlanPublication, restartPlanValidation, readRetainedExecutionPlan } from "../../plan-store/index.ts";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-import { planDocumentsForCheckout, workRecordsForCheckout } from "../../plan-store/index.ts";
-import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
-import { gitStatusPaths } from "../git-runtime-safety.ts";
-import { recoverSealedPlanFormatting } from "../../plan-store/index.ts";
-import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
-import { retirePublicationForRevalidation, updatePublication } from "../worktree-registry.ts";
+import {
+    planDocumentsForCheckout,
+    publicationCopiesForCheckout,
+    readRetainedExecutionPlan,
+    recoverSealedPlanFormatting,
+    restartPlanValidation,
+    withPlanPublication,
+    workRecordsForCheckout,
+} from "../../src/plan-store/index.ts";
+import { checkpointExecutionWorktree } from "../../src/shared/worktree.ts";
+import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { resolveTargetedWorkRecordSource } from "../../src/shared/work-records/auto-generation.ts";
+import { gitStatusPaths } from "../../src/shared/git-runtime-safety.ts";
+import { isRunWieldOwnedRuntimePath } from "../../src/shared/runwield-owned-paths.ts";
+import { retirePublicationForRevalidation, updatePublication } from "../../src/shared/worktree-registry.ts";
+import { candidateIdentity } from "../../src/shared/workflow/validation-scope.ts";
+import { getWorktreeReviewDiff } from "../../src/shared/workflow/git-snapshot.ts";
 import type { PublicationAttempt } from "./publication-attempt.ts";
-
-import { candidateIdentity } from "./validation-scope.ts";
-import { getWorktreeReviewDiff } from "./git-snapshot.ts";
+import { reconcileStoredPublication } from "./publication-machine.ts";
 
 export const PUBLICATION_REVALIDATION_MESSAGE =
     "The source history or files changed. Checking the current work before publishing it.";
@@ -225,7 +229,7 @@ export async function preparePublicationRevalidation(projectRoot: string, planNa
                         archiveRoot: `${current.publicationRoot}.revalidation-${crypto.randomUUID()}`,
                     },
                 };
-                await updatePublication(projectRoot, entry.id, current.revision, attempt);
+                await updatePublication(projectRoot, entry.id, current, attempt);
             }
             await preserveAttempt(attempt);
             await retirePublicationCopies(projectRoot, attempt);

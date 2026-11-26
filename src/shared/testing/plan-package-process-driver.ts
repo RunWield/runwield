@@ -1,4 +1,5 @@
-import type { ActiveExecutionWorkflow } from "../session/execution-workflow-session.ts";
+import { openWorkflow } from "@runwield/workflow";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 /** Subprocess fault injection at actual filesystem boundaries; package machinery remains real. */
 import fs from "node:fs";
 import promises from "node:fs/promises";
@@ -205,16 +206,15 @@ try {
                     async () => {
                         await preparePlanWorkflow(request.identity.checkoutRoot, current.metadata.name);
                         if (request.command === "resume-finalize") {
-                            const { finalizePlanImplementation } =
-                                await import("../workflow/implementation-checkpoint.ts");
                             const workflow: ActiveExecutionWorkflow = JSON.parse(
                                 fs.readFileSync(request.executionContextPath!, "utf8"),
                             );
-                            return await finalizePlanImplementation({
-                                projectRoot: request.identity.checkoutRoot,
-                                planName: current.metadata.name,
-                                executionContext: workflow,
-                            });
+                            return await (
+                                await openWorkflow({
+                                    cwd: request.identity.checkoutRoot,
+                                    planName: current.metadata.name,
+                                }).resumeAttempt({ attemptId: workflow?.packageAttemptId || workflow?.worktreeId })
+                            ).acceptCompletion({});
                         }
                         if (request.command === "review-race" || request.command === "review") {
                             const { capturePackageWorkflowInput } = await import("../../plan-store/workflows.ts");
@@ -266,29 +266,19 @@ try {
                         if (request.command === "recover-lifecycle")
                             return await loadPackageWorkflowPlan(current.metadata.name);
                         if (request.command === "execution" || request.command === "finalize") {
-                            const { startActiveExecutionWorkflow, createExecutionStartPorts } =
-                                await import("../workflow/execution-start.ts");
-                            const plan = await loadPackageWorkflowPlan(current.metadata.name);
-                            const workflow = await startActiveExecutionWorkflow({
+                            const attempt = await openWorkflow({
                                 cwd: request.identity.checkoutRoot,
                                 planName: current.metadata.name,
-                                triageMeta: plan.attrs,
-                                currentStatus: plan.attrs.status!,
-                                ports: createExecutionStartPorts(),
-                            });
+                                planId,
+                            }).startOrResume();
+                            const workflow = attempt.state;
                             if (request.command === "finalize") {
                                 fs.writeFileSync(request.executionContextPath!, JSON.stringify(workflow));
-                                const { finalizePlanImplementation } =
-                                    await import("../workflow/implementation-checkpoint.ts");
                                 await promises.writeFile(
                                     join(workflow.executionCwd!, "implemented.txt"),
                                     "implementation\n",
                                 );
-                                return await finalizePlanImplementation({
-                                    projectRoot: request.identity.checkoutRoot,
-                                    planName: current.metadata.name,
-                                    executionContext: workflow,
-                                });
+                                return await attempt.acceptCompletion({});
                             }
                             return workflow;
                         }

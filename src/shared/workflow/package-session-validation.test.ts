@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
@@ -10,7 +11,6 @@ import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
-import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
 import { continueWorkflowValidation } from "./validation.ts";
 import { HostedSession } from "../session/hosted-session.ts";
 import { createGitPort } from "../git-port.ts";
@@ -53,7 +53,11 @@ test("session validation resumes the exact non-Git package attempt outside its o
         ok(workflow.packageAttemptId);
         equal(workflow.worktreeId, undefined);
         await fs.writeFile(join(root, "result.txt"), "implemented\n");
-        await finalizePlanImplementation({ projectRoot: root, planName: "one", executionContext: workflow });
+        await (
+            await openWorkflow({ cwd: root, planName: "one" }).resumeAttempt({
+                attemptId: workflow.packageAttemptId || workflow.worktreeId,
+            })
+        ).acceptCompletion({});
         const implemented = await loadPlan(root, "one");
         ok(implemented);
         const args = {

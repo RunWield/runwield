@@ -1,14 +1,8 @@
 import type { ProjectRegistry } from "@runwield/projects";
-import { hasApplicablePublicationReceipt } from "../../../shared/workflow/publication-receipt.ts";
+import { openWorkflow, type WorkflowProgress } from "@runwield/workflow";
 import type { PlanReadAvailability } from "../../../plan-store/index.ts";
 import { openRegisteredPlanDocuments } from "../../../plan-store/index.ts";
-import { findByPlanId, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
-import {
-    isValidationCheckpoint,
-    type ValidationCheckpoint,
-    type ValidationCheckpointPhase,
-} from "@runwield/plans/controller-state";
-import { validationCheckpointCanResume } from "../../../shared/workflow/validation-checkpoint.ts";
+import type { ValidationCheckpointPhase } from "@runwield/plans/controller-state";
 import { getRunWieldSessionDir } from "../../../shared/session/root-session.ts";
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
 import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
@@ -179,13 +173,6 @@ function segmentLabel(kind: string, ordinal: number) {
     return `Session segment ${ordinal + 1}`;
 }
 
-function checkpointFrom(attrs: PlanAttrs) {
-    const value = attrs.validationCheckpoint;
-    if (!value || Array.isArray(value) || typeof value !== "object") return null;
-    const partial = value as Partial<ValidationCheckpoint>;
-    return isValidationCheckpoint(partial) ? partial : null;
-}
-
 function stage(
     id: ProgressStage["id"],
     label: string,
@@ -194,43 +181,6 @@ function stage(
     updatedAt: string | null,
 ): ProgressStage {
     return { id, label, state, detail, updatedAt };
-}
-
-function progressFactsFromEvidence(
-    evidence: PlanEvidence,
-    registry: WorktreeRegistryEntry | null,
-): WorkflowProgressFact[] {
-    const facts: WorkflowProgressFact[] = [];
-    const checkpoint = checkpointFrom(evidence.attrs);
-    if (
-        checkpoint &&
-        registry &&
-        validationCheckpointCanResume(
-            checkpoint,
-            registry.id,
-            text(evidence.attrs.status, "draft"),
-            savedValidationPhase(evidence.attrs),
-        )
-    ) {
-        facts.push({
-            kind: "validation_checkpoint",
-            phase: checkpoint.nextPhase,
-            state: checkpoint.state,
-            repairKind: checkpoint.repairKind || null,
-            updatedAt: checkpoint.updatedAt,
-        });
-    }
-    if (registry?.publication) {
-        facts.push({
-            kind: "publication",
-            phase: registry.publication.phase,
-            failure: Boolean(registry.publication.failure),
-            message: registry.publication.failure?.message || null,
-            updatedAt: registry.publication.updatedAt,
-        });
-    }
-    if (registry?.status) facts.push({ kind: "registry", status: registry.status, updatedAt: registry.updatedAt });
-    return facts;
 }
 
 function toProgressStageState(id: string, state: string): ProgressStageState {
@@ -243,14 +193,11 @@ function toProgressStageState(id: string, state: string): ProgressStageState {
     return "pending";
 }
 
-function progressFromSharedPresentation(
-    evidence: PlanEvidence,
-    registry: WorktreeRegistryEntry | null,
-    published = false,
-) {
+function progressFromSharedPresentation(evidence: PlanEvidence, workflow: WorkflowProgress, published: boolean) {
     const status = published ? "verified" : text(evidence.attrs.status, "draft");
-    const updatedAt = text(evidence.attrs.updatedAt) || text(evidence.attrs.verifiedAt) || registry?.updatedAt || null;
-    const facts = progressFactsFromEvidence(evidence, registry);
+    const updatedAt =
+        text(evidence.attrs.updatedAt) || text(evidence.attrs.verifiedAt) || workflow.registryUpdatedAt || null;
+    const facts = workflow.facts;
     const presentation = buildWorkflowPresentation({
         planName: evidence.planName,
         classification: text(evidence.attrs.classification, "PLANNED_CHANGE"),
@@ -385,25 +332,16 @@ export async function loadOwnerPlanProgress(
             primary.readAvailability.message || "Workflow details pending. Load this Plan to prepare its workflow.",
         );
     }
-    let registry: WorktreeRegistryEntry | null = null;
     const authoritative = primary;
-    let published = false;
+    let workflow: WorkflowProgress;
     try {
-        const projectRoot = requireOwnerProjectRoot(store, options.projectId);
-        registry = await findByPlanId(projectRoot, primary.planId);
-        // The canonical resource already selected and checked document authority.
-        // A registry path alone must not authorize another repository.
-        if (authoritative.readAvailability?.kind === "pending") {
-            return degraded(
-                options.projectId,
-                authoritative,
-                "workflow_details_pending",
-                authoritative.readAvailability.message || "Workflow details pending.",
-            );
-        }
-        // The controller owns receipt identity and invalidation. Browsing never obtains remote proof.
-        published =
-            !registry && hasApplicablePublicationReceipt(resource.attrs) && authoritative.attrs.status === "verified";
+        const current = await openWorkflow({
+            cwd: requireOwnerProjectRoot(store, options.projectId),
+            planName: primary.planName,
+            planId: primary.planId,
+        }).readProgress();
+        if (!current) throw new Error("The Workflow Plan is unavailable.");
+        workflow = current;
     } catch (error) {
         return degraded(
             options.projectId,
@@ -413,14 +351,8 @@ export async function loadOwnerPlanProgress(
         );
     }
 
-    const delivery = authoritative.attrs.deliveryEvidence;
-    const publicationUnconfirmed =
-        !registry &&
-        !published &&
-        delivery &&
-        !Array.isArray(delivery) &&
-        typeof delivery === "object" &&
-        delivery.mode === "worktree_merge";
+    const published = workflow.publication === "confirmed";
+    const publicationUnconfirmed = workflow.publication === "unconfirmed";
     const publicationNotice = "Publication is unconfirmed. No applicable saved publication receipt is available.";
     // A raw terminal label is not publication proof. Document bytes keep that label;
     // progress projects unfinished delivery until the lifecycle owner confirms publication.
@@ -428,7 +360,7 @@ export async function loadOwnerPlanProgress(
         publicationUnconfirmed && authoritative.attrs.status === "verified"
             ? { ...authoritative, attrs: { ...authoritative.attrs, status: "reviewed", validationPhase: "delivery" } }
             : authoritative;
-    const derived = progressFromSharedPresentation(progressEvidence, registry, published);
+    const derived = progressFromSharedPresentation(progressEvidence, workflow, published);
     if (publicationUnconfirmed) {
         derived.overallState = "delivering";
         const completion = derived.stages.find((item) => item.id === "completion");

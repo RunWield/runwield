@@ -925,6 +925,10 @@ siblings active. Listings show held work separately from active and finished wor
 
 **Acceptance:** A terminal registry label without target publication proof remains recoverable. After proven settlement, deleting legacy documents does not prevent canonical loading or later work.
 
+**Completion report ownership.** Each Session settles its own accepted tool reports. If a root handler stops after claiming a report and before recording settlement, reopening the Session makes the report available again. A recorded settlement survives reopening.
+
+**Acceptance.** Two Sessions can receive the same tool call ID. Settling one Session’s report leaves the other pending. Repeating settlement records it once.
+
 **Scope and maturity:** Current execution and validation baseline, with the owner's completion and automatic recovery
 requirements. These requirements are the target for every failure path; they do not certify that every current path
 already meets them. QUICK_FIX keeps its lighter behavior: Engineer implements without a Plan and RunWield runs

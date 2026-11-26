@@ -121,13 +121,13 @@ real adapter is awaiting repair, after file edits, after accepted completion, an
 **Source-confirmed ordering; crash loss not reproduced.**
 
 - [engineer-runner](../../src/shared/workflow/engineer-runner.ts#L64) claims and acknowledges completion before its
-  caller reaches [finalizePlanImplementation](../../src/shared/workflow/implementation-checkpoint.ts).
+  caller reaches [finalizePlanImplementation](../../packages/workflow/implementation-checkpoint.ts).
 - [Managed semantic repair](../../src/shared/session/runtime/workflows.ts#L620) acknowledges before
   `recordValidationRepairCompletion` persists the generation receipt.
 - [Planning runner](../../src/shared/workflow/planning-agent.ts#L79) and
   [root Plan dispatch](../../src/shared/session/agent-handler.ts#L363) settle the accepted Plan event before downstream
   workflow dispatch completes.
-- [Event publication](../../src/shared/workflow/workflow-tool-events.ts#L365) inserts into the in-memory event list
+- [Event publication](https://github.com/RunWield/runwield/blob/2d27a032bdd0d776a8b7ecb68b43f8a2abe6f46c/src/shared/workflow/workflow-tool-events.ts#L365) inserts into the in-memory event list
   before appending the durable root custom entry. A persistence exception needs its own tested outcome.
 
 An interruption between acknowledgement and the next owned checkpoint can leave no pending receipt for replay. Some

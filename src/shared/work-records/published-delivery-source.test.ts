@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { publicationCopiesForCheckout, readPublishedDeliverySources } from "../../plan-store/index.ts";
-import { advancePublicationAttempt, createPublicationAttempt } from "../workflow/publication-attempt.ts";
+import { advancePublicationAttempt, createPublicationAttempt } from "@runwield/workflow/publication";
 import {
     readDeliveryEvidence,
     recordDeliveryEvidence,

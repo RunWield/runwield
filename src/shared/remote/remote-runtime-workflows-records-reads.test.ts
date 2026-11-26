@@ -10,7 +10,7 @@ import {
     buildExecutionSegmentContinuation,
     resolvePendingSegmentHandoff,
 } from "../workflow/execution-segment-handoff.ts";
-import type { ActiveExecutionWorkflow } from "../session/execution-workflow-session.ts";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 

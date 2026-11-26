@@ -20,8 +20,7 @@ import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { HostedSession } from "../session/hosted-session.ts";
-import { startActiveExecutionWorkflow } from "./workflow.ts";
-import { createExecutionStartPorts } from "./execution-start.ts";
+import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { listEntries, updateEntry } from "../worktree-registry.ts";
 import { findReusableWorktree } from "../worktree.ts";

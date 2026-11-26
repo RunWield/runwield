@@ -1,7 +1,7 @@
 import { opendir as fsOpendir } from "node:fs/promises";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 /** Local immutable check receipts. Reporting failures never change delivery authority. */
-import type { PublicationAttempt } from "./publication-attempt.ts";
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { join, relative } from "node:path";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import type { DeliveryReportArtifact } from "./delivery-report.ts";

@@ -1,3 +1,4 @@
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { projects } from "@runwield/projects";
 import process from "node:process";
 import { isStandaloneExecutable } from "../runtime-identity.ts";
@@ -264,7 +265,7 @@ export async function runRemotePublicationProof(): Promise<void> {
         candidateOnly?: boolean;
         requireCleanup?: boolean;
         recordingSource?: boolean;
-        retained?: import("../workflow/publication-attempt.ts").PublicationAttempt;
+        retained?: PublicationAttempt;
     } = JSON.parse(await readPrivateProbeRequest());
     const { getHomeDir } = await import("../../constants.ts");
     if (
@@ -359,17 +360,15 @@ export async function runRemotePublicationProof(): Promise<void> {
             expected.personalOwner !== input.ownerIdentity
         )
             throw new Error("Publication probe owner changed.");
-        const { proveManagedPublication, proveRetainedManagedPublication } =
-            await import("../workflow/publication-machine.ts");
+        const { openPublication } = await import("@runwield/workflow/publication-runtime");
+        const publication = openPublication(input.cwd);
         const proof = input.manifest
-            ? await proveManagedPublication(input.cwd, input.manifest, input.retained)
-            : await proveRetainedManagedPublication(
-                  input.cwd,
-                  input.execution!,
-                  input.retained,
-                  input.candidateOnly === true,
-                  input.requireCleanup === true,
-              );
+            ? await publication.verifyManaged(input.manifest, input.retained)
+            : await publication.verifyRetained(input.execution!, {
+                  confirmed: input.retained,
+                  candidateOnly: input.candidateOnly === true,
+                  requireCleanup: input.requireCleanup === true,
+              });
         if (input.recordingSource && input.execution) {
             const { publicationCopiesForCheckout, readPublishedDeliverySources } =
                 await import("../../plan-store/index.ts");

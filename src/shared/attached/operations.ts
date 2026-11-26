@@ -11,7 +11,7 @@ import type { PlanAuthoringDefinition } from "@runwield/plans/store";
 import { toolRegistry, type TriageOutcome, type TriageOutcomeInput } from "@runwield/tools";
 import type { CompatibilityAssessment } from "./compatibility.ts";
 import type { CodexRoleDispatch } from "./codex-role-settings.ts";
-import type { ActiveExecutionWorkflow } from "../session/hosted-session.ts";
+import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 
 const { routingIntents, complexities, workKinds } = toolRegistry.get("triage_report");
 const { engineerMessageDescription, implementationReportMinLength, normalizeReport } =
@@ -337,7 +337,7 @@ export type AttachedNextAction = (
     | {
           kind: "validation";
           actionId: string;
-          request: import("../workflow/validation-host-contract.ts").ValidationHostRequest;
+          request: import("@runwield/workflow/host-contract").ValidationHostRequest;
       }
     | {
           kind: "validation_running";
@@ -357,24 +357,18 @@ export type AttachedNextAction = (
           kind: "code_review";
           chat?: AttachedChatTurn;
           actionId: string;
-          request: Extract<
-              import("../workflow/validation-host-contract.ts").ValidationHostRequest,
-              { kind: "decision" }
-          >;
+          request: Extract<import("@runwield/workflow/host-contract").ValidationHostRequest, { kind: "decision" }>;
       }
     | {
           kind: "recorder";
           actionId: string;
-          request: Extract<
-              import("../workflow/validation-host-contract.ts").ValidationHostRequest,
-              { kind: "recorder" }
-          >;
+          request: Extract<import("@runwield/workflow/host-contract").ValidationHostRequest, { kind: "recorder" }>;
       }
     | {
           kind: "delivered";
           planName: string;
           guidance: string;
-          completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
+          completionMode?: import("@runwield/workflow/host-contract").HostDeliveryMode;
           workRecord?: import("@runwield/plans").PlanFrontMatter["workRecord"];
       }
     | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string }
@@ -400,7 +394,7 @@ export type AttachedWorkflowClosure =
     | { reason: "plan_advanced_in_core"; message: string }
     | {
           reason: "delivered";
-          completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
+          completionMode?: import("@runwield/workflow/host-contract").HostDeliveryMode;
           workRecord?: import("@runwield/plans").PlanFrontMatter["workRecord"];
       };
 

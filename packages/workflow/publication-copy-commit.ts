@@ -1,6 +1,6 @@
 import type { PublicationCopyEvidence } from "@runwield/plans/publication-copies";
-import { publicationCopiesForCheckout } from "../../plan-store/index.ts";
-import { checkpointExecutionWorktree } from "../worktree.ts";
+import { publicationCopiesForCheckout } from "../../src/plan-store/index.ts";
+import { checkpointExecutionWorktree } from "../../src/shared/worktree.ts";
 import type { PublicationAttempt } from "./publication-attempt.ts";
 
 /** Commit only the repository copies retained by Plans. */

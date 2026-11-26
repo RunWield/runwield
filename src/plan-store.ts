@@ -376,7 +376,7 @@ import {
     updatePackageWorkflowMetadata,
 } from "./plan-store/workflows.ts";
 
-import { hasApplicablePublicationReceipt } from "./shared/workflow/publication-receipt.ts";
+import { hasApplicablePublicationReceipt } from "@runwield/workflow/publication";
 
 import fs from "node:fs/promises";
 

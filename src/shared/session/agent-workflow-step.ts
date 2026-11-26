@@ -1,13 +1,11 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { IsolatedAgentSessionOptions, SemanticReviewPort } from "../workflow/validation-session-adapter.ts";
 import {
-    claimWorkflowToolEvent,
-    listPendingWorkflowToolEvents,
-    waitForWorkflowToolEvent,
+    workflowEvents,
     WorkflowStepCompleted,
     type WorkflowToolEvent,
     type WorkflowToolEventKind,
-} from "../workflow/workflow-tool-events.ts";
+} from "@runwield/workflow/events";
 
 /** Tool acceptance, not a returned transcript, completes an isolated workflow step. */
 type AgentWorkflowStepResult = {
@@ -22,7 +20,9 @@ export async function runValidationAgentUntilEvent(
     terminalKind: WorkflowToolEventKind,
 ): Promise<AgentWorkflowStepResult> {
     const hostedSession = options.hostedSession;
-    const excludeEventIds = listPendingWorkflowToolEvents(hostedSession).map((event) => event.eventId);
+    const excludeEventIds = workflowEvents(hostedSession)
+        .pending()
+        .map((event) => event.eventId);
     const waitController = new AbortController();
     const turnController = new AbortController();
     const scope = {
@@ -31,7 +31,7 @@ export async function runValidationAgentUntilEvent(
         sourceSessionId: options.sessionManager?.getSessionId(),
     };
     // Register before starting the external Agent, including synchronous tool acceptance.
-    const eventPromise = waitForWorkflowToolEvent(hostedSession, {
+    const eventPromise = workflowEvents(hostedSession).wait({
         kinds: [terminalKind],
         ...scope,
         signal: waitController.signal,
@@ -40,7 +40,7 @@ export async function runValidationAgentUntilEvent(
         port.runIsolatedAgentSession({
             ...options,
             signal: options.signal ? AbortSignal.any([options.signal, turnController.signal]) : turnController.signal,
-        })
+        }),
     );
     try {
         const first = await Promise.race([
@@ -52,7 +52,7 @@ export async function runValidationAgentUntilEvent(
             // an already accepted decision, never a request to infer one from output.
             turnController.abort(new WorkflowStepCompleted());
             await turn.catch(() => undefined);
-            const diffEvent = claimWorkflowToolEvent(hostedSession, {
+            const diffEvent = workflowEvents(hostedSession).claim({
                 kinds: ["review_diff"],
                 ...scope,
                 owningSession: first.event.owningSession,

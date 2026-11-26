@@ -1,8 +1,9 @@
+import { openWorkflow } from "@runwield/workflow";
 import { seedPlanState } from "../testing/plan-state-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { readAttachedAction } from "./coordinator.ts";
 import { test } from "node:test";
-import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -12,7 +13,6 @@ import { archivePlan } from "../../plan-store/index.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.ts";
-import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import { listTransitionRecoveryRecords } from "../../plan-store/index.ts";
 import { findById, listEntries, updateEntry } from "../worktree-registry.ts";
 import {
@@ -131,17 +131,31 @@ test("completion retry settles the Attached result after Core committed before t
         const started = await implementing(root);
         const execution = started.workflow.execution;
         assert(execution?.executionCwd && execution.worktreeId && started.workflow.plan);
-        await finalizePlanImplementation({
-            projectRoot: root,
+        const attempt = await openWorkflow({
+            cwd: root,
             planName: "dark-mode-toggle",
-            executionContext: execution,
-            triageMeta: { ...execution.triageMeta, planId: started.workflow.plan.planId },
-            executionReport: "- Completed before transport loss",
-        });
+            planId: started.workflow.plan.planId,
+        }).resumeAttempt({ attemptId: execution.packageAttemptId || execution.worktreeId });
+        await fsWriteFile(join(execution.executionCwd, "implementation.txt"), "accepted implementation\n");
+        const receipt = await attempt.acceptCompletion({ executionReport: "- Completed before transport loss" });
+        assert(receipt.implementationCommit);
+        await fsWriteFile(join(execution.executionCwd, "after-acceptance.txt"), "later work\n");
         const fresh = await spawnAttachedCli("task_completed", root, completionInput(started.workflow));
         assert(fresh.result.ok, JSON.stringify(fresh.result));
         assertEquals(fresh.result.workflow.state, "implemented");
         assertEquals((await findById(root, execution.worktreeId))?.status, "completed");
+        const head = await captureForegroundProcess("git", {
+            args: ["rev-parse", "HEAD"],
+            cwd: execution.executionCwd,
+        });
+        assert(head.success);
+        assertEquals(new TextDecoder().decode(head.stdout).trim(), receipt.implementationCommit);
+        assertEquals(await fsReadFile(join(execution.executionCwd, "after-acceptance.txt"), "utf8"), "later work\n");
+        assertEquals(
+            (await loadPlan(execution.executionCwd, "dark-mode-toggle"))?.attrs.executionReport,
+            "- Completed before transport loss",
+        );
+        assertEquals(await attempt.acceptCompletion({ executionReport: "- A different report" }), receipt);
         const status = await runOperation("status", root, { workflowId: started.workflow.workflowId });
         assert(status.ok);
         assertEquals(status.workflow.state, "implemented");

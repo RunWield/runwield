@@ -23,7 +23,7 @@
  * iterates without rebuilding LLM context.
  */
 
-import { isPlannedChangeClassification } from "@runwield/plans/format";
+import { routeInteractiveTriage } from "@runwield/workflow/routing";
 import { AGENTS, agentRegistry } from "../session/agent-registry.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
@@ -40,7 +40,7 @@ import {
     RuntimeEventTypes,
 } from "../session/session-runtime-events.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
-import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "./decisions.ts";
+import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "@runwield/workflow/decisions";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.ts";
 import { buildPostTriageRequest } from "./workflow-prompts.ts";
@@ -57,7 +57,7 @@ import type { LocalCIPort } from "./validation-local-ci.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
-import { waitForWorkflowToolEvent, WorkflowStepCompleted } from "./workflow-tool-events.ts";
+import { workflowEvents, WorkflowStepCompleted } from "@runwield/workflow/events";
 import type { DeferredPlanExecution } from "../session/session-runtime.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
 
@@ -99,14 +99,14 @@ function buildQuickFixManualQaContext(decoratedRequest: string, messages?: Agent
  * @param {string} projectRoot
  * @param {string} manualQaName
  * @param {string} manualQaContext
- * @returns {import('../session/hosted-session.ts').ActiveExecutionWorkflow}
+ * @returns {import("@runwield/workflow/state").ActiveExecutionWorkflow}
  */
 function createQuickFixWorkflow(
     triage: TriageOutcome,
     projectRoot: string,
     manualQaName: string,
     manualQaContext: string,
-): import("../session/hosted-session.ts").ActiveExecutionWorkflow {
+): import("@runwield/workflow/state").ActiveExecutionWorkflow {
     return {
         planName: "quick-fix",
         triageMeta: { ...triage, classification: "QUICK_FIX" },
@@ -121,8 +121,8 @@ function createQuickFixWorkflow(
 }
 
 function refreshedQuickFixWorkflow(
-    workflow: import("../session/hosted-session.ts").ActiveExecutionWorkflow,
-): import("../session/hosted-session.ts").ActiveExecutionWorkflow {
+    workflow: import("@runwield/workflow/state").ActiveExecutionWorkflow,
+): import("@runwield/workflow/state").ActiveExecutionWorkflow {
     return {
         ...workflow,
         executionStarted: true,
@@ -148,7 +148,7 @@ async function runRootTurnUntilTaskCompletion(args: {
     if (args.signal?.aborted) abortBoth();
     args.signal?.addEventListener("abort", abortBoth, { once: true });
     const turnId = args.hostedSession.getActiveTurnId?.() || undefined;
-    const eventPromise = waitForWorkflowToolEvent(args.hostedSession, {
+    const eventPromise = workflowEvents(args.hostedSession).wait({
         kinds: ["task_completed"],
         owningSession: args.hostedSession.getRootAgentSession() || null,
         ...(turnId ? { turnId } : {}),
@@ -310,8 +310,9 @@ export async function dispatchPostTriage({
         return recordWorkflowMetric(metric, projectRoot);
     };
 
-    const normalizedTriage = normalizeTriageOutcome(triage);
-    if (!normalizedTriage) throw new Error("dispatchPostTriage: routingIntent is required");
+    const route = routeInteractiveTriage(triage);
+    if (!route) throw new Error("dispatchPostTriage: routingIntent is required");
+    const { report: normalizedTriage, agentName: dispatchTarget } = route;
 
     const checkCanceled = () => signal?.throwIfAborted();
     const activateAgent = async (agentName: string): Promise<void> => {
@@ -322,18 +323,6 @@ export async function dispatchPostTriage({
     applyAutoSessionName(sessionManager, normalizedTriage, hostedSession);
 
     checkCanceled();
-    const dispatchTarget =
-        normalizedTriage.routingIntent === "INQUIRY"
-            ? AGENTS.GUIDE
-            : normalizedTriage.routingIntent === "IDEATION"
-              ? AGENTS.IDEATOR
-              : normalizedTriage.routingIntent === "OPERATION"
-                ? AGENTS.OPERATOR
-                : normalizedTriage.routingIntent === "QUICK_FIX"
-                  ? AGENTS.ENGINEER
-                  : isPlannedChangeClassification(normalizedTriage.routingIntent)
-                    ? AGENTS.PLANNER
-                    : AGENTS.ARCHITECT;
     const decoratedRequest = buildPostTriageRequest(userRequest, normalizedTriage);
     await recordMetric({
         category: "routing",
@@ -348,8 +337,8 @@ export async function dispatchPostTriage({
     });
     checkCanceled();
 
-    if (normalizedTriage.routingIntent === "INQUIRY" || normalizedTriage.routingIntent === "IDEATION") {
-        const agentName = normalizedTriage.routingIntent === "INQUIRY" ? AGENTS.GUIDE : AGENTS.IDEATOR;
+    if (route.kind === "conversation") {
+        const agentName = route.agentName;
         await activateAgent(agentName);
 
         await runRootTurn({
@@ -362,13 +351,13 @@ export async function dispatchPostTriage({
         return;
     }
 
-    if (normalizedTriage.routingIntent === "OPERATION") {
-        const operatorDisplay = agentRegistry.displayName(AGENTS.OPERATOR, projectRoot);
-        await activateAgent(AGENTS.OPERATOR);
+    if (route.kind === "operation") {
+        const operatorDisplay = agentRegistry.displayName(route.agentName, projectRoot);
+        await activateAgent(route.agentName);
 
         await runRootTurnUntilTaskCompletion({
             hostedSession,
-            agentName: AGENTS.OPERATOR,
+            agentName: route.agentName,
             userRequest: decoratedRequest,
             images,
             signal,
@@ -382,7 +371,7 @@ export async function dispatchPostTriage({
         await recordMetric({
             category: "execution",
             event: "operation_completed_observed",
-            agentName: AGENTS.OPERATOR,
+            agentName: route.agentName,
             details: { taskCompletedObserved: Boolean(completed), mechanicalValidationRan: false },
         });
         if (!completed) {
@@ -395,8 +384,8 @@ export async function dispatchPostTriage({
         return;
     }
 
-    if (normalizedTriage.routingIntent === "QUICK_FIX") {
-        const engineerDisplay = agentRegistry.displayName(AGENTS.ENGINEER, projectRoot);
+    if (route.kind === "quick_fix") {
+        const engineerDisplay = agentRegistry.displayName(route.agentName, projectRoot);
         const manualQaName = normalizedTriage.sessionName || "quick-fix";
         const initialManualQaContext = buildQuickFixManualQaContext(decoratedRequest);
         const gitProbe = await probeGitRepository(projectRoot);
@@ -413,20 +402,20 @@ export async function dispatchPostTriage({
             await recordMetric({
                 category: "execution",
                 event: "quick_fix_non_git_canceled",
-                agentName: AGENTS.ENGINEER,
+                agentName: route.agentName,
                 details: { gitState: gitProbe.state },
             });
             return;
         }
 
-        await activateAgent(AGENTS.ENGINEER);
+        await activateAgent(route.agentName);
         hostedSession.setActiveExecutionWorkflow(
             createQuickFixWorkflow(normalizedTriage, projectRoot, manualQaName, initialManualQaContext),
         );
 
         const messages = await runRootTurnUntilTaskCompletion({
             hostedSession,
-            agentName: AGENTS.ENGINEER,
+            agentName: route.agentName,
             userRequest: decoratedRequest,
             images,
             dispatchKind: "quick_fix",
@@ -441,7 +430,7 @@ export async function dispatchPostTriage({
             await recordMetric({
                 category: "execution",
                 event: "quick_fix_completed_observed",
-                agentName: AGENTS.ENGINEER,
+                agentName: route.agentName,
                 details: { taskCompletedObserved: false, mechanicalValidationRan: false },
             });
             emitSystemStatus(
@@ -473,7 +462,7 @@ export async function dispatchPostTriage({
         await recordMetric({
             category: "execution",
             event: "quick_fix_completed_observed",
-            agentName: AGENTS.ENGINEER,
+            agentName: route.agentName,
             details: {
                 taskCompletedObserved: true,
                 mechanicalValidationRan: true,
@@ -484,9 +473,8 @@ export async function dispatchPostTriage({
         return;
     }
 
-    if (isPlannedChangeClassification(normalizedTriage.routingIntent) || normalizedTriage.routingIntent === "PROJECT") {
-        const isPlannedChange = isPlannedChangeClassification(normalizedTriage.routingIntent);
-        const agentName = isPlannedChange ? AGENTS.PLANNER : AGENTS.ARCHITECT;
+    if (route.kind === "planning") {
+        const agentName = route.agentName;
         checkCanceled();
 
         const outcome = await runPlanningAgent({
@@ -513,8 +501,7 @@ export async function dispatchPostTriage({
 
         if (decision.kind === "start_slicer") {
             const planName = String(decision.payload.planName);
-            const decisionMeta = decision.payload.triageMeta as TriageOutcomeInput | undefined;
-            const slicerTriageMeta = normalizeTriageOutcome(decisionMeta) || normalizedTriage;
+            const slicerTriageMeta = normalizeTriageOutcome(decision.payload.triageMeta) || normalizedTriage;
             const slicerResult = await runSlicerAgent({
                 planName,
                 triageMeta: slicerTriageMeta,
@@ -570,8 +557,7 @@ export async function dispatchPostTriage({
         }
 
         const planName = String(decision.payload.planName);
-        const decisionMeta = decision.payload.triageMeta as TriageOutcomeInput | undefined;
-        const decisionTriageMeta = normalizeTriageOutcome(decisionMeta) || normalizedTriage;
+        const decisionTriageMeta = normalizeTriageOutcome(decision.payload.triageMeta) || normalizedTriage;
         checkCanceled();
         if (hostedSession.getManagedMetadata?.()) {
             const approvedPlan = await planDocumentsForCheckout(projectRoot).load(planName);

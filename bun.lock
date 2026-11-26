@@ -52,6 +52,7 @@
         "@runwield/resources": "workspace:*",
         "@runwield/session-files": "workspace:*",
         "@runwield/tools": "workspace:*",
+        "@runwield/workflow": "workspace:*",
         "@silvia-odwyer/photon-node": "0.3.4",
         "@streamparser/json": "0.0.26",
         "@tailwindcss/vite": "4.3.3",
@@ -160,6 +161,15 @@
       "name": "@runwield/tools",
       "dependencies": {
         "typebox": "1.4.7",
+      },
+    },
+    "packages/workflow": {
+      "name": "@runwield/workflow",
+      "dependencies": {
+        "@runwield/agents": "workspace:*",
+        "@runwield/plans": "workspace:*",
+        "@runwield/projects": "workspace:*",
+        "@runwield/tools": "workspace:*",
       },
     },
   },
@@ -763,6 +773,8 @@
     "@runwield/session-files": ["@runwield/session-files@workspace:packages/session-files"],
 
     "@runwield/tools": ["@runwield/tools@workspace:packages/tools"],
+
+    "@runwield/workflow": ["@runwield/workflow@workspace:packages/workflow"],
 
     "@shikijs/core": ["@shikijs/core@4.5.0", "", { "dependencies": { "@shikijs/primitive": "4.5.0", "@shikijs/types": "4.5.0", "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.5", "hast-util-to-html": "^9.0.5" } }, "sha512-6CIgwq+bt2JZ3OSjb/nBkkwEf/CfpHcbam+Mg5Pllco7HAGRQ2/EFhZrrJtbyNTgKwknfVS+llsXGygiDGwJWw=="],
 

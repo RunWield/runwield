@@ -1,105 +1,52 @@
-import { requiresPlanWorkflow } from "../../plan-store/index.ts";
-
-import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { readPlanPublicationReference } from "../../plan-store/index.ts";
-import { cleanupStoredPublication } from "./publication-machine.ts";
-import { buildVerifiedResult } from "./validation-publication.ts";
-import { readPublishedDeliverySources } from "../../plan-store/index.ts";
-import type { ValidationLoopArgs } from "./validation-types.ts";
-import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
-import { isCommitPublishedToTarget } from "../isolated-publication.ts";
-import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.ts";
-/** Session-free composition. Validation policy remains in the shared attempt owner and engine. */
-import { runValidationAttempt, type ValidationAttemptClaim } from "./validation-supervisor.ts";
-import type { ValidationProgressRecord, ValidationSessionPort, ValidationWorkflowState } from "./validation-ports.ts";
 import {
-    ValidationHostShutdown,
+    readPlanPublicationReference,
+    readPublishedDeliverySources,
+    requiresPlanWorkflow,
+    resolveWorkflowPlanLocation,
+    withLocalPlanWorkflow,
+} from "../../src/plan-store/index.ts";
+import { createGitPort } from "../../src/shared/git-port.ts";
+import { isCommitPublishedToTarget } from "../../src/shared/isolated-publication.ts";
+import { completeInPlaceWorkRecord } from "../../src/shared/work-records/in-place-completion.ts";
+import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../src/shared/work-records/mnemoteca-port.ts";
+import { findActiveByPlanName as findWorktreeByPlanName } from "../../src/shared/worktree-registry.ts";
+import { createHostTurnPort } from "../../src/shared/workflow/validation-host-composition.ts";
+import {
+    sameHostIdentity,
+    ValidationHostRejected,
     type HostTurnValidationResult,
     type ValidationHostResume,
-} from "./validation-host-contract.ts";
-import { createGitPort } from "../git-port.ts";
-import { agentRegistry } from "../session/agent-registry.ts";
-import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
+} from "./host-contract.ts";
+import { assertHostReviewerCandidate } from "../../src/shared/workflow/validation-host-state.ts";
+import { buildVerifiedResult } from "../../src/shared/workflow/validation-publication.ts";
+import { runValidationAttempt } from "../../src/shared/workflow/validation-supervisor.ts";
+import type { ValidationLoopArgs } from "../../src/shared/workflow/validation-types.ts";
+import { cleanupStoredPublication } from "./publication-machine.ts";
 
-export type ContinueHostTurnValidationArgs = {
+type ContinueHostTurnValidationArgs = {
     projectRoot: string;
     planName: string;
+    expectedPlanId?: string;
     resume?: ValidationHostResume;
     signal?: AbortSignal;
 };
-export type {
-    HostTurnValidationResult,
-    ValidationHostRequest,
-    ValidationHostResume,
-} from "./validation-host-contract.ts";
-
-function createHostTurnPort(cwd: string, signal?: AbortSignal): ValidationSessionPort {
-    let workflow: ValidationWorkflowState | null = null;
-    let progress: ValidationProgressRecord | undefined;
-    const unexpected = () => {
-        throw new Error("The engine reached an unsupported host-turn wait.");
-    };
-    return {
-        cwd,
-        assertLive() {
-            if (signal?.aborted) throw new ValidationHostShutdown();
-        },
-        getActiveWorkflow: () => workflow,
-        setActiveWorkflow: (value) => {
-            workflow = value;
-        },
-        releaseActiveAgent() {},
-        rememberPosition() {},
-        clearPosition() {},
-        getCurrentProgress: () => progress,
-        setCurrentProgress: (value) => {
-            progress = value;
-        },
-        emitStatus() {},
-        emitAssistantMessage() {},
-        requestInteraction: unexpected,
-        registerActiveInteraction() {},
-        unregisterActiveInteraction() {},
-        runIndependentRepairTurn: unexpected,
-        continueLastRepairTurn: unexpected,
-        runIsolatedAgentSession: unexpected,
-        getAgentDisplayName: (agentName, projectRoot) => agentRegistry.displayName(agentName, projectRoot),
-        async handoffVerifiedPublication() {},
-        runPostVerificationHandoffs: unexpected,
-    };
-}
-
-/** Build the concrete Session-free engine composition for a claimed attempt. */
-export function createHostTurnValidationArgs(
-    args: ContinueHostTurnValidationArgs,
-    claim: ValidationAttemptClaim,
-): ValidationLoopArgs {
-    return {
-        planName: args.planName,
-        planContent: claim.planContent,
-        triageMeta: claim.triageMeta,
-        session: createHostTurnPort(args.projectRoot, args.signal),
-        git: createGitPort(),
-        localCI: {
-            run() {
-                throw new Error("Host-turn CI is owned by the engine.");
-            },
-        },
-        workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-        supportsSemanticRepairHandoff: true,
-        hostTurn: { resume: args.resume, signal: args.signal },
-    };
-}
 
 export async function continueHostTurnValidation(
     args: ContinueHostTurnValidationArgs,
 ): Promise<HostTurnValidationResult> {
     if (requiresPlanWorkflow(args.projectRoot))
-        return await withLocalPlanWorkflow(args.projectRoot, args.planName, () => continueHostTurnValidation(args));
+        return await withLocalPlanWorkflow(
+            args.projectRoot,
+            args.planName,
+            () => continueHostTurnValidation(args),
+            args.expectedPlanId,
+        );
     const source = await resolveWorkflowPlanLocation(args.projectRoot, args.planName, {
         readOnly: true,
     });
+    if (args.expectedPlanId && source.plan && source.plan.attrs.planId !== args.expectedPlanId)
+        throw new ValidationHostRejected("Plan selection does not match the requested Plan.");
+
     if (source.plan?.attrs.status === "verified" && source.plan.attrs.deliveryEvidence?.mode === "non_git_in_place") {
         await completeInPlaceWorkRecord(source.documentRoot, args.planName, SYSTEM_WORK_RECORD_MNEMOTECA_PORT);
         return {
@@ -111,6 +58,9 @@ export async function continueHostTurnValidation(
     }
     const registered = await findWorktreeByPlanName(args.projectRoot, args.planName);
     const publication = registered?.publication;
+    if (args.expectedPlanId && publication && publication.planId !== args.expectedPlanId)
+        throw new ValidationHostRejected("Publication does not match the requested Plan.");
+
     if (
         publication &&
         (publication.phase === "publication_verified" || publication.phase === "cleanup_complete") &&
@@ -205,10 +155,22 @@ export async function continueHostTurnValidation(
 /** Reconcile a durable host claim after Core ran but the carrier lost its final write.
  * Only checkpoint evidence of consumption permits dropping the old outcome.
  */
-export async function reconcileConsumedHostResume(projectRoot: string, planName: string, resume: ValidationHostResume) {
-    const { resolveWorkflowPlanLocation } = await import("../../plan-store/index.ts");
-    const { sameHostIdentity } = await import("./validation-host-contract.ts");
+export async function reconcileConsumedHostResume(
+    projectRoot: string,
+    planName: string,
+    resume: ValidationHostResume,
+    expectedPlanId?: string,
+): Promise<ValidationHostResume | undefined> {
+    if (requiresPlanWorkflow(projectRoot))
+        return await withLocalPlanWorkflow(
+            projectRoot,
+            planName,
+            () => reconcileConsumedHostResume(projectRoot, planName, resume, expectedPlanId),
+            expectedPlanId,
+        );
     const source = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
+    if (expectedPlanId && source.plan && source.plan.attrs.planId !== expectedPlanId)
+        throw new ValidationHostRejected("Plan selection does not match the requested Plan.");
     const checkpoint = source.plan?.attrs.validationCheckpoint;
     if (resume.kind === "recorder" && checkpoint?.hostRecorder) {
         const recorder = checkpoint.hostRecorder;
@@ -246,4 +208,34 @@ export async function reconcileConsumedHostResume(projectRoot: string, planName:
     )
         return undefined;
     return resume;
+}
+
+/** Check the recorded review candidate before the caller persists a claim. */
+export async function assertCurrentHostReviewerCandidate(
+    projectRoot: string,
+    planName: string,
+    resume: Extract<ValidationHostResume, { kind: "reviewer" }>,
+    expectedPlanId?: string,
+): Promise<void> {
+    if (requiresPlanWorkflow(projectRoot))
+        return await withLocalPlanWorkflow(
+            projectRoot,
+            planName,
+            () => assertCurrentHostReviewerCandidate(projectRoot, planName, resume, expectedPlanId),
+            expectedPlanId,
+        );
+    const source = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
+    const attrs = source.plan?.attrs;
+    if (!attrs?.validationCheckpoint) throw new Error("The validation checkpoint is missing.");
+    if (expectedPlanId && attrs.planId !== expectedPlanId)
+        throw new ValidationHostRejected("Plan selection does not match the requested Plan.");
+    const entry = await findWorktreeByPlanName(projectRoot, planName);
+    await assertHostReviewerCandidate({
+        cwd: attrs.worktreePath || source.documentRoot,
+        baseBranch: attrs.worktreeBaseBranch || "",
+        baseRef: entry?.baseRef,
+        checkpoint: attrs.validationCheckpoint,
+        triageMeta: attrs,
+        resume,
+    });
 }

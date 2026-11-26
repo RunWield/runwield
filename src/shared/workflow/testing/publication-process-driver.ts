@@ -3,22 +3,15 @@ import { withRetainedPlanFixture } from "../../testing/retained-plan-fixture.ts"
 import { type PackageWorkflowSelection } from "../../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
 import { readPlanPackage } from "../../../plan-store/packages.ts";
-import { preparePublicationCopies } from "../publication-copy-commit.ts";
+import { advancePublicationAttempt } from "@runwield/workflow/publication";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 import { captureForegroundProcess } from "../../captured-process.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
 
 import { checkpointExecutionWorktree } from "../../worktree.ts";
-import { findById } from "../../worktree-registry.ts";
-import {
-    advanceStoredPublication,
-    cleanupStoredPublication,
-    failStoredPublication,
-    loadPublicationAttempt,
-    reconcileStoredPublication,
-    startPublicationAttempt,
-} from "../publication-machine.ts";
+import { findById, updatePublication } from "../../worktree-registry.ts";
 
 type DriverConfig = {
     projectRoot: string;
@@ -44,15 +37,9 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 async function removePublicationArtifacts(config: DriverConfig, publicationRoot: string): Promise<void> {
-    await captureForegroundProcess("git", {
-        cwd: config.projectRoot,
-        args: ["worktree", "remove", "--force", config.executionCwd],
-    });
-    await captureForegroundProcess("git", {
-        cwd: config.projectRoot,
-        args: ["branch", "-D", config.executionBranch],
-    });
-    await fsRm(publicationRoot, { recursive: true }).catch(() => {});
+    await git(config.projectRoot, ["worktree", "remove", "--force", config.executionCwd]);
+    await git(config.projectRoot, ["branch", "-D", config.executionBranch]);
+    await fsRm(publicationRoot, { recursive: true, force: true });
 }
 
 const configPath = process.argv.slice(2)[0];
@@ -60,13 +47,13 @@ if (!configPath) throw new Error("publication process driver requires a config p
 const config = JSON.parse(await fsReadFile(configPath, "utf8")) as DriverConfig;
 const run = async () => {
     if (config.operation === "validate") {
-        const { continueHostTurnValidation } = await import("../validation-host-turn.ts");
-        let result = await continueHostTurnValidation({
+        const { runHostValidation } = await import("./run-host-validation.ts");
+        let result = await runHostValidation({
             projectRoot: config.projectRoot,
             planName: config.planName,
         });
         if (result.kind === "host_request" && result.request.kind === "recorder") {
-            result = await continueHostTurnValidation({
+            result = await runHostValidation({
                 projectRoot: config.projectRoot,
                 planName: config.planName,
                 resume: {
@@ -81,11 +68,11 @@ const run = async () => {
     }
     return await holdPlanFixtureLock(config.projectRoot, config.planName, async () => {
         if (config.operation === "revalidate") {
-            const { preparePublicationRevalidation } = await import("../publication-revalidation.ts");
-            await preparePublicationRevalidation(config.projectRoot, config.planName);
+            const { openPublication } = await import("@runwield/workflow/publication-runtime");
+            await openPublication(config.projectRoot).revalidate(config.planName);
             return;
         }
-        let attempt = await loadPublicationAttempt(config.projectRoot, config.attemptId);
+        let attempt = await openPublication(config.projectRoot).attempt(config.attemptId).load();
 
         if (!attempt) {
             const entry = await findById(config.projectRoot, config.attemptId);
@@ -108,24 +95,26 @@ const run = async () => {
                 planName: config.planName,
             });
             crash(config, "candidate_effect");
-            attempt = await startPublicationAttempt({
-                projectRoot: config.projectRoot,
-                attemptId: config.attemptId,
-                planName: config.planName,
-                targetBranch: config.targetBranch,
-                executionBranch: config.executionBranch,
-                executionCwd: config.executionCwd,
-                validatedCommit: candidate.executionCommit,
-                targetHeadAtSeal: await git(config.projectRoot, ["rev-parse", `refs/heads/${config.targetBranch}`]),
-            });
+            attempt = await openPublication(config.projectRoot)
+                .attempt(config.attemptId)
+                .start({
+                    planName: config.planName,
+                    targetBranch: config.targetBranch,
+                    executionBranch: config.executionBranch,
+                    executionCwd: config.executionCwd,
+                    validatedCommit: candidate.executionCommit,
+                    targetHeadAtSeal: await git(config.projectRoot, ["rev-parse", `refs/heads/${config.targetBranch}`]),
+                });
             crash(config, "candidate_receipt");
         }
 
-        attempt = await reconcileStoredPublication(config.projectRoot, attempt);
+        attempt = await openPublication(config.projectRoot).resume(attempt).reconcile();
         if (attempt.phase === "candidate_sealed" && attempt.packageInput) {
-            const evidence = await preparePublicationCopies(config.projectRoot, attempt);
+            const evidence = await openPublication(config.projectRoot).resume(attempt).prepareCopies();
             crash(config, "artifact_effect");
-            attempt = await advanceStoredPublication(config.projectRoot, attempt, "artifacts_committed", evidence);
+            attempt = await openPublication(config.projectRoot)
+                .resume(attempt)
+                .advance("artifacts_committed", evidence);
             crash(config, "artifact_receipt");
         }
         if (attempt.phase === "candidate_sealed") {
@@ -145,10 +134,12 @@ const run = async () => {
                 publicationPlanPaths: [planPath],
             });
             crash(config, "artifact_effect");
-            attempt = await advanceStoredPublication(config.projectRoot, attempt, "artifacts_committed", {
-                artifactCommit: artifact.executionCommit,
-                planPaths: [planPath],
-            });
+            attempt = await openPublication(config.projectRoot)
+                .resume(attempt)
+                .advance("artifacts_committed", {
+                    artifactCommit: artifact.executionCommit,
+                    planPaths: [planPath],
+                });
             crash(config, "artifact_receipt");
         }
 
@@ -169,28 +160,20 @@ const run = async () => {
                     publicationRoot: attempt.publicationRoot,
                     onIntegrated: async (evidence) => {
                         crash(config, "integration_effect");
-                        attempt = await advanceStoredPublication(
-                            config.projectRoot,
-                            attempt!,
-                            "target_integrated",
-                            evidence,
-                        );
+                        attempt = await openPublication(config.projectRoot)
+                            .resume(attempt!)
+                            .advance("target_integrated", evidence);
                         crash(config, "integration_receipt");
                     },
                     onPublished: async (evidence) => {
                         crash(config, "target_effect");
-                        attempt = await advanceStoredPublication(
-                            config.projectRoot,
-                            attempt!,
-                            "target_published",
-                            evidence,
-                        );
+                        attempt = await openPublication(config.projectRoot)
+                            .resume(attempt!)
+                            .advance("target_published", evidence);
                         crash(config, "target_receipt");
                     },
                     onVerified: async () => {
-                        attempt = await advanceStoredPublication(config.projectRoot, attempt!, "publication_verified", {
-                            verifiedAt: new Date().toISOString(),
-                        });
+                        attempt = await openPublication(config.projectRoot).resume(attempt!).verify();
                         crash(config, "verification_receipt");
                     },
                 });
@@ -200,29 +183,32 @@ const run = async () => {
                     "mergeFailureKind" in failure && typeof failure.mergeFailureKind === "string"
                         ? failure.mergeFailureKind
                         : "publication_failed";
-                await failStoredPublication(config.projectRoot, attempt, { kind, message: failure.message });
+                await openPublication(config.projectRoot)
+                    .resume(attempt)
+                    .recordFailure({ kind, message: failure.message });
                 throw failure;
             }
         }
 
-        attempt = await loadPublicationAttempt(config.projectRoot, config.attemptId);
+        attempt = await openPublication(config.projectRoot).attempt(config.attemptId).load();
         if (!attempt) return;
-        attempt = await reconcileStoredPublication(config.projectRoot, attempt);
+        attempt = await openPublication(config.projectRoot).resume(attempt).reconcile();
         if (attempt.phase === "publication_verified") {
             if (config.crashAfter === "cleanup_effect" || config.crashAfter === "cleanup_receipt") {
                 await removePublicationArtifacts(config, attempt.publicationRoot);
                 crash(config, "cleanup_effect");
-                attempt = await advanceStoredPublication(config.projectRoot, attempt, "cleanup_complete", {
+                const completed = advancePublicationAttempt(attempt, "cleanup_complete", {
                     cleanedAt: new Date().toISOString(),
                 });
+                await updatePublication(config.projectRoot, attempt.attemptId, attempt, completed);
                 crash(config, "cleanup_receipt");
             }
-            const cleanup = await cleanupStoredPublication(config.projectRoot, attempt);
+            const cleanup = await openPublication(config.projectRoot).resume(attempt).cleanup();
             if (!cleanup.complete) throw new Error(`publication cleanup incomplete: ${cleanup.details.join("; ")}`);
             crash(config, "registry_pruned");
             attempt = cleanup.attempt;
         }
-        if (attempt.phase === "cleanup_complete") await cleanupStoredPublication(config.projectRoot, attempt);
+        if (attempt.phase === "cleanup_complete") await openPublication(config.projectRoot).resume(attempt).cleanup();
     });
 };
 

@@ -9,7 +9,7 @@ import type { HostedSession } from "../shared/session/hosted-session.ts";
 import { toolRegistry, type TriageOutcome } from "@runwield/tools";
 import { emitSystemStatus } from "../shared/session/session-runtime-events.ts";
 import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
-import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 
 type TriageReportResult = AgentToolResult<TriageOutcome> & { terminate: boolean };
 
@@ -51,8 +51,7 @@ export function createTriageReportTool({ hostedSession }: TriageReportToolOption
                     },
                     hostedSession.cwd,
                 );
-                publishWorkflowToolEvent({
-                    hostedSession,
+                workflowEvents(hostedSession).publish({
                     toolCallId,
                     kind: "triage_report",
                     payload: details,

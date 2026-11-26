@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 /** Separate process. Exercise workflow boundaries with a real remote managed operation. */
 import type { ExtensionToolContext, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -12,8 +13,6 @@ import { configureRemoteModelConnection } from "../models/model-registry.ts";
 import { RemoteSessionControl, type RemoteSessionControlConnection } from "./session-control-client.ts";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { SessionHost } from "../session/session-host.ts";
-import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../workflow/execution-start.ts";
-import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import { runValidationPhase, createEngineValidationArgs } from "../workflow/validation.ts";
 import { continueWorkflowValidation } from "../workflow/validation.ts";
 import { runPublicationPhase } from "../workflow/validation-publication.ts";
@@ -113,25 +112,20 @@ async function runScenario() {
                             if (!plan) throw new Error("Missing fixture Plan");
                             let executionCwd = input.cwd;
                             if (input.scenario !== "handoff") {
-                                await startActiveExecutionWorkflow({
-                                    planName: "effect-gate",
-                                    triageMeta: plan.attrs,
-                                    currentStatus: plan.attrs.status,
+                                await openWorkflow({ cwd: session.cwd, planName: "effect-gate" }).startOrResume({
                                     hostedSession: session,
-                                    ports: createExecutionStartPorts(),
                                 });
                                 const workflow = session.getActiveExecutionWorkflow();
                                 if (!workflow?.executionCwd || workflow.executionCwd === input.cwd)
                                     throw new Error("Expected isolated worktree");
                                 executionCwd = workflow.executionCwd;
                                 await writeFile(join(executionCwd, "sentinel.txt"), "remote implementation\n");
-                                await finalizePlanImplementation({
-                                    projectRoot: input.cwd,
-                                    planName: "effect-gate",
-                                    triageMeta: plan.attrs,
-                                    executionContext: workflow,
-                                    hostedSession: session,
-                                });
+                                await (
+                                    await openWorkflow({ cwd: input.cwd, planName: "effect-gate" }).resumeAttempt({
+                                        attemptId: workflow?.packageAttemptId || workflow?.worktreeId,
+                                        hostedSession: session,
+                                    })
+                                ).acceptCompletion({});
                                 plan = (await planDocumentsForCheckout(executionCwd).load("effect-gate"))!;
                             }
                             const args = {
@@ -182,12 +176,8 @@ async function runScenario() {
                             let boundaryError = "";
                             try {
                                 if (input.scenario === "handoff") {
-                                    await startActiveExecutionWorkflow({
-                                        planName: "effect-gate",
-                                        triageMeta: plan.attrs,
-                                        currentStatus: plan.attrs.status,
+                                    await openWorkflow({ cwd: session.cwd, planName: "effect-gate" }).startOrResume({
                                         hostedSession: session,
-                                        ports: createExecutionStartPorts(),
                                     });
                                 } else if (input.scenario === "supervisor") {
                                     await continueWorkflowValidation(args);

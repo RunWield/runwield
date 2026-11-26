@@ -43,10 +43,10 @@ import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { runSequenceReviewTransition } from "./transitions.ts";
 import { reviewSourceStillMatches } from "./review.ts";
-import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
 import type { PlanApprovalAction } from "../shared/workflow/plan-approval.ts";
-import type { PlanWrittenEventPayload } from "../shared/workflow/workflow-tool-events.ts";
+import type { PlanWrittenEventPayload } from "@runwield/workflow/events";
 
 export interface SequenceChildInput {
     planName: string;
@@ -644,7 +644,7 @@ export async function applySequenceReviewDecision({
         hostedSession.setWorkflowPlanName(outcome.planName);
     }
     try {
-        publishWorkflowToolEvent({ hostedSession, toolCallId, kind: "plan_written", payload: outcome! });
+        workflowEvents(hostedSession).publish({ toolCallId, kind: "plan_written", payload: outcome! });
     } catch (error) {
         // The documents are already committed. Preserve them so reopening the saved review can retry.
         return {

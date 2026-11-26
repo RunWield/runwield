@@ -34,7 +34,7 @@ import { runResumeCommand } from "../../cmd/resume/index.ts";
 import { requestLocalReviewInteraction } from "../session/local-review-interactions.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { listEntries } from "../worktree-registry.ts";
-import { reconcileStoredPublication } from "../workflow/publication-machine.ts";
+import { openPublication } from "@runwield/workflow/publication-runtime";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { withRetainedPlanReadFixture } from "../testing/retained-plan-fixture.ts";
 import { continueWorkflowValidation } from "../workflow/validation.ts";
@@ -141,7 +141,7 @@ export interface RuntimeClientReport {
     rollover?: import("../session/segment-rollover.ts").SegmentRolloverResult;
     workflowContext?: import("../session/workflow-context-session.ts").WorkflowContext | null;
     tutorialContext?: import("../session/tutorial-context-session.ts").TutorialContext | null;
-    activeWorkflow?: import("../session/execution-workflow-session.ts").ActiveExecutionWorkflow | null;
+    activeWorkflow?: import("@runwield/workflow/state").ActiveExecutionWorkflow | null;
     piSessionId?: string;
     result?: Awaited<ReturnType<SessionRuntime["runValidation"]>>;
     reviewUrl?: string;
@@ -282,7 +282,7 @@ async function runCommands() {
                 const entries = await listEntries(input.cwd);
                 const attempt = entries.find((entry) => entry.planId === "remote-delivery-plan")?.publication;
                 const recovered = attempt
-                    ? await reconcileStoredPublication(input.cwd, attempt, { apply: false })
+                    ? await openPublication(input.cwd).resume(attempt).reconcile({ apply: false })
                     : null;
                 console.log(JSON.stringify({ kind: command.kind, publicationPhase: recovered?.phase || null }));
             } else if (command.kind === "workflow-plan" || command.kind === "workflow-plan-start") {

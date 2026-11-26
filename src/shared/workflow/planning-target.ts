@@ -1,7 +1,7 @@
 import { stat as fsStat } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { resolvePublicationUpstream } from "../publication-target.ts";
-import { effectiveDeliveryBranch } from "./plan-branch.ts";
+import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 
 export interface PlanningPlanAttributes {
     planId?: string;

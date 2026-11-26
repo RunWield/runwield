@@ -39,7 +39,7 @@ import {
     ValidationHostShutdown,
     ValidationHostWait,
     type ValidationHostResume,
-} from "./validation-host-contract.ts";
+} from "@runwield/workflow/host-contract";
 import process from "node:process";
 /**
  * @module shared/workflow/validation-supervisor
@@ -557,7 +557,7 @@ async function continueValidationAttempt(
         const composition =
             args.runtime.kind === "core"
                 ? (await import("./validation.ts")).createEngineValidationArgs(args.runtime.args)
-                : (await import("./validation-host-turn.ts")).createHostTurnValidationArgs(
+                : (await import("./validation-host-composition.ts")).createHostTurnValidationArgs(
                       {
                           projectRoot: args.projectRoot,
                           planName: args.planName,

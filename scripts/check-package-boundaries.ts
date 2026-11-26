@@ -52,6 +52,7 @@ const EXTRACTED_DOMAIN_PACKAGES = new Set([
     "@runwield/agents",
     "@runwield/projects",
     "@runwield/plans",
+    "@runwield/workflow",
 ]);
 
 export const PACKAGE_SOURCE_PATTERN = /\.(?:[cm]?[jt]sx?|astro|html)$/;

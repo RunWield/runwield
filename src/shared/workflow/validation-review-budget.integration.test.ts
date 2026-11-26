@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { assertEquals } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import type { TriageMeta } from "../../tools/plan-written.ts";
+import type { TriageMeta } from "@runwield/workflow/state";
 import { setCustomSetting } from "../settings.ts";
 import { createGitPort } from "../git-port.ts";
 import { git as runGit, makeRepo } from "../worktree-test-helpers.ts";

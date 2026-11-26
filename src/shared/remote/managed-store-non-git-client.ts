@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { HostedSession } from "../session/hosted-session.ts";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
@@ -19,8 +20,6 @@ import {
     planDocumentsForCheckout,
 } from "../../plan-store/index.ts";
 import { ProjectStoreClient } from "./project-store-client.ts";
-import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../workflow/execution-start.ts";
-import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import { runValidationAttempt } from "../workflow/validation-supervisor.ts";
 import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
@@ -77,14 +76,21 @@ try {
             await recordPlanEvent({ cwd: input.cwd, planName: "in-place", event, currentStatus });
         const ready = await planDocumentsForCheckout(input.cwd).load("in-place");
         ok(ready);
-        const execution = await startActiveExecutionWorkflow({
+        const attempt = await openWorkflow({
             cwd: input.cwd,
             planName: "in-place",
-            currentStatus: "ready_for_work",
-            triageMeta: ready.attrs,
-            ports: createExecutionStartPorts(),
-        });
+            planId: ready.attrs.planId,
+        }).startOrResume();
+        const execution = attempt.state;
         equal(execution.executionMode, "non_git_in_place");
+        const progress = await openWorkflow({
+            cwd: input.cwd,
+            planName: "in-place",
+            planId: ready.attrs.planId,
+        }).readProgress();
+        ok(execution.packageAttemptId);
+        equal(progress?.attemptId, execution.packageAttemptId);
+        equal(progress?.validation, undefined);
         await rejects(
             recordPlanEvent({
                 cwd: input.cwd,
@@ -95,7 +101,7 @@ try {
             }),
         );
         await writeFile(join(input.cwd, "result.txt"), "Completed in place.\n");
-        await finalizePlanImplementation({ projectRoot: input.cwd, planName: "in-place", executionContext: execution });
+        await attempt.acceptCompletion({});
         let result = await runValidationAttempt({
             projectRoot: input.cwd,
             planName: "in-place",

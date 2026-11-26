@@ -1,5 +1,5 @@
 /** Saved delivery evidence shared by the terminal and Workspace session surfaces. */
-import type { PublicationAttempt } from "./publication-attempt.ts";
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 import type { SessionArtifactKind } from "../session/file-session-store-types.ts";
 type PlanAttributes = import("@runwield/plans").PlanFrontMatter;
 export interface DeliveryReportArtifact {

@@ -1,27 +1,41 @@
-// @ts-nocheck: Callback parameters and result shapes are implicit.
-import { withPlanImplementationCompletion } from "../../plan-store/index.ts";
-import { capturePlanAccess } from "../../plan-store/index.ts";
-import { resumePlanAttempt } from "../../plan-store/index.ts";
+import type { ActiveExecutionWorkflow } from "./state.ts";
+import type { HostedSession } from "../../src/shared/session/hosted-session.ts";
+import { withPlanImplementationCompletion } from "../../src/plan-store/index.ts";
+import { capturePlanAccess, capturePlanExecutionContext, hasCanonicalPlanAccess } from "../../src/plan-store/index.ts";
+import { resumePlanAttempt } from "../../src/plan-store/index.ts";
 import { getPlanRevisionForText } from "@runwield/plans/format";
-import { planDocumentsForCheckout } from "../../plan-store/index.ts";
-import { checkpointExecutionWorktree } from "../worktree.ts";
-import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
-import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.ts";
+import { planDocumentsForCheckout } from "../../src/plan-store/index.ts";
+import { checkpointExecutionWorktree } from "../../src/shared/worktree.ts";
+import {
+    acknowledgeTaskCompletion,
+    claimPendingTaskCompletion,
+} from "../../src/shared/session/task-completion-session.ts";
+import {
+    findActiveByPlanName,
+    updateEntry as updateWorktreeRegistryEntry,
+} from "../../src/shared/worktree-registry.ts";
 import { isInValidation } from "@runwield/plans/lifecycle";
-import { recordPlanEvent } from "../../plan-store/index.ts";
-import { restoreExecutionPlanFromBaseline } from "../../plan-store/index.ts";
-import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { runImplementationCheckpointTransition } from "../../plan-store/index.ts";
+import { recordPlanEvent } from "../../src/plan-store/index.ts";
+import { restoreExecutionPlanFromBaseline } from "../../src/plan-store/index.ts";
+import { recordWorkflowOutcome } from "../../src/shared/workflow/outcome-observations.ts";
+import { listTransitionRecoveryRecords, runImplementationCheckpointTransition } from "../../src/plan-store/index.ts";
 
-interface FinalizePlanImplementationOptions {
+/** Supplies the captured execution context and revision checks used to checkpoint a completion report. */
+export interface FinalizePlanImplementationOptions {
     projectRoot: string;
     planName: string;
-    triageMeta?: import("../session/hosted-session.ts").ActiveExecutionWorkflow["triageMeta"];
-    executionContext: import("../session/hosted-session.ts").ActiveExecutionWorkflow | null | undefined;
+    triageMeta?: ActiveExecutionWorkflow["triageMeta"];
+    executionContext: ActiveExecutionWorkflow | null | undefined;
     executionReport?: string;
+    expectedPlanId?: string;
     expectedPlanRevision?: string;
     expectedPlanBodyRevision?: string;
-    hostedSession?: import("../session/hosted-session.ts").HostedSession;
+    hostedSession?: HostedSession;
+}
+
+/** Reports the implementation commit when the completed attempt has one on record. */
+export interface PlanImplementationResult {
+    implementationCommit?: string;
 }
 
 /**
@@ -32,8 +46,18 @@ interface FinalizePlanImplementationOptions {
  * @param {FinalizePlanImplementationOptions} options
  * @returns {Promise<{ implementationCommit?: string }>}
  */
-export async function finalizePlanImplementation(options: FinalizePlanImplementationOptions) {
-    const { executionContext, projectRoot, planName } = options;
+export async function finalizePlanImplementation(
+    options: FinalizePlanImplementationOptions,
+): Promise<PlanImplementationResult> {
+    const { executionContext, projectRoot, planName, expectedPlanId } = options;
+    if (
+        executionContext &&
+        (executionContext.planName !== planName ||
+            (expectedPlanId &&
+                executionContext.triageMeta.planId &&
+                executionContext.triageMeta.planId !== expectedPlanId))
+    )
+        throw new Error("Completion report belongs to a different Plan.");
     if (executionContext?.packageSelection && !capturePlanAccess()) {
         const selection = executionContext.packageSelection;
         return await resumePlanAttempt(
@@ -65,6 +89,7 @@ async function finalizeLockedImplementation({
     triageMeta = {},
     executionContext,
     executionReport = undefined,
+    expectedPlanId,
     expectedPlanRevision,
     expectedPlanBodyRevision,
     hostedSession = undefined,
@@ -73,6 +98,23 @@ async function finalizeLockedImplementation({
         throw new Error(`Cannot complete ${planName}: durable execution context is missing.`);
     }
 
+    const boundPlanId = expectedPlanId || executionContext.triageMeta.planId;
+    if (executionContext.packageAttemptId && hasCanonicalPlanAccess()) {
+        const retained = await capturePlanExecutionContext(planName);
+        if (retained?.packageAttemptId !== executionContext.packageAttemptId)
+            throw new Error("The recorded execution attempt changed.");
+    }
+    const registry = executionContext.worktreeId
+        ? await findActiveByPlanName(executionContext.projectRoot || projectRoot, planName)
+        : null;
+    if (
+        executionContext.worktreeId &&
+        (registry?.id !== executionContext.worktreeId ||
+            registry.path !== executionContext.executionCwd ||
+            registry.branch !== executionContext.worktreeBranch ||
+            (boundPlanId && registry.planId !== boundPlanId))
+    )
+        throw new Error("The recorded execution attempt changed.");
     const planCwd =
         executionContext.executionMode === "worktree" && executionContext.executionCwd
             ? executionContext.executionCwd
@@ -104,13 +146,13 @@ async function finalizeLockedImplementation({
         currentPlan = await planDocumentsForCheckout(executionContext.executionCwd).load(planName);
         restoredMissingPlan = true;
     }
-    const expectedPlanId = typeof triageMeta.planId === "string" ? triageMeta.planId : undefined;
+    const planId = boundPlanId || triageMeta.planId;
     if (!currentPlan) throw new Error(`Cannot complete ${planName}: execution Plan is missing.`);
-    if (expectedPlanId && currentPlan.attrs.planId !== expectedPlanId) {
+    if (planId && currentPlan.attrs.planId !== planId) {
         throw new Error(
             `Cannot complete ${planName}: execution Plan identity is ${
                 currentPlan.attrs.planId || "missing"
-            }, expected ${expectedPlanId}.`,
+            }, expected ${planId}.`,
         );
     }
     const planStatus = currentPlan?.attrs?.status;
@@ -123,12 +165,25 @@ async function finalizeLockedImplementation({
             throw new Error("The execution Plan changed since the implementation action was issued.");
         }
     }
+    const completed =
+        planStatus === "implemented" &&
+        (registry?.status === "completed" ||
+            executionContext.executionMode === "non_git_in_place" ||
+            executionContext.nonGitInPlace);
+    const savedReceipt = registry?.implementationCommit ? { implementationCommit: registry.implementationCommit } : {};
+    // The registry/document already settled the report. Only continue a journal whose final write was interrupted.
+    const journalPending =
+        completed &&
+        (await listTransitionRecoveryRecords(planCwd)).some(
+            (record) => record.operation === "implementation_checkpoint" && record.planName === planName,
+        );
     if (
-        planStatus !== "implemented" &&
-        (isInValidation(planStatus) || planStatus === "verified" || planStatus === "user_verified")
+        (completed && !journalPending) ||
+        (planStatus !== "implemented" &&
+            (isInValidation(planStatus) || planStatus === "verified" || planStatus === "user_verified"))
     ) {
         acknowledgeImplementationCompletion(hostedSession);
-        return {};
+        return savedReceipt;
     }
     if (planStatus && !["in_progress", "ready_for_work", "implemented"].includes(planStatus)) {
         throw new Error(
@@ -138,13 +193,13 @@ async function finalizeLockedImplementation({
     const transition = await runImplementationCheckpointTransition({
         projectRoot: planCwd,
         planName,
-        planId: typeof triageMeta.planId === "string" ? triageMeta.planId : undefined,
+        planId,
         worktreeId: executionContext.worktreeId,
         expectedRevision: currentPlan?.revision,
         resumeInterrupted: planStatus === "implemented",
         checkpoint: async ({ markEffect }) => {
-            /** @type {string | undefined} */
-            let implementationCommit;
+            if (completed) return savedReceipt;
+            let implementationCommit: string | undefined;
             if (
                 executionContext.executionMode !== "worktree" &&
                 executionContext.executionMode !== "non_git_in_place" &&
@@ -209,7 +264,7 @@ async function finalizeLockedImplementation({
                     worktreeBranch: executionContext.worktreeBranch,
                 });
             }
-            await markActiveWorktreeStatus("completed", { hostedSession, workflow: executionContext });
+            await markCompletedWorktree(executionContext, implementationCommit);
             return implementationCommit ? { implementationCommit } : {};
         },
     });
@@ -217,8 +272,8 @@ async function finalizeLockedImplementation({
         throw new Error(transition.message || `Implementation checkpoint did not commit for ${planName}.`);
     }
     acknowledgeImplementationCompletion(hostedSession);
-    const transitionValue = /** @type {{ value?: { implementationCommit?: string } }} */ transition.value;
-    const implementationCommit = transitionValue.value?.implementationCommit;
+    const transitionValue = transition.value as { value?: PlanImplementationResult };
+    const implementationCommit = transitionValue?.value?.implementationCommit;
     await recordWorkflowOutcome(projectRoot, {
         category: "execution",
         event: "implementation_finished",
@@ -232,15 +287,20 @@ async function finalizeLockedImplementation({
     return implementationCommit ? { implementationCommit } : {};
 }
 
-function acknowledgeImplementationCompletion(hostedSession) {
+function acknowledgeImplementationCompletion(hostedSession: HostedSession | undefined) {
     if (!hostedSession) return;
     const completion = claimPendingTaskCompletion(hostedSession, hostedSession.getRootAgentSession());
     if (completion) acknowledgeTaskCompletion(hostedSession, completion);
 }
 
-export async function markActiveWorktreeStatus(status, opts = {}) {
-    const workflow = opts.workflow || opts.hostedSession?.getActiveExecutionWorkflow();
-    if (!workflow?.worktreeId || !status || status === "none") return;
+async function markCompletedWorktree(
+    workflow: ActiveExecutionWorkflow,
+    implementationCommit: string | undefined,
+): Promise<void> {
+    if (!workflow.worktreeId) return;
     if (!workflow.projectRoot) throw new Error("markActiveWorktreeStatus: workflow projectRoot is required");
-    await updateWorktreeRegistryEntry(workflow.projectRoot, workflow.worktreeId, { status });
+    await updateWorktreeRegistryEntry(workflow.projectRoot, workflow.worktreeId, {
+        status: "completed",
+        implementationCommit,
+    });
 }

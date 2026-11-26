@@ -11,7 +11,7 @@ import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.ts";
 import { emitReviewResultMessage } from "../shared/session/workflow-messages.ts";
 import { recordWorkflowOutcome, workflowOutcomeEventId } from "../shared/workflow/outcome-observations.ts";
-import { publishWorkflowToolEvent } from "../shared/workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import type { ReviewLedger } from "@runwield/plans/controller-state";
 import type { ReviewInspection } from "../shared/workflow/review-inspection.ts";
 
@@ -75,8 +75,7 @@ export function createReviewCompletedTool({
             const { approved, outcome, findings, advisories } = details;
 
             emitReviewResultMessage(hostedSession, agentName, message, approved, toolCallId);
-            const event = publishWorkflowToolEvent({
-                hostedSession,
+            const event = workflowEvents(hostedSession).publish({
                 toolCallId,
                 kind: "review_complete",
                 payload: details,

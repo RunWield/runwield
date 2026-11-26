@@ -874,8 +874,8 @@ state
 **Session-Independent Validation Engine**: Workflow Validation sequencing, convergence policy, and gate predicates run
 on the shared engine (`src/shared/workflow/validation-engine.ts` and its phase modules). Its supervisor and local CI
 command runner also work without a Session. Core's `validation.ts` builds `ValidationSessionPort` over HostedSession;
-`validation-host-turn.ts` uses the same supervisor and engine but returns typed reviewer, repair, and decision requests
-instead of in-process waits. Request-bound outcomes resume from the Validation Checkpoint through the existing gates.
+`@runwield/workflow` uses the same supervisor and engine. Host validation returns typed reviewer, repair, and decision
+requests. Request-bound outcomes resume from the Validation Checkpoint through the existing gates.
 Host-turn validation stops at `reviewed`, before delivery. _Avoid_: Second validation implementation, session-coupled
 engine
 

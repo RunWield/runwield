@@ -1,7 +1,7 @@
 import { inspectPlanFixtureController, seedPlanController } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import lockfile from "proper-lockfile";
-import type { PublicationAttempt } from "./publication-attempt.ts";
+import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { getCwd } from "../../constants.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
@@ -18,11 +18,7 @@ import { findById } from "../worktree-registry.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { UsageReporter } from "./usage-reporting.ts";
 import { workflowOutcomeEventId } from "./outcome-observations.ts";
-import {
-    type PublicationCleanupResult,
-    advanceStoredPublication,
-    cleanupStoredPublication,
-} from "./publication-machine.ts";
+import { openPublication, type PublicationCleanupResult } from "@runwield/workflow/publication-runtime";
 import { makePublicationOutcomeFixture } from "./testing/publication-outcome-fixture.ts";
 
 interface CleanupProcessResult {
@@ -58,11 +54,9 @@ for (const early of [false, true]) {
                 try {
                     let attempt = await fixture.confirm();
                     if (early) {
-                        attempt = await advanceStoredPublication(metrics.projectRoot, attempt, "cleanup_complete", {
-                            cleanedAt: new Date().toISOString(),
-                        });
+                        attempt = await fixture.interruptAfterCleanup(attempt);
                     }
-                    const cleanup = await cleanupStoredPublication(metrics.projectRoot, attempt);
+                    const cleanup = await openPublication(metrics.projectRoot).resume(attempt).cleanup();
                     assert(cleanup.complete);
                     assertEquals(await findById(metrics.projectRoot, attempt.attemptId), null);
                     const rows = await metrics.readMetrics();
@@ -75,7 +69,7 @@ for (const early of [false, true]) {
                     );
                     assertEquals(publications[0].planId, "plan-demo");
                     const before = await fsReadFile(getWorkflowMetricsFilePath(metrics.projectRoot), "utf8");
-                    assert((await cleanupStoredPublication(metrics.projectRoot, cleanup.attempt)).complete);
+                    assert((await openPublication(metrics.projectRoot).resume(cleanup.attempt).cleanup()).complete);
                     assertEquals(await fsReadFile(getWorkflowMetricsFilePath(metrics.projectRoot), "utf8"), before);
                 } finally {
                     await fixture.dispose();
@@ -94,9 +88,7 @@ for (const early of [false, true]) {
                     try {
                         let attempt = await fixture.confirm();
                         if (early) {
-                            attempt = await advanceStoredPublication(metrics.projectRoot, attempt, "cleanup_complete", {
-                                cleanedAt: new Date().toISOString(),
-                            });
+                            attempt = await fixture.interruptAfterCleanup(attempt);
                         }
                         if (failure === "disabled") {
                             await setCustomSetting("workflowMetrics", false, "project", metrics.projectRoot);
@@ -105,7 +97,7 @@ for (const early of [false, true]) {
                             await fsMkdir(dirname(file), { recursive: true });
                             await fsMkdir(file); // A directory at the file path fails on every host, including root.
                         }
-                        const cleanup = await cleanupStoredPublication(metrics.projectRoot, attempt);
+                        const cleanup = await openPublication(metrics.projectRoot).resume(attempt).cleanup();
                         assert(cleanup.complete);
                         assertEquals(await findById(metrics.projectRoot, attempt.attemptId), null);
                         const record = await inspectPlanFixtureController(metrics.projectRoot, {
@@ -200,7 +192,7 @@ test("confirmed publication is observed even when cleanup keeps user files", asy
             try {
                 const attempt = await fixture.confirm();
                 await fsWriteFile(join(fixture.executionCwd, "feature.txt"), "user edit\n");
-                const result = await cleanupStoredPublication(metrics.projectRoot, attempt);
+                const result = await openPublication(metrics.projectRoot).resume(attempt).cleanup();
                 assertEquals(result.complete, false);
                 assertEquals(result.worktreeKept, true);
                 assertEquals(
@@ -220,10 +212,10 @@ test("repeat cleanup preserves saved publication coverage after collection is di
         return await withRetainedPlanFixture(metrics.projectRoot, async () => {
             try {
                 const attempt = await fixture.confirm();
-                const cleanup = await cleanupStoredPublication(metrics.projectRoot, attempt);
+                const cleanup = await openPublication(metrics.projectRoot).resume(attempt).cleanup();
                 assert(cleanup.complete);
                 await setCustomSetting("workflowMetrics", false, "project", metrics.projectRoot);
-                assert((await cleanupStoredPublication(metrics.projectRoot, cleanup.attempt)).complete);
+                assert((await openPublication(metrics.projectRoot).resume(cleanup.attempt).cleanup()).complete);
                 const record = await inspectPlanFixtureController(metrics.projectRoot, {
                     planId: "plan-demo",
                     planName: "demo",
@@ -245,11 +237,13 @@ test("a lost journal checkpoint cannot replay retained publication", async () =>
         const fixture = await makePublicationOutcomeFixture(metrics.projectRoot);
         return await withRetainedPlanFixture(metrics.projectRoot, async () => {
             try {
-                const cleanup = await cleanupStoredPublication(metrics.projectRoot, await fixture.confirm());
+                const cleanup = await openPublication(metrics.projectRoot)
+                    .resume(await fixture.confirm())
+                    .cleanup();
                 const file = getWorkflowMetricsFilePath(metrics.projectRoot);
                 const before = await fsReadFile(file, "utf8");
                 await fsRm(join(dirname(file), "state.json"));
-                assert((await cleanupStoredPublication(metrics.projectRoot, cleanup.attempt)).complete);
+                assert((await openPublication(metrics.projectRoot).resume(cleanup.attempt).cleanup()).complete);
                 assertEquals(await fsReadFile(file, "utf8"), before);
             } finally {
                 await fixture.dispose();
@@ -263,7 +257,9 @@ test("restart cleanup cannot restore a publication removed by clear", async () =
         const fixture = await makePublicationOutcomeFixture(projectRoot);
         return await withRetainedPlanFixture(projectRoot, async () => {
             try {
-                const cleanup = await cleanupStoredPublication(projectRoot, await fixture.confirm());
+                const cleanup = await openPublication(projectRoot)
+                    .resume(await fixture.confirm())
+                    .cleanup();
                 assert(cleanup.complete);
                 const reporter = new UsageReporter();
                 assert((await reporter.clear([projectRoot]))[0].persisted);
@@ -272,10 +268,11 @@ test("restart cleanup cannot restore a publication removed by clear", async () =
                 const script = join(projectRoot, "restart-cleanup.ts");
                 await fsWriteFile(
                     script,
-                    `import { cleanupStoredPublication } from ${JSON.stringify(
-                        new URL("./publication-machine.ts", import.meta.url).href,
+                    `import { openPublication } from ${JSON.stringify(
+                        import.meta.resolve("@runwield/workflow/publication-runtime"),
                     )};
-console.log(JSON.stringify(await cleanupStoredPublication((await import("node:process")).argv.slice(2)[0], JSON.parse((await import("node:process")).argv.slice(2)[1]))));`,
+const [root, saved] = (await import("node:process")).argv.slice(2);
+console.log(JSON.stringify(await openPublication(root).resume(JSON.parse(saved)).cleanup()));`,
                 );
                 const restarted = await captureForegroundProcess(process.execPath, {
                     args: runtimeSourceArgs([
@@ -308,9 +305,7 @@ for (const early of [false, true]) {
                     try {
                         let attempt = await fixture.confirm();
                         if (early) {
-                            attempt = await advanceStoredPublication(metrics.projectRoot, attempt, "cleanup_complete", {
-                                cleanedAt: new Date().toISOString(),
-                            });
+                            attempt = await fixture.interruptAfterCleanup(attempt);
                         }
                         const output = await runCleanupProcess(
                             metrics.projectRoot,
@@ -360,9 +355,7 @@ for (const early of [false, true]) {
                 try {
                     let attempt = await fixture.confirm();
                     if (early) {
-                        attempt = await advanceStoredPublication(metrics.projectRoot, attempt, "cleanup_complete", {
-                            cleanedAt: new Date().toISOString(),
-                        });
+                        attempt = await fixture.interruptAfterCleanup(attempt);
                     }
                     const directory = dirname(getWorkflowMetricsFilePath(metrics.projectRoot));
                     await fsMkdir(directory, { recursive: true });
@@ -370,7 +363,7 @@ for (const early of [false, true]) {
                     const started = Date.now();
                     let cleanup: PublicationCleanupResult;
                     try {
-                        cleanup = await cleanupStoredPublication(metrics.projectRoot, attempt);
+                        cleanup = await openPublication(metrics.projectRoot).resume(attempt).cleanup();
                     } finally {
                         release();
                     }
@@ -409,9 +402,7 @@ for (const early of [false, true]) {
                     try {
                         let attempt = await fixture.confirm();
                         if (early) {
-                            attempt = await advanceStoredPublication(metrics.projectRoot, attempt, "cleanup_complete", {
-                                cleanedAt: new Date().toISOString(),
-                            });
+                            attempt = await fixture.interruptAfterCleanup(attempt);
                         }
                         const output = await runCleanupProcess(metrics.projectRoot, attempt, `coverage-${fault}`);
                         assert(output.success, new TextDecoder().decode(output.stderr));

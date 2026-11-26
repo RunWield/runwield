@@ -21,11 +21,6 @@ export async function ensurePlanBranch({ projectRoot, planName, sourceBranch }: 
     return await ensureTargetBranchRef(projectRoot, defaultPlanBranchName(planName), sourceBranch?.trim());
 }
 
-/** One owner for landing selection. Legacy Plans still honor target edits. */
-export function effectiveDeliveryBranch(attrs: Partial<PlanFrontMatter>): string | undefined {
-    return attrs.deliveryBranch?.trim() || attrs.targetBranch?.trim() || undefined;
-}
-
 export function isStandalonePlannedChange(attrs: Partial<PlanFrontMatter>): boolean {
     return isPlannedChangeClassification(attrs.classification) && !attrs.parentPlan?.trim();
 }

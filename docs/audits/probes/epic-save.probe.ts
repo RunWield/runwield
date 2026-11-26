@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { assertEquals } from "../../../src/testing/assertions.ts";
 import { loadPlan } from "../../../src/plan-store.ts";
 import { HostedSession } from "../../../src/shared/session/hosted-session.ts";
-import { listPendingWorkflowToolEvents } from "../../../src/shared/workflow/workflow-tool-events.ts";
+import { workflowEvents } from "@runwield/workflow/events";
 import { createPlanWrittenTool } from "../../../src/tools/plan-written.ts";
 
 test("AUDIT A1: PROJECT approve-later emits its saved workflow event", async () => {
@@ -42,7 +42,7 @@ test("AUDIT A1: PROJECT approve-later emits its saved workflow event", async () 
             {} as Parameters<typeof tool.execute>[4],
         );
         const plan = await loadPlan(cwd, "audit-epic");
-        const events = listPendingWorkflowToolEvents(hostedSession);
+        const events = workflowEvents(hostedSession).pending();
         console.log(
             "AUDIT A1",
             JSON.stringify({

@@ -1,3 +1,4 @@
+import { openWorkflow } from "@runwield/workflow";
 import { inspectPlanFixtureController } from "../../shared/testing/plan-state-fixture.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import process from "node:process";
@@ -22,7 +23,6 @@ import { HostedSession } from "../../shared/session/hosted-session.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { findById } from "../../shared/worktree-registry.ts";
 import type { PlanFixtureController as ControllerRecord } from "../../shared/testing/plan-state-fixture.ts";
-import { finalizePlanImplementation } from "../../shared/workflow/implementation-checkpoint.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
 import { runLocalCI } from "../../shared/workflow/validation-local-ci.ts";
 import { runWorkflowValidationToStableBoundary } from "../../shared/workflow/validation.ts";
@@ -192,22 +192,9 @@ for (const stage of stages.flatMap((stage) => [
                 if (stage.status === "in_progress") {
                     const entry = await findById(root, "attempt-demo");
                     assertExists(entry);
-                    await finalizePlanImplementation({
-                        projectRoot: root,
-                        planName: "demo",
-                        executionContext: {
-                            projectRoot: root,
-                            planName: "demo",
-                            executionMode: "worktree",
-                            executionCwd: entry.path,
-                            baselineTree: entry.baseTree,
-                            worktreeId: entry.id,
-                            worktreeBranch: entry.branch,
-                            worktreeBaseBranch: entry.baseBranch,
-                            executionAgent: "engineer",
-                            triageMeta: { classification: "PLANNED_CHANGE", status: "in_progress" },
-                        },
-                    });
+                    await (
+                        await openWorkflow({ cwd: root, planName: "demo" }).resumeAttempt({ attemptId: entry.id })
+                    ).acceptCompletion({});
                     assertEquals((await findById(root, "attempt-demo"))?.status, "completed");
                     assertEquals(await git(tree, ["status", "--porcelain"]), "");
                 }
