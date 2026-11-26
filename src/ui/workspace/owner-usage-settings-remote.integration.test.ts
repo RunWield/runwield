@@ -11,7 +11,7 @@ import { createOwnerWorkspaceApp } from "./server.ts";
 test("remote-backed usage settings explain unavailability and reject every mutation without writes", async () => {
     await withMetricsExportFixture(async ({ home, project }) => {
         const store = openOwnerCoordinationStore({ dbPath: join(home, "owner.sqlite3") });
-        store.registerProject({ root: project, displayName: "A" });
+        store.projects.register({ root: project, displayName: "A" });
         const pairing = store.createPairingRequest();
         store.approvePairingRequest(pairing.code);
         const device = store.claimPairingRequest(pairing.proof);

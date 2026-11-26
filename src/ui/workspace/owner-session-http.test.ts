@@ -17,7 +17,7 @@ test("owner Session HTTP enforces Project scope, stages settings, answers Core a
                 assertEquals(JSON.parse(timelineText).activeSurface, "workspace");
                 assertEquals(timelineText.includes('"segments"'), false);
                 assertEquals(timelineText.includes('"terminalEntryId"'), false);
-                const other = store.registerProject({ root: fixture.alternateRoot });
+                const other = store.projects.register({ root: fixture.alternateRoot });
                 const answer = (projectId: string) =>
                     app.handler()(
                         new Request(

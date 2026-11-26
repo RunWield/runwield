@@ -65,7 +65,7 @@ test("canceling a replay stops delivery without affecting a later replay", async
 test("closing a Session during replay does not emit its history into a replacement Project", async () => {
     await withRuntimeCommandFixture("close-replay-", async ({ homeDir, projectRoot, alternateRoot }) => {
         const first = await makeLongReplayFixture(homeDir, projectRoot);
-        first.store.registerProject({ root: alternateRoot });
+        first.store.projects.register({ root: alternateRoot });
         const second = await makeLongReplayFixture(homeDir, alternateRoot);
         const handle = first.openRuntime("tui", "switch-reader");
         try {

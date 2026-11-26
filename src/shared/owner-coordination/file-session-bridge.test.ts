@@ -38,7 +38,7 @@ test("browsing an empty registered Project leaves Session storage empty", async 
     try {
         const checkout = join(root, "checkout");
         await fsMkdir(checkout);
-        const { projectId } = store.registerProject({ root: checkout });
+        const { projectId } = store.projects.register({ root: checkout });
         const before = await readdir(sessionBaseDir);
         assert.equal((await store.listProjectSessions(projectId, { catalog: false })).total, 0);
         assert.equal(store.getSessionById("absent", projectId), null);
@@ -70,7 +70,7 @@ test("Workspace stores receipts but leaves Session authority in files", async ()
     let runwieldSessionId = "";
     const store = openOwnerCoordinationStore({ dbPath: databasePath, sessionBaseDir });
     try {
-        const workspaceProject = store.registerProject({ root: projectRoot });
+        const workspaceProject = store.projects.register({ root: projectRoot });
         const sessionProject = store.ensureRuntimeProject({ root: projectRoot });
         const session = await store.ensureSessionCatalogRecord({
             projectId: sessionProject.projectId,
@@ -123,7 +123,7 @@ test("Workspace relink preserves registration and history; removing SQLite leave
             await fsMkdir(root);
             const dbPath = join(home, "workspace.sqlite3");
             const store = openOwnerCoordinationStore({ dbPath });
-            const registered = store.registerProject({ root });
+            const registered = store.projects.register({ root });
             const project = store.ensureRuntimeProject({ root });
             const manager = await createRootSessionManager("new", root);
             manager.appendMessage({
@@ -155,17 +155,17 @@ test("Workspace relink preserves registration and history; removing SQLite leave
             assertEquals((await projects.checkout.admit(root)).kind, "existing");
             await rename(root, moved);
             assertEquals((await projects.checkout.admit(moved)).kind, "existing");
-            const relinked = store.relinkProject({ projectId: registered.projectId, newRoot: moved });
+            const relinked = store.projects.relink({ projectId: registered.projectId, newRoot: moved });
             assertEquals(relinked.projectId, registered.projectId);
             assertEquals(
                 (await store.listProjectSessions(registered.projectId)).sessions.map((item) => item.runwieldSessionId),
                 [session.runwieldSessionId],
             );
             assertEquals(sessionBelongsToOwnerProject(store, session, registered.projectId), true);
-            store.setProjectStatus(registered.projectId, "inactive");
-            assert.throws(() => store.requireActiveProjectRoot(registered.projectId), /inactive/);
-            store.setProjectStatus(registered.projectId, "active");
-            store.removeProject(registered.projectId);
+            store.projects.setStatus(registered.projectId, "inactive");
+            assert.throws(() => store.projects.requireActiveRoot(registered.projectId), /inactive/);
+            store.projects.setStatus(registered.projectId, "active");
+            store.projects.remove(registered.projectId);
             assertEquals(sessionBelongsToOwnerProject(store, session, registered.projectId), false);
             assertEquals(store.projects.get(registered.projectId), null);
             assertEquals(
@@ -209,7 +209,7 @@ test("Workspace relink preserves registration and history; removing SQLite leave
             );
             core.close();
             const registeredAgain = openOwnerCoordinationStore({ dbPath });
-            const registration = registeredAgain.registerProject({ root: moved });
+            const registration = registeredAgain.projects.register({ root: moved });
             assertEquals(
                 (await registeredAgain.listProjectSessions(registration.projectId)).sessions.map(
                     (item) => item.runwieldSessionId,

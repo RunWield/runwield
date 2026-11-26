@@ -73,10 +73,10 @@ test("usage page renders daily costs and completeness from the real report and r
                 .join("\n") + "\n",
         );
         const store = openOwnerCoordinationStore();
-        const project = store.registerProject({ root: cwd, displayName: "Primary" });
+        const project = store.projects.register({ root: cwd, displayName: "Primary" });
         const worktree = join(homeDir, "linked-worktree");
         await git(cwd, ["worktree", "add", "-b", "usage-rendering", worktree]);
-        assertEquals(store.registerProject({ root: worktree, displayName: "Worktree" }).projectId, project.projectId);
+        assertEquals(store.projects.register({ root: worktree, displayName: "Worktree" }).projectId, project.projectId);
         const report = await loadOwnerUsage(store, new URLSearchParams({ start: "2026-09-01", end: "2026-09-04" }));
         const browser = new Window({ url: "http://workspace.local/usage" });
         let failed = true;

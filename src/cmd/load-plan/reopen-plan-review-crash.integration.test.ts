@@ -217,7 +217,7 @@ test("Workspace opens and approves a saved Plan review after its owner is SIGKIL
             const { sessionId } = await runtime.createSession({ cwd: ${JSON.stringify(projectRoot)} });
             const persistentId = runtime.getSessionSnapshot(sessionId).managed.runwieldSessionId;
             const projectId = store.getSessionById(persistentId).projectId;
-            if (store.registerProject({ root: ${JSON.stringify(projectRoot)} }).projectId !== projectId) throw new Error("Workspace and Session identity differ");
+            if (store.projects.register({ root: ${JSON.stringify(projectRoot)} }).projectId !== projectId) throw new Error("Workspace and Session identity differ");
             const activation = store.inspectSessionActivation(persistentId);
             const proof = store.acquireSessionActivation({
                 runwieldSessionId: persistentId, projectId: store.getSessionById(persistentId).projectId,

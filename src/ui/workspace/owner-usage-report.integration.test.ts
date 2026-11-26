@@ -94,9 +94,9 @@ test("owner usage preserves exact Core totals, mixed daily gaps, backend and mod
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
         const second = join(homeDir, "second");
         await fsMkdir(second);
-        const a = store.registerProject({ root: projectRoot, displayName: "A" });
-        const b = store.registerProject({ root: second, displayName: "B" });
-        const roots = [a, b].map((project) => store.requireActiveProjectRoot(project.projectId));
+        const a = store.projects.register({ root: projectRoot, displayName: "A" });
+        const b = store.projects.register({ root: second, displayName: "B" });
+        const roots = [a, b].map((project) => store.projects.requireActiveRoot(project.projectId));
         await journal(roots[0], [usage(), row("measurement_gap", "2026-09-03T16:00:00Z")]);
         await journal(roots[1], [usage({ inputTokens: 20, backend: "claude-cli", model: "other", costAmount: 0.75 })]);
         const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
@@ -144,11 +144,11 @@ test("primary and worktree registration labels share one Project and one set of 
         });
         assertEquals(command.code, 0);
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
-        const a = store.registerProject({ root: primary, displayName: "Primary" });
-        const b = store.registerProject({ root: worktree, displayName: "Worktree" });
+        const a = store.projects.register({ root: primary, displayName: "Primary" });
+        const b = store.projects.register({ root: worktree, displayName: "Worktree" });
         assertEquals(b.projectId, a.projectId);
         assertEquals(b.displayName, "Primary");
-        await journal(store.requireActiveProjectRoot(a.projectId), [usage()]);
+        await journal(store.projects.requireActiveRoot(a.projectId), [usage()]);
         const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
         try {
             const headers = pairedHeaders(store);
@@ -181,16 +181,16 @@ test("primary and worktree registration labels share one Project and one set of 
 test("inactive, removed, unavailable and unregistered Projects cannot contribute or be queried", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
-        const included = store.registerProject({ root: projectRoot });
-        await journal(store.requireActiveProjectRoot(included.projectId), [usage()]);
+        const included = store.projects.register({ root: projectRoot });
+        await journal(store.projects.requireActiveRoot(included.projectId), [usage()]);
         const denied = [];
         for (const label of ["inactive", "removed", "unavailable"]) {
             const root = join(homeDir, label);
             await fsMkdir(root);
-            const project = store.registerProject({ root, displayName: label });
-            await journal(store.requireActiveProjectRoot(project.projectId), [usage({ inputTokens: 900 })]);
-            if (label === "inactive") store.setProjectStatus(project.projectId, "inactive");
-            if (label === "removed") store.removeProject(project.projectId);
+            const project = store.projects.register({ root, displayName: label });
+            await journal(store.projects.requireActiveRoot(project.projectId), [usage({ inputTokens: 900 })]);
+            if (label === "inactive") store.projects.setStatus(project.projectId, "inactive");
+            if (label === "removed") store.projects.remove(project.projectId);
             if (label === "unavailable") await fsRename(root, `${root}-moved`);
             denied.push(project.projectId);
         }
@@ -217,7 +217,7 @@ test("inactive, removed, unavailable and unregistered Projects cannot contribute
 test("usage requires pairing and rejects invalid periods with sanitized errors", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
-        store.registerProject({ root: projectRoot });
+        store.projects.register({ root: projectRoot });
         const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
         try {
             assertEquals((await app.handler()(new Request(reportUrl()))).status, 401);
@@ -252,14 +252,14 @@ test("usage links use managed Session and Plan IDs and omit missing or foreign t
             projectRoot: join(homeDir, "foreign"),
             dbPath: join(homeDir, "foreign.sqlite3"),
         });
-        store.registerProject({ root: foreign.projectRoot });
+        store.projects.register({ root: foreign.projectRoot });
         const planId = crypto.randomUUID();
         const planPath = await seedPlan(projectRoot, "usage-example", "# Usage Example\n", {
             planId,
             status: "draft",
             classification: "PLANNED_CHANGE",
         });
-        await journal(store.requireActiveProjectRoot(fixture.project.projectId), [
+        await journal(store.projects.requireActiveRoot(fixture.project.projectId), [
             usage({ managedSessionId: fixture.session.runwieldSessionId, planId }),
             usage({ managedSessionId: "missing-session", planId: "missing-plan" }),
             usage({ managedSessionId: foreign.session.runwieldSessionId }),
@@ -299,8 +299,8 @@ test("usage links use managed Session and Plan IDs and omit missing or foreign t
 test("pending operations do not become settled spend", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
-        const project = store.registerProject({ root: projectRoot });
-        await journal(store.requireActiveProjectRoot(project.projectId), [
+        const project = store.projects.register({ root: projectRoot });
+        await journal(store.projects.requireActiveRoot(project.projectId), [
             row("execution_started", "2026-09-01T15:00:00Z", { executionId: "active" }),
             usage({ executionId: "active" }),
         ]);
@@ -337,7 +337,7 @@ test("usage history links resolve targets from a Project execution worktree", as
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
         await enterProjectRuntime(primary);
         await enterProjectRuntime(worktree);
-        const primaryProject = store.registerProject({ root: primary, displayName: "Primary" });
+        const primaryProject = store.projects.register({ root: primary, displayName: "Primary" });
         const fixture = await makeManagedSessionFixture({
             home: homeDir,
             projectRoot: worktree,
@@ -364,7 +364,7 @@ test("usage history links resolve targets from a Project execution worktree", as
             createdAt: now,
             updatedAt: now,
         });
-        await journal(store.requireActiveProjectRoot(primaryProject.projectId), [
+        await journal(store.projects.requireActiveRoot(primaryProject.projectId), [
             usage({ managedSessionId: fixture.session.runwieldSessionId, planId }),
         ]);
         const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store: fixture.store });
@@ -392,8 +392,8 @@ test("usage history links resolve targets from a Project execution worktree", as
 test("owner usage explains a pending history clear and reads again after recovery", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
-        const project = store.registerProject({ root: projectRoot, displayName: "A" });
-        const root = store.requireActiveProjectRoot(project.projectId);
+        const project = store.projects.register({ root: projectRoot, displayName: "A" });
+        const root = store.projects.requireActiveRoot(project.projectId);
         await journal(root, [usage()]);
         await setCustomSetting("workflowMetrics", false, "project", root);
         const marker = join(dirname(getWorkflowMetricsFilePath(root)), "clear.json");
@@ -463,13 +463,13 @@ test(
     async () => {
         await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
             const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
-            const unstable = store.registerProject({ root: projectRoot, displayName: "Clearing" });
+            const unstable = store.projects.register({ root: projectRoot, displayName: "Clearing" });
             const stableRoot = join(homeDir, "stable");
             await fsMkdir(stableRoot);
-            const stable = store.registerProject({ root: stableRoot, displayName: "Stable" });
-            const root = store.requireActiveProjectRoot(unstable.projectId);
+            const stable = store.projects.register({ root: stableRoot, displayName: "Stable" });
+            const root = store.projects.requireActiveRoot(unstable.projectId);
             await journal(root, [usage()]);
-            await journal(store.requireActiveProjectRoot(stable.projectId), [usage()]);
+            await journal(store.projects.requireActiveRoot(stable.projectId), [usage()]);
             const statePath = join(dirname(getWorkflowMetricsFilePath(root)), "state.json");
             const pipes = Array.from({ length: 9 }, (_, index) => `${statePath}.${index}`);
             assertEquals((await captureForegroundProcess("mkfifo", { args: pipes, cwd: getCwd() })).code, 0);

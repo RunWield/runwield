@@ -1,4 +1,3 @@
-import { projects } from "@runwield/projects";
 import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -11,33 +10,6 @@ const repo = defineGitFixture(async (repoPath) => {
     await writeFile(join(repoPath, "README.md"), "base\n");
     await git(repoPath, ["add", "."]);
     await git(repoPath, ["commit", "-m", "base"]);
-});
-
-test("resolvePrimaryCheckoutRoot redirects a linked worktree to the primary checkout", async () => {
-    const cwd = await repo.checkout();
-    const worktreePath = `${cwd}-linked`;
-    try {
-        await git(cwd, ["worktree", "add", "-b", "side", worktreePath, "main"]);
-        assertEquals(projects.checkout.primaryRoot(worktreePath), await realpath(cwd));
-    } finally {
-        await git(cwd, ["worktree", "remove", "--force", worktreePath]).catch(() => {});
-        await rm(cwd, { recursive: true }).catch(() => {});
-    }
-});
-
-test("resolvePrimaryCheckoutRoot leaves primary, subdirectory, and non-git roots unchanged", async () => {
-    const cwd = await repo.checkout();
-    const subdir = join(cwd, "subdir");
-    const nonGit = await mkdtemp(join(tmpdir(), "rw-test-"));
-    try {
-        await mkdir(subdir);
-        assertEquals(projects.checkout.primaryRoot(cwd), cwd);
-        assertEquals(projects.checkout.primaryRoot(subdir), subdir);
-        assertEquals(projects.checkout.primaryRoot(nonGit), nonGit);
-    } finally {
-        await rm(cwd, { recursive: true }).catch(() => {});
-        await rm(nonGit, { recursive: true }).catch(() => {});
-    }
 });
 
 test("Epic child recovery repairs moved submodule links and preserves unfinished work", async () => {

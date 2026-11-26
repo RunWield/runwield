@@ -4,10 +4,10 @@ import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
 import { test } from "node:test";
-import { assertEquals, assertThrows } from "../testing/assertions.ts";
+import { assertEquals, assertThrows } from "../../test-support/assertions.ts";
 import { join } from "node:path";
-import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
-import { getHomeDir } from "../constants.ts";
+import { withProcessGlobalTestLock } from "../../test-support/process-global-lock.ts";
+import { getHomeDir } from "@runwield/resources/home";
 
 for (const platform of ["linux", "darwin", "windows"]) {
     test(`${platform} policy matches exact locations, not descendants or similar names`, () => {

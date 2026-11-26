@@ -37,7 +37,7 @@ async function createDormantManagedSession(prefix: string) {
     const cwd = join(home, "project");
     await fsMkdir(cwd, { recursive: true });
     const store = openOwnerCoordinationStore({ dbPath: join(home, "owner.sqlite3") });
-    const project = store.registerProject({ root: cwd });
+    const project = store.projects.register({ root: cwd });
     const piSessionId = "pi-dormant";
     const sessionDir = getRunWieldSessionDir(cwd);
     await fsMkdir(sessionDir, { recursive: true });

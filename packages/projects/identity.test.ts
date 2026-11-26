@@ -6,7 +6,7 @@ import {
     type ProjectIdentity,
     type ProjectLaunchContext,
 } from "@runwield/projects";
-import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
+import { withProcessGlobalTestLock } from "../../test-support/process-global-lock.ts";
 import { test } from "node:test";
 import process from "node:process";
 import { deepEqual, equal, notEqual, ok, match } from "node:assert/strict";
@@ -14,7 +14,7 @@ import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile, readdir, lsta
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
+import { defineCommittedGitFixture, git } from "../../test-support/git-test-fixture.ts";
 
 const fixture = defineCommittedGitFixture();
 async function assertStoredBinding(home: string, identity: ProjectIdentity, roots: string[], checkouts = [identity]) {

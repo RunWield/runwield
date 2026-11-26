@@ -254,7 +254,7 @@ async function seedActiveElsewhereManagedSession(
     const store = openOwnerCoordinationStore();
     try {
         assertEquals((await projects.checkout.admit(projectRoot)).kind, "existing");
-        store.registerProject({ root: projectRoot, now: () => "2026-01-01T00:00:01.000Z" });
+        store.projects.register({ root: projectRoot, now: () => "2026-01-01T00:00:01.000Z" });
         const runtime = createSessionRuntime({
             sessionStore: store,
             ownerProcessKind: "test",

@@ -136,7 +136,7 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
         const store = openOwnerCoordinationStore({ dbPath: join(home, "owner.sqlite3") });
         const instrumented = await instrumentRealPiWritableApis();
         try {
-            const project = store.registerProject({ root: cwd });
+            const project = store.projects.register({ root: cwd });
             const piSessionId = "pi-dormant";
             const transcriptPath = await writeManagedTranscript(cwd, piSessionId);
             const session = await store.ensureSessionCatalogRecord({

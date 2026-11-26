@@ -215,7 +215,7 @@ test("Workspace project scans do not discover remote file Session Projects", asy
                 owner.listSessionProjects().some((project) => project.projectId === remote.projectId),
                 false,
             );
-            assertEquals(owner.getProjectById(remote.projectId), null);
+            assertEquals(owner.projects.get(remote.projectId), null);
         } finally {
             owner.close();
         }

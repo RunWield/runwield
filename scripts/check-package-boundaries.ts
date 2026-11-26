@@ -63,7 +63,7 @@ interface ModuleDependency {
 }
 
 // Add each package here once its implementation has moved out of the application.
-const INDEPENDENT_PACKAGES = new Set(["@runwield/tools", "@runwield/agents"]);
+const INDEPENDENT_PACKAGES = new Set(["@runwield/tools", "@runwield/agents", "@runwield/projects"]);
 
 // Keep the lookup path so the boundary check can inspect it as well as the real path.
 const TYPE_REFERENCE_HOST: ts.ModuleResolutionHost = { ...ts.sys, realpath: undefined };
@@ -155,6 +155,19 @@ function moduleSpecifier(node: ts.Node): ts.Node | undefined {
             ts.isIdentifier(callee.expression) &&
             callee.expression.text === "module" &&
             callee.name.text === "require")
+    )
+        return node.arguments[0];
+}
+
+/** A module URL resolved for another loader, such as a child process. */
+function resolvedModuleSpecifier(node: ts.Node): ts.Expression | undefined {
+    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
+    const { expression, name } = node.expression;
+    if (
+        name.text === "resolve" &&
+        ts.isMetaProperty(expression) &&
+        expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+        expression.name.text === "meta"
     )
         return node.arguments[0];
 }
@@ -260,7 +273,7 @@ function typescriptModuleReferences(file: string, piece: SourcePiece): ModuleRef
         if (ts.isSourceFile(node) || ts.isModuleBlock(node)) {
             references.push(...localReexports(node.statements, tree, piece.offset));
         }
-        const specifier = moduleSpecifier(node);
+        const specifier = moduleSpecifier(node) ?? resolvedModuleSpecifier(node);
         if (specifier && ts.isStringLiteralLike(specifier))
             references.push({
                 specifier: specifier.text,

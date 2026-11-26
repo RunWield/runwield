@@ -193,12 +193,12 @@ redesign or automatic registration of linked clones.
 
 ## Verification Plan
 
-Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. Add the two focused continuity suites below; they are
-planned test files, not existing passing evidence. Run them with the related regressions, then `bun run ci`:
+Use the Bun version in the checkout’s root `.bun-version` and run `./scripts/with-bun.sh run install:locked` before checks. Add the two focused continuity suites below; they are
+planned test files, not existing passing evidence. Run them with the related regressions, then `./scripts/with-bun.sh run ci`:
 
 ```sh
-bun scripts/run-tests.js src/shared/session/project-continuity.test.ts src/shared/attached/project-continuity.test.ts src/shared/project-identity.test.ts src/shared/project-identity.integration.test.ts src/shared/session/file-session-storage.test.ts src/shared/session/file-session-store.test.ts src/shared/session/file-session-store-owner.test.ts src/shared/session/session-resume-list.test.ts src/shared/session/root-session-locator-classifier.test.ts src/shared/session/plan-session-lookup.test.ts src/shared/session/remote-project-identity.test.ts src/shared/session/local-project-visibility.test.ts src/shared/owner-coordination/file-session-bridge.test.ts src/shared/owner-coordination/projects.test.ts src/shared/attached/status-restore.test.ts src/shared/attached/compatibility.test.ts src/ui/workspace/session-continuation.integration.test.ts
-bun run ci
+./scripts/with-bun.sh scripts/run-tests.ts src/shared/session/project-continuity.test.ts src/shared/attached/project-continuity.test.ts packages/projects/identity.test.ts packages/projects/identity.integration.test.ts src/shared/project-identity.integration.test.ts src/shared/session/file-session-storage.test.ts src/shared/session/file-session-store.test.ts src/shared/session/file-session-store-owner.test.ts src/shared/session/session-resume-list.test.ts src/shared/session/root-session-locator-classifier.test.ts src/shared/session/plan-session-lookup.test.ts src/shared/session/remote-project-identity.test.ts src/shared/session/local-project-visibility.test.ts src/shared/owner-coordination/file-session-bridge.test.ts packages/projects/registration.test.ts src/shared/owner-coordination/projects.test.ts src/shared/attached/status-restore.test.ts src/shared/attached/compatibility.test.ts src/ui/workspace/session-continuation.integration.test.ts
+./scripts/with-bun.sh run ci
 ```
 
 Use real file stores, real repositories (`defineGitFixture`), disposable homes, and existing Attached fixtures.

@@ -1073,7 +1073,7 @@ test("real owner sidebar response renders partial Plan results and safe parser t
         let app;
         try {
             await enterProjectRuntime(root);
-            const project = store.registerProject({ root, displayName: "Warning navigation" });
+            const project = store.projects.register({ root, displayName: "Warning navigation" });
             const pairing = store.createPairingRequest({ codeFactory: () => "WARN12", proofFactory: () => "proof" });
             store.approvePairingRequest(pairing.code);
             const claimed = store.claimPairingRequest(pairing.proof, {

@@ -39,7 +39,7 @@ for (const source of ["new", "saved"] as const)
                     const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
                     const service = new WorkspaceSessionContinuationService({ store });
                     try {
-                        const project = store.registerProject({ root: projectRoot, displayName: "Conversation" });
+                        const project = store.projects.register({ root: projectRoot, displayName: "Conversation" });
                         const plan = await ensurePlanIdentity(projectRoot, "target");
                         assert(plan);
                         const created =

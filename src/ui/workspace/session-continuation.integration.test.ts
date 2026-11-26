@@ -1693,7 +1693,7 @@ test("Workspace archive rejects foreign and inactive Projects before stopping wo
         });
         const foreignRoot = `${fixture.projectRoot}/foreign`;
         await fsMkdir(foreignRoot);
-        const foreign = service.store.registerProject({ root: foreignRoot });
+        const foreign = service.store.projects.register({ root: foreignRoot });
         for (const projectId of [foreign.projectId, "missing-project"]) {
             assertEquals(
                 (await ownerSessionArchiveApi(archiveRouteContext(service, fixture, { confirmed: true }, projectId)))
@@ -1705,7 +1705,7 @@ test("Workspace archive rejects foreign and inactive Projects before stopping wo
                 409,
             );
         }
-        service.store.setProjectStatus(fixture.project.projectId, "inactive");
+        service.store.projects.setStatus(fixture.project.projectId, "inactive");
         assertEquals(
             (await ownerSessionArchiveApi(archiveRouteContext(service, fixture, { confirmed: true }))).status,
             409,
@@ -1715,7 +1715,7 @@ test("Workspace archive rejects foreign and inactive Projects before stopping wo
             "active",
         );
         assertEquals(service.store.getSessionById(fixture.session.runwieldSessionId).archivedAt, null);
-        service.store.setProjectStatus(fixture.project.projectId, "active");
+        service.store.projects.setStatus(fixture.project.projectId, "active");
         // A confirmed stop cannot reach this owner. The archive must not change.
         assertEquals(
             (await ownerSessionArchiveApi(archiveRouteContext(service, fixture, { confirmed: true }))).status,

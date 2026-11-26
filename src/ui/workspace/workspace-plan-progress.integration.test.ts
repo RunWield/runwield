@@ -27,7 +27,7 @@ async function loadProgress(projectRoot: string, options: Parameters<typeof load
     const directory = await fsMkdtemp(join(tmpdir(), "progress-owner-store-"));
     const store = openOwnerCoordinationStore({ dbPath: join(directory, "owner.sqlite3") });
     try {
-        const project = store.registerProject({ root: projectRoot });
+        const project = store.projects.register({ root: projectRoot });
         return await loadOwnerPlanProgress(store, { ...options, projectId: project.projectId });
     } finally {
         store.close();

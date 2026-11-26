@@ -16,7 +16,7 @@ const origin = "http://127.0.0.1:8787";
 test("owner Workspace reopens an Architect Epic review and projects the revised live review", async () => {
     await withRuntimeCommandFixture("owner-epic-live-review-", async ({ projectRoot, setModelResponseFactories }) => {
         const store = openOwnerCoordinationStore();
-        const project = store.registerProject({ root: projectRoot, displayName: "Epic Project" });
+        const project = store.projects.register({ root: projectRoot, displayName: "Epic Project" });
         const runtime = createSessionRuntime({ sessionStore: store });
         let ownerApp;
         let operationId;

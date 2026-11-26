@@ -40,7 +40,7 @@ test("Workspace Resume continues a paused validation repair in its existing work
         const root = await repository.checkout();
         const worktreeRoot = await fsMkdtemp(join(tmpdir(), "deferred-repair-tree-"));
         const store = openOwnerCoordinationStore();
-        const project = store.registerProject({ root });
+        const project = store.projects.register({ root });
         const runtime = createSessionRuntime({ sessionStore: store });
         try {
             await withRetainedPlanFixture(root, async () => {

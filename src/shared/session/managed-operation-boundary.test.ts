@@ -20,7 +20,7 @@ test("managed prompt re-entry is rejected while a real operation holds the capab
             ]);
             const store = openOwnerCoordinationStore({ dbPath: `${home}/owner.sqlite3` });
             try {
-                store.registerProject({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
+                store.projects.register({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
                 const runtime = createSessionRuntime({
                     sessionStore: store,
                     ownerProcessKind: "test",

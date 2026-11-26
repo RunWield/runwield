@@ -52,7 +52,7 @@ async function withSettingsFixture(run: (fixture: SettingsFixture) => Promise<vo
         manifest.wld.metricsExporter.credentials = [{ key: "secretKey", label: "Secret key", secret: true }];
         await writeFile(manifestPath, JSON.stringify(manifest));
         const store = openOwnerCoordinationStore({ dbPath: join(fixture.home, "owner.sqlite3") });
-        const project = store.registerProject({ root: fixture.project, displayName: "A" });
+        const project = store.projects.register({ root: fixture.project, displayName: "A" });
         const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
         const headers = pairedHeaders(store);
         const handler = app.handler();
@@ -142,7 +142,7 @@ test("settings creates explicit Core grants, never approves new Projects, and ke
         );
         const secondRoot = join(f.home, "second");
         await mkdir(secondRoot);
-        const b = f.store.registerProject({ root: secondRoot, displayName: "B" });
+        const b = f.store.projects.register({ root: secondRoot, displayName: "B" });
         assertEquals(
             (await f.get()).destinations[0].projects.map((p) => p.projectId),
             [f.projectId],
@@ -152,7 +152,7 @@ test("settings creates explicit Core grants, never approves new Projects, and ke
                 .status,
             200,
         );
-        f.store.setProjectStatus(b.projectId, "inactive");
+        f.store.projects.setStatus(b.projectId, "inactive");
         assertEquals((await f.get()).destinations[0].unavailableProjectCount, 1);
         assertEquals((await f.post("projects", { destinationId: grant.destinationId, projectIds: [] })).status, 200);
         assertEquals(
@@ -345,7 +345,7 @@ test("usage settings enforce pairing, origin, CSRF, and Project access without w
         );
         await f.grant();
         const before = readMetricsExportGrants();
-        f.store.setProjectStatus(f.projectId, "inactive");
+        f.store.projects.setStatus(f.projectId, "inactive");
         for (const projectId of [f.projectId, "unknown", f.project]) {
             for (const action of ["projects", "clear"]) {
                 assertEquals(
@@ -380,7 +380,7 @@ test("global recording preserves object settings and Project overrides while ena
         await setCustomSetting("workflowMetrics", { enabled: false, retained: "value" }, "global");
         const otherRoot = join(f.home, "ordinary");
         await mkdir(otherRoot);
-        const other = f.store.registerProject({ root: otherRoot, displayName: "Ordinary" });
+        const other = f.store.projects.register({ root: otherRoot, displayName: "Ordinary" });
         const response = await f.post("recording", { enabled: true });
         assertEquals(response.status, 200);
         const view: UsageSettingsResponse = await response.json();
@@ -399,7 +399,7 @@ test("owner recording control fences captures across off and on without an inter
     await withSettingsFixture(async (f) => {
         const root = join(f.home, "ordinary");
         await mkdir(root);
-        f.store.registerProject({ root, displayName: "Ordinary" });
+        f.store.projects.register({ root, displayName: "Ordinary" });
         assertEquals((await f.post("recording", { enabled: true })).status, 200);
         const path = getWorkflowMetricsFilePath(root);
         const metric = {

@@ -63,7 +63,7 @@ const fixture = defineGitFixture(async (root) => {
 async function workspace(root: string) {
     const dir = await mkdtemp(join(tmpdir(), "workspace-passive-"));
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
-    const project = store.registerProject({ root, displayName: "Compass Project" });
+    const project = store.projects.register({ root, displayName: "Compass Project" });
     const pairing = store.createPairingRequest({ codeFactory: () => "READ12", proofFactory: () => "proof" });
     store.approvePairingRequest(pairing.code);
     const claimed = store.claimPairingRequest(pairing.proof, {
@@ -117,7 +117,7 @@ test("the owner Plan Board follows the registered Project ID across checkout mov
         owner = await workspace(root);
         const { project, store } = owner;
         const handle = openProjectPlanStore(project.projectId, { registry: store.projects });
-        const empty = store.registerProject({ root: emptyRoot, displayName: "Empty Project" });
+        const empty = store.projects.register({ root: emptyRoot, displayName: "Empty Project" });
         const identity = projects.checkout.inspect(emptyRoot);
         if (identity.kind !== "existing") throw new Error("The empty Project was not registered.");
         const emptyStore = join(identity.identity.executionAccountHome, ".wld", "projects", empty.projectId);
@@ -542,7 +542,7 @@ test("canonical search ignores pending legacy controller hydration and keeps bot
         let owner: Awaited<ReturnType<typeof workspace>> | undefined;
         try {
             owner = await workspace(root);
-            const other = owner.store.registerProject({ root: healthy, displayName: "Healthy" });
+            const other = owner.store.projects.register({ root: healthy, displayName: "Healthy" });
             await owner.app.workspaceSearch.refresh();
             strictEqual((await (await owner.get("/api/owner/search?q=compass")).json()).results.length, 2);
             await put(
@@ -585,7 +585,7 @@ for (const failure of ["newer-package-version", "linked-document-directory"]) {
             try {
                 await enterProjectRuntime(root);
                 owner = await workspace(root);
-                const other = owner.store.registerProject({ root: healthy, displayName: "Healthy" });
+                const other = owner.store.projects.register({ root: healthy, displayName: "Healthy" });
                 await owner.app.workspaceSearch.refresh();
                 const indexed = await (await owner.get("/api/owner/search?q=compass")).json();
                 strictEqual(indexed.results.length, 2);

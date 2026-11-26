@@ -787,7 +787,7 @@ test("SessionRuntime persists a newly managed Pi transcript before cataloging it
         const store = openOwnerCoordinationStore({ dbPath: `${home}/owner.sqlite3` });
         try {
             ensureRuntimeModelFixture();
-            store.registerProject({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
+            store.projects.register({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
             const runtime = createSessionRuntime({
                 sessionStore: store,
                 ownerProcessKind: "test",
@@ -1097,7 +1097,7 @@ test("SessionRuntime automatically segments new Sessions in unregistered local p
                 const managed = runtime.getSessionSnapshot(created.sessionId)?.managed;
                 assertEquals(typeof managed?.runwieldSessionId, "string");
                 assertEquals(typeof managed?.currentSegmentId, "string");
-                assertEquals(store.listProjects(), []);
+                assertEquals(store.projects.list(), []);
             } finally {
                 await runtime.closeAllSessionsWhenIdle?.();
             }
@@ -1119,7 +1119,7 @@ test("SessionRuntime publishes generation zero before dehydrating newly managed 
         const store = openOwnerCoordinationStore({ dbPath: `${home}/owner.sqlite3` });
         try {
             ensureRuntimeModelFixture();
-            const project = store.registerProject({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
+            const project = store.projects.register({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
             const runtime = createSessionRuntime({
                 sessionStore: store,
                 ownerProcessKind: "test",
@@ -1341,7 +1341,7 @@ test("SessionRuntime hydrates dormant managed Sessions for direct Plan workflow 
             setModelMessages([fauxAssistantMessage(fauxText("Planning remains active after hydration."))]);
             const store = openOwnerCoordinationStore({ dbPath: `${home}/owner.sqlite3` });
             try {
-                store.registerProject({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
+                store.projects.register({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
                 const runtime = createSessionRuntime({
                     sessionStore: store,
                     ownerProcessKind: "test",
@@ -1440,7 +1440,7 @@ test("SessionRuntime can defer managed creation cataloging until Agent readiness
     const home = getHomeDir();
     const store = openOwnerCoordinationStore({ dbPath: join(home, "owner-defer.sqlite3") });
     try {
-        const project = store.registerProject({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
+        const project = store.projects.register({ root: cwd, now: () => "2026-01-01T00:00:01.000Z" });
 
         const runtime = createSessionRuntime({
             sessionStore: store,
@@ -3927,7 +3927,7 @@ test("SessionRuntime automatically catalogs and segments legacy transcripts when
                 assertEquals(cataloged?.piSessionId, piSessionId);
                 assertEquals(managed?.runwieldSessionId, cataloged?.runwieldSessionId);
                 assertEquals(managed?.generation, 0);
-                assertEquals(store.listProjects(), []);
+                assertEquals(store.projects.list(), []);
                 assertEquals(store.listSessionTranscriptSegments(managed?.runwieldSessionId || "").length, 1);
             } finally {
                 await runtime.closeAllSessionsWhenIdle?.();

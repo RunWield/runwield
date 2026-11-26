@@ -216,7 +216,7 @@ test("owner requests retain admitted document identity and reject stale saves wi
     let app;
     try {
         const p = await create(f.identity);
-        const project = store.registerProject({ root: f.root, displayName: "Package project" });
+        const project = store.projects.register({ root: f.root, displayName: "Package project" });
         const pairing = store.createPairingRequest();
         store.approvePairingRequest(pairing.code);
         const device = store.claimPairingRequest(pairing.proof);
@@ -270,7 +270,7 @@ test("owner requests retain admitted document identity and reject stale saves wi
         const { defineCommittedGitFixture } = await import("../../shared/git-test-fixture.ts");
         const { tree } = await import("../../shared/testing/plan-package-fixture.ts");
         const emptyRoot = await defineCommittedGitFixture({ "README.md": "Unimported\n" }).checkout();
-        const empty = store.registerProject({ root: emptyRoot, displayName: "Unimported" });
+        const empty = store.projects.register({ root: emptyRoot, displayName: "Unimported" });
         const beforeEmpty = await tree(emptyRoot);
         const [sidebarResponse, independentRead, unrelatedRead] = await Promise.all([
             handler(new Request(`${origin}/api/owner/sidebar`, { headers })),
