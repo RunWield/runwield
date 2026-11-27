@@ -18,6 +18,7 @@
         "@runwield/pi-ai": "workspace:*",
         "@runwield/plans": "workspace:*",
         "@runwield/projects": "workspace:*",
+        "@runwield/resources": "workspace:*",
         "@runwield/workflow": "workspace:*"
     }
 }

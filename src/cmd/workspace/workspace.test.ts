@@ -1,8 +1,11 @@
 import { serveHttp } from "../../shared/http-server.ts";
-import { type NativeSpawnOptions, spawnNativeProcess } from "../../shared/foreground-process.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { type CapturedProcessOutput } from "../../shared/captured-process.ts";
-import { type NativeProcess } from "../../shared/foreground-process.ts";
+import {
+    type NativeSpawnOptions,
+    spawnNativeProcess,
+    captureForegroundProcess,
+    type CapturedProcessOutput,
+    type NativeProcess,
+} from "@runwield/resources/process";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { test } from "node:test";

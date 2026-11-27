@@ -1,7 +1,7 @@
 import { env as processEnv, execPath } from "node:process";
 import { clearTimeout, setTimeout } from "node:timers";
 import { getCwd } from "../../../constants.ts";
-import { type NativeSpawnOptions, spawnNativeProcess } from "../../../shared/foreground-process.ts";
+import { type NativeSpawnOptions, spawnNativeProcess } from "@runwield/resources/process";
 /**
  * @module ui/tui/testing/subprocess-runner
  * Bounded subprocess runner used by Golden TUI scenarios.

@@ -1,5 +1,5 @@
 import { readFile as fsReadFile } from "node:fs/promises";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 /**
  * @module tools/delegate-agent
  * Context-isolated foreground Delegated Agent Session tool.

@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 
 export interface PublicationUpstream {
     remote: string;

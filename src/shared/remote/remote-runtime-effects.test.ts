@@ -6,7 +6,7 @@ import { stat, readFile, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { git } from "../workflow/validation-test-helpers.ts";
 import { assertRemoteStorageAbsent, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";

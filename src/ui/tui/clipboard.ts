@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { platform } from "node:process";
 import { getCwd } from "../../constants.ts";
-import { spawnForegroundProcess } from "../../shared/foreground-process.ts";
+import { spawnForegroundProcess } from "@runwield/resources/process";
 import { createRemoteClipboardReader, type RemoteClipboardConnection } from "../../shared/remote/clipboard-bridge.ts";
 
 export interface ClipboardImage {

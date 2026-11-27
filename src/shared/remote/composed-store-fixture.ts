@@ -5,7 +5,7 @@ import { equal } from "node:assert/strict";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { startRemoteControlService } from "./control.ts";
 import { getHomeDir } from "../../constants.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import type { RemoteInteractiveConfig } from "./entry.ts";
 
 const repository = defineCommittedGitFixture({ "README.md": "Composed remote owner\n" });

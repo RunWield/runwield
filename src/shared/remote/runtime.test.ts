@@ -52,16 +52,10 @@ async function fixture(fn: (fixture: RuntimeFixture) => Promise<void>) {
             ["src/shared/remote/host-prerequisites.ts", join(remote, "host-prerequisites.ts")],
         ])
             await copyFile(source, destination);
-        for (const relative of [
-            "scripts/build-metadata.ts",
-            "runtime-root.ts",
-            "src/constants.ts",
-            "src/shared/foreground-process.ts",
-            "src/shared/linux-process-group.ts",
-            "src/shared/captured-process.ts",
-        ]) {
+        for (const relative of ["scripts/build-metadata.ts", "runtime-root.ts", "src/constants.ts"]) {
             await symlink(new URL("../../../" + relative, import.meta.url), join(root, relative));
         }
+        await symlink(new URL("../../../node_modules", import.meta.url), join(root, "node_modules"), "dir");
         await fsWriteFile(
             join(shared, "build-identity.js"),
             `export const BUILD_ID = '${BUILD_ID}'; export const REMOTE_PROTOCOL_VERSION = ${PROTOCOL};`,

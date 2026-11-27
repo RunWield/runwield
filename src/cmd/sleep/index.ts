@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 /**

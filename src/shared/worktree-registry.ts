@@ -2,7 +2,7 @@ import { projects } from "@runwield/projects";
 import { openNativeFileLock } from "./native-file-lock.ts";
 import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import { open as fsOpen } from "node:fs/promises";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { realpathSync as fsRealpathSync } from "node:fs";
 import {
     mkdir as fsMkdir,
@@ -21,8 +21,13 @@ import { pid, platform } from "node:process";
 
 import { dirname } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { readLockFileSnapshot, removeLockFileIfSnapshotMatches, type LockFileSnapshot } from "./lock-file-snapshot.ts";
-import { getLockHostname, isPidAlive } from "./process-liveness.ts";
+import {
+    readLockFileSnapshot,
+    removeLockFileIfSnapshotMatches,
+    type LockFileSnapshot,
+    getLockHostname,
+    isPidAlive,
+} from "@runwield/resources/locks";
 import { CLI_BIN } from "../constants.ts";
 import {
     enterProjectRuntime,

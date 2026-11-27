@@ -1,7 +1,7 @@
 /** Native text clipboard writes shared by interactive copy actions. */
 import process from "node:process";
 import { getCwd } from "../constants.ts";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 
 /**
  * Copy text to the system clipboard using the platform-appropriate command.

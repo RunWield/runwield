@@ -1,8 +1,7 @@
 /** Review-surface background review agent/job routes. */
 
-import { spawnNativeProcess } from "../../../../shared/foreground-process.ts";
+import { spawnNativeProcess, captureForegroundProcess } from "@runwield/resources/process";
 import { isStandaloneExecutable } from "../../../../shared/runtime-identity.ts";
-import { captureForegroundProcess } from "../../../../shared/captured-process.ts";
 import { getCwd } from "../../../../constants.ts";
 import process from "node:process";
 import {

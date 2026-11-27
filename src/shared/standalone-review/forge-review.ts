@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { fetchPR, submitPRReview } from "@plannotator/shared/pr-provider.ts";
 import type { PRReviewFileComment, PRReviewFileLevelComment, PRRuntime } from "@plannotator/shared/pr-types.ts";
 import type { CodeReviewAnnotation } from "@runwield/session-runtime/interactions";

@@ -1,7 +1,7 @@
 import process from "node:process";
 import { serveHttp } from "../../shared/http-server.ts";
 import { getCwd, getHomeDir } from "../../constants.ts";
-import { type NativeProcess, spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { type NativeProcess, spawnNativeProcess } from "@runwield/resources/process";
 import { readableStdin } from "../../shared/stdin-stream.ts";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
 /* CLI-only remote connection. SSH supplies authentication, host verification and

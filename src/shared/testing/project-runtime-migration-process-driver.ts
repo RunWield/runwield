@@ -6,7 +6,7 @@ import process from "node:process";
 import { setInterval } from "node:timers";
 import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir } from "../../constants.ts";
-import { getLockHostname } from "../process-liveness.ts";
+import { getLockHostname } from "@runwield/resources/locks";
 import {
     inspectProjectRuntimeReadAccess,
     migrateLegacyProjectRuntimeState,

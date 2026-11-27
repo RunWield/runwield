@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { inspectLocalHomeStore } from "../../../plan-store/access.ts";
 import { withLocalPlanWorkflow } from "../../../plan-store/index.ts";
 import { selectedPackage } from "../../../plan-store/workflows.ts";

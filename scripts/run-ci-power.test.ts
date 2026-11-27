@@ -1,5 +1,5 @@
 import { getCwd } from "../src/constants.ts";
-import { captureForegroundProcess } from "../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { test } from "node:test";
 import { assertEquals } from "../src/testing/assertions.ts";
 import { runCi } from "./run-ci.ts";

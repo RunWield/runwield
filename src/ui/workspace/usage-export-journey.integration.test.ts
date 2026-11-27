@@ -20,7 +20,7 @@ import {
 import { buildMetricsExportObservation } from "../../shared/workflow/metrics-export-record.ts";
 import { readMetricsExportLedger } from "../../shared/workflow/metrics-export-ledger.ts";
 import { readMetricsExportStatus, runMetricsExportCycle } from "../../shared/workflow/metrics-export-scheduler.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import {
     attributes,
     copyProduction,

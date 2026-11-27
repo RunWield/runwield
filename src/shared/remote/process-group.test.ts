@@ -1,6 +1,6 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { ok as assert } from "node:assert/strict";
-import { terminateOwnedLinuxGroup } from "../linux-process-group.ts";
+import { terminateOwnedLinuxGroup } from "@runwield/resources/process";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promises";
@@ -188,7 +188,7 @@ for (const mode of ["sessions", "late-fork"]) {
         const source = join(directory, "fixture.ts");
         await writeFile(
             source,
-            descendantFixture.replace("MODULE", new URL("../linux-process-group.ts", import.meta.url).pathname),
+            descendantFixture.replace("MODULE", import.meta.resolve("@runwield/resources/process")),
         );
         const unrelated = await startProcess("sleep", ["60"]);
         const fixture = spawn(process.execPath, [source, mode], {
@@ -312,7 +312,7 @@ for (const mode of [
         try {
             await writeFile(
                 source,
-                changingTreeFixture.replace("MODULE", new URL("../linux-process-group.ts", import.meta.url).pathname),
+                changingTreeFixture.replace("MODULE", import.meta.resolve("@runwield/resources/process")),
             );
             const child = spawn(process.execPath, [source, mode], { stdio: ["ignore", "pipe", "pipe"] });
             fixture = child;

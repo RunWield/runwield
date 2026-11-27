@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, readdir, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { platform } from "node:process";
 import { getCwd, getHomeDir } from "../../constants.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { chmod as fsChmod, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { openNativeFileLock } from "../native-file-lock.ts";

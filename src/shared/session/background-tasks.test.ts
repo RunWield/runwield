@@ -1,5 +1,5 @@
 import { execPath, platform } from "node:process";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";

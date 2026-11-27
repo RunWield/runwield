@@ -4,7 +4,7 @@ import { basename, delimiter } from "node:path";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { test } from "node:test";
 import {
     chmod as fsChmod,
@@ -485,10 +485,7 @@ test("source remote help works without a generated identity and connection expla
         }
         for (const path of [
             "src/cmd/remote/index.ts",
-            "src/shared/foreground-process.ts",
             "src/shared/http-server.ts",
-            "src/shared/linux-process-group.ts",
-            "src/shared/captured-process.ts",
             "src/shared/native-file-lock.ts",
             "src/shared/socket-listener.ts",
             "src/shared/stdin-stream.ts",

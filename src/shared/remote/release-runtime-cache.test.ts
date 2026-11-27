@@ -9,7 +9,7 @@ import type { ArtifactMetadata } from "../../../scripts/build-metadata.ts";
 import { getHomeDir } from "../../constants.ts";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import {
     type LauncherIdentity,
     obtainReleaseRuntime,

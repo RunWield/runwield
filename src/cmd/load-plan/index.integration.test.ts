@@ -3,7 +3,7 @@ import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixt
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "../../shared/workflow/session-planning-worktree.ts";
 import { bashFixtureExecutable } from "../../../scripts/bash-fixture.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,

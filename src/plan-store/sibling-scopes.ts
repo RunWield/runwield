@@ -2,7 +2,7 @@ import { projects } from "@runwield/projects";
 import { hasCanonicalPlanAccess } from "./handles.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/workflow/epic-sibling-drafts

@@ -1,6 +1,6 @@
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes, assertThrows } from "../testing/assertions.ts";
-import { isMissingExecutableError, spawnForegroundProcess, spawnForegroundShell } from "./foreground-process.ts";
+import { isMissingExecutableError, spawnForegroundProcess, spawnForegroundShell } from "@runwield/resources/process";
 import { getCwd } from "../constants.ts";
 
 import { test } from "node:test";
@@ -367,7 +367,7 @@ test(
             command: execPath,
             args: [
                 "--eval",
-                `import { spawnForegroundShell } from ${JSON.stringify(new URL("./foreground-process.ts", import.meta.url).href)};
+                `import { spawnForegroundShell } from ${JSON.stringify(import.meta.resolve("@runwield/resources/process"))};
                 const controller = new AbortController();
                 spawnForegroundShell({
                     command: 'sleep 30 & echo $$ $! > "$PID_FILE"; wait',

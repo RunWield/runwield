@@ -1,7 +1,7 @@
 import process from "node:process";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { writeFile, stat } from "node:fs/promises";
 import { findIndexedDocumentIdsByRecordId } from "../work-records/index-adapter.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";

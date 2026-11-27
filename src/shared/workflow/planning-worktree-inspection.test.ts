@@ -208,7 +208,7 @@ test("partial-clone passive object reads never fetch missing promised Plan blobs
             await git(source, ["clone", "--bare", source, remote]);
             await git(remote, ["config", "uploadpack.allowFilter", "true"]);
             await git(source, ["clone", "--filter=blob:none", "--no-checkout", `file://${remote}`, partial]);
-            const { captureForegroundProcess } = await import("../captured-process.ts");
+            const { captureForegroundProcess } = await import("@runwield/resources/process");
             const { findTargetBranchPlan, loadTargetPlan } = await import("./planning-worktree.ts");
             const { readMissingExecutionPlan } = await import("./execution-worktree-rescue.ts");
             const { readdir } = await import("node:fs/promises");

@@ -19,7 +19,7 @@ import {
     workRecordsForCheckout,
 } from "../../src/plan-store/index.ts";
 import { checkpointExecutionWorktree } from "../../src/shared/worktree.ts";
-import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { resolveTargetedWorkRecordSource } from "../../src/shared/work-records/auto-generation.ts";
 import { gitStatusPaths } from "../../src/shared/git-runtime-safety.ts";
 import { isRunWieldOwnedRuntimePath } from "../../src/shared/runwield-owned-paths.ts";

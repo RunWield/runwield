@@ -18,7 +18,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { getCwd } from "../../../constants.ts";
-import { captureForegroundProcess } from "../../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists } from "../../../testing/assertions.ts";
 import { fileURLToPath as fromFileUrl } from "node:url";

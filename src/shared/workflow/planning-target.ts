@@ -1,5 +1,5 @@
 import { stat as fsStat } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { resolvePublicationUpstream } from "../publication-target.ts";
 import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 

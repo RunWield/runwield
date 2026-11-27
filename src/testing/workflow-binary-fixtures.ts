@@ -4,7 +4,7 @@ import process, { execPath, platform, versions } from "node:process";
 import { tmpdir } from "node:os";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 
 // Only the executable contents are shared. Every fixture has its own command
 // paths and logs; PATH still changes so production availability checks run.

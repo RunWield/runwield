@@ -1,7 +1,7 @@
 import { workRecords, type WorkRecordResource } from "@runwield/plans/work-records";
 import { opendir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { mergeFrontMatterText, parsePlanFrontMatter } from "@runwield/plans/format";
 async function git(cwd: string, args: string[]): Promise<string> {
     const result = await captureForegroundProcess("git", { cwd, args });

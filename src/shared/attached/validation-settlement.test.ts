@@ -14,7 +14,7 @@ import {
     type AttachedWorkflowRecord,
 } from "./record-store.ts";
 import { parseDiffFiles } from "../workflow/review-diff.ts";
-import { getLockHostname } from "../process-liveness.ts";
+import { getLockHostname } from "@runwield/resources/locks";
 import { pruneEntry } from "../worktree-registry.ts";
 import { type AttachedJsonObject, type AttachedWorkflowView, type AttachedOperationResult } from "./operations.ts";
 import process from "node:process";

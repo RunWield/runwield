@@ -1,7 +1,7 @@
 import { workRecords } from "@runwield/plans/work-records";
 import { createRemoteWorkspaceApp } from "../../ui/workspace/server.ts";
 import { serveHttp } from "../http-server.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { equal, ok, deepEqual, rejects } from "node:assert/strict";
 import { mkdtemp, mkdir, readdir, stat, readFile, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";

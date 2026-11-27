@@ -1,6 +1,6 @@
 import { projects } from "@runwield/projects";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { lstat as fsLstat } from "node:fs/promises";
 /** Recover a deleted execution checkout from Git evidence left by a manual rescue. */
 import { parsePlanFrontMatter } from "@runwield/plans/format";

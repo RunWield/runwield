@@ -6,8 +6,7 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { tmpdir } from "node:os";
 import { defineCommittedGitFixture } from "./git-test-fixture.ts";
-import { captureForegroundProcess } from "./captured-process.ts";
-import { spawnNativeProcess } from "./foreground-process.ts";
+import { captureForegroundProcess, spawnNativeProcess } from "@runwield/resources/process";
 import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import { getRunWieldRuntimeDir } from "../constants.ts";
 

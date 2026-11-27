@@ -1,7 +1,7 @@
 import { rmdir as fsRmdir } from "node:fs/promises";
 // @ts-nocheck: This fixture runs through scripts/run-tests.ts outside Astro check.
 // @ts-nocheck: This fixture runs through scripts/run-tests.ts outside Astro check.
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";

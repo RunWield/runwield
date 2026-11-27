@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { basename, dirname, join, normalize } from "node:path";
 import { realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 /**

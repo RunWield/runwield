@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { connect, type Socket } from "node:net";
 import { rmdir } from "node:fs/promises";
 import { readStreamInto } from "../socket-listener.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 import process from "node:process";
 import {

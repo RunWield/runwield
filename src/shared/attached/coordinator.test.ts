@@ -1,6 +1,6 @@
 import { readStatus } from "./coordinator.ts";
 import process from "node:process";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { hostname } from "node:os";
 import { test } from "node:test";
 import {

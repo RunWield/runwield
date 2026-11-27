@@ -7,7 +7,7 @@ import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
 import { recordPlanEvent } from "../../../plan-store/index.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../execution-start.ts";
 import { git } from "../../git-test-fixture.ts";
-import { captureForegroundProcess } from "../../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import type { PackageDocuments } from "@runwield/plans/history";
 import type { DeliveryCopy } from "@runwield/plans/publication-copies";
 

@@ -6,7 +6,7 @@ import { Buffer } from "node:buffer";
 import { isAbsolute, join, relative } from "node:path";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { getHomeDir } from "../../constants.ts";
-import { spawnForegroundProcess } from "../foreground-process.ts";
+import { spawnForegroundProcess } from "@runwield/resources/process";
 import type { ImageGenerationSettings } from "../image-generation-settings.ts";
 import { mimeTypeForImagePath } from "../session/image-attachments.ts";
 import { resolveCodexExecutable } from "./codex-executable.ts";

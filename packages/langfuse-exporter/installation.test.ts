@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,

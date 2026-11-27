@@ -1,7 +1,7 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { test } from "node:test";
 import { writeFile as fsWriteFile, stat as fsStat } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { join } from "node:path";

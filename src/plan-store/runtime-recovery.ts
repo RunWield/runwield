@@ -2,7 +2,7 @@
 import fsPromises, { readdir, readFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type NativeFileLock, openNativeFileLock } from "../shared/native-file-lock.ts";
-import { info, syncDirectory, writeAtomic, preserve, equalBytes } from "../shared/runtime-recovery-files.ts";
+import { info, syncDirectory, writeAtomic, preserve, equalBytes } from "@runwield/resources/runtime-recovery-files";
 import type { ControllerRecord } from "./controllers.ts";
 function parseController(bytes: Uint8Array): ControllerRecord | null {
     try {

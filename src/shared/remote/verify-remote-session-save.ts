@@ -11,7 +11,7 @@ import {
     chmod as fsChmod,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { serveHttp } from "../http-server.ts";
 import { getCwd } from "../../constants.ts";
 import { ok as assert } from "node:assert/strict";
@@ -118,7 +118,7 @@ async function main() {
     let remotePort = 0;
     let localPort = 0;
     let nativeControlPort = 0;
-    let tunnel: import("../foreground-process.ts").NativeProcess | undefined;
+    let tunnel: import("@runwield/resources/process").NativeProcess | undefined;
     let tunnelOutput: ReturnType<typeof collectProcessOutput> | undefined;
     let fixture: Awaited<ReturnType<typeof makeControlFixture>> | undefined;
     let server: ReturnType<typeof serveHttp> | undefined;
@@ -126,7 +126,7 @@ async function main() {
     const release = deferred();
     const stalled = deferred();
     let stall = false;
-    const processes: import("../foreground-process.ts").NativeProcess[] = [];
+    const processes: import("@runwield/resources/process").NativeProcess[] = [];
     let healthTimer: ReturnType<typeof setInterval> | undefined;
     let healthInFlight = Promise.resolve();
     async function cleanup() {

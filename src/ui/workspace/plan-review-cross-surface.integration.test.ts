@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 // @ts-nocheck: Owner-service result records have implicit types.
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { test } from "node:test";
 import process from "node:process";
 import { ok as assert } from "node:assert/strict";

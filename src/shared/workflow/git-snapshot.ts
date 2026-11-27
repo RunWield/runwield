@@ -1,7 +1,6 @@
 import { resolvePublicationUpstream } from "../publication-target.ts";
-import { isMissingExecutableError } from "../foreground-process.ts";
+import { isMissingExecutableError, captureForegroundProcess } from "@runwield/resources/process";
 import { open } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
 import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/workflow/git-snapshot

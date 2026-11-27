@@ -96,7 +96,7 @@ test("a fresh process resumes import after canonical publication and before loca
         const attrs = recordAttrs({ status: "pending_verification" });
         const text = workRecords.documents.format(attrs, recordBody);
         await fs.writeFile(path, text);
-        const { captureForegroundProcess } = await import("../captured-process.ts");
+        const { captureForegroundProcess } = await import("@runwield/resources/process");
         const invoke = (interrupt = false) =>
             captureForegroundProcess(process.execPath, {
                 cwd: f.root,

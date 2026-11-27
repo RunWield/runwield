@@ -2,7 +2,7 @@ import { seedPlanState } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { compactStatus } from "./presentation.ts";
 import { readAttachedAction } from "./coordinator.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { test } from "node:test";
 import { writeFile as fsWriteFile, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";

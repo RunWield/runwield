@@ -1,5 +1,5 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 import { makeTempFile } from "../../testing/temp-file.ts";
 import { test } from "node:test";

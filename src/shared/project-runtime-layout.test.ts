@@ -1,17 +1,15 @@
 import { projects } from "@runwield/projects";
 import { openNativeFileLock } from "./native-file-lock.ts";
-import { getLockHostname } from "./process-liveness.ts";
+import { getLockHostname } from "@runwield/resources/locks";
 import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
 import { toNamespacedPath } from "node:path";
 import { writeRuntimeExecutableFixture } from "../testing/runtime-executable-fixture.ts";
 import { delimiter } from "node:path";
 import fsPromises from "node:fs/promises";
-import { type NativeProcess } from "./foreground-process.ts";
+import { type NativeProcess, captureForegroundProcess, spawnNativeProcess } from "@runwield/resources/process";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
-import { captureForegroundProcess } from "./captured-process.ts";
 import { getCwd } from "../constants.ts";
-import { spawnNativeProcess } from "./foreground-process.ts";
 import { makeTempFile } from "../testing/temp-file.ts";
 import { test } from "node:test";
 import {

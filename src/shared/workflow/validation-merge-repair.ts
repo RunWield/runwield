@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import type { MergeRepairError } from "../worktree.ts";
 /**
  * @module shared/workflow/validation-merge-repair

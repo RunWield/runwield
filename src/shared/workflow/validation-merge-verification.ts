@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { lstat as fsLstat } from "node:fs/promises";
 import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 /**

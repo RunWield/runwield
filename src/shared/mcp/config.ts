@@ -1,6 +1,6 @@
 import { projects } from "@runwield/projects";
 import { platform } from "node:process";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { type Stats } from "node:fs";
 import { lstat as fsLstat, readFile as fsReadFile } from "node:fs/promises";
 import { parse as parseJsonc } from "@runwield/parsing/jsonc";

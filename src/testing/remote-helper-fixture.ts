@@ -2,20 +2,32 @@ import { mkdir, readFile, writeFile, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** Preserve the production module's imports when a fixture writes its source outside the checkout. */
+export async function readRemoteFixtureSource(
+    sourceUrl: URL,
+    replacements: Readonly<Record<string, string>>,
+): Promise<string> {
+    const source = await readFile(sourceUrl, "utf8");
+    return source.replace(
+        /\b(from\s+|import\()"((?:\.|@runwield\/)[^"]+)"/g,
+        (_match, prefix: string, specifier: string) => {
+            const path = replacements[specifier] ?? fileURLToPath(import.meta.resolve(specifier, sourceUrl.href));
+            return `${prefix}${JSON.stringify(path)}`;
+        },
+    );
+}
+
 /** Copy production code with fixture artifact metadata. All owned behavior stays intact. */
 export async function writeFixtureHelperModule(root: string, manifestPath: string): Promise<string> {
     const sourceUrl = new URL("../shared/remote/helpers.ts", import.meta.url);
-    const source = (await readFile(sourceUrl, "utf8")).replace(/from "(\.[^"]+)"/g, (_match, relative: string) => {
-        const path = relative.endsWith("tested-dependencies.json")
-            ? manifestPath
-            : fileURLToPath(new URL(relative, sourceUrl));
-        return `from ${JSON.stringify(path)}`;
+    const source = await readRemoteFixtureSource(sourceUrl, {
+        "../../../packaging/remote/tested-dependencies.json": manifestPath,
     });
     const path = join(root, "helpers.ts");
     await writeFile(path, source);
     return path;
 }
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { sha256Bytes } from "../../scripts/build-metadata.ts";
 import { remoteHelperPaths, type RemoteHelperPin } from "../shared/remote/helpers.ts";
 

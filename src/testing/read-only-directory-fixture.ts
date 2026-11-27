@@ -2,7 +2,7 @@
 import { chmod, stat } from "node:fs/promises";
 import { platform } from "node:process";
 import { dirname } from "node:path";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 
 /** Deny writes/deletions while retaining reads; returns an awaited permission-restoration action. */
 export async function makeReadOnlyDirectoryFixture(path: string): Promise<() => Promise<void>> {

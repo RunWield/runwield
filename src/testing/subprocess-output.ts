@@ -1,6 +1,5 @@
 import { Buffer } from "node:buffer";
-import type { NativeProcess } from "../shared/foreground-process.ts";
-import type { CapturedProcessOutput } from "../shared/captured-process.ts";
+import type { NativeProcess, CapturedProcessOutput } from "@runwield/resources/process";
 
 /** Drain both pipes while awaiting the actual child exit. */
 export async function collectProcessOutput(child: NativeProcess): Promise<CapturedProcessOutput> {

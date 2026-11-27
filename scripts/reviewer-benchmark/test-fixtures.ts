@@ -4,7 +4,7 @@ import { cp, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineGitFixture } from "../../src/shared/git-test-fixture.ts";
-import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 
 export const corpusPath = fileURLToPath(new URL("../../evals/reviewer/", import.meta.url));
 export const corpusIds: string[] = [];

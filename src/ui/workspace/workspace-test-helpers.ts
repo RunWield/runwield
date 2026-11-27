@@ -1,5 +1,5 @@
 import type { APIContext } from "astro";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 export interface TestEnvironmentValues {
     [key: string]: string | undefined;
 }

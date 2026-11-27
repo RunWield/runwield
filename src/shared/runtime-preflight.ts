@@ -1,6 +1,6 @@
 import { env } from "node:process";
 import { getCwd } from "../constants.ts";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 /**
  * @module shared/runtime-preflight
  * Shared startup/execution preflight checks.

@@ -4,7 +4,7 @@ import lockfile from "proper-lockfile";
 import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { getCwd } from "../../constants.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { test } from "node:test";
 import { readFile as fsReadFile, mkdir as fsMkdir, writeFile as fsWriteFile, rm as fsRm } from "node:fs/promises";
 import process from "node:process";

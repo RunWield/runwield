@@ -100,7 +100,7 @@ Official provider documentation confirms that remote browser login is not the sa
   [`review launcher tests`](../../src/ui/review/review-launcher.test.ts).
 - RunWield has process-tree cancellation, but this does not prove cleanup after SSH loss. CLI backends, helpers, and MCP
   subprocesses do not all share the same termination path. Sources:
-  [`foreground-process.ts`](../../src/shared/foreground-process.ts),
+  [`foreground-process.ts`](../../packages/resources/foreground-process.ts),
   [`foreground-process tests`](../../src/shared/foreground-process.test.ts),
   [`MCP integration`](../../packages/pi-ai/mcp.ts).
 - Network loss is not instantly detectable. Stopping a process does not undo files already written or an external action

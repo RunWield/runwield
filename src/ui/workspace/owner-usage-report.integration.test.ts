@@ -3,9 +3,8 @@ import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 import process from "node:process";
 import { getCwd } from "../../constants.ts";
-import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { spawnNativeProcess, captureForegroundProcess } from "@runwield/resources/process";
 import { setCustomSetting } from "../../shared/settings.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { addEntry } from "../../shared/worktree-registry.ts";
 import {
     mkdir as fsMkdir,

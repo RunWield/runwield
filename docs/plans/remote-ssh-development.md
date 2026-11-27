@@ -11,7 +11,7 @@ affectedPaths:
     - "src/extensions/"
     - "src/shared/mcp/"
     - "src/shared/workflow/"
-    - "src/shared/foreground-process.ts"
+    - "packages/resources/foreground-process.ts"
     - "src/ui/review/"
     - "src/ui/workspace/server.ts"
     - "scripts/compile.js"
@@ -448,7 +448,7 @@ platform scope, trust, persistence ownership, or dependency strategy returns for
   locks/commits, settlement, rollover, attachments, offline history and resume.
 - `src/extensions/mnemoteca/`, `src/cmd/sleep/`, and Work Record indexing — one explicit personal Memory mapping and
   remote canonical records. Other extensions retain the correct execution location.
-- `src/shared/mcp/`, `src/shared/foreground-process.ts`, and runtime child-process creation — origin-aware custom
+- `src/shared/mcp/`, `packages/resources/foreground-process.ts`, and runtime child-process creation — origin-aware custom
   integrations, connection-owned processes, cancellation outside blocked Agent execution.
 - `src/shared/workflow/` — preserve project-owned workflow truth, remote validation/publication, and evidence-based
   recovery while Session history is local.

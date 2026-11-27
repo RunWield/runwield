@@ -2,7 +2,7 @@ import process from "node:process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { bashFixtureExecutable, bashFixturePath } from "../../../scripts/bash-fixture.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 import { mkdir, mkdtemp, readdir, writeFile, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";

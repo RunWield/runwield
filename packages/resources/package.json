@@ -5,8 +5,11 @@
     "exports": {
         "./fs": "./fs.ts",
         "./home": "./home.ts",
+        "./locks": "./locks.ts",
         "./owner-database": "./owner-database/index.ts",
         "./personal": "./personal.ts",
+        "./process": "./process.ts",
+        "./runtime-recovery-files": "./runtime-recovery-files.ts",
         "./sqlite": "./sqlite.ts"
     }
 }

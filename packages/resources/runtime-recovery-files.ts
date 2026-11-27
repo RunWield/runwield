@@ -1,4 +1,4 @@
-import { recoverWindowsRename } from "./native-file-replace-windows.ts";
+import { recoverWindowsRename } from "./fs.ts";
 import { platform } from "node:process";
 import fsPromises, { open as fsOpen, lstat as fsLstat, mkdir as fsMkdir } from "node:fs/promises";
 import { type Stats } from "node:fs";

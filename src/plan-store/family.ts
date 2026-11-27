@@ -1,7 +1,7 @@
 import { projects } from "@runwield/projects";
 import { hasCanonicalPlanAccess } from "./index.ts";
 import { preparePlanWorkflow } from "./index.ts";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { readFile as fsReadFile } from "node:fs/promises";
 /** Child completion combines current definitions with already-published branch history. */
 import { join } from "node:path";

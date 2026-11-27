@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { assertManagedRuntimePath } from "../project-runtime-managed.ts";
 import { findById, type WorktreeRegistryEntry } from "../worktree-registry.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 export interface ExecutionRecoveryRequest {
     projectId: string;
     repositoryId: string;
@@ -126,7 +126,7 @@ export async function inspectNonGitExecution(cwd: string, request: ManagedExecut
     )
         throw new Error("Non-Git recovery belongs to another execution owner.");
     const result = await (
-        await import("../captured-process.ts")
+        await import("@runwield/resources/process")
     ).captureForegroundProcess("git", { cwd, args: ["rev-parse", "--is-inside-work-tree"] });
     if (result.success || !new TextDecoder().decode(result.stderr).includes("not a git repository"))
         throw new Error("Execution directory is not a proven non-Git project.");

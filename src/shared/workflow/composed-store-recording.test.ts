@@ -4,7 +4,7 @@ import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { realpath, writeFile, stat, lstat, rm, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import {
     authorLocalPlan,

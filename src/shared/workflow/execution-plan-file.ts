@@ -1,6 +1,6 @@
 import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
 import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile } from "node:fs/promises";
 /**
  * Materialize and verify canonical Plan files inside execution worktrees.

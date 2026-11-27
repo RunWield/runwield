@@ -1,4 +1,4 @@
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";

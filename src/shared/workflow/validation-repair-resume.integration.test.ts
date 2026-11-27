@@ -2,7 +2,7 @@ import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
 import { readFile as fsReadFile, stat as fsStat, utimes as fsUtimes, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { getLockHostname } from "../process-liveness.ts";
+import { getLockHostname } from "@runwield/resources/locks";
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { join } from "node:path";

@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 /** External Mnemoteca process capability used by Work Record indexing. */
 

@@ -66,7 +66,7 @@ test("explicit guide command keeps subprocess output and failures", async () => 
 
 test("remote guide uses the laptop model bridge with remote files and no remote Session storage", async () => {
     const { withRemoteRuntimeFixture, assertRemoteStorageAbsent } = await import("./remote-runtime-test-fixture.ts");
-    const { spawnNativeProcess } = await import("../foreground-process.ts");
+    const { spawnNativeProcess } = await import("@runwield/resources/process");
     const { join } = await import("node:path");
     const { fauxToolCall } = await import("@earendil-works/pi-ai");
     await withRemoteRuntimeFixture(async (f) => {

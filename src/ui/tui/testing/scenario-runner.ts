@@ -541,7 +541,7 @@ import { readGoldenPublishedPlan } from "./published-plan-fixture.ts";
 
 import { withRetainedPlanFixture } from "../../../shared/testing/retained-plan-fixture.ts";
 
-import { captureForegroundProcess } from "../../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 
 import { tmpdir } from "node:os";
 

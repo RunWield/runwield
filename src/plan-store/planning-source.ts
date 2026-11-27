@@ -10,7 +10,7 @@ import {
 import type { PlanFrontMatterWithCustomFields } from "@runwield/plans";
 import type { PlanDocumentDiagnostic } from "./index.ts";
 
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
 

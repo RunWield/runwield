@@ -1,6 +1,6 @@
 import process from "node:process";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import {
     chmod as fsChmod,
     mkdir as fsMkdir,

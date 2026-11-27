@@ -11,8 +11,13 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
-import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
-import { getLockHostname, isLockHolderGone, isLockHolderUnattributable } from "../process-liveness.ts";
+import {
+    readLockFileSnapshot,
+    removeLockFileIfSnapshotMatches,
+    getLockHostname,
+    isLockHolderGone,
+    isLockHolderUnattributable,
+} from "@runwield/resources/locks";
 import { type TriageOutcome } from "@runwield/tools";
 import {
     type AttachedReviewChat,

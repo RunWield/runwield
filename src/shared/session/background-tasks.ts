@@ -4,7 +4,7 @@ import { mkdir as fsMkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.ts";
 import { remoteBackgroundTaskLogDirectory } from "../remote/background-task-logs.ts";
-import { spawnForegroundShell } from "../foreground-process.ts";
+import { spawnForegroundShell } from "@runwield/resources/process";
 import { extractAssistantOutput } from "../workflow/workflow-results.ts";
 import type { DelegatedAgentSessionOptions } from "../../tools/delegate-agent.ts";
 import type { HostedSession } from "@runwield/session-runtime/host";

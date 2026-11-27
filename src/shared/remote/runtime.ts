@@ -1,5 +1,5 @@
 import { getCwd } from "../../constants.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { verifyBuildArtifact, type ArtifactMetadata } from "../../../scripts/build-metadata.ts";
 import { fixedPythonCommand } from "./target.ts";

@@ -3,7 +3,7 @@ import { projects, type HomeProjectOwner, type ProjectIdentity } from "@runwield
 import { validateManagedRuntimeTransfer, type ManagedRuntimeTransfer } from "../project-runtime-managed.ts";
 import { basename } from "node:path";
 import { getCwd, getHomeDir } from "../../constants.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { fixedPythonCommand } from "./target.ts";
 import {
     receiveManagedRuntimeTransfer,

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { resolveRemoteTarget } from "./target.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 
 for (const state of ["present", "absent", "unreadable"] as const) {

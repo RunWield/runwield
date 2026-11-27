@@ -17,6 +17,7 @@
         "@runwield/agents": "workspace:*",
         "@runwield/plans": "workspace:*",
         "@runwield/projects": "workspace:*",
+        "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*"
     }
 }

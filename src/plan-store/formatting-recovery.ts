@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 /** Recover formatting-only drift left by older controller writes after sealing. */
 import { extractYaml } from "../shared/front-matter.ts";
 import { isDeepStrictEqual } from "node:util";

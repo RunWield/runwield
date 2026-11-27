@@ -735,7 +735,7 @@ sys.exit(result.returncode)
             equal(current.plan.attrs.status, "draft");
             equal(Boolean(current.plan.attrs.verifiedAt), false);
             const git = await (
-                await import("../shared/captured-process.ts")
+                await import("@runwield/resources/process")
             ).captureForegroundProcess("git", { cwd: root, args: ["init"] });
             equal(git.success, true);
             await rejects(

@@ -406,9 +406,13 @@ import { pid, platform } from "node:process";
 
 import { extractYaml, test as hasFrontMatter } from "./shared/front-matter.ts";
 
-import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "./shared/lock-file-snapshot.ts";
+import {
+    readLockFileSnapshot,
+    removeLockFileIfSnapshotMatches,
+    getLockHostname,
+    isLockHolderGone,
+} from "@runwield/resources/locks";
 
-import { getLockHostname, isLockHolderGone } from "./shared/process-liveness.ts";
 
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 

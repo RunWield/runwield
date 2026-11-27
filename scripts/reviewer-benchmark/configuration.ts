@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import type { RunConfiguration } from "./records.ts";
 import { getReviewerConfiguration } from "../../src/shared/workflow/standalone-reviewer.ts";
 import type { FixtureReviewOptions } from "./reviewer.ts";

@@ -1,6 +1,6 @@
 import { readPlanReviewPresentation } from "../../plan-store/index.ts";
 
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import process from "node:process";
 /**
  * @module ui/review/review-launcher

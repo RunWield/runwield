@@ -7,7 +7,7 @@ import { openNativeFileLock } from "../native-file-lock.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import process from "node:process";

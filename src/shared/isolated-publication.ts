@@ -7,7 +7,7 @@ import type { PackagePublicationReference } from "@runwield/plans/publication-co
 import { resolvePublicationUpstream as resolveUpstream } from "./publication-target.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { mkdir as fsMkdir, rm as fsRm, stat as fsStat } from "node:fs/promises";
 /**
  * Assemble Direct Delivery in a temporary clone and push it when an upstream

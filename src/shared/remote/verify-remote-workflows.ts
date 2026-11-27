@@ -17,7 +17,7 @@ import { compileBun } from "../../../scripts/compile-bun.ts";
 import { readPinnedBunVersion } from "../../../scripts/check-bun-runtime.ts";
 import { fileURLToPath } from "node:url";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { serveHttp } from "../http-server.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";

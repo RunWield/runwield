@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { getCwd } from "../src/constants.ts";
-import { spawnNativeProcess } from "../src/shared/foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { runWithSnip, writeSnipCommandResult } from "./run-with-snip.ts";
 

@@ -4,7 +4,7 @@ import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import process, { execPath, platform, versions } from "node:process";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { runtimeSourceArgs } from "./runtime-source-args.ts";
 
 const compiled = new Map<string, Promise<string>>();

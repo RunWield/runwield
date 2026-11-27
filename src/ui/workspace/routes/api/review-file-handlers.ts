@@ -4,7 +4,7 @@ import { realpathSync, statSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { isPathInside, readContainedTextFile } from "../../../../shared/contained-text-file.ts";
 import { isAbsolute, relative, resolve } from "node:path";
-import { captureForegroundProcess } from "../../../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { readWorktreeReviewBaseFile, WorktreeReviewComparisonError } from "../../../../shared/workflow/git-snapshot.ts";
 import { getCwd } from "../../../../constants.ts";
 

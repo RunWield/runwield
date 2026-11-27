@@ -5,8 +5,7 @@ import { delimiter, join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { spawnForegroundProcess } from "../../shared/foreground-process.ts";
+import { captureForegroundProcess, spawnForegroundProcess } from "@runwield/resources/process";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
 
 // A compiled parent must not dispatch its private commands to a different installed wld.

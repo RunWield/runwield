@@ -5,7 +5,7 @@ import { clearInterval, setInterval } from "node:timers";
 import { type NativeFileLock, openNativeFileLock } from "../native-file-lock.ts";
 import { mkdir as fsMkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { type LockFileSnapshot, readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
+import { type LockFileSnapshot, readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "@runwield/resources/locks";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { workRecords, type WorkRecordResource } from "@runwield/plans/work-records";
 import { listWorkRecords, replaceWorkRecord } from "./store.ts";

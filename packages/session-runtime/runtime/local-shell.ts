@@ -2,7 +2,7 @@ import { normalizeToolResult } from "@runwield/pi-ai/turn";
 import { AGENTS } from "../../../src/shared/session/agent-registry.ts";
 import { RuntimeEventTypes } from "../events.ts";
 import { describeRuntimeTool } from "../../../src/shared/session/tool-event-title.ts";
-import { spawnForegroundShell } from "../../../src/shared/foreground-process.ts";
+import { spawnForegroundShell } from "@runwield/resources/process";
 
 import { getRuntimeRootAgentSession } from "./support.ts";
 

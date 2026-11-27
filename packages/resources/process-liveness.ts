@@ -1,5 +1,5 @@
 /**
- * @module shared/process-liveness
+ * @module @runwield/resources/locks
  * Whether the process that wrote a lock file is still running.
  *
  * A lock is a claim by a specific process. When that process is gone the claim is

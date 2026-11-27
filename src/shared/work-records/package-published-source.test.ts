@@ -5,7 +5,7 @@ import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { publicationFixture } from "../workflow/testing/package-publication-fixture.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { git } from "../git-test-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";

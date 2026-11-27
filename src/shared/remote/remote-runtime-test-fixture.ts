@@ -1,5 +1,5 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";

@@ -5,8 +5,7 @@ import { delimiter, posix } from "node:path";
 import type { Socket } from "node:net";
 import { Readable, Writable } from "node:stream";
 import { listenSocket, readStreamInto } from "../socket-listener.ts";
-import { type NativeProcess, spawnNativeProcess } from "../foreground-process.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { type NativeProcess, spawnNativeProcess, captureForegroundProcess } from "@runwield/resources/process";
 import {
     chmod as fsChmod,
     lstat as fsLstat,

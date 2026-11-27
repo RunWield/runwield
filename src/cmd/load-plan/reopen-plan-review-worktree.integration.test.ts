@@ -4,7 +4,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { fileURLToPath } from "node:url";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { test } from "node:test";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
