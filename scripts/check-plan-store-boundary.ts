@@ -29,6 +29,9 @@ const privateMembers = new Set([
     "packages/plans/managed-operation.ts",
     "packages/plans/managed-store-host.ts",
     "packages/plans/retained-checkout.ts",
+    "packages/plans/retained-execution.ts",
+    "packages/plans/checkout-controller.ts",
+    "packages/plans/execution-git-snapshot.ts",
     // Existing retained-copy implementation. Its operations are public only through the owner interface.
     "src/shared/workflow/execution-plan-file.ts",
 ]);
@@ -67,6 +70,23 @@ function isManagedStateFacadeExport(file: string, specifier: ts.Node): boolean {
     const names = statement.exportClause.elements.map((entry) => (entry.propertyName ?? entry.name).text);
     if (file === managedConnectionDriver) return !names.includes("configureManagedPlanStore");
     return file === managedStoreHost && names.length === 1 && names[0] === "configureManagedPlanStore";
+}
+
+/** The existing Git repair and planning paths consume one named operation each. */
+function isWorkflowSnapshotImport(file: string, target: string, specifier: ts.Node): boolean {
+    if (target !== "packages/plans/retained-checkout.ts") return false;
+    const statement = specifier.parent;
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.name) return false;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings) || bindings.elements.length !== 1) return false;
+    const member = bindings.elements[0];
+    const name = (member.propertyName ?? member.name).text;
+    return (
+        (file === "src/shared/workflow/execution-worktree-rescue.ts" && name === "findMissingExecutionSnapshot") ||
+        ((file === "src/shared/workflow/planning-target.ts" ||
+            file === "src/shared/workflow/planning-worktree-inspection.test.ts") &&
+            name === "TargetBranchSnapshotUnavailableError")
+    );
 }
 
 function isAllowedStoreExport(statement: ts.Statement): boolean {
@@ -191,6 +211,7 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
             target !== pureSurface &&
             !(target === managedStoreHost && file === remoteBootstrap) &&
             ownerMember(target) &&
+            !isWorkflowSnapshotImport(file, target, node) &&
             !PLAN_STORE_QUALIFICATIONS[file]?.modules.includes(target)
         )
             violations.push({

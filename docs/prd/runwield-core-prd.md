@@ -952,6 +952,12 @@ siblings active. Listings show held work separately from active and finished wor
 
 **Local home-store continuity:** Selected actions revalidate Project, repository, personal owner, Plan ID and revision. An imported unfinished attempt continues its recorded execution owner and checkpoint. Only proven publication with completed cleanup or deliberate abandonment records settlement; later canonical work no longer depends on the old checkout document. Changed or missing evidence cannot start a replacement attempt.
 
+**Reading an imported Plan during a run.** Given an unfinished run whose Plan was imported, reading its ID shows
+the latest edits in the original checkout. If that checkout is missing, a verified local Git snapshot can supply the
+document. If ownership conflicts, the read reports the conflict and preserves both copies. Other Plans remain
+readable by ID. After settlement, the same ID reads the canonical document. These reads leave files and Git refs
+untouched.
+
 **Acceptance:** A terminal registry label without target publication proof remains recoverable. After proven settlement, deleting legacy documents does not prevent canonical loading or later work.
 
 **Completion report ownership.** Each Session settles its own accepted tool reports. If a root handler stops after claiming a report and before recording settlement, reopening the Session makes the report available again. A recorded settlement survives reopening.

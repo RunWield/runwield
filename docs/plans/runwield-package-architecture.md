@@ -238,6 +238,12 @@ Import the `ProjectPlanStore` contract, `StalePlanWriteError`, and the retained 
 | `archive`, `restore`   | Plan ID and observed revision                                                              | An archived or restored Plan with its original ID.                                                |
 
 Plans owns the opener options, Project and personal-owner checks, and the retained checkout scope for explicit import and original execution. The Plans filesystem driver owns canonical package reads and writes, catalog and Plan locks, revision checks, immutable workflow inputs and controller evidence, and recovery of package writes and operation receipts. The application still opens the configured local or managed store and coordinates its workflow operations. For explicit import, the application observes and revalidates the checkout or SSH source while the Plans driver holds the existing locks and commits the resulting import evidence.
+
+Desktop, TUI, ACP and worker callers read a Plan by its stable ID with `store.read(planId)`. For a Plan imported
+during an active local run, the private Plans reader verifies the original attempt, repository, branch and checkout
+before returning its current document and controller state. If the checkout is missing, it can read a verified local
+Git snapshot. After settlement, reads use the canonical Plan. [Retained checkout reader](../../packages/plans/retained-execution.ts)
+
 Plans owns the canonical operation receipt files and validates the retained operation identity before completion. The application owns typed command result files, including `sequence-review-results/<operationId>.json`. It reads the retained Sequence decision and passes its operation identity, digest, Plan ID, and revision to Plans to settle the canonical receipt.
 The host coordinates milestone capture with the lifecycle event that makes the version visible.
 PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)

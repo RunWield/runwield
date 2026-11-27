@@ -16,8 +16,12 @@ import {
 } from "./managed.ts";
 import { packageWorkflowRevision, type PackageAttemptReference } from "@runwield/plans/package-storage";
 import { retainPlanAccess, retainManagedPlanAccess, type PlanAccess } from "./handles.ts";
-import { continueImportedPackage, readImportedExecutionPlan } from "./legacy.ts";
-import { currentRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
+import { continueImportedPackage } from "./legacy.ts";
+import {
+    currentRetainedCheckoutSource,
+    readRetainedExecutionPlan,
+    type RetainedExecutionRead,
+} from "@runwield/plans/retained-checkout";
 import { withWorkRecordOwner, withoutWorkRecordOwner } from "../shared/work-records/owner.ts";
 import { journalPackageMetadataWrite } from "./transitions.ts";
 /** Explicit internal package authority. A scope propagates an admitted source through existing workflow owners. */
@@ -55,7 +59,7 @@ import {
     type WorkflowControllerState,
 } from "@runwield/plans/controller-state";
 import { findById } from "../shared/worktree-registry.ts";
-import type { PlanFrontMatter, PlanId } from "@runwield/plans";
+import { plans, type PlanFrontMatter, type PlanId } from "@runwield/plans";
 
 export interface PlanExecutionHost {
     projectId: string;
@@ -500,18 +504,39 @@ export async function packageController(plan: LoadedPlanPackage): Promise<Workfl
     return { ...evidence, ...plan.metadata.controller };
 }
 
+async function selectPackageWorkflowRead(
+    identity: ProjectIdentity,
+    target: PackageWorkflowTarget,
+): Promise<RetainedExecutionRead> {
+    const checkout = !projects.home.isOwner(identity) ? identity : undefined;
+    if (checkout && typeof target !== "string" && plans.identity.isValid(target.planId))
+        return await readRetainedExecutionPlan(checkout, target.planId);
+    const selected = await selectedPackage(target);
+    if (checkout && selected.metadata.references.legacyImport) {
+        const planId = selected.metadata.planId;
+        if (!plans.identity.isValid(planId)) throw new Error("Invalid Plan ID.");
+        return await readRetainedExecutionPlan(checkout, planId);
+    }
+    return { selected };
+}
+
 export async function loadPackageWorkflowPlan(
     planName: PackageWorkflowTarget,
 ): Promise<import("../plan-store.ts").PlanTextLoaded> {
     if (managedPlanStoreActive())
         return await loadManagedWorkflowPlan(typeof planName === "string" ? planName : planName.planId);
-    const plan = await selectedPackage(planName);
+    return await projectPackageWorkflowPlan(await selectPackageWorkflowRead(currentPackageProject()!, planName));
+}
 
+export async function projectPackageWorkflowPlan({
+    selected: plan,
+    retained,
+}: RetainedExecutionRead): Promise<import("../plan-store.ts").PlanTextLoaded> {
+    if (retained) return retained;
     const identity = currentPackageProject()!;
-    const imported = projects.home.isOwner(identity) ? null : await readImportedExecutionPlan(identity, plan);
-    if (imported) return imported;
-    const catalog = await listPlanPackages(identity, true);
-    const name = (id: string) => catalog.packages.find((p) => p.metadata.planId === id)?.metadata.name || id;
+    const { parentPlanId, dependencyPlanIds } = plan.metadata;
+    const family = parentPlanId || dependencyPlanIds.length ? (await listPlanPackages(identity, true)).packages : [];
+    const name = (id: string) => family.find((p) => p.metadata.planId === id)?.metadata.name || id;
     const markdown = new TextDecoder().decode(plan.documents.find((doc) => doc.name === "context.md")!.bytes);
     const binding = plan.metadata.workflow?.attempt;
     if (
@@ -560,8 +585,8 @@ export async function loadPackageWorkflowPlan(
         ...(plan.metadata.archive?.restoredAt
             ? { restoredAt: plan.metadata.archive.restoredAt, restoredFromPath: plan.metadata.archive.restoredFromPath }
             : {}),
-        parentPlan: plan.metadata.parentPlanId ? name(plan.metadata.parentPlanId) : undefined,
-        dependencies: plan.metadata.dependencyPlanIds.map(name),
+        parentPlan: parentPlanId ? name(parentPlanId) : undefined,
+        dependencies: dependencyPlanIds.map(name),
         ...(attempt
             ? {
                   worktreeId: attempt.id,

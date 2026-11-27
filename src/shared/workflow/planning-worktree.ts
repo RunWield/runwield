@@ -259,7 +259,6 @@ async function preparePlanningWorktreeForPlanEntered(
     return transition.value as PlanningWorktreeResult;
 }
 
-export { TargetBranchSnapshotUnavailableError } from "./planning-target.ts";
 export {
     prepareTargetBranchPlansByParent,
     loadTargetPlan,

@@ -43,6 +43,7 @@ import type { ProjectStoreCommand, ProjectStoreReply } from "./project-service.t
 import type { PlanAuthoringInput } from "./access.ts";
 import type { PlanExecutionReservation } from "./workflows.ts";
 import type { PlanId } from "@runwield/plans";
+import type { WorkflowIdentity } from "@runwield/plans/retained-checkout";
 import { decodePackageMarkdown, planArtifactReference, type EpicArtifactName } from "@runwield/plans/format";
 
 export interface ManagedPlanSelection {
@@ -966,7 +967,7 @@ export async function readManagedRetainedExecution(
 
 export async function writeManagedRetainedController(
     cwd: string,
-    identity: import("./controllers.ts").WorkflowIdentity,
+    identity: WorkflowIdentity,
     updates: import("@runwield/plans/controller-state").WorkflowControllerState,
     options: import("./controllers.ts").ControllerWriteOptions,
 ): Promise<import("@runwield/plans/controller-state").ControllerRecord> {
@@ -1423,7 +1424,7 @@ export async function recoverManagedExecution(
     });
 }
 
-export async function readManagedRelatedController(cwd: string, member: import("./controllers.ts").WorkflowIdentity) {
+export async function readManagedRelatedController(cwd: string, member: WorkflowIdentity) {
     const selected = currentManagedRetainedExecution();
     if (!selected) throw new Error("Related controller has no original execution admission.");
     const result = (
@@ -1441,7 +1442,7 @@ export async function readManagedRelatedController(cwd: string, member: import("
 }
 export async function writeManagedRelatedController(
     cwd: string,
-    member: import("./controllers.ts").WorkflowIdentity,
+    member: WorkflowIdentity,
     updates: import("@runwield/plans/controller-state").WorkflowControllerState,
     options: import("./controllers.ts").ControllerWriteOptions,
 ) {

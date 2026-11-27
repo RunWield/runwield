@@ -1,3 +1,4 @@
+import { TargetBranchSnapshotUnavailableError } from "@runwield/plans/retained-checkout";
 import { stat as fsStat } from "node:fs/promises";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { resolvePublicationUpstream } from "../publication-target.ts";
@@ -7,16 +8,6 @@ export interface PlanningPlanAttributes {
     planId?: string;
     targetBranch?: string;
     deliveryBranch?: string;
-}
-
-export class TargetBranchSnapshotUnavailableError extends Error {
-    constructor(
-        targetBranch: string,
-        readonly reason: "missing_ref" | "unreadable" = "unreadable",
-    ) {
-        super(`Local target branch evidence is unavailable: ${targetBranch}.`);
-        this.name = "TargetBranchSnapshotUnavailableError";
-    }
 }
 
 export async function pathExists(path: string): Promise<boolean> {

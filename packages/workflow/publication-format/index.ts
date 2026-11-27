@@ -163,3 +163,43 @@ export function assertPublicationAttempt(value: PublicationAttempt): void {
             throw new Error("Publication revalidation requires an unpublished snapshot and recovery location.");
     }
 }
+
+interface DeliveryTarget {
+    targetBranch?: string;
+    deliveryBranch?: string;
+}
+
+/** One owner for landing selection. Legacy Plans still honor target edits. */
+export function effectiveDeliveryBranch(attrs: DeliveryTarget): string | undefined {
+    return attrs.deliveryBranch?.trim() || attrs.targetBranch?.trim() || undefined;
+}
+
+interface ReceiptPlan extends DeliveryTarget {
+    publicationReceipt?: { validatedCommit: string; publishedCommit: string; targetBranch: string } | null;
+    validatedCommit?: string | null;
+    deliveryEvidence?:
+        { mode: "worktree_merge"; executionCommit: string; targetBranch: string } | { mode: "non_git_in_place" } | null;
+    worktreeId?: string | null;
+}
+
+/** Check whether a saved receipt still matches the Plan's execution and delivery target. */
+export function hasApplicablePublicationReceipt(attrs: ReceiptPlan): boolean {
+    const receipt = attrs.publicationReceipt;
+    if (!receipt || attrs.worktreeId) return false;
+    if (!receipt.validatedCommit || !receipt.publishedCommit || !receipt.targetBranch) return false;
+    const target = effectiveDeliveryBranch(attrs);
+    if (target && target !== receipt.targetBranch) return false;
+    if (attrs.validatedCommit && attrs.validatedCommit !== receipt.validatedCommit) return false;
+    const delivery = attrs.deliveryEvidence;
+    if (
+        delivery?.mode === "worktree_merge" &&
+        (delivery.executionCommit !== receipt.validatedCommit || delivery.targetBranch !== receipt.targetBranch)
+    )
+        return false;
+    return true;
+}
+
+/** Published attempts retain cleanup evidence, not ownership of an execution document. */
+export function isPublicationCleanupPending(attempt: PublicationAttempt | undefined): boolean {
+    return attempt?.phase === "publication_verified" || attempt?.phase === "cleanup_complete";
+}

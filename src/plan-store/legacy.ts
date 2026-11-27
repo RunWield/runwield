@@ -1,5 +1,4 @@
 import { type ProjectIdentity } from "@runwield/projects";
-import type { PlanTextLoaded } from "../plan-store.ts";
 import { isPublicationAttemptCleanupComplete } from "@runwield/workflow/publication";
 import { withRetainedCheckoutSource, withoutRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import {
@@ -120,43 +119,6 @@ export async function continueImportedPackage<T>(
         const result = await run();
         await settle();
         return result;
-    });
-}
-
-/** Passive projection follows only the execution owner sealed by explicit import. */
-export async function readImportedExecutionPlan(
-    identity: ProjectIdentity,
-    selected: LoadedPlanPackage,
-): Promise<PlanTextLoaded | undefined> {
-    const reference = selected.metadata.references.legacyImport;
-    if (!reference || selected.metadata.workflow?.legacySettlement) return undefined;
-    const retained = await readPlanImportEvidence(identity, reference);
-    if (!retained.attempts.length) return undefined;
-    if (retained.repositoryId !== identity.repositoryId)
-        throw new Error("Imported execution belongs to another repository.");
-    const unfinished = retained.attempts.filter((entry) => !["validated", "abandoned"].includes(entry.status));
-    if (unfinished.length > 1)
-        throw new Error("Imported execution ownership is ambiguous; preserve all attempts for recovery.");
-    const prior = unfinished[0] || retained.attempts.at(-1)!;
-    return await withRetainedCheckoutSource(identity, async () => {
-        const live = await findById(identity.checkoutRoot, prior.id);
-        if (
-            live &&
-            (live.planId !== prior.planId ||
-                live.path !== prior.path ||
-                live.branch !== prior.branch ||
-                live.baseBranch !== prior.baseBranch ||
-                live.baseCommit !== prior.baseCommit)
-        )
-            throw new Error("Imported execution owner changed; preserve the original attempt for recovery.");
-        const location = await resolveWorkflowPlanLocation(identity.checkoutRoot, prior.planName, {
-            readOnly: true,
-            loadFromTarget: true,
-        });
-        const plan = location.plan;
-        if (!plan || plan.attrs.planId !== selected.metadata.planId)
-            throw new Error("Original execution Plan evidence is unavailable.");
-        return { ...plan, kind: "loaded", hasFrontMatter: true, frontMatterRevision: plan.frontMatterRevision };
     });
 }
 

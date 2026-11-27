@@ -3,6 +3,11 @@ import {
     type WorktreeRegistryEntry,
 } from "@runwield/project-runtime/registry-inspection";
 import { projects } from "@runwield/projects";
+import {
+    projectCheckoutControllerView,
+    readControllerRecordAtPath,
+    type WorkflowIdentity,
+} from "@runwield/plans/retained-checkout";
 import { managedPersonalStoreActive } from "@runwield/plans/managed-project-connection";
 import {
     currentManagedRetainedExecution,
@@ -27,7 +32,6 @@ import {
     lstat as fsLstat,
     mkdir as fsMkdir,
     readdir as fsReaddir,
-    readFile as fsReadFile,
     realpath as fsRealpath,
     rename as fsRename,
     rm as fsRm,
@@ -103,11 +107,6 @@ export async function restoreOwnControllerWrite(
     }
 }
 
-export interface WorkflowIdentity {
-    planId?: string;
-    planName: string;
-}
-
 export class StaleControllerWriteError extends Error {
     constructor() {
         super("The workflow advanced while this operation was running. Reload its current state and continue.");
@@ -146,27 +145,6 @@ async function enteredControllerRecordPath(cwd: string, identity: WorkflowIdenti
         (await enterProjectRuntime(selectedRoot(cwd))).primary.controllerPlansDir,
         `${encodeURIComponent(key)}.json`,
     );
-}
-
-export async function readControllerRecordAtPath(
-    controllerPlansDir: string,
-    identity: WorkflowIdentity,
-): Promise<ControllerRecord | null> {
-    const key = identity.planId || `name:${identity.planName}`;
-    try {
-        const record: ControllerRecord = JSON.parse(
-            await fsReadFile(join(controllerPlansDir, `${encodeURIComponent(key)}.json`), "utf8"),
-        );
-        if (record.version !== 1 || !Number.isInteger(record.revision) || !record.state) {
-            throw new Error(
-                "RunWield could not read this Plan's saved workflow. Your files and commits are unchanged.",
-            );
-        }
-        return record;
-    } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
-        throw error;
-    }
 }
 
 export async function readControllerRecord(cwd: string, identity: WorkflowIdentity): Promise<ControllerRecord | null> {
@@ -486,8 +464,6 @@ export async function listControllerDocumentWorktrees(cwd: string) {
     });
 }
 
-export type PendingControllerRepair = "import_legacy_state" | "clear_obsolete_recovery";
-
 /** Build the joined controller view without importing or cleaning controller state. */
 export async function inspectControllerView(
     cwd: string,
@@ -510,63 +486,10 @@ export async function inspectControllerView(
               : candidates.at(-1)
                 ? { kind: "retired" as const, entry: candidates.at(-1)! }
                 : { kind: "absent" as const };
-    const liveEntry = lookup.kind === "live" ? lookup.entry : null;
-    const attempt = liveEntry?.status === "planning" ? null : liveEntry;
-    const documentEntry =
-        liveEntry?.status === "planning" ? null : liveEntry || (lookup.kind === "retired" ? lookup.entry : null);
     const record = currentManagedRetainedExecution()
         ? await readControllerRecord(cwd, identity)
         : await readControllerRecordAtPath(layout.primary.controllerPlansDir, identity);
-    const pendingRepairs: PendingControllerRepair[] = [];
-    if ((attempt || lookup.kind === "retired") && record?.recovery) {
-        pendingRepairs.push("clear_obsolete_recovery");
-    }
-    const legacyState = pickControllerState(legacy);
-    const mayImport = lookup.kind === "absent" || (attempt && canonicalPath(attempt.path) === canonicalPath(cwd));
-    const importsLegacy =
-        !record &&
-        Boolean(mayImport && (Object.values(legacyState).some((value) => value != null) || legacy.worktreeId));
-    if (importsLegacy) pendingRepairs.push("import_legacy_state");
-    const publicationConfirmed =
-        documentEntry?.publication &&
-        ["publication_verified", "cleanup_complete"].includes(documentEntry.publication.phase);
-    const worktree: WorkflowWorktreeContext = publicationConfirmed
-        ? {}
-        : documentEntry && documentEntry.status !== "abandoned"
-          ? {
-                worktreeId: documentEntry.id,
-                worktreePath: documentEntry.path,
-                worktreeBranch: documentEntry.branch,
-                worktreeBaseBranch: documentEntry.baseBranch,
-                worktreeBaseCommit: documentEntry.baseCommit,
-                worktreeStatus: documentEntry.status === "validated" ? "completed" : documentEntry.status,
-                executionBaselineTree:
-                    documentEntry.status === "planning"
-                        ? undefined
-                        : documentEntry.executionBaselineTree || documentEntry.baseTree,
-            }
-          : lookup.kind === "retired"
-            ? { worktreeStatus: "abandoned" }
-            : lookup.kind === "uncertain"
-              ? {}
-              : record?.recovery || {};
-    return {
-        state: {
-            ...(record?.state || {}),
-            ...(attempt && attempt.status !== "abandoned" ? { executionMode: "worktree" as const } : {}),
-            ...worktree,
-        },
-        revision: record?.revision || 0,
-        publicationConfirmed: Boolean(
-            attempt?.publication &&
-            isPublicationCleanupPending(attempt.publication) &&
-            attempt.publication.publishedCommit &&
-            record?.state.publicationReceipt?.publishedCommit === attempt.publication.publishedCommit &&
-            record.state.publicationReceipt.validatedCommit === attempt.publication.validatedCommit &&
-            record.state.publicationReceipt.targetBranch === attempt.publication.targetBranch,
-        ),
-        pendingRepairs,
-    };
+    return projectCheckoutControllerView(lookup, record, legacy, cwd);
 }
 
 export async function prepareControllerView(

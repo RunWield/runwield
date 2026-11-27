@@ -1,4 +1,7 @@
 /** Controller-owned state. None of these fields belongs in a Plan document. */
+import { hasApplicablePublicationReceipt } from "@runwield/workflow-publication-format";
+import type { PlanFrontMatter } from "./document.ts";
+import { isProjectPlan } from "./project-plan.ts";
 import type { ReviewLedger, ValidationCheckpoint } from "./validation-checkpoint.ts";
 export * from "./validation-checkpoint.ts";
 
@@ -156,4 +159,36 @@ export interface ControllerRecord {
     state: WorkflowControllerState;
     /** Imported only when the old registry is missing; removed after registry recovery. */
     recovery?: WorkflowWorktreeContext;
+}
+
+/** Project durable controller evidence. Verification and receipt invalidation belong to the lifecycle owner. */
+export function effectivePlanLifecycleAttrs(
+    attrs: PlanFrontMatter,
+    state: WorkflowControllerState & WorkflowWorktreeContext,
+    publicationConfirmed: boolean = false,
+): PlanFrontMatter {
+    const combined = { ...stripRuntimeFields(attrs), ...state };
+    if (
+        (publicationConfirmed || hasApplicablePublicationReceipt(combined)) &&
+        !["on_hold", "user_verified", "closed_without_verification"].includes(combined.status)
+    ) {
+        combined.status = "verified";
+    } else if (combined.status === "validated") {
+        const delivered = Boolean(
+            combined.deliveryEvidence?.mode === "non_git_in_place" ||
+            (combined.verifiedAt &&
+                !combined.worktreeId &&
+                (!combined.publicationReceipt || hasApplicablePublicationReceipt(combined))),
+        );
+        combined.status = delivered
+            ? "verified"
+            : isProjectPlan(combined) && combined.epicCompletionMode === "done_enough"
+              ? "closed_without_verification"
+              : "reviewed";
+    }
+    if (combined.status === "validated_ci") {
+        combined.status = "implemented";
+        combined.validationPhase = "semantic";
+    }
+    return combined;
 }

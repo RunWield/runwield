@@ -2211,12 +2211,15 @@ export async function commitPlanPackageImport(
 export async function readPlanImportEvidence(
     identity: ProjectIdentity,
     reference: LegacyImportReference,
+    expectedPlanId?: PlanId,
 ): Promise<LegacyImportEvidence> {
     const record = await importRecord(layout(identity), reference.recordId);
     if (record.projectId !== identity.projectId || reference.format !== "legacy-markdown")
         fail("malformed_metadata", "Import evidence belongs to a different Project or format.");
     const member = record.prepared.members.find((member) => member.allocation.locator === reference.locator);
     if (!member) fail("missing", "Import source evidence is missing.");
+    if (expectedPlanId !== undefined && member.metadata.planId !== expectedPlanId)
+        fail("malformed_metadata", "Import evidence belongs to a different Plan.");
     return member.evidence;
 }
 

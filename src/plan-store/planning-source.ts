@@ -1,4 +1,5 @@
 import { projects } from "@runwield/projects";
+import { TargetBranchSnapshotUnavailableError } from "@runwield/plans/retained-checkout";
 import {
     isEpicArtifactPlanName,
     canonicalizeStoredPlanName,
@@ -30,7 +31,6 @@ import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 
 import {
     PlanningPlanAttributes,
-    TargetBranchSnapshotUnavailableError,
     pathExists,
     targetBranchForPlan,
     runGit,

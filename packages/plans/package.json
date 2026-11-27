@@ -35,6 +35,7 @@
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*",
+        "@runwield/workflow-publication-format": "workspace:*",
         "quikdown": "1.2.23"
     }
 }
