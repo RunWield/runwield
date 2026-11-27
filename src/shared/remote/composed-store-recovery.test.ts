@@ -50,7 +50,8 @@ test("only authenticated, matching host observations settle canonical Plan recov
             const recover = (action: "refresh" | "stop", expectedRevision: string) => ({
                 kind: "recover-execution" as const,
                 operationId: crypto.randomUUID(),
-                ...seed,
+                planId: seed.planId,
+                attemptId: seed.attemptId,
                 expectedRevision,
                 controllerRevision: null,
                 action,
