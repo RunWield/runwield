@@ -30,6 +30,15 @@ keeps the connection bound to each open Project store, and retains mutation iden
 consumers open the Project Plan store by Project ID. Existing application workflows still dispatch the laptop's
 higher-level Plan operations.
 
+A file edit keeps its Plan requests on the connection selected at entry. For a mixed `multi_file_edit`, the tool
+retains the source edits and their file identities before the laptop Plan write. A validated success reply lets the
+tool finish those source edits locally after disconnect. An uncertain reply leaves the source files untouched. A
+deliberate retry in the same Project replays the retained Plan operation before settling the source files. Source-only
+edits can run without a live Plan connection or personal mount. Before writing a source file, the tool records its
+intent in the journal. It records a fingerprint of the verified bytes and the file generation after a short write and
+before truncation. A retry with that checkpoint resumes only if both still match. The tool records completion for each
+source file after syncing it, and a retry checks that completed files still contain their replacement bytes.
+
 ## System at a glance
 
 ```mermaid

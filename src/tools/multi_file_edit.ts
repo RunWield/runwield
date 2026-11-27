@@ -1,11 +1,19 @@
 import { toolRegistry, type MultiFileEdit, type MultiFileEditInput, type MultiFileEditParams } from "@runwield/tools";
 import { createHash } from "node:crypto";
+import { constants, type BigIntStats } from "node:fs";
 import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { ensurePrivateDir, writeJsonAtomically, syncParentDirectory } from "../shared/private-json-file.ts";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
 import { ProjectStorePreconditionError } from "@runwield/plans/project-store-wire";
-import { readFile as fsReadFile, unlink, writeFile as fsWriteFile } from "node:fs/promises";
+import {
+    lstat,
+    open,
+    readFile as fsReadFile,
+    unlink,
+    writeFile as fsWriteFile,
+    type FileHandle,
+} from "node:fs/promises";
 /**
  * @module tools/multi_file_edit
  *
@@ -16,17 +24,33 @@ import { readFile as fsReadFile, unlink, writeFile as fsWriteFile } from "node:f
 
 import { defineTool, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { getHomeDir } from "../constants.ts";
-import { operatePlanFile, resolvePlanFileTarget, savePlanFileBatch, type PlanFileResult } from "../plan-store/index.ts";
+import {
+    operatePlanFile,
+    resolvePlanFileTarget,
+    savePlanFileBatch,
+    withPlanFileOperation,
+    type PlanFileResult,
+} from "../plan-store/index.ts";
 
 const multiFileEdit = toolRegistry.get("multi_file_edit");
+
+interface SourceWriteCheckpoint {
+    bytesWritten: number;
+    fingerprint: string;
+    generation: string;
+}
 
 interface PreparedFileEdit {
     path: string;
     original: string;
     replacement: string;
     plan?: PlanFileResult;
+    sourceIdentity?: string;
+    sourceRequest?: string;
+    sourceWriteState?: "started" | "completed";
+    sourceWriteCheckpoint?: SourceWriteCheckpoint;
 }
 
 async function readOrdinarySource(path: string) {
@@ -50,7 +74,171 @@ function preparedDocuments(edits: PreparedFileEdit[]) {
     return edits.flatMap((edit) => (edit.plan?.document ? [{ ...edit.plan.document, body: edit.replacement }] : []));
 }
 
-async function applySourceEdit(cwd: string, edit: PreparedFileEdit, resume = false) {
+function sourceIdentity(info: BigIntStats) {
+    return `${info.dev}:${info.ino}:${info.birthtimeNs}:${info.nlink}`;
+}
+
+function sourceGeneration(info: BigIntStats) {
+    return `${sourceIdentity(info)}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
+}
+
+function sourceFingerprint(bytes: Buffer) {
+    return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function verifiedSource(path: string, file: FileHandle) {
+    const current = await file.stat({ bigint: true });
+    const named = await lstat(path, { bigint: true });
+    if (!current.isFile() || !named.isFile() || sourceIdentity(current) !== sourceIdentity(named))
+        throw new Error("File changed before edit: " + path);
+    if ((await resolvePlanFileTarget(dirname(path), path)) !== path)
+        throw new Error("File changed before edit: " + path);
+    return current;
+}
+
+function assertUnchangedSource(path: string, before: BigIntStats, after: BigIntStats) {
+    if (sourceGeneration(before) !== sourceGeneration(after)) throw new Error("File changed before edit: " + path);
+}
+
+async function assertSourceRequest(baseDir: string, request: string, path: string) {
+    if ((await resolvePlanFileTarget(baseDir, request)) !== path) throw new Error("File changed before edit: " + path);
+}
+
+const sourceOpenFlags = (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+async function readManagedSource(baseDir: string, { path, label }: EditTarget) {
+    const file = await open(path, constants.O_RDONLY | sourceOpenFlags);
+    try {
+        await assertSourceRequest(baseDir, label, path);
+        const info = await verifiedSource(path, file);
+        const content = await file.readFile("utf8");
+        assertUnchangedSource(path, info, await verifiedSource(path, file));
+        return { identity: sourceIdentity(info), content };
+    } finally {
+        await file.close();
+    }
+}
+
+/** A retained sequential write can leave a replacement prefix followed by the original suffix. */
+function matchesInterruptedSourceWrite(current: Buffer, original: Buffer, replacement: Buffer) {
+    let prefix = 0;
+    while (prefix < current.length && prefix < replacement.length && current[prefix] === replacement[prefix]) prefix++;
+    return (
+        current.length === Math.max(original.length, prefix) &&
+        current.subarray(prefix).equals(original.subarray(prefix))
+    );
+}
+
+async function readSourceBytes(file: FileHandle, length: number) {
+    const buffer = Buffer.alloc(length);
+    let offset = 0;
+    while (offset < length) {
+        const { bytesRead } = await file.read(buffer, offset, length - offset, offset);
+        if (!bytesRead) break;
+        offset += bytesRead;
+    }
+    return buffer.subarray(0, offset);
+}
+
+async function settleManagedSource(baseDir: string, label: string, edit: PreparedFileEdit, retain: () => void) {
+    await withFileMutationQueue(edit.path, async () => {
+        const completed = edit.sourceWriteState === "completed";
+        const file = await open(edit.path, (completed ? constants.O_RDONLY : constants.O_RDWR) | sourceOpenFlags);
+        try {
+            await assertSourceRequest(baseDir, label, edit.path);
+            const info = await verifiedSource(edit.path, file);
+            const identity = sourceIdentity(info);
+            if (edit.sourceIdentity !== undefined && identity !== edit.sourceIdentity)
+                throw new Error("File changed before edit: " + edit.path);
+            const current = await file.readFile();
+            const original = Buffer.from(edit.original);
+            const replacement = Buffer.from(edit.replacement);
+            await assertSourceRequest(baseDir, label, edit.path);
+            assertUnchangedSource(edit.path, info, await verifiedSource(edit.path, file));
+            const settled = current.equals(replacement);
+            if (completed) {
+                if (!settled) throw new Error("File changed before edit: " + edit.path);
+                return;
+            }
+            const checkpoint = edit.sourceWriteCheckpoint;
+            if (
+                checkpoint &&
+                (checkpoint.generation !== sourceGeneration(info) ||
+                    checkpoint.fingerprint !== sourceFingerprint(current))
+            )
+                throw new Error("File changed before edit: " + edit.path);
+
+            const retainCheckpoint = async (bytesWritten: number) => {
+                const observed = await verifiedSource(edit.path, file);
+                const expectedLength = Math.max(current.length, bytesWritten);
+                if (sourceIdentity(observed) !== identity || observed.size !== BigInt(expectedLength))
+                    throw new Error("File changed before edit: " + edit.path);
+                const bytes = await readSourceBytes(file, expectedLength);
+                if (
+                    !bytes.subarray(0, bytesWritten).equals(replacement.subarray(0, bytesWritten)) ||
+                    !bytes.subarray(bytesWritten).equals(current.subarray(bytesWritten))
+                )
+                    throw new Error("File changed before edit: " + edit.path);
+                await assertSourceRequest(baseDir, label, edit.path);
+                assertUnchangedSource(edit.path, observed, await verifiedSource(edit.path, file));
+                edit.sourceWriteCheckpoint = {
+                    bytesWritten,
+                    fingerprint: sourceFingerprint(bytes),
+                    generation: sourceGeneration(observed),
+                };
+                retain();
+                await assertSourceRequest(baseDir, label, edit.path);
+                assertUnchangedSource(edit.path, observed, await verifiedSource(edit.path, file));
+                return observed;
+            };
+            if (!settled) {
+                const started = edit.sourceWriteState === "started" && edit.sourceIdentity && edit.sourceRequest;
+                if (
+                    !current.equals(original) &&
+                    !(started && matchesInterruptedSourceWrite(current, original, replacement))
+                )
+                    throw new Error("File changed before edit: " + edit.path);
+                if (!started) {
+                    // Older journals can adopt the observed identity when the retained path and bytes agree.
+                    edit.sourceIdentity = identity;
+                    edit.sourceRequest = label;
+                    edit.sourceWriteState = "started";
+                    retain();
+                    await assertSourceRequest(baseDir, label, edit.path);
+                    assertUnchangedSource(edit.path, info, await verifiedSource(edit.path, file));
+                }
+                // Use the checked descriptor so a renamed path cannot redirect the write.
+                for (let offset = checkpoint?.bytesWritten ?? 0; offset < replacement.length;) {
+                    const { bytesWritten } = await file.write(replacement, offset, replacement.length - offset, offset);
+                    if (!bytesWritten) throw new Error("Could not write file: " + edit.path);
+                    offset += bytesWritten;
+                    if (offset < replacement.length) await retainCheckpoint(offset);
+                }
+                if (current.length > replacement.length) {
+                    const beforeTruncate = await retainCheckpoint(replacement.length);
+                    // Keep the completed prefix durable before discarding the old suffix.
+                    await file.sync();
+                    await assertSourceRequest(baseDir, label, edit.path);
+                    assertUnchangedSource(edit.path, beforeTruncate, await verifiedSource(edit.path, file));
+                    await file.truncate(replacement.length);
+                }
+            }
+            await file.sync();
+            await assertSourceRequest(baseDir, label, edit.path);
+            if (sourceIdentity(await verifiedSource(edit.path, file)) !== identity)
+                throw new Error("File changed before edit: " + edit.path);
+            edit.sourceIdentity = identity;
+            edit.sourceRequest = label;
+            edit.sourceWriteState = "completed";
+            delete edit.sourceWriteCheckpoint;
+            retain();
+        } finally {
+            await file.close();
+        }
+    });
+}
+
+async function applySourceEdit(cwd: string, edit: PreparedFileEdit) {
     await withFileMutationQueue(edit.path, async () => {
         if (edit.plan) {
             await operatePlanFile(cwd, {
@@ -61,7 +249,6 @@ async function applySourceEdit(cwd: string, edit: PreparedFileEdit, resume = fal
             });
         } else {
             const current = await readOrdinarySource(edit.path);
-            if (resume && current === edit.replacement) return;
             if (current !== edit.original) throw new Error("File changed before edit: " + edit.path);
             await fsWriteFile(edit.path, edit.replacement);
         }
@@ -71,6 +258,7 @@ async function applySourceEdit(cwd: string, edit: PreparedFileEdit, resume = fal
 /** Preserve the owner preconditions until both the remote Plan and execution files are settled. */
 async function applyManagedMixedEdit(
     cwd: string,
+    baseDir: string,
     key: string,
     targets: EditTarget[],
     prepare: () => Promise<PreparedFileEdit[]>,
@@ -94,6 +282,7 @@ async function applyManagedMixedEdit(
             edits.some(
                 (item, i) =>
                     item.path !== targets[i].path ||
+                    (item.sourceRequest !== undefined && item.sourceRequest !== targets[i].label) ||
                     item.plan?.document?.planId !== targets[i].owner?.document?.planId ||
                     item.plan?.document?.resource !== targets[i].owner?.document?.resource,
             )
@@ -108,7 +297,12 @@ async function applyManagedMixedEdit(
             }
             throw error;
         }
-        for (const edit of edits) if (!edit.plan) await applySourceEdit(cwd, edit, true);
+        for (const [index, edit] of edits.entries()) {
+            if (!edit.plan)
+                await settleManagedSource(baseDir, targets[index].label, edit, () =>
+                    writeJsonAtomically(journalPath, edits),
+                );
+        }
         await unlink(journalPath);
         syncParentDirectory(journalPath);
         return edits;
@@ -158,96 +352,108 @@ export function createMultiFileEditTool(cwd: string) {
         // Pi validates the prepared arguments against the model-facing schema before execute.
         prepareArguments: (input) => multiFileEdit.prepareArguments(input as MultiFileEditInput) as MultiFileEditParams,
         async execute(_toolCallId, params, _signal, _onUpdate, _ctx): Promise<MultiFileEditResult> {
-            const typedParams: MultiFileEditParams = params;
-            const baseDir = typedParams.root ? resolveRoot(typedParams.root, cwd) : cwd;
-            const groupedEdits = multiFileEdit.groupByPath(typedParams.edits);
-            const written: PreparedFileEdit[] = [];
-            try {
-                const targets: EditTarget[] = [];
-                for (const [label, edits] of groupedEdits) {
-                    const targetPath = await resolvePlanFileTarget(baseDir, label);
-                    if (targets.some((target) => target.path === targetPath))
-                        throw new Error("Duplicate file reached through different paths.");
-                    targets.push({
-                        path: targetPath,
-                        label,
-                        edits,
-                        owner: await operatePlanFile(cwd, { path: targetPath, mode: "prepare-edit" }),
-                    });
-                }
-                const prepare = async () => {
-                    const result: PreparedFileEdit[] = [];
-                    for (const target of targets) {
-                        const original = target.owner?.content ?? (await readOrdinarySource(target.path));
-                        const replacement = multiFileEdit.apply(original, target.edits, target.label);
-                        result.push({ path: target.path, original, replacement, plan: target.owner });
-                    }
-                    return result;
-                };
-                const remote = remoteProjectOwner();
-                const mixed =
-                    remote?.kind === "managed-remote" &&
-                    targets.some((t) => t.owner?.document) &&
-                    targets.some((t) => !t.owner);
-                let prepared: PreparedFileEdit[];
-                if (mixed) {
-                    const key = JSON.stringify({ owner: remote.identity, cwd, baseDir, edits: typedParams.edits });
-                    prepared = await applyManagedMixedEdit(cwd, key, targets, prepare);
-                } else {
-                    prepared = await prepare();
-                    for (const edit of prepared)
-                        if (!edit.plan?.document) {
-                            await applySourceEdit(cwd, edit);
-                            written.push(edit);
-                        }
-                    const documents = preparedDocuments(prepared);
-                    if (documents.length) await savePlanFileBatch(cwd, documents);
-                }
-                const diffSections = [];
-                let firstChangedLine;
-                for (const [i, edit] of prepared.entries()) {
-                    const diff = multiFileEdit.diff(edit.original, edit.replacement);
-                    diffSections.push(`--- ${targets[i].label}\n${diff.diff}`);
-                    firstChangedLine ??= diff.firstChangedLine;
-                }
-                const replacementCount = typedParams.edits.length;
-                const fileCount = groupedEdits.size;
-                const replacementNoun = replacementCount === 1 ? "replacement" : "replacements";
-                const fileNoun = fileCount === 1 ? "file" : "files";
-                return {
-                    content: [
-                        {
-                            type: "text" as const,
-                            text: `Successfully applied ${replacementCount} ${replacementNoun} across ${fileCount} ${fileNoun}.`,
-                        },
-                    ],
-                    details: { diff: diffSections.join("\n\n"), firstChangedLine },
-                };
-            } catch (err) {
-                for (const edit of written.toReversed()) {
-                    try {
-                        await withFileMutationQueue(edit.path, async () => {
-                            if (edit.plan)
-                                await operatePlanFile(cwd, {
-                                    path: edit.path,
-                                    mode: "edit",
-                                    oldText: edit.replacement,
-                                    newText: edit.original,
-                                });
-                            else if ((await fsReadFile(edit.path, "utf8")) === edit.replacement)
-                                await fsWriteFile(edit.path, edit.original);
+            return await withPlanFileOperation(async () => {
+                const typedParams: MultiFileEditParams = params;
+                const baseDir = typedParams.root ? resolveRoot(typedParams.root, cwd) : cwd;
+                const groupedEdits = multiFileEdit.groupByPath(typedParams.edits);
+                const written: PreparedFileEdit[] = [];
+                try {
+                    const targets: EditTarget[] = [];
+                    for (const [label, edits] of groupedEdits) {
+                        const targetPath = await resolvePlanFileTarget(baseDir, label);
+                        if (targets.some((target) => target.path === targetPath))
+                            throw new Error("Duplicate file reached through different paths.");
+                        targets.push({
+                            path: targetPath,
+                            label,
+                            edits,
+                            owner: await operatePlanFile(cwd, { path: targetPath, mode: "prepare-edit" }),
                         });
-                    } catch {
-                        /* Preserve concurrent edits and report the original failure. */
                     }
+                    const remote =
+                        targets.some((target) => target.owner?.document) && targets.some((target) => !target.owner)
+                            ? remoteProjectOwner()
+                            : undefined;
+                    const mixed = remote?.kind === "managed-remote";
+                    const prepare = async () => {
+                        const result: PreparedFileEdit[] = [];
+                        for (const target of targets) {
+                            const source =
+                                mixed && !target.owner ? await readManagedSource(baseDir, target) : undefined;
+                            const original =
+                                target.owner?.content ?? source?.content ?? (await readOrdinarySource(target.path));
+                            const replacement = multiFileEdit.apply(original, target.edits, target.label);
+                            result.push({
+                                path: target.path,
+                                original,
+                                replacement,
+                                plan: target.owner,
+                                sourceIdentity: source?.identity,
+                                sourceRequest: source ? target.label : undefined,
+                            });
+                        }
+                        return result;
+                    };
+                    let prepared: PreparedFileEdit[];
+                    if (mixed) {
+                        const key = JSON.stringify({ owner: remote.identity, cwd, baseDir, edits: typedParams.edits });
+                        prepared = await applyManagedMixedEdit(cwd, baseDir, key, targets, prepare);
+                    } else {
+                        prepared = await prepare();
+                        for (const edit of prepared)
+                            if (!edit.plan?.document) {
+                                await applySourceEdit(cwd, edit);
+                                written.push(edit);
+                            }
+                        const documents = preparedDocuments(prepared);
+                        if (documents.length) await savePlanFileBatch(cwd, documents);
+                    }
+                    const diffSections = [];
+                    let firstChangedLine;
+                    for (const [i, edit] of prepared.entries()) {
+                        const diff = multiFileEdit.diff(edit.original, edit.replacement);
+                        diffSections.push(`--- ${targets[i].label}\n${diff.diff}`);
+                        firstChangedLine ??= diff.firstChangedLine;
+                    }
+                    const replacementCount = typedParams.edits.length;
+                    const fileCount = groupedEdits.size;
+                    const replacementNoun = replacementCount === 1 ? "replacement" : "replacements";
+                    const fileNoun = fileCount === 1 ? "file" : "files";
+                    return {
+                        content: [
+                            {
+                                type: "text" as const,
+                                text: `Successfully applied ${replacementCount} ${replacementNoun} across ${fileCount} ${fileNoun}.`,
+                            },
+                        ],
+                        details: { diff: diffSections.join("\n\n"), firstChangedLine },
+                    };
+                } catch (err) {
+                    for (const edit of written.toReversed()) {
+                        try {
+                            await withFileMutationQueue(edit.path, async () => {
+                                if (edit.plan)
+                                    await operatePlanFile(cwd, {
+                                        path: edit.path,
+                                        mode: "edit",
+                                        oldText: edit.replacement,
+                                        newText: edit.original,
+                                    });
+                                else if ((await fsReadFile(edit.path, "utf8")) === edit.replacement)
+                                    await fsWriteFile(edit.path, edit.original);
+                            });
+                        } catch {
+                            /* Preserve concurrent edits and report the original failure. */
+                        }
+                    }
+                    const message = err instanceof Error ? err.message : String(err);
+                    return {
+                        content: [{ type: "text", text: message }],
+                        details: null,
+                        isError: true,
+                    };
                 }
-                const message = err instanceof Error ? err.message : String(err);
-                return {
-                    content: [{ type: "text", text: message }],
-                    details: null,
-                    isError: true,
-                };
-            }
+            });
         },
     });
 }

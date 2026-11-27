@@ -21,6 +21,7 @@ export interface RemotePersonalResources {
 }
 
 let active: Readonly<RemotePersonalResources> | undefined;
+let mountedGlobalRoot: string | undefined;
 
 interface RootIdentity {
     dev: bigint;
@@ -118,6 +119,7 @@ export function configureRemotePersonalResources(resources: RemotePersonalResour
             throw new PersonalResourcePathError("Personal root", root, String(error));
         }
     }
+    mountedGlobalRoot = fsRealpathSync(configured.globalRoot);
     activeRootIdentities = identities;
     active = configured;
 }
@@ -141,6 +143,11 @@ export function remotePersonalResourcesActive(): boolean {
 
 export function personalGlobalRoot(): string {
     return active?.globalRoot ?? join(getHomeDir(), ".wld");
+}
+
+/** The canonical mount path observed at activation. Reading it does not access the mount. */
+export function mountedPersonalGlobalRoot(): string | undefined {
+    return mountedGlobalRoot;
 }
 
 export function personalAgentsRoot(): string | undefined {

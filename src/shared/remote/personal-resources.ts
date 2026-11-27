@@ -4,6 +4,7 @@ export {
     assertPersonalResourcePath,
     assertPersonalResourcePathSync,
     configureRemotePersonalResources,
+    mountedPersonalGlobalRoot,
     personalAgentsRoot,
     personalGlobalRoot,
     personalPackageRoots,

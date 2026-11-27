@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { equal, deepEqual, rejects } from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { readFile, writeFile, unlink, mkdtemp, rm, rename } from "node:fs/promises";
+import { readFile, writeFile, unlink, mkdtemp, rm, rename, symlink } from "node:fs/promises";
 import { PreparedProjectStore, authorLocalPlan, savePlanProse } from "./index.ts";
 import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 import { packageFixture, startDriver } from "../shared/testing/plan-package-fixture.ts";
@@ -887,6 +887,17 @@ test("managed multi-file edit resumes a dropped successful response and preserve
             equal(after.body, "Updated Plan");
             equal(after.source, "Original source");
             const source = join(f.root, "source.txt");
+            const retainedSource = join(f.root, "retained-source.txt");
+            await rename(source, retainedSource);
+            await writeFile(source, "Original source");
+            equal((await edit()).isError, true);
+            equal(await readFile(source, "utf8"), "Original source");
+            await unlink(source);
+            await symlink(retainedSource, source, "file");
+            equal((await edit()).isError, true);
+            equal(await readFile(retainedSource, "utf8"), "Original source");
+            await unlink(source);
+            await rename(retainedSource, source);
             await writeFile(source, "Independent edit");
             equal((await edit()).isError, true);
             equal(await readFile(source, "utf8"), "Independent edit");
@@ -897,6 +908,76 @@ test("managed multi-file edit resumes a dropped successful response and preserve
                 revision: after.revision,
                 source: "Updated source",
             });
+        } finally {
+            proxy.stop(true);
+            await f.cleanup();
+        }
+    });
+});
+
+test("a managed multi-file retry preserves independent changes to already settled source files", async () => {
+    const { captureForegroundProcess } = await import("@runwield/resources/process");
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        const source = join(f.root, "source.txt");
+        const cleared = join(f.root, "clear.txt");
+        const conflict = join(f.root, "conflict.txt");
+        let interfere = true;
+        const proxy = observeOwnerResponse(f.endpoint, async (kind, response) => {
+            if (kind === "edit-documents" && response.ok && interfere) {
+                interfere = false;
+                await writeFile(conflict, "Independent edit");
+            }
+            return response;
+        });
+        try {
+            await f.run("managed-mixed-seed");
+            await writeFile(cleared, "Remove me");
+            await writeFile(conflict, "Before");
+            const edit = async () => {
+                const child = await captureForegroundProcess(process.execPath, {
+                    cwd: f.root,
+                    args: [
+                        new URL("./testing/managed-source-edit-driver.ts", import.meta.url).pathname,
+                        JSON.stringify({ ...f.input, connection: { ...f.input.connection, port: proxy.port } }),
+                    ],
+                    env: {
+                        ...process.env,
+                        HOME: f.remoteHome,
+                        WLD_TEST_SANDBOX_HOME: f.remoteHome,
+                        MNEMOTECA_DB_PATH: join(f.remoteHome, "mnemoteca.db"),
+                    },
+                });
+                const decoder = new TextDecoder();
+                equal(child.code, 0, decoder.decode(child.stderr));
+                return JSON.parse(decoder.decode(child.stdout));
+            };
+            equal((await edit()).isError, true);
+            equal(interfere, false);
+            const first = JSON.parse(await f.run("managed-mixed-inspect"));
+            equal(first.body, "Updated Plan");
+            equal(first.source, "Updated source");
+            equal(await readFile(cleared, "utf8"), "");
+            equal(await readFile(conflict, "utf8"), "Independent edit");
+
+            // The bytes look like a completed prefix whose original suffix was never truncated.
+            await writeFile(source, "Updated sourcee");
+            await writeFile(conflict, "Before");
+            equal((await edit()).isError, true);
+            equal(await readFile(source, "utf8"), "Updated sourcee");
+            equal(await readFile(conflict, "utf8"), "Before");
+
+            await writeFile(source, "Updated source");
+            await writeFile(cleared, "Remove me");
+            equal((await edit()).isError, true);
+            equal(await readFile(cleared, "utf8"), "Remove me");
+
+            await writeFile(cleared, "");
+            equal((await edit()).isError, undefined);
+            equal(await readFile(conflict, "utf8"), "After");
+            deepEqual(JSON.parse(await f.run("managed-mixed-inspect")), first);
         } finally {
             proxy.stop(true);
             await f.cleanup();
