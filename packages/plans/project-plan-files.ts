@@ -6,7 +6,7 @@ import type { PendingControllerRepair } from "./checkout-controller.ts";
 import { CONTROLLER_STATE_FIELDS, pickControllerState, type WorkflowControllerState } from "./controller-state.ts";
 import type { PlanFrontMatter } from "./document.ts";
 import { currentExecutionRecoveryObservation } from "./execution-recovery.ts";
-import { isPlanId, planArtifactReference, type PlanId, type PlanTextLoaded } from "./format.ts";
+import { comparePlansForList, isPlanId, planArtifactReference, type PlanId, type PlanTextLoaded } from "./format.ts";
 import {
     listPlanPackages,
     packageControllerEnums,
@@ -27,7 +27,13 @@ import {
 } from "./package-storage.ts";
 import { readRetainedExecutionPlan, type RetainedExecutionRead } from "./retained-execution.ts";
 import { PlanNotFoundError } from "./store-errors.ts";
-import type { ProjectPlanDocument, ProjectPlanReadAvailability } from "./store.ts";
+import type {
+    ProjectPlanCatalog,
+    ProjectPlanCatalogEntry,
+    ProjectPlanDocument,
+    ProjectPlanDiagnostic,
+    ProjectPlanReadAvailability,
+} from "./store.ts";
 
 export { currentExecutionRecoveryObservation } from "./execution-recovery.ts";
 
@@ -261,6 +267,20 @@ type PlanDocumentFields = Pick<
     attrs: PlanFrontMatter;
 };
 
+interface PlanCatalogResource extends PlanDocumentFields {
+    planId: string;
+}
+
+interface PlanCatalogDiagnostic extends Omit<ProjectPlanDiagnostic, "planId"> {
+    path: string;
+    planId?: string;
+}
+
+interface PlanResourceCatalog {
+    resources: PlanCatalogResource[];
+    diagnostics: PlanCatalogDiagnostic[];
+}
+
 /** Publish the logical resource fields without private filesystem locations. */
 export function projectPlanDocumentFields(resource: PlanDocumentFields): Omit<ProjectPlanDocument, "planId"> {
     const {
@@ -279,21 +299,129 @@ export function projectPlanDocumentFields(resource: PlanDocumentFields): Omit<Pr
     };
 }
 
+/** Publish catalog resources and diagnostics without private filesystem locations. */
+export function projectPlanCatalogFields(catalog: PlanResourceCatalog, cwd: string): ProjectPlanCatalog {
+    return {
+        resources: catalog.resources.map((resource): ProjectPlanCatalogEntry => {
+            const document = projectPlanDocumentFields(resource);
+            const { planId } = resource;
+            if (!planId) return { ...document, planId: "" };
+            if (!isPlanId(planId)) throw new Error("Plan access requires a durable Plan ID.");
+            return { ...document, planId };
+        }),
+        diagnostics: catalog.diagnostics.map(({ name, kind, message, path, planId }) => {
+            let sanitized = message;
+            for (const locator of [cwd, path].filter(Boolean))
+                sanitized = sanitized.split(locator).join("[workspace path]");
+            return {
+                name,
+                kind,
+                message: sanitized.replace(/(?:[A-Za-z]:)?[\\/][^\s"'\`<>)]*/g, "[workspace path]"),
+                ...(isPlanId(planId) ? { planId } : {}),
+            };
+        }),
+    };
+}
+
+function isArchived(plan: LoadedPlanPackage): boolean {
+    return !!plan.metadata.archive && !plan.metadata.archive.restoredAt;
+}
+
+function resourceFields(loaded: PackagePlanText, { name, planId }: LoadedPlanPackage["metadata"]) {
+    return { ...loaded, name, planName: name, planId, relativePath: planArtifactReference(planId) };
+}
+
 function forOwner(identity: ProjectStoreIdentity) {
     async function readGeneration(target: PackagePlanTarget, selection?: PackageReadSelection, activeOnly = false) {
         const { selected, retained } = await selectWorkflowRead(identity, target, selection, activeOnly);
-        if (activeOnly && selected.metadata.archive && !selected.metadata.archive.restoredAt)
-            throw new PlanNotFoundError(selected.metadata.planId);
+        if (activeOnly && isArchived(selected)) throw new PlanNotFoundError(selected.metadata.planId);
         return { selected, loaded: retained ?? (await projectPackage(identity, selected)) };
     }
 
     async function readResource(target: PackagePlanTarget, selection?: PackageReadSelection, activeOnly = false) {
         const { selected, loaded } = await readGeneration(target, selection, activeOnly);
-        const { name, planId } = selected.metadata;
-        return { ...loaded, name, planName: name, planId, relativePath: planArtifactReference(planId) };
+        return resourceFields(loaded, selected.metadata);
+    }
+
+    async function readResourceCatalog() {
+        const catalog = await listPlanPackages(identity);
+        const resources = await Promise.all(
+            catalog.packages.map(async (entry) => {
+                const { loaded } = await readGeneration({ planId: entry.metadata.planId });
+                return resourceFields(loaded, entry.metadata);
+            }),
+        );
+        return {
+            resources: resources.sort(comparePlansForList),
+            diagnostics: catalog.issues.map((issue) => ({
+                name: "Plan package",
+                path: issue.path,
+                kind: "malformed" as const,
+                message: issue.message,
+            })),
+        };
+    }
+
+    async function archivedPackages() {
+        const catalog = await listPlanPackages(identity, true);
+        if (catalog.issues.length) throw new Error(catalog.issues[0].message);
+        return catalog.packages.filter(isArchived);
+    }
+
+    async function readArchivedResource(target: PackagePlanTarget) {
+        const selected = (await archivedPackages()).find(({ metadata }) =>
+            typeof target === "string"
+                ? metadata.planId === target || metadata.name === target.replace(/^archived\//, "")
+                : metadata.planId === target.planId,
+        );
+        if (!selected) return null;
+        const { loaded } = await readGeneration({ planId: selected.metadata.planId });
+        return { ...loaded, name: selected.metadata.name };
     }
 
     return {
+        async list(): Promise<ProjectPlanCatalog> {
+            return projectPlanCatalogFields(await readResourceCatalog(), projects.home.storeLocation(identity));
+        },
+        readResourceCatalog,
+        async listWorkflowPlans(selection?: PackageReadSelection) {
+            const catalog = await listPlanPackages(identity);
+            if (catalog.issues.length) throw new Error(catalog.issues[0].message);
+            const plans = await Promise.all(
+                catalog.packages.map(async ({ metadata: { name } }) => ({
+                    name,
+                    ...(await readGeneration(name, selection)).loaded,
+                })),
+            );
+            return plans.sort(comparePlansForList);
+        },
+        async listArchived() {
+            const plans = await Promise.all(
+                (await archivedPackages()).map(async ({ metadata: { name, planId } }) => {
+                    const { loaded } = await readGeneration({ planId });
+                    const { path, attrs } = loaded;
+                    return {
+                        name,
+                        planName: name,
+                        path,
+                        attrs,
+                        status: attrs.status,
+                        summary: attrs.summary || "",
+                        planId,
+                    };
+                }),
+            );
+            return plans.sort((a, b) => a.name.localeCompare(b.name));
+        },
+        readArchivedResource,
+        async readArchived(planId: PlanId): Promise<ProjectPlanDocument> {
+            const resource = await readArchivedResource({ planId });
+            if (!resource || resource.attrs.planId !== planId) throw new PlanNotFoundError(planId);
+            return {
+                ...projectPlanDocumentFields({ ...resource, relativePath: planArtifactReference(planId) }),
+                planId,
+            };
+        },
         async read(planId: PlanId): Promise<ProjectPlanDocument> {
             return { ...projectPlanDocumentFields(await readResource({ planId }, undefined, true)), planId };
         },

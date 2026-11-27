@@ -250,6 +250,9 @@ During recovery the host supplies an observation of the requested attempt. Plans
 and binds it to that operation. For Recreate, the host journal links the old and new attempt IDs and Plans owns
 the switch between them. Desktop, TUI, ACP and worker callers continue to use `store.read(planId)`.
 
+The same driver lists active Plans and looks up archived Plans by ID. The public catalog returns logical Plan
+references and diagnostics. The CLI computes checkout-relative paths when it displays archived resources.
+
 Plans owns the canonical operation receipt files and validates the retained operation identity before completion. The application owns typed command result files, including `sequence-review-results/<operationId>.json`. It reads the retained Sequence decision and passes its operation identity, digest, Plan ID, and revision to Plans to settle the canonical receipt.
 The host coordinates milestone capture with the lifecycle event that makes the version visible.
 PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)

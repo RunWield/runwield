@@ -8,6 +8,7 @@ import { isEpicArtifactName } from "@runwield/plans/format";
 import { openPlanStoreForCheckout } from "./project-plans.ts";
 import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "@runwield/plans/package-storage";
+import { projectPlanFiles } from "@runwield/plans/project-plan-files";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
 import { readPlanRecordingContext, type PlanRecordingContext } from "./recording.ts";
 import type {
@@ -30,6 +31,8 @@ import {
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../shared/collaboration/client.ts";
 import { normalizeSharedSpaceMetadata } from "../shared/collaboration/protocol.ts";
 import {
+    currentPackageProject,
+    currentPackageSelection,
     packageController,
     reservePlanExecution,
     capturePlanExecutionContext,
@@ -787,6 +790,8 @@ export class PreparedProjectStore {
         const result = await readLocalHomeStore(
             this.cwd,
             async () => {
+                const identity = currentPackageProject();
+                const files = identity && projectPlanFiles.forOwner(identity);
                 if (command.kind === "inspect-owner") {
                     const catalog = await listPlanPackages(owner, true);
                     return {
@@ -873,9 +878,11 @@ export class PreparedProjectStore {
                         ),
                     };
                 }
-                if (command.kind === "list-plans") return { plans: await listPlans(this.cwd) };
-                if (command.kind === "resolve-plan") {
-                    const catalog = await listPlans(this.cwd);
+                if (command.kind === "list-plans" || command.kind === "resolve-plan") {
+                    const catalog = files
+                        ? await files.listWorkflowPlans(currentPackageSelection())
+                        : await listPlans(this.cwd);
+                    if (command.kind === "list-plans") return { plans: catalog };
                     const selected = catalog.find(
                         (plan) =>
                             plan.name === command.reference ||
@@ -1117,15 +1124,17 @@ export class PreparedProjectStore {
                 }
                 if (command.kind === "archive-catalog")
                     return { archives: await (await import("../plan-store.ts")).listArchivedPlans(this.cwd) };
-                if (command.kind === "read-archive")
-                    return {
-                        archived: await (
-                            await import("../plan-store.ts")
-                        ).loadArchivedPlan(this.cwd, command.reference),
-                    };
+                if (command.kind === "read-archive") {
+                    const archived = files
+                        ? await files.readArchivedResource(command.reference)
+                        : await (await import("../plan-store.ts")).loadArchivedPlan(this.cwd, command.reference);
+                    return { archived };
+                }
                 if (command.kind === "plan-resource-catalog") {
-                    const { readPlanResourceCatalog } = await import("../plan-store.ts");
-                    return { resourceCatalog: await readPlanResourceCatalog(this.cwd) };
+                    const resourceCatalog = files
+                        ? await files.readResourceCatalog()
+                        : await (await import("../plan-store.ts")).readPlanResourceCatalog(this.cwd);
+                    return { resourceCatalog };
                 }
                 if (command.kind === "create-project-work-record")
                     return await withPlanPackageCatalogDiscovery(owner, async () => {

@@ -59,6 +59,7 @@ test("only the Plan store can use its filesystem drivers and retained evidence",
         "file-snapshots",
         "artifact-files",
         "publication-files",
+        "project-plan-files",
         "package-storage",
         "operation-receipts",
     ]) {

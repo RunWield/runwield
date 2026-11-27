@@ -316,7 +316,6 @@ import {
     injectFrontMatter,
     parsePlanFrontMatter,
     planDocumentMarkdown,
-    planArtifactReference,
     splitPlanMarkdownBody,
     mergeFrontMatterText,
     hashPlanBody,
@@ -371,6 +370,7 @@ import {
 
 import {
     currentPackageProject,
+    currentPackageSelection,
     selectedPackage,
     loadPackageWorkflowPlan,
     packageWorkflowLocks,
@@ -1982,18 +1982,8 @@ export async function listPlans(cwd: string): Promise<Array<PlanListEntry>> {
  * @returns {ReturnType<typeof listPlans>}
  */
 async function listPlansInProject(cwd: string): Promise<Array<PlanListEntry>> {
-    const packageSelection = currentPackageProject();
-    if (packageSelection) {
-        const catalog = await listPlanPackages(packageSelection);
-        if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-        const plans = await Promise.all(
-            catalog.packages.map(async (p) => ({
-                name: p.metadata.name,
-                ...(await loadPackageWorkflowPlan(p.metadata.name)),
-            })),
-        );
-        return plans.sort(comparePlansForList);
-    }
+    const owner = currentPackageProject();
+    if (owner) return await projectPlanFiles.forOwner(owner).listWorkflowPlans(currentPackageSelection());
     return await listPlansWithTargetChildren(cwd, null);
 }
 
@@ -2495,27 +2485,8 @@ export async function listArchivedPlans(cwd: string): Promise<ArchivedPlanEntry[
 async function listArchivedPlansInProject(cwd: string): Promise<ArchivedPlanEntry[]> {
     const owner = currentPackageProject();
     if (owner) {
-        const catalog = await listPlanPackages(owner, true);
-        if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-        return (
-            await Promise.all(
-                catalog.packages
-                    .filter((p) => p.metadata.archive && !p.metadata.archive.restoredAt)
-                    .map(async (p) => {
-                        const plan = await loadPackageWorkflowPlan({ planId: p.metadata.planId });
-                        return {
-                            name: p.metadata.name,
-                            planName: p.metadata.name,
-                            path: plan.path,
-                            relativePath: projectRelativePath(cwd, plan.path),
-                            attrs: plan.attrs,
-                            status: plan.attrs.status,
-                            summary: plan.attrs.summary || "",
-                            planId: p.metadata.planId,
-                        };
-                    }),
-            )
-        ).sort((a, b) => a.name.localeCompare(b.name));
+        const plans = await projectPlanFiles.forOwner(owner).listArchived();
+        return plans.map((plan) => ({ ...plan, relativePath: projectRelativePath(cwd, plan.path) }));
     }
     const dir = getArchivedPlansDir(cwd);
     /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>} */
@@ -2706,22 +2677,10 @@ async function loadArchivedPlanInProject(
     byId: boolean,
 ): Promise<ArchivedPlanDocument | null> {
     const owner = currentPackageProject();
-    if (owner) {
-        const catalog = await listPlanPackages(owner, true);
-        if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-        const selected = catalog.packages.find(
-            (p) =>
-                p.metadata.archive &&
-                !p.metadata.archive.restoredAt &&
-                (p.metadata.planId === archivedPlanNameOrId ||
-                    (!byId && p.metadata.name === archivedPlanNameOrId.replace(/^archived\//, ""))),
-        );
-        if (!selected) return null;
-        return {
-            ...(await loadPackageWorkflowPlan({ planId: selected.metadata.planId })),
-            name: selected.metadata.name,
-        };
-    }
+    if (owner)
+        return await projectPlanFiles
+            .forOwner(owner)
+            .readArchivedResource(byId ? { planId: archivedPlanNameOrId } : archivedPlanNameOrId);
     if (byId) {
         const matches = (await listArchivedPlans(cwd)).filter((plan) => plan.planId === archivedPlanNameOrId);
         if (matches.length > 1) throw new Error(`Duplicate archived Plan ID: ${archivedPlanNameOrId}`);
@@ -3209,31 +3168,8 @@ export async function readPlanResourceCatalog(cwd: string): Promise<ReadPlanReso
  * @returns {ReturnType<typeof readPlanResourceCatalog>}
  */
 async function readPlanResourceCatalogInProject(cwd: string): Promise<ReadPlanResourceCatalogResult> {
-    const selection = currentPackageProject();
-    if (selection) {
-        const catalog = await listPlanPackages(selection);
-        const resources = await Promise.all(
-            catalog.packages.map(async (entry) => {
-                const loaded = await loadPackageWorkflowPlan({ planId: entry.metadata.planId });
-                return {
-                    ...loaded,
-                    planName: entry.metadata.name,
-                    name: entry.metadata.name,
-                    planId: entry.metadata.planId,
-                    relativePath: planArtifactReference(entry.metadata.planId),
-                };
-            }),
-        );
-        return {
-            resources: resources.sort(comparePlansForList),
-            diagnostics: catalog.issues.map((issue) => ({
-                name: "Plan package",
-                path: issue.path,
-                kind: "malformed",
-                message: issue.message,
-            })),
-        };
-    }
+    const owner = currentPackageProject();
+    if (owner) return await projectPlanFiles.forOwner(owner).readResourceCatalog();
     return await readPlanResources(cwd, true);
 }
 
