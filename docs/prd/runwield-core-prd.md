@@ -1661,6 +1661,11 @@ behavior, whether the named boundaries are exercised, and whether a fake bypasse
 finding names the concrete wrong implementation that would still pass. Mechanical validation proves that tests ran. A
 repair that weakens a test to resolve a finding is a repair-introduced regression.
 
+**Requirement: Keep Reviewer active when AI review pauses.** In a live Session, an interrupted AI review keeps Reviewer
+as the active Agent. The next message resumes the review and supplies any new direction. Reviewer accepts steering
+while it runs. It keeps prior context and diff reads only for the same candidate and review round. An accepted
+review decision returns control to the validation workflow.
+
 **Requirement: Review one proposed branch patch.** For Git execution, review sees the branch's proposed change relative
 to its recorded target branch: committed, staged, unstaged, and untracked work, with target-only changes excluded. The
 same patch supplies AI review, repair context, and Code Review, including after reload. Before-file text uses the same
@@ -1715,8 +1720,9 @@ post-validation context, once. Review quality is judged by useful convergence an
   after every required chunk is read.
 - Given a Reviewer that reads new required diff chunks between plain-text replies, review continues past the protocol
   correction limit without accepting a verdict before coverage is complete.
-- Given paused AI review in a live Session, `continue` reaches Reviewer with prior context and read receipts, not an
-  Engineer turn. A changed candidate does not reuse those receipts.
+- Given a provider disconnect or Stop during AI review, the live Session still shows Reviewer. `continue` or a new
+  instruction resumes review with prior context and diff reads. Steering during the resumed turn reaches Reviewer.
+  A changed candidate does not reuse earlier diff reads.
 - Given a round-one rejection, round two checks the whole implementation and earlier findings; later rounds check open
   issues and repair regressions, including in a fresh process.
 - Given an incomplete fix, review records `fix rejected` with a reason under the same issue; a later confirmed fix

@@ -223,7 +223,7 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
     });
 }
 
-test("continue resumes paused AI review with its prior review context, not an Engineer turn", async () => {
+test("paused AI review keeps Reviewer active and accepts new directions in the same Session", async () => {
     await withRuntimeCommandFixture("paused-review-continuation-", async (fixture) => {
         const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: false };
@@ -291,22 +291,47 @@ test("continue resumes paused AI review with its prior review context, not an En
                 const paused = await loadPlan(tree.path, name);
                 assertEquals(paused?.attrs.validationCheckpoint?.state, "paused");
                 assertEquals(paused?.attrs.validationCheckpoint?.nextPhase, "semantic");
+                const pausedSession = runtime.getSessionSnapshot(id);
+                assertEquals(pausedSession?.activeAgent, "reviewer");
+                assertEquals(pausedSession?.activeAgentInfo?.agentName, "reviewer");
+                assertExists(pausedSession?.managed);
                 let resumedTools = "";
                 let resumedMessages = "";
                 let resumedRequest = "";
+                const steering = "Also check the acceptance criteria in the Plan.";
+                let steered = false;
+                let steeringReceived = false;
+                let canceled = false;
                 fixture.setModelResponseFactories([
-                    (context) => {
+                    async (context) => {
                         resumedTools = JSON.stringify(context.messages.filter((message) => message.role === "system"));
                         resumedMessages = JSON.stringify(context.messages);
                         resumedRequest = JSON.stringify(
                             context.messages.filter((message) => message.role === "user").at(-1),
                         );
-                        return interrupted();
+                        steered = (await runtime.steerSession(id, steering)).queued;
+                        return fauxAssistantMessage(fauxText("Checking the implementation boundary."));
+                    },
+                    (context) => {
+                        steeringReceived = JSON.stringify(context.messages).includes(steering);
+                        queueMicrotask(() => {
+                            canceled = runtime.cancelSession(id).aborted;
+                        });
+                        return fauxAssistantMessage(fauxText("Checking the acceptance criteria.".repeat(100)));
                     },
                 ]);
-                const followUp = await runtime.promptUserTurn(id, { initialRequest: "continue" });
+                const direction = "Pay particular attention to the implementation boundary.";
+                const followUp = await runtime.promptUserTurn(id, { initialRequest: direction });
                 assertEquals(followUp.ok, true);
                 assertStringIncludes(resumedTools, "review_complete");
+                assertStringIncludes(resumedRequest, direction);
+                assertEquals(steered, true);
+                assertEquals(steeringReceived, true);
+                assertEquals(canceled, true);
+                const stoppedSession = runtime.getSessionSnapshot(id);
+                assertEquals(stoppedSession?.activeAgent, "reviewer");
+                assertEquals(stoppedSession?.managed?.runwieldSessionId, pausedSession.managed.runwieldSessionId);
+                assertEquals(stoppedSession?.managed?.currentSegmentId, pausedSession.managed.currentSegmentId);
                 assertStringIncludes(resumedMessages, "review-continuity-sentinel");
                 assertStringIncludes(resumedRequest, `docs/plans/${name}.md (full), unread bytes`);
                 assertEquals(resumedRequest.includes("implementation.txt (full), unread bytes"), false);

@@ -29,7 +29,9 @@ create an execution segment.
 
 The initial execution segment remains current through implementation and
 Workflow Validation until a defined successor context boundary is activated.
-Isolated Reviewer sessions do not replace it. When Semantic Code Review rejects
+Isolated Reviewer sessions do not replace it. If AI review is interrupted in a
+live Session, Reviewer keeps the foreground and resumes on the next user message
+without changing the current transcript segment. When AI review rejects
 the implementation, RunWield seals the current execution or repair segment and
 activates a fresh persisted semantic repair segment under the same stable
 Session. That segment receives the bounded repair packet, not predecessor model

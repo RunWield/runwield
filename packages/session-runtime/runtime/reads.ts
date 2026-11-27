@@ -1,4 +1,5 @@
-import { agentRegistry } from "../../../src/shared/session/agent-registry.ts";
+import { agentRegistry, AGENTS } from "../../../src/shared/session/agent-registry.ts";
+import { hasPausedReviewer } from "../../../src/shared/workflow/validation-session-adapter.ts";
 import {
     expandPromptTemplate,
     expandSkillCommand,
@@ -222,7 +223,14 @@ export class RuntimeReads {
         const contextCapacity = getRuntimeContextCapacity(session);
         const systemContextTokens = getRootSessionStaticContextTokens(session);
         const activeModelState = session.getActiveModelState();
-        const activeAgentInfo = session.getActiveAgentInfo();
+        const foregroundAgent = session.getActiveAgentInfo();
+        const reviewerInfo =
+            foregroundAgent?.agentName === AGENTS.REVIEWER
+                ? foregroundAgent
+                : hasPausedReviewer(session)
+                  ? { displayName: "Reviewer", model: "", provider: "", agentName: AGENTS.REVIEWER }
+                  : null;
+        const activeAgentInfo = reviewerInfo || foregroundAgent;
         const liveSessionName = sessionManager?.getSessionName?.() || "";
         const managedModel = managedDormant ? managed?.model || "" : "";
         const managedProvider = managedDormant ? managed?.provider || "" : "";
@@ -280,6 +288,7 @@ export class RuntimeReads {
                 : null,
             activeAgent:
                 pendingAgentName ||
+                reviewerInfo?.agentName ||
                 session.getRootAgentName() ||
                 activeAgentInfo?.agentName ||
                 (managedDormant ? managed?.activeAgent || null : null),

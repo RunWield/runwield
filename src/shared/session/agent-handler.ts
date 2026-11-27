@@ -41,6 +41,7 @@ import { loadPlanActionEvidence } from "../workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { isValidationCheckpoint } from "@runwield/plans/controller-state";
 import { validationCheckpointCanResume } from "../workflow/validation-checkpoint.ts";
+import { hasPausedReviewer } from "../workflow/validation-session-adapter.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { TriageOutcome } from "@runwield/tools";
 import type { ImageAttachment } from "@runwield/session-runtime/events";
@@ -234,13 +235,20 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
             hostedSession.setActiveExecutionWorkflow({ ...taskCompletion.workflow });
         }
         let rootWorkflowEvent: WorkflowToolEvent | null = null;
-        if (!taskCompletion && /^(continue|resume|retry)[.!]?$/i.test(userRequest.trim())) {
+        const resumeCommand = /^(continue|resume|retry)[.!]?$/i.test(userRequest.trim());
+        const pausedReviewer = hasPausedReviewer(hostedSession);
+        if (!taskCompletion && (resumeCommand || pausedReviewer)) {
             const workflow = hostedSession.getActiveExecutionWorkflow();
             if (workflow?.planName && workflow.triageMeta.classification !== "QUICK_FIX") {
                 const location = await resolveWorkflowPlanLocation(projectRoot, workflow.planName);
                 const plan = location.plan;
                 const checkpoint = plan?.attrs.validationCheckpoint;
+                const resumeReviewer =
+                    pausedReviewer &&
+                    checkpoint?.nextPhase === "semantic" &&
+                    checkpoint.generation === workflow.validationGeneration;
                 if (
+                    (resumeCommand || resumeReviewer) &&
                     plan &&
                     checkpoint &&
                     isValidationCheckpoint(checkpoint) &&
@@ -265,6 +273,9 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                         workRecordMnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
                         semanticReviewPort: SYSTEM_SEMANTIC_REVIEW_PORT,
                         supportsSemanticRepairHandoff: true,
+                        ...(resumeReviewer
+                            ? { reviewerInput: { text: resumeCommand ? "" : userRequest, images } }
+                            : {}),
                         trigger: "session_resume",
                     });
                     requestAgentStoppedAttention();

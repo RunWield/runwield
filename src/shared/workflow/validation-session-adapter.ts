@@ -100,7 +100,14 @@ export const SYSTEM_SEMANTIC_REVIEW_PORT: SemanticReviewPort = Object.freeze({
     runIsolatedAgentSession,
 });
 
+export type ReviewerInput = {
+    text: string;
+    images: NonNullable<IsolatedAgentSessionOptions["images"]>;
+};
+
 type PendingReviewSession = {
+    planName: string;
+    generation: string;
     key: string;
     manager: SessionManager;
     inspection: ReviewInspection;
@@ -108,6 +115,20 @@ type PendingReviewSession = {
 // Model history is context, not workflow authority. Only an unchanged candidate
 // in the same durable validation generation and round may reuse it.
 const pendingReviewSessions = new WeakMap<HostedSession, PendingReviewSession>();
+
+export function hasPausedReviewer(hostedSession: HostedSession): boolean {
+    const pending = pendingReviewSessions.get(hostedSession);
+    const workflow = hostedSession.getActiveExecutionWorkflow();
+    const checkpoint = workflow?.triageMeta.validationCheckpoint;
+    return Boolean(
+        pending &&
+        workflow?.planName === pending.planName &&
+        checkpoint?.generation === pending.generation &&
+        checkpoint.state === "paused" &&
+        checkpoint.nextPhase === "semantic",
+    );
+}
+
 const pendingRepairManagers = new WeakMap<HostedSession, Map<string, SessionManager>>();
 type RepairSession = { manager: SessionManager; cwd: string; agentName: string; planName?: string };
 const lastRepairSessions = new WeakMap<HostedSession, RepairSession>();
@@ -247,6 +268,7 @@ async function runIsolatedRequest(
     isolatedSessions: SemanticReviewPort,
     request: IsolatedAgentSessionRequest,
     reviewerManagers: WeakMap<ReviewInspection, SessionManager>,
+    reviewerInput?: ReviewerInput,
 ): Promise<IsolatedAgentSessionOutcome> {
     if (request.kind === "reviewer") {
         const workflow = hostedSession.getActiveExecutionWorkflow();
@@ -276,19 +298,29 @@ async function runIsolatedRequest(
         }
         if (!manager) manager = SessionManager.inMemory(request.cwd);
         reviewerManagers.set(request.review.inspection, manager);
-        if (key) pendingReviewSessions.set(hostedSession, { key, manager, inspection: request.review.inspection });
+        if (key && workflow?.validationGeneration) {
+            pendingReviewSessions.set(hostedSession, {
+                planName: workflow.planName,
+                generation: workflow.validationGeneration,
+                key,
+                manager,
+                inspection: request.review.inspection,
+            });
+        }
         const mode = request.reviewerMode;
         const isIntegration = mode === "integration" || mode === "integration_verify";
         const id = isIntegration ? SUBAGENTS.INTEGRATION_REVIEWER : SUBAGENTS.REVIEWER;
         const reviewerMode = isIntegration ? (mode === "integration_verify" ? "verify" : "discovery") : mode;
+        const prompt = resumed
+            ? `Continue the pending review. Keep prior findings and diff reads. Do not restart.\n${request.review.inspection.feedback() || "Finish the review and call review_complete."}`
+            : request.userRequest;
         const result = await runValidationAgentUntilEvent(
             isolatedSessions,
             {
                 hostedSession,
                 agentName: request.agentName,
-                userRequest: resumed
-                    ? `Continue the pending review. Keep prior findings and diff reads. Do not restart.\n${request.review.inspection.feedback() || "Finish the review and call review_complete."}`
-                    : request.userRequest,
+                userRequest: reviewerInput?.text ? `${prompt}\n\nUser direction:\n${reviewerInput.text}` : prompt,
+                images: reviewerInput?.images,
                 cwd: request.cwd,
                 subAgentDefinition: { id, options: { reviewerMode } },
                 toolNames: [...agentRegistry.isolated.toolCeiling(id)],
@@ -508,12 +540,15 @@ export function createValidationSessionPort(
     hostedSession: HostedSession,
     {
         semanticReviewPort,
+        reviewerInput,
     }: {
         semanticReviewPort?: SemanticReviewPort;
+        reviewerInput?: ReviewerInput;
     } = {},
 ): ValidationSessionPort {
     const isolatedSessions = semanticReviewPort || SYSTEM_SEMANTIC_REVIEW_PORT;
     const reviewerManagers = new WeakMap<ReviewInspection, SessionManager>();
+    let pendingReviewerInput = reviewerInput;
     return {
         assertLive: () => hostedSession.getManagedOperationCapability?.()?.assertLive(),
         cwd: hostedSession.cwd,
@@ -662,7 +697,15 @@ export function createValidationSessionPort(
         ): Promise<Extract<IsolatedAgentSessionOutcome, { kind: K }>> => {
             hostedSession.getManagedOperationCapability?.()?.assertLive();
             try {
-                const outcome = await runIsolatedRequest(hostedSession, isolatedSessions, request, reviewerManagers);
+                const input = request.kind === "reviewer" ? pendingReviewerInput : undefined;
+                if (input) pendingReviewerInput = undefined;
+                const outcome = await runIsolatedRequest(
+                    hostedSession,
+                    isolatedSessions,
+                    request,
+                    reviewerManagers,
+                    input,
+                );
                 return outcome as Extract<IsolatedAgentSessionOutcome, { kind: K }>;
             } catch (error) {
                 const failureError = error instanceof Error ? error : new Error(String(error));

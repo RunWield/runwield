@@ -23,7 +23,7 @@ import { getCurrentValidationProgress } from "./validation-progress.ts";
 import { validationUserMessage } from "./validation-user-messages.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
-import type { SemanticReviewPort } from "./validation-session-adapter.ts";
+import type { ReviewerInput, SemanticReviewPort } from "./validation-session-adapter.ts";
 import { runMechanicalValidation as runQuickFixMechanicalValidation } from "./validation-helpers.ts";
 import type { ValidationSessionPort } from "./validation-ports.ts";
 import type { ValidationPhaseResult, WorkflowValidationResult } from "./validation-types.ts";
@@ -67,6 +67,7 @@ export type ValidationLoopArgs = {
     executionContext?: ActiveExecutionWorkflow;
     git: GitPort;
     semanticReviewPort?: SemanticReviewPort;
+    reviewerInput?: ReviewerInput;
     localCI: LocalCIPort;
     workRecordMnemotecaPort: WorkRecordMnemotecaPort;
     supportsSemanticRepairHandoff?: boolean;
@@ -124,6 +125,7 @@ export async function runValidationLoop(args: ValidationLoopArgs): Promise<Workf
 export function createEngineValidationArgs(args: ValidationLoopArgs): EngineValidationLoopArgs {
     const session: ValidationSessionPort = createValidationSessionPort(args.hostedSession, {
         semanticReviewPort: args.semanticReviewPort,
+        reviewerInput: args.reviewerInput,
     });
     return {
         planName: args.planName,
@@ -267,6 +269,7 @@ export async function runWorkflowValidationToStableBoundary(
             break;
         args = {
             ...args,
+            reviewerInput: undefined,
             planContent: plan.markdown,
             triageMeta: plan.attrs as ContinueWorkflowValidationArgs["triageMeta"],
         };
