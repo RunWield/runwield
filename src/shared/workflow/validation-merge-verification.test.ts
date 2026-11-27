@@ -16,7 +16,7 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { createGitPort } from "../git-port.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { verifyPostMergeCandidatePublished, verifyRecordedPublication } from "./validation-merge-verification.ts";
 
 const fixture = defineCommittedGitFixture({ "file.txt": "base\n" });

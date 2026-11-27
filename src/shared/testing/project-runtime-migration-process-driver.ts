@@ -5,13 +5,13 @@ import { lstat as fsLstat, mkdir as fsMkdir, rm as fsRm } from "node:fs/promises
 import process from "node:process";
 import { setInterval } from "node:timers";
 import { dirname, join } from "node:path";
-import { getRunWieldRuntimeDir } from "../../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { getLockHostname } from "@runwield/resources/locks";
 import {
     inspectProjectRuntimeReadAccess,
     migrateLegacyProjectRuntimeState,
     resolveProjectRuntimeLayout,
-} from "../project-runtime-layout.ts";
+} from "@runwield/project-runtime/layout";
 import { withWorktreeRegistryLockAtPath } from "../worktree-registry.ts";
 
 interface LegacyPlanLockRecord {

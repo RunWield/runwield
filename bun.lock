@@ -50,6 +50,7 @@
         "@runwield/parsing": "workspace:*",
         "@runwield/pi-ai": "workspace:*",
         "@runwield/plans": "workspace:*",
+        "@runwield/project-runtime": "workspace:*",
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
         "@runwield/session-files": "workspace:*",
@@ -162,9 +163,17 @@
       "name": "@runwield/plans",
       "dependencies": {
         "@runwield/parsing": "workspace:*",
+        "@runwield/project-runtime": "workspace:*",
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*",
+      },
+    },
+    "packages/project-runtime": {
+      "name": "@runwield/project-runtime",
+      "dependencies": {
+        "@runwield/projects": "workspace:*",
+        "@runwield/resources": "workspace:*",
       },
     },
     "packages/projects": {
@@ -188,6 +197,7 @@
         "@runwield/parsing": "workspace:*",
         "@runwield/pi-ai": "workspace:*",
         "@runwield/plans": "workspace:*",
+        "@runwield/project-runtime": "workspace:*",
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
         "@runwield/workflow": "workspace:*",
@@ -204,6 +214,7 @@
       "dependencies": {
         "@runwield/agents": "workspace:*",
         "@runwield/plans": "workspace:*",
+        "@runwield/project-runtime": "workspace:*",
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*",
@@ -806,6 +817,8 @@
     "@runwield/pi-ai": ["@runwield/pi-ai@workspace:packages/pi-ai"],
 
     "@runwield/plans": ["@runwield/plans@workspace:packages/plans"],
+
+    "@runwield/project-runtime": ["@runwield/project-runtime@workspace:packages/project-runtime"],
 
     "@runwield/projects": ["@runwield/projects@workspace:packages/projects"],
 

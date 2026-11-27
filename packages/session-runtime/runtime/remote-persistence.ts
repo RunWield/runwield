@@ -1,4 +1,4 @@
-import { withProjectRuntimeReadScope } from "../../../src/shared/project-runtime-layout.ts";
+import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 import { reconcileRemoteWorkflow } from "../../../src/shared/session/workflow-context-recovery.ts";
 import { isRuntimeRootSessionManager } from "./support.ts";
 import { reasonForCandidate } from "../../../src/shared/session/plan-session-lookup.ts";

@@ -1,5 +1,5 @@
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
-import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
+import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 /** Shared Plan action evidence and lifecycle executor. */
 
 import { type PlanFrontMatter } from "@runwield/plans";

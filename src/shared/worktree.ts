@@ -1,3 +1,4 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 /** Git worktree helpers for isolated Plan execution. */
 
 import { projects } from "@runwield/projects";
@@ -11,9 +12,9 @@ import {
     rm as fsRm,
     stat as fsStat,
 } from "node:fs/promises";
-
 import { basename, dirname, join, resolve } from "node:path";
-import { getHomeDir, RUNWIELD_DIR_NAME, WORKTREE_BRANCH_PREFIX } from "../constants.ts";
+import { getHomeDir, WORKTREE_BRANCH_PREFIX } from "../constants.ts";
+import { RUNWIELD_DIR_NAME } from "@runwield/project-runtime/legacy-paths";
 import {
     captureWorktreeProjectContext,
     isTransferredProjectContext,
@@ -31,14 +32,13 @@ import {
     listEntries,
     pruneStaleEntries,
     removeEntry,
-    type WorktreeRegistryEntry,
 } from "./worktree-registry.ts";
 import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
     isRunWieldOwnedGitignoreChange,
     isRunWieldOwnedRuntimePath,
     RUNWIELD_OWNED_RUNTIME_PATHS,
-} from "./runwield-owned-paths.ts";
+} from "@runwield/project-runtime/owned-paths";
 import {
     assertNoRuntimePathsInNewHistory,
     assertNoTrackedOrIndexedRuntimePaths,

@@ -50,8 +50,8 @@ import {
     assertNotReservedEpicArtifactPlanName,
 } from "@runwield/plans/format";
 import { ensurePlanIdentity, planDocumentsForCheckout } from "../../plan-store/index.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { runWieldGitignoreNeedsUpdate } from "../runwield-owned-paths.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { runWieldGitignoreNeedsUpdate } from "@runwield/project-runtime/owned-paths";
 import { VERSION } from "../version.js";
 
 import { applyPlanReviewForExecution } from "../../plan-store/index.ts";

@@ -2,7 +2,7 @@ import { projects } from "@runwield/projects";
 import { readFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
-import { checkedProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
+import { checkedProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
 import { ensurePrivateDir, writeJsonAtomically } from "../shared/private-json-file.ts";
 import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";

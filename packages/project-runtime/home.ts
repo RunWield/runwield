@@ -1,5 +1,5 @@
-import { projects, type ProjectIdentity } from "@runwield/projects";
-import { recoverLegacyPlanControllers } from "../plan-store/index.ts";
+import { projects, type ProjectIdentity, type ProjectLaunchContext } from "@runwield/projects";
+import { recoverLegacyPlanControllers } from "./controller-recovery.ts";
 /** Home-owned ordinary runtime. A durable inventory separates copying, publication, and retirement. */
 import {
     gitWorktreeListEvidence,
@@ -8,31 +8,27 @@ import {
     reusedGitRead,
     rememberGitRead,
 } from "./git-evidence-cache.ts";
-import {
-    readLockFileSnapshot,
-    lockFileSnapshotMatches,
-    type LockFileSnapshot,
-    isLockHolderGone,
-} from "@runwield/resources/locks";
-import { DatabaseSync } from "./sqlite.ts";
-import { getRunWieldRuntimeDir } from "../constants.ts";
+import { readLockFileSnapshot, lockFileSnapshotMatches, type LockFileSnapshot } from "@runwield/resources/locks";
+import { DatabaseSync } from "@runwield/resources/sqlite";
+import { isLockHolderGone } from "@runwield/resources/locks";
+import { getRunWieldRuntimeDir } from "./legacy-paths.ts";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import { basename, dirname, join, relative, isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { realpathSync, type Stats } from "node:fs";
-import { openNativeFileLock, type NativeFileLock } from "./native-file-lock.ts";
-import { ensurePrivateDir, syncParentDirectory } from "./private-json-file.ts";
-import { isRunWieldOwnedRuntimePath, LEGACY_PROJECT_RUNTIME_HAZARD_PATHS } from "./runwield-owned-paths.ts";
-import { inspectWorktreeRegistryAtPath } from "./worktree-registry.ts";
-import { recoverLegacyRuntimeFiles } from "./project-runtime-recovery.ts";
+import { openNativeFileLock, type NativeFileLock } from "@runwield/resources/fs";
+import { ensurePrivateDir, syncParentDirectory } from "@runwield/resources/fs";
+import { isRunWieldOwnedRuntimePath, LEGACY_PROJECT_RUNTIME_HAZARD_PATHS } from "./owned-paths.ts";
+import { inspectWorktreeRegistryAtPath } from "./registry-inspection.ts";
+import { recoverLegacyRuntimeFiles } from "./recovery.ts";
 import {
     ProjectRuntimeEntryRefusedError,
     type ProjectRuntimeLayout,
     type ProjectRuntimeReadInspection,
     type ProjectRuntimeMigrationReadyResult,
     type ProjectRuntimeMigrationBlockedReason,
-} from "./project-runtime-layout.ts";
+} from "./layout-contract.ts";
 
 interface RuntimeMapping {
     source: string;
@@ -885,12 +881,45 @@ async function removeEmptyTree(path: string): Promise<void> {
         syncParentDirectory(path);
     }
 }
+function checkoutLaunchContext(checkout: ProjectIdentity): ProjectLaunchContext {
+    return {
+        personalOwner: checkout.personalOwner,
+        executionAccountHome: checkout.executionAccountHome,
+        configuredExecutionAccountHome: checkout.configuredExecutionAccountHome,
+        accountHomeDirectory: checkout.accountHomeDirectory,
+    };
+}
+
+function verifyAdmittedCheckout(checkout: ProjectIdentity): void {
+    const context = checkoutLaunchContext(checkout);
+    projects.launch.verifyAccountHome(context);
+    // An ordinary checkout has a registration in its account home. The laptop
+    // owner of a managed checkout comes from the trusted launch on this host.
+    const inspected = projects.checkout.inspect(
+        checkout.checkoutRoot,
+        checkout.personalOwner.kind === "execution-account" ? { context } : {},
+    );
+    if (
+        inspected.kind !== "existing" ||
+        inspected.identity.checkoutRoot !== checkout.checkoutRoot ||
+        inspected.identity.projectId !== checkout.projectId ||
+        inspected.identity.repositoryId !== checkout.repositoryId ||
+        inspected.identity.checkoutId !== checkout.checkoutId ||
+        inspected.identity.executionAccountHome !== checkout.executionAccountHome ||
+        inspected.identity.personalOwner.kind !== checkout.personalOwner.kind ||
+        inspected.identity.personalOwner.identity !== checkout.personalOwner.identity ||
+        (checkout.personalOwner.kind === "execution-account" &&
+            projects.checkout.historicalRoots(checkout)[0] !== checkout.checkoutRoot)
+    )
+        refuse("invalid_registered_checkout", [checkout.checkoutRoot], "Admitted Project checkout authority changed.");
+}
+
 export async function enterHomeProjectRuntime(identity: ProjectIdentity): Promise<ProjectRuntimeMigrationReadyResult> {
     for (let attempt = 0; ; attempt++) {
-        projects.launch.verifyAccountHome(identity);
+        verifyAdmittedCheckout(identity);
         try {
             const result = await enterPinnedProjectRuntime(identity);
-            projects.launch.verifyAccountHome(identity);
+            verifyAdmittedCheckout(identity);
             return result;
         } catch (error) {
             // A legacy migration can release its registry lock while admission inventories the checkout.
@@ -922,11 +951,16 @@ async function enterPinnedProjectRuntime(identity: ProjectIdentity): Promise<Pro
     let registryLock: NativeFileLock | undefined;
     const indexes: DatabaseSync[] = [];
     try {
+        verifyAdmittedCheckout(identity);
         const roots = await checkoutRoots(identity);
         const identities: ProjectIdentity[] = [];
         for (const root of roots) {
+            if (root === identity.checkoutRoot) {
+                identities.push(identity);
+                continue;
+            }
             const admission = await projects.checkout.admit(root, {
-                context: { personalOwner: identity.personalOwner, executionAccountHome: identity.executionAccountHome },
+                context: checkoutLaunchContext(identity),
             });
             if (admission.kind !== "existing")
                 refuse("invalid_registered_checkout", [root], "Linked checkout identity could not be admitted.");

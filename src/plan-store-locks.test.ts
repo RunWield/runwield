@@ -12,7 +12,7 @@ import { injectFrontMatter } from "@runwield/plans/format";
 import { ensurePlanIdentity } from "./plan-store/index.ts";
 import { listPlanResources } from "./shared/testing/plan-query-fixture.ts";
 import { savePlan } from "./plan-store.ts";
-import { resolveProjectRuntimeLayout } from "./shared/project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 
 async function promptly<T>(operation: Promise<T>): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;

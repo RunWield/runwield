@@ -1,11 +1,12 @@
 import { withWorktreeRegistryLockAtPath } from "../worktree-registry.ts";
 import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { enterProjectRuntime, inspectProjectRuntimeReadAccess } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { inspectProjectRuntimeReadAccess } from "@runwield/project-runtime/layout";
 import { spawnSync } from "node:child_process";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { openNativeFileLock } from "../native-file-lock.ts";
-import { getRunWieldRuntimeDir } from "../../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 
 interface TransferCheckpointFile {
     digest: string;

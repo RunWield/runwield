@@ -13,7 +13,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../testing/as
 import { join } from "node:path";
 import { git, makeRepo } from "./worktree-test-helpers.ts";
 import { createWorktreeGitArtifacts, removeWorktreeGitArtifacts } from "./worktree.ts";
-import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
+import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "@runwield/project-runtime/owned-paths";
 
 async function write(root: string, path: string, content: string) {
     const fullPath = join(root, path);

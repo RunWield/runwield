@@ -7,14 +7,14 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { getRunWieldRuntimeDir } from "../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
     checkedProjectRuntimeLayout,
-    enterProjectRuntime,
     inspectProjectRuntimeReadAccess,
     withProjectRuntimeReadScope,
-} from "./project-runtime-layout.ts";
+} from "@runwield/project-runtime/layout";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# Passive runtime\n" });
 

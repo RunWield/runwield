@@ -1,3 +1,4 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 import {
     mergePlanningDocumentBlobs,
     preparePlanningMergeDocuments,
@@ -9,15 +10,14 @@ import { captureForegroundProcess, type CapturedProcessOptions } from "@runwield
 import { rm as fsRm } from "node:fs/promises";
 /** Import published code before resuming an unstarted child's planning checkout. */
 import { join } from "node:path";
-
 import { gitStatusPaths } from "../git-runtime-safety.ts";
-import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
+import { isRunWieldOwnedRuntimePath } from "@runwield/project-runtime/owned-paths";
 import {
     checkpointExecutionPreparation,
     hasExecutionChangesSince,
     PLANNING_CHECKPOINT_GIT_OPTIONS,
 } from "../worktree.ts";
-import { findById, refreshPlanningWorktreeBase, type WorktreeRegistryEntry } from "../worktree-registry.ts";
+import { findById, refreshPlanningWorktreeBase } from "../worktree-registry.ts";
 import { runExecutionPreparationTransition } from "../../plan-store/index.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { isTransferredProjectContext, recordedProjectContextPaths } from "../worktree-project-context.ts";

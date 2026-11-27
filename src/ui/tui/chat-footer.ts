@@ -5,7 +5,8 @@ import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/sess
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.ts";
 import { AGENTS, agentRegistry } from "../../shared/session/agent-registry.ts";
-import { getCwd, getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
+import { getCwd, getHomeDir } from "../../constants.ts";
+import { RUNWIELD_DIR_NAME } from "@runwield/project-runtime/legacy-paths";
 import { getSettingsManager } from "../../shared/settings.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
 import { RuntimeEventTypes } from "@runwield/session-runtime/events";

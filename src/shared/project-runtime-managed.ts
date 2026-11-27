@@ -1,20 +1,20 @@
-import { projects, type ProjectIdentity } from "@runwield/projects";
 import {
     inspectWorktreeRegistryAtPath,
-    withWorktreeRegistryLockAtPath,
     type WorktreeRegistryEntry,
-} from "./worktree-registry.ts";
-import { readLockFileSnapshot, isLockHolderGone } from "@runwield/resources/locks";
+} from "@runwield/project-runtime/registry-inspection";
+import { projects, type ProjectIdentity } from "@runwield/projects";
+import { withWorktreeRegistryLockAtPath } from "./worktree-registry.ts";
+import { isLockHolderGone, readLockFileSnapshot } from "@runwield/resources/locks";
 /** Staged personal-runtime transfer. The verified launcher binds both hosts before exchanging bytes. */
 import { createHash } from "node:crypto";
 import { join, dirname, relative, isAbsolute } from "node:path";
 import fs from "node:fs/promises";
-import { getRunWieldRuntimeDir, WORKTREE_REGISTRY_LOCK_FILE } from "../constants.ts";
+import { getRunWieldRuntimeDir, WORKTREE_REGISTRY_LOCK_FILE } from "@runwield/project-runtime/legacy-paths";
 import { ensurePrivateDir, writeJsonAtomically, syncParentDirectory } from "./private-json-file.ts";
 import { openNativeFileLock, type NativeFileLock } from "./native-file-lock.ts";
 import { DatabaseSync } from "./sqlite.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
-import { isRunWieldOwnedRuntimePath } from "./runwield-owned-paths.ts";
+import { isRunWieldOwnedRuntimePath } from "@runwield/project-runtime/owned-paths";
 
 const personalNames = [
     "controller",

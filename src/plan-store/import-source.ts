@@ -1,3 +1,4 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 import type { PackageDocuments } from "@runwield/plans/history";
 import { projects, type ProjectIdentity } from "@runwield/projects";
 import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
@@ -20,9 +21,8 @@ import {
 import {
     inspectWorktreeRegistry,
     getWorktreeRegistryPath,
-    type WorktreeRegistryEntry,
 } from "../shared/worktree-registry.ts";
-import { checkedProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
+import { checkedProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import type { PlanPackageMetadata, PackageDefinition } from "./packages.ts";
 
 export interface ImportAllocation {

@@ -6,7 +6,8 @@ import {
     seedPlanController,
 } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
@@ -26,7 +27,7 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
+import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "@runwield/project-runtime/legacy-paths";
 
 import { listPlans, loadPlan } from "../testing/plan-query-fixture.ts";
 

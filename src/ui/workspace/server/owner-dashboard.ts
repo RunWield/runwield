@@ -13,7 +13,7 @@ import { readLiveSessionConnection } from "../../../shared/session/live-session-
 import {
     ProjectRuntimeEntryRefusedError,
     withProjectRuntimeReadScope,
-} from "../../../shared/project-runtime-layout.ts";
+} from "@runwield/project-runtime/layout";
 
 type DashboardCategory = "needs-you" | "ready" | "in-progress" | "recently-finished";
 

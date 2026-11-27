@@ -29,7 +29,7 @@ import {
 } from "./isolated-publication.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 import { removeWorktreeGitArtifacts } from "./worktree.ts";
-import { RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
+import { RUNWIELD_GITIGNORE_BLOCK } from "@runwield/project-runtime/owned-paths";
 
 for (const change of ["formatting", "definition", "body", "staged", "committed"]) {
     test(`publication retry recovers only unstaged formatting: ${change}`, async () => {

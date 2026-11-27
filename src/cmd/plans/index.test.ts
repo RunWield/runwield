@@ -17,8 +17,9 @@ import { runPlansCommand } from "./index.ts";
 import { addEntry } from "../../shared/worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { join } from "node:path";
-import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-import { getCwd, getRunWieldRuntimeDir } from "../../constants.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { getCwd } from "../../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 
 type PlanSeedAttrs = NonNullable<Parameters<typeof seedPlan>[3]>;

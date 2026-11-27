@@ -154,7 +154,7 @@ export async function rememberGitRead<T>(observation: GitEvidenceObservation, va
         remembered.delete(observation.key);
         return;
     }
-    if (await fingerprint(observation.paths) !== observation.fingerprint) {
+    if ((await fingerprint(observation.paths)) !== observation.fingerprint) {
         remembered.delete(observation.key);
         return;
     }

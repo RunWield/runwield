@@ -2,7 +2,7 @@
 import { mkdir, open, readdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { trimProcessOutputLines, type CapturedProcessStream } from "./process-output.ts";
 
 export const VALIDATION_OUTPUT_LIMIT_BYTES = 16_384;

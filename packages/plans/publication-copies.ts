@@ -1,27 +1,20 @@
 import { decodePackageMarkdown } from "./format.ts";
-import { isPlanId } from "./identity.ts";
+import {
+    assertPublicationMetadataFields,
+    type PackagePublicationReference,
+} from "@runwield/project-runtime/publication-evidence";
 import { PlanPackageError } from "./package-data.ts";
 
-export interface ExecutionPublicationPolicy {
-    plans: boolean;
-    workRecords: boolean;
-    autoGenerateRecords: boolean;
-}
+export {
+    assertPackagePublicationReference,
+    type ExecutionPublicationPolicy,
+    type PackagePublicationReference,
+} from "@runwield/project-runtime/publication-evidence";
+
 export interface DeliveryCopy {
     readonly kind: "plan" | "work-record";
     readonly path: string;
     readonly text: string;
-}
-/** The reference returned when Plans seals an attempt. Pass it back unchanged. */
-export interface PackagePublicationReference {
-    readonly kind: "package";
-    readonly projectId: string;
-    readonly personalOwner: string;
-    readonly repositoryId: string;
-    readonly planId: string;
-    readonly attemptId: string;
-    readonly inputId: string;
-    readonly digest: string;
 }
 export interface ProjectPublicationCopies {
     /** Read frozen repository destinations and content for this Project's retained input. */
@@ -46,51 +39,15 @@ export interface PublicationCopyEvidence {
 export type MaterializedPublicationCopies =
     { kind: "committed"; evidence: PublicationCopyEvidence } | { kind: "written"; paths: string[] };
 
-type PublicationFields = Record<string, string | number | boolean | null>;
-
 function fail(kind: PlanPackageError["kind"], message: string): never {
     throw new PlanPackageError(kind, message);
-}
-
-function publicationFields(value: PublicationFields, allowed: string[]): PublicationFields {
-    if (
-        !value ||
-        typeof value !== "object" ||
-        Array.isArray(value) ||
-        Object.keys(value).some((key) => !allowed.includes(key))
-    )
-        fail("malformed_metadata", "Invalid metadata fields.");
-    return value;
-}
-
-const publicationReferenceFields = [
-    "kind",
-    "projectId",
-    "personalOwner",
-    "repositoryId",
-    "planId",
-    "attemptId",
-    "inputId",
-    "digest",
-];
-export function assertPackagePublicationReference(reference: PackagePublicationReference): PackagePublicationReference {
-    const value = publicationFields(JSON.parse(JSON.stringify(reference)), publicationReferenceFields);
-    if (
-        value.kind !== "package" ||
-        publicationReferenceFields.some((key) => typeof value[key] !== "string" || !value[key]) ||
-        !/^[0-9a-f-]{36}$/.test(reference.inputId) ||
-        !/^[0-9a-f]{64}$/.test(reference.digest)
-    )
-        fail("malformed_metadata", "Invalid package publication reference.");
-    if (!isPlanId(reference.planId)) fail("malformed_metadata", "Invalid Plan ID.");
-    return reference;
 }
 
 export function assertDeliveryCopies(copies: DeliveryCopy[]): void {
     if (!Array.isArray(copies)) fail("malformed_metadata", "Invalid delivery copies.");
     const paths = new Set<string>();
     for (const copy of copies) {
-        publicationFields(JSON.parse(JSON.stringify(copy)), ["kind", "path", "text"]);
+        assertPublicationMetadataFields(JSON.parse(JSON.stringify(copy)), ["kind", "path", "text"]);
         if (
             typeof copy.text !== "string" ||
             typeof copy.path !== "string" ||

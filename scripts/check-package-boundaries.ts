@@ -63,7 +63,12 @@ interface ModuleDependency {
 }
 
 // Add each package here once its implementation has moved out of the application.
-const INDEPENDENT_PACKAGES = new Set(["@runwield/tools", "@runwield/agents", "@runwield/projects"]);
+const INDEPENDENT_PACKAGES = new Set([
+    "@runwield/tools",
+    "@runwield/agents",
+    "@runwield/projects",
+    "@runwield/project-runtime",
+]);
 
 // Keep the lookup path so the boundary check can inspect it as well as the real path.
 const TYPE_REFERENCE_HOST: ts.ModuleResolutionHost = { ...ts.sys, realpath: undefined };
@@ -73,6 +78,7 @@ const EXTRACTED_DOMAIN_PACKAGES = new Set([
     "@runwield/tools",
     "@runwield/agents",
     "@runwield/projects",
+    "@runwield/project-runtime",
     "@runwield/pi-ai",
     "@runwield/plans",
     "@runwield/session-runtime",

@@ -1,4 +1,10 @@
 import { projects } from "@runwield/projects";
+import {
+    inspectWorktreeRegistryAtPath,
+    isNonterminalWorktreeStatus,
+    type WorktreeRegistryEntry,
+    type WorktreeRegistryInspection,
+} from "@runwield/project-runtime/registry-inspection";
 import { openNativeFileLock } from "./native-file-lock.ts";
 import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import { open as fsOpen } from "node:fs/promises";
@@ -6,7 +12,6 @@ import { captureForegroundProcess } from "@runwield/resources/process";
 import { realpathSync as fsRealpathSync } from "node:fs";
 import {
     mkdir as fsMkdir,
-    readFile as fsReadFile,
     realpath as fsRealpath,
     rename as fsRename,
     rm as fsRm,
@@ -29,13 +34,13 @@ import {
     isPidAlive,
 } from "@runwield/resources/locks";
 import { CLI_BIN } from "../constants.ts";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
-    enterProjectRuntime,
     checkedProjectRuntimeLayout,
     resolveProjectRuntimeLayout,
     withProjectRuntimeReadScope,
     type ProjectRuntimeLayout,
-} from "./project-runtime-layout.ts";
+} from "@runwield/project-runtime/layout";
 import { inspectPlanIdentityDocuments } from "../plan-store/index.ts";
 import { assertPublicationAttempt, type PublicationAttempt } from "@runwield/workflow/publication";
 
@@ -44,37 +49,10 @@ const registryMutation = new AsyncLocalStorage<ProjectRuntimeLayout>();
 const LOCK_TIMEOUT_MS = 30_000;
 const LOCK_RETRY_MS = 50;
 
-export interface WorktreeRegistryEntry {
-    id: string;
-    planName: string;
-    planId?: string;
-    baseBranch: string;
-    baseRef: string;
-    baseCommit: string;
-    baseTree?: string;
-    executionBaselineTree?: string;
-    /** Commit recorded when the implementation report was accepted. */
-    implementationCommit?: string;
-    branch: string;
-    path: string;
-    status: "planning" | "active" | "completed" | "execution_failed" | "validation_failed" | "validated" | "abandoned";
-    createdAt: string;
-    updatedAt: string;
-    migrationIssue?: RegistryMigrationIssue;
-    publication?: PublicationAttempt;
-    creationContext?: import("./worktree-project-context.ts").WorktreeProjectContext;
-}
-
 export interface RegistryRecoveryAction {
     label: string;
     description: string;
     command?: string;
-}
-
-interface RegistryMigrationIssue {
-    reason: string;
-    recordedAt: string;
-    candidates?: string[];
 }
 
 interface RegistryAmbiguityDetails {
@@ -82,24 +60,6 @@ interface RegistryAmbiguityDetails {
     entryIds: string[];
     planName?: string;
     recoveryActions: RegistryRecoveryAction[];
-}
-
-interface RegistryIntegrityIssue {
-    kind: string;
-    message: string;
-    ids: string[];
-}
-
-export interface WorktreeRegistryInspection {
-    version: number;
-    entries: WorktreeRegistryEntry[];
-    integrityIssues: RegistryIntegrityIssue[];
-    readError?: Error;
-}
-
-interface RegistryFile {
-    version?: number;
-    entries?: WorktreeRegistryEntry[];
 }
 
 interface RegistryLockPayload {
@@ -305,12 +265,12 @@ async function migrateLegacyRegistryEntries(
         // survives.
         const wouldDuplicateLiveAttempt = Boolean(
             plan?.attrs.planId &&
-            NONTERMINAL_STATUSES.has(entry.status) &&
+            isNonterminalWorktreeStatus(entry.status) &&
             entries.some(
                 (other) =>
                     other.id !== entry.id &&
                     other.planId === plan.attrs.planId &&
-                    NONTERMINAL_STATUSES.has(other.status),
+                    isNonterminalWorktreeStatus(other.status),
             ),
         );
         if (plan?.attrs.planId && !wouldDuplicateLiveAttempt) {
@@ -319,7 +279,7 @@ async function migrateLegacyRegistryEntries(
             changed = true;
             continue;
         }
-        if (!NONTERMINAL_STATUSES.has(entry.status)) continue;
+        if (!isNonterminalWorktreeStatus(entry.status)) continue;
         migrationIssues.push({
             id: entry.id,
             planName: entry.planName,
@@ -341,7 +301,7 @@ async function migrateLegacyRegistryEntries(
 }
 
 function hasUnresolvedLegacyNonterminalEntries(entries: WorktreeRegistryEntry[]): boolean {
-    return entries.some((entry) => !entry.planId && NONTERMINAL_STATUSES.has(entry.status));
+    return entries.some((entry) => !entry.planId && isNonterminalWorktreeStatus(entry.status));
 }
 
 async function readRegistry(projectRoot: string): Promise<WorktreeRegistryEntry[]> {
@@ -384,21 +344,12 @@ async function readRegistry(projectRoot: string): Promise<WorktreeRegistryEntry[
     }
 }
 
-const NONTERMINAL_STATUSES = new Set([
-    "planning",
-    "active",
-    "completed",
-    "execution_failed",
-    "validation_failed",
-    "validated",
-]);
-
 function registryPlanKey(entry: WorktreeRegistryEntry) {
     return entry.planId || entry.planName;
 }
 
 function assertNoDuplicateNonterminalAttempt(entries: WorktreeRegistryEntry[], candidate: WorktreeRegistryEntry) {
-    if (!NONTERMINAL_STATUSES.has(candidate.status)) return;
+    if (!isNonterminalWorktreeStatus(candidate.status)) return;
     if (!candidate.planId) return;
     const key = registryPlanKey(candidate);
     const duplicate = entries.find(
@@ -406,7 +357,7 @@ function assertNoDuplicateNonterminalAttempt(entries: WorktreeRegistryEntry[], c
             entry.id !== candidate.id &&
             entry.planId &&
             registryPlanKey(entry) === key &&
-            NONTERMINAL_STATUSES.has(entry.status),
+            isNonterminalWorktreeStatus(entry.status),
     );
     if (duplicate) throw duplicateLiveAttemptError(candidate.planName, [duplicate, candidate]);
 }
@@ -524,155 +475,6 @@ export async function withWorktreeRegistryLock<Result>(
             lock.close();
         }
     });
-}
-
-/**
- * Read the registry at an exact path without enforcing every invariant.
- *
- * Never mutates or migrates. Diagnosis and layout migration must not change what
- * they are diagnosing.
- */
-export async function inspectWorktreeRegistryAtPath(registryPath: string): Promise<WorktreeRegistryInspection> {
-    const integrityIssues: RegistryIntegrityIssue[] = [];
-    let text;
-    try {
-        text = await fsReadFile(registryPath, "utf8");
-    } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-            return { version: 2, entries: [], integrityIssues };
-        }
-        return {
-            version: 0,
-            entries: [],
-            integrityIssues,
-            readError: error instanceof Error ? error : new Error(String(error)),
-        };
-    }
-    let parsed: RegistryFile;
-    try {
-        parsed = JSON.parse(text);
-    } catch (error) {
-        return {
-            version: 0,
-            entries: [],
-            integrityIssues,
-            readError: error instanceof Error ? error : new Error(String(error)),
-        };
-    }
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        integrityIssues.push({
-            kind: "malformed_registry",
-            message: "The worktree registry root must be an object.",
-            ids: [],
-        });
-        return { version: 0, entries: [], integrityIssues };
-    }
-    const version = typeof parsed.version === "number" ? parsed.version : 1;
-    if (version !== 1 && version !== 2) {
-        integrityIssues.push({
-            kind: "unsupported_schema_version",
-            message: `Registry schema version ${version} is not supported by this RunWield.`,
-            ids: [],
-        });
-    }
-    if (!Array.isArray(parsed.entries)) {
-        integrityIssues.push({
-            kind: "malformed_registry",
-            message: "The worktree registry entries field must be an array.",
-            ids: [],
-        });
-        return { version, entries: [], integrityIssues };
-    }
-    const entries: WorktreeRegistryEntry[] = parsed.entries;
-    const byId = new Map<string, string[]>();
-    for (const entry of entries) {
-        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-            integrityIssues.push({
-                kind: "malformed_registry_entry",
-                message: "Registry entries must be objects.",
-                ids: [],
-            });
-            continue;
-        }
-        const missing = [];
-        if (typeof entry.id !== "string" || !entry.id) missing.push("id");
-        if (typeof entry.planName !== "string" || !entry.planName) missing.push("planName");
-        if (typeof entry.baseBranch !== "string" || !entry.baseBranch) missing.push("baseBranch");
-        if (typeof entry.baseRef !== "string" || !entry.baseRef) missing.push("baseRef");
-        if (typeof entry.baseCommit !== "string" || !entry.baseCommit) missing.push("baseCommit");
-        if (typeof entry.branch !== "string" || !entry.branch) missing.push("branch");
-        if (typeof entry.path !== "string" || !entry.path) missing.push("path");
-        if (typeof entry.status !== "string" || !entry.status) missing.push("status");
-        if (missing.length > 0) {
-            integrityIssues.push({
-                kind: "malformed_registry_entry",
-                message: `Registry entry ${String(entry.id || "<missing>")} is missing ${missing.join(", ")}.`,
-                ids: typeof entry.id === "string" ? [entry.id] : [],
-            });
-        }
-        if ("publication" in entry) {
-            try {
-                assertPublicationAttempt(entry.publication!);
-            } catch (error) {
-                integrityIssues.push({
-                    kind: "malformed_registry_entry",
-                    message: error instanceof Error ? error.message : String(error),
-                    ids: typeof entry.id === "string" ? [entry.id] : [],
-                });
-            }
-        }
-        if (typeof entry.id === "string") {
-            const ids = byId.get(entry.id) || [];
-            ids.push(entry.id);
-            byId.set(entry.id, ids);
-        }
-    }
-    for (const [id, ids] of byId) {
-        if (ids.length > 1) {
-            integrityIssues.push({
-                kind: "duplicate_worktree_id",
-                message: `Worktree id ${id} appears ${ids.length} times, so attempt lookups are ambiguous.`,
-                ids: [id],
-            });
-        }
-    }
-    const liveByPlan = new Map<string, WorktreeRegistryEntry[]>();
-    const legacyLiveByPlanName = new Map<string, WorktreeRegistryEntry[]>();
-    for (const entry of entries) {
-        if (!NONTERMINAL_STATUSES.has(entry.status)) continue;
-        if (entry.planId) {
-            const live = liveByPlan.get(entry.planId) || [];
-            live.push(entry);
-            liveByPlan.set(entry.planId, live);
-        } else if (entry.planName) {
-            const live = legacyLiveByPlanName.get(entry.planName) || [];
-            live.push(entry);
-            legacyLiveByPlanName.set(entry.planName, live);
-        }
-    }
-    for (const [planId, live] of liveByPlan) {
-        if (live.length > 1) {
-            integrityIssues.push({
-                kind: "duplicate_live_attempt",
-                message: `Plan ${live[0].planName} (${planId}) has ${live.length} unfinished attempts: ${live
-                    .map((entry) => `${entry.id} (${entry.status})`)
-                    .join(", ")}.`,
-                ids: live.map((entry) => entry.id),
-            });
-        }
-    }
-    for (const [planName, live] of legacyLiveByPlanName) {
-        if (live.length > 1) {
-            integrityIssues.push({
-                kind: "duplicate_live_attempt",
-                message: `Plan ${planName} has ${live.length} unfinished legacy attempts: ${live
-                    .map((entry) => `${entry.id} (${entry.status})`)
-                    .join(", ")}.`,
-                ids: live.map((entry) => entry.id),
-            });
-        }
-    }
-    return { version, entries, integrityIssues };
 }
 
 /**
@@ -819,7 +621,7 @@ export async function renamePlanningWorktreePlan(
                 (candidate) =>
                     candidate.id !== id &&
                     candidate.planName === nextName &&
-                    NONTERMINAL_STATUSES.has(candidate.status),
+                    isNonterminalWorktreeStatus(candidate.status),
             )
         ) {
             throw new Error(`Another attempt already owns ${nextName}.`);
@@ -856,7 +658,7 @@ export async function renameRestoredPlanEntry(projectRoot: string, id: string, e
                 (candidate) =>
                     candidate.id !== id &&
                     candidate.planName === nextName &&
-                    NONTERMINAL_STATUSES.has(candidate.status),
+                    isNonterminalWorktreeStatus(candidate.status),
             )
         ) {
             throw new Error(
@@ -1166,7 +968,7 @@ export async function removeEntry(projectRoot: string, id: string) {
         const entry = entries[index];
         entries[index] = {
             ...entry,
-            status: NONTERMINAL_STATUSES.has(entry.status) ? "abandoned" : entry.status,
+            status: isNonterminalWorktreeStatus(entry.status) ? "abandoned" : entry.status,
             updatedAt: new Date().toISOString(),
         };
         await writeRegistry(entries);
@@ -1188,7 +990,7 @@ export async function pruneEntry(projectRoot: string, id: string) {
 export async function findByPlanName(projectRoot: string, planName: string) {
     const entries = await listEntries(projectRoot);
     const legacyMatches = entries.filter(
-        (entry) => !entry.planId && entry.planName === planName && NONTERMINAL_STATUSES.has(entry.status),
+        (entry) => !entry.planId && entry.planName === planName && isNonterminalWorktreeStatus(entry.status),
     );
     if (legacyMatches.length > 1) throw duplicateLiveAttemptError(planName, legacyMatches);
     return legacyMatches[0] || null;
@@ -1201,7 +1003,8 @@ export async function findByPlanName(projectRoot: string, planName: string) {
 export async function findActiveByPlanName(projectRoot: string, planName: string) {
     const entries = await listEntries(projectRoot);
     const matches = entries.filter(
-        (entry) => entry.planName === planName && entry.status !== "planning" && NONTERMINAL_STATUSES.has(entry.status),
+        (entry) =>
+            entry.planName === planName && entry.status !== "planning" && isNonterminalWorktreeStatus(entry.status),
     );
     if (matches.length > 1) throw duplicateLiveAttemptError(planName, matches);
     return matches[0] || null;
@@ -1219,7 +1022,8 @@ export async function findByPlanIds(projectRoot: string, planIds: string[]) {
     const matches = new Map<string, WorktreeRegistryEntry | null>();
     for (const planId of planIds) {
         const live = entries.filter(
-            (entry) => entry.planId === planId && entry.status !== "planning" && NONTERMINAL_STATUSES.has(entry.status),
+            (entry) =>
+                entry.planId === planId && entry.status !== "planning" && isNonterminalWorktreeStatus(entry.status),
         );
         // Never hide two active attempts for one Plan behind a batch lookup.
         if (live.length > 1) throw duplicateLiveAttemptError(live[0].planName, live);
@@ -1244,7 +1048,7 @@ export async function readPlanActionWorktreeEvidence(
         return { kind: "ambiguous", message: integrityIssue.message, entryIds: integrityIssue.ids };
     }
     const entries = inspected.entries.filter((entry) => entry.planId === planId);
-    const live = entries.filter((entry) => entry.status !== "planning" && NONTERMINAL_STATUSES.has(entry.status));
+    const live = entries.filter((entry) => entry.status !== "planning" && isNonterminalWorktreeStatus(entry.status));
     if (live.length > 1) {
         return {
             kind: "ambiguous",

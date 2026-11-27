@@ -10,7 +10,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { WORK_RECORDS_DIR_NAME } from "../../constants.ts";
 import { publishExecutionWorktreeIsolated } from "../../shared/isolated-publication.ts";
-import { RUNWIELD_GITIGNORE_BLOCK } from "../../shared/runwield-owned-paths.ts";
+import { RUNWIELD_GITIGNORE_BLOCK } from "@runwield/project-runtime/owned-paths";
 import { checkPackagedCodemode } from "./codemode.ts";
 import { checkPackagedImageResize } from "./image-resize.ts";
 import { checkPackagedRemoteSessionSave } from "./remote-session-save.ts";

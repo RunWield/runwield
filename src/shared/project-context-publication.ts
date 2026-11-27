@@ -11,8 +11,9 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
-import { isRunWieldOwnedGitignoreChange } from "./runwield-owned-paths.ts";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { isRunWieldOwnedGitignoreChange } from "@runwield/project-runtime/owned-paths";
 import {
     isOwnedProjectContext,
     isUnchangedTransferredSource,

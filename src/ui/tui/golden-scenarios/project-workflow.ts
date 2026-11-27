@@ -1,3 +1,4 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 /**
  * @module ui/tui/golden-scenarios/project-workflow
  * Composed Golden PROJECT workflow scenarios.
@@ -6,9 +7,8 @@
 import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
-
 import type { GoldenScenario, GoldenScenarioResult } from "../testing/mod.ts";
-import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
+
 
 interface WorkRecordStatus {
     status?: string;

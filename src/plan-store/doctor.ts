@@ -1,3 +1,4 @@
+import { inspectWorktreeRegistryAtPath } from "@runwield/project-runtime/registry-inspection";
 import {
     TargetBranchSnapshotUnavailableError,
     resolveExistingTargetSnapshot,
@@ -8,7 +9,6 @@ import { currentPackageProject } from "./workflows.ts";
 import { readLocalHomeStore, withLocalProjectAction } from "./index.ts";
 import { listPlanPackages, recoverPlanPackages } from "./packages.ts";
 import { listArchivedPlans } from "./queries.ts";
-
 import { inspectControllerDocumentWorktrees } from "./controllers.ts";
 import { hasApplicablePublicationReceipt, effectiveDeliveryBranch } from "@runwield/workflow/publication";
 import { platform } from "node:process";
@@ -31,16 +31,16 @@ import {
 import { CLI_BIN, WORKTREE_BRANCH_PREFIX } from "../constants.ts";
 import { getPlanDocumentRoot, getPlansDir, inspectPlanFileStrict } from "../plan-store.ts";
 import { ensurePlanIdentity } from "./index.ts";
+import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import {
-    enterProjectRuntime,
     inspectProjectRuntimeLayout,
     withProjectRuntimeReadScope,
     ProjectRuntimeEntryRefusedError,
     type ProjectRuntimeLayout,
     type ProjectRuntimeMigrationBlockedResult,
     resolveProjectRuntimeLayout,
-} from "../shared/project-runtime-layout.ts";
-import { inspectRunWieldGitignore } from "../shared/runwield-owned-paths.ts";
+} from "@runwield/project-runtime/layout";
+import { inspectRunWieldGitignore } from "@runwield/project-runtime/owned-paths";
 import {
     readLockFileSnapshot,
     removeLockFileIfSnapshotMatches,
@@ -51,9 +51,7 @@ import { inspectPlanIdentityDocuments } from "./index.ts";
 import { getTransitionJournalDir } from "./transitions.ts";
 import { reconcileTransitionRecoveryRecords, type TransitionReconciliation } from "./index.ts";
 import { buildEffectProver, listGitWorktreePaths, runGitLines } from "../shared/workflow/transition-recovery.ts";
-
 import {
-    inspectWorktreeRegistryAtPath,
     prepareWorktreeRegistry,
     pruneEntry,
     reconcileEntryIdentity,

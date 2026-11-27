@@ -1,6 +1,9 @@
+import {
+    inspectWorktreeRegistryAtPath,
+    type WorktreeRegistryEntry,
+} from "@runwield/project-runtime/registry-inspection";
 import { seedPlan } from "./testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "./testing/retained-plan-fixture.ts";
-import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 import { open as fsOpen } from "node:fs/promises";
 import {
     lstat as fsLstat,
@@ -17,10 +20,10 @@ import process from "node:process";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { listPlans } from "./testing/plan-query-fixture.ts";
-
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import {
     addEntry,
     findById,
@@ -29,7 +32,6 @@ import {
     findByPlanName,
     getWorktreeRegistryLockPath,
     getWorktreeRegistryPath,
-    inspectWorktreeRegistryAtPath,
     listEntries,
     prepareWorktreeRegistry,
     pruneStaleEntries,

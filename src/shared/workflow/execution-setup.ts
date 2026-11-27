@@ -24,7 +24,8 @@ import {
     projectCommandSettingsContent,
     recordedProjectContextPaths,
 } from "../worktree-project-context.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { requestHostedSessionInteraction, emitSystemStatus, type HostedSession } from "@runwield/session-runtime/host";
 import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import { captureWorktreeTree } from "./git-snapshot.ts";

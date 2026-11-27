@@ -67,10 +67,10 @@ surface, so a browser reload can see a newer title while an old approval is refu
 without exposing storage objects or mutable metadata. The caller's callback may use public commands or genuine external
 effects. These scopes neither authorize arbitrary state patches nor replace the preconditions of named commands.
 
-`recoverLegacyPlanControllers` is the bootstrap integration used by the two runtime-layout migration owners. It accepts
-already bounded, non-symlink migration locations under their migration lock. It performs controller discovery, inode
-locking, report-only reconciliation, backup and atomic replacement without recursively admitting runtime storage.
-Generic runtime transport and registry reconciliation remain outside this module.
+Project Runtime migrations and retained Plan transfers share `recoverLegacyPlanControllers`.
+Callers supply bounded locations that they have checked for symlinks under their migration or transfer authority.
+The operation takes controller inode locks, archives original bytes and recovers missing completion reports without
+entering the runtime again.
 
 ## Private implementation and formats
 

@@ -18,7 +18,7 @@ import {
 import { currentPackageSelection } from "./workflows.ts";
 import { saveReviewedPlanDocument } from "./index.ts";
 import type { PackageWorkflowInput } from "./packages.ts";
-import { withProjectRuntimeReadScope } from "../shared/project-runtime-layout.ts";
+import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 import { resolvePlanQuestions, type PlanQuestionAnswer } from "../shared/plan-questions.ts";
 import { loadReviewFeedbackImages, type ReviewImageDecision } from "../shared/workflow/review-feedback-images.ts";
 /** A Sequence review is one decision over an ordinary PROJECT and its complete child set. */

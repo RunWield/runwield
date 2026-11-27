@@ -33,7 +33,7 @@ import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { transitionFailureError } from "./transition-failure.ts";
 import { detachPlanExecution } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { ProjectRuntimeEntryRefusedError } from "../../shared/project-runtime-layout.ts";
+import { ProjectRuntimeEntryRefusedError } from "@runwield/project-runtime/layout";
 
 import { resetPlanExecutionMetadata } from "../../plan-store/index.ts";
 import type { UiAPI } from "../../ui/tui/api.ts";

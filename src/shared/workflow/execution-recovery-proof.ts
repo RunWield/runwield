@@ -1,10 +1,11 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 /** Execution-host observations used by the personal owner to settle recovery. */
 import { projects } from "@runwield/projects";
 import { readFile, readdir, lstat } from "node:fs/promises";
 import { join } from "node:path";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { assertManagedRuntimePath } from "../project-runtime-managed.ts";
-import { findById, type WorktreeRegistryEntry } from "../worktree-registry.ts";
+import { findById } from "../worktree-registry.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
 export interface ExecutionRecoveryRequest {
     projectId: string;

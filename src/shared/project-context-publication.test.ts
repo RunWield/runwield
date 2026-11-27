@@ -12,7 +12,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../testing/as
 import { join } from "node:path";
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 import { removeWorktreeGitArtifacts } from "./worktree.ts";
-import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
+import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "@runwield/project-runtime/owned-paths";
 import { recordInitializedProjectContext } from "./worktree-project-context.ts";
 import { publishExecutionWorktreeIsolated } from "./isolated-publication.ts";
 import { prepareProjectContextPublication, settleProjectContextPublication } from "./project-context-publication.ts";

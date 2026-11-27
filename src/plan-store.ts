@@ -8,7 +8,6 @@ import { assertContainedProjectPath } from "./plan-store/resources.ts";
 
 import type { FrontMatterValue } from "./shared/front-matter.ts";
 
-export type { WorktreeRegistryEntry } from "./shared/worktree-registry.ts";
 
 type CreatePulledCollaborationPlanOptions = {
     preferredName?: string;
@@ -445,14 +444,14 @@ import {
     stripRuntimeFields,
 } from "@runwield/plans/controller-state";
 
+import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
 import {
-    enterProjectRuntime,
     inspectProjectRuntimeReadAccess,
     ProjectRuntimeReadPendingError,
     WORKFLOW_DETAILS_PENDING,
     ProjectRuntimeEntryRefusedError,
     withProjectRuntimeReadScope,
-} from "./shared/project-runtime-layout.ts";
+} from "@runwield/project-runtime/layout";
 
 import {
     assertControllerDocumentAvailable,

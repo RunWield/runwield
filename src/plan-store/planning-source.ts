@@ -25,7 +25,8 @@ import {
     listControllerDocumentWorktrees,
     writeControllerState,
 } from "./controllers.ts";
-import { enterProjectRuntime, withProjectRuntimeReadScope } from "../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
+import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 
 import {
     PlanningPlanAttributes,

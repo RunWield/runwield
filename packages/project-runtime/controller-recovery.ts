@@ -1,12 +1,19 @@
 /** Controller recovery is an owner operation; layout migration supplies already verified layout roots. */
 import fsPromises, { readdir, readFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { type NativeFileLock, openNativeFileLock } from "../shared/native-file-lock.ts";
+import { type NativeFileLock, openNativeFileLock } from "@runwield/resources/fs";
 import { info, syncDirectory, writeAtomic, preserve, equalBytes } from "@runwield/resources/runtime-recovery-files";
-import type { ControllerRecord } from "./controllers.ts";
-function parseController(bytes: Uint8Array): ControllerRecord | null {
+
+interface RecoverableControllerRecord {
+    version: 1;
+    revision: number;
+    planId?: string;
+    planName: string;
+    state: { executionReport?: string | null };
+}
+function parseController(bytes: Uint8Array): RecoverableControllerRecord | null {
     try {
-        const record: ControllerRecord = JSON.parse(new TextDecoder().decode(bytes));
+        const record: RecoverableControllerRecord = JSON.parse(new TextDecoder().decode(bytes));
         return record?.version === 1 &&
             Number.isInteger(record.revision) &&
             record.state &&
@@ -35,7 +42,7 @@ function recoverCompletionReport(currentBytes: Uint8Array, legacyBytes: Uint8Arr
         !legacy.state.executionReport
     )
         return currentBytes;
-    const recovered: ControllerRecord = {
+    const recovered: RecoverableControllerRecord = {
         ...current,
         revision: current.revision + 1,
         state: { ...current.state, executionReport: legacy.state.executionReport },

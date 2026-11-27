@@ -2,6 +2,7 @@ import {
     projects,
     ProjectIdentityEntryRequired,
     type ProjectCloneChoice,
+    type ProjectIdentity,
     type ProjectIdentityPending,
 } from "@runwield/projects";
 import process from "node:process";
@@ -11,11 +12,11 @@ import { PromptSelectBlock } from "./blocks.ts";
 import { getTUI, initTUI, stopTUI } from "./tui.ts";
 
 /** Interactive action admission leaves runtime preparation to the action's existing owner. */
-export async function admitProjectWithIdentityChoice(root: string): Promise<boolean> {
+export async function admitProjectWithIdentityChoice(root: string): Promise<ProjectIdentity | false> {
     let choice: ProjectCloneChoice | undefined;
     for (;;) {
         const result = await projects.checkout.admit(root, { choice });
-        if (result.kind === "existing") return true;
+        if (result.kind === "existing") return result.identity;
         if (result.kind !== "pending") throw new ProjectIdentityEntryRequired(result);
         choice = await chooseProject(result);
         if (choice.kind === "cancel") return false;

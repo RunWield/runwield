@@ -1,3 +1,5 @@
+import { isPersistedPlanId } from "@runwield/project-runtime/publication-evidence";
+
 declare const planIdBrand: unique symbol;
 
 /** Stable Plan identifier. Legacy Plans may have non-UUID IDs. */
@@ -9,5 +11,5 @@ export function normalizePlanId<T>(value: T): PlanId | undefined {
 }
 
 export function isPlanId(value: string | null | undefined): value is PlanId {
-    return typeof value === "string" && value.length > 0 && value.trim() === value;
+    return isPersistedPlanId(value);
 }

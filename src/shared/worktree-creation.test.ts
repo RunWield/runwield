@@ -1,3 +1,4 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 import process from "node:process";
 import { readdir } from "node:fs/promises";
 import { captureForegroundProcess } from "@runwield/resources/process";
@@ -16,9 +17,7 @@ import { tmpdir } from "node:os";
 import { match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { basename, dirname, join } from "node:path";
-
 import { addEntry, findByPlanId } from "./worktree-registry.ts";
-import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 import {
     findReusableWorktree,
     getWorktreeStatus,
@@ -26,7 +25,6 @@ import {
     removeWorktreeGitArtifacts,
     resolveWorktreeParent,
 } from "./worktree.ts";
-
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 

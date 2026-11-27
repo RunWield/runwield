@@ -1,6 +1,6 @@
 import { openWorkflow } from "@runwield/workflow";
 import { seedPlanState } from "../testing/plan-state-fixture.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { readAttachedAction } from "./coordinator.ts";
 import { test } from "node:test";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";

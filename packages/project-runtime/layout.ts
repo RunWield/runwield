@@ -1,0 +1,1606 @@
+import {
+    projects,
+    ProjectIdentityEntryRequired,
+    type ProjectIdentity,
+    type ProjectIdentityOptions,
+} from "@runwield/projects";
+import { isLockHolderGone, readLockFileSnapshot, type LockFileSnapshot } from "@runwield/resources/locks";
+import { captureForegroundProcess, type CapturedProcessOutput } from "@runwield/resources/process";
+import { type Dirent, type Stats } from "node:fs";
+import {
+    lstat as fsLstat,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+} from "node:fs/promises";
+import { platform } from "node:process";
+import { homeProjectRuntimeLayout, inspectHomeProjectRuntime, enterHomeProjectRuntime } from "./home.ts";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { AsyncLocalStorage } from "node:async_hooks";
+import {
+    getRunWieldRuntimeDir,
+    PLAN_BACKUPS_DIR_NAME,
+    PLAN_LOCKS_DIR_NAME,
+    PLAN_STAGING_DIR_NAME,
+    PLAN_TRANSITIONS_DIR_NAME,
+    PROJECT_INTERNAL_RUNTIME_DIR_NAME,
+    PROJECT_SECRET_STORE_RELATIVE_PATH,
+    RUNWIELD_DIR_NAME,
+    WORKTREE_REGISTRY_FILE,
+    WORKTREE_REGISTRY_LOCK_FILE,
+} from "./legacy-paths.ts";
+import {
+    gitIndexEvidence,
+    gitWorktreeListEvidence,
+    observeGitEvidence,
+    rememberGitRead,
+    reusedGitRead,
+} from "./git-evidence-cache.ts";
+import { resolveProjectRoot, prepareProjectCheckout } from "./checkout.ts";
+import { inspectWorktreeRegistryAtPath } from "./registry-inspection.ts";
+import { ensureRunWieldOwnedGitignoreBlock, LEGACY_PROJECT_RUNTIME_HAZARD_PATHS } from "./owned-paths.ts";
+import { assertPublicationAttempt, type PublicationAttempt } from "./publication-evidence.ts";
+import { hasRecoverableRuntimeFiles, inspectReturningRegistry } from "./recovery.ts";
+
+import {
+    ProjectRuntimeEntryRefusedError,
+    type ProjectRuntimeLayout,
+    type ProjectRuntimeLayoutInspection,
+    type ProjectRuntimeMigrationBlockedReason,
+    type ProjectRuntimeMigrationBlockedResult,
+    type ProjectRuntimeMigrationResult,
+    type ProjectRuntimeMigrationSecurityAction,
+    type ProjectRuntimeReadInspection,
+} from "./layout-contract.ts";
+
+export {
+    ProjectRuntimeEntryRefusedError,
+    type PrimaryProjectRuntimeLayout,
+    type SelectedProjectRuntimeLayout,
+    type ProjectRuntimeLayout,
+    type ProjectRuntimeLayoutAdoptedInspection,
+    type ProjectRuntimeLayoutInspection,
+    type ProjectRuntimeLayoutPendingInspection,
+    type ProjectRuntimeMigrationBlockedReason,
+    type ProjectRuntimeMigrationBlockedResult,
+    type ProjectRuntimeMigrationReadyResult,
+    type ProjectRuntimeMigrationResult,
+    type ProjectRuntimeMigrationSecurityAction,
+    type ProjectRuntimeReadAccess,
+    type ProjectRuntimeReadInspection,
+} from "./layout-contract.ts";
+
+type PathKind = "file" | "directory";
+
+type MigrationRenameOperation = {
+    action: "rename";
+    source: string;
+    destination: string;
+    kind: PathKind;
+    completed: boolean;
+};
+
+type LockSnapshot = LockFileSnapshot;
+
+interface ProcessLockOwner {
+    pid?: number;
+    hostname?: string;
+}
+
+type MigrationRetireOperation = {
+    action: "retire";
+    source: string;
+    kind: PathKind;
+    proof: LockSnapshot;
+    completed: boolean;
+};
+
+type MigrationReconcileOperation = {
+    action: "reconcile";
+    source: string;
+    destination: string;
+    kind: PathKind;
+    completed: boolean;
+};
+
+type MigrationOperation = MigrationRenameOperation | MigrationRetireOperation | MigrationReconcileOperation;
+
+type MigrationJournal = {
+    version: 1;
+    primaryCheckoutRoot: string;
+    selectedCheckoutRoots: string[];
+    operations: MigrationOperation[];
+    updatedAt: string;
+};
+
+type LayoutMarker = {
+    version: 1;
+    primaryCheckoutRoot: string;
+    adoptedSelectedCheckoutRoots: string[];
+    completedAt: string;
+};
+
+type LegacyRegistryEntry = {
+    id: string;
+    planName: string;
+    planId?: string;
+    baseBranch: string;
+    baseRef: string;
+    baseCommit: string;
+    branch: string;
+    path: string;
+    status: string;
+    publication?: PublicationAttempt;
+};
+
+type MigrationPreflight = {
+    layout: ProjectRuntimeLayout;
+    primaryCheckoutRoot: string;
+    selectedCheckoutRoots: string[];
+    entries: LegacyRegistryEntry[];
+    operations: MigrationOperation[];
+};
+
+type GitWorktreeRecord = {
+    path: string;
+    branch: string;
+};
+
+type GitWorktree = GitWorktreeRecord & {
+    realPath: string;
+};
+
+type LegacyLockStatus = {
+    active: string[];
+    retire: MigrationRetireOperation[];
+};
+
+const LAYOUT_MARKER_FILE = "layout.json";
+const MIGRATION_JOURNAL_FILE = "layout-migration.json";
+const MIGRATION_LOCK_FILE = "layout-migration.lock";
+const LAYOUT_VERSION = 1;
+const PLAN_LOCK_STALE_MS = 10 * 60_000;
+const WORK_RECORD_LOCK_STALE_MS = 10 * 60_000;
+const WORK_RECORD_RECOVERY_LOCK_STALE_MS = 30_000;
+
+function internalRootFor(checkoutRoot: string): string {
+    return join(getRunWieldRuntimeDir(checkoutRoot), PROJECT_INTERNAL_RUNTIME_DIR_NAME);
+}
+
+export function resolveProjectRuntimeLayout(
+    selectedCheckoutRoot: string,
+    options: ProjectIdentityOptions = {},
+): ProjectRuntimeLayout {
+    const inspection = projects.checkout.inspect(selectedCheckoutRoot, options);
+    if (inspection.kind === "invalid") throw new ProjectIdentityEntryRequired(inspection);
+    if (inspection.kind === "existing") return homeProjectRuntimeLayout(inspection.identity);
+    return resolveCheckoutRuntimeLayout(selectedCheckoutRoot);
+}
+
+function resolveCheckoutRuntimeLayout(selectedCheckoutRoot: string): ProjectRuntimeLayout {
+    const selectedProjectRoot = resolveProjectRoot(selectedCheckoutRoot);
+    const primaryCheckoutRoot = resolveProjectRoot(projects.checkout.primaryRoot(selectedProjectRoot));
+    const primaryInternalRoot = internalRootFor(primaryCheckoutRoot);
+    const selectedInternalRoot = internalRootFor(selectedProjectRoot);
+    const selectedPlanLocksDir = join(selectedInternalRoot, PLAN_LOCKS_DIR_NAME);
+
+    return {
+        primary: {
+            checkoutRoot: primaryCheckoutRoot,
+            internalRoot: primaryInternalRoot,
+            layoutMarkerPath: join(primaryInternalRoot, LAYOUT_MARKER_FILE),
+            layoutMigrationJournalPath: join(primaryInternalRoot, MIGRATION_JOURNAL_FILE),
+            layoutMigrationLockPath: join(primaryInternalRoot, MIGRATION_LOCK_FILE),
+            controllerPlansDir: join(primaryInternalRoot, "controller", "plans"),
+            worktreeRegistryPath: join(primaryInternalRoot, WORKTREE_REGISTRY_FILE),
+            worktreeRegistryLockPath: join(primaryInternalRoot, WORKTREE_REGISTRY_LOCK_FILE),
+            worktreeRegistryMigrationIssuesPath: join(primaryInternalRoot, "worktree-registry-migration-issues.json"),
+            publicationStagingRoot: join(primaryInternalRoot, PLAN_STAGING_DIR_NAME),
+            deliveryEvidenceRoot: join(primaryInternalRoot, "delivery-evidence"),
+            projectSecretStorePath: join(primaryInternalRoot, "collaboration-secrets.json"),
+            fallbackWorktreesRoot: join(primaryInternalRoot, "worktrees"),
+            debugRoot: join(primaryInternalRoot, "debug"),
+            workRecordIndexDatabasePath: join(primaryInternalRoot, "work-records.sqlite3"),
+        },
+        selected: {
+            checkoutRoot: selectedProjectRoot,
+            internalRoot: selectedInternalRoot,
+            planLocksDir: selectedPlanLocksDir,
+            planCatalogLockPath: join(selectedPlanLocksDir, "catalog.lock"),
+            transitionJournalsDir: join(selectedInternalRoot, PLAN_TRANSITIONS_DIR_NAME),
+            planBackupsDir: join(selectedInternalRoot, PLAN_BACKUPS_DIR_NAME),
+            validationLogsDir: join(selectedInternalRoot, "validation-logs"),
+            workRecordSupersessionLockPath: join(selectedInternalRoot, "work-record-supersession.lock"),
+            workRecordSupersessionRecoveryLockPath: join(
+                selectedInternalRoot,
+                "work-record-supersession-recovery.lock",
+            ),
+        },
+    };
+}
+
+export const WORKFLOW_DETAILS_PENDING = "Workflow details pending. Load this Plan to prepare its workflow.";
+
+export class ProjectRuntimeReadPendingError extends Error {
+    constructor() {
+        super(WORKFLOW_DETAILS_PENDING);
+        this.name = "ProjectRuntimeReadPendingError";
+    }
+}
+
+/** Check local authority. Never enter migration, probe writer locks, or recover legacy input. */
+export function inspectProjectRuntimeReadAccess(root: string): Promise<ProjectRuntimeReadInspection> {
+    const scope = runtimeEntryScope.getStore();
+    if (!scope?.active) return inspectProjectRuntimeReadAccessUncached(root);
+    const key = resolve(root);
+    const previous = scope.inspections.get(key);
+    if (previous) return previous;
+    const result = inspectProjectRuntimeReadAccessUncached(key);
+    scope.inspections.set(key, result);
+    void result.catch(() => scope.inspections.delete(key));
+    return result;
+}
+
+async function inspectProjectRuntimeReadAccessUncached(root: string): Promise<ProjectRuntimeReadInspection> {
+    const identity = projects.checkout.inspect(root);
+    if (identity.kind === "invalid") return block("malformed_migration_evidence", [root], identity.message);
+    if (identity.kind === "existing") return inspectHomeProjectRuntime(identity.identity);
+    const layout = resolveCheckoutRuntimeLayout(root);
+    const primary = resolveProjectRoot(layout.primary.checkoutRoot);
+    const symlinks = await findSymlinkBlocker(layout, primary, [layout.selected.checkoutRoot]);
+    if (symlinks.length)
+        return block("symlink", symlinks, "A runtime authority uses a symlink. Inspection stopped before reading it.");
+    const marker = await readLayoutMarker(layout);
+    if (isBlocked(marker)) return marker;
+    const markerCheck = validateMarkerRoots(layout, marker.marker);
+    if (markerCheck) return markerCheck;
+    const journal = await readJournal(layout.primary.layoutMigrationJournalPath);
+    if (isBlocked(journal)) return journal;
+    if (!marker.marker || journal.journal) {
+        // Partly moved stores are not independent authorities. Preflight checks security,
+        // but deliberately does not test whether an inode lock can be acquired.
+        const checked = await preflight(layout, primary, marker.marker);
+        // Admission can finish while the legacy reader awaits Git evidence.
+        const admitted = projects.checkout.inspect(root);
+        if (admitted.kind === "existing") return inspectHomeProjectRuntime(admitted.identity);
+        if (isBlocked(checked)) {
+            // A writer can commit adoption and start using its authorities after
+            // our marker read. Refresh changed evidence without taking a write lock.
+            if (checked.reason === "authority_conflict") {
+                const current = await readLayoutMarker(layout);
+                if (isBlocked(current)) return current;
+                if (current.marker && JSON.stringify(current.marker) !== JSON.stringify(marker.marker)) {
+                    runtimeEntryScope.getStore()?.symlinkWalks.clear();
+                    return inspectProjectRuntimeReadAccessUncached(root);
+                }
+            }
+            return checked;
+        }
+        const fresh =
+            !marker.marker &&
+            !journal.journal &&
+            checked.operations.length === 0 &&
+            !(await lstatOrNull(layout.primary.layoutMigrationLockPath));
+        return { kind: fresh ? "fresh" : "pending", layout };
+    }
+    const registry = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
+    if (
+        registry.readError ||
+        registry.integrityIssues.some((issue) =>
+            ["malformed_registry", "unsupported_schema_version"].includes(issue.kind),
+        )
+    ) {
+        return block(
+            "malformed_registry",
+            [layout.primary.worktreeRegistryPath],
+            registry.readError?.message || registry.integrityIssues[0].message,
+        );
+    }
+    const worktrees = await listGitWorktrees(primary);
+    if (isBlocked(worktrees)) return worktrees;
+    const selected = await resolveSelectedRoots(primary, layout.selected.checkoutRoot, [], worktrees.worktrees);
+    if (isBlocked(selected)) return selected;
+    const selectedSymlinks = await findSymlinkBlocker(layout, primary, selected.roots);
+    if (selectedSymlinks.length) return block("symlink", selectedSymlinks, "A runtime authority uses a symlink.");
+    const tracked = await findTrackedRuntimePaths(primary, selected.roots);
+    if (isBlocked(tracked)) return tracked;
+    if (tracked.secretPaths.length)
+        return block("tracked_secret", tracked.secretPaths, "A project collaboration secret is tracked by Git.");
+    if (tracked.runtimePaths.length)
+        return block("tracked_runtime", tracked.runtimePaths, "RunWield runtime paths are tracked or staged by Git.");
+    const unadoptedOperations = await buildOperations(
+        primary,
+        selected.roots.filter((selectedRoot) => !adoptedSelectedRoots(marker.marker, primary).includes(selectedRoot)),
+        [],
+        marker.marker,
+    );
+    const pending =
+        unadoptedOperations.some((operation) => operation.action === "rename") ||
+        Boolean(await lstatOrNull(layout.primary.layoutMigrationLockPath));
+    return { kind: pending ? "pending" : "ready", layout };
+}
+
+/** Exact-path readers use this check; path resolution alone grants no access. */
+export async function checkedProjectRuntimeLayout(root: string): Promise<ProjectRuntimeLayout> {
+    const access = await inspectProjectRuntimeReadAccess(root);
+    if (access.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(access);
+    if (access.kind === "pending") throw new ProjectRuntimeReadPendingError();
+    return access.layout;
+}
+
+/** Doctor inspection shares passive security checks, not mutation admission. */
+export async function inspectProjectRuntimeLayout(root: string): Promise<ProjectRuntimeLayoutInspection> {
+    const access = await inspectProjectRuntimeReadAccess(root);
+    if (access.kind === "blocked") return access;
+    if (access.kind === "ready" && access.adoptedSelectedCheckoutRoots)
+        return {
+            kind: "adopted",
+            layout: access.layout,
+            adoptedSelectedCheckoutRoots: access.adoptedSelectedCheckoutRoots,
+        };
+    if (projects.checkout.inspect(root).kind === "existing")
+        return { kind: "pending", layout: access.layout, selectedCheckoutRoots: [access.layout.selected.checkoutRoot] };
+    const marker = await readLayoutMarker(access.layout);
+    if (isBlocked(marker)) return marker;
+    if (access.kind === "ready" && marker.marker)
+        return {
+            kind: "adopted",
+            layout: access.layout,
+            adoptedSelectedCheckoutRoots: marker.marker.adoptedSelectedCheckoutRoots,
+        };
+    return { kind: "pending", layout: access.layout, selectedCheckoutRoots: [access.layout.selected.checkoutRoot] };
+}
+
+interface RuntimeReadScope {
+    active: boolean;
+    inspections: Map<string, Promise<ProjectRuntimeReadInspection>>;
+    /** Symlinks under each authority root, walked once per read like each checkout's entry. */
+    symlinkWalks: Map<string, Promise<string[]>>;
+}
+
+const runtimeEntryScope = new AsyncLocalStorage<RuntimeReadScope>();
+// Retain only diagnostic identities, never runtime validation or migration results. Git answers
+// are reused only while their repository evidence is unchanged; see git-evidence-cache.ts.
+const reportedGitignoreWarnings = new Map<string, Set<string>>();
+
+interface ProjectRuntimeReadScopeOptions {
+    /** Start an independent inspection phase, discarding the caller's checks as well. */
+    fresh?: boolean;
+}
+
+/** Verify each checkout once during a bounded read; retain no result across refreshes. */
+export async function withProjectRuntimeReadScope<T>(
+    read: () => Promise<T>,
+    options: ProjectRuntimeReadScopeOptions = {},
+): Promise<T> {
+    if (runtimeEntryScope.getStore()?.active && !options.fresh) return await read();
+    if (options.fresh) invalidateProjectRuntimeReadScope();
+    const scope: RuntimeReadScope = { active: true, inspections: new Map(), symlinkWalks: new Map() };
+    try {
+        return await runtimeEntryScope.run(scope, read);
+    } finally {
+        // Async descendants can outlive the read that created them. They must
+        // not retain its validation results after that read has settled.
+        scope.active = false;
+        scope.inspections.clear();
+        scope.symlinkWalks.clear();
+        // The caller's context is restored here. Do not resurrect checks it
+        // performed before or concurrently with this independent phase.
+        if (options.fresh) invalidateProjectRuntimeReadScope();
+    }
+}
+
+/** Writes inside a grouped read must revalidate and invalidate surrounding reads. */
+export function invalidateProjectRuntimeReadScope(): void {
+    const scope = runtimeEntryScope.getStore();
+    scope?.inspections.clear();
+    scope?.symlinkWalks.clear();
+}
+
+/** Prepare an admitted checkout before opening its runtime authorities. */
+export async function enter(checkout: ProjectIdentity): Promise<ProjectRuntimeLayout> {
+    invalidateProjectRuntimeReadScope();
+    try {
+        const { layout } = await enterHomeProjectRuntime(checkout);
+        await prepareProjectCheckout(checkout.checkoutRoot);
+        await reconcileRuntimeIgnore(layout.primary.checkoutRoot);
+        return layout;
+    } finally {
+        invalidateProjectRuntimeReadScope();
+    }
+}
+
+async function reconcileRuntimeIgnore(projectRoot: string): Promise<void> {
+    const reconciliation = await ensureRunWieldOwnedGitignoreBlock(projectRoot);
+    const previous = reportedGitignoreWarnings.get(projectRoot);
+    const current = new Set(reconciliation.warnings.map((warning) => warning.message));
+    if (current.size) reportedGitignoreWarnings.set(projectRoot, current);
+    else reportedGitignoreWarnings.delete(projectRoot);
+    for (const message of current) {
+        if (!previous?.has(message)) console.warn(`${join(projectRoot, ".gitignore")}: ${message}`);
+    }
+}
+
+export async function migrateLegacyProjectRuntimeState(
+    selectedCheckoutRoot: string,
+): Promise<ProjectRuntimeMigrationResult> {
+    const admission = await projects.checkout.admit(selectedCheckoutRoot);
+    if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
+    try {
+        return await enterHomeProjectRuntime(admission.identity);
+    } catch (error) {
+        if (error instanceof ProjectRuntimeEntryRefusedError)
+            return block(error.reason, error.paths, error.message, error.securityAction);
+        throw error;
+    }
+}
+
+function isBlocked<T>(value: T | ProjectRuntimeMigrationBlockedResult): value is ProjectRuntimeMigrationBlockedResult {
+    return typeof value === "object" && value !== null && "kind" in value && value.kind === "blocked";
+}
+
+function block(
+    reason: ProjectRuntimeMigrationBlockedReason,
+    paths: string[],
+    message: string,
+    securityAction?: ProjectRuntimeMigrationSecurityAction,
+): ProjectRuntimeMigrationBlockedResult {
+    return {
+        kind: "blocked",
+        reason,
+        paths: [...new Set(paths)].sort(),
+        message,
+        ...(securityAction ? { securityAction } : {}),
+    };
+}
+
+function legacyRuntimeBase(checkoutRoot: string): string {
+    return getRunWieldRuntimeDir(checkoutRoot);
+}
+
+function legacyWorktreeRegistryPath(primaryCheckoutRoot: string): string {
+    return join(legacyRuntimeBase(primaryCheckoutRoot), WORKTREE_REGISTRY_FILE);
+}
+
+function legacyWorktreeRegistryLockPath(primaryCheckoutRoot: string): string {
+    return join(legacyRuntimeBase(primaryCheckoutRoot), WORKTREE_REGISTRY_LOCK_FILE);
+}
+
+function legacyRelativePath(checkoutRoot: string, path: string): string {
+    return join(legacyRuntimeBase(checkoutRoot), path.replace(/^\.wld\//, ""));
+}
+
+async function readLayoutMarker(
+    layout: ProjectRuntimeLayout,
+): Promise<{ marker: LayoutMarker | null } | ProjectRuntimeMigrationBlockedResult> {
+    try {
+        const parsed = JSON.parse(await fsReadFile(layout.primary.layoutMarkerPath, "utf8"));
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            return block(
+                "malformed_migration_evidence",
+                [layout.primary.layoutMarkerPath],
+                "The project runtime layout marker is malformed.",
+            );
+        }
+        if (typeof parsed.version !== "number") {
+            return block(
+                "malformed_migration_evidence",
+                [layout.primary.layoutMarkerPath],
+                "The project runtime layout marker has no version.",
+            );
+        }
+        if (parsed.version > LAYOUT_VERSION) {
+            return block(
+                "newer_layout",
+                [layout.primary.layoutMarkerPath],
+                "This project was opened by a newer RunWield runtime layout.",
+            );
+        }
+        if (
+            parsed.version !== LAYOUT_VERSION ||
+            typeof parsed.primaryCheckoutRoot !== "string" ||
+            !Array.isArray(parsed.adoptedSelectedCheckoutRoots) ||
+            typeof parsed.completedAt !== "string" ||
+            !parsed.adoptedSelectedCheckoutRoots.every((root: string) => typeof root === "string")
+        ) {
+            return block(
+                "malformed_migration_evidence",
+                [layout.primary.layoutMarkerPath],
+                "The project runtime layout marker is malformed.",
+            );
+        }
+        return { marker: parsed as LayoutMarker };
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return { marker: null };
+        if (error instanceof SyntaxError) {
+            return block(
+                "malformed_migration_evidence",
+                [layout.primary.layoutMarkerPath],
+                "The project runtime layout marker is not valid JSON.",
+            );
+        }
+        throw error;
+    }
+}
+
+async function preflight(
+    layout: ProjectRuntimeLayout,
+    primaryCheckoutRoot: string,
+    marker: LayoutMarker | null,
+): Promise<MigrationPreflight | ProjectRuntimeMigrationBlockedResult> {
+    const markerCheck = validateMarkerRoots(layout, marker);
+    if (isBlocked(markerCheck)) return markerCheck;
+
+    const existingJournal = await readJournal(layout.primary.layoutMigrationJournalPath);
+    if (isBlocked(existingJournal)) return existingJournal;
+    if (
+        existingJournal.journal?.operations.some(
+            (operation) =>
+                operation.action === "rename" &&
+                operation.source === legacyRelativePath(primaryCheckoutRoot, "worktrees"),
+        )
+    ) {
+        return block(
+            "malformed_migration_evidence",
+            [layout.primary.layoutMigrationJournalPath],
+            "The runtime migration journal contains an unsupported project-local worktree move.",
+        );
+    }
+
+    const symlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, [
+        layout.selected.checkoutRoot,
+        ...(existingJournal.journal?.selectedCheckoutRoots || []),
+    ]);
+    if (symlink.length > 0) {
+        return block(
+            "symlink",
+            symlink,
+            "A legacy runtime authority uses a symlink. Migration stopped before reading it.",
+        );
+    }
+
+    const registry = await inspectWorktreeRegistryAtPath(legacyWorktreeRegistryPath(primaryCheckoutRoot));
+    if (registry.readError) {
+        return block(
+            "malformed_registry",
+            [legacyWorktreeRegistryPath(primaryCheckoutRoot)],
+            `The legacy worktree registry cannot be read: ${registry.readError.message}`,
+        );
+    }
+    if (registry.integrityIssues.length > 0) {
+        return block(
+            "malformed_registry",
+            [legacyWorktreeRegistryPath(primaryCheckoutRoot)],
+            registry.integrityIssues[0].message,
+        );
+    }
+
+    if (marker && (await lstatOrNull(legacyWorktreeRegistryPath(primaryCheckoutRoot)))) {
+        try {
+            const recovered = await inspectReturningRegistry(
+                legacyWorktreeRegistryPath(primaryCheckoutRoot),
+                layout.primary.worktreeRegistryPath,
+            );
+            // Known attempts belong to the current layout, not this migration.
+            // Only new old-layout attempts need checkout verification and adoption.
+            registry.entries = recovered.additions;
+        } catch (error) {
+            return block(
+                "malformed_registry",
+                [legacyWorktreeRegistryPath(primaryCheckoutRoot)],
+                `Saved worktree records could not be combined safely. Both copies were kept. ${
+                    error instanceof Error ? error.message : String(error)
+                }`,
+            );
+        }
+    }
+
+    const publication = inspectPublicationSafety(primaryCheckoutRoot, registry.entries);
+    if (isBlocked(publication)) return publication;
+
+    const gitWorktrees = await listGitWorktrees(primaryCheckoutRoot);
+    if (isBlocked(gitWorktrees)) return gitWorktrees;
+    const selectedRoots = await resolveSelectedRoots(
+        primaryCheckoutRoot,
+        layout.selected.checkoutRoot,
+        registry.entries,
+        gitWorktrees.worktrees,
+        existingJournal.journal?.selectedCheckoutRoots || [],
+    );
+    if (isBlocked(selectedRoots)) return selectedRoots;
+    const fallbackWorktreesRoot = legacyRelativePath(primaryCheckoutRoot, "worktrees");
+    if (!(await isEmptyDirectory(fallbackWorktreesRoot))) {
+        return block(
+            "unsupported_filesystem_move",
+            [fallbackWorktreesRoot],
+            "A populated project-local worktree directory cannot be moved safely. Preserve it and finish or remove its work before retrying.",
+        );
+    }
+
+    const selectedSymlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, selectedRoots.roots);
+    if (selectedSymlink.length > 0) {
+        return block(
+            "symlink",
+            selectedSymlink,
+            "A runtime authority uses a symlink. Migration stopped before reading it.",
+        );
+    }
+
+    const tracked = await findTrackedRuntimePaths(primaryCheckoutRoot, selectedRoots.roots);
+    if (isBlocked(tracked)) return tracked;
+    if (tracked.secretPaths.length > 0) {
+        return block(
+            "tracked_secret",
+            tracked.secretPaths,
+            "A project collaboration secret is tracked by Git. Remove it from Git history and rotate the capability before migration.",
+            {
+                rotateCapabilities: true,
+                removeFromRepositoryHistory: true,
+                message:
+                    "Rotate shared-space capabilities and remove the secret from repository history before retrying.",
+            },
+        );
+    }
+    if (tracked.runtimePaths.length > 0) {
+        return block(
+            "tracked_runtime",
+            tracked.runtimePaths,
+            "RunWield runtime paths are tracked or staged by Git. Untrack them before migration.",
+        );
+    }
+
+    const secretConflicts = await findLegacySecretConflicts(primaryCheckoutRoot, selectedRoots.roots);
+    if (secretConflicts.length > 0) {
+        return block(
+            "authority_conflict",
+            secretConflicts,
+            "More than one project collaboration secret authority exists. Migration stopped without choosing or merging them.",
+        );
+    }
+
+    const currentConflict = await findCurrentAuthorityConflicts(
+        layout,
+        primaryCheckoutRoot,
+        selectedRoots.roots,
+        marker,
+        existingJournal.journal,
+    );
+    if (currentConflict.length > 0) {
+        return block(
+            "authority_conflict",
+            currentConflict,
+            "New `.wld/internal/` runtime state already exists without matching migration evidence.",
+        );
+    }
+
+    const legacyLocks = await inspectLegacyLocks(
+        primaryCheckoutRoot,
+        selectedRoots.roots,
+        layout.primary.layoutMigrationLockPath,
+    );
+    if (legacyLocks.active.length > 0) {
+        return block(
+            "active_legacy_writer",
+            legacyLocks.active,
+            "A legacy RunWield writer is still active. Finish or stop it, then retry migration.",
+        );
+    }
+
+    const legacyProblems = await validateLegacyAuthorities(primaryCheckoutRoot, selectedRoots.roots);
+    if (isBlocked(legacyProblems)) return legacyProblems;
+
+    const operations = await buildOperations(primaryCheckoutRoot, selectedRoots.roots, legacyLocks.retire, marker);
+    return {
+        layout,
+        primaryCheckoutRoot,
+        selectedCheckoutRoots: selectedRoots.roots,
+        entries: registry.entries,
+        operations,
+    };
+}
+
+function validateMarkerRoots(
+    layout: ProjectRuntimeLayout,
+    marker: LayoutMarker | null,
+): ProjectRuntimeMigrationBlockedResult | undefined {
+    if (!marker) return undefined;
+    // The marker travels with the checkout. Its saved location is adoption history,
+    // not project identity; Git and the local authority checks establish current ownership.
+    if (!isAbsolute(marker.primaryCheckoutRoot) || marker.primaryCheckoutRoot !== resolve(marker.primaryCheckoutRoot)) {
+        return block(
+            "malformed_migration_evidence",
+            [layout.primary.layoutMarkerPath],
+            "The project runtime layout marker contains a noncanonical primary checkout root.",
+        );
+    }
+    const sorted = [...marker.adoptedSelectedCheckoutRoots].sort();
+    if (
+        marker.adoptedSelectedCheckoutRoots.length !== new Set(marker.adoptedSelectedCheckoutRoots).size ||
+        marker.adoptedSelectedCheckoutRoots.some((root, index) => root !== sorted[index])
+    ) {
+        return block(
+            "malformed_migration_evidence",
+            [layout.primary.layoutMarkerPath],
+            "The project runtime layout marker has unsorted or duplicate selected checkout roots.",
+        );
+    }
+    for (const root of marker.adoptedSelectedCheckoutRoots) {
+        // These locators record completed adoption, not current filesystem authority.
+        // Retired worktrees can disappear or their paths can be reused. Active roots
+        // are independently verified against Git, the registry, and the journal.
+        if (!isAbsolute(root) || root !== resolve(root)) {
+            return block(
+                "malformed_migration_evidence",
+                [layout.primary.layoutMarkerPath, root],
+                "The project runtime layout marker contains a noncanonical selected checkout root.",
+            );
+        }
+    }
+    return undefined;
+}
+
+async function listGitWorktrees(
+    primaryCheckoutRoot: string,
+): Promise<{ worktrees: GitWorktree[] } | ProjectRuntimeMigrationBlockedResult> {
+    const evidence = await observeGitEvidence(
+        `worktree-list\0${primaryCheckoutRoot}`,
+        await gitWorktreeListEvidence(primaryCheckoutRoot),
+    );
+    const reused = reusedGitRead<GitWorktreeRecord[]>(evidence);
+    if (reused) return { worktrees: await withRealPaths(reused) };
+    const runWorktreeList = () =>
+        captureForegroundProcess("git", {
+            cwd: primaryCheckoutRoot,
+            args: ["worktree", "list", "--porcelain"],
+        });
+    let output: CapturedProcessOutput;
+    try {
+        output = await runWorktreeList();
+        // Git can report a transient failure while another process changes a linked worktree.
+        if (output.code !== 0 && (await lstatOrNull(join(primaryCheckoutRoot, ".git")))) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            output = await runWorktreeList();
+        }
+    } catch (error) {
+        if (!(await lstatOrNull(join(primaryCheckoutRoot, ".git")))) {
+            return { worktrees: [{ path: primaryCheckoutRoot, realPath: primaryCheckoutRoot, branch: "" }] };
+        }
+        throw error;
+    }
+    if (output.code !== 0) {
+        if (await lstatOrNull(join(primaryCheckoutRoot, ".git"))) {
+            return block(
+                "invalid_registered_checkout",
+                [primaryCheckoutRoot],
+                "Git could not list this project's worktrees.",
+            );
+        }
+        return { worktrees: [{ path: primaryCheckoutRoot, realPath: primaryCheckoutRoot, branch: "" }] };
+    }
+    const text = new TextDecoder().decode(output.stdout);
+    const records: GitWorktreeRecord[] = [];
+    for (const record of text.trim().split("\n\n").filter(Boolean)) {
+        const lines = record.split("\n");
+        const path =
+            lines
+                .find((line) => line.startsWith("worktree "))
+                ?.slice("worktree ".length)
+                .trim() || "";
+        const branch =
+            lines
+                .find((line) => line.startsWith("branch "))
+                ?.slice("branch ".length)
+                .trim() || "";
+        if (path) records.push({ path, branch });
+    }
+    // Paths and branches come only from repository metadata. Real paths do not,
+    // so they are resolved again on every entry.
+    await rememberGitRead(evidence, records);
+    return { worktrees: await withRealPaths(records) };
+}
+
+async function withRealPaths(records: GitWorktreeRecord[]): Promise<GitWorktree[]> {
+    const worktrees: GitWorktree[] = [];
+    for (const { path, branch } of records) {
+        let realPath = path;
+        try {
+            realPath = await fsRealpath(path);
+        } catch {
+            // A missing worktree is not usable evidence.
+        }
+        worktrees.push({ path, realPath, branch });
+    }
+    return worktrees;
+}
+
+async function resolveSelectedRoots(
+    primaryRoot: string,
+    requestedRoot: string,
+    entries: LegacyRegistryEntry[],
+    gitWorktrees: GitWorktree[],
+    journalSelectedRoots: string[] = [],
+): Promise<{ roots: string[] } | ProjectRuntimeMigrationBlockedResult> {
+    const requested = resolveProjectRoot(requestedRoot);
+    const byRealPath = new Set(gitWorktrees.map((worktree) => worktree.realPath));
+    if (!byRealPath.has(requested)) {
+        return block(
+            "invalid_registered_checkout",
+            [requestedRoot],
+            "The selected checkout is not an attached Git worktree.",
+        );
+    }
+    const primary = resolveProjectRoot(primaryRoot);
+    if (!byRealPath.has(primary)) {
+        return block(
+            "invalid_registered_checkout",
+            [primaryRoot],
+            "The primary checkout is not an attached Git worktree.",
+        );
+    }
+    const roots = new Set<string>([primary, requested]);
+    for (const root of journalSelectedRoots) {
+        const canonicalRoot = resolveProjectRoot(root);
+        if (!byRealPath.has(canonicalRoot)) {
+            return block(
+                "invalid_registered_checkout",
+                [root],
+                "The migration journal names a checkout that is not an attached Git worktree.",
+            );
+        }
+        roots.add(canonicalRoot);
+    }
+    for (const entry of entries) {
+        if (typeof entry.path !== "string" || !entry.path) continue;
+        let stat: Stats;
+        try {
+            stat = await fsLstat(entry.path);
+        } catch (error) {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT" && entry.status === "abandoned")
+                continue;
+            return block(
+                "invalid_registered_checkout",
+                [entry.path],
+                "A live registry entry names a missing checkout.",
+            );
+        }
+        if (stat.isSymbolicLink()) {
+            return block("symlink", [entry.path], "A registry entry names a symlinked checkout.");
+        }
+        if (!stat.isDirectory()) {
+            return block(
+                "invalid_registered_checkout",
+                [entry.path],
+                "A registry entry names a non-directory checkout.",
+            );
+        }
+        const realPath = await fsRealpath(entry.path);
+        if (!byRealPath.has(realPath)) {
+            return block(
+                "invalid_registered_checkout",
+                [entry.path],
+                "A registry entry names a directory that is not an attached Git worktree.",
+            );
+        }
+        roots.add(realPath);
+    }
+    return { roots: [...roots].sort() };
+}
+
+function inspectPublicationSafety(
+    primaryCheckoutRoot: string,
+    entries: LegacyRegistryEntry[],
+): undefined | ProjectRuntimeMigrationBlockedResult {
+    for (const entry of entries) {
+        if (!entry.publication) continue;
+        try {
+            assertPublicationAttempt(entry.publication);
+        } catch (error) {
+            return block(
+                "malformed_registry",
+                [legacyWorktreeRegistryPath(primaryCheckoutRoot)],
+                error instanceof Error ? error.message : String(error),
+            );
+        }
+    }
+    // Move the registry, not the repositories it names. Pending publication and
+    // repair receipts remain usable at their original absolute paths after entry.
+    return undefined;
+}
+
+async function findTrackedRuntimePaths(
+    primaryCheckoutRoot: string,
+    selectedRoots: string[],
+): Promise<{ runtimePaths: string[]; secretPaths: string[] } | ProjectRuntimeMigrationBlockedResult> {
+    const runtimePaths = new Set<string>();
+    const secretPaths = new Set<string>();
+    for (const root of new Set([primaryCheckoutRoot, ...selectedRoots])) {
+        const pathspecs = runtimeGitPathspecs();
+        const evidence = await observeGitEvidence(
+            `ls-files\0${root}\0${pathspecs.join("\0")}`,
+            await gitIndexEvidence(root),
+        );
+        const reused = reusedGitRead<string[]>(evidence);
+        if (reused) {
+            addTrackedRuntimePaths(root, reused, runtimePaths, secretPaths);
+            continue;
+        }
+        let output: CapturedProcessOutput;
+        try {
+            output = await captureForegroundProcess("git", {
+                cwd: root,
+                args: ["ls-files", "-z", "--", ...pathspecs],
+            });
+        } catch (error) {
+            if (!(await lstatOrNull(join(root, ".git")))) continue;
+            throw error;
+        }
+        if (output.code !== 0) {
+            if (!(await lstatOrNull(join(root, ".git")))) continue;
+            return block(
+                "invalid_registered_checkout",
+                [root],
+                "Git could not inspect tracked runtime paths for this checkout.",
+            );
+        }
+        const paths = new TextDecoder().decode(output.stdout).split("\0").filter(Boolean);
+        await rememberGitRead(evidence, paths);
+        addTrackedRuntimePaths(root, paths, runtimePaths, secretPaths);
+    }
+    return { runtimePaths: [...runtimePaths].sort(), secretPaths: [...secretPaths].sort() };
+}
+
+function addTrackedRuntimePaths(root: string, paths: string[], runtimePaths: Set<string>, secretPaths: Set<string>) {
+    for (const path of paths) {
+        const absolutePath = join(root, path);
+        if (isProjectSecretGitPath(path)) secretPaths.add(absolutePath);
+        else runtimePaths.add(absolutePath);
+    }
+}
+
+function runtimeGitPathspecs(): string[] {
+    const legacy = LEGACY_PROJECT_RUNTIME_HAZARD_PATHS.map((path) => path.replace(/^\.\//, ""));
+    return [`${RUNWIELD_DIR_NAME}/${PROJECT_INTERNAL_RUNTIME_DIR_NAME}`, ...legacy];
+}
+
+function isProjectSecretGitPath(path: string): boolean {
+    const secretPaths = [
+        PROJECT_SECRET_STORE_RELATIVE_PATH,
+        `${RUNWIELD_DIR_NAME}/${PROJECT_INTERNAL_RUNTIME_DIR_NAME}/collaboration-secrets.json`,
+    ];
+    return secretPaths.some(
+        (secretPath) => path === secretPath || (path.startsWith(`${secretPath}.`) && path.endsWith(".tmp")),
+    );
+}
+
+async function findSymlinkBlocker(
+    layout: ProjectRuntimeLayout,
+    primaryCheckoutRoot: string,
+    selectedRoots: string[] = [layout.selected.checkoutRoot],
+): Promise<string[]> {
+    const authorityRoots = [
+        layout.primary.internalRoot,
+        legacyRelativePath(primaryCheckoutRoot, PLAN_STAGING_DIR_NAME),
+        ...legacyPrimaryAuthorities(primaryCheckoutRoot).map((entry) => entry.source),
+        ...selectedRoots.flatMap((root) => [
+            internalRootFor(root),
+            ...legacySelectedAuthorities(root).map((entry) => entry.source),
+            legacySecretAuthority(root, primaryCheckoutRoot).source,
+            legacyRelativePath(root, "work-record-supersession.lock"),
+            legacyRelativePath(root, "work-record-supersession-recovery.lock"),
+        ]),
+    ];
+    const repositoryContainers = new Set([
+        layout.primary.publicationStagingRoot,
+        layout.primary.fallbackWorktreesRoot,
+        legacyRelativePath(primaryCheckoutRoot, PLAN_STAGING_DIR_NAME),
+        legacyRelativePath(primaryCheckoutRoot, "worktrees"),
+    ]);
+    const symlinks: string[] = [];
+    for (const root of [legacyRuntimeBase(primaryCheckoutRoot), ...selectedRoots.map(legacyRuntimeBase)]) {
+        await collectOnlyThisSymlink(root, symlinks);
+    }
+    for (const root of new Set(authorityRoots)) {
+        symlinks.push(...(await authoritySymlinks(primaryCheckoutRoot, root, repositoryContainers)));
+    }
+    return symlinks;
+}
+
+/**
+ * Symlinks under one authority root. Inside a bounded read, each root is walked
+ * once and shared by every checkout entered during that read, the same way each
+ * checkout's entry is; writes and migrations invalidate the walks.
+ */
+function authoritySymlinks(
+    primaryCheckoutRoot: string,
+    root: string,
+    repositoryContainers: Set<string>,
+): Promise<string[]> {
+    const walk = async () => {
+        const found: string[] = [];
+        await collectSymlinks(root, found, repositoryContainers);
+        return found;
+    };
+    const scope = runtimeEntryScope.getStore();
+    if (!scope?.active) return walk();
+    const key = `${primaryCheckoutRoot}\0${root}`;
+    const pending = scope.symlinkWalks.get(key);
+    if (pending) return pending;
+    const result = walk();
+    scope.symlinkWalks.set(key, result);
+    void result.catch(() => {
+        if (scope.symlinkWalks.get(key) === result) scope.symlinkWalks.delete(key);
+    });
+    return result;
+}
+
+async function collectOnlyThisSymlink(path: string, symlinks: string[]): Promise<void> {
+    const info = await lstatOrNull(path);
+    if (info?.isSymbolicLink()) symlinks.push(path);
+}
+
+async function collectSymlinks(
+    path: string,
+    symlinks: string[],
+    repositoryContainers: Set<string> = new Set(),
+): Promise<void> {
+    let entries: Dirent[] | null;
+    for (let attempt = 0; ; attempt++) {
+        try {
+            // A staging checkout can be disappearing during publication cleanup.
+            // Recheck its type on every retry so a replacement symlink still blocks.
+            const info = await lstatOrNull(path);
+            if (!info) return;
+            if (info.isSymbolicLink()) {
+                symlinks.push(path);
+                return;
+            }
+            if (!info.isDirectory()) return;
+            entries = await safeReadDir(path);
+            break;
+        } catch (error) {
+            if (
+                platform !== "win32" ||
+                attempt >= 10 ||
+                !(error instanceof Error) ||
+                !("code" in error) ||
+                (error.code !== "EPERM" && error.code !== "EACCES" && error.code !== "EBUSY")
+            )
+                throw error;
+            await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+        }
+    }
+    if (!entries) return;
+    if (repositoryContainers.has(path)) {
+        for (const entry of entries) {
+            const checkoutRoot = join(path, entry.name);
+            const checkoutInfo = await lstatOrNull(checkoutRoot);
+            if (!checkoutInfo) continue;
+            if (checkoutInfo.isSymbolicLink()) {
+                symlinks.push(checkoutRoot);
+                continue;
+            }
+            if (checkoutInfo.isDirectory() && (await lstatOrNull(join(checkoutRoot, ".git")))) continue;
+            await collectSymlinks(checkoutRoot, symlinks, repositoryContainers);
+        }
+        return;
+    }
+    for (const entry of entries) {
+        await collectSymlinks(join(path, entry.name), symlinks, repositoryContainers);
+    }
+}
+
+async function collectSpecialFiles(path: string, kind: PathKind, specialFiles: string[]): Promise<void> {
+    const info = await lstatOrNull(path);
+    if (!info) return;
+    if (kind === "file") {
+        if (!info.isFile()) specialFiles.push(path);
+        return;
+    }
+    if (!info.isDirectory()) {
+        specialFiles.push(path);
+        return;
+    }
+    const entries = await safeReadDir(path);
+    if (!entries) return;
+    for (const entry of entries) {
+        const child = join(path, entry.name);
+        const childInfo = await lstatOrNull(child);
+        if (!childInfo) continue;
+        if (childInfo.isDirectory()) await collectSpecialFiles(child, "directory", specialFiles);
+        else if (!childInfo.isFile() && !childInfo.isSymbolicLink()) specialFiles.push(child);
+    }
+}
+
+async function findLegacySecretConflicts(primaryCheckoutRoot: string, selectedRoots: string[]): Promise<string[]> {
+    const sources: string[] = [];
+    for (const root of selectedRoots) {
+        const source = legacySecretAuthority(root, primaryCheckoutRoot).source;
+        if (await lstatOrNull(source)) sources.push(source);
+    }
+    const destination = legacySecretAuthority(primaryCheckoutRoot, primaryCheckoutRoot).destination;
+    const destinationExists = Boolean(await lstatOrNull(destination));
+    if (sources.length > 1 || (sources.length > 0 && destinationExists)) {
+        return [...sources, ...(destinationExists ? [destination] : [])].sort();
+    }
+    return [];
+}
+
+async function findCurrentAuthorityConflicts(
+    layout: ProjectRuntimeLayout,
+    primaryCheckoutRoot: string,
+    selectedRoots: string[],
+    marker: LayoutMarker | null,
+    journal: MigrationJournal | null,
+): Promise<string[]> {
+    const allowedPrimary = new Set([
+        basename(layout.primary.layoutMarkerPath),
+        basename(layout.primary.layoutMigrationJournalPath),
+        basename(layout.primary.layoutMigrationLockPath),
+        basename(layout.selected.validationLogsDir),
+    ]);
+    const conflicts: string[] = [];
+    const allowedJournalPaths = new Set(
+        (journal?.operations || [])
+            .filter((operation) => operation.action === "rename")
+            .map((operation) => (operation as MigrationRenameOperation).destination),
+    );
+    if (!marker) {
+        conflicts.push(
+            ...(await currentConflictsInRoot(
+                internalRootFor(primaryCheckoutRoot),
+                allowedPrimary,
+                allowedJournalPaths,
+            )),
+        );
+    }
+    const adoptedRoots = new Set(marker?.adoptedSelectedCheckoutRoots || []);
+    for (const root of selectedRoots) {
+        if (marker && (root === primaryCheckoutRoot || adoptedRoots.has(root))) continue;
+        const selectedInternalRoot = internalRootFor(root);
+        // Validation logs contain command output, not runtime authority to migrate.
+        const allow =
+            root === primaryCheckoutRoot ? allowedPrimary : new Set([basename(layout.selected.validationLogsDir)]);
+        conflicts.push(...(await currentConflictsInRoot(selectedInternalRoot, allow, allowedJournalPaths)));
+    }
+    // A completed marker establishes the current authority. Recreated old files
+    // and directories are recoverable input, not competing authorities.
+    return [...new Set(conflicts)].sort();
+}
+
+async function currentConflictsInRoot(
+    internalRoot: string,
+    allowedRootNames: Set<string>,
+    allowedPaths: Set<string>,
+): Promise<string[]> {
+    const info = await lstatOrNull(internalRoot);
+    if (!info) return [];
+    if (!info.isDirectory()) return [internalRoot];
+    const entries = await safeReadDir(internalRoot);
+    if (!entries) return [];
+    const conflicts: string[] = [];
+    for (const entry of entries) {
+        if (allowedRootNames.has(entry.name)) continue;
+        const path = join(internalRoot, entry.name);
+        if (allowedPaths.has(path)) continue;
+        if (await isEmptyDirectory(path)) continue;
+        conflicts.push(path);
+    }
+    return conflicts;
+}
+
+async function inspectLegacyLocks(
+    primaryCheckoutRoot: string,
+    selectedRoots: string[],
+    migrationLockPath: string,
+): Promise<LegacyLockStatus> {
+    const active: string[] = [];
+    const retire: MigrationRetireOperation[] = [];
+    const registryLock = legacyWorktreeRegistryLockPath(primaryCheckoutRoot);
+    const registryStatus = await classifyProcessLock(registryLock, 30_000);
+    const currentMigrationOwnsRegistry =
+        registryStatus.status === "active" && registryStatus.snapshot
+            ? await lockOwnersMatch(migrationLockPath, registryLock, registryStatus.snapshot)
+            : false;
+    if (registryStatus.status === "active" && !currentMigrationOwnsRegistry) active.push(registryLock);
+    if (registryStatus.status === "stale") retire.push(retireLockOperation(registryLock, registryStatus.snapshot));
+
+    for (const root of selectedRoots) {
+        const selectedBase = legacyRuntimeBase(root);
+        const planLocks = await listFiles(join(selectedBase, PLAN_LOCKS_DIR_NAME));
+        for (const lockPath of planLocks.filter((path) => path.endsWith(".lock"))) {
+            const status = await classifyPlanLock(lockPath);
+            if (status.status === "active") active.push(lockPath);
+            if (status.status === "stale") retire.push(retireLockOperation(lockPath, status.snapshot));
+        }
+        for (const lock of [
+            { path: join(selectedBase, "work-record-supersession.lock"), staleMs: WORK_RECORD_LOCK_STALE_MS },
+            {
+                path: join(selectedBase, "work-record-supersession-recovery.lock"),
+                staleMs: WORK_RECORD_RECOVERY_LOCK_STALE_MS,
+            },
+        ]) {
+            const status = await classifyWorkRecordLock(lock.path, lock.staleMs);
+            if (status.status === "active") active.push(lock.path);
+            if (status.status === "stale") retire.push(retireLockOperation(lock.path, status.snapshot));
+        }
+    }
+
+    return { active, retire };
+}
+
+async function lockOwnersMatch(
+    migrationLockPath: string,
+    registryLockPath: string,
+    initialRegistrySnapshot: LockFileSnapshot,
+): Promise<boolean> {
+    let registrySnapshot = initialRegistrySnapshot;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+        const migrationSnapshot = await readLockFileSnapshot(migrationLockPath);
+        if (!migrationSnapshot) return false;
+        try {
+            const migrationOwner = JSON.parse(migrationSnapshot.text) as ProcessLockOwner;
+            const registryOwner = JSON.parse(registrySnapshot.text) as ProcessLockOwner;
+            return (
+                Number.isInteger(migrationOwner.pid) &&
+                migrationOwner.pid === registryOwner.pid &&
+                Boolean(migrationOwner.hostname) &&
+                migrationOwner.hostname === registryOwner.hostname
+            );
+        } catch {
+            await new Promise((resolveTimer) => setTimeout(resolveTimer, 10));
+            const refreshedRegistrySnapshot = await readLockFileSnapshot(registryLockPath);
+            if (!refreshedRegistrySnapshot) return false;
+            registrySnapshot = refreshedRegistrySnapshot;
+        }
+    }
+    return false;
+}
+
+type LegacyLockClassification =
+    { status: "absent" } | { status: "active"; snapshot?: LockSnapshot } | { status: "stale"; snapshot: LockSnapshot };
+
+async function readLegacyLockSnapshot(path: string): Promise<LockFileSnapshot | "locked" | null> {
+    try {
+        return await readLockFileSnapshot(path);
+    } catch (error) {
+        // Windows mandatory byte-range locks deny reads through other handles.
+        // An unreadable held lock has no snapshot that could authorize retirement.
+        if (platform === "win32" && error instanceof Error && "code" in error && error.code === "EBUSY") {
+            return "locked";
+        }
+        throw error;
+    }
+}
+
+async function classifyProcessLock(path: string, staleMs: number): Promise<LegacyLockClassification> {
+    const snapshot = await readLegacyLockSnapshot(path);
+    if (snapshot === "locked") return { status: "active" };
+    if (!snapshot) return { status: "absent" };
+    if (await isLockHolderGone(snapshot.text)) return { status: "stale", snapshot };
+    const parsed = parseJsonDocument(snapshot.text);
+    const createdAtMs = typeof parsed?.createdAtMs === "number" ? parsed.createdAtMs : 0;
+    const updatedAtMs = typeof parsed?.updatedAtMs === "number" ? parsed.updatedAtMs : createdAtMs;
+    const ageAnchor = updatedAtMs || snapshot.mtime;
+    return Date.now() - ageAnchor > staleMs ? { status: "stale", snapshot } : { status: "active", snapshot };
+}
+
+async function classifyPlanLock(path: string): Promise<LegacyLockClassification> {
+    const snapshot = await readLegacyLockSnapshot(path);
+    if (snapshot === "locked") return { status: "active" };
+    if (!snapshot) return { status: "absent" };
+    if (await isLockHolderGone(snapshot.text)) return { status: "stale", snapshot };
+    return Date.now() - snapshot.mtime > PLAN_LOCK_STALE_MS
+        ? { status: "stale", snapshot }
+        : { status: "active", snapshot };
+}
+
+async function classifyWorkRecordLock(path: string, staleMs: number): Promise<LegacyLockClassification> {
+    const snapshot = await readLegacyLockSnapshot(path);
+    if (snapshot === "locked") return { status: "active" };
+    if (!snapshot) return { status: "absent" };
+    const updatedAt = snapshot.updatedAt ?? snapshot.mtime;
+    return Date.now() - updatedAt > staleMs ? { status: "stale", snapshot } : { status: "active", snapshot };
+}
+
+function parseJsonDocument(text: string) {
+    try {
+        return JSON.parse(text);
+    } catch {
+        return undefined;
+    }
+}
+
+function retireLockOperation(source: string, proof: LockSnapshot): MigrationRetireOperation {
+    return { action: "retire", source, kind: "file", proof, completed: false };
+}
+
+async function validateLegacyAuthorities(
+    primaryCheckoutRoot: string,
+    selectedRoots: string[],
+): Promise<undefined | ProjectRuntimeMigrationBlockedResult> {
+    const secretTemps = (
+        await Promise.all(
+            selectedRoots.map((root) => listSiblingTemps(legacyRelativePath(root, "collaboration-secrets.json"))),
+        )
+    ).flat();
+    if (secretTemps.length > 0) {
+        return block("malformed_migration_evidence", secretTemps, "A legacy secret temp file is present.");
+    }
+    const registryTemp = await listSiblingTemps(legacyWorktreeRegistryPath(primaryCheckoutRoot));
+    if (registryTemp.length > 0) {
+        return block("malformed_migration_evidence", registryTemp, "A legacy registry temp file is present.");
+    }
+
+    const specialFiles: string[] = [];
+    const symlinks: string[] = [];
+    for (const authority of [
+        ...legacyPrimaryAuthorities(primaryCheckoutRoot),
+        ...selectedRoots.flatMap(legacySelectedAuthorities),
+        ...selectedRoots.map((root) => legacySecretAuthority(root, primaryCheckoutRoot)),
+    ]) {
+        await collectSymlinks(authority.source, symlinks);
+        await collectSpecialFiles(authority.source, authority.kind, specialFiles);
+    }
+    if (symlinks.length > 0) return block("symlink", symlinks, "A legacy runtime authority uses a symlink.");
+    if (specialFiles.length > 0) {
+        return block(
+            "malformed_migration_evidence",
+            specialFiles,
+            "A legacy runtime path has the wrong filesystem type.",
+        );
+    }
+    return undefined;
+}
+
+async function buildOperations(
+    primaryCheckoutRoot: string,
+    selectedRoots: string[],
+    staleLocks: MigrationRetireOperation[],
+    marker: LayoutMarker | null,
+): Promise<MigrationOperation[]> {
+    const operations: MigrationOperation[] = [];
+    operations.push(...staleLocks);
+    const primaryAuthorities = legacyPrimaryAuthorities(primaryCheckoutRoot);
+    if (marker) {
+        for (const authority of [
+            ...primaryAuthorities,
+            ...selectedRoots
+                .filter((root) => adoptedSelectedRoots(marker, primaryCheckoutRoot).includes(root))
+                .flatMap(legacySelectedAuthorities),
+        ]) {
+            if (await hasRecoverableRuntimeFiles(authority.source)) {
+                operations.push({ ...authority, action: "reconcile" });
+            }
+        }
+    }
+    const secretSources: MigrationRenameOperation[] = [];
+    for (const root of selectedRoots) {
+        const authority = legacySecretAuthority(root, primaryCheckoutRoot);
+        if (await lstatOrNull(authority.source)) secretSources.push(authority);
+    }
+    if (secretSources.length > 1) {
+        throw new Error("Legacy secret conflicts must be rejected during preflight.");
+    }
+    const registryAuthorities = primaryAuthorities.filter(
+        (authority) =>
+            basename(authority.source) === WORKTREE_REGISTRY_FILE ||
+            basename(authority.source) === "worktree-registry-migration-issues.json",
+    );
+    if (!marker) {
+        for (const authority of primaryAuthorities.filter((authority) => !registryAuthorities.includes(authority))) {
+            if (await lstatOrNull(authority.source)) {
+                operations.push({ ...authority, action: "rename", completed: false });
+            }
+        }
+    }
+    if (secretSources[0]) operations.push({ ...secretSources[0], completed: false });
+    const adopted = new Set(adoptedSelectedRoots(marker, primaryCheckoutRoot));
+    for (const selectedRoot of selectedRoots) {
+        if (adopted.has(selectedRoot)) continue;
+        for (const authority of legacySelectedAuthorities(selectedRoot)) {
+            if (await lstatOrNull(authority.source)) {
+                operations.push({ ...authority, action: "rename", completed: false });
+            }
+        }
+    }
+    if (!marker) {
+        for (const authority of registryAuthorities) {
+            if (await lstatOrNull(authority.source)) {
+                operations.push({ ...authority, action: "rename", completed: false });
+            }
+        }
+    }
+    return operations;
+}
+
+function legacyPrimaryAuthorities(primaryCheckoutRoot: string): MigrationRenameOperation[] {
+    const base = legacyRuntimeBase(primaryCheckoutRoot);
+    const internal = internalRootFor(primaryCheckoutRoot);
+    return [
+        {
+            action: "rename",
+            source: join(base, "controller"),
+            destination: join(internal, "controller"),
+            kind: "directory",
+            completed: false,
+        },
+        {
+            action: "rename",
+            source: join(base, WORKTREE_REGISTRY_FILE),
+            destination: join(internal, WORKTREE_REGISTRY_FILE),
+            kind: "file",
+            completed: false,
+        },
+        {
+            action: "rename",
+            source: join(base, "worktree-registry-migration-issues.json"),
+            destination: join(internal, "worktree-registry-migration-issues.json"),
+            kind: "file",
+            completed: false,
+        },
+        {
+            action: "rename",
+            source: join(base, "debug"),
+            destination: join(internal, "debug"),
+            kind: "directory",
+            completed: false,
+        },
+    ];
+}
+
+function legacySecretAuthority(sourceRoot: string, primaryCheckoutRoot: string): MigrationRenameOperation {
+    return {
+        action: "rename",
+        source: legacyRelativePath(sourceRoot, basename(PROJECT_SECRET_STORE_RELATIVE_PATH)),
+        destination: join(internalRootFor(primaryCheckoutRoot), "collaboration-secrets.json"),
+        kind: "file",
+        completed: false,
+    };
+}
+
+function legacySelectedAuthorities(selectedRoot: string): MigrationRenameOperation[] {
+    const base = legacyRuntimeBase(selectedRoot);
+    const internal = internalRootFor(selectedRoot);
+    return [
+        {
+            action: "rename",
+            source: join(base, PLAN_TRANSITIONS_DIR_NAME),
+            destination: join(internal, PLAN_TRANSITIONS_DIR_NAME),
+            kind: "directory",
+            completed: false,
+        },
+        {
+            action: "rename",
+            source: join(base, PLAN_BACKUPS_DIR_NAME),
+            destination: join(internal, PLAN_BACKUPS_DIR_NAME),
+            kind: "directory",
+            completed: false,
+        },
+        {
+            action: "rename",
+            source: join(base, PLAN_LOCKS_DIR_NAME),
+            destination: join(internal, PLAN_LOCKS_DIR_NAME),
+            kind: "directory",
+            completed: false,
+        },
+    ];
+}
+
+async function readJournal(
+    path: string,
+): Promise<{ journal: MigrationJournal | null } | ProjectRuntimeMigrationBlockedResult> {
+    try {
+        const parsed = JSON.parse(await fsReadFile(path, "utf8"));
+        if (
+            !parsed ||
+            typeof parsed !== "object" ||
+            Array.isArray(parsed) ||
+            parsed.version !== LAYOUT_VERSION ||
+            typeof parsed.primaryCheckoutRoot !== "string" ||
+            !Array.isArray(parsed.selectedCheckoutRoots) ||
+            !parsed.selectedCheckoutRoots.every((root: string) => typeof root === "string") ||
+            !Array.isArray(parsed.operations) ||
+            !parsed.operations.every(isMigrationOperation)
+        ) {
+            return block("malformed_migration_evidence", [path], "The runtime migration journal is malformed.");
+        }
+        return { journal: parsed as MigrationJournal };
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return { journal: null };
+        if (error instanceof SyntaxError) {
+            return block("malformed_migration_evidence", [path], "The runtime migration journal is not valid JSON.");
+        }
+        throw error;
+    }
+}
+
+function isMigrationOperation(value: MigrationOperation): boolean {
+    if (!value || typeof value !== "object") return false;
+    if (value.action === "reconcile") {
+        return (
+            typeof value.source === "string" &&
+            typeof value.destination === "string" &&
+            (value.kind === "directory" || value.kind === "file") &&
+            typeof value.completed === "boolean"
+        );
+    }
+    if (value.action === "rename") {
+        return (
+            typeof value.source === "string" &&
+            typeof value.destination === "string" &&
+            (value.kind === "file" || value.kind === "directory") &&
+            typeof value.completed === "boolean"
+        );
+    }
+    if (value.action === "retire") {
+        return (
+            typeof value.source === "string" &&
+            value.kind === "file" &&
+            typeof value.completed === "boolean" &&
+            Boolean(value.proof) &&
+            typeof value.proof.text === "string" &&
+            typeof value.proof.mtime === "number" &&
+            typeof value.proof.size === "number" &&
+            (value.proof.token === undefined || typeof value.proof.token === "string") &&
+            (value.proof.createdAt === undefined || typeof value.proof.createdAt === "number") &&
+            (value.proof.updatedAt === undefined || typeof value.proof.updatedAt === "number")
+        );
+    }
+    return false;
+}
+
+function adoptedSelectedRoots(marker: LayoutMarker | null, primaryRoot: string): string[] {
+    // A completed marker adopts the primary checkout containing it even after a move.
+    // Do not resolve historical worktree paths: retired paths may now belong to others.
+    return marker ? [...marker.adoptedSelectedCheckoutRoots, primaryRoot] : [];
+}
+
+async function lstatOrNull(path: string): Promise<Stats | null> {
+    try {
+        return await fsLstat(path);
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+        throw error;
+    }
+}
+
+async function safeReadDir(path: string): Promise<Dirent[] | null> {
+    try {
+        const entries: Dirent[] = [];
+        for await (const entry of await fsReaddir(path, { withFileTypes: true })) entries.push(entry);
+        return entries;
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+        throw error;
+    }
+}
+
+async function listFiles(path: string): Promise<string[]> {
+    const info = await lstatOrNull(path);
+    if (!info || !info.isDirectory()) return [];
+    const files: string[] = [];
+    for await (const entry of await fsReaddir(path, { withFileTypes: true })) {
+        const child = join(path, entry.name);
+        if (entry.isDirectory()) files.push(...(await listFiles(child)));
+        else files.push(child);
+    }
+    return files;
+}
+
+async function isEmptyDirectory(path: string): Promise<boolean> {
+    const info = await lstatOrNull(path);
+    if (!info) return true;
+    if (!info.isDirectory()) return false;
+    for await (const _entry of await fsReaddir(path, { withFileTypes: true })) return false;
+    return true;
+}
+
+async function listSiblingTemps(path: string): Promise<string[]> {
+    const directory = dirname(path);
+    const prefix = `${basename(path)}.`;
+    const entries = await safeReadDir(directory);
+    if (!entries) return [];
+    return entries
+        .filter((entry) => entry.name.startsWith(prefix) && entry.name.endsWith(".tmp"))
+        .map((entry) => join(directory, entry.name));
+}

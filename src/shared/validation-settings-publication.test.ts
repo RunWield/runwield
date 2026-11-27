@@ -16,7 +16,7 @@ import { HostedSession } from "@runwield/session-runtime/host";
 import { runLocalCI } from "./workflow/validation-local-ci.ts";
 import { setExactProjectCustomSetting } from "./settings.ts";
 import { publishExecutionWorktreeIsolated } from "./isolated-publication.ts";
-import { ensureRunWieldOwnedGitignoreBlock } from "./runwield-owned-paths.ts";
+import { ensureRunWieldOwnedGitignoreBlock } from "@runwield/project-runtime/owned-paths";
 
 const failingCommand = platform === "win32" ? "echo initial & exit /b 1" : "printf initial; exit 1";
 const passingCommand = platform === "win32" ? "echo repaired" : "printf repaired";

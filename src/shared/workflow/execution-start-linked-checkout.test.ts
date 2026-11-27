@@ -7,12 +7,12 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
-import { WORKTREE_REGISTRY_FILE } from "../../constants.ts";
+import { WORKTREE_REGISTRY_FILE } from "@runwield/project-runtime/legacy-paths";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { assertEquals } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { HostedSession } from "@runwield/session-runtime/host";
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";

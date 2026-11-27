@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { ProjectRuntimeEntryRefusedError, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { ProjectRuntimeEntryRefusedError, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { addEntry } from "../worktree-registry.ts";
 import { openPublication } from "@runwield/workflow/publication-runtime";
 

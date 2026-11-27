@@ -72,7 +72,7 @@ import { recordWorkflowMetric } from "./metrics.ts";
 import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "../../plan-store/index.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { CollaborationStyles, resolveExecutionOwner } from "./execution-collaboration.ts";
-import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
+import { ensureRunWieldOwnedGitignoreBlock } from "@runwield/project-runtime/owned-paths";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 

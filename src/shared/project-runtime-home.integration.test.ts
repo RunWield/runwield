@@ -5,13 +5,11 @@ import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { mkdir, readFile, writeFile, lstat, rm, mkdtemp, readdir, realpath, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { getHomeDir, getRunWieldRuntimeDir } from "../constants.ts";
+import { getHomeDir } from "../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
-import {
-    enterProjectRuntime,
-    resolveProjectRuntimeLayout,
-    inspectProjectRuntimeReadAccess,
-} from "./project-runtime-layout.ts";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout, inspectProjectRuntimeReadAccess } from "@runwield/project-runtime/layout";
 
 import { DatabaseSync } from "./sqlite.ts";
 

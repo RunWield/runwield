@@ -57,7 +57,7 @@ import {
 } from "@runwield/plans/publication-copies";
 import { materializeDeliveryCopy } from "@runwield/plans/publication-files";
 import { gitStatusPaths } from "../shared/git-runtime-safety.ts";
-import { isRunWieldOwnedRuntimePath } from "../shared/runwield-owned-paths.ts";
+import { isRunWieldOwnedRuntimePath } from "@runwield/project-runtime/owned-paths";
 
 async function git(root: string, args: string[]) {
     const result = await captureForegroundProcess("git", { cwd: root, args });

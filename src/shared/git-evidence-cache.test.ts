@@ -11,7 +11,7 @@ import {
     observeGitEvidence,
     rememberGitRead,
     reusedGitRead,
-} from "./git-evidence-cache.ts";
+} from "@runwield/project-runtime/git-evidence-cache";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# Git evidence fixture\n" });

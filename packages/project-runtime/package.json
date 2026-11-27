@@ -1,0 +1,20 @@
+{
+    "name": "@runwield/project-runtime",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./index.ts",
+        "./checkout": "./checkout.ts",
+        "./controller-recovery": "./controller-recovery.ts",
+        "./git-evidence-cache": "./git-evidence-cache.ts",
+        "./layout": "./layout.ts",
+        "./legacy-paths": "./legacy-paths.ts",
+        "./owned-paths": "./owned-paths.ts",
+        "./publication-evidence": "./publication-evidence.ts",
+        "./registry-inspection": "./registry-inspection.ts"
+    },
+    "dependencies": {
+        "@runwield/projects": "workspace:*",
+        "@runwield/resources": "workspace:*"
+    }
+}

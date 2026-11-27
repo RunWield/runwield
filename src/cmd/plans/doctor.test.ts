@@ -18,7 +18,8 @@ import {
     symlink as fsSymlink,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { getCwd, getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.ts";
+import { getCwd } from "../../constants.ts";
+import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "@runwield/project-runtime/legacy-paths";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { injectFrontMatter } from "@runwield/plans/format";
@@ -30,17 +31,17 @@ import { runPlansDoctor, runPlansDoctorCommand } from "./doctor.ts";
 import { runPlansCommand } from "./index.ts";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import {
-    enterProjectRuntime,
     resolveProjectRuntimeLayout,
     inspectProjectRuntimeReadAccess,
     withProjectRuntimeReadScope,
-} from "../../shared/project-runtime-layout.ts";
+} from "@runwield/project-runtime/layout";
 import { getLockHostname } from "@runwield/resources/locks";
 import { inspectTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
 import { seedPlan as savePlan } from "../../shared/testing/plan-state-fixture.ts";
 
-type WorktreeRegistryEntry = import("../../shared/worktree-registry.ts").WorktreeRegistryEntry;
+type WorktreeRegistryEntry = import("@runwield/project-runtime/registry-inspection").WorktreeRegistryEntry;
 
 type WorktreeDeliveryEvidence = import("@runwield/plans/format").WorktreeDeliveryEvidence;
 

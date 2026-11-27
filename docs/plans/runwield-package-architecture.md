@@ -159,6 +159,12 @@ The standalone registry opens the personal SQLite database. When Workspace alrea
 
 The package boundary check covers Projects and its tests. Tests in the package exercise the real identity files and SQLite store. The remaining Session and Workspace integration tests exercise their own behavior through that registry.
 
+### Project runtime entry
+
+`@runwield/project-runtime` exposes `enter(checkout: ProjectIdentity): Promise<ProjectRuntimeLayout>` to code that needs to prepare an admitted checkout for a write. Projects supplies the identity. Runtime verifies it, recovers interrupted storage migrations and returns the locations for the primary and selected checkouts. A managed Plan write uses the selected checkout's journal to retain its operation ID across a lost response. Plans owns that operation and its retry.
+
+Commands that start with a directory resolve identity through Projects before entering. Passive reads inspect storage without entering. A factory worker uses the same project-bound Plan store contract as Workspace.
+
 ### Project identity and status
 
 Projects owns one opaque `ProjectId` for each logical project. Workspace URLs, Plans, Sessions, Usage and

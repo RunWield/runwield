@@ -45,13 +45,13 @@ import { executePlanAction, loadPlanActionEvidence } from "../../shared/workflow
 import { importPlans, PlanAccessMismatchError, recordPlanEvent } from "../../plan-store/index.ts";
 
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
-import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
 import { AGENTS } from "../../shared/session/agent-registry.ts";
-import { getRunWieldRuntimeDir } from "../../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import type { EditorAPI, SelectOption, UiAPI } from "../../ui/tui/api.ts";
 
 interface LoadPlanUiFixture {

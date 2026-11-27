@@ -24,7 +24,7 @@ import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { PlanningNotStartedError } from "../../plan-store/index.ts";
 import { listEntries } from "../../shared/worktree-registry.ts";
-import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { generateBearerCapability, hashCapability, MAINTAINER_SCOPE } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
 import { encryptJsonPayload, generateContentKeyString, importContentKey } from "../../shared/collaboration/crypto.ts";

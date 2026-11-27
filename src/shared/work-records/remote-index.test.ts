@@ -7,7 +7,7 @@ import { ok as assert, rejects } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { configureRemotePersonalResources } from "../remote/personal-resources.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { restoreWorkRecordDocument } from "./store.ts";
 import { rebuildWorkRecordIndex, runMnemotecaWorkRecordCommand, syncWorkRecordToIndex } from "./index-adapter.ts";
 import { searchWorkRecords } from "./search.ts";

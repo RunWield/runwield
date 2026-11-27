@@ -4,13 +4,10 @@ import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { getRunWieldRuntimeDir } from "../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { defineCommittedGitFixture } from "./git-test-fixture.ts";
-import {
-    enterProjectRuntime,
-    migrateLegacyProjectRuntimeState,
-    resolveProjectRuntimeLayout,
-} from "./project-runtime-layout.ts";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
+import { migrateLegacyProjectRuntimeState, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 
 import { StaleControllerWriteError } from "../plan-store/index.ts";
 

@@ -1,13 +1,12 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 import { assertEquals } from "../testing/assertions.ts";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-
 import { inspectExecutionWorktreeMergeRisk, removeWorktreeGitArtifacts } from "./worktree.ts";
-
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
-import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
+
 
 test("inspectExecutionWorktreeMergeRisk reports clean target branch as safe without mutating", async () => {
     const projectRoot = await makeRepo();

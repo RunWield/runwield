@@ -574,7 +574,7 @@ export function inspectProjectStorage(
         });
 }
 
-/** Roots committed for this checkout under the current personal owner. */
+/** Return this owner's current registered checkout root first, followed by distinct prior roots. */
 export function inspectProjectCheckoutRoots(identity: ProjectIdentity): string[] {
     if (identity.personalOwner.kind !== "execution-account") return [];
     const record = readRecord(recordPath(identity.executionAccountHome, identity.projectId), identity.projectId);

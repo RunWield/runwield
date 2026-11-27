@@ -15,13 +15,14 @@ async function executeManagedFixture() {
         collaborationUrl: string;
     } = JSON.parse((await lines.read()).value || "{}");
     await lines.cancel();
-    const { getRunWieldRuntimeDir, getHomeDir } = await import("../../constants.ts");
+    const { getHomeDir } = await import("../../constants.ts");
+    const { getRunWieldRuntimeDir } = await import("@runwield/project-runtime/legacy-paths");
     const { mkdir: seedDirectory, writeFile: seedFile, rename: moveSeed } = await import("node:fs/promises");
     const { join: seedPath } = await import("node:path");
     const { withRetainedPlanFixture } = await import("../testing/retained-plan-fixture.ts");
     const { createTestWorktreeAttempt, git: fixtureGit } = await import("../worktree-test-helpers.ts");
     const { seedPlanController, planFixtureControllerPath } = await import("../testing/plan-state-fixture.ts");
-    const { resolveProjectRuntimeLayout: seedLayout } = await import("../project-runtime-layout.ts");
+    const { resolveProjectRuntimeLayout: seedLayout } = await import("@runwield/project-runtime/layout");
     const retainedPlanId = crypto.randomUUID();
     const retainedParentId = crypto.randomUUID();
     const abandonedPlanId = crypto.randomUUID();
@@ -1293,7 +1294,7 @@ async function executeManagedFixture() {
         }
         if (invalidResumes.length)
             throw new Error(`Saved managed continuation entered replacement attempts: ${invalidResumes.join(", ")}`);
-        const { resolveProjectRuntimeLayout } = await import("../project-runtime-layout.ts");
+        const { resolveProjectRuntimeLayout } = await import("@runwield/project-runtime/layout");
         const finalResult = {
             retainedRecordId,
             retainedPlanId,

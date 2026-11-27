@@ -14,7 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { ok as assert } from "node:assert/strict";
 import { dirname, join } from "node:path";
-import { getRunWieldRuntimeDir } from "../../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { updatePlanFrontMatter } from "../../plan-store.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { savePlan } from "../../plan-store.ts";
@@ -36,7 +36,8 @@ import {
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 
 import type { JournaledEffect } from "../../plan-store/transitions.ts";
 import type { TransitionResult } from "../../plan-store/index.ts";

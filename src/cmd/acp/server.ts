@@ -3,7 +3,7 @@ import { connectAcpServer } from "@runwield/acp";
 import type { AgentConnection } from "@agentclientprotocol/sdk/unstable";
 import { createInteractiveSessionRuntime, type InteractiveSessionRuntime } from "@runwield/session-runtime/services";
 import { getCommandDefinition, getSlashCommandDefinitions } from "../registry.ts";
-import { ProjectRuntimeEntryRefusedError } from "../../shared/project-runtime-layout.ts";
+import { ProjectRuntimeEntryRefusedError } from "@runwield/project-runtime/layout";
 import { VERSION } from "../../shared/version.js";
 import { startBrowserQuestionServer } from "../../shared/session/browser-question.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";

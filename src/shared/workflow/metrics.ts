@@ -7,7 +7,8 @@ import { ProjectIdentityEntryRequired, projects, type ProjectId, type ProjectIde
 import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
+import { getHomeDir } from "../../constants.ts";
+import { RUNWIELD_DIR_NAME } from "@runwield/project-runtime/legacy-paths";
 import type { JsonRecord, JsonValue } from "@runwield/parsing/jsonc";
 import {
     adoptLegacyWorkflowMetricJournal,

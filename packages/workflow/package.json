@@ -16,6 +16,7 @@
     "dependencies": {
         "@runwield/agents": "workspace:*",
         "@runwield/plans": "workspace:*",
+        "@runwield/project-runtime": "workspace:*",
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*"

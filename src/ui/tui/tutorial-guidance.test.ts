@@ -8,7 +8,7 @@ import {
 import { test } from "node:test";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     withRuntimeCommandFixture as withRuntimeFixture,

@@ -29,7 +29,7 @@ import { recordInitDone, recordInitOffered } from "./init-state.ts";
 import { isProjectInitComplete, requireProjectInitArtifact } from "./init-completion.ts";
 import { createInitVerificationCommandOperation } from "../../tools/init-verification-command.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { enter } from "@runwield/project-runtime";
 import { confirmInitFiles, INIT_DECLINED_MESSAGE } from "./init-consent.ts";
 import { recordInitializedProjectContext } from "../../shared/worktree-project-context.ts";
 
@@ -135,8 +135,9 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
         else console.warn(INIT_DECLINED_MESSAGE);
         return;
     }
-    if (!(await admitProjectWithIdentityChoice(projectRoot))) return;
-    await enterProjectRuntime(projectRoot);
+    const checkout = await admitProjectWithIdentityChoice(projectRoot);
+    if (!checkout) return;
+    await enter(checkout);
 
     // ── Load init subagent definition ──────
     // The registry maps this prompt to the canonical "init" runtime identifier

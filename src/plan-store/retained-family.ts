@@ -1,8 +1,8 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 /** Original family controllers stay with the admitted laptop owner during legacy continuation. */
 import { type HomeProjectOwner } from "@runwield/projects";
 import { readFile, lstat } from "node:fs/promises";
 import { join } from "node:path";
-import type { WorktreeRegistryEntry } from "../shared/worktree-registry.ts";
 import type { ManagedRuntimeTransfer } from "../shared/project-runtime-managed.ts";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
 import { parsePlanFrontMatter, canonicalizeStoredPlanName } from "@runwield/plans/format";
@@ -20,7 +20,7 @@ import {
     checkpointRetainedManagedExecution,
 } from "./retained-managed-execution.ts";
 import { ensurePrivateDir, writeTextAtomically } from "../shared/private-json-file.ts";
-import { recoverLegacyPlanControllers } from "./runtime-recovery.ts";
+import { recoverLegacyPlanControllers } from "@runwield/project-runtime/controller-recovery";
 import {
     operationHash,
     operationDigest,

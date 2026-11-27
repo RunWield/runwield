@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readdir, readFile, rm, utimes, writeFile } from "node:f
 import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { openValidationLog, formatValidationOutput } from "./validation-log.ts";
 
 test("opening a validation log keeps the newest 19 logs and non-log files", async () => {

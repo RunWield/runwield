@@ -14,7 +14,7 @@ import { assertEquals, assertExists, assertStringIncludes } from "../../testing/
 import { basename, dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.ts";
 
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { getWorkspaceSearchRefreshMarker } from "../workspace-search-refresh.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";

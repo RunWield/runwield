@@ -32,17 +32,17 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertExists, assertRejects } from "../testing/assertions.ts";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
-import { getRunWieldRuntimeDir } from "../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
-    enterProjectRuntime,
     inspectProjectRuntimeReadAccess,
     type ProjectRuntimeReadInspection,
     migrateLegacyProjectRuntimeState,
     type ProjectRuntimeMigrationResult,
     resolveProjectRuntimeLayout,
-} from "./project-runtime-layout.ts";
+} from "@runwield/project-runtime/layout";
 import { inspectWorktreeRegistry, prepareWorktreeRegistry, withWorktreeRegistryLock } from "./worktree-registry.ts";
 import {
     advancePublicationAttempt,
