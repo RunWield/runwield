@@ -377,7 +377,6 @@ export {
     openPlanStoreForCheckout,
 } from "./project-plans.ts";
 export { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "./authoring.ts";
-export type { ProjectPlanStoreOptions } from "./project-binding.ts";
 export {
     registeredWorkRecords,
     withWorkRecordReadScope,
