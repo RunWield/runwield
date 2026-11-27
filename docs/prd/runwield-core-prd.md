@@ -498,6 +498,8 @@ Plan revision and finishes the source edit once. A retry can also finish a sourc
 If the requested path resolves to a different file or the source has an independent change, the retry preserves it.
 This includes independent changes that resemble a different point in an observed partial write.
 If one source file finishes and a later file conflicts, the retry also preserves independent changes to the finished file.
+If a source file already contains its full replacement after an interruption, a retry settles it without rewriting it
+and continues with the remaining source files.
 Given a validated Plan reply before disconnect, the source edit can finish and the tool reports success without a
 request on the replacement connection.
 

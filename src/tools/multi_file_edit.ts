@@ -161,7 +161,9 @@ async function settleManagedSource(baseDir: string, label: string, edit: Prepare
                 return;
             }
             const checkpoint = edit.sourceWriteCheckpoint;
+            // Exact replacement bytes need only a sync, even after a recorded pre-truncation checkpoint.
             if (
+                !settled &&
                 checkpoint &&
                 (checkpoint.generation !== sourceGeneration(info) ||
                     checkpoint.fingerprint !== sourceFingerprint(current))
@@ -225,8 +227,9 @@ async function settleManagedSource(baseDir: string, label: string, edit: Prepare
             }
             await file.sync();
             await assertSourceRequest(baseDir, label, edit.path);
-            if (sourceIdentity(await verifiedSource(edit.path, file)) !== identity)
-                throw new Error("File changed before edit: " + edit.path);
+            const after = await verifiedSource(edit.path, file);
+            if (settled) assertUnchangedSource(edit.path, info, after);
+            else if (sourceIdentity(after) !== identity) throw new Error("File changed before edit: " + edit.path);
             edit.sourceIdentity = identity;
             edit.sourceRequest = label;
             edit.sourceWriteState = "completed";

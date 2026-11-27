@@ -10,6 +10,34 @@ const [command, json] = process.argv.slice(2);
 type ComposedRemoteInput = Pick<RemoteInteractiveConfig, "cwd" | "resources" | "connection"> & { attemptId?: string };
 const input: ComposedRemoteInput = JSON.parse(json);
 const managed = command.startsWith("managed");
+
+type ManagedSourceSyncFailure = "after-truncate" | "retry-sync";
+
+async function interruptManagedSourceSync(pathname: string, phase: ManagedSourceSyncFailure) {
+    const { mock } = await import("bun:test");
+    const { open } = await import("node:fs/promises");
+    mock.module("node:fs/promises", () => ({
+        async open(
+            path: Parameters<typeof open>[0],
+            flags?: Parameters<typeof open>[1],
+            mode?: Parameters<typeof open>[2],
+        ) {
+            const file = await open(path, flags, mode);
+            if (path !== pathname) return file;
+            if (phase === "retry-sync") {
+                file.sync = () => Promise.reject(new Error("Interrupted while syncing the settled source on retry."));
+            } else {
+                const truncate = file.truncate.bind(file);
+                file.truncate = async (length) => {
+                    await truncate(length);
+                    file.sync = () => Promise.reject(new Error("Interrupted while syncing the truncated source file."));
+                };
+            }
+            return file;
+        },
+    }));
+}
+
 async function waitForHeldRequestRejection(rejection: Promise<void>): Promise<void> {
     const deadline = Promise.withResolvers<never>();
     const timeout = setTimeout(() => {
@@ -728,6 +756,18 @@ try {
                     }),
                 );
             else {
+                const extraSources =
+                    command === "managed-mixed-batch-edit"
+                        ? [
+                              { path: "clear.txt", oldText: "Remove me", newText: "" },
+                              { path: "conflict.txt", oldText: "Before", newText: "After" },
+                          ]
+                        : [];
+                if (
+                    command === "managed-mixed-batch-edit" &&
+                    (input.attemptId === "after-truncate" || input.attemptId === "retry-sync")
+                )
+                    await interruptManagedSourceSync(join(input.cwd, "source.txt"), input.attemptId);
                 const { createMultiFileEditTool } = await import("../../tools/multi_file_edit.ts");
                 const tool = createMultiFileEditTool(input.cwd);
                 const result = await tool.execute(
@@ -739,6 +779,7 @@ try {
                                 oldText: "Original source",
                                 newText: "Updated source",
                             },
+                            ...extraSources,
                             { path: plan.path, oldText: "Original Plan", newText: "Updated Plan" },
                         ],
                     },
