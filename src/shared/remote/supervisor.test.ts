@@ -1,9 +1,10 @@
 import {
+    readRemoteFixtureSource,
     writeRemoteHelperArtifacts,
     writeFixtureHelperModule,
     seedRemoteHelpers,
 } from "../../testing/remote-helper-fixture.ts";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { spawnNativeProcess, captureForegroundProcess } from "@runwield/resources/process";
 import { serveHttp } from "../http-server.ts";
@@ -159,18 +160,14 @@ async function compiledSupervisor(): Promise<string> {
     if (binary) return binary;
     const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     buildRoot = root;
-    const sourcePath = await fsRealpath("src/shared/remote/supervisor.ts");
     const artifactRoot = join(root, "helper-artifacts");
     const artifacts = await writeRemoteHelperArtifacts(artifactRoot);
     const helpers = await writeFixtureHelperModule(root, artifacts.manifestPath);
     await seedRemoteHelpers(artifactRoot, getHomeDir(), artifacts.pins);
     const source = join(root, "supervisor.ts");
-    const supervisorSource = (await fsReadFile(sourcePath, "utf8")).replace(
-        /\b(from\s+|import\()"(\.[^"]+)"/g,
-        (_match, prefix: string, relative: string) => {
-            return `${prefix}${JSON.stringify(relative === "./helpers.ts" ? helpers : fileURLToPath(new URL(relative, pathToFileURL(sourcePath))))}`;
-        },
-    );
+    const supervisorSource = await readRemoteFixtureSource(new URL("./supervisor.ts", import.meta.url), {
+        "./helpers.ts": helpers,
+    });
     await fsWriteFile(source, supervisorSource);
     await fsWriteFile(
         join(root, "entry.ts"),

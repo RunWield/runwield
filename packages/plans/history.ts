@@ -1,4 +1,4 @@
-import type { PlanId } from "./identity.ts";
+import type { PlanId } from "@runwield/plan-storage-format";
 
 export type { PackageDocuments } from "./package-data.ts";
 

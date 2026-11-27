@@ -165,6 +165,8 @@ The package boundary check covers Projects and its tests. Tests in the package e
 
 Commands that start with a directory resolve identity through Projects before entering. Passive reads inspect storage without entering. A factory worker uses the same project-bound Plan store contract as Workspace.
 
+Runtime uses Workflow's private publication format to validate saved attempts during registry inspection and storage recovery. The format contains the saved schema, phases, and evidence checks. It uses Plans' private storage format for Plan IDs, frozen publication references, and copy policy. These dependencies give Runtime the validators without loading either domain's operations. Workflow owns phase transitions and publication decisions. Consumers still use the existing Plans and Workflow entry points. [Publication state machine](../adr/015-proof-bearing-publication-state-machine.md)
+
 ### Project identity and status
 
 Projects owns one opaque `ProjectId` for each logical project. Workspace URLs, Plans, Sessions, Usage and

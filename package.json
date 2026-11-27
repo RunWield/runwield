@@ -6,7 +6,7 @@
     "engines": {
         "bun": "^1.4.0"
     },
-    "workspaces": ["packages/acp", "packages/agents", "packages/bundled-assets", "packages/parsing", "packages/pi-ai", "packages/plans", "packages/project-runtime", "packages/projects", "packages/resources", "packages/session-files", "packages/session-runtime", "packages/tools", "packages/workflow"],
+    "workspaces": ["packages/acp", "packages/agents", "packages/bundled-assets", "packages/parsing", "packages/pi-ai", "packages/plans", "packages/plans/storage-format", "packages/project-runtime", "packages/projects", "packages/resources", "packages/session-files", "packages/session-runtime", "packages/tools", "packages/workflow", "packages/workflow/publication-format"],
     "trustedDependencies": [],
     "scripts": {
         "install:locked": "bun scripts/check-bun-runtime.ts && bun install --frozen-lockfile --ignore-scripts && cd docs-site && bun install --frozen-lockfile --ignore-scripts",

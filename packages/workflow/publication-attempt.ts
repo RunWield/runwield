@@ -6,7 +6,7 @@ import {
     type PublicationAttempt,
     type PublicationFailure,
     type PublicationPhase,
-} from "@runwield/project-runtime/publication-evidence";
+} from "@runwield/workflow-publication-format";
 
 export {
     PUBLICATION_ATTEMPT_VERSION,
@@ -17,7 +17,7 @@ export {
     type PublicationFailure,
     type PublicationPhase,
     type PublicationRevalidation,
-} from "@runwield/project-runtime/publication-evidence";
+} from "@runwield/workflow-publication-format";
 
 /** Published attempts retain cleanup evidence, not ownership of an execution document. */
 export function isPublicationCleanupPending(attempt: PublicationAttempt | undefined): boolean {

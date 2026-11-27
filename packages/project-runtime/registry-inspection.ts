@@ -1,5 +1,5 @@
+import { assertPublicationAttempt, type PublicationAttempt } from "@runwield/workflow-publication-format";
 import { readFile as fsReadFile } from "node:fs/promises";
-import { assertPublicationAttempt, type PublicationAttempt } from "./publication-evidence.ts";
 
 interface ContextFile {
     path: string;

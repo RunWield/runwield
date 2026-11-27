@@ -1,4 +1,4 @@
-import { isPlanId, type PlanId } from "../identity.ts";
+import { isPlanId, type PlanId } from "@runwield/plan-storage-format";
 
 /** Storage-free names and classification for Plan companion documents. */
 export const EPIC_MANUAL_QA_FILE_NAME = "manual-qa.md";

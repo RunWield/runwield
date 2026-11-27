@@ -6,7 +6,7 @@ import type {
     PlanFrontMatterWithCustomFields,
 } from "../document.ts";
 import { toolRegistry } from "@runwield/tools";
-import { normalizePlanId, type PlanId } from "../identity.ts";
+import { normalizePlanId, type PlanId } from "@runwield/plan-storage-format";
 import { isPlannedChangeClassification, normalizeStoredPlanClassification, PLANS_DIR_NAME } from "../classification.ts";
 import { extractYaml, test as hasFrontMatter } from "@runwield/parsing/front-matter";
 import { normalizeTicketReferences } from "./ticket-references.ts";

@@ -1,9 +1,9 @@
-import { PlanPackageError } from "@runwield/project-runtime/publication-evidence";
+import { PlanPackageError } from "@runwield/plan-storage-format";
 import { ContainedPathError } from "@runwield/resources/fs";
 import { decodePackageMarkdown } from "./format/implementation.ts";
 
 export { PlanPackageError };
-export type { PackageIssueKind } from "@runwield/project-runtime/publication-evidence";
+export type { PackageIssueKind } from "@runwield/plan-storage-format";
 
 export type PackageResource = "context.md" | "validation.md" | "manual-qa.md" | "integration-report.md";
 export type PackageResourceRole = "context" | "validation" | "manual-qa" | "integration-report";

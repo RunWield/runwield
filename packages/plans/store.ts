@@ -2,7 +2,7 @@ import type { ProjectId, ProjectRegistry, ProjectStoreIdentity } from "@runwield
 import type { PlanFrontMatter } from "./document.ts";
 import type { EpicArtifactName } from "./format/artifacts.ts";
 import type { PackageDocuments, PlanHistory } from "./history.ts";
-import type { PlanId } from "./identity.ts";
+import type { PlanId } from "@runwield/plan-storage-format";
 import type { ProjectPublicationCopies } from "./publication-copies.ts";
 import type { PlanEvent, PlanEventDetails } from "./lifecycle.ts";
 import type { WorkRecordFrontMatter, WorkRecordResource } from "./work-records.ts";

@@ -1,3 +1,4 @@
+import { isPlanId } from "@runwield/plan-storage-format";
 import { projects, type ProjectStoreIdentity } from "@runwield/projects";
 import {
     assertContainedPath,
@@ -8,7 +9,6 @@ import {
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { isPlanId } from "./identity.ts";
 import {
     packageResourceRoles,
     packageResources,

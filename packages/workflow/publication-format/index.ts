@@ -1,83 +1,9 @@
-export type PackageIssueKind =
-    | "missing"
-    | "malformed_metadata"
-    | "unsupported_metadata"
-    | "missing_document"
-    | "unsafe_path"
-    | "pending_recovery"
-    | "unavailable";
-
-export class PlanPackageError extends Error {
-    constructor(
-        public kind: PackageIssueKind | "collision" | "changed_input",
-        message: string,
-    ) {
-        super(message);
-        this.name = "PlanPackageError";
-    }
-}
-
-export function isPersistedPlanId(value: string | null | undefined): boolean {
-    return typeof value === "string" && value.length > 0 && value.trim() === value;
-}
-
-export interface ExecutionPublicationPolicy {
-    plans: boolean;
-    workRecords: boolean;
-    autoGenerateRecords: boolean;
-}
-
-/** The reference returned when Plans seals an attempt. Pass it back unchanged. */
-export interface PackagePublicationReference {
-    readonly kind: "package";
-    readonly projectId: string;
-    readonly personalOwner: string;
-    readonly repositoryId: string;
-    readonly planId: string;
-    readonly attemptId: string;
-    readonly inputId: string;
-    readonly digest: string;
-}
-
-type PublicationFields = Record<string, string | number | boolean | null>;
-
-function fail(kind: PlanPackageError["kind"], message: string): never {
-    throw new PlanPackageError(kind, message);
-}
-
-export function assertPublicationMetadataFields(value: PublicationFields, allowed: string[]): PublicationFields {
-    if (
-        !value ||
-        typeof value !== "object" ||
-        Array.isArray(value) ||
-        Object.keys(value).some((key) => !allowed.includes(key))
-    )
-        fail("malformed_metadata", "Invalid metadata fields.");
-    return value;
-}
-
-const publicationReferenceFields = [
-    "kind",
-    "projectId",
-    "personalOwner",
-    "repositoryId",
-    "planId",
-    "attemptId",
-    "inputId",
-    "digest",
-];
-export function assertPackagePublicationReference(reference: PackagePublicationReference): PackagePublicationReference {
-    const value = assertPublicationMetadataFields(JSON.parse(JSON.stringify(reference)), publicationReferenceFields);
-    if (
-        value.kind !== "package" ||
-        publicationReferenceFields.some((key) => typeof value[key] !== "string" || !value[key]) ||
-        !/^[0-9a-f-]{36}$/.test(reference.inputId) ||
-        !/^[0-9a-f]{64}$/.test(reference.digest)
-    )
-        fail("malformed_metadata", "Invalid package publication reference.");
-    if (!isPersistedPlanId(reference.planId)) fail("malformed_metadata", "Invalid Plan ID.");
-    return reference;
-}
+import {
+    assertExecutionPublicationPolicy,
+    assertPackagePublicationReference,
+    type ExecutionPublicationPolicy,
+    type PackagePublicationReference,
+} from "@runwield/plan-storage-format";
 
 /**
  * Durable authority for publishing one validated execution attempt.
@@ -211,13 +137,8 @@ export function assertPublicationAttempt(value: PublicationAttempt): void {
     ] as const) {
         if (!value[field]) throw new Error(`Publication attempt requires ${field}.`);
     }
-    if (
-        value.retainedPublicationPolicy !== undefined &&
-        (["plans", "workRecords", "autoGenerateRecords"] as const).some(
-            (field) => typeof value.retainedPublicationPolicy?.[field] !== "boolean",
-        )
-    )
-        throw new Error("Invalid retained publication copy policy.");
+    if (value.retainedPublicationPolicy !== undefined)
+        assertExecutionPublicationPolicy(value.retainedPublicationPolicy);
     if (value.packageInput !== undefined) {
         assertPackagePublicationReference(value.packageInput);
         if (

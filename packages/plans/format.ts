@@ -66,7 +66,7 @@ export {
     splitPlanName,
 } from "./format/artifacts.ts";
 
-export { isPlanId, normalizePlanId, type PlanId } from "./identity.ts";
+export { isPlanId, normalizePlanId, type PlanId } from "@runwield/plan-storage-format";
 export { PLANS_DIR_NAME, isPlannedChangeClassification, type PlanClassification } from "./classification.ts";
 export {
     isEpicPlan,

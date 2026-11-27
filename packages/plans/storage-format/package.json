@@ -1,0 +1,8 @@
+{
+    "name": "@runwield/plan-storage-format",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./index.ts"
+    }
+}

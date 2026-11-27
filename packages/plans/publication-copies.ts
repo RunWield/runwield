@@ -1,15 +1,15 @@
-import { decodePackageMarkdown } from "./format.ts";
 import {
     assertPublicationMetadataFields,
+    PlanPackageError,
     type PackagePublicationReference,
-} from "@runwield/project-runtime/publication-evidence";
-import { PlanPackageError } from "./package-data.ts";
+} from "@runwield/plan-storage-format";
+import { decodePackageMarkdown } from "./format.ts";
 
 export {
     assertPackagePublicationReference,
     type ExecutionPublicationPolicy,
     type PackagePublicationReference,
-} from "@runwield/project-runtime/publication-evidence";
+} from "@runwield/plan-storage-format";
 
 export interface DeliveryCopy {
     readonly kind: "plan" | "work-record";

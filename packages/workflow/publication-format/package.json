@@ -1,0 +1,11 @@
+{
+    "name": "@runwield/workflow-publication-format",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./index.ts"
+    },
+    "dependencies": {
+        "@runwield/plan-storage-format": "workspace:*"
+    }
+}

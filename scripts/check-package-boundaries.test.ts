@@ -118,6 +118,116 @@ test("preserves declared entry points, package-local paths and unrelated imports
     assert.deepEqual(lint('import "./xyz.ts";', "packages/beta/example.ts"), []);
 });
 
+for (const [domain, formatDirectory, format] of [
+    ["plans", "storage-format", "@runwield/plan-storage-format"],
+    ["workflow", "publication-format", "@runwield/workflow-publication-format"],
+]) {
+    const parent = `packages/${domain}`;
+    const nested = `${parent}/${formatDirectory}`;
+
+    test(`${format} and its containing package enforce their own export boundaries`, async (context) => {
+        const { lint } = await makeRepository(context, {
+            [`${parent}/package.json`]: JSON.stringify({
+                name: `@runwield/${domain}`,
+                exports: { ".": "./index.ts", "./private-format": `./${formatDirectory}/private.ts` },
+            }),
+            [`${parent}/index.ts`]: "export {};",
+            [`${parent}/private.ts`]: "export {};",
+            [`${nested}/package.json`]: JSON.stringify({ name: format, exports: "./index.ts" }),
+            [`${nested}/index.ts`]: "export {};",
+            [`${nested}/private.ts`]: "export {};",
+        });
+
+        assert.deepEqual(lint('import "./private.ts";', `${nested}/index.ts`), []);
+        assert.deepEqual(lint('import "./private.ts";', `${parent}/index.ts`), []);
+        assert.deepEqual(lint(`import "${format}";`, `${parent}/index.ts`), []);
+
+        const parentImports = [
+            `import "./${formatDirectory}/private.ts";`,
+            `import "${format}/private.ts";`,
+            `import "@runwield/${domain}/private-format";`,
+        ].join("\n");
+        assert.deepEqual(lint(parentImports, `${parent}/index.ts`), [
+            {
+                file: `${parent}/index.ts`,
+                line: 1,
+                message: `Private import "./${formatDirectory}/private.ts" from ${format}. Use an entry point declared in ${nested}/package.json.`,
+            },
+            {
+                file: `${parent}/index.ts`,
+                line: 2,
+                message: `Private import "${format}/private.ts" from ${format}. Use an entry point declared in ${nested}/package.json.`,
+            },
+            {
+                file: `${parent}/index.ts`,
+                line: 3,
+                message: `Private import "@runwield/${domain}/private-format" from ${format}. Use an entry point declared in ${nested}/package.json.`,
+            },
+        ]);
+        assert.deepEqual(lint('import "../private.ts";', `${nested}/index.ts`), [
+            {
+                file: `${nested}/index.ts`,
+                line: 1,
+                message: `Private import "../private.ts" from @runwield/${domain}. Use an entry point declared in ${parent}/package.json.`,
+            },
+        ]);
+        assert.deepEqual(lint(`export * from "${format}";`, "src/example.ts"), [
+            {
+                file: "src/example.ts",
+                line: 1,
+                message: `Application code re-exports "${format}". Consumers must import ${format} directly.`,
+            },
+        ]);
+    });
+
+    test(`${format} participates in the independence checks as a separate package`, async (context) => {
+        const parentName = `@runwield/${domain}`;
+        const { lintRepository } = await makeRepository(context, {
+            [`${parent}/package.json`]: JSON.stringify({ name: parentName, exports: "./index.ts" }),
+            [`${parent}/index.ts`]: `import "${format}";`,
+            [`${nested}/package.json`]: JSON.stringify({ name: format, exports: "./index.ts" }),
+            [`${nested}/index.ts`]: `import "${parentName}";`,
+            [`${nested}/validation.test.ts`]: 'import "../../../src/app.ts";',
+            "src/app.ts": "export {};",
+        });
+        assert.deepEqual(lintRepository(), [
+            {
+                file: `${nested}/validation.test.ts`,
+                line: 1,
+                message: `${format} depends on root src/: ${nested}/validation.test.ts -> src/app.ts.`,
+            },
+            {
+                file: `${parent}/index.ts`,
+                line: 1,
+                message: `Package dependency cycle from ${format}: ${format} -> ${parentName} -> ${format}.`,
+            },
+        ]);
+    });
+}
+
+test("independence checks start from files owned by the exact package", async (context) => {
+    const parent = "packages/project-runtime";
+    const nested = `${parent}/internal`;
+    const { lintRepository } = await makeRepository(context, {
+        [`${parent}/package.json`]: JSON.stringify({ name: "@runwield/project-runtime", exports: "./index.ts" }),
+        [`${parent}/index.ts`]: "export {};",
+        [`${nested}/package.json`]: JSON.stringify({ name: "internal", exports: "./index.ts" }),
+        [`${nested}/index.ts`]: 'import "../../../src/app.ts";',
+        "src/app.ts": "export {};",
+    });
+    assert.deepEqual(lintRepository(), []);
+});
+
+test("does not treat dependencies installed under a package as first-party packages", async (context) => {
+    const { lint } = await makeRepository(context, {
+        "packages/alpha/node_modules/installed/package.json": JSON.stringify({
+            name: "installed",
+            exports: "./index.ts",
+        }),
+    });
+    assert.deepEqual(lint('import "installed/private.ts";', "src/example.ts"), []);
+});
+
 test("checks Astro frontmatter and inline browser scripts", async (context) => {
     const { lint } = await makeRepository(context);
     const source = [

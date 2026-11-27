@@ -68,6 +68,8 @@ const INDEPENDENT_PACKAGES = new Set([
     "@runwield/agents",
     "@runwield/projects",
     "@runwield/project-runtime",
+    "@runwield/plan-storage-format",
+    "@runwield/workflow-publication-format",
 ]);
 
 // Keep the lookup path so the boundary check can inspect it as well as the real path.
@@ -81,8 +83,10 @@ const EXTRACTED_DOMAIN_PACKAGES = new Set([
     "@runwield/project-runtime",
     "@runwield/pi-ai",
     "@runwield/plans",
+    "@runwield/plan-storage-format",
     "@runwield/session-runtime",
     "@runwield/workflow",
+    "@runwield/workflow-publication-format",
 ]);
 
 export const PACKAGE_SOURCE_PATTERN = /\.(?:[cm]?[jt]sx?|astro|html)$/;
@@ -352,10 +356,10 @@ function checkRootSourceDependencies(
     root: string,
     rootSource: string,
     boundary: PackageBoundary,
+    startingFiles: readonly string[],
     dependencies: ReadonlyMap<string, ModuleDependency[]>,
 ): PackageDiagnostic[] {
     const diagnostics: PackageDiagnostic[] = [];
-    const startingFiles = [...dependencies.keys()].filter((file) => contains(boundary.directory, file));
     const queue = [...startingFiles];
     const parents = new Map<string, string | undefined>(startingFiles.map((file) => [file, undefined]));
     for (const importer of queue) {
@@ -422,7 +426,10 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
     const rootSource = join(root, "src");
     const packages: PackageBoundary[] = await Promise.all(
         files
-            .filter((file) => /^packages\/[^/]+\/package\.json$/.test(file))
+            .filter(
+                (file) =>
+                    /^packages\/(?:[^/]+\/)+package\.json$/.test(file) && !file.split("/").includes("node_modules"),
+            )
             .map(async (file) => {
                 const directory = resolve(root, dirname(file));
                 const manifest: PackageManifest = JSON.parse(await readFile(join(root, file), "utf8"));
@@ -436,7 +443,8 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
             }),
     );
     const byName = new Map(packages.map((boundary) => [boundary.name, boundary]));
-    const packageAt = (file: string) => packages.find((boundary) => contains(boundary.directory, file));
+    const nearestFirst = [...packages].sort((left, right) => right.directory.length - left.directory.length);
+    const packageAt = (file: string) => nearestFirst.find((boundary) => contains(boundary.directory, file));
     const fileDependencies = new Map<string, ModuleDependency[]>();
     const configPaths = new Set(
         files.filter((file) => /(?:^|\/)tsconfig\.json$/.test(file)).map((file) => resolve(root, file)),
@@ -526,8 +534,9 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
             const line = source.slice(0, offset).split("\n").length;
             const target = actual ? packageAt(actual) : undefined;
             const applicationReexport = reexport && contains(rootSource, importer);
+            const reported = new Set<PackageBoundary>();
             const checkImport = (boundary: PackageBoundary, isPublic: boolean) => {
-                if (boundary === owner) return;
+                if (boundary === owner || reported.has(boundary)) return;
                 if (!isPublic) {
                     const manifest = relative(root, join(boundary.directory, "package.json"));
                     diagnostics.push({
@@ -541,7 +550,8 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
                         line,
                         message: `Application code re-exports "${specifier}". Consumers must import ${boundary.name} directly.`,
                     });
-                }
+                } else return;
+                reported.add(boundary);
             };
             if (named) checkImport(named, entries.length > 0);
             if (target && target !== named && actual) {
@@ -552,6 +562,10 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
             }
 
             const destinations = named ? entries.map((entry) => canonicalPath(resolve(named.directory, entry))) : [];
+            for (const destination of destinations) {
+                const entryOwner = packageAt(destination);
+                if (entryOwner && entryOwner !== named) checkImport(entryOwner, isPublicFile(entryOwner, destination));
+            }
             if (direct && contains(rootSource, direct) && (!actual || !contains(rootSource, actual))) {
                 destinations.push(direct);
             }
@@ -564,12 +578,13 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
         return diagnostics;
     }
 
-    function packageDependencies(owner: PackageBoundary): Map<PackageBoundary, ModuleDependency> {
+    function packageDependencies(
+        owner: PackageBoundary,
+        files: readonly string[],
+    ): Map<PackageBoundary, ModuleDependency> {
         const outgoing = new Map<PackageBoundary, ModuleDependency>();
-        const queue = [...fileDependencies.keys()].filter(
-            (file) =>
-                contains(owner.directory, file) &&
-                (INDEPENDENT_PACKAGES.has(owner.name) ? !isTestFile(file) : isPublicFile(owner, file)),
+        const queue = files.filter((file) =>
+            INDEPENDENT_PACKAGES.has(owner.name) ? !isTestFile(file) : isPublicFile(owner, file),
         );
         const visited = new Set(queue);
         for (const importer of queue) {
@@ -591,11 +606,24 @@ export async function createPackageBoundaryLint(repoRoot: string, files: readonl
     }
 
     function checkIndependence(): PackageDiagnostic[] {
-        const graph = new Map(packages.map((boundary) => [boundary, packageDependencies(boundary)]));
+        const filesByOwner = new Map<PackageBoundary, string[]>(packages.map((boundary) => [boundary, []]));
+        for (const file of fileDependencies.keys()) {
+            const owner = packageAt(file);
+            if (owner) filesByOwner.get(owner)?.push(file);
+        }
+        const graph = new Map(
+            packages.map((boundary) => [boundary, packageDependencies(boundary, filesByOwner.get(boundary) ?? [])]),
+        );
         return packages
             .filter(({ name }) => INDEPENDENT_PACKAGES.has(name))
             .flatMap((boundary) => [
-                ...checkRootSourceDependencies(root, rootSource, boundary, fileDependencies),
+                ...checkRootSourceDependencies(
+                    root,
+                    rootSource,
+                    boundary,
+                    filesByOwner.get(boundary) ?? [],
+                    fileDependencies,
+                ),
                 ...checkPackageCycles(root, boundary, graph),
             ]);
     }

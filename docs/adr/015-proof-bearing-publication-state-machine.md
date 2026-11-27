@@ -31,7 +31,10 @@ success, blind replay, or loss of user work.
 - For legacy repository Plans, the sealed execution Plan remains `reviewed`. After merging its candidate into the publication target, RunWield
   finalizes the owned Plan as `verified` and any prepared Work Record as approved in a target metadata commit. Remote
   publication assembles that commit privately, then pushes and proves it before reporting delivery.
-- The matching `.wld/internal/worktrees.json` entry owns intermediate publication progress in one `publication` record.
+- The matching worktree registry entry owns intermediate publication progress in one `publication` record.
+  Workflow owns the saved schema and evidence checks in its private publication format, and owns all phase transitions
+  in its state machine. Project Runtime uses the format to validate the record when inspecting or migrating storage.
+  The format uses Plans' private storage format for Plan ID, frozen publication reference, and copy policy validation.
 - Git commits and refs supply proof. A status string, error, Session memory, or transition journal cannot substitute for
   delivery evidence. Candidate `validatedCommit` and the final published commit are distinct identities.
 - Confirmed delivery retains a permanent controller `publicationReceipt` identifying the candidate, published commit,

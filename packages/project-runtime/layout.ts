@@ -6,6 +6,7 @@ import {
 } from "@runwield/projects";
 import { isLockHolderGone, readLockFileSnapshot, type LockFileSnapshot } from "@runwield/resources/locks";
 import { captureForegroundProcess, type CapturedProcessOutput } from "@runwield/resources/process";
+import { assertPublicationAttempt, type PublicationAttempt } from "@runwield/workflow-publication-format";
 import { type Dirent, type Stats } from "node:fs";
 import {
     lstat as fsLstat,
@@ -39,7 +40,6 @@ import {
 import { resolveProjectRoot, prepareProjectCheckout } from "./checkout.ts";
 import { inspectWorktreeRegistryAtPath } from "./registry-inspection.ts";
 import { ensureRunWieldOwnedGitignoreBlock, LEGACY_PROJECT_RUNTIME_HAZARD_PATHS } from "./owned-paths.ts";
-import { assertPublicationAttempt, type PublicationAttempt } from "./publication-evidence.ts";
 import { hasRecoverableRuntimeFiles, inspectReturningRegistry } from "./recovery.ts";
 
 import {

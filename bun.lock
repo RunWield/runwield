@@ -163,17 +163,22 @@
       "name": "@runwield/plans",
       "dependencies": {
         "@runwield/parsing": "workspace:*",
+        "@runwield/plan-storage-format": "workspace:*",
         "@runwield/project-runtime": "workspace:*",
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*",
       },
     },
+    "packages/plans/storage-format": {
+      "name": "@runwield/plan-storage-format",
+    },
     "packages/project-runtime": {
       "name": "@runwield/project-runtime",
       "dependencies": {
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
+        "@runwield/workflow-publication-format": "workspace:*",
       },
     },
     "packages/projects": {
@@ -218,6 +223,13 @@
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*",
+        "@runwield/workflow-publication-format": "workspace:*",
+      },
+    },
+    "packages/workflow/publication-format": {
+      "name": "@runwield/workflow-publication-format",
+      "dependencies": {
+        "@runwield/plan-storage-format": "workspace:*",
       },
     },
   },
@@ -816,6 +828,8 @@
 
     "@runwield/pi-ai": ["@runwield/pi-ai@workspace:packages/pi-ai"],
 
+    "@runwield/plan-storage-format": ["@runwield/plan-storage-format@workspace:packages/plans/storage-format"],
+
     "@runwield/plans": ["@runwield/plans@workspace:packages/plans"],
 
     "@runwield/project-runtime": ["@runwield/project-runtime@workspace:packages/project-runtime"],
@@ -831,6 +845,8 @@
     "@runwield/tools": ["@runwield/tools@workspace:packages/tools"],
 
     "@runwield/workflow": ["@runwield/workflow@workspace:packages/workflow"],
+
+    "@runwield/workflow-publication-format": ["@runwield/workflow-publication-format@workspace:packages/workflow/publication-format"],
 
     "@shikijs/core": ["@shikijs/core@4.5.0", "", { "dependencies": { "@shikijs/primitive": "4.5.0", "@shikijs/types": "4.5.0", "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.5", "hast-util-to-html": "^9.0.5" } }, "sha512-6CIgwq+bt2JZ3OSjb/nBkkwEf/CfpHcbam+Mg5Pllco7HAGRQ2/EFhZrrJtbyNTgKwknfVS+llsXGygiDGwJWw=="],
 

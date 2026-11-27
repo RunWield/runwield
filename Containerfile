@@ -15,6 +15,7 @@ COPY packages/bundled-assets ./packages/bundled-assets
 COPY packages/parsing ./packages/parsing
 COPY packages/pi-ai ./packages/pi-ai
 COPY packages/plans ./packages/plans
+COPY packages/project-runtime ./packages/project-runtime
 COPY packages/projects ./packages/projects
 COPY packages/resources ./packages/resources
 COPY packages/session-files ./packages/session-files

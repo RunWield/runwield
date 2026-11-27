@@ -1,3 +1,4 @@
+import { isPlanId } from "@runwield/plan-storage-format";
 import type { ProjectStoreIdentity } from "@runwield/projects";
 import {
     assertContainedPath,
@@ -10,7 +11,6 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { readRetainedPlanInput, type PackageInputReference } from "./file-snapshots.ts";
 import { isPlanMilestoneVersion, type PlanMilestone, type PlanMilestoneEvent } from "./history.ts";
-import { isPlanId } from "./identity.ts";
 import {
     packageDocumentText,
     packageResourceRoles,

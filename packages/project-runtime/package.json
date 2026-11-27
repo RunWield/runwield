@@ -10,11 +10,11 @@
         "./layout": "./layout.ts",
         "./legacy-paths": "./legacy-paths.ts",
         "./owned-paths": "./owned-paths.ts",
-        "./publication-evidence": "./publication-evidence.ts",
         "./registry-inspection": "./registry-inspection.ts"
     },
     "dependencies": {
         "@runwield/projects": "workspace:*",
-        "@runwield/resources": "workspace:*"
+        "@runwield/resources": "workspace:*",
+        "@runwield/workflow-publication-format": "workspace:*"
     }
 }

@@ -21,6 +21,7 @@ const INPUTS = [
     "packages/parsing",
     "packages/pi-ai",
     "packages/plans",
+    "packages/project-runtime",
     "packages/projects",
     "packages/resources",
     "packages/session-files",
