@@ -1004,12 +1004,15 @@ test("a managed multi-file retry syncs a truncated source and settles later edit
             equal(await readFile(later, "utf8"), "Before");
 
             const sourceTime = await markEarlierSourceMtime(source);
-            const retryFailed = JSON.parse(await f.run("managed-mixed-batch-edit", undefined, "retry-sync"));
-            equal(retryFailed.isError, true);
-            equal(retryFailed.content[0].text, "Interrupted while syncing the settled source on retry.");
-            equal((await stat(source, { bigint: true })).mtimeNs, sourceTime);
-            equal(await readFile(cleared, "utf8"), "Remove me");
-            equal(await readFile(later, "utf8"), "Before");
+            // A failed sync must leave this file pending on the next attempt too.
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const retryFailed = JSON.parse(await f.run("managed-mixed-batch-edit", undefined, "retry-sync"));
+                equal(retryFailed.isError, true);
+                equal(retryFailed.content[0].text, "Interrupted while syncing the settled source on retry.");
+                equal((await stat(source, { bigint: true })).mtimeNs, sourceTime);
+                equal(await readFile(cleared, "utf8"), "Remove me");
+                equal(await readFile(later, "utf8"), "Before");
+            }
 
             const settled = JSON.parse(await f.run("managed-mixed-batch-edit"));
             equal(settled.isError, undefined, JSON.stringify(settled));
