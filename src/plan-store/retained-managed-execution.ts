@@ -533,7 +533,7 @@ export async function settleRetainedManagedCleanup(
 
 interface RetainedAbandonment {
     planId: string;
-    proof: import("../shared/workflow/execution-recovery-proof.ts").ExecutionRecoveryEvidence;
+    proof: import("@runwield/plans/project-store-wire").ExecutionRecoveryEvidence;
 }
 export async function settleRetainedManagedAbandonment(
     owner: HomeProjectOwner,

@@ -252,7 +252,7 @@ export async function runRemotePublicationProof(): Promise<void> {
         manifest?: import("@runwield/plans/store").PackagePublicationManifest;
         execution?: import("../../plan-store/index.ts").RetainedManagedExecution;
         family?: import("../../plan-store/index.ts").RetainedFamilyIdentity;
-        recovery?: import("../workflow/execution-recovery-proof.ts").ExecutionRecoveryRequest;
+        recovery?: import("@runwield/plans/project-store-wire").ExecutionRecoveryRequest;
         importSource?: import("../../plan-store/index.ts").ManagedImportPreparationRequest;
         nonGit?: import("../workflow/execution-recovery-proof.ts").ManagedExecutionIdentity;
         retention?: import("@runwield/plans/project-store-wire").ProjectStoreBinding;

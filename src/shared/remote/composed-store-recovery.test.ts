@@ -4,7 +4,11 @@ import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
 import type { ProjectStoreReply } from "../../plan-store/index.ts";
 import type { PlanHistory } from "@runwield/plans/history";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { projects } from "@runwield/projects";
+import { plans } from "@runwield/plans";
+import { openProjectPlanStore } from "../../plan-store/index.ts";
 import { composedRemoteFixture } from "./composed-store-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { git } from "../git-test-fixture.ts";
@@ -12,6 +16,108 @@ import { serveHttp } from "../http-server.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { ProjectStoreClient } from "./project-store-client.ts";
 import type { ProjectStoreRequest } from "./project-store-protocol.ts";
+import { tree } from "../testing/plan-package-fixture.ts";
+
+test("only authenticated, matching host observations settle canonical Plan recovery", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture(true);
+        try {
+            const seed: { planId: string; attemptId: string } = JSON.parse(await fixture.run("managed-recovery-seed"));
+            const binding: ProjectStoreBinding = await (
+                await fetch(`${fixture.endpoint}/project-store/admit`, { method: "POST", headers: fixture.headers })
+            ).json();
+            const client = new ProjectStoreClient(
+                authenticatedProjectStoreRequest(fixture.endpoint, fixture.input.connection.credential),
+                binding,
+            );
+            const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
+            const packages = join(owner.executionAccountHome, ".wld", "projects", binding.projectId, "plans");
+            const resolve = async () => {
+                const { result } = await client.execute({ kind: "resolve-plan", reference: seed.planId });
+                ok("plan" in result && result.plan);
+                equal(result.plan.body, "# Canonical recovery\n");
+                equal(result.plan.attrs.worktreeStatus, undefined);
+                equal(result.plan.attrs.worktreePath, undefined);
+                return result.plan;
+            };
+            const attempt = async () => {
+                const { result } = await client.execute({ kind: "read-execution", planId: seed.planId });
+                ok("execution" in result);
+                return result.execution?.attemptId;
+            };
+            const recover = (action: "refresh" | "stop", expectedRevision: string) => ({
+                kind: "recover-execution" as const,
+                operationId: crypto.randomUUID(),
+                ...seed,
+                expectedRevision,
+                controllerRevision: null,
+                action,
+            });
+
+            const initial = await fixture.withoutSsh(async () => {
+                ok(plans.identity.isValid(seed.planId));
+                const store = openProjectPlanStore(owner.projectId, { admitted: owner });
+                const bytes = await tree(packages);
+                const document = await store.read(seed.planId);
+                equal(document.planId, seed.planId);
+                equal(document.body, "# Canonical recovery\n");
+                equal(document.attrs.status, "in_progress");
+                equal(document.attrs.worktreeStatus, undefined);
+                const resource = await resolve();
+                equal(document.revision, resource.revision);
+                deepEqual(await tree(packages), bytes);
+                return resource;
+            });
+            const refresh = recover("refresh", initial.revision);
+            const unauthenticated = await fetch(`${fixture.endpoint}/project-store`, {
+                method: "POST",
+                body: JSON.stringify({ binding, command: refresh }),
+            });
+            equal(unauthenticated.status, 401);
+            const active = await client.execute(refresh);
+            equal("status" in active.result && active.result.status, "completed");
+            const refreshed = await resolve();
+            equal(await attempt(), seed.attemptId);
+            await rejects(client.execute(recover("stop", refreshed.revision)), /refused/);
+
+            await fixture.run("managed-recovery-abandon", undefined, seed.attemptId);
+            const before = await resolve();
+            const bytes = await tree(packages);
+            ok(Object.keys(bytes).some((path) => path.endsWith("/plan.wld.json")));
+            const commandWithEvidence = await fetch(`${fixture.endpoint}/project-store`, {
+                method: "POST",
+                headers: fixture.headers,
+                body: JSON.stringify({ binding, command: { ...recover("stop", before.revision), evidence: {} } }),
+            });
+            equal(commandWithEvidence.status, 400);
+            for (const [section, field, value] of [
+                ["request", "projectId", crypto.randomUUID()],
+                ["request", "repositoryId", crypto.randomUUID()],
+                ["request", "personalOwner", `${owner.personalOwner.identity}-different`],
+                ["request", "planId", crypto.randomUUID()],
+                ["request", "planName", "another-plan"],
+                ["request", "attemptId", crypto.randomUUID()],
+                ["request", "purpose", "active"],
+                ["entry", "id", crypto.randomUUID()],
+                ["entry", "planId", crypto.randomUUID()],
+                ["entry", "planName", "another-plan"],
+                ["entry", "status", "active"],
+            ]) {
+                await writeFile(fixture.recoveryFaultPath, JSON.stringify({ section, field, value }));
+                await rejects(client.execute(recover("stop", before.revision)), /refused/, `${section}.${field}`);
+                deepEqual(await resolve(), before);
+                equal(await attempt(), seed.attemptId);
+                deepEqual(await tree(packages), bytes);
+            }
+            await rm(fixture.recoveryFaultPath);
+            const settled = await client.execute(recover("stop", before.revision));
+            equal("status" in settled.result && settled.result.status, "completed");
+            equal((await resolve()).attrs.status, "ready_for_work");
+            equal(await attempt(), undefined);
+        } finally {
+            await fixture.cleanup();
+        }
+    }));
 
 test("fresh managed process replays a lost settlement acknowledgement after real Git publication exactly once", () =>
     withProcessGlobalTestLock(async () => {

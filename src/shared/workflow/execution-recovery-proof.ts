@@ -1,5 +1,9 @@
 import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
-/** Execution-host observations used by the personal owner to settle recovery. */
+import type {
+    ExecutionRecoveryEvidence,
+    ExecutionRecoveryRequest,
+    RecoveryExecutionRecord,
+} from "@runwield/plans/project-store-wire";
 import { projects } from "@runwield/projects";
 import { readFile, readdir, lstat } from "node:fs/promises";
 import { join } from "node:path";
@@ -7,26 +11,6 @@ import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { assertManagedRuntimePath } from "../project-runtime-managed.ts";
 import { findById } from "../worktree-registry.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
-export interface ExecutionRecoveryRequest {
-    projectId: string;
-    repositoryId: string;
-    personalOwner: string;
-    planId: string;
-    planName: string;
-    attemptId: string;
-    purpose: "active" | "abandoned";
-}
-export type RecoveryExecutionRecord = Pick<
-    WorktreeRegistryEntry,
-    "id" | "planId" | "planName" | "path" | "branch" | "status"
-> &
-    Partial<WorktreeRegistryEntry>;
-export interface ExecutionRecoveryEvidence {
-    request: ExecutionRecoveryRequest;
-    entry: RecoveryExecutionRecord;
-    observedAt: string;
-    transitionId?: string;
-}
 interface RecoveryJournal {
     transitionId: string;
     operation: string;

@@ -3,6 +3,7 @@
     "private": true,
     "type": "module",
     "exports": {
+        "./cli-name": "./cli-name.ts",
         "./fs": "./fs.ts",
         "./home": "./home.ts",
         "./locks": "./locks.ts",

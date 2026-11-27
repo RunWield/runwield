@@ -1,4 +1,10 @@
-import { sameProjectStoreBinding, type ProjectStoreBinding } from "@runwield/plans/project-store-wire";
+import {
+    sameProjectStoreBinding,
+    validateExecutionRecoveryEvidence,
+    type ExecutionRecoveryEvidence,
+    type ExecutionRecoveryRequest,
+    type ProjectStoreBinding,
+} from "@runwield/plans/project-store-wire";
 import type { PreparedPlanImport } from "@runwield/plans/store";
 import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { projects, type HomeProjectOwner, type ProjectIdentity } from "@runwield/projects";
@@ -267,9 +273,9 @@ export async function readManagedRetainedRecordingProof(
 
 export async function proveManagedExecutionRecovery(
     launch: ManagedProjectStoreLaunch,
-    request: import("../workflow/execution-recovery-proof.ts").ExecutionRecoveryRequest,
+    request: ExecutionRecoveryRequest,
     signal?: AbortSignal,
-): Promise<import("../workflow/execution-recovery-proof.ts").ExecutionRecoveryEvidence> {
+): Promise<ExecutionRecoveryEvidence> {
     const result = await captureForegroundProcess("ssh", {
         cwd: getCwd(),
         args: ["-T", "--", launch.host, PUBLICATION_PROOF],
@@ -282,17 +288,11 @@ export async function proveManagedExecutionRecovery(
     });
     if (!result.success || result.stdout.byteLength > 1024 * 1024)
         throw new Error("Execution recovery proof is unavailable.");
-    const proof: import("../workflow/execution-recovery-proof.ts").ExecutionRecoveryEvidence = JSON.parse(
+    const proof: ExecutionRecoveryEvidence = JSON.parse(
         new TextDecoder("utf-8", { fatal: true }).decode(result.stdout),
     );
-    if (
-        JSON.stringify(proof.request) !== JSON.stringify(request) ||
-        proof.entry.id !== request.attemptId ||
-        proof.entry.planId !== request.planId ||
-        proof.entry.planName !== request.planName ||
-        (request.purpose === "abandoned" ? proof.entry.status !== "abandoned" : proof.entry.status === "abandoned")
-    )
-        throw new Error("Execution recovery proof changed ownership.");
+    validateExecutionRecoveryEvidence(request, proof);
+    signal?.throwIfAborted();
     return proof;
 }
 
@@ -302,7 +302,7 @@ export async function proveManagedRetainedFamily(
     member: import("../../plan-store/index.ts").RetainedFamilyIdentity,
     signal?: AbortSignal,
 ): Promise<import("../../plan-store/index.ts").RetainedFamilyMember | null> {
-    const recovery: import("../workflow/execution-recovery-proof.ts").ExecutionRecoveryRequest = {
+    const recovery: ExecutionRecoveryRequest = {
         projectId: execution.projectId,
         repositoryId: execution.repositoryId,
         personalOwner: execution.personalOwner,

@@ -1,6 +1,7 @@
 import { seedPlan, seedPlanController } from "./testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "./testing/retained-plan-fixture.ts";
-import { makeTempFile } from "../testing/temp-file.ts";
+import { makeTempDirectory, makeTempFile } from "../testing/temp-file.ts";
+import { projects, type ProjectLaunchContext } from "@runwield/projects";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -27,6 +28,7 @@ import {
     checkedProjectRuntimeLayout,
     inspectProjectRuntimeReadAccess,
     ProjectRuntimeEntryRefusedError,
+    resolveProjectRuntimeLayout,
     withProjectRuntimeReadScope,
 } from "@runwield/project-runtime/layout";
 
@@ -139,6 +141,44 @@ test("runtime read scope verifies different checkouts independently", async () =
     } finally {
         await fsRm(first, { recursive: true });
         await fsRm(second, { recursive: true });
+    }
+});
+
+test("runtime read scope verifies the same checkout separately for each account and personal owner", async () => {
+    const root = await fixture.checkout();
+    const firstHome = await makeTempDirectory();
+    const secondHome = await makeTempDirectory();
+    const first: ProjectLaunchContext = {
+        executionAccountHome: await fsRealpath(firstHome),
+        personalOwner: { kind: "managed-remote", identity: "first-owner" },
+    };
+    const contexts: ProjectLaunchContext[] = [
+        first,
+        { ...first, executionAccountHome: await fsRealpath(secondHome) },
+        { ...first, personalOwner: { kind: "managed-remote", identity: "second-owner" } },
+    ];
+    try {
+        await enterProjectRuntime(root);
+        await withProjectRuntimeReadScope(async () => {
+            const paths = await Promise.all(
+                contexts.map((context) =>
+                    projects.launch.withContext(context, async () => {
+                        const firstRead = inspectProjectRuntimeReadAccess(root);
+                        assertStrictEquals(inspectProjectRuntimeReadAccess(root), firstRead);
+                        const inspection = await firstRead;
+                        if (inspection.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(inspection);
+                        assertEquals(
+                            inspection.layout.primary.worktreeRegistryPath,
+                            resolveProjectRuntimeLayout(root, { context }).primary.worktreeRegistryPath,
+                        );
+                        return inspection.layout.primary.worktreeRegistryPath;
+                    }),
+                ),
+            );
+            assertEquals(new Set(paths).size, contexts.length);
+        });
+    } finally {
+        await Promise.all([root, firstHome, secondHome].map((path) => fsRm(path, { recursive: true })));
     }
 });
 

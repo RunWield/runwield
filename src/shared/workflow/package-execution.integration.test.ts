@@ -1,9 +1,10 @@
 import { openWorkflow } from "@runwield/workflow";
 import { projects } from "@runwield/projects";
+import { plans } from "@runwield/plans";
 import { updatePlanPackageMetadata } from "@runwield/plans/package-storage";
 import { getWorktreeRegistryPath } from "../worktree-registry.ts";
 import { settleDiscardedRecoveryAttempt } from "../../cmd/load-plan/plan-recovery-discard.ts";
-import { preparePlanWorkflow } from "../../plan-store/index.ts";
+import { openProjectPlanStore, preparePlanWorkflow } from "../../plan-store/index.ts";
 import { createGitPort } from "../git-port.ts";
 import { systemLocalCIPort } from "./validation-local-ci.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
@@ -70,6 +71,15 @@ test("package execution prepares an isolated code worktree without materializing
         const entries = (await inspectWorktreeRegistry(f.root)).entries;
         equal(entries.length, 1);
         equal(entries[0].id, (await read(f.identity)).metadata.workflow?.attempt?.attemptId);
+        const registryPath = getWorktreeRegistryPath(f.root);
+        const registryBefore = await fs.readFile(registryPath, "utf8");
+        const store = openProjectPlanStore(f.identity.projectId, { admitted: f.identity });
+        ok(plans.identity.isValid(p.metadata.planId));
+        const document = await store.read(p.metadata.planId);
+        equal(document.attrs.worktreeId, entries[0].id);
+        equal(document.attrs.worktreeStatus, "active");
+        equal(document.attrs.worktreeBranch, entries[0].branch);
+        equal(await fs.readFile(registryPath, "utf8"), registryBefore);
         equal(await fs.readFile(join(workflow.executionCwd, "README.md"), "utf8"), "package fixture\n");
         const current = await read(f.identity);
         await withPackageWorkflow(

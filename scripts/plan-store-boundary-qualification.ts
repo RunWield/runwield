@@ -6,6 +6,10 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         reason: "Verify archive and restore roll back earlier artifact moves after a destination collision.",
         modules: ["packages/plans/artifact-files.ts"],
     },
+    "packages/plans/execution-recovery.test.ts": {
+        reason: "Verify host recovery observations are isolated against persisted Plan and attempt bindings.",
+        modules: ["packages/plans/execution-recovery.ts", "packages/plans/package-storage.ts"],
+    },
     "packages/plans/publication-files.test.ts": {
         reason: "Verify delivery copy materialization rejects checkout escapes and preserves files outside the checkout.",
         modules: ["packages/plans/publication-files.ts"],

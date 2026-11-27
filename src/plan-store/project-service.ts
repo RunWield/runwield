@@ -1,4 +1,5 @@
-import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
+import type { ExecutionRecoveryAction, ProjectStoreBinding } from "@runwield/plans/project-store-wire";
+import { withManagedExecutionRecovery } from "@runwield/plans/managed-store-host";
 import { StalePlanWriteError } from "@runwield/plans/store";
 import type { ExecutionPublicationPolicy, PackagePublicationReference } from "@runwield/plans/publication-copies";
 import { projects, type HomeProjectOwner } from "@runwield/projects";
@@ -278,7 +279,7 @@ export interface ProjectStoreRecoveryAction {
     planId: string;
     expectedRevision: string;
     attemptId: string | null;
-    action: "non-git" | "stop" | "clear" | "detach" | "clear-recovery" | "refresh" | "recreate" | "user-verified";
+    action: "non-git" | ExecutionRecoveryAction;
     controllerRevision: number | null;
 }
 export interface ProjectStoreReopenReview {
@@ -1616,12 +1617,15 @@ export class PreparedProjectStore {
                                     details: managedLifecycleDetails(command.decision.details),
                                 });
                             } else if (command.kind === "recover-execution") {
-                                if (!this.homeOwner || !this.launch)
+                                const homeOwner = this.homeOwner;
+                                const launch = this.launch;
+                                if (!homeOwner || !launch)
                                     throw new Error("Execution recovery requires its trusted launcher.");
+                                const { action } = command;
                                 const binding = plan.metadata.workflow?.attempt;
                                 if ((binding?.attemptId ?? null) !== command.attemptId)
                                     throw new Error("Recovery names another reserved attempt.");
-                                await withLocalPlanWorkflow(this.cwd, plan.metadata.name, async () => {
+                                const recover = async () => {
                                     const current = await loadPlan(this.cwd, plan.metadata.name);
                                     if (
                                         !current ||
@@ -1675,13 +1679,13 @@ export class PreparedProjectStore {
                                         else
                                             throw new Error("Recovery action requires its original execution attempt.");
                                     };
-                                    if (command.action === "non-git") {
+                                    if (action === "non-git") {
                                         if (binding && binding.executionMode !== "non_git_in_place")
                                             throw new Error("Non-Git recovery cannot replace a reserved Git attempt.");
                                         await (
                                             await import("../shared/remote/project-store-launch.ts")
                                         ).proveManagedNonGitExecution(
-                                            this.launch!,
+                                            launch,
                                             {
                                                 projectId: owner.projectId,
                                                 repositoryId: owner.repositoryId,
@@ -1698,28 +1702,29 @@ export class PreparedProjectStore {
                                         await apply();
                                         return;
                                     }
-                                    const proof = await (
-                                        await import("../shared/remote/project-store-launch.ts")
-                                    ).proveManagedExecutionRecovery(
-                                        this.launch!,
+                                    const execution = this.execution;
+                                    if (!execution)
+                                        throw new Error("Execution recovery requires the admitted execution host.");
+                                    const { proveManagedExecutionRecovery } =
+                                        await import("../shared/remote/project-store-launch.ts");
+                                    await withManagedExecutionRecovery(
+                                        homeOwner,
+                                        execution,
                                         {
-                                            projectId: owner.projectId,
-                                            repositoryId: owner.repositoryId,
-                                            personalOwner: owner.personalOwner.identity,
                                             planId: command.planId,
-                                            planName: plan.metadata.name,
+                                            expectedPlanName: plan.metadata.name,
+                                            expectedRevision: plan.metadata.revision,
                                             attemptId: binding.attemptId,
-                                            purpose:
-                                                command.action === "refresh" || command.action === "recreate"
-                                                    ? "active"
-                                                    : "abandoned",
+                                            action,
                                         },
-                                        this.signal,
+                                        (request) => proveManagedExecutionRecovery(launch, request, this.signal),
+                                        async () => {
+                                            this.signal?.throwIfAborted();
+                                            await apply();
+                                        },
                                     );
-                                    await (
-                                        await import("./workflows.ts")
-                                    ).withConfirmedExecutionRecovery(plan.metadata.name, proof, apply);
-                                });
+                                };
+                                await withLocalPlanWorkflow(this.cwd, plan.metadata.name, recover, command.planId);
                             } else if (command.kind === "reopen-review") {
                                 if (plan.metadata.workflow?.attempt?.attemptId !== command.attemptId)
                                     throw new Error("Review recovery belongs to another execution attempt.");

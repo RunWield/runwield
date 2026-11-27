@@ -453,6 +453,12 @@ host disconnects during a read, the original store handle rejects that read and 
 store after reconnect resolves its canonical laptop owner. A write that committed before its response was lost
 can recover the same outcome under its retained operation ID.
 
+**Acceptance: Recover a Plan whose execution lives on an SSH host.** The laptop reads the saved Plan without
+contacting the execution host. During recovery, the authenticated host reports what happened to the requested
+attempt. Plans checks the personal owner, Project, repository, Plan and attempt against its saved records and checks
+that the observation supports the requested action. A mismatch stops the operation before it changes the Plan.
+The observation applies only to that recovery operation.
+
 **Acceptance: Original attempts survive adoption.** Given an unfinished pre-cutover managed attempt, admission verifies
 staged personal bytes and original owner, repository, checkout, attempt, branch and base before source retirement.
 Saved continuation resumes that original attempt. Its controller, publication and recording remain usable without

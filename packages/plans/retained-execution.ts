@@ -153,7 +153,9 @@ export async function readRetainedExecutionPlan(
         const repositoryRoot = projects.checkout.primaryRoot(checkout.checkoutRoot);
         const checkoutPath = await inspectCheckoutPath(prior.path);
         await verifyWorktree(checkout, repositoryRoot, prior, checkoutPath);
-        const layout = await checkedProjectRuntimeLayout(checkout.checkoutRoot);
+        const layout = await projects.launch.withContext(checkout, () =>
+            checkedProjectRuntimeLayout(checkout.checkoutRoot),
+        );
         const registry = await inspectWorktreeRegistryAtPath(layout.primary.worktreeRegistryPath);
         if (registry.readError) throw registry.readError;
         const relevant = registry.entries.filter(

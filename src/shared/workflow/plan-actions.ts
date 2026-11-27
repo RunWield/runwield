@@ -5,11 +5,8 @@ import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 import { type PlanFrontMatter } from "@runwield/plans";
 import { getPlanRevisionForText } from "@runwield/plans/format";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
-import {
-    prepareWorktreeRegistry,
-    readPlanActionWorktreeEvidence,
-    WorktreeRegistryAmbiguityError,
-} from "../worktree-registry.ts";
+import { prepareWorktreeRegistry, readPlanActionWorktreeEvidence } from "../worktree-registry.ts";
+import { WorktreeRegistryAmbiguityError } from "@runwield/project-runtime/registry-inspection";
 import { RegisteredPlanDocumentUnavailableError } from "../../plan-store/index.ts";
 import { getPlanLifecycleActionMetadata, type PlanEvent, type PlanStatus } from "@runwield/plans/lifecycle";
 import { recordPlanEvent } from "../../plan-store/index.ts";
