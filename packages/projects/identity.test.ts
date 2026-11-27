@@ -221,6 +221,238 @@ test("non-Git identity survives move and Git adoption without altering settings 
     }
 });
 
+async function linkedNonGitProject(home: string, context: ProjectLaunchContext, markerEol: "lf" | "crlf" = "lf") {
+    const primary = join(home, "plain");
+    const linked = join(home, "linked");
+    await mkdir(primary);
+    const first = admitted(await projects.checkout.admit(primary, { context }));
+    await git(primary, ["init", "-b", "main"]);
+    await git(primary, ["config", "user.email", "fixture@runwield.test"]);
+    await git(primary, ["config", "user.name", "RunWield Fixture"]);
+    await git(primary, ["config", "commit.gpgsign", "false"]);
+    if (markerEol === "crlf") {
+        await writeFile(join(primary, ".gitattributes"), ".wld-project.json text eol=crlf\n");
+        await git(primary, ["add", ".gitattributes"]);
+    }
+    await git(primary, ["add", ".wld-project.json"]);
+    await git(primary, ["commit", "-m", "Initial checkout"]);
+    await git(primary, ["worktree", "add", "-b", "linked", linked]);
+    const linkedAdmin = await git(linked, ["rev-parse", "--absolute-git-dir"]);
+    return { primary, linked, first, linkedBinding: join(linkedAdmin, "runwield-checkout-id") };
+}
+
+test("a committed non-Git marker keeps the primary binding when a linked worktree enters first", async () => {
+    const f = await environment();
+    try {
+        const { primary, linked, first, linkedBinding } = await linkedNonGitProject(f.home, f.context);
+        const before = await snapshot(f.home);
+        equal(projects.checkout.inspect(linked, { context: f.context }).kind, "fresh");
+        deepEqual(await snapshot(f.home), before);
+        const second = admitted(await projects.checkout.admit(linked, { context: f.context }));
+        equal(second.projectId, first.projectId);
+        equal(second.repositoryId, first.repositoryId);
+        notEqual(second.checkoutId, first.checkoutId);
+        deepEqual(projects.checkout.historicalRoots(first), [first.checkoutRoot]);
+        equal(await readFile(join(primary, ".git", "runwield-checkout-id"), "utf8"), `${first.checkoutId}\n`);
+
+        await git(primary, ["switch", "-c", "without-marker"]);
+        await git(primary, ["rm", ".wld-project.json"]);
+        await git(primary, ["commit", "-m", "Stop tracking the marker"]);
+        equal(admitted(projects.checkout.inspect(primary, { context: f.context })).checkoutId, first.checkoutId);
+        await git(primary, ["switch", "main"]);
+        const adopted = admitted(await projects.checkout.admit(primary, { context: f.context }));
+        equal(adopted.checkoutId, first.checkoutId);
+        await assertStoredBinding(f.home, first, [primary, linked], [first, second]);
+        for (const root of [primary, linked]) {
+            equal(await git(root, ["diff", "--cached", "--name-only"]), "");
+            ok(!(await readdir(root)).includes(".wld-project.json"));
+        }
+
+        const unrelated = join(f.home, "unrelated");
+        await mkdir(unrelated);
+        const other = admitted(await projects.checkout.admit(unrelated, { context: f.context }));
+        const unrelatedMarker = await readFile(join(unrelated, ".wld-project.json"), "utf8");
+        const linkedMarker = join(linked, ".wld-project.json");
+        await writeFile(linkedMarker, unrelatedMarker);
+        const conflict = await projects.checkout.admit(linked, { context: f.context });
+        equal(conflict.kind, "invalid");
+        if (conflict.kind !== "invalid") throw new Error("Unrelated Project marker was admitted");
+        match(conflict.message, /conflicts with the primary Project identity/);
+        equal(await readFile(linkedMarker, "utf8"), unrelatedMarker);
+        await assertStoredBinding(f.home, other, [unrelated]);
+        await rm(linkedMarker);
+
+        await writeFile(linkedBinding, `${first.checkoutId}\n`);
+        const invalid = await projects.checkout.admit(linked, { context: f.context });
+        equal(invalid.kind, "invalid");
+        if (invalid.kind !== "invalid") throw new Error("Duplicate checkout binding was admitted");
+        match(invalid.message, /shares the primary Git checkout ID/);
+        equal(await readFile(linkedBinding, "utf8"), `${first.checkoutId}\n`);
+        await assertStoredBinding(f.home, first, [primary, linked], [first, second]);
+
+        await writeFile(linkedBinding, `${second.checkoutId}\n`);
+        const sibling = join(f.home, "sibling");
+        await git(primary, ["worktree", "add", "-b", "sibling", sibling]);
+        const siblingAdmin = await git(sibling, ["rev-parse", "--absolute-git-dir"]);
+        await writeFile(join(siblingAdmin, "runwield-checkout-id"), `${second.checkoutId}\n`);
+        const beforeConflict = await snapshot(f.home);
+        for (const root of [primary, linked, sibling]) {
+            const conflict = await projects.checkout.admit(root, { context: f.context });
+            equal(conflict.kind, "invalid");
+            if (conflict.kind !== "invalid") throw new Error("Duplicate sibling binding was admitted");
+            match(conflict.message, /Linked checkouts share a Git checkout ID/);
+        }
+        deepEqual(await snapshot(f.home), beforeConflict);
+    } finally {
+        await f.close();
+    }
+});
+
+for (const firstEntry of ["primary", "linked"] as const) {
+    test(`admits ${firstEntry} first after the primary branch drops its marker and Git checks out the copy as CRLF`, async () => {
+        const f = await environment();
+        try {
+            const { primary, linked, first } = await linkedNonGitProject(f.home, f.context, "crlf");
+            await git(primary, ["switch", "-c", "without-marker"]);
+            await git(primary, ["rm", ".wld-project.json"]);
+            await git(primary, ["commit", "-m", "Stop tracking the marker"]);
+
+            match(await readFile(join(linked, ".wld-project.json"), "utf8"), /\r\n$/);
+            equal(await git(linked, ["status", "--porcelain"]), "");
+            notEqual(
+                await git(linked, ["hash-object", "--no-filters", ".wld-project.json"]),
+                await git(linked, ["rev-parse", "HEAD:.wld-project.json"]),
+            );
+            await writeFile(join(primary, ".git", "info", "attributes"), ".wld-project.json filter=marker-test\n");
+            await git(primary, ["config", "filter.marker-test.clean", "false"]);
+            await git(primary, ["config", "filter.marker-test.required", "true"]);
+            equal(
+                await git(linked, ["check-attr", "filter", "--", ".wld-project.json"]),
+                ".wld-project.json: filter: marker-test",
+            );
+            const before = await snapshot(f.home);
+            equal(admitted(projects.checkout.inspect(primary, { context: f.context })).checkoutId, first.checkoutId);
+            equal(projects.checkout.inspect(linked, { context: f.context }).kind, "fresh");
+            deepEqual(await snapshot(f.home), before);
+
+            const [startingRoot, nextRoot] = firstEntry === "primary" ? [primary, linked] : [linked, primary];
+            const starting = admitted(await projects.checkout.admit(startingRoot, { context: f.context }));
+            equal(await readFile(join(primary, ".git", "runwield-checkout-id"), "utf8"), `${first.checkoutId}\n`);
+            const next = admitted(await projects.checkout.admit(nextRoot, { context: f.context }));
+            const [adoptedPrimary, adoptedLinked] = firstEntry === "primary" ? [starting, next] : [next, starting];
+            equal(adoptedPrimary.checkoutId, first.checkoutId);
+            notEqual(adoptedLinked.checkoutId, first.checkoutId);
+            for (const identity of [adoptedPrimary, adoptedLinked]) {
+                equal(identity.projectId, first.projectId);
+                equal(identity.repositoryId, first.repositoryId);
+            }
+            await assertStoredBinding(f.home, first, [primary, linked], [adoptedPrimary, adoptedLinked]);
+        } finally {
+            await f.close();
+        }
+    });
+}
+
+test("modified and unrelated sibling markers cannot select the primary identity", async () => {
+    const f = await environment();
+    try {
+        const { primary, linked, first } = await linkedNonGitProject(f.home, f.context, "crlf");
+        await git(primary, ["rm", ".wld-project.json"]);
+        await git(primary, ["commit", "-m", "Stop tracking the marker"]);
+        const markerPath = join(linked, ".wld-project.json");
+        const committedMarker = await readFile(markerPath, "utf8");
+        await writeFile(markerPath, ` ${committedMarker}`);
+        const beforeModified = await snapshot(f.home);
+        equal(projects.checkout.inspect(primary, { context: f.context }).kind, "fresh");
+        equal(projects.checkout.inspect(linked, { context: f.context }).kind, "invalid");
+        deepEqual(await snapshot(f.home), beforeModified);
+
+        const unrelated = join(f.home, "unrelated");
+        await mkdir(unrelated);
+        const other = admitted(await projects.checkout.admit(unrelated, { context: f.context }));
+        await writeFile(markerPath, await readFile(join(unrelated, ".wld-project.json"), "utf8"));
+        await git(linked, ["add", ".wld-project.json"]);
+        await git(linked, ["commit", "-m", "Track an unrelated marker"]);
+
+        const before = await snapshot(f.home);
+        equal(projects.checkout.inspect(primary, { context: f.context }).kind, "fresh");
+        equal(projects.checkout.inspect(linked, { context: f.context }).kind, "invalid");
+        equal((await projects.checkout.admit(linked, { context: f.context })).kind, "invalid");
+        deepEqual(await snapshot(f.home), before);
+        await assertStoredBinding(f.home, first, [primary]);
+        await assertStoredBinding(f.home, other, [unrelated]);
+    } finally {
+        await f.close();
+    }
+});
+
+test("a staged sibling marker absent from HEAD cannot select the primary identity", async () => {
+    const f = await environment();
+    try {
+        const { primary, linked, first } = await linkedNonGitProject(f.home, f.context);
+        const markerPath = join(linked, ".wld-project.json");
+        const marker = await readFile(markerPath);
+        for (const root of [primary, linked]) {
+            await git(root, ["rm", ".wld-project.json"]);
+            await git(root, ["commit", "-m", "Stop tracking the marker"]);
+        }
+        await writeFile(markerPath, marker);
+        await git(linked, ["add", ".wld-project.json"]);
+        equal(await git(linked, ["ls-tree", "HEAD", "--", ".wld-project.json"]), "");
+        equal(await git(linked, ["diff", "--cached", "--name-only"]), ".wld-project.json");
+
+        const before = await snapshot(f.home);
+        equal(projects.checkout.inspect(primary, { context: f.context }).kind, "fresh");
+        equal(projects.checkout.inspect(linked, { context: f.context }).kind, "invalid");
+        equal((await projects.checkout.admit(linked, { context: f.context })).kind, "invalid");
+        deepEqual(await snapshot(f.home), before);
+        await assertStoredBinding(f.home, first, [primary]);
+    } finally {
+        await f.close();
+    }
+});
+
+test("inspect and admit preserve a legacy linked checkout that claimed the original primary binding", async () => {
+    const f = await environment();
+    try {
+        const { primary, linked, first, linkedBinding } = await linkedNonGitProject(f.home, f.context);
+        await assertStoredBinding(f.home, first, [primary]);
+        await git(primary, ["config", "runwield.projectId", first.projectId]);
+        await git(primary, ["config", "runwield.repositoryId", first.repositoryId]);
+        await writeFile(linkedBinding, `${first.checkoutId}\n`);
+        await rm(join(linked, ".wld-project.json"));
+        const recordPath = join(f.home, ".wld", "projects", first.projectId, "project.wld.json");
+
+        for (const state of ["primary-marker", "original-registry", "moved-registry"]) {
+            if (state === "original-registry") {
+                await git(primary, ["rm", ".wld-project.json"]);
+                await git(primary, ["commit", "-m", "Stop tracking the marker"]);
+            }
+            if (state === "moved-registry") {
+                const record = JSON.parse(await readFile(recordPath, "utf8"));
+                const binding = record.repositories[0].checkouts[0];
+                binding.historicalRoots = [binding.root];
+                binding.root = await realpath(linked);
+                await writeFile(recordPath, `${JSON.stringify(record)}\n`);
+            }
+            const before = await snapshot(f.home);
+            for (const root of [primary, linked]) {
+                for (const result of [
+                    projects.checkout.inspect(root, { context: f.context }),
+                    await projects.checkout.admit(root, { context: f.context }),
+                ]) {
+                    equal(result.kind, "invalid");
+                    if (result.kind !== "invalid") throw new Error("Duplicate checkout binding was accepted");
+                    match(result.message, /shares the primary Git checkout ID/);
+                }
+            }
+            deepEqual(await snapshot(f.home), before);
+        }
+    } finally {
+        await f.close();
+    }
+});
+
 test("conflicting Git identity preserves a valid non-Git marker", async () => {
     const f = await environment();
     const directory = join(f.home, "plain");
