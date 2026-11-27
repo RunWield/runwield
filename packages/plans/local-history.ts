@@ -10,9 +10,8 @@ import {
     packageWorkflowRevision,
     readPlanPackage,
     type LoadedPlanPackage,
-    type PackageMetadataUpdate,
 } from "./package-storage.ts";
-import { sameReviewedMarkdown } from "./review-markdown.ts";
+import { projectPlanFiles } from "./project-plan-files.ts";
 import { StalePlanWriteError } from "./store-errors.ts";
 
 async function historyCatalog(owner: ProjectStoreIdentity): Promise<LoadedPlanPackage[]> {
@@ -47,44 +46,23 @@ async function read(owner: ProjectStoreIdentity, plan: LoadedPlanPackage, versio
     return await planHistoryFiles.forOwner(owner).read(plan.metadata, version);
 }
 
-interface PreparedHistoryRestore {
-    plan: LoadedPlanPackage;
-    before: PackageDocuments;
-    documents: PackageDocuments;
-    changed: boolean;
-}
-
-async function prepareRestore(
+/** Restore documents and any reopened review together while the caller holds the Plan lock. */
+async function restore(
     owner: ProjectStoreIdentity,
     plan: LoadedPlanPackage,
     version: string,
     expectedRevision: string,
-): Promise<PreparedHistoryRestore> {
+): Promise<string> {
     const revision = packageWorkflowRevision(plan);
     if (expectedRevision !== revision) throw new StalePlanWriteError(expectedRevision, revision);
     const documents = await read(owner, plan, version);
     const before = packageDocumentText(plan.documents);
-    const changed =
-        Object.keys(before).length !== Object.keys(documents).length ||
-        plan.documents.some(
-            ({ name }) => documents[name] === undefined || !sameReviewedMarkdown(before[name]!, documents[name]!),
-        );
-    return { plan, before, documents, changed };
-}
-
-type HistoryReviewUpdate = Pick<PackageMetadataUpdate, "definition" | "controller" | "workflow">;
-
-/** The host holds the Plan lock while evaluating the review update and restoring the frozen documents. */
-async function commitRestore(
-    owner: ProjectStoreIdentity,
-    restore: PreparedHistoryRestore,
-    review: HistoryReviewUpdate = {},
-): Promise<string> {
-    const {
-        plan: { metadata },
+    const review = await projectPlanFiles.forOwner(owner).prepareReviewInvalidation(plan, {
+        kind: "restore",
         before,
         documents,
-    } = restore;
+    });
+    const { metadata } = plan;
     if (metadata.archive && !metadata.archive.restoredAt)
         throw new Error("Restore the archived Plan before editing its documents.");
     if (metadata.controller.collaborationState === COLLABORATION_STATE_REMOTE_CANONICAL)
@@ -96,9 +74,9 @@ async function commitRestore(
             metadata: {
                 ...metadata,
                 revision: metadata.revision + 1,
-                definition: review.definition ?? metadata.definition,
-                controller: review.controller ?? metadata.controller,
-                workflow: review.workflow ?? metadata.workflow,
+                definition: review?.definition ?? metadata.definition,
+                controller: review?.controller ?? metadata.controller,
+                workflow: review?.workflow ?? metadata.workflow,
             },
         },
     ]);
@@ -108,4 +86,4 @@ async function commitRestore(
 }
 
 /** Inspect committed history and restore documents under the canonical Plan owner. */
-export const localPlanHistory = { resolve, select, list, read, prepareRestore, commitRestore };
+export const localPlanHistory = { resolve, select, list, read, restore };

@@ -1,4 +1,5 @@
 import { plans } from "@runwield/plans";
+import { assertPackageWorkflowInput, capturePackageWorkflowInput } from "./workflows.ts";
 import { test } from "node:test";
 import { equal, ok, rejects } from "node:assert/strict";
 import {
@@ -201,6 +202,50 @@ test("authoring and definition writes reopen readiness when the reviewed target 
                 else deepEqual((await current()).attrs.dependencies, ["dependency"]);
             }
         }
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("review capture preserves the persisted definition digest and accepts the legacy Epic completion digest", async () => {
+    const fixture = await packageFixture();
+    try {
+        const parentPlanId = "11111111-1111-4111-8111-111111111111";
+        await createPackageFixture(fixture.identity, {
+            planId: parentPlanId,
+            name: "epic",
+            definition: {
+                classification: "PROJECT",
+                status: "approved",
+                type: "epic",
+                title: "Epic",
+                epicCompletionMode: "done_enough",
+                epicDoneEnoughAt: "2026-01-02T00:00:00.000Z",
+                epicDoneEnoughSummary: "Parent settled",
+            },
+        });
+        const planId = "22222222-2222-4222-8222-222222222222";
+        await createPackageFixture(fixture.identity, {
+            planId,
+            name: "child",
+            parentPlanId,
+            definition: { status: "draft", targetBranch: "main", classification: "PLANNED_CHANGE" },
+        });
+
+        await withLocalPlanWorkflow(fixture.root, "child", async () => {
+            const input = await capturePackageWorkflowInput("child");
+            deepEqual(
+                input.inputs.map(({ planId }) => planId),
+                [planId, parentPlanId],
+            );
+            equal(input.definitionHash, "d424b5368fadb73a6531649d6c586c67daff92225ede6f9764ebe5e8b2b92948");
+            const legacyHash = "f2a1e790c0aacd973c261a8b3f34a94ed7bbdacf0b83556a853580f2a6c3ed18";
+            await assertPackageWorkflowInput("child", { ...input, definitionHash: legacyHash });
+            await rejects(
+                () => assertPackageWorkflowInput("child", { ...input, definitionHash: `0${legacyHash.slice(1)}` }),
+                /Required Plan definition or membership changed/,
+            );
+        });
     } finally {
         await fixture.cleanup();
     }

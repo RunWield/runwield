@@ -6,8 +6,21 @@ import type { PendingControllerRepair } from "./checkout-controller.ts";
 import { CONTROLLER_STATE_FIELDS, pickControllerState, type WorkflowControllerState } from "./controller-state.ts";
 import type { PlanFrontMatter } from "./document.ts";
 import { currentExecutionRecoveryObservation } from "./execution-recovery.ts";
+import { packageDocumentText } from "./package-data.ts";
+import { buildPlanEventUpdates, reopensReviewOnEdit } from "./lifecycle.ts";
+import {
+    assertReviewedDefinition,
+    assertReviewedDocuments,
+    changesReviewedInput,
+    definitionHash,
+    reviewInputWithDefinition,
+    type PackageReviewChange,
+    type ReviewDocumentEquivalence,
+    type ReviewInputComparison,
+} from "./review-input.ts";
 import { comparePlansForList, isPlanId, planArtifactReference, type PlanId, type PlanTextLoaded } from "./format.ts";
 import {
+    capturePlanPackageInput,
     listPlanPackages,
     packageControllerEnums,
     packageControllerNumbers,
@@ -15,6 +28,7 @@ import {
     packageDefinitionStrings,
     resolvePlanPackageReference,
     writePackageControllerEvidence,
+    withPlanPackageLocks,
     packageWorkflowRevision,
     readPackageControllerEvidence,
     readPlanPackage,
@@ -24,6 +38,7 @@ import {
     type PackageControllerState,
     type PackageDefinition,
     type PackageWorkflowEvidence,
+    type PackageWorkflowInput,
 } from "./package-storage.ts";
 import { readRetainedExecutionPlan, type RetainedExecutionRead } from "./retained-execution.ts";
 import { PlanNotFoundError } from "./store-errors.ts";
@@ -36,6 +51,7 @@ import type {
 } from "./store.ts";
 
 export { currentExecutionRecoveryObservation } from "./execution-recovery.ts";
+export type { ReviewDocumentEquivalence } from "./review-input.ts";
 
 interface PackagePlanIdentity {
     planId: string;
@@ -332,10 +348,110 @@ function resourceFields(loaded: PackagePlanText, { name, planId }: LoadedPlanPac
 }
 
 function forOwner(identity: ProjectStoreIdentity) {
+    const select = (target: PackagePlanTarget, selection?: PackageReadSelection) =>
+        selectPackage(identity, target, selection);
+
+    async function requiredReviewPackages(plan: LoadedPlanPackage): Promise<LoadedPlanPackage[]> {
+        if (!plan.metadata.parentPlanId) return [plan];
+        const parent = await readPlanPackage(identity, { planId: plan.metadata.parentPlanId });
+        if (parent.kind !== "loaded") throw new Error(parent.message);
+        return [plan, parent];
+    }
+
+    async function assertInput(
+        target: PackagePlanTarget,
+        selection: PackageReadSelection,
+        input: PackageWorkflowInput,
+        comparison?: ReviewInputComparison,
+    ): Promise<void> {
+        const packages = await requiredReviewPackages(await select(target, selection));
+        assertReviewedDefinition(packages, input);
+        const owner = await select(target, selection);
+        await assertReviewedDocuments(identity, packages, owner, input, comparison);
+    }
+
+    /** Freeze the selected Plan and its parent, permitting only the exact reviewed context replacement. */
+    async function captureReviewInput(
+        target: PackagePlanTarget,
+        selection: PackageReadSelection,
+        nextDefinition?: PackageDefinition,
+        reviewedContext?: string,
+    ): Promise<PackageWorkflowInput> {
+        const packages = await requiredReviewPackages(await select(target, selection));
+        return await withPlanPackageLocks(
+            identity,
+            packages.map(({ metadata }) => metadata.planId),
+            async () => {
+                const inputs = [];
+                const reviewedSource = packages[0];
+                for (const plan of packages) {
+                    inputs.push(
+                        await capturePlanPackageInput(
+                            identity,
+                            plan.metadata.planId,
+                            plan === reviewedSource ? reviewedContext : undefined,
+                        ),
+                    );
+                }
+                const current = await requiredReviewPackages(await select(target, selection));
+                const digest = definitionHash(current);
+                if (digest !== definitionHash(packages))
+                    throw new Error("Required Plan definition changed during capture.");
+                const input = { inputs, definitionHash: digest };
+                await assertInput(
+                    target,
+                    selection,
+                    input,
+                    reviewedContext === undefined
+                        ? undefined
+                        : {
+                              kind: "captured-context",
+                              planId: reviewedSource.metadata.planId,
+                              retained: reviewedContext,
+                              live: packageDocumentText(reviewedSource.documents)["context.md"],
+                          },
+                );
+                return nextDefinition ? reviewInputWithDefinition(input, current, nextDefinition) : input;
+            },
+        );
+    }
+
     async function readGeneration(target: PackagePlanTarget, selection?: PackageReadSelection, activeOnly = false) {
         const { selected, retained } = await selectWorkflowRead(identity, target, selection, activeOnly);
         if (activeOnly && isArchived(selected)) throw new PlanNotFoundError(selected.metadata.planId);
         return { selected, loaded: retained ?? (await projectPackage(identity, selected)) };
+    }
+
+    /** Prepare the reopened state for the caller to commit with the Plan edit. */
+    async function prepareReviewInvalidation(plan: LoadedPlanPackage, change: PackageReviewChange) {
+        const status = plan.metadata.definition.status;
+        if (!changesReviewedInput(plan, change) || !reopensReviewOnEdit(status)) return;
+        const { loaded } = await readGeneration({ planId: plan.metadata.planId });
+        const updates = buildPlanEventUpdates("review_reopened", status, { triageMeta: loaded.attrs });
+        return await prepareWorkflowUpdate(identity, plan, loaded.attrs, updates, {
+            review: undefined,
+            readiness: undefined,
+        });
+    }
+
+    /** A write without an explicit workflow outcome or lifecycle transition may invalidate approval. */
+    async function prepareWorkflowMetadataUpdate(
+        plan: LoadedPlanPackage,
+        attrs: PlanFrontMatter,
+        updates: Partial<PlanFrontMatter>,
+        workflow?: PackageWorkflowEvidence,
+        recordsMilestone = false,
+    ) {
+        const prepared = await prepareWorkflowUpdate(identity, plan, attrs, updates, workflow);
+        if (workflow || recordsMilestone || updates.status !== undefined) return prepared;
+        const reopened = await prepareReviewInvalidation(plan, { kind: "edit", definition: prepared });
+        if (!reopened) return prepared;
+        return {
+            ...prepared,
+            definition: { ...prepared.definition, status: reopened.definition.status },
+            controller: reopened.controller,
+            workflow: reopened.workflow,
+        };
     }
 
     async function readResource(target: PackagePlanTarget, selection?: PackageReadSelection, activeOnly = false) {
@@ -429,9 +545,33 @@ function forOwner(identity: ProjectStoreIdentity) {
         async readWorkflow(target: PackagePlanTarget, selection?: PackageReadSelection): Promise<PackagePlanText> {
             return (await readGeneration(target, selection)).loaded;
         },
-        select: (target: PackagePlanTarget, selection?: PackageReadSelection) =>
-            selectPackage(identity, target, selection),
+        select,
+        captureReviewInput,
+        async assertReviewInput(
+            target: PackagePlanTarget,
+            selection: PackageReadSelection,
+            input: PackageWorkflowInput,
+            equivalence?: ReviewDocumentEquivalence,
+        ): Promise<void> {
+            await assertInput(target, selection, input, equivalence);
+        },
+        async bindReviewInputTarget(plan: LoadedPlanPackage, input: PackageWorkflowInput, targetBranch: string) {
+            return reviewInputWithDefinition(input, await requiredReviewPackages(plan), {
+                ...plan.metadata.definition,
+                targetBranch,
+            });
+        },
+        async retainedReviewWrites(plan: LoadedPlanPackage, input: PackageWorkflowInput) {
+            const required = await requiredReviewPackages(plan);
+            return input.inputs.map((reference) => {
+                const member = required.find(({ metadata }) => metadata.planId === reference.planId);
+                if (!member) throw new Error("Reviewed Plan membership changed.");
+                return { name: member.metadata.name, reference };
+            });
+        },
+        prepareReviewInvalidation,
         readController: (plan: LoadedPlanPackage) => readController(identity, plan),
+        prepareWorkflowMetadataUpdate,
         prepareWorkflowUpdate: (
             plan: LoadedPlanPackage,
             attrs: PlanFrontMatter,

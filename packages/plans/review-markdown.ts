@@ -1,4 +1,12 @@
 import quikdown from "quikdown";
+import { stripRuntimeFields } from "./controller-state.ts";
+import type { PlanFrontMatter } from "./document.ts";
+import { injectFrontMatter, planDocumentMarkdown } from "./format.ts";
+
+interface ReviewDocumentSource {
+    attrs: PlanFrontMatter;
+    body: string;
+}
 
 function reviewMarkdownEvidence(source: string): string {
     // Rendering can trim code, omit list ordinals, or discard extra table cells.
@@ -45,4 +53,26 @@ function reviewMarkdownEvidence(source: string): string {
 
 export function sameReviewedMarkdown(left: string, right: string): boolean {
     return left === right || reviewMarkdownEvidence(left) === reviewMarkdownEvidence(right);
+}
+
+/**
+ * Compare what the user reviewed with the current human-owned Plan document.
+ *
+ * A revision hashes the exact bytes, so YAML formatting alone makes it stale.
+ * Review approval cares about meaning: canonicalize document Front Matter, omit
+ * controller-owned projections, and compare Markdown meaning without prose wrapping
+ * or table padding. The eventual write still uses the current byte revision as
+ * its atomic compare-and-set.
+ */
+export function reviewSourceStillMatches(
+    current: ReviewDocumentSource,
+    originalAttrs: PlanFrontMatter,
+    originalBody: string,
+): boolean {
+    const canonicalAttrs = (attrs: PlanFrontMatter) =>
+        planDocumentMarkdown(injectFrontMatter("", stripRuntimeFields(attrs)));
+    return (
+        sameReviewedMarkdown(current.body, originalBody) &&
+        canonicalAttrs(current.attrs) === canonicalAttrs(originalAttrs)
+    );
 }

@@ -14,7 +14,11 @@ import {
     captureManagedExecution,
     readManagedExecutionDocuments,
 } from "./managed.ts";
-import { projectPlanFiles, type PackagePlanTarget } from "@runwield/plans/project-plan-files";
+import {
+    projectPlanFiles,
+    type PackagePlanTarget,
+    type ReviewDocumentEquivalence,
+} from "@runwield/plans/project-plan-files";
 import { retainPlanAccess, retainManagedPlanAccess, type PlanAccess } from "./handles.ts";
 import { continueImportedPackage } from "./legacy.ts";
 import { currentRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
@@ -25,7 +29,6 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { packageDocumentText, type PackageInputReference } from "@runwield/plans/file-snapshots";
 import {
-    capturePlanPackageInput,
     packageDocumentContent,
     commitPlanPackageBatch,
     savePlanPackageDocument,
@@ -225,146 +228,24 @@ export async function packageWorkflowLocks<T>(planNames: PackagePlanTarget[], ru
 function hash(value: string): string {
     return createHash("sha256").update(value).digest("hex");
 }
-function definitionHash(packages: LoadedPlanPackage[], ignoreCompletion = true): string {
-    return hash(
-        JSON.stringify(
-            packages.map(({ metadata }) => {
-                const { status: _status, ...definition } = metadata.definition;
-                if (ignoreCompletion) {
-                    delete definition.epicCompletionMode;
-                    delete definition.epicDoneEnoughAt;
-                    delete definition.epicDoneEnoughSummary;
-                }
-                return {
-                    planId: metadata.planId,
-                    definition,
-                    parentPlanId: metadata.parentPlanId,
-                    dependencyPlanIds: metadata.dependencyPlanIds,
-                };
-            }),
-        ),
-    );
-}
-export function reviewedDefinitionChanged(
-    current: LoadedPlanPackage,
-    next: Pick<LoadedPlanPackage["metadata"], "definition" | "parentPlanId" | "dependencyPlanIds">,
-) {
-    return definitionHash([current]) !== definitionHash([{ ...current, metadata: { ...current.metadata, ...next } }]);
-}
-async function requiredPackages(plan: LoadedPlanPackage): Promise<LoadedPlanPackage[]> {
-    const selection = currentPackageSelection()!;
-    const result = [plan];
-    if (plan.metadata.parentPlanId) {
-        const parent = await readPlanPackage(selection.identity, { planId: plan.metadata.parentPlanId });
-        if (parent.kind !== "loaded") throw new Error(parent.message);
-        result.push(parent);
-    }
-    return result;
-}
 export async function capturePackageWorkflowInput(
     planName: PackagePlanTarget,
     nextDefinition?: PackageDefinition,
     reviewedContext?: string,
 ): Promise<PackageWorkflowInput> {
     const selection = currentPackageSelection()!;
-    const packages = await requiredPackages((await selectedPackage(planName))!);
-    return await withPlanPackageLocks(
-        selection.identity,
-        packages.map((p) => p.metadata.planId),
-        async () => {
-            const inputs = [];
-            for (const plan of packages)
-                inputs.push(
-                    await capturePlanPackageInput(
-                        selection.identity,
-                        plan.metadata.planId,
-                        plan === packages[0] ? reviewedContext : undefined,
-                    ),
-                );
-            const current = await requiredPackages((await selectedPackage(planName))!);
-            if (definitionHash(current) !== definitionHash(packages))
-                throw new Error("Required Plan definition changed during capture.");
-            const input = { inputs, definitionHash: definitionHash(current) };
-            const reviewedSource = packages[0];
-            const originalContext =
-                reviewedContext === undefined ? undefined : packageDocumentText(reviewedSource.documents)["context.md"];
-            await assertPackageWorkflowInput(
-                planName,
-                input,
-                (before, live, name, planId) =>
-                    name === "context.md" &&
-                    planId === reviewedSource.metadata.planId &&
-                    before === reviewedContext &&
-                    live === originalContext,
-            );
-            if (nextDefinition)
-                input.definitionHash = definitionHash(
-                    current.map((p, index) =>
-                        index === 0 ? { ...p, metadata: { ...p.metadata, definition: nextDefinition } } : p,
-                    ),
-                );
-            return input;
-        },
-    );
+    return await projectPlanFiles
+        .forOwner(selection.identity)
+        .captureReviewInput(planName, selection, nextDefinition, reviewedContext);
 }
+
 export async function assertPackageWorkflowInput(
     planName: PackagePlanTarget,
     input: PackageWorkflowInput,
-    equivalent?: (left: string, right: string, documentName: string, planId: string) => boolean,
+    equivalence?: ReviewDocumentEquivalence,
 ): Promise<void> {
     const selection = currentPackageSelection()!;
-    const packages = await requiredPackages((await selectedPackage(planName))!);
-    // Accept legacy full-definition digests; new inputs omit Core-authored completion facts.
-    if (
-        (input.definitionHash !== definitionHash(packages) &&
-            input.definitionHash !== definitionHash(packages, false)) ||
-        input.inputs.length !== packages.length
-    ) {
-        throw new Error("Required Plan definition or membership changed; review the current input.");
-    }
-    const owner = await selectedPackage(planName);
-    const generated = owner.metadata.workflow?.generatedArtifact;
-    const artifact =
-        (generated?.reusedByAttemptId ?? generated?.attemptId) === owner.metadata.workflow?.attempt?.attemptId
-            ? generated
-            : undefined;
-    for (const plan of packages) {
-        const reference = input.inputs.find((ref) => ref.planId === plan.metadata.planId);
-        if (!reference) throw new Error("Required parent input is missing.");
-        const retained = await readPlanPackageInput(selection.identity, reference);
-        if (
-            retained.documents.length +
-                (artifact?.planId === plan.metadata.planId &&
-                artifact.beforeHash === null &&
-                !retained.documents.some((doc) => doc.name === artifact.name) &&
-                plan.documents.some((doc) => doc.name === artifact.name && doc.hash === artifact.hash)
-                    ? 1
-                    : 0) !==
-                plan.documents.length ||
-            plan.documents.some((doc) => {
-                const before = retained.documents.find((prior) => prior.name === doc.name);
-                if (
-                    artifact?.planId === plan.metadata.planId &&
-                    doc.name === artifact.name &&
-                    (before?.hash ?? null) === artifact.beforeHash &&
-                    doc.hash === artifact.hash
-                )
-                    return false;
-                return (
-                    !before ||
-                    (before.hash !== doc.hash &&
-                        (!equivalent ||
-                            !equivalent(
-                                new TextDecoder().decode(before.bytes),
-                                new TextDecoder().decode(doc.bytes),
-                                doc.name,
-                                plan.metadata.planId,
-                            )))
-                );
-            })
-        )
-            throw new Error("Required Plan documents changed; review the current input.");
-    }
+    await projectPlanFiles.forOwner(selection.identity).assertReviewInput(planName, selection, input, equivalence);
 }
 
 /** Bind a resolved default before reserving the attempt, preserving the reviewed document references. */
@@ -374,20 +255,9 @@ export async function resolvePackageExecutionTarget(planName: string, targetBran
     const workflow = { ...plan.metadata.workflow };
     if (!workflow.readiness) throw new Error("Execution requires retained package readiness input.");
     await assertPackageWorkflowInput(planName, workflow.readiness);
-    const packages = await requiredPackages(plan);
-    const input = {
-        ...workflow.readiness,
-        definitionHash: definitionHash(
-            packages.map((item, index) =>
-                index === 0
-                    ? {
-                          ...item,
-                          metadata: { ...item.metadata, definition: { ...item.metadata.definition, targetBranch } },
-                      }
-                    : item,
-            ),
-        ),
-    };
+    const input = await projectPlanFiles
+        .forOwner(currentPackageSelection()!.identity)
+        .bindReviewInputTarget(plan, workflow.readiness, targetBranch);
     workflow.review = input;
     workflow.readiness = input;
     if (workflow.attempt) workflow.attempt = { ...workflow.attempt, input };
@@ -422,26 +292,6 @@ export async function loadPackageWorkflowPlan(
     return await projectPlanFiles.forOwner(currentPackageProject()!).readWorkflow(planName, currentPackageSelection());
 }
 
-export function preparePackageWorkflowUpdate(
-    current: LoadedPlanPackage,
-    attrs: PlanFrontMatter,
-    updates: Partial<PlanFrontMatter>,
-    workflowUpdate?: PackageWorkflowEvidence,
-) {
-    return projectPlanFiles
-        .forOwner(currentPackageProject()!)
-        .prepareWorkflowUpdate(current, attrs, updates, workflowUpdate);
-}
-
-export async function reopenedPackageReview(plan: LoadedPlanPackage) {
-    const status = plan.metadata.definition.status;
-    if (status !== "approved" && status !== "ready_for_work" && status !== "ready_for_decomposition") return;
-    const view = await loadPackageWorkflowPlan({ planId: plan.metadata.planId });
-    const { buildPlanEventUpdates } = await import("@runwield/plans/lifecycle");
-    const updates = buildPlanEventUpdates("review_reopened", status, { triageMeta: view.attrs });
-    return await preparePackageWorkflowUpdate(plan, view.attrs, updates, { review: undefined, readiness: undefined });
-}
-
 export async function updatePackageWorkflowMetadata(
     planName: PackagePlanTarget,
     updates: Partial<PlanFrontMatter>,
@@ -456,22 +306,14 @@ export async function updatePackageWorkflowMetadata(
         if (expectedRevision !== undefined && view.revision !== expectedRevision)
             throw new Error("Package input changed before the metadata write.");
         const identity = currentPackageProject()!;
-        let metadataUpdate = await preparePackageWorkflowUpdate(current, view.attrs, updates, workflowUpdate);
-        if (
-            !workflowUpdate &&
-            !milestone &&
-            updates.status === undefined &&
-            reviewedDefinitionChanged(current, metadataUpdate)
-        ) {
-            const reopened = await reopenedPackageReview(current);
-            if (reopened)
-                metadataUpdate = {
-                    ...metadataUpdate,
-                    definition: { ...metadataUpdate.definition, status: reopened.definition.status },
-                    controller: reopened.controller,
-                    workflow: reopened.workflow,
-                };
-        }
+        const files = projectPlanFiles.forOwner(identity);
+        const metadataUpdate = await files.prepareWorkflowMetadataUpdate(
+            current,
+            view.attrs,
+            updates,
+            workflowUpdate,
+            Boolean(milestone),
+        );
         const { definition, controller, workflow } = metadataUpdate;
         const eventPackage = {
             documents: current.documents,
@@ -527,7 +369,9 @@ export async function updatePackageWorkflowMetadata(
             });
         }
         const update = { ...metadataUpdate, history };
-        const change = reviewedContext ? await reopenedPackageReview(current) : undefined;
+        const change = reviewedContext
+            ? await files.prepareReviewInvalidation(current, { kind: "review-commit" })
+            : undefined;
         const reopened = change
             ? { ...current.metadata, ...change, revision: current.metadata.revision + 1 }
             : undefined;
@@ -535,12 +379,7 @@ export async function updatePackageWorkflowMetadata(
         await journalPackageMetadataWrite(current.metadata, nextMetadata, reopened);
         const previous = packageDocumentText(current.documents);
         if (reviewedContext) {
-            const required = await requiredPackages(current);
-            const inputs = reviewedContext.input.inputs.map((reference) => {
-                const plan = required.find((p) => p.metadata.planId === reference.planId);
-                if (!plan) throw new Error("Reviewed Plan membership changed.");
-                return { name: plan.metadata.name, reference };
-            });
+            const inputs = await files.retainedReviewWrites(current, reviewedContext.input);
             await commitPlanPackageBatch(
                 identity,
                 [

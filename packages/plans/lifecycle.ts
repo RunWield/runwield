@@ -984,6 +984,13 @@ export function isExecutablePlanStatus(status: string) {
     return status === "ready_for_work";
 }
 
+/** A meaningful Plan edit invalidates approval before execution starts. */
+export function reopensReviewOnEdit(
+    status: string | undefined,
+): status is "approved" | "ready_for_work" | "ready_for_decomposition" {
+    return status === "approved" || status === "ready_for_work" || status === "ready_for_decomposition";
+}
+
 /**
  * Whether a review decision can be recorded from `status` as-is.
  *

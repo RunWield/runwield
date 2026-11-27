@@ -19,15 +19,14 @@ import {
     projectPlanType,
     injectFrontMatter,
     parsePlanFrontMatter,
-    planDocumentMarkdown,
     splitPlanMarkdownBody,
 } from "@runwield/plans/format";
 import { resolve } from "node:path";
-import { sameReviewedMarkdown } from "@runwield/plans/review-markdown";
+import { reviewSourceStillMatches } from "@runwield/plans/review-markdown";
 import { getStoredPlanPath, loadPlanFileStrict, writePlanMarkdownWithRevision } from "../plan-store.ts";
 
 import { loadPlan } from "./queries.ts";
-import { buildPlanEventUpdates, isPlanReviewableWithoutReopen } from "@runwield/plans/lifecycle";
+import { buildPlanEventUpdates, isPlanReviewableWithoutReopen, reopensReviewOnEdit } from "@runwield/plans/lifecycle";
 import { recordPlanEvent } from "./index.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import { runPlanReviewDecisionTransition } from "./transitions.ts";
@@ -98,28 +97,6 @@ function readApprovedExecutionPolicy(
 
 function reviewRejected(message: string): SharedPlanReviewActionResult {
     return { approved: false, feedback: message, cancellationReason: "stale_plan_review" };
-}
-
-/**
- * Compare what the user reviewed with the current human-owned Plan document.
- *
- * A revision hashes the exact bytes, so YAML formatting alone makes it stale.
- * Review approval cares about meaning: canonicalize document Front Matter, omit
- * controller-owned projections, and compare Markdown meaning without prose wrapping
- * or table padding. The eventual write still uses the current byte revision as
- * its atomic compare-and-set.
- */
-export function reviewSourceStillMatches(
-    current: { attrs: PlanFrontMatter; body: string },
-    originalAttrs: PlanFrontMatter,
-    originalBody: string,
-): boolean {
-    const canonicalAttrs = (attrs: PlanFrontMatter) =>
-        planDocumentMarkdown(injectFrontMatter("", stripRuntimeFields(attrs)));
-    return (
-        sameReviewedMarkdown(current.body, originalBody) &&
-        canonicalAttrs(current.attrs) === canonicalAttrs(originalAttrs)
-    );
 }
 
 function validatedClassification(
@@ -268,7 +245,7 @@ async function applySharedPlanReviewDecisionInScope({
                     beforePlan.controllerRevision !== expectedControllerRevision
                 )
                     throw new Error("Plan changed after review opened. Refresh the review before deciding.");
-                await assertPackageWorkflowInput(planName, packageInput, sameReviewedMarkdown);
+                await assertPackageWorkflowInput(planName, packageInput, { kind: "markdown" });
                 const current = await selectedPackage(planName);
                 if (current.metadata.archive && !current.metadata.archive.restoredAt)
                     throw new Error("This Plan package is archived.");
@@ -315,7 +292,7 @@ async function applySharedPlanReviewDecisionInScope({
                     delete nextDefinition.collaborationRecommendation;
                 }
                 const retained = await capturePackageWorkflowInput(planName, nextDefinition, text);
-                await assertPackageWorkflowInput(planName, packageInput, sameReviewedMarkdown);
+                await assertPackageWorkflowInput(planName, packageInput, { kind: "markdown" });
                 await updatePackageWorkflowMetadata(
                     planName,
                     nextAttrs,
@@ -381,9 +358,7 @@ async function applySharedPlanReviewDecisionInScope({
         originalAttrs,
         reviewBaseBody,
     );
-    const revisionCancelsApproval =
-        meaningChanged &&
-        ["approved", "ready_for_work", "ready_for_decomposition"].includes(originalAttrs.status || "");
+    const revisionCancelsApproval = meaningChanged && reopensReviewOnEdit(originalAttrs.status);
     const canonicalPlanPath = getStoredPlanPath(cwd, planName);
     let lifecycleMeta: PlanFrontMatter = reviewedAttrs;
     let committedRevision: string | undefined;
